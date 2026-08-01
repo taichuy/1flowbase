@@ -258,13 +258,16 @@ pub async fn install_official_plugin(
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let command = resolved_official_plugin_install_command(
+        &state,
+        context.user.id,
+        body.plugin_id,
+        to_compatibility_override(body.compatibility_override),
+        to_risk_override(body.risk_override),
+    )
+    .await?;
     let result = service(&state, "model_provider_plugins.install.official")
-        .install_official_plugin(InstallOfficialPluginCommand {
-            actor_user_id: context.user.id,
-            plugin_id: body.plugin_id,
-            compatibility_override: to_compatibility_override(body.compatibility_override),
-            risk_override: to_risk_override(body.risk_override),
-        })
+        .install_resolved_official_plugin(command)
         .await?;
     Ok((
         StatusCode::CREATED,

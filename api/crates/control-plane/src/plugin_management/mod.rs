@@ -363,8 +363,20 @@ pub(super) fn validate_official_plugin_compatibility_override(
     current_host_version: &str,
     compatibility_override: Option<&PluginCompatibilityOverride>,
 ) -> Result<Option<serde_json::Value>> {
+    validate_plugin_compatibility_requirement(
+        &entry.minimum_host_version,
+        current_host_version,
+        compatibility_override,
+    )
+}
+
+pub(super) fn validate_plugin_compatibility_requirement(
+    minimum_host_version: &str,
+    current_host_version: &str,
+    compatibility_override: Option<&PluginCompatibilityOverride>,
+) -> Result<Option<serde_json::Value>> {
     let compatibility =
-        official_plugin_host_compatibility(&entry.minimum_host_version, current_host_version);
+        official_plugin_host_compatibility(minimum_host_version, current_host_version);
     if compatibility.status != PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM {
         return Ok(None);
     }
@@ -374,7 +386,7 @@ pub(super) fn validate_official_plugin_compatibility_override(
     };
     if compatibility_override.reason != PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM
         || compatibility_override.acknowledged_current_host_version != current_host_version
-        || compatibility_override.acknowledged_minimum_host_version != entry.minimum_host_version
+        || compatibility_override.acknowledged_minimum_host_version != minimum_host_version
     {
         return Err(ControlPlaneError::InvalidInput(PLUGIN_COMPATIBILITY_OVERRIDE_INVALID).into());
     }

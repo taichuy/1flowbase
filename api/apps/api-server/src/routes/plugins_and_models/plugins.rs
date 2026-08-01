@@ -12,8 +12,8 @@ use axum::{
 };
 use control_plane::plugin_management::{
     AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand,
-    InstallCurrentNodePluginArtifactCommand, InstallOfficialPluginCommand, InstallPluginCommand,
-    InstallPluginResult, InstallUploadedPluginCommand, OfficialPluginCatalogEntry,
+    InstallCurrentNodePluginArtifactCommand, InstallPluginCommand, InstallPluginResult,
+    InstallResolvedOfficialPluginCommand, InstallUploadedPluginCommand, OfficialPluginCatalogEntry,
     OfficialPluginCatalogFilter, OfficialPluginCatalogView, PluginCatalogEntry,
     PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
     PluginManagementService, PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand,
@@ -929,6 +929,66 @@ fn official_filter_from_query(query: &OfficialPluginCatalogQuery) -> OfficialPlu
     }
 }
 
+async fn resolved_official_plugin_install_command(
+    state: &ApiState,
+    actor_user_id: Uuid,
+    plugin_id: String,
+    compatibility_override: Option<PluginCompatibilityOverride>,
+    risk_override: Option<PluginRiskOverride>,
+) -> Result<InstallResolvedOfficialPluginCommand, ApiError> {
+    let mut cursor = None;
+    let (entry, source_kind) = loop {
+        let page = state
+            .official_extension_catalog_source
+            .list_page("runtime-extensions", cursor.as_deref())
+            .await?;
+        if let Some(entry) = page.entries.into_iter().find(|entry| {
+            entry
+                .source
+                .metadata
+                .get("plugin_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(plugin_id.as_str())
+        }) {
+            break (entry, page.source_kind);
+        }
+        let Some(next_cursor) = page.metadata.next_cursor else {
+            return Err(
+                control_plane::errors::ControlPlaneError::NotFound("official_plugin").into(),
+            );
+        };
+        cursor = Some(next_cursor);
+    };
+    let plugin_type = entry
+        .source
+        .metadata
+        .get("plugin_type")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+            "official_plugin_type",
+        ))?
+        .to_string();
+    let downloaded = state
+        .official_extension_catalog_source
+        .download_artifact(&entry)
+        .await?;
+    let expected_checksum = downloaded.descriptor.expected_checksum.clone().ok_or(
+        control_plane::errors::ControlPlaneError::InvalidInput("official_plugin_checksum"),
+    )?;
+    Ok(InstallResolvedOfficialPluginCommand {
+        actor_user_id,
+        plugin_id,
+        plugin_type,
+        minimum_host_version: entry.host_version_requirement,
+        source_kind,
+        file_name: downloaded.file_name,
+        package_bytes: downloaded.artifact_bytes,
+        expected_checksum,
+        compatibility_override,
+        risk_override,
+    })
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/plugins/catalog",
@@ -1105,13 +1165,16 @@ pub async fn install_official_plugin(
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let command = resolved_official_plugin_install_command(
+        &state,
+        context.user.id,
+        body.plugin_id,
+        to_compatibility_override(body.compatibility_override),
+        to_risk_override(body.risk_override),
+    )
+    .await?;
     let result = service(&state, "plugins.install.official")
-        .install_official_plugin(InstallOfficialPluginCommand {
-            actor_user_id: context.user.id,
-            plugin_id: body.plugin_id,
-            compatibility_override: to_compatibility_override(body.compatibility_override),
-            risk_override: to_risk_override(body.risk_override),
-        })
+        .install_resolved_official_plugin(command)
         .await?;
 
     Ok((

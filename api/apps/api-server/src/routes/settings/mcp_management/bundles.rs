@@ -19,6 +19,10 @@ use control_plane::{
     },
     mcp_management::McpManagementService,
     plugin_management::ExtensionInstallationService,
+    plugin_management::{
+        installed_extension_integrity_warnings, validate_extension_integrity_override,
+        ExtensionRiskOverride,
+    },
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -115,6 +119,7 @@ struct OfficialMcpBundleSelector {
 struct InstalledMcpExtensionSelector {
     extension_installation_id: String,
     conflict_resolution: Option<McpBundleConflictResolution>,
+    integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -136,6 +141,8 @@ struct InstalledMcpExtensionPreviewResponse {
     artifact_installation_status: String,
     workspace_application_status: String,
     required_conflict_resolution: Option<McpBundleConflictResolution>,
+    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    required_integrity_override: Option<domain::ExtensionRiskChallenge>,
     preview: domain::McpBundlePreview,
 }
 
@@ -151,6 +158,7 @@ struct InstalledMcpExtensionImportResponse {
     extension_installation_id: String,
     artifact_installation_status: String,
     workspace_application_status: String,
+    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
     import_report: domain::McpBundleImportReport,
 }
 
@@ -163,7 +171,27 @@ struct InstalledMcpExtensionConflictResponse {
     artifact_installation_status: String,
     workspace_application_status: String,
     required_conflict_resolution: McpBundleConflictResolution,
+    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
     preview: domain::McpBundlePreview,
+}
+
+#[derive(Debug, Serialize)]
+struct InstalledMcpExtensionIntegrityChallengeResponse {
+    status: u16,
+    code: String,
+    message: String,
+    extension_installation_id: String,
+    artifact_installation_status: String,
+    workspace_application_status: String,
+    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    required_integrity_override: domain::ExtensionRiskChallenge,
+    preview: domain::McpBundlePreview,
+}
+
+struct LoadedMcpBundleSource {
+    extension_installation_id: Option<uuid::Uuid>,
+    package: domain::McpBundlePackage,
+    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
 }
 
 async fn list_official_bundles(
@@ -276,18 +304,18 @@ async fn preview_official_bundle(
 ) -> Result<Json<ApiSuccess<McpBundlePreviewSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let (installation_id, package) = load_mcp_bundle_source(&state, body).await?;
+    let source = load_mcp_bundle_source(&state, body).await?;
     let interface_catalog =
         super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
     let preview = McpManagementService::new(state.store.clone())
         .preview_bundle(PreviewMcpBundleCommand {
             actor_user_id: context.user.id,
-            package,
+            package: source.package,
             interface_catalog,
             current_system_version: current_system_version(),
         })
         .await?;
-    let response = match installation_id {
+    let response = match source.extension_installation_id {
         Some(extension_installation_id) => {
             let required_conflict_resolution = mcp_preview_has_conflicts(&preview)
                 .then_some(McpBundleConflictResolution::KeepExisting);
@@ -302,6 +330,13 @@ async fn preview_official_bundle(
                     }
                     .to_string(),
                     required_conflict_resolution,
+                    required_integrity_override: (!source.integrity_warnings.is_empty()).then(
+                        || domain::ExtensionRiskChallenge {
+                            warnings: source.integrity_warnings.clone(),
+                            compatibility: None,
+                        },
+                    ),
+                    integrity_warnings: source.integrity_warnings,
                     preview,
                 },
             )
@@ -324,17 +359,51 @@ async fn import_official_bundle(
         McpBundleSourceBody::InstalledExtension(selector) => selector.conflict_resolution,
         McpBundleSourceBody::OfficialCatalog(_) => None,
     };
-    let (installation_id, package) = load_mcp_bundle_source(&state, body).await?;
+    let integrity_override = match &body {
+        McpBundleSourceBody::InstalledExtension(selector) => selector
+            .integrity_override
+            .as_ref()
+            .map(|value| ExtensionRiskOverride {
+                reason: value.reason.clone(),
+                acknowledged_warnings: value.acknowledged_warnings.clone(),
+            }),
+        McpBundleSourceBody::OfficialCatalog(_) => None,
+    };
+    let source = load_mcp_bundle_source(&state, body).await?;
     let service = McpManagementService::new(state.store.clone());
-    if let Some(extension_installation_id) = installation_id {
+    if let Some(extension_installation_id) = source.extension_installation_id {
         let preview = service
             .preview_bundle(PreviewMcpBundleCommand {
                 actor_user_id: context.user.id,
-                package: package.clone(),
+                package: source.package.clone(),
                 interface_catalog: interface_catalog.clone(),
                 current_system_version: current_system_version(),
             })
             .await?;
+        if !validate_extension_integrity_override(
+            &source.integrity_warnings,
+            integrity_override.as_ref(),
+        )? {
+            return Ok((
+                StatusCode::CONFLICT,
+                Json(InstalledMcpExtensionIntegrityChallengeResponse {
+                    status: StatusCode::CONFLICT.as_u16(),
+                    code: "mcp_bundle_integrity_confirmation_required".to_string(),
+                    message: "Installed MCP artifact integrity warnings require confirmation."
+                        .to_string(),
+                    extension_installation_id: extension_installation_id.to_string(),
+                    artifact_installation_status: "installed".to_string(),
+                    workspace_application_status: "not_imported".to_string(),
+                    integrity_warnings: source.integrity_warnings.clone(),
+                    required_integrity_override: domain::ExtensionRiskChallenge {
+                        warnings: source.integrity_warnings.clone(),
+                        compatibility: None,
+                    },
+                    preview,
+                }),
+            )
+                .into_response());
+        }
         if mcp_preview_has_conflicts(&preview)
             && conflict_resolution != Some(McpBundleConflictResolution::KeepExisting)
         {
@@ -349,6 +418,7 @@ async fn import_official_bundle(
                     artifact_installation_status: "installed".to_string(),
                     workspace_application_status: "not_imported".to_string(),
                     required_conflict_resolution: McpBundleConflictResolution::KeepExisting,
+                    integrity_warnings: source.integrity_warnings.clone(),
                     preview,
                 }),
             )
@@ -358,17 +428,18 @@ async fn import_official_bundle(
     let report = service
         .import_bundle(ImportMcpBundleCommand {
             actor_user_id: context.user.id,
-            package,
+            package: source.package,
             interface_catalog,
             current_system_version: current_system_version(),
         })
         .await?;
-    let response = match installation_id {
+    let response = match source.extension_installation_id {
         Some(extension_installation_id) => {
             McpBundleImportSourceResponse::InstalledExtension(InstalledMcpExtensionImportResponse {
                 extension_installation_id: extension_installation_id.to_string(),
                 artifact_installation_status: "installed".to_string(),
                 workspace_application_status: "imported".to_string(),
+                integrity_warnings: source.integrity_warnings,
                 import_report: report,
             })
         }
@@ -380,17 +451,29 @@ async fn import_official_bundle(
 async fn load_mcp_bundle_source(
     state: &ApiState,
     body: McpBundleSourceBody,
-) -> Result<(Option<uuid::Uuid>, domain::McpBundlePackage), ApiError> {
+) -> Result<LoadedMcpBundleSource, ApiError> {
     match body {
         McpBundleSourceBody::OfficialCatalog(selector) => {
-            let downloaded = state
-                .official_mcp_bundle_source
-                .download_bundle(&selector.organization, &selector.bundle_id)
+            let catalog_id = format!("mcp:{}/{}", selector.organization, selector.bundle_id);
+            let located = state
+                .official_extension_catalog_source
+                .find_entry("mcp", &catalog_id)
                 .await?;
-            Ok((
-                None,
-                parse_downloaded_bundle(downloaded.package_bytes).await?,
-            ))
+            let located = located.ok_or(ControlPlaneError::NotFound("official_mcp_bundle"))?;
+            if located.entry.organization != selector.organization
+                || located.entry.artifact != selector.bundle_id
+            {
+                return Err(ControlPlaneError::InvalidInput("official_mcp_bundle").into());
+            }
+            let downloaded = state
+                .official_extension_catalog_source
+                .download_artifact(&located.entry)
+                .await?;
+            Ok(LoadedMcpBundleSource {
+                extension_installation_id: None,
+                package: parse_downloaded_bundle(downloaded.artifact_bytes).await?,
+                integrity_warnings: Vec::new(),
+            })
         }
         McpBundleSourceBody::InstalledExtension(selector) => {
             let installation_id = uuid::Uuid::parse_str(&selector.extension_installation_id)
@@ -406,11 +489,12 @@ async fn load_mcp_bundle_source(
                 return Err(ControlPlaneError::InvalidInput("extension_installation_id").into());
             }
             let bytes = tokio::fs::read(&installation.local_path).await?;
-            let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
-            if checksum != installation.checksum {
-                return Err(ControlPlaneError::InvalidInput("extension_artifact_checksum").into());
-            }
-            Ok((Some(installation_id), parse_downloaded_bundle(bytes).await?))
+            let integrity_warnings = installed_extension_integrity_warnings(&installation, &bytes);
+            Ok(LoadedMcpBundleSource {
+                extension_installation_id: Some(installation_id),
+                package: parse_downloaded_bundle(bytes).await?,
+                integrity_warnings,
+            })
         }
     }
 }

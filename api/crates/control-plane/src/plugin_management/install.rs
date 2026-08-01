@@ -18,6 +18,19 @@ pub struct InstallOfficialPluginCommand {
     pub risk_override: Option<PluginRiskOverride>,
 }
 
+pub struct InstallResolvedOfficialPluginCommand {
+    pub actor_user_id: Uuid,
+    pub plugin_id: String,
+    pub plugin_type: String,
+    pub minimum_host_version: String,
+    pub source_kind: String,
+    pub file_name: String,
+    pub package_bytes: Vec<u8>,
+    pub expected_checksum: String,
+    pub compatibility_override: Option<PluginCompatibilityOverride>,
+    pub risk_override: Option<PluginRiskOverride>,
+}
+
 pub struct InstallOfficialExtensionCommand {
     pub actor_user_id: Uuid,
     pub artifact_id: String,
@@ -804,6 +817,84 @@ where
         }
         .await;
         result
+    }
+
+    pub async fn install_resolved_official_plugin(
+        &self,
+        command: InstallResolvedOfficialPluginCommand,
+    ) -> Result<InstallPluginResult> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
+        if self.is_model_provider_console_operation() && command.plugin_type != "model_provider" {
+            return Err(
+                ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
+            );
+        }
+        let compatibility_override = validate_plugin_compatibility_requirement(
+            &command.minimum_host_version,
+            &self.host_version,
+            command.compatibility_override.as_ref(),
+        )?;
+        let intake = intake_package_bytes(
+            &command.package_bytes,
+            &PackageIntakePolicy {
+                source_kind: command.source_kind.clone(),
+                trust_mode: "allow_unsigned".to_string(),
+                expected_artifact_sha256: None,
+                trusted_public_keys: self.official_source.trusted_public_keys(),
+                original_filename: Some(command.file_name.clone()),
+            },
+        )
+        .await?;
+        let risk_warnings = official_package_risk_warnings(
+            &command.package_bytes,
+            &command.expected_checksum,
+            &intake,
+        );
+        let risk_override =
+            validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
+        self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
+        let mut detail_json = json!({
+            "install_kind": "official_extension_catalog",
+            "plugin_id": command.plugin_id,
+            "file_name": command.file_name,
+            "risk_warnings": risk_warnings,
+        });
+        if let Some(value) = compatibility_override {
+            detail_json["compatibility_override"] = value;
+        }
+        if let Some(value) = risk_override {
+            detail_json["risk_override"] = value;
+        }
+        let install = self
+            .install_intake_result(
+                command.actor_user_id,
+                intake,
+                Some(command.package_bytes),
+                detail_json,
+            )
+            .await?;
+        if is_host_extension_installation(&install.installation) {
+            return Ok(install);
+        }
+        self.enable_plugin(EnablePluginCommand {
+            actor_user_id: command.actor_user_id,
+            installation_id: install.installation.id,
+        })
+        .await?;
+        let task = self
+            .assign_plugin(AssignPluginCommand {
+                actor_user_id: command.actor_user_id,
+                installation_id: install.installation.id,
+            })
+            .await?;
+        let installation = self
+            .repository
+            .get_installation(install.installation.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        Ok(InstallPluginResult { installation, task })
     }
 
     pub async fn install_official_extension(

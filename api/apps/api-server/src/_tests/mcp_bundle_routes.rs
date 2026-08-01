@@ -1,5 +1,9 @@
-use std::io::{Cursor, Write};
+use std::{
+    io::{Cursor, Write},
+    sync::Arc,
+};
 
+use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -22,6 +26,137 @@ use crate::_tests::support::{
     get_json, login_and_capture_cookie, test_api_state_with_database_url, test_app,
     test_app_with_runtime_profile_error, test_config,
 };
+
+#[derive(Clone)]
+struct FailingLegacyMcpCatalogSource;
+
+#[async_trait]
+impl crate::official_mcp_bundles::OfficialMcpBundleSourcePort for FailingLegacyMcpCatalogSource {
+    async fn list_catalog(
+        &self,
+    ) -> anyhow::Result<crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot> {
+        anyhow::bail!("legacy MCP catalog source must not be called")
+    }
+
+    async fn download_bundle(
+        &self,
+        _organization: &str,
+        _bundle_id: &str,
+    ) -> anyhow::Result<crate::official_mcp_bundles::DownloadedOfficialMcpBundle> {
+        anyhow::bail!("legacy MCP catalog source must not be called")
+    }
+}
+
+#[derive(Clone)]
+struct FixtureOfficialMcpExtensionCatalogSource {
+    bundle: Arc<Vec<u8>>,
+}
+
+fn fixture_official_mcp_entry() -> crate::official_extension_catalog::OfficialExtensionCatalogEntry
+{
+    crate::official_extension_catalog::OfficialExtensionCatalogEntry {
+        id: "mcp:taichuy/test_bundle".to_string(),
+        name: "Test bundle".to_string(),
+        category: "mcp".to_string(),
+        organization: "taichuy".to_string(),
+        artifact: "test_bundle".to_string(),
+        version: "1.0.0".to_string(),
+        description: "Fixture MCP bundle".to_string(),
+        host_version_requirement: "0.2.0".to_string(),
+        source: crate::official_extension_catalog::OfficialExtensionCatalogEntrySource {
+            kind: "mcp_bundle".to_string(),
+            locator: "fixture".to_string(),
+            metadata: std::collections::BTreeMap::from([
+                ("locale".to_string(), json!("zh_Hans")),
+                ("exported_from_system_version".to_string(), json!("0.2.0")),
+                ("release_tag".to_string(), json!("mcp-test-v1.0.0")),
+            ]),
+        },
+        signature: None,
+        checksum: Some("sha256:fixture".to_string()),
+        download_locator: json!({"kind":"repository_file","locator":"https://unused.test/bundle.zip"}),
+        catalog_page: 1,
+    }
+}
+
+#[async_trait]
+impl crate::official_extension_catalog::OfficialExtensionCatalogSourcePort
+    for FixtureOfficialMcpExtensionCatalogSource
+{
+    async fn list_page(
+        &self,
+        category: &str,
+        _cursor: Option<&str>,
+    ) -> anyhow::Result<crate::official_extension_catalog::OfficialExtensionCatalogPage> {
+        assert_eq!(category, "mcp");
+        Ok(
+            crate::official_extension_catalog::OfficialExtensionCatalogPage {
+                source_kind: "official_repository".to_string(),
+                category: "mcp".to_string(),
+                metadata: crate::official_extension_catalog::OfficialExtensionCatalogPageMetadata {
+                    page: 1,
+                    cursor: "start".to_string(),
+                    checksum: "sha256:page".to_string(),
+                    locator: "fixture://mcp/page".to_string(),
+                    next_cursor: None,
+                    page_size: 20,
+                    total_entries: 1,
+                    freshness:
+                        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
+                },
+                entries: vec![fixture_official_mcp_entry()],
+            },
+        )
+    }
+
+    async fn find_entry(
+        &self,
+        category: &str,
+        catalog_id: &str,
+    ) -> anyhow::Result<
+        Option<crate::official_extension_catalog::LocatedOfficialExtensionCatalogEntry>,
+    > {
+        if category != "mcp" || catalog_id != "mcp:taichuy/test_bundle" {
+            return Ok(None);
+        }
+        Ok(Some(
+            crate::official_extension_catalog::LocatedOfficialExtensionCatalogEntry {
+                source_kind: "official_repository".to_string(),
+                entry: fixture_official_mcp_entry(),
+            },
+        ))
+    }
+
+    fn resolve_artifact(
+        &self,
+        _entry: &crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<crate::official_extension_catalog::OfficialExtensionArtifactDescriptor>
+    {
+        Ok(
+            crate::official_extension_catalog::OfficialExtensionArtifactDescriptor {
+                locator_kind: "repository_file".to_string(),
+                locator: "fixture://mcp/bundle".to_string(),
+                expected_checksum: None,
+                signature: None,
+                platform: None,
+            },
+        )
+    }
+
+    async fn download_artifact(
+        &self,
+        entry: &crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<crate::official_extension_catalog::DownloadedOfficialExtensionArtifact>
+    {
+        Ok(
+            crate::official_extension_catalog::DownloadedOfficialExtensionArtifact {
+                descriptor: self.resolve_artifact(entry)?,
+                file_name: "test_bundle.zip".to_string(),
+                artifact_bytes: self.bundle.as_ref().clone(),
+            },
+        )
+    }
+}
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -143,8 +278,11 @@ fn multipart_body(file_name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
     (boundary.to_string(), body)
 }
 
-async fn app_with_installed_mcp_extension(bundle: Vec<u8>) -> (axum::Router, Uuid) {
-    let (state, _) = test_api_state_with_database_url().await;
+async fn app_with_installed_mcp_extension(
+    bundle: Vec<u8>,
+    replacement_local_bytes: Option<Vec<u8>>,
+) -> (axum::Router, Uuid) {
+    let (mut state, _) = test_api_state_with_database_url().await;
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
         domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
@@ -178,6 +316,13 @@ async fn app_with_installed_mcp_extension(bundle: Vec<u8>) -> (axum::Router, Uui
     let ExtensionArtifactInstallOutcome::Installed { installation, .. } = outcome else {
         panic!("verified MCP fixture must install without confirmation");
     };
+    if let Some(bytes) = replacement_local_bytes {
+        tokio::fs::write(&installation.local_path, bytes)
+            .await
+            .unwrap();
+    }
+    Arc::get_mut(&mut state).unwrap().official_mcp_bundle_source =
+        Arc::new(FailingLegacyMcpCatalogSource);
     (
         crate::app_with_state_and_config(state, &test_config()),
         installation.id,
@@ -384,7 +529,8 @@ async fn mcp_bundle_import_rolls_back_an_instance_when_assembly_fails() {
 #[tokio::test]
 async fn delivery_1560_d5_ac_004_installed_mcp_artifact_previews_without_workspace_import() {
     let (app, extension_installation_id) =
-        app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false)).await;
+        app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false), None)
+            .await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let preview = post_json(
@@ -426,7 +572,8 @@ async fn delivery_1560_d5_ac_004_installed_mcp_artifact_previews_without_workspa
 async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_retry_is_explainable()
 {
     let (app, extension_installation_id) =
-        app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false)).await;
+        app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false), None)
+            .await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let confirmed_body = json!({
         "extension_installation_id": extension_installation_id,
@@ -527,6 +674,76 @@ async fn delivery_1560_d5_ac_008_installed_mcp_preview_keeps_mcp_settings_scope(
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_f01_integrity_warning_previews_and_requires_structured_override() {
+    let original = bundle_zip("removed_interface", "0.2.5", false);
+    let local = bundle_zip("removed_interface", "0.2.6", false);
+    let (app, extension_installation_id) =
+        app_with_installed_mcp_extension(original, Some(local)).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let selector = json!({"extension_installation_id": extension_installation_id});
+
+    let preview = post_json(
+        &app,
+        "/api/console/mcp/bundles/preview-official",
+        &cookie,
+        &csrf,
+        selector.clone(),
+    )
+    .await;
+    assert_eq!(preview.status(), StatusCode::OK);
+    let preview_payload = response_json(preview).await;
+    assert_eq!(
+        preview_payload["data"]["integrity_warnings"][0]["code"],
+        "checksum_mismatch"
+    );
+    assert_eq!(
+        preview_payload["data"]["required_integrity_override"]["warnings"][0]["code"],
+        "checksum_mismatch"
+    );
+
+    let unconfirmed = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        selector.clone(),
+    )
+    .await;
+    assert_eq!(unconfirmed.status(), StatusCode::CONFLICT);
+    let unconfirmed_payload = response_json(unconfirmed).await;
+    assert_eq!(
+        unconfirmed_payload["code"],
+        "mcp_bundle_integrity_confirmation_required"
+    );
+    let empty_catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
+    assert!(empty_catalog["data"]["tools"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    let confirmed = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        json!({
+            "extension_installation_id": extension_installation_id,
+            "integrity_override": {
+                "reason": "operator_accepts_local_artifact",
+                "acknowledged_warnings": ["checksum_mismatch"]
+            }
+        }),
+    )
+    .await;
+    assert_eq!(confirmed.status(), StatusCode::OK);
+    let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
+    assert_eq!(
+        catalog["data"]["tools"][0]["tool_id"],
+        "bundle_runtime_profile"
+    );
 }
 
 #[tokio::test]
@@ -787,7 +1004,15 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
 #[tokio::test]
 async fn mcp_bundle_official_catalog_and_preview_are_served_through_the_backend() {
     // AC-002 and AC-007: browser consumes the official source only through backend routes.
-    let app = test_app().await;
+    let (mut state, _) = test_api_state_with_database_url().await;
+    let bundle = bundle_zip("get_runtime_profile", "0.2.0", false);
+    let state_mut = Arc::get_mut(&mut state).unwrap();
+    state_mut.official_mcp_bundle_source = Arc::new(FailingLegacyMcpCatalogSource);
+    state_mut.official_extension_catalog_source =
+        Arc::new(FixtureOfficialMcpExtensionCatalogSource {
+            bundle: Arc::new(bundle),
+        });
+    let app = crate::app_with_state_and_config(state, &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let catalog_response = app
@@ -803,14 +1028,9 @@ async fn mcp_bundle_official_catalog_and_preview_are_served_through_the_backend(
         .unwrap();
     assert_eq!(catalog_response.status(), StatusCode::OK);
     let catalog = response_json(catalog_response).await;
-    assert_eq!(catalog["data"]["source"]["source_label"], "Official source");
     assert_eq!(
         catalog["data"]["source"]["source_kind"],
-        "official_registry"
-    );
-    assert_eq!(
-        catalog["data"]["source"]["catalog_url"],
-        "https://example.com/mcp/catalog.json"
+        "official_repository"
     );
     assert_eq!(
         catalog["data"]["entries"][0]["organization"],
@@ -837,6 +1057,6 @@ async fn mcp_bundle_official_catalog_and_preview_are_served_through_the_backend(
     );
     assert_eq!(
         preview_payload["data"]["tools"][0]["id"],
-        json!("official_runtime_profile")
+        json!("bundle_runtime_profile")
     );
 }

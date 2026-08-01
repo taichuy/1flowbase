@@ -640,6 +640,30 @@ fn integrity_warnings(
     warnings
 }
 
+pub fn installed_extension_integrity_warnings(
+    installation: &domain::ExtensionInstallationRecord,
+    artifact_bytes: &[u8],
+) -> Vec<domain::ExtensionIntegrityWarning> {
+    merge_integrity_warnings(
+        installation.warnings.clone(),
+        integrity_warnings(
+            Some(&installation.checksum),
+            &sha256_checksum(artifact_bytes),
+            installation.signature_status,
+        ),
+    )
+}
+
+pub fn validate_extension_integrity_override(
+    warnings: &[domain::ExtensionIntegrityWarning],
+    risk_override: Option<&ExtensionRiskOverride>,
+) -> Result<bool> {
+    Ok(matches!(
+        validate_risk_override(warnings, risk_override)?,
+        RiskOverrideDecision::Accepted(_)
+    ))
+}
+
 fn warning(code: &str, message: &str) -> domain::ExtensionIntegrityWarning {
     domain::ExtensionIntegrityWarning {
         code: code.to_string(),
