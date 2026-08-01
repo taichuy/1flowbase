@@ -13,6 +13,7 @@
 | 当前已经配置什么 | MCP catalog/API/管理界面读模型 | 实例、Group、Tool、Binding、policy 分项读取 |
 | Agent 实际能看到什么 | `mcp.list`、`mcp.get` | 协议路由与运行时测试 |
 | Agent 实际能否调用 | `mcp.call` | 后端持久化结果或可观察副作用 |
+| MCP 只返回通用调用错误 | 本地开发服务结构化日志 | 失败 Tool、interface、阶段与单项重试 |
 
 ## Search Strategy
 
@@ -20,7 +21,7 @@
 2. 沿前端 API client 找到后端 route 与请求/响应字段。
 3. 沿 route 找到 interface registration、DTO、service 和 domain validation。
 4. 在 interface catalog 中按当前 descriptor 确认 `bindable`、参数、Schema、权限与风险。
-5. 再读取现有 MCP catalog，比较目标能力是否已存在、已挂载或配置错误。
+5. 再用目录列表和单 Tool 读取比较目标能力是否已存在、已挂载或配置错误；完整 catalog 只用于规模可控且确需全局引用关系的场景。
 
 优先使用 `rg` 和源码引用。不要仅凭文件名、界面截图、旧文档或记忆推断 contract。
 
@@ -31,6 +32,7 @@
 - interface catalog 有能力但 GUI 没有对应用户目标时，不自动暴露；先确认它是公开任务还是内部基础能力。
 - 已保存配置与当前源码冲突时，以当前可验证 contract 为目标，保留最小修复差异并说明迁移影响。
 - 运行时输出与保存配置冲突时，记录运行时缺口并停止依赖该行为的批量配置。
+- MCP 只返回 `-32603` 等通用错误时，不按错误外观猜分类。在本地开发环境读取对应服务结构化日志，区分参数映射、请求 Schema、响应 Schema、目标业务拒绝和基础设施异常；无法取得证据时标记未分类运行时缺口。
 
 ## Scope Control
 

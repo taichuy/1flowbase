@@ -14,6 +14,7 @@
 - 默认入口能发现目标领域，路径使用用户可理解的领域术语。
 - 每层 Group 都有实际分流价值，没有复制纯展示组件层级。
 - 相同能力已去重；重复 Binding 均有不同任务语义的证据。
+- 复用 Tool 的名称、描述和 mapping 对每个 Binding 入口都真实，未依赖 alias 掩盖领域语义冲突。
 - 简单任务不因追求整齐而增加多余层级。
 
 ### Configuration
@@ -24,6 +25,8 @@
 - Agent-facing 参数名、说明和 required 与 `input_mapping` 一致。
 - Group 与 Binding 引用有效，启用、可见与排序状态符合目标。
 - 没有写入或配置 `children_count`。
+- 必需容器对象已通过真实 `mcp.call` 证明能由 mapping 构造，没有用虚假占位值绕过 Schema。
+- 本轮停止或失败后不存在无 Tool 的空 Group、错误复用 Binding 或无消费者新 Tool。
 
 ### Runtime
 
@@ -48,6 +51,7 @@
 - 配置缺口：Tool、mapping、Group、Binding、文案或 policy 可在当前 Skill 范围修复。
 - 业务接口缺口：没有 bindable interface，或接口 contract 无法完成用户任务；报告并停止伪配置。
 - 运行时缺口：保存配置正确，但 `list/get/call` 未按 contract 输出或执行；报告代码证据，不在本 Skill 中修复。
+- 未分类调用缺口：协议只返回通用错误且没有本地结构化日志或其他证据；不得猜成配置或业务错误。
 - 产品决策缺口：GUI 与后端表达不同目标或无法判断 canonical 行为；返回需求对齐。
 
 ## Completion Rule

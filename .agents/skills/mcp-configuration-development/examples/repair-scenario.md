@@ -14,6 +14,15 @@
 6. 删除或禁用无引用的重复配置时，先确认没有其他实例依赖；不进行超出当前任务的批量清理。
 7. 不新增 Group 计数字段，也不写入 `children_count`；验证运行时派生结果。
 
+## Partial Failure
+
+若第一项 Tool 创建成功、后续 Tool 失败：
+
+1. 立即停止继续创建 Group 或 Binding，读取本地结构化日志确定失败发生在 mapping、request Schema、response Schema 或目标接口。
+2. 检查合法空字符串、`null` 或必需空对象是否被 mapping 层误判为缺失；这属于运行时缺口，不得用噪音 `full_description` 或虚假 selector 绕过。
+3. 检查复用 Tool 是否带有旧领域专用描述；Binding alias 不能修复共享描述污染。
+4. 保留原有配置，按账本删除本轮无消费者 Tool、空 Group 和错误 Binding，再报告最小阻断证据。
+
 ## Before
 
 ```text

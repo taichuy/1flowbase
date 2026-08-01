@@ -29,22 +29,24 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 1. 确定一个边界清晰的用户任务范围，列出起点、目标结果和必要前置状态。
 2. 沿 GUI 源码还原人类完成该任务的路径，只提取用户目标和领域词，不复制纯展示组件树。
 3. 沿 backend/interface catalog 找到每个动作的可绑定接口，核对参数、结果、风险、权限和状态约束。
-4. 读取目标 workspace 的现有 MCP catalog；先判断是复用、修复还是新增，避免重复 Tool 和重复挂载。
+4. 通过渐进列表、关键词和单项读取盘点现有 MCP catalog；只有结果规模可控时才读取完整 catalog，先判断复用、修复或新增。
 5. 设计 canonical Virtual UI：按用户目标组织 Group 路径，让一个业务能力只有一个规范入口；必要时用搜索和简短描述提高可发现性。
-6. 形成最小配置差异，明确实例、Group、Tool、Binding、mapping 和 discovery policy 中哪些字段需要变化。
-7. 在应用每项写入前复核接口仍可绑定、目标记录仍存在且当前值未被并发修改；写入后重新读取配置确认落库结果。
-8. 用 Agent 视角依次验证 `mcp.list → mcp.get → mcp.call`，覆盖成功路径和至少一个关键失败边界。
-9. 输出覆盖表、未覆盖能力和原因；区分配置缺口、业务接口缺口与运行时缺口，不越界修代码。
+6. 形成有限变更账本，记录计划创建、复用、更新和删除的 Tool、Group、Binding、mapping 与 policy，以及每项回滚身份。
+7. 先验证一个代表性 Tool 的创建或更新与 `mcp.get`；通过后按 `Tool → Group → Binding → policy` 应用，避免先留下空目录。
+8. 在每项写入前复核接口仍可绑定、目标记录仍存在且当前值未并发变化；写入后重新读取确认落库结果。
+9. 用 Agent 视角依次验证 `mcp.list → mcp.get → mcp.call`，覆盖成功路径和至少一个关键失败边界。
+10. 输出覆盖表、未覆盖能力和原因；区分配置、业务接口与运行时缺口。中途停止时按账本回滚本轮无消费者的半成品，不越界修代码。
 
 ## Change Rules
 
 - 保持 GUI 的任务顺序和术语，但合并重复出现的相同能力。
 - discovery 保持直观、开放、渐进；权限与状态合法性由后端调用边界统一执行。
-- 先复用已有 Tool，再考虑新增；同一 Tool 只在确有不同任务语义时挂载到多个入口，并说明原因。
+- 先复用已有 Tool，再考虑新增；复用要求执行 contract 与 Agent-facing 名称、描述、mapping 都对新入口真实，不因 interface 相同就复用领域专用 Tool。
 - 使用稳定、任务导向的 `tool_id`、Group path 和显示名称；不要复述 HTTP method/path 充当用户语义。
 - `short_description` 写“调用后得到什么”；普通能力的 `full_description` 使用空字符串 `""`。
 - 仅当跨字段、跨 Tool、跨状态或跨制品的组合契约无法由其他字段表达，且缺失会导致错误调用时填写 `full_description`。
 - 把 Agent 参数名、含义和必填性写入 `input_mapping` 的映射配置；不要要求业务 DTO 重复维护 MCP 专用文案。
+- 检查必需容器对象是否能由 mapping 实际构造；当全部子字段为空会导致容器被省略时，不伪造值，优先配置有真实语义的字段，否则报告运行时 mapping 缺口。
 - 不配置 `children_count`；它由启用的子 Group、可见 Binding 和启用 Tool 在运行时派生。
 - 不借配置任务调整产品语义、业务权限、后端 DTO、MCP 协议或运行时代码。发现这些缺口时停止对应写入并报告证据。
 
@@ -57,6 +59,7 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 - 配置写入会扩大到生产环境、未知 workspace 或未授权实例。
 - `mcp.get` 暴露的 Schema 与已保存 mapping 不一致，或 `mcp.call` 未按后端约束执行。
 - 现有配置发生并发变化，最小差异不再可靠。
+- 配置管理调用只返回通用错误且本地日志或单项读取仍不能定位失败阶段。
 
 ## Output
 

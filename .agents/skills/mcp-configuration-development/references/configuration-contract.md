@@ -56,6 +56,24 @@
 - `visible=false` 或禁用 Tool 不计入 Agent 可发现能力。
 - `children_count` 根据启用子 Group、可见 Binding 和启用 Tool 实时计算；Tool 自身为 `0`。
 
+## Reuse Compatibility
+
+Tool record 是跨 Binding 共享的 Agent contract，Binding alias 只能改显示名称，不能覆盖 short/full description 或 mapping。复用必须同时满足：
+
+1. execution target 与参数、结果 contract 等价；
+2. Tool 名称和描述对所有入口都如实成立；
+3. Agent-facing 参数名、默认前提与组合说明一致。
+
+若通用 interface 已被包装成 “Workflow 专用 Tool”，不能只改 Binding alias 后挂到 Agent Flow。优先把共享 Tool 改成对全部消费者都真实的通用 contract；若两边确有不同默认前提或说明，则分别创建领域 Tool，不把“去重”误解为“一条 interface 只能有一个 Tool”。
+
+## Mapping Containers
+
+mapping 以叶子字段生成目标结构时，空值可能被省略。接口若要求 `mapping.output` 之类容器存在，但其所有叶子都可空，必须验证实际 interface arguments 仍包含该容器：
+
+- 有真实业务含义的非空字段时，配置并验证它，例如明确的结果 selector。
+- 只有空对象才合法时，不填写虚假占位值；将无法构造必需空容器归为运行时 mapping 缺口。
+- 不把通用 `-32603` 当成业务校验结论；使用本地结构化日志确认是 mapping、request Schema、response Schema 还是目标接口错误。
+
 ## Discovery Policy
 
 设置能够支持当前 Virtual UI 深度的最小 `list_max_depth`，并为正常探索提供合理的 default limit。关键词正则与返回字段只影响发现体验，不承担权限控制。除非有可验证的上下文或性能问题，不做激进收缩。
@@ -70,3 +88,15 @@
 4. 仅在没有等价能力时新增 Tool；
 5. 仅在导航确有分流价值时新增 Group；
 6. 仅在探索行为无法满足路径时调整 discovery policy。
+
+## Failure-Safe Assembly
+
+维护本轮 created/updated/reused 账本，并按以下顺序装配：
+
+1. 用一个代表性简单 Tool 验证创建或更新链路；
+2. 创建或更新全部 Tool，并逐个 `mcp.get`；
+3. Tool 就绪后创建 Group；
+4. 创建 Binding 并用 `mcp.list` 核对 `children_count`；
+5. 最后调整 discovery policy 并执行真实调用。
+
+中途停止时，不保留没有可调用 Tool 的空 Group、语义不兼容的复用 Binding 或无消费者的新 Tool。只回滚本轮创建且确认无其他消费者的记录；已有记录和并发变化不得擅自恢复旧值。
