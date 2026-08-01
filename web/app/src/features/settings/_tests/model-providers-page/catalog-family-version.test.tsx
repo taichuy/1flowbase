@@ -465,6 +465,23 @@ describe('ModelProvidersPage - catalog and family version', () => {
 
   test('renders provider family rows and upgrades from the lifecycle sidebar', async () => {
     authenticateAsModelProviderManager();
+    pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
+      source_kind: 'official_registry',
+      source_label: '官方源',
+      registry_url: 'https://official.example.com/official-registry.json',
+      entries: [
+        {
+          plugin_id: '1flowbase.openai_compatible',
+          provider_code: 'openai_compatible',
+          display_name: 'OpenAI Compatible',
+          protocol: 'openai_compatible',
+          latest_version: '0.2.0',
+          help_url: 'https://platform.openai.com/docs/api-reference',
+          model_discovery_mode: 'hybrid',
+          install_status: 'assigned'
+        }
+      ]
+    });
 
     renderApp('/settings/model-providers');
 
