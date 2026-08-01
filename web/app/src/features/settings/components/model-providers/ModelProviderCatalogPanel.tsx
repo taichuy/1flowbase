@@ -1,4 +1,14 @@
-import { Button, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+import {
+  Badge,
+  Button,
+  Empty,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography
+} from 'antd';
 
 import { formatDateTime } from '../../../../shared/i18n/format';
 import { ScrollableSurface } from '../../../../shared/ui/scrollable-surface/ScrollableSurface';
@@ -54,8 +64,10 @@ export function ModelProviderCatalogPanel({
   loading,
   canManage,
   switchingProviderCode,
+  upgradingProviderCode,
   onCreate,
   onViewInstances,
+  onUpgradeLatest,
   onSwitchVersion
 }: {
   overviewRows: { key: string; label: string; value: string }[];
@@ -67,8 +79,10 @@ export function ModelProviderCatalogPanel({
   loading?: boolean;
   canManage: boolean;
   switchingProviderCode?: string | null;
+  upgradingProviderCode?: string | null;
   onCreate: (entry: SettingsPluginFamilyEntry) => void;
   onViewInstances: (entry: SettingsPluginFamilyEntry) => void;
+  onUpgradeLatest: (entry: SettingsPluginFamilyEntry) => void;
   onSwitchVersion: (
     entry: SettingsPluginFamilyEntry,
     installationId: string
@@ -106,12 +120,14 @@ export function ModelProviderCatalogPanel({
                 {
                   title: i18nText('settings', 'auto.operation'),
                   key: 'actions',
-                  width: 190,
+                  width: 220,
                   render: (_: unknown, entry: SettingsPluginFamilyEntry) => {
                     const localArtifact = entry.current_local_artifact;
                     const artifactUnavailable = isPluginArtifactUnavailable(
                       localArtifact.artifact_status
                     );
+                    const upgrading =
+                      upgradingProviderCode === entry.provider_code;
 
                     return (
                       <Space
@@ -134,6 +150,40 @@ export function ModelProviderCatalogPanel({
                         >
                           {i18nText('settings', 'auto.new')}
                         </Button>
+                        <Tooltip
+                          title={
+                            entry.has_update
+                              ? undefined
+                              : i18nText(
+                                  'settings',
+                                  'auto.currently_latest_version'
+                                )
+                          }
+                        >
+                          <span>
+                            <Badge
+                              dot={entry.has_update && !upgrading}
+                              color="gold"
+                              title={
+                                entry.has_update
+                                  ? i18nText(
+                                      'settings',
+                                      'auto.updates_available'
+                                    )
+                                  : undefined
+                              }
+                            >
+                              <Button
+                                type="link"
+                                loading={upgrading}
+                                disabled={!entry.has_update}
+                                onClick={() => onUpgradeLatest(entry)}
+                              >
+                                {i18nText('settings', 'auto.update')}
+                              </Button>
+                            </Badge>
+                          </span>
+                        </Tooltip>
                       </Space>
                     );
                   }
@@ -167,11 +217,6 @@ export function ModelProviderCatalogPanel({
                 >
                   <Tag color={artifactStatus.color}>{artifactStatus.label}</Tag>
                   <Tag>{entry.model_discovery_mode}</Tag>
-                  {entry.has_update ? (
-                    <Tag color="gold">
-                      {i18nText('settings', 'auto.updates_available')}
-                    </Tag>
-                  ) : null}
                 </Space>
               );
             }

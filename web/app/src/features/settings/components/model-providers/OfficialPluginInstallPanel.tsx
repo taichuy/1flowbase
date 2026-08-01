@@ -323,6 +323,58 @@ function OfficialPluginInstallConfirmContent({
   );
 }
 
+export function confirmOfficialPluginUpgrade({
+  modal,
+  entry,
+  family,
+  upgrading,
+  onUpgradeLatest
+}: {
+  modal: ReturnType<typeof Modal.useModal>[0];
+  entry: SettingsOfficialPluginCatalogEntry;
+  family: SettingsPluginFamilyEntry;
+  upgrading: boolean;
+  onUpgradeLatest: (
+    entry: SettingsOfficialPluginCatalogEntry,
+    compatibilityOverride?: SettingsPluginCompatibilityOverride
+  ) => void;
+}) {
+  const belowMinimumHostVersion = isBelowMinimumHostVersion(entry);
+  const buttonLabel = belowMinimumHostVersion
+    ? i18nText('settings', 'auto.still_update')
+    : i18nText('settings', 'auto.upgrade_latest_version');
+  const compatibilityOverride = belowMinimumHostVersion
+    ? ({
+        reason: BELOW_MINIMUM_HOST_VERSION,
+        acknowledged_current_host_version: entry.current_host_version,
+        acknowledged_minimum_host_version: entry.minimum_host_version
+      } satisfies SettingsPluginCompatibilityOverride)
+    : undefined;
+
+  void modal.confirm({
+    title: i18nText('settings', 'auto.upgrade_plugin'),
+    icon: null,
+    centered: true,
+    width: INSTALL_CONFIRM_MODAL_WIDTH,
+    okText: buttonLabel,
+    cancelText: i18nText('settings', 'auto.cancel'),
+    okButtonProps: {
+      loading: upgrading,
+      disabled: !family.has_update
+    },
+    content: (
+      <OfficialPluginInstallConfirmContent
+        entry={entry}
+        family={family}
+        belowMinimumHostVersion={belowMinimumHostVersion}
+      />
+    ),
+    onOk: async () => {
+      onUpgradeLatest(entry, compatibilityOverride);
+    }
+  });
+}
+
 function OfficialPluginCard({
   entry,
   family,
@@ -367,7 +419,7 @@ function OfficialPluginCard({
       : i18nText('settings', 'auto.currently_latest_version')
     : getInstallButtonLabel(entry, installState, activePluginId);
   const buttonDisabled = family ? !family.has_update : installed;
-  const compatibilityOverride = belowMinimumHostVersion
+  const installCompatibilityOverride = belowMinimumHostVersion
     ? ({
         reason: BELOW_MINIMUM_HOST_VERSION,
         acknowledged_current_host_version: entry.current_host_version,
@@ -376,10 +428,19 @@ function OfficialPluginCard({
     : undefined;
 
   function confirmInstall() {
+    if (family) {
+      confirmOfficialPluginUpgrade({
+        modal,
+        entry,
+        family,
+        upgrading,
+        onUpgradeLatest
+      });
+      return;
+    }
+
     void modal.confirm({
-      title: family
-        ? i18nText('settings', 'auto.upgrade_plugin')
-        : i18nText('settings', 'auto.install_plugin'),
+      title: i18nText('settings', 'auto.install_plugin'),
       icon: null,
       centered: true,
       width: INSTALL_CONFIRM_MODAL_WIDTH,
@@ -397,12 +458,7 @@ function OfficialPluginCard({
         />
       ),
       onOk: async () => {
-        if (family) {
-          onUpgradeLatest(entry, compatibilityOverride);
-          return;
-        }
-
-        onInstall(entry, compatibilityOverride);
+        onInstall(entry, installCompatibilityOverride);
       }
     });
   }

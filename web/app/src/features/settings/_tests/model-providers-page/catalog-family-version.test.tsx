@@ -463,7 +463,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
     fileManagementApi.fetchSettingsFileTables.mockResolvedValue([]);
   });
 
-  test('renders provider family rows and upgrades from the lifecycle sidebar', async () => {
+  test('renders the row update action with a yellow availability dot and shared confirmation', async () => {
     authenticateAsModelProviderManager();
     pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
       source_kind: 'official_registry',
@@ -504,8 +504,13 @@ describe('ModelProvidersPage - catalog and family version', () => {
     );
     expect(within(catalogRow).getByText('0.1.0')).toBeInTheDocument();
 
+    const updateButton = within(catalogRow).getByRole('button', {
+      name: /更\s*新/
+    });
+    expect(updateButton).toBeEnabled();
+    expect(within(catalogRow).getByTitle('有可用更新')).toBeInTheDocument();
     expect(
-      within(catalogRow).queryByRole('button', { name: /更\s*新/ })
+      within(catalogRow).queryByText('有可用更新')
     ).not.toBeInTheDocument();
     expect(
       within(catalogRow).queryByRole('button', { name: '版本管理' })
@@ -520,9 +525,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
     expect(
       within(catalogRow).queryByText(/^当前节点版本：/)
     ).not.toBeInTheDocument();
-    fireEvent.click(
-      await screen.findByRole('button', { name: '升级到最新版本' })
-    );
+    fireEvent.click(updateButton);
     const confirmDialog = await screen.findByRole('dialog');
     fireEvent.click(
       within(confirmDialog).getByRole('button', { name: '升级到最新版本' })
@@ -722,6 +725,12 @@ describe('ModelProvidersPage - catalog and family version', () => {
     const catalogRow = await screen.findByRole('row', {
       name: /OpenAI Compatible/
     });
+    expect(
+      within(catalogRow).getByRole('button', { name: /更\s*新/ })
+    ).toBeDisabled();
+    expect(
+      within(catalogRow).queryByTitle('有可用更新')
+    ).not.toBeInTheDocument();
     const versionSelect = within(catalogRow).getByRole('combobox', {
       name: '切换 OpenAI Compatible 版本'
     });
@@ -762,7 +771,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
       within(catalogRow)
         .getAllByRole('button')
         .map((button) => button.textContent)
-    ).toEqual(['管理', '新增']);
+    ).toEqual(['管理', '新增', '更新']);
   });
 
   test('renders catalog and instance metadata for view-only users without manage actions', async () => {
