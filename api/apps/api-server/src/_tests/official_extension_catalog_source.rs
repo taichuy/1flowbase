@@ -14,13 +14,15 @@ use axum::{
     response::{IntoResponse, Response},
     Router,
 };
+use control_plane::ports::OfficialPluginSourcePort;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::{
     config::ResolvedOfficialExtensionCatalogSourceConfig,
     official_extension_catalog::{
-        ApiOfficialExtensionCatalogSource, OfficialExtensionCatalogSourcePort,
+        ApiOfficialExtensionCatalogSource, ApiOfficialRuntimeExtensionSource,
+        OfficialExtensionCatalogSourcePort,
     },
 };
 
@@ -166,6 +168,90 @@ async fn delivery_1560_d5_ac_001_mirror_failure_falls_back_to_official_metadata(
             "/runtime-extensions/catalog/v1/pages/1.json"
         ]
     );
+    server.abort();
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_f01b_runtime_plugin_lifecycle_uses_gateway_projection_and_exact_download()
+{
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let catalog: Arc<dyn OfficialExtensionCatalogSourcePort> =
+        Arc::new(ApiOfficialExtensionCatalogSource::new(sources));
+    let source = ApiOfficialRuntimeExtensionSource::new(
+        catalog,
+        "signature_required".to_string(),
+        Vec::new(),
+    );
+
+    let snapshot = source.list_official_catalog().await.unwrap();
+    assert_eq!(snapshot.entries.len(), 2, "all gateway pages are projected");
+    assert_eq!(snapshot.entries[0].plugin_id, "1flowbase.openai");
+    assert_eq!(snapshot.entries[1].plugin_id, "1flowbase.later-runtime");
+    let downloaded = source.download_plugin(&snapshot.entries[1]).await.unwrap();
+    assert_eq!(downloaded.package_bytes, b"later-runtime-artifact");
+
+    let mut unprojected = snapshot.entries[1].clone();
+    unprojected.latest_version = "9.9.9".to_string();
+    assert!(source.download_plugin(&unprojected).await.is_err());
+    assert!(requests
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|path| !path.contains("official-registry")));
+    server.abort();
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_f01b_duplicate_runtime_plugin_id_fails_closed() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (mut documents, sources) = catalog_documents(&base_url);
+    let page_path = "/runtime-extensions/catalog/v1/pages/2.json";
+    let mut page = serde_json::from_slice::<Value>(&documents[page_path]).unwrap();
+    page["entries"][0]["source"]["plugin_id"] = json!("1flowbase.openai");
+    let page_bytes = serde_json::to_vec(&page).unwrap();
+    documents.insert(page_path.to_string(), page_bytes.clone());
+    let index_path = "/runtime-extensions/catalog/v1/index.json";
+    let mut index = serde_json::from_slice::<Value>(&documents[index_path]).unwrap();
+    index["pages"][1]["checksum"] = json!(format!("sha256:{:x}", Sha256::digest(&page_bytes)));
+    documents.insert(index_path.to_string(), serde_json::to_vec(&index).unwrap());
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::new(Mutex::new(Vec::new())),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let catalog: Arc<dyn OfficialExtensionCatalogSourcePort> =
+        Arc::new(ApiOfficialExtensionCatalogSource::new(sources));
+    let source = ApiOfficialRuntimeExtensionSource::new(
+        catalog,
+        "signature_required".to_string(),
+        Vec::new(),
+    );
+
+    let error = source.list_official_catalog().await.unwrap_err();
+    assert!(error.to_string().contains("duplicate plugin_id"));
     server.abort();
 }
 
@@ -424,6 +510,16 @@ fn catalog_documents(
                     format!("{category}-artifact").into_bytes()
                 },
             );
+            if category == "runtime-extensions" {
+                documents.insert(
+                    "/runtime-extensions/artifacts/openai.bin".to_string(),
+                    b"openai-artifact".to_vec(),
+                );
+                documents.insert(
+                    "/runtime-extensions/artifacts/later-runtime.bin".to_string(),
+                    b"later-runtime-artifact".to_vec(),
+                );
+            }
         }
     }
     (documents, sources)
@@ -478,7 +574,7 @@ fn catalog_page(
 }
 
 fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: &str) -> Value {
-    json!({
+    let mut entry = json!({
         "id": id,
         "name": format!("{artifact} display name"),
         "category": category,
@@ -498,7 +594,15 @@ fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: 
             "locator": format!("{base_url}/{category}/artifacts/{artifact}.bin")
         },
         "catalog_page": page
-    })
+    });
+    if category == "runtime-extensions" {
+        entry["source"]["plugin_id"] = json!(format!("1flowbase.{artifact}"));
+        entry["source"]["plugin_type"] = json!("model_provider");
+        entry["source"]["provider_code"] = json!(artifact);
+        entry["source"]["protocol"] = json!("openai_compatible");
+        entry["source"]["model_discovery_mode"] = json!("dynamic");
+    }
+    entry
 }
 
 fn artifact_checksum() -> String {

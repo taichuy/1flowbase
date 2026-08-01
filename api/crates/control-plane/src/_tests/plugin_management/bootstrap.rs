@@ -66,7 +66,7 @@ fn locked_entry() -> LockedExtensionBootstrapEntry {
 }
 
 #[tokio::test]
-async fn ac_boot_3_and_5_local_artifact_is_idempotent_and_never_fetches_or_repairs() {
+async fn delivery_1560_d5_f01b_local_artifact_is_idempotent_and_never_fetches_or_repairs() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
         workspace_id,
