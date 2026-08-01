@@ -80,7 +80,7 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             ),
             (
                 "GET",
-                "/api/console/settings/extension-center/catalog/{category}/{artifact_id}"
+                "/api/console/settings/extension-center/catalog/{category}/{catalog_id}"
             ),
             ("GET", "/api/console/settings/extension-center/installed"),
             ("POST", "/api/console/settings/extension-center/install"),

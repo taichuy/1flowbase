@@ -226,7 +226,7 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/settings/extension-center/catalog/:category/:artifact_id",
+            "/settings/extension-center/catalog/:category/:catalog_id",
             console_get(
                 get_extension_catalog_entry,
                 ConsoleOperation("extension_center.catalog.detail".to_string()),
@@ -617,7 +617,7 @@ pub async fn list_extension_catalog_gateway(
 
 #[utoipa::path(
     get,
-    path = "/api/console/settings/extension-center/catalog/{category}/{artifact_id}",
+    path = "/api/console/settings/extension-center/catalog/{category}/{catalog_id}",
     params(ExtensionCatalogGatewayQuery),
     operation_id = "extension_center_get_catalog_entry",
     responses((status = 200, body = ExtensionCatalogGatewayEntryResponse), (status = 404, body = crate::error_response::ErrorBody))

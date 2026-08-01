@@ -134,7 +134,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ),
                 (
                     "GET",
-                    "/api/console/settings/extension-center/catalog/{category}/{artifact_id}",
+                    "/api/console/settings/extension-center/catalog/{category}/{catalog_id}",
                 ),
                 (
                     "POST",

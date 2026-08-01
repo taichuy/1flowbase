@@ -631,6 +631,7 @@ export function SettingsExtensionCenterSection() {
         </Typography.Paragraph>
         <Select<SettingsExtensionCategory>
           aria-label={t('auto.kind')}
+          virtual={false}
           value={uploadCategory}
           options={CATEGORIES.map((category) => ({
             label: category,
