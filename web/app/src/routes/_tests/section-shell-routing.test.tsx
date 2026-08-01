@@ -178,7 +178,8 @@ const extensionsApi = vi.hoisted(() => ({
   getSettingsExtensionRiskChallenge: vi.fn(),
   previewSettingsInstalledMcpExtension: vi.fn(),
   applySettingsInstalledMcpExtension: vi.fn(),
-  getSettingsInstalledMcpExtensionConflict: vi.fn()
+  getSettingsInstalledMcpExtensionConflict: vi.fn(),
+  getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn()
 }));
 
 vi.mock('../../features/settings/api/members', () => membersApi);
