@@ -42,7 +42,7 @@ function capture(stream) {
 function spawnOwned(binary, env, options = {}, spawnImpl = spawn) {
   const child = spawnImpl(binary, [], {
     cwd: options.cwd || require('node:path').dirname(binary),
-    env: { ...process.env, ...env },
+    env: { ...(options.parentEnv || process.env), ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const stdout = capture(child.stdout);

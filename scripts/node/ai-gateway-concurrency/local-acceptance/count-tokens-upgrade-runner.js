@@ -6,6 +6,12 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { OwnerHttpClient } = require('../gateway-fixture/http-owner');
+const {
+  reserveLoopbackPort,
+  spawnOwned,
+  stopOwned,
+  waitForHealth,
+} = require('../gateway-fixture/process-owner');
 const { pinnedClaudeProvenance } = require('../cli-smoke/provenance');
 const { buildClientPlan } = require('../local-client-acceptance/contract');
 const { clientPaths, writeConfigs } = require('../local-client-acceptance/driver');
@@ -18,8 +24,10 @@ const {
 } = require('./count-tokens-upgrade');
 
 const APPLICATION_ID = '019f5443-5b8e-74b2-90e3-c867dbddd37b';
-const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v1';
+const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v2';
 const FORBIDDEN_PORTS = new Set([3100, 7800, 7801]);
+const SHA_PATTERN = /^[0-9a-f]{40}$/u;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 class UnavailableError extends Error {
   constructor(message) {
@@ -46,6 +54,14 @@ function requireFile(value, label, executable = false) {
   return resolved;
 }
 
+function requireDirectory(value, label) {
+  const resolved = path.resolve(requireValue(value, label));
+  try {
+    if (fs.statSync(resolved).isDirectory()) return resolved;
+  } catch {}
+  throw new UnavailableError(`${label} is unavailable`);
+}
+
 function envName(value, label) {
   const name = requireValue(value, label);
   if (!/^[A-Z][A-Z0-9_]*$/u.test(name)) throw new Error(`${label} must be a safe environment name`);
@@ -61,16 +77,45 @@ function safeClaim(value, label) {
   return claim;
 }
 
-function isolatedBaseUrl(value, label) {
+function fullSha(value, label) {
+  const sha = requireValue(value, label);
+  if (!SHA_PATTERN.test(sha)) throw new Error(`${label} must be a full lowercase source SHA`);
+  return sha;
+}
+
+function sha256(value, label) {
+  const digest = requireValue(value, label).replace(/^sha256:/u, '');
+  if (!SHA256_PATTERN.test(digest)) throw new Error(`${label} must be a lowercase SHA-256`);
+  return digest;
+}
+
+function databaseUrlFromEnv(sourceEnv, name) {
+  const value = envValue(sourceEnv, name, 'database URL');
   let url;
-  try { url = new URL(value); } catch { throw new UnavailableError(`${label} is unavailable`); }
-  const port = Number(url.port || 80);
-  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname)
-    || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error(`${label} must be a credential-free loopback HTTP origin`);
+  try { url = new URL(value); } catch { throw new UnavailableError(`database URL (${name}) is unavailable`); }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || !url.pathname.slice(1)) {
+    throw new Error('database URL must name a PostgreSQL database');
   }
-  if (FORBIDDEN_PORTS.has(port)) throw new Error(`${label} must not use protected port ${port}`);
-  return url.origin;
+  return value;
+}
+
+function verifyMainSourceReceipt(receiptPath, expectedSha) {
+  const receipt = fs.readFileSync(receiptPath, 'utf8').trim();
+  if (receipt !== expectedSha) {
+    throw new UnavailableError('gate main-source receipt does not match main_source_sha');
+  }
+}
+
+function binaryReceipt(contract, label, mainSourceSha) {
+  const filePath = requireFile(contract?.path, `${label} binary`, true);
+  const expected = sha256(contract?.sha256, `${label} binary digest`);
+  const actual = sha256File(filePath);
+  if (actual !== expected) throw new UnavailableError(`${label} binary digest mismatch`);
+  if (fullSha(contract?.source_sha, `${label} source SHA`) !== mainSourceSha) {
+    throw new UnavailableError(`${label} binary source SHA mismatch`);
+  }
+  const stat = fs.statSync(filePath);
+  return { path: filePath, sha256: actual, source_sha: mainSourceSha, bytes: stat.size };
 }
 
 function loadRunManifest(filePath) {
@@ -79,17 +124,21 @@ function loadRunManifest(filePath) {
   catch (error) { throw new UnavailableError(`CountTokens upgrade run manifest is unavailable: ${error.message}`); }
   if (value.schema_version !== RUN_SCHEMA) throw new Error('CountTokens upgrade run manifest schema mismatch');
   if (value.application_id !== APPLICATION_ID) throw new Error(`CountTokens upgrade application must be ${APPLICATION_ID}`);
-  const consoleBaseUrl = isolatedBaseUrl(value.endpoints?.console_base_url, 'console endpoint');
-  const gatewayBaseUrl = isolatedBaseUrl(value.endpoints?.gateway_base_url, 'gateway endpoint');
-  if (consoleBaseUrl === gatewayBaseUrl) throw new Error('console and gateway endpoints must be isolated origins');
+  const mainSourceSha = fullSha(value.main_source_sha, 'main source SHA');
+  const mainSourceReceipt = requireFile(value.main_source_receipt, 'gate main-source receipt');
+  verifyMainSourceReceipt(mainSourceReceipt, mainSourceSha);
+  const apiServer = binaryReceipt(value.api_server_binary, 'api-server', mainSourceSha);
+  const pluginRunner = binaryReceipt(value.plugin_runner_binary, 'plugin-runner', mainSourceSha);
   const artifact = path.resolve(requireValue(value.artifact, 'artifact path'));
   if (!artifact.includes(`${path.sep}tmp${path.sep}test-governance${path.sep}`)) {
     throw new Error('CountTokens upgrade artifact must be under tmp/test-governance');
   }
   return {
     applicationId: APPLICATION_ID,
-    consoleBaseUrl,
-    gatewayBaseUrl,
+    mainSourceSha,
+    mainSourceReceipt,
+    apiServer,
+    pluginRunner,
     model: requireValue(value.model, 'published model'),
     afterPackage: requireFile(value.upgrade?.after_package, 'local DeepSeek upgrade package'),
     claudeExecutable: requireFile(value.claude?.executable, 'Claude executable', true),
@@ -105,7 +154,17 @@ function loadRunManifest(filePath) {
       apiKeyId: envName(value.environment?.application_api_key_id, 'application API key id env name'),
       ownerCookie: envName(value.environment?.owner_cookie, 'owner cookie env name'),
       ownerCsrf: envName(value.environment?.owner_csrf, 'owner CSRF env name'),
+      databaseUrl: envName(value.environment?.database_url, 'database URL env name'),
+      providerSecretMasterKey: envName(
+        value.environment?.provider_secret_master_key,
+        'provider secret master key env name',
+      ),
+      providerInstallRoot: envName(
+        value.environment?.provider_install_root,
+        'provider install root env name',
+      ),
     },
+    cookieName: safeClaim(value.api_cookie_name || 'flowbase_console_session', 'API cookie name'),
     artifact,
   };
 }
@@ -251,12 +310,68 @@ function writeRunArtifact(filePath, value, secrets) {
   fs.writeFileSync(filePath, `${JSON.stringify(redact(value, secrets), null, 2)}\n`, { mode: 0o600 });
 }
 
+async function reserveOwnedPort(reservePort, excluded = new Set()) {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const port = await reservePort();
+    if (!FORBIDDEN_PORTS.has(port) && !excluded.has(port)) return port;
+  }
+  throw new Error('could not reserve a safe ephemeral loopback port');
+}
+
+async function startFrozenServices({
+  manifest, databaseUrl, providerSecretMasterKey, providerInstallRoot, scratchRoot,
+  dependencies, services, sourceEnv,
+}) {
+  const reservePort = dependencies.reserveLoopbackPort || reserveLoopbackPort;
+  const spawnProcess = dependencies.spawnOwned || spawnOwned;
+  const health = dependencies.waitForHealth || waitForHealth;
+  const pluginPort = await reserveOwnedPort(reservePort);
+  const apiPort = await reserveOwnedPort(reservePort, new Set([pluginPort]));
+  const pluginRunnerBaseUrl = `http://127.0.0.1:${pluginPort}`;
+  const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
+  const scrubbed = {
+    OPENAI_API_KEY: '', OPENAI_BASE_URL: '', ANTHROPIC_API_KEY: '',
+    ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: '', CLAUDE_CODE_OAUTH_TOKEN: '',
+  };
+  services.pluginProcess = spawnProcess(manifest.pluginRunner.path, {
+    ...scrubbed,
+    PLUGIN_RUNNER_ADDR: `127.0.0.1:${pluginPort}`,
+  }, { cwd: scratchRoot, parentEnv: sourceEnv });
+  await health(pluginRunnerBaseUrl, 'plugin-runner', {
+    fetchImpl: dependencies.fetchImpl || globalThis.fetch,
+    processHandle: services.pluginProcess,
+  });
+  services.apiProcess = spawnProcess(manifest.apiServer.path, {
+    ...scrubbed,
+    API_ENV: 'development',
+    API_SERVER_ADDR: `127.0.0.1:${apiPort}`,
+    API_DATABASE_URL: databaseUrl,
+    API_DATABASE_POOL_MAX_CONNECTIONS: '5',
+    API_PLUGIN_RUNNER_INTERNAL_BASE_URL: pluginRunnerBaseUrl,
+    API_PROVIDER_INSTALL_ROOT: providerInstallRoot,
+    API_PROVIDER_SECRET_MASTER_KEY: providerSecretMasterKey,
+    API_COOKIE_NAME: manifest.cookieName,
+    API_COOKIE_SECURE: 'false',
+  }, { cwd: scratchRoot, parentEnv: sourceEnv });
+  await health(apiBaseUrl, 'api-server', {
+    fetchImpl: dependencies.fetchImpl || globalThis.fetch,
+    processHandle: services.apiProcess,
+  });
+  return Object.assign(services, {
+    apiBaseUrl,
+    apiPort,
+    pluginPort,
+    pluginRunnerBaseUrl,
+  });
+}
+
 async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
   const sourceEnv = dependencies.sourceEnv || process.env;
   const registry = dependencies.registry || new OwnedResources(dependencies);
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   let manifest = null;
   let owner = null;
+  let services = null;
   let primaryError = null;
   let observed = null;
   let cleanupErrors = [];
@@ -269,14 +384,34 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     const apiKeyId = envValue(sourceEnv, manifest.env.apiKeyId, 'application API key id');
     const ownerCookie = envValue(sourceEnv, manifest.env.ownerCookie, 'owner cookie');
     const ownerCsrf = envValue(sourceEnv, manifest.env.ownerCsrf, 'owner CSRF token');
-    secrets = [apiKey, ownerCookie, ownerCsrf];
-    owner = new (dependencies.OwnerHttpClient || OwnerHttpClient)(manifest.consoleBaseUrl, fetchImpl);
+    const databaseUrl = databaseUrlFromEnv(sourceEnv, manifest.env.databaseUrl);
+    const providerSecretMasterKey = envValue(
+      sourceEnv,
+      manifest.env.providerSecretMasterKey,
+      'provider secret master key',
+    );
+    const providerInstallRoot = requireDirectory(
+      envValue(sourceEnv, manifest.env.providerInstallRoot, 'provider install root'),
+      'provider install root',
+    );
+    if (!ownerCookie.startsWith(`${manifest.cookieName}=`)) {
+      throw new Error('owner cookie does not match the frozen API cookie name');
+    }
+    secrets = [apiKey, ownerCookie, ownerCsrf, databaseUrl, new URL(databaseUrl).password,
+      providerSecretMasterKey];
+    const tempRoot = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-count-tokens-upgrade-')));
+    services = {};
+    services = await startFrozenServices({
+      manifest, databaseUrl, providerSecretMasterKey, providerInstallRoot,
+      scratchRoot: tempRoot, dependencies, services, sourceEnv,
+    });
+    manifest.gatewayBaseUrl = services.apiBaseUrl;
+    owner = new (dependencies.OwnerHttpClient || OwnerHttpClient)(services.apiBaseUrl, fetchImpl);
     owner.attachSession(ownerCookie, ownerCsrf);
     await assertTokenBinding(owner, manifest.applicationId, apiKeyId, apiKey);
     const publicationId = await activePublication(owner, manifest.applicationId);
     const beforePlugin = await readDeepSeekFamily(owner);
     const tokenResult = await countTokens(manifest.gatewayBaseUrl, apiKey, manifest.model, fetchImpl);
-    const tempRoot = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-count-tokens-upgrade-')));
     const paths = clientPaths(tempRoot, 'claude-deepseek-upgrade', null);
     const vector = conversationVector();
     const sessionId = crypto.randomUUID();
@@ -319,12 +454,27 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
         followup,
         provenance: pinnedClaudeProvenance(manifest.claudeExecutable, manifest.claude),
       },
+      runtime: {
+        main_source_sha: manifest.mainSourceSha,
+        main_source_receipt: manifest.mainSourceReceipt,
+        api_server: { ...manifest.apiServer, port: services.apiPort },
+        plugin_runner: { ...manifest.pluginRunner, port: services.pluginPort },
+      },
     };
   } catch (error) {
     primaryError = error;
   } finally {
-    try { cleanupErrors = await registry.close(); }
-    catch (error) { cleanupErrors = [{ owner: 'owned-resources', message: error.message }]; }
+    const stopProcess = dependencies.stopOwned || stopOwned;
+    for (const [ownerName, processHandle] of [
+      ['api-server', services?.apiProcess],
+      ['plugin-runner', services?.pluginProcess],
+    ]) {
+      if (!processHandle) continue;
+      try { await stopProcess(processHandle); }
+      catch (error) { cleanupErrors.push({ owner: ownerName, message: error.message }); }
+    }
+    try { cleanupErrors.push(...await registry.close()); }
+    catch (error) { cleanupErrors.push({ owner: 'owned-resources', message: error.message }); }
   }
 
   const cleanup = { status: cleanupErrors.length ? 'fail' : 'pass', errors: cleanupErrors };
@@ -352,7 +502,7 @@ module.exports = {
   APPLICATION_ID,
   RUN_SCHEMA,
   UnavailableError,
-  isolatedBaseUrl,
   loadRunManifest,
+  reserveOwnedPort,
   runCountTokensUpgrade,
 };

@@ -13,7 +13,7 @@ const {
 } = require('../count-tokens-upgrade');
 const {
   APPLICATION_ID,
-  isolatedBaseUrl,
+  reserveOwnedPort,
   runCountTokensUpgrade,
 } = require('../count-tokens-upgrade-runner');
 
@@ -57,18 +57,13 @@ test('Root #1556 P13 controlled negative rejects a publication change during plu
   );
 });
 
-test('Root #1556 F08 rejects shared service ports and fixes the token-bound application', () => {
+test('Root #1556 F09 rejects shared service ports and fixes the token-bound application', async () => {
   assert.equal(APPLICATION_ID, '019f5443-5b8e-74b2-90e3-c867dbddd37b');
-  assert.equal(isolatedBaseUrl('http://127.0.0.1:41731', 'fixture'), 'http://127.0.0.1:41731');
-  for (const port of [3100, 7800, 7801]) {
-    assert.throws(
-      () => isolatedBaseUrl(`http://127.0.0.1:${port}`, 'fixture'),
-      new RegExp(`protected port ${port}`, 'u'),
-    );
-  }
+  const candidates = [3100, 7800, 7801, 41731];
+  assert.equal(await reserveOwnedPort(async () => candidates.shift()), 41731);
 });
 
-test('Root #1556 F08 structural contract uses the existing owners and preserves both failure channels', () => {
+test('Root #1556 F09 structural contract owns frozen services and preserves both failure channels', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../count-tokens-upgrade-runner.js'),
     'utf8',
@@ -80,6 +75,9 @@ test('Root #1556 F08 structural contract uses the existing owners and preserves 
     '/assign',
     'pinnedClaudeProvenance',
     'executeTmux',
+    'spawnOwned',
+    'waitForHealth',
+    'stopOwned',
     'await registry.close()',
     'primary_error:',
     'cleanup,',
@@ -88,9 +86,23 @@ test('Root #1556 F08 structural contract uses the existing owners and preserves 
   }
   assert.match(source, /const sourceEnv = dependencies\.sourceEnv \|\| process\.env;[\s\S]*try \{[\s\S]*finally \{/u);
   assert.doesNotMatch(source, /signIn\(|\/api\/public\/auth\/sign-in/u);
+  assert.doesNotMatch(source, /console_base_url|gateway_base_url/u);
+  const example = JSON.parse(fs.readFileSync(
+    path.resolve(__dirname, '../count-tokens-upgrade.run.example.json'),
+    'utf8',
+  ));
+  for (const field of [
+    'main_source_sha', 'main_source_receipt', 'api_server_binary', 'plugin_runner_binary',
+  ]) {
+    assert.ok(Object.hasOwn(example, field), `run manifest omitted ${field}`);
+  }
+  for (const field of ['database_url', 'provider_secret_master_key', 'provider_install_root']) {
+    assert.ok(Object.hasOwn(example.environment, field), `run environment omitted ${field}`);
+  }
+  assert.equal(Object.hasOwn(example, 'endpoints'), false);
 });
 
-test('Root #1556 F08 missing configuration is typed unavailable beside cleanup failure', async () => {
+test('Root #1556 F09 missing configuration is typed unavailable beside cleanup failure', async () => {
   const result = await runCountTokensUpgrade({}, {
     sourceEnv: {},
     registry: { async close() { return [{ owner: 'tmux', message: 'cleanup fixture' }]; } },
@@ -102,29 +114,45 @@ test('Root #1556 F08 missing configuration is typed unavailable beside cleanup f
   assert.equal(result.cleanup.errors[0].message, 'cleanup fixture');
 });
 
-test('Root #1556 F08 executable runner performs the owned upgrade sequence without recording secrets', async () => {
+test('Root #1556 F09 executable runner performs the owned upgrade sequence without recording secrets', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'count-tokens-upgrade-runner-'));
   try {
     const executable = path.join(root, 'claude');
+    const apiServer = path.join(root, 'api-server');
+    const pluginRunner = path.join(root, 'plugin-runner');
     const packageManifest = path.join(root, 'package.json');
     const upgradePackage = path.join(root, 'deepseek.1flowbasepkg');
     const artifact = path.join(root, 'tmp/test-governance/result.json');
     fs.writeFileSync(executable, '#!/bin/sh\n', { mode: 0o700 });
+    fs.writeFileSync(apiServer, '#!/bin/sh\n', { mode: 0o700 });
+    fs.writeFileSync(pluginRunner, '#!/bin/sh\n', { mode: 0o700 });
     fs.writeFileSync(packageManifest, JSON.stringify({ name: '@anthropic-ai/claude-code', version: '1.2.3' }));
     fs.writeFileSync(upgradePackage, 'after-package');
     const manifestPath = path.join(root, 'run.json');
+    const mainSourceSha = 'a'.repeat(40);
+    const mainSourceReceipt = path.join(root, 'main-source-sha.log');
+    fs.writeFileSync(mainSourceReceipt, `${mainSourceSha}\n`);
     fs.writeFileSync(manifestPath, JSON.stringify({
-      schema_version: '1flowbase.local-count-tokens-upgrade-run/v1',
+      schema_version: '1flowbase.local-count-tokens-upgrade-run/v2',
       application_id: APPLICATION_ID,
-      endpoints: {
-        console_base_url: 'http://127.0.0.1:41731',
-        gateway_base_url: 'http://127.0.0.1:41732',
+      main_source_sha: mainSourceSha,
+      main_source_receipt: mainSourceReceipt,
+      api_server_binary: {
+        path: apiServer, sha256: crypto.createHash('sha256').update('#!/bin/sh\n').digest('hex'),
+        source_sha: mainSourceSha,
+      },
+      plugin_runner_binary: {
+        path: pluginRunner, sha256: crypto.createHash('sha256').update('#!/bin/sh\n').digest('hex'),
+        source_sha: mainSourceSha,
       },
       model: 'deepseek-fixture',
       environment: {
         application_api_key: 'APP_KEY', application_api_key_id: 'APP_KEY_ID',
         owner_cookie: 'OWNER_COOKIE', owner_csrf: 'OWNER_CSRF',
+        database_url: 'DATABASE_URL', provider_secret_master_key: 'PROVIDER_MASTER_KEY',
+        provider_install_root: 'PROVIDER_INSTALL_ROOT',
       },
+      api_cookie_name: 'flowbase_console_session',
       upgrade: { after_package: upgradePackage },
       claude: {
         executable,
@@ -173,10 +201,20 @@ test('Root #1556 F08 executable runner performs the owned upgrade sequence witho
     const result = await runCountTokensUpgrade({ manifest: manifestPath }, {
       sourceEnv: {
         APP_KEY: 'secret-app-key', APP_KEY_ID: 'key-id',
-        OWNER_COOKIE: 'secret-cookie', OWNER_CSRF: 'secret-csrf',
+        OWNER_COOKIE: 'flowbase_console_session=secret-cookie', OWNER_CSRF: 'secret-csrf',
+        DATABASE_URL: 'postgres://owner:secret@127.0.0.1:35432/dev',
+        PROVIDER_MASTER_KEY: 'secret-provider-master-key',
+        PROVIDER_INSTALL_ROOT: root,
       },
       OwnerHttpClient: Owner,
       fetchImpl: async () => new Response('{"input_tokens":17}', { status: 200 }),
+      reserveLoopbackPort: (() => {
+        const ports = [41731, 41732];
+        return async () => ports.shift();
+      })(),
+      spawnOwned: (binary) => ({ child: { binary, exitCode: null } }),
+      waitForHealth: async () => {},
+      stopOwned: async () => {},
       executeTmux: async () => ({ exit_code: 0, timed_out: false, stdout, stderr: '' }),
       registry: {
         addTempRoot(value) { return value; },
@@ -185,9 +223,15 @@ test('Root #1556 F08 executable runner performs the owned upgrade sequence witho
     });
     assert.equal(result.status, 'pass');
     const encoded = JSON.stringify(result);
-    assert.doesNotMatch(encoded, /secret-app-key|secret-cookie|secret-csrf/u);
+    assert.doesNotMatch(
+      encoded,
+      /secret-app-key|secret-cookie|secret-csrf|secret-provider-master-key|owner:secret/u,
+    );
     assert.equal(result.evidence.publication_id, 'publication-1');
     assert.equal(result.evidence.count_tokens.input_tokens, 17);
+    assert.equal(result.evidence.runtime.main_source_sha, mainSourceSha);
+    assert.equal(result.evidence.runtime.api_server.port, 41732);
+    assert.equal(result.evidence.runtime.plugin_runner.port, 41731);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

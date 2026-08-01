@@ -85,6 +85,7 @@ function buildCountTokensUpgradeEvidence(fixture, observed) {
       republish_events: observed.republish_events,
       network_installs: observed.network_installs,
     },
+    runtime: observed.runtime,
     cleanup: observed.cleanup,
   };
 }

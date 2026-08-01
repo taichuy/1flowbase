@@ -1,17 +1,29 @@
 {
-  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v1",
+  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v2",
   "application_id": "019f5443-5b8e-74b2-90e3-c867dbddd37b",
-  "endpoints": {
-    "console_base_url": "http://127.0.0.1:41731",
-    "gateway_base_url": "http://127.0.0.1:41732"
+  "main_source_sha": "replace-with-40-character-lowercase-sha",
+  "main_source_receipt": "/absolute/path/to/tmp/test-governance/ai-gateway-quality-gate/main-source-sha.log",
+  "api_server_binary": {
+    "path": "/absolute/path/to/frozen/api-server",
+    "sha256": "replace-with-64-character-lowercase-sha256",
+    "source_sha": "replace-with-the-same-40-character-lowercase-sha"
+  },
+  "plugin_runner_binary": {
+    "path": "/absolute/path/to/frozen/plugin-runner",
+    "sha256": "replace-with-64-character-lowercase-sha256",
+    "source_sha": "replace-with-the-same-40-character-lowercase-sha"
   },
   "model": "1flowbase",
   "environment": {
     "application_api_key": "ONEFLOWBASE_APPLICATION_API_KEY",
     "application_api_key_id": "ONEFLOWBASE_APPLICATION_API_KEY_ID",
     "owner_cookie": "ONEFLOWBASE_OWNER_COOKIE",
-    "owner_csrf": "ONEFLOWBASE_OWNER_CSRF"
+    "owner_csrf": "ONEFLOWBASE_OWNER_CSRF",
+    "database_url": "ONEFLOWBASE_DATABASE_URL",
+    "provider_secret_master_key": "ONEFLOWBASE_PROVIDER_SECRET_MASTER_KEY",
+    "provider_install_root": "ONEFLOWBASE_PROVIDER_INSTALL_ROOT"
   },
+  "api_cookie_name": "flowbase_console_session",
   "upgrade": {
     "after_package": "/absolute/path/to/deepseek-upgrade.1flowbasepkg"
   },
