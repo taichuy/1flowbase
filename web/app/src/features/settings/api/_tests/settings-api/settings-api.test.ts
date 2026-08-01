@@ -5,6 +5,12 @@ import {
 } from '../../../../../test/model-provider-contract-fixtures';
 import { modelProviderOptionsContract } from './settings-api-test-support';
 
+test('D5-F02 does not expose a feature-level universal extension upload API', () => {
+  type SettingsExtensionsApi = typeof import('../../extensions');
+  // @ts-expect-error Universal upload is intentionally absent from the feature API.
+  expectTypeOf<SettingsExtensionsApi['uploadSettingsExtension']>().toBeNever();
+});
+
 import {
   fetchConsoleApiDocsCatalog,
   fetchConsoleApiDocsCategoryOperations,

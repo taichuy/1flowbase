@@ -2,8 +2,10 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
   applyConsoleInstalledMcpExtension,
+  getConsoleInstalledMcpExtensionIntegrityChallenge,
   previewConsoleInstalledMcpExtension
 } from '../console/extensions';
+import { ApiClientError } from '../errors';
 
 import {
   clearConsoleHostInfrastructureCacheDomain,
@@ -62,20 +64,66 @@ describe('console extension MCP workspace application client', () => {
 
   test('applies with an explicit keep-existing conflict resolution', async () => {
     await expect(
-      applyConsoleInstalledMcpExtension(
-        'installation-1',
-        'csrf-123',
-        'keep_existing'
-      )
+      applyConsoleInstalledMcpExtension('installation-1', 'csrf-123', {
+        conflict_resolution: 'keep_existing',
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      })
     ).resolves.toMatchObject({
       path: '/api/console/mcp/bundles/import-official',
       method: 'POST',
       body: {
         extension_installation_id: 'installation-1',
-        conflict_resolution: 'keep_existing'
+        conflict_resolution: 'keep_existing',
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
       },
       csrfToken: 'csrf-123'
     });
+  });
+
+  test('reads the structured installed MCP integrity challenge from a 409 response', () => {
+    const body = {
+      status: 409,
+      code: 'mcp_bundle_integrity_confirmation_required',
+      message: 'confirmation required',
+      extension_installation_id: 'installation-1',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'not_imported',
+      integrity_warnings: [
+        {
+          code: 'checksum_mismatch',
+          message: 'The local checksum changed.',
+          overridable: true
+        }
+      ],
+      required_integrity_override: {
+        warnings: [
+          {
+            code: 'checksum_mismatch',
+            message: 'The local checksum changed.',
+            overridable: true
+          }
+        ],
+        compatibility: null
+      },
+      preview: { tools: [], instances: [], connections: [] }
+    };
+
+    expect(
+      getConsoleInstalledMcpExtensionIntegrityChallenge(
+        new ApiClientError({
+          status: 409,
+          message: body.message,
+          code: body.code,
+          body
+        })
+      )
+    ).toEqual(body);
   });
 });
 

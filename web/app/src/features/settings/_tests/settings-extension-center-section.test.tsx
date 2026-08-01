@@ -6,7 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { Modal } from 'antd';
+import { message, Modal } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -34,7 +34,8 @@ const extensionsApi = vi.hoisted(() => ({
   getSettingsExtensionRiskChallenge: vi.fn(),
   previewSettingsInstalledMcpExtension: vi.fn(),
   applySettingsInstalledMcpExtension: vi.fn(),
-  getSettingsInstalledMcpExtensionConflict: vi.fn()
+  getSettingsInstalledMcpExtensionConflict: vi.fn(),
+  getSettingsInstalledMcpExtensionIntegrityChallenge: vi.fn()
 }));
 
 const routerApi = vi.hoisted(() => ({ navigate: vi.fn() }));
@@ -229,7 +230,11 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.getSettingsInstalledMcpExtensionConflict.mockReturnValue(
       null
     );
+    extensionsApi.getSettingsInstalledMcpExtensionIntegrityChallenge.mockReturnValue(
+      null
+    );
     vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn() } as never);
+    vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
 
   test('Root-AC-002/003 renders seven tabs, loads installed inventory first, and checks only visible pages', async () => {
@@ -482,6 +487,23 @@ describe('SettingsExtensionCenterSection', () => {
       artifact_installation_status: 'installed',
       workspace_application_status: 'confirmation_required',
       required_conflict_resolution: 'keep_existing',
+      integrity_warnings: [
+        {
+          code: 'checksum_mismatch',
+          message: '本地产物校验值与安装记录不一致。',
+          overridable: true
+        }
+      ],
+      required_integrity_override: {
+        warnings: [
+          {
+            code: 'checksum_mismatch',
+            message: '本地产物校验值与安装记录不一致。',
+            overridable: true
+          }
+        ],
+        compatibility: null
+      },
       preview: { tools: [], instances: [], connections: [] }
     });
     extensionsApi.applySettingsInstalledMcpExtension.mockResolvedValue({
@@ -501,12 +523,131 @@ describe('SettingsExtensionCenterSection', () => {
     ).not.toHaveBeenCalled();
 
     const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+    render(confirmation?.content as ReactNode);
+    expect(
+      screen.getByText('本地产物校验值与安装记录不一致。')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/保留工作区内已有/)).toBeInTheDocument();
     await confirmation?.onOk?.();
     await waitFor(() => {
       expect(
         extensionsApi.applySettingsInstalledMcpExtension
-      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123', 'keep_existing');
+      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123', {
+        conflict_resolution: 'keep_existing',
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      });
     });
+  });
+
+  test('D5-F02 shows a changed integrity 409 and retries with the exact backend diagnostic codes', async () => {
+    const integrityError = new Error('integrity confirmation required');
+    const challenge = {
+      extension_installation_id: 'mcp-installation-1',
+      integrity_warnings: [
+        {
+          code: 'checksum_mismatch',
+          message: '本地产物在预览后发生变化。',
+          overridable: true
+        }
+      ],
+      required_integrity_override: {
+        warnings: [
+          {
+            code: 'checksum_mismatch',
+            message: '本地产物在预览后发生变化。',
+            overridable: true
+          }
+        ],
+        compatibility: null
+      }
+    };
+    extensionsApi.previewSettingsInstalledMcpExtension.mockResolvedValue({
+      extension_installation_id: 'mcp-installation-1',
+      artifact_installation_status: 'installed',
+      workspace_application_status: 'ready_to_import',
+      required_conflict_resolution: null,
+      integrity_warnings: [],
+      required_integrity_override: null,
+      preview: { tools: [], instances: [], connections: [] }
+    });
+    extensionsApi.applySettingsInstalledMcpExtension
+      .mockRejectedValueOnce(integrityError)
+      .mockResolvedValueOnce({ workspace_application_status: 'imported' });
+    extensionsApi.getSettingsInstalledMcpExtensionIntegrityChallenge.mockImplementation(
+      (error: unknown) => (error === integrityError ? challenge : null)
+    );
+    const mcpRow = {
+      ...installedEntry,
+      category: 'mcp' as const,
+      artifact_id: 'openai'
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [mcpRow]
+    });
+    const { queryClient } = renderSection('installed');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+    await waitFor(() => expect(Modal.confirm).toHaveBeenCalled());
+    await vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0].onOk?.();
+    await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(2));
+    const integrityConfirmation = vi
+      .mocked(Modal.confirm)
+      .mock.calls.at(-1)?.[0];
+    render(integrityConfirmation?.content as ReactNode);
+    expect(screen.getByText('本地产物在预览后发生变化。')).toBeInTheDocument();
+    await integrityConfirmation?.onOk?.();
+    await waitFor(() => {
+      expect(
+        extensionsApi.applySettingsInstalledMcpExtension
+      ).toHaveBeenLastCalledWith('mcp-installation-1', 'csrf-123', {
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      });
+    });
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['settings', 'extension-center']
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ['settings', 'mcp-management', 'catalog']
+      });
+    });
+  });
+
+  test('D5-F02 keeps an installed MCP artifact visible when preview is forbidden', async () => {
+    const mcpRow = {
+      ...installedEntry,
+      category: 'mcp' as const
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [mcpRow]
+    });
+    extensionsApi.previewSettingsInstalledMcpExtension.mockRejectedValue(
+      new Error('403 forbidden')
+    );
+    renderSection('installed');
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('无法预览已安装的 MCP 扩展');
+    });
+    expect(row).toBeInTheDocument();
+    expect(
+      extensionsApi.applySettingsInstalledMcpExtension
+    ).not.toHaveBeenCalled();
   });
 
   test('D5-AC-004 starts MCP preview after install and leaves application untouched when cancelled', async () => {
@@ -539,6 +680,8 @@ describe('SettingsExtensionCenterSection', () => {
       artifact_installation_status: 'installed',
       workspace_application_status: 'confirmation_required',
       required_conflict_resolution: 'keep_existing',
+      integrity_warnings: [],
+      required_integrity_override: null,
       preview: { tools: [], instances: [], connections: [] }
     });
     renderSection('mcp');

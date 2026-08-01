@@ -34,6 +34,7 @@ import {
   fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
   getSettingsInstalledMcpExtensionConflict,
+  getSettingsInstalledMcpExtensionIntegrityChallenge,
   getSettingsExtensionRiskChallenge,
   installSettingsExtension,
   previewSettingsInstalledMcpExtension,
@@ -59,6 +60,14 @@ type ExtensionOperation = {
   update: boolean;
 };
 type ExtensionOverrides = Parameters<typeof installSettingsExtension>[2];
+type InstalledMcpApplyOptions = Parameters<
+  typeof applySettingsInstalledMcpExtension
+>[2];
+type InstalledMcpIntegrityChallenge = NonNullable<
+  Awaited<
+    ReturnType<typeof previewSettingsInstalledMcpExtension>
+  >['required_integrity_override']
+>;
 
 const CATEGORIES: SettingsExtensionCategory[] = [
   'agent-flow',
@@ -103,6 +112,15 @@ function extensionInstallationStatus(row: ExtensionRow) {
 
 function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
+}
+
+function confirmedMcpIntegrityOverride(
+  challenge: InstalledMcpIntegrityChallenge
+) {
+  return {
+    reason: 'user_confirmed',
+    acknowledged_warnings: challenge.warnings.map((warning) => warning.code)
+  };
 }
 
 export function SettingsExtensionCenterSection({
@@ -243,18 +261,47 @@ export function SettingsExtensionCenterSection({
   const applyInstalledMcpExtension = useCallback(
     async (
       extensionInstallationId: string,
-      conflictResolution?: 'keep_existing'
+      options: InstalledMcpApplyOptions = {}
     ) => {
       if (!csrfToken) throw new Error('csrf token required');
       try {
         await applySettingsInstalledMcpExtension(
           extensionInstallationId,
           csrfToken,
-          conflictResolution
+          options
         );
         message.success(t('auto.mcp_extension_apply_succeeded'));
         await invalidateExtensionAndMcpState();
       } catch (error) {
+        const integrityChallenge =
+          getSettingsInstalledMcpExtensionIntegrityChallenge(error);
+        if (integrityChallenge) {
+          Modal.confirm({
+            title: t('auto.mcp_extension_integrity_title'),
+            content: (
+              <List
+                size="small"
+                dataSource={integrityChallenge.integrity_warnings}
+                renderItem={(warning) => (
+                  <List.Item>{warning.message}</List.Item>
+                )}
+              />
+            ),
+            okText: t('auto.confirm'),
+            cancelText: t('auto.cancel'),
+            onOk: () =>
+              applyInstalledMcpExtension(
+                integrityChallenge.extension_installation_id,
+                {
+                  ...options,
+                  integrity_override: confirmedMcpIntegrityOverride(
+                    integrityChallenge.required_integrity_override
+                  )
+                }
+              )
+          });
+          return;
+        }
         const conflict = getSettingsInstalledMcpExtensionConflict(error);
         if (!conflict) {
           message.error(t('auto.mcp_extension_apply_failed'));
@@ -262,14 +309,29 @@ export function SettingsExtensionCenterSection({
         }
         Modal.confirm({
           title: t('auto.mcp_extension_conflict_title'),
-          content: t('auto.mcp_extension_conflict_keep_existing'),
+          content: (
+            <Space direction="vertical">
+              {conflict.integrity_warnings.length > 0 ? (
+                <List
+                  size="small"
+                  dataSource={conflict.integrity_warnings}
+                  renderItem={(warning) => (
+                    <List.Item>{warning.message}</List.Item>
+                  )}
+                />
+              ) : null}
+              <Typography.Text>
+                {t('auto.mcp_extension_conflict_keep_existing')}
+              </Typography.Text>
+            </Space>
+          ),
           okText: t('auto.confirm'),
           cancelText: t('auto.cancel'),
           onOk: () =>
-            applyInstalledMcpExtension(
-              conflict.extension_installation_id,
-              conflict.required_conflict_resolution
-            )
+            applyInstalledMcpExtension(conflict.extension_installation_id, {
+              ...options,
+              conflict_resolution: conflict.required_conflict_resolution
+            })
         });
       }
     },
@@ -285,20 +347,47 @@ export function SettingsExtensionCenterSection({
           csrfToken
         );
         const conflictResolution = result.required_conflict_resolution;
+        const integrityChallenge = result.required_integrity_override;
+        const integrityWarnings = result.integrity_warnings;
         Modal.confirm({
-          title: conflictResolution
-            ? t('auto.mcp_extension_conflict_title')
-            : t('auto.mcp_extension_apply_title'),
-          content: conflictResolution
-            ? t('auto.mcp_extension_conflict_keep_existing')
-            : t('auto.mcp_extension_apply_confirmation'),
+          title:
+            integrityWarnings.length > 0
+              ? t('auto.mcp_extension_integrity_title')
+              : conflictResolution
+                ? t('auto.mcp_extension_conflict_title')
+                : t('auto.mcp_extension_apply_title'),
+          content: (
+            <Space direction="vertical">
+              {integrityWarnings.length > 0 ? (
+                <List
+                  size="small"
+                  dataSource={integrityWarnings}
+                  renderItem={(warning) => (
+                    <List.Item>{warning.message}</List.Item>
+                  )}
+                />
+              ) : null}
+              <Typography.Text>
+                {conflictResolution
+                  ? t('auto.mcp_extension_conflict_keep_existing')
+                  : t('auto.mcp_extension_apply_confirmation')}
+              </Typography.Text>
+            </Space>
+          ),
           okText: t('auto.confirm'),
           cancelText: t('auto.cancel'),
           onOk: () =>
-            applyInstalledMcpExtension(
-              result.extension_installation_id,
-              conflictResolution ?? undefined
-            )
+            applyInstalledMcpExtension(result.extension_installation_id, {
+              ...(conflictResolution
+                ? { conflict_resolution: conflictResolution }
+                : {}),
+              ...(integrityChallenge
+                ? {
+                    integrity_override:
+                      confirmedMcpIntegrityOverride(integrityChallenge)
+                  }
+                : {})
+            })
         });
       } catch {
         message.error(t('auto.mcp_extension_preview_failed'));

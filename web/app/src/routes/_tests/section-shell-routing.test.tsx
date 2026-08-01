@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const membersApi = vi.hoisted(() => ({
@@ -686,6 +692,20 @@ describe('section shell routing', () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['extension-center', 'model-providers'])
       );
+      extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
+        async (category: string, cursor?: string) => ({
+          category,
+          catalog_page: cursor ?? 'start',
+          catalog_page_number: cursor ? 2 : 1,
+          catalog_page_checksum: 'sha256:fixture',
+          catalog_page_locator: 'fixture',
+          limit: 20,
+          next_cursor:
+            category === 'runtime-extensions' && !cursor ? 'cursor-2' : null,
+          total_entries: 0,
+          entries: []
+        })
+      );
       authenticateWithPermissions([], 'root');
       renderApp('/settings/extension-center');
       await waitFor(() => {
@@ -693,24 +713,74 @@ describe('section shell routing', () => {
           '/settings/extension-center/installed'
         );
       }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(
+        await screen.findByRole('tab', {
+          name: 'installed',
+          selected: true
+        })
+      ).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'mcp' }));
       await waitFor(() => {
         expect(window.location.pathname).toBe('/settings/extension-center/mcp');
       });
-      window.history.pushState(
-        {},
-        '',
-        '/settings/extension-center/runtime-extensions?cursor=cursor-2'
-      );
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      expect(
+        await screen.findByRole('tab', { name: 'mcp', selected: true })
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
       await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/runtime-extensions'
+        );
+        expect(window.location.search).toBe('');
+        expect(
+          extensionsApi.fetchSettingsExtensionCatalog
+        ).toHaveBeenCalledWith('runtime-extensions', undefined);
+      });
+      fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
+      await waitFor(() => {
+        expect(window.location.search).toBe('?cursor=cursor-2');
         expect(
           extensionsApi.fetchSettingsExtensionCatalog
         ).toHaveBeenCalledWith('runtime-extensions', 'cursor-2');
       });
+
+      act(() => window.history.back());
+      await waitFor(() => expect(window.location.search).toBe(''));
       expect(
-        screen.getByRole('tab', {
+        await screen.findByRole('tab', {
+          name: 'runtime-extensions',
+          selected: true
+        })
+      ).toBeInTheDocument();
+
+      act(() => window.history.back());
+      await waitFor(() => {
+        expect(window.location.pathname).toBe('/settings/extension-center/mcp');
+        expect(window.location.search).toBe('');
+      });
+      expect(
+        await screen.findByRole('tab', { name: 'mcp', selected: true })
+      ).toBeInTheDocument();
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'mcp',
+        undefined
+      );
+
+      act(() => window.history.forward());
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/runtime-extensions'
+        );
+        expect(window.location.search).toBe('');
+      });
+      act(() => window.history.forward());
+      await waitFor(() => {
+        expect(window.location.search).toBe('?cursor=cursor-2');
+      });
+      expect(
+        await screen.findByRole('tab', {
           name: 'runtime-extensions',
           selected: true
         })
