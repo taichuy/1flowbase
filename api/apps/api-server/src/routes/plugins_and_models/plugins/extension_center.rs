@@ -117,6 +117,7 @@ pub struct ExtensionInstallResponse {
     pub installation: LocalExtensionInventoryEntryResponse,
     pub local_artifact_was_present: bool,
     pub node_plugin_installation_id: Option<String>,
+    pub workspace_application_status: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -296,6 +297,10 @@ fn extension_installation_service(
     state: &ApiState,
 ) -> ExtensionInstallationService<MainDurableStore> {
     ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+}
+
+fn workspace_application_status(category: ExtensionCatalogCategory) -> Option<String> {
+    (category == ExtensionCatalogCategory::Mcp).then(|| "not_imported".to_string())
 }
 
 fn to_risk_warnings(
@@ -1209,6 +1214,7 @@ async fn install_or_update_official_extension(
                 installation: to_local_inventory_entry(installation),
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
+                workspace_application_status: workspace_application_status(category),
             })),
         )
             .into_response());
@@ -1374,6 +1380,7 @@ async fn install_or_update_official_extension(
             installation: to_local_inventory_entry(installation),
             local_artifact_was_present,
             node_plugin_installation_id,
+            workspace_application_status: workspace_application_status(category),
         })),
     )
         .into_response())

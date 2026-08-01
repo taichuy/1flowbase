@@ -7,9 +7,21 @@ use axum::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
+use uuid::Uuid;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
-use crate::_tests::support::{get_json, login_and_capture_cookie, test_app};
+use control_plane::{
+    plugin_management::{
+        ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
+        InstallExtensionArtifactCommand,
+    },
+    ports::AuthRepository,
+};
+
+use crate::_tests::support::{
+    get_json, login_and_capture_cookie, test_api_state_with_database_url, test_app,
+    test_app_with_runtime_profile_error, test_config,
+};
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -129,6 +141,47 @@ fn multipart_body(file_name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
     body.extend_from_slice(bytes);
     write!(body, "\r\n--{boundary}--\r\n").unwrap();
     (boundary.to_string(), body)
+}
+
+async fn app_with_installed_mcp_extension(bundle: Vec<u8>) -> (axum::Router, Uuid) {
+    let (state, _) = test_api_state_with_database_url().await;
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let outcome =
+        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+            .install_from_bytes(InstallExtensionArtifactCommand {
+                actor_user_id: actor.id,
+                category: ExtensionCatalogCategory::Mcp,
+                organization: "taichuy".to_string(),
+                artifact_id: "route_test_bundle".to_string(),
+                version: "1.0.0".to_string(),
+                node_id: state.api_node_id.clone(),
+                expected_checksum: Some(sha256(&bundle)),
+                artifact_bytes: bundle,
+                source: "upload".to_string(),
+                trust: "trusted".to_string(),
+                signature_status: domain::ExtensionSignatureStatus::Verified,
+                signature_algorithm: Some("ed25519".to_string()),
+                signing_key_id: Some("fixture-key".to_string()),
+                declared_warnings: Vec::new(),
+                risk_override: None,
+                confirmation_receipt: None,
+            })
+            .await
+            .unwrap();
+    let ExtensionArtifactInstallOutcome::Installed { installation, .. } = outcome else {
+        panic!("verified MCP fixture must install without confirmation");
+    };
+    (
+        crate::app_with_state_and_config(state, &test_config()),
+        installation.id,
+    )
 }
 
 async fn post_bundle(
@@ -326,6 +379,154 @@ async fn mcp_bundle_import_rolls_back_an_instance_when_assembly_fails() {
     assert!(catalog["data"]["instances"].as_array().unwrap().is_empty());
     assert!(catalog["data"]["groups"].as_array().unwrap().is_empty());
     assert!(catalog["data"]["bindings"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_ac_004_installed_mcp_artifact_previews_without_workspace_import() {
+    let (app, extension_installation_id) =
+        app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false)).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let preview = post_json(
+        &app,
+        "/api/console/mcp/bundles/preview-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(preview.status(), StatusCode::OK);
+    let payload = response_json(preview).await;
+    assert_eq!(payload["data"]["artifact_installation_status"], "installed");
+    assert_eq!(
+        payload["data"]["workspace_application_status"],
+        "ready_to_import"
+    );
+    assert_eq!(
+        payload["data"]["preview"]["manifest"]["bundle_id"],
+        "route_test_bundle"
+    );
+
+    let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
+    assert!(catalog["data"]["tools"].as_array().unwrap().is_empty());
+    let installed = get_json(
+        &app,
+        "/api/console/settings/extension-center/installed?category=mcp",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        installed["data"]["entries"][0]["id"],
+        extension_installation_id.to_string()
+    );
+    assert_eq!(installed["data"]["entries"][0]["status"], "installed");
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_retry_is_explainable()
+{
+    let (app, extension_installation_id) =
+        app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false)).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let confirmed_body = json!({
+        "extension_installation_id": extension_installation_id,
+        "conflict_resolution": "keep_existing"
+    });
+    let first = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        confirmed_body.clone(),
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_payload = response_json(first).await;
+    assert_eq!(
+        first_payload["data"]["workspace_application_status"],
+        "imported"
+    );
+
+    let preview = post_json(
+        &app,
+        "/api/console/mcp/bundles/preview-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    let preview_payload = response_json(preview).await;
+    assert_eq!(
+        preview_payload["data"]["workspace_application_status"],
+        "confirmation_required"
+    );
+    assert_eq!(
+        preview_payload["data"]["required_conflict_resolution"],
+        "keep_existing"
+    );
+
+    let unconfirmed = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(unconfirmed.status(), StatusCode::CONFLICT);
+    let unconfirmed_payload = response_json(unconfirmed).await;
+    assert_eq!(
+        unconfirmed_payload["code"],
+        "mcp_bundle_conflict_confirmation_required"
+    );
+    assert_eq!(
+        unconfirmed_payload["workspace_application_status"],
+        "not_imported"
+    );
+    assert_eq!(
+        unconfirmed_payload["preview"]["tools"][0]["reason"],
+        "tool_id_conflict"
+    );
+
+    let retry = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        confirmed_body,
+    )
+    .await;
+    assert_eq!(retry.status(), StatusCode::OK);
+    let retry_payload = response_json(retry).await;
+    assert_eq!(
+        retry_payload["data"]["import_report"]["tools"][0]["result"],
+        "skipped"
+    );
+    let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
+    assert_eq!(
+        catalog["data"]["tools"][0]["tool_id"],
+        "bundle_runtime_profile"
+    );
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_ac_008_installed_mcp_preview_keeps_mcp_settings_scope() {
+    let (app, cookie) = test_app_with_runtime_profile_error(&["system_runtime.view.all"]).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/bundles/preview-official")
+                .header("cookie", cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"extension_installation_id": Uuid::nil()}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

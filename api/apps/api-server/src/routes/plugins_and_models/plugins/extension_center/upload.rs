@@ -362,6 +362,7 @@ async fn install_uploaded_artifact(
                 installation: to_local_inventory_entry(installation),
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
+                workspace_application_status: workspace_application_status(artifact.category),
             })),
         )
             .into_response());
@@ -446,6 +447,7 @@ async fn install_uploaded_artifact(
             installation: to_local_inventory_entry(installation),
             local_artifact_was_present,
             node_plugin_installation_id,
+            workspace_application_status: workspace_application_status(artifact.category),
         })),
     )
         .into_response())

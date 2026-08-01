@@ -423,6 +423,18 @@ where
         }
     }
 
+    pub async fn find_local_installation_by_id(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .list_installed_for_node(node_id)
+            .await?
+            .into_iter()
+            .find(|record| record.id == installation_id))
+    }
+
     pub async fn reconcile_node_inventory(&self, node_id: &str) -> Result<usize> {
         let records = self
             .repository

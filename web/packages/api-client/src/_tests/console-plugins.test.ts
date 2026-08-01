@@ -1,5 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
+import {
+  applyConsoleInstalledMcpExtension,
+  previewConsoleInstalledMcpExtension
+} from '../console/extensions';
 
 import {
   clearConsoleHostInfrastructureCacheDomain,
@@ -39,6 +43,37 @@ describe('console-plugins current node artifact client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/plugins/installation-1/artifact/install-current-node',
       method: 'POST',
+      csrfToken: 'csrf-123'
+    });
+  });
+});
+
+describe('console extension MCP workspace application client', () => {
+  test('previews an installed artifact through the MCP settings scope route', async () => {
+    await expect(
+      previewConsoleInstalledMcpExtension('installation-1', 'csrf-123')
+    ).resolves.toMatchObject({
+      path: '/api/console/mcp/bundles/preview-official',
+      method: 'POST',
+      body: { extension_installation_id: 'installation-1' },
+      csrfToken: 'csrf-123'
+    });
+  });
+
+  test('applies with an explicit keep-existing conflict resolution', async () => {
+    await expect(
+      applyConsoleInstalledMcpExtension(
+        'installation-1',
+        'csrf-123',
+        'keep_existing'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/mcp/bundles/import-official',
+      method: 'POST',
+      body: {
+        extension_installation_id: 'installation-1',
+        conflict_resolution: 'keep_existing'
+      },
       csrfToken: 'csrf-123'
     });
   });
