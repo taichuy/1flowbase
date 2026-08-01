@@ -16,6 +16,7 @@ pub mod installation;
 pub mod manifest_v1;
 pub mod package_intake;
 pub mod provider_contract;
+pub mod provider_count_tokens_estimator;
 pub mod provider_package;
 pub mod runtime_target;
 pub mod scope_provider_contract;

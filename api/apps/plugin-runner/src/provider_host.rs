@@ -13,18 +13,22 @@ use plugin_framework::{
     manifest_v1::PluginExecutionMode,
     provider_contract::{
         ModelDiscoveryMode, ProviderBalanceResult, ProviderCompactError, ProviderCompactResult,
-        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderGenerateTranslationReceipt, ProviderInvocationInput, ProviderInvocationResult,
-        ProviderModelDescriptor, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent, ProviderWireOperation,
-        CURRENT_PROVIDER_CONTRACT,
+        ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
+        ProviderCountTokensResult, ProviderGenerateTranslationReceipt, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderModelDescriptor, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent,
+        ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
     },
+    provider_count_tokens_estimator::estimate_provider_count_tokens,
     PluginRuntimeLimits,
 };
 use serde::Serialize;
 use serde_json::Value;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
+
+#[cfg(test)]
+use plugin_framework::provider_contract::ProviderCountTokensMethod;
 
 use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
@@ -446,40 +450,76 @@ impl ProviderHost {
             + 'static,
         ProviderCountTokensError,
     > {
-        let loaded = self
-            .loaded_package(plugin_id)
-            .map_err(count_tokens_framework_error)?
-            .clone();
+        let loaded = self.loaded_package(plugin_id).ok().cloned();
         let provider_workers = Arc::clone(&self.provider_workers);
         Ok(async move {
-            let wire_input = current_provider_count_tokens_wire_input(&loaded, &input)?;
+            let Some(loaded) = loaded else {
+                return Ok(ProviderCountTokensOutput {
+                    result: generic_count_tokens_fallback(
+                        &input,
+                        ProviderCountTokensFallbackReason::PluginUnavailable,
+                    ),
+                });
+            };
+            if loaded.package.manifest.contract_version != CURRENT_PROVIDER_CONTRACT {
+                return Ok(ProviderCountTokensOutput {
+                    result: generic_count_tokens_fallback(
+                        &input,
+                        ProviderCountTokensFallbackReason::PluginUnavailable,
+                    ),
+                });
+            }
+            let wire_input = match current_provider_count_tokens_wire_input(&loaded, &input) {
+                Ok(wire_input) => wire_input,
+                Err(ProviderCountTokensError::Unsupported { .. }) => {
+                    return Ok(ProviderCountTokensOutput {
+                        result: generic_count_tokens_fallback(
+                            &input,
+                            ProviderCountTokensFallbackReason::CapabilityUnavailable,
+                        ),
+                    });
+                }
+                Err(error) => return Err(error),
+            };
             tracing::info!(
                 provider_code = %input.provider_code,
                 model = %input.model,
                 "provider count tokens wire prepared"
             );
-            let output = Self::call_runtime_loaded(
+            let output = match Self::call_runtime_loaded(
                 loaded,
                 provider_workers,
                 ProviderStdioMethod::Invoke,
                 wire_input,
             )
             .await
-            .map_err(count_tokens_framework_error)?;
-            let result =
-                serde_json::from_value::<ProviderCountTokensResult>(output).map_err(|error| {
-                    ProviderCountTokensError::Runtime {
-                        error: ProviderRuntimeError::new(
-                            ProviderRuntimeErrorKind::ProviderInvalidResponse,
-                            format!("provider CountTokens result is malformed: {error}"),
+            {
+                Ok(output) => output,
+                Err(_) => {
+                    return Ok(ProviderCountTokensOutput {
+                        result: generic_count_tokens_fallback(
+                            &input,
+                            ProviderCountTokensFallbackReason::ProviderRuntimeFailure,
                         ),
-                    }
-                })?;
+                    });
+                }
+            };
+            let result = match serde_json::from_value::<ProviderCountTokensResult>(output) {
+                Ok(result) => result,
+                Err(_) => {
+                    return Ok(ProviderCountTokensOutput {
+                        result: generic_count_tokens_fallback(
+                            &input,
+                            ProviderCountTokensFallbackReason::MalformedProviderResult,
+                        ),
+                    });
+                }
+            };
             if result.operation != ProviderWireOperation::CountTokens {
-                return Err(ProviderCountTokensError::Runtime {
-                    error: ProviderRuntimeError::new(
-                        ProviderRuntimeErrorKind::ProviderInvalidResponse,
-                        "provider CountTokens result must declare operation=count_tokens",
+                return Ok(ProviderCountTokensOutput {
+                    result: generic_count_tokens_fallback(
+                        &input,
+                        ProviderCountTokensFallbackReason::MalformedProviderResult,
                     ),
                 });
             }
@@ -886,26 +926,16 @@ fn current_provider_count_tokens_wire_input(
     input.to_current_provider_wire_value(&loaded.package.manifest.runtime.capabilities)
 }
 
-fn count_tokens_framework_error(error: PluginFrameworkError) -> ProviderCountTokensError {
-    match error {
-        PluginFrameworkError::RuntimeContract { error } => {
-            ProviderCountTokensError::Runtime { error: *error }
+fn generic_count_tokens_fallback(
+    input: &ProviderCountTokensInput,
+    reason: ProviderCountTokensFallbackReason,
+) -> ProviderCountTokensResult {
+    match estimate_provider_count_tokens(input.as_invocation()) {
+        Ok(mut result) => {
+            result.fallback_reason = Some(reason);
+            result
         }
-        PluginFrameworkError::Serialization { message, .. } => ProviderCountTokensError::Runtime {
-            error: ProviderRuntimeError::new(
-                ProviderRuntimeErrorKind::ProviderInvalidResponse,
-                format!("provider CountTokens response is malformed: {message}"),
-            ),
-        },
-        PluginFrameworkError::Io { message, .. } => ProviderCountTokensError::Runtime {
-            error: ProviderRuntimeError::new(
-                ProviderRuntimeErrorKind::EndpointUnreachable,
-                format!("provider CountTokens runtime is unavailable: {message}"),
-            ),
-        },
-        other => ProviderCountTokensError::InvalidContract {
-            message: other.to_string(),
-        },
+        Err(_) => ProviderCountTokensResult::fallback_zero(),
     }
 }
 
@@ -1350,16 +1380,24 @@ done
     }
 
     fn count_tokens_input(model: &str) -> ProviderCountTokensInput {
-        ProviderCountTokensInput {
-            operation: ProviderWireOperation::CountTokens,
+        ProviderCountTokensInput::from_invocation(ProviderInvocationInput {
             contract_version: Default::default(),
             provider_instance_id: "provider-1".to_string(),
             provider_code: "fixture_provider".to_string(),
             protocol: "anthropic_messages".to_string(),
             model: model.to_string(),
             provider_config: json!({}),
-            ..ProviderCountTokensInput::default()
-        }
+            messages: vec![plugin_framework::provider_contract::ProviderMessage {
+                role: plugin_framework::provider_contract::ProviderMessageRole::User,
+                content: "count this canonical prompt".to_string(),
+                name: None,
+                tool_call_id: None,
+                is_error: None,
+                tool_calls: None,
+                content_blocks: None,
+            }],
+            ..ProviderInvocationInput::default()
+        })
     }
 
     fn compact_input(model: &str, profile: ProviderCompactProfile) -> ProviderInvocationInput {
@@ -1499,7 +1537,7 @@ done
     }
 
     #[tokio::test]
-    async fn c1_count_tokens_missing_capability_fails_before_spawn_side_effect() {
+    async fn d1_p03_count_tokens_missing_capability_estimates_before_spawn_side_effect() {
         let package = TempProviderPackage::new();
         let spawn_marker = package.path().join("count-tokens-spawn-side-effect-marker");
         package.write_spawn_side_effect_runtime(&spawn_marker);
@@ -1509,19 +1547,43 @@ done
             .unwrap()
             .plugin_id;
 
-        let error = host
+        let output = host
             .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
             .await
-            .unwrap_err();
+            .expect("missing optional capability must use the generic estimator");
 
-        assert!(matches!(
-            error,
-            ProviderCountTokensError::Unsupported { capabilities }
-                if capabilities == vec!["count_tokens"]
-        ));
+        assert!(output.result.input_tokens > 0);
+        assert_eq!(
+            output.result.method,
+            ProviderCountTokensMethod::GenericEstimate
+        );
+        assert_eq!(
+            output.result.fallback_reason,
+            Some(ProviderCountTokensFallbackReason::CapabilityUnavailable)
+        );
         assert!(
             !spawn_marker.exists(),
             "missing CountTokens capability must fail before provider spawn"
+        );
+    }
+
+    #[tokio::test]
+    async fn d1_p03_count_tokens_missing_plugin_returns_a_typed_generic_estimate() {
+        let host = ProviderHost::default();
+
+        let output = host
+            .count_tokens("missing-plugin", count_tokens_input("fixture-model"))
+            .await
+            .expect("a missing CountTokens plugin must not escape the host boundary");
+
+        assert!(output.result.input_tokens > 0);
+        assert_eq!(
+            output.result.method,
+            ProviderCountTokensMethod::GenericEstimate
+        );
+        assert_eq!(
+            output.result.fallback_reason,
+            Some(ProviderCountTokensFallbackReason::PluginUnavailable)
         );
     }
 
@@ -1596,7 +1658,7 @@ done
     }
 
     #[tokio::test]
-    async fn c1_count_tokens_preserves_typed_upstream_and_malformed_result_errors() {
+    async fn d1_p03_count_tokens_preserves_upstream_success_and_estimates_provider_failures() {
         let package = TempProviderPackage::new();
         package.declare_count_tokens_capability();
         package.write_count_tokens_response_runtime(
@@ -1611,13 +1673,12 @@ done
         let upstream = host
             .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
             .await
-            .unwrap_err();
-        assert!(matches!(
-            upstream,
-            ProviderCountTokensError::Runtime { error }
-                if error.kind == ProviderRuntimeErrorKind::ProviderUpstreamError
-                    && error.message == "upstream CountTokens failed"
-        ));
+            .expect("upstream CountTokens failures must use the generic estimator");
+        assert!(upstream.result.input_tokens > 0);
+        assert_eq!(
+            upstream.result.fallback_reason,
+            Some(ProviderCountTokensFallbackReason::ProviderRuntimeFailure)
+        );
 
         package.write_count_tokens_response_runtime(
             r#"{"ok":true,"result":{"operation":"count_tokens","input_tokens":37}}"#,
@@ -1631,6 +1692,10 @@ done
             .await
             .expect("tagged CountTokens result should project");
         assert_eq!(counted.result.input_tokens, 37);
+        assert_eq!(
+            counted.result.method,
+            ProviderCountTokensMethod::UpstreamApi
+        );
 
         package.write_count_tokens_response_runtime(
             r#"{"ok":true,"result":{"operation":"count_tokens","input_tokens":"not-a-number"}}"#,
@@ -1642,13 +1707,12 @@ done
         let malformed = host
             .count_tokens(&plugin_id, count_tokens_input("fixture-model"))
             .await
-            .unwrap_err();
-        assert!(matches!(
-            malformed,
-            ProviderCountTokensError::Runtime { error }
-                if error.kind == ProviderRuntimeErrorKind::ProviderInvalidResponse
-                    && error.message.contains("CountTokens result is malformed")
-        ));
+            .expect("malformed CountTokens results must use the generic estimator");
+        assert!(malformed.result.input_tokens > 0);
+        assert_eq!(
+            malformed.result.fallback_reason,
+            Some(ProviderCountTokensFallbackReason::MalformedProviderResult)
+        );
     }
 
     #[tokio::test]

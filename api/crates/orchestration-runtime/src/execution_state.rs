@@ -76,6 +76,10 @@ impl CountTokensReceipt {
         self.result.input_tokens
     }
 
+    pub fn result(&self) -> &ProviderCountTokensResult {
+        &self.result
+    }
+
     pub fn as_payload(&self) -> Result<Value> {
         Ok(json!({
             "semantic_terminal": COUNT_TOKENS_TERMINAL_KIND,
