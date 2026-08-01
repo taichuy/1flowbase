@@ -19,13 +19,14 @@ const { clientPaths, writeConfigs } = require('../local-client-acceptance/driver
 const { OwnedResources, executeTmux } = require('../local-client-acceptance/lifecycle');
 const { clientSurface } = require('../local-client-acceptance/client-surface');
 const { redact } = require('../local-client-acceptance/artifacts');
+const { openTemporaryOwnerSession } = require('../../page-debug/auth');
 const {
   buildCountTokensUpgradeEvidence,
   loadCountTokensUpgradeFixture,
 } = require('./count-tokens-upgrade');
 
 const APPLICATION_ID = '019f5443-5b8e-74b2-90e3-c867dbddd37b';
-const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v3';
+const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v4';
 const FORBIDDEN_PORTS = new Set([3100, 7800, 7801]);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
@@ -188,8 +189,8 @@ function loadRunManifest(filePath, dependencies = {}) {
     env: {
       apiKey: envName(value.environment?.application_api_key, 'application API key env name'),
       apiKeyId: envName(value.environment?.application_api_key_id, 'application API key id env name'),
-      ownerCookie: envName(value.environment?.owner_cookie, 'owner cookie env name'),
-      ownerCsrf: envName(value.environment?.owner_csrf, 'owner CSRF env name'),
+      ownerUsername: envName(value.environment?.owner_username, 'owner username env name'),
+      ownerPassword: envName(value.environment?.owner_password, 'owner password env name'),
       databaseUrl: envName(value.environment?.database_url, 'database URL env name'),
       providerSecretMasterKey: envName(
         value.environment?.provider_secret_master_key,
@@ -408,19 +409,20 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   let manifest = null;
   let owner = null;
+  let temporarySession = null;
   let services = null;
   let primaryError = null;
   let observed = null;
   let cleanupErrors = [];
-  let secrets = [];
+  const secrets = { credentials: [], credentialUrls: [] };
   let artifactPath = null;
   try {
     manifest = loadRunManifest(rawOptions.manifest, dependencies);
     artifactPath = manifest.artifact;
     const apiKey = envValue(sourceEnv, manifest.env.apiKey, 'application API key');
     const apiKeyId = envValue(sourceEnv, manifest.env.apiKeyId, 'application API key id');
-    const ownerCookie = envValue(sourceEnv, manifest.env.ownerCookie, 'owner cookie');
-    const ownerCsrf = envValue(sourceEnv, manifest.env.ownerCsrf, 'owner CSRF token');
+    const ownerUsername = envValue(sourceEnv, manifest.env.ownerUsername, 'owner username');
+    const ownerPassword = envValue(sourceEnv, manifest.env.ownerPassword, 'owner password');
     const databaseUrl = databaseUrlFromEnv(sourceEnv, manifest.env.databaseUrl);
     const providerSecretMasterKey = envValue(
       sourceEnv,
@@ -431,11 +433,8 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
       envValue(sourceEnv, manifest.env.providerInstallRoot, 'provider install root'),
       'provider install root',
     );
-    if (!ownerCookie.startsWith(`${manifest.cookieName}=`)) {
-      throw new Error('owner cookie does not match the frozen API cookie name');
-    }
-    secrets = [apiKey, ownerCookie, ownerCsrf, databaseUrl, new URL(databaseUrl).password,
-      providerSecretMasterKey];
+    secrets.credentials.push(apiKey, ownerPassword, providerSecretMasterKey);
+    secrets.credentialUrls.push(databaseUrl);
     const tempRoot = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-count-tokens-upgrade-')));
     services = {};
     services = await startFrozenServices({
@@ -443,8 +442,18 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
       scratchRoot: tempRoot, dependencies, services, sourceEnv,
     });
     manifest.gatewayBaseUrl = services.apiBaseUrl;
+    temporarySession = await (dependencies.openTemporaryOwnerSession || openTemporaryOwnerSession)({
+      apiBaseUrl: services.apiBaseUrl,
+      account: ownerUsername,
+      password: ownerPassword,
+      fetchImpl,
+    });
+    secrets.credentials.push(temporarySession.cookie, temporarySession.csrfToken);
+    if (!temporarySession.cookie.startsWith(`${manifest.cookieName}=`)) {
+      throw new Error('owner session cookie does not match the frozen API cookie name');
+    }
     owner = new (dependencies.OwnerHttpClient || OwnerHttpClient)(services.apiBaseUrl, fetchImpl);
-    owner.attachSession(ownerCookie, ownerCsrf);
+    owner.attachSession(temporarySession.cookie, temporarySession.csrfToken);
     await assertTokenBinding(owner, manifest.applicationId, apiKeyId, apiKey);
     const publicationId = await activePublication(owner, manifest.applicationId);
     const beforePlugin = await readDeepSeekFamily(owner);
@@ -504,6 +513,10 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     primaryError = error;
   } finally {
     const stopProcess = dependencies.stopOwned || stopOwned;
+    if (temporarySession) {
+      try { await temporarySession.dispose(); }
+      catch (error) { cleanupErrors.push({ owner: 'owner-session', message: error.message }); }
+    }
     for (const [ownerName, processHandle] of [
       ['api-server', services?.apiProcess],
       ['plugin-runner', services?.pluginProcess],

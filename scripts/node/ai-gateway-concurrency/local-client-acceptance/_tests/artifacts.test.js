@@ -29,6 +29,26 @@ test('AC-009 redacts explicit and shaped secrets from structured artifacts', () 
   assert.equal(safe.api_key_env, 'ONEFLOWBASE_APPLICATION_API_KEY');
 });
 
+test('Root #1556 F11 redacts by structure without corrupting schema text with a short DB password', () => {
+  const safe = redact({
+    schema_version: '1flowbase.local-count-tokens-upgrade-run/v4',
+    provider_path: '/opt/1flowbase/providers/deepseek',
+    owner_password: 'owner-password',
+    primary_error: {
+      message: 'database postgres://owner:1flowbase@127.0.0.1/dev rejected owner-password',
+    },
+  }, {
+    credentials: ['owner-password'],
+    credentialUrls: ['postgres://owner:1flowbase@127.0.0.1/dev'],
+  });
+
+  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v4');
+  assert.equal(safe.provider_path, '/opt/1flowbase/providers/deepseek');
+  assert.equal(safe.owner_password, '<redacted>');
+  assert.match(safe.primary_error.message, /postgres:\/\/<redacted>@127\.0\.0\.1\/dev/u);
+  assert.doesNotMatch(JSON.stringify(safe), /owner-password|owner:1flowbase/u);
+});
+
 test('AC-009 validates schema and writes a mode-0600 redacted artifact', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-client-artifact-'));
   try {

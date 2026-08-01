@@ -104,7 +104,60 @@ async function openTemporaryConsoleSession({
   }
 }
 
+function sessionCookie(headers) {
+  const values = typeof headers?.getSetCookie === 'function'
+    ? headers.getSetCookie()
+    : [headers?.get?.('set-cookie')].filter(Boolean);
+  return values
+    .map((value) => value.split(';', 1)[0].trim())
+    .filter(Boolean)
+    .join('; ');
+}
+
+async function openTemporaryOwnerSession({ apiBaseUrl, account, password, fetchImpl = globalThis.fetch }) {
+  const response = await fetchImpl(`${apiBaseUrl}/api/public/auth/sign-in`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      authenticator_id: PASSWORD_LOCAL_AUTHENTICATOR_ID,
+      identifier: account,
+      password,
+    }),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`root 凭据无效，登录失败：${response.status} ${body.slice(0, 500)}`.trim());
+  }
+  let payload;
+  try { payload = body ? JSON.parse(body) : null; }
+  catch { throw new Error('登录成功但响应不是有效 JSON，无法安全回收临时 console session'); }
+  const cookie = sessionCookie(response.headers);
+  const csrfToken = payload?.data?.csrf_token;
+  if (!cookie || typeof csrfToken !== 'string' || !csrfToken) {
+    throw new Error('登录成功但响应缺少 session cookie 或 csrf_token，无法安全回收临时 console session');
+  }
+
+  let disposed = false;
+  return {
+    cookie,
+    csrfToken,
+    async dispose() {
+      if (disposed) return;
+      disposed = true;
+      const revoke = await fetchImpl(`${apiBaseUrl}/api/console/session`, {
+        method: 'DELETE',
+        headers: { cookie, 'x-csrf-token': csrfToken },
+      });
+      if (!revoke.ok && revoke.status !== 401) {
+        const revokeBody = await revoke.text();
+        throw new Error(`临时 console session 回收失败：${revoke.status} ${revokeBody.slice(0, 500)}`.trim());
+      }
+    },
+  };
+}
+
 module.exports = {
   loadRootCredentials,
   openTemporaryConsoleSession,
+  openTemporaryOwnerSession,
 };

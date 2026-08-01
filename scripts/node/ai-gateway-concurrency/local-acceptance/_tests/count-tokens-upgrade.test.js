@@ -13,6 +13,7 @@ const {
 } = require('../count-tokens-upgrade');
 const {
   APPLICATION_ID,
+  loadRunManifest,
   reserveOwnedPort,
   runCountTokensUpgrade,
   verifiedSourceCwd,
@@ -147,6 +148,11 @@ test('Root #1556 F09 structural contract owns frozen services and preserves both
   for (const field of ['database_url', 'provider_secret_master_key', 'provider_install_root']) {
     assert.ok(Object.hasOwn(example.environment, field), `run environment omitted ${field}`);
   }
+  assert.equal(example.schema_version, '1flowbase.local-count-tokens-upgrade-run/v4');
+  assert.equal(example.environment.owner_username, 'ONEFLOWBASE_OWNER_USERNAME');
+  assert.equal(example.environment.owner_password, 'ONEFLOWBASE_OWNER_PASSWORD');
+  assert.equal(Object.hasOwn(example.environment, 'owner_cookie'), false);
+  assert.equal(Object.hasOwn(example.environment, 'owner_csrf'), false);
   assert.equal(Object.hasOwn(example, 'endpoints'), false);
   assert.match(source, /api-server cwd must be main_source_root\/api\/apps\/api-server/u);
   assert.match(source, /cwd: manifest\.apiServerCwd/u);
@@ -162,6 +168,20 @@ test('Root #1556 F09 missing configuration is typed unavailable beside cleanup f
   assert.equal(result.primary_error.code, 'configuration_unavailable');
   assert.equal(result.cleanup.status, 'fail');
   assert.equal(result.cleanup.errors[0].message, 'cleanup fixture');
+});
+
+test('Root #1556 F11 explicitly rejects the shared-session v3 manifest', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'count-tokens-v3-manifest-'));
+  try {
+    const manifestPath = path.join(root, 'run.json');
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      schema_version: '1flowbase.local-count-tokens-upgrade-run/v3',
+      environment: { owner_cookie: 'OWNER_COOKIE', owner_csrf: 'OWNER_CSRF' },
+    }));
+    assert.throws(() => loadRunManifest(manifestPath), /schema mismatch/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('Root #1556 F09 executable runner performs the owned upgrade sequence without recording secrets', async () => {
@@ -186,7 +206,7 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
     fs.mkdirSync(apiServerCwd, { recursive: true });
     fs.writeFileSync(mainSourceReceipt, `${mainSourceSha}\n`);
     fs.writeFileSync(manifestPath, JSON.stringify({
-      schema_version: '1flowbase.local-count-tokens-upgrade-run/v3',
+      schema_version: '1flowbase.local-count-tokens-upgrade-run/v4',
       application_id: APPLICATION_ID,
       main_source_sha: mainSourceSha,
       main_source_receipt: mainSourceReceipt,
@@ -203,7 +223,7 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       model: 'deepseek-fixture',
       environment: {
         application_api_key: 'APP_KEY', application_api_key_id: 'APP_KEY_ID',
-        owner_cookie: 'OWNER_COOKIE', owner_csrf: 'OWNER_CSRF',
+        owner_username: 'OWNER_USERNAME', owner_password: 'OWNER_PASSWORD',
         database_url: 'DATABASE_URL', provider_secret_master_key: 'PROVIDER_MASTER_KEY',
         provider_install_root: 'PROVIDER_INSTALL_ROOT',
       },
@@ -254,15 +274,32 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
       JSON.stringify({ type: 'result', is_error: false, terminal_reason: 'completed', result: 'ok' }),
     ].join('\n');
     const spawned = [];
+    const lifecycle = [];
+    let attachedSession = null;
+    const sourceEnv = {
+      APP_KEY: 'secret-app-key', APP_KEY_ID: 'key-id',
+      OWNER_USERNAME: 'root', OWNER_PASSWORD: 'secret-owner-password',
+      DATABASE_URL: 'postgres://owner:1flowbase@127.0.0.1:35432/dev',
+      PROVIDER_MASTER_KEY: 'secret-provider-master-key',
+      PROVIDER_INSTALL_ROOT: root,
+    };
+    const temporarySession = {
+      cookie: 'flowbase_console_session=secret-cookie',
+      csrfToken: 'secret-csrf',
+      async dispose() { lifecycle.push('owner-session-disposed'); },
+    };
     const result = await runCountTokensUpgrade({ manifest: manifestPath }, {
-      sourceEnv: {
-        APP_KEY: 'secret-app-key', APP_KEY_ID: 'key-id',
-        OWNER_COOKIE: 'flowbase_console_session=secret-cookie', OWNER_CSRF: 'secret-csrf',
-        DATABASE_URL: 'postgres://owner:secret@127.0.0.1:35432/dev',
-        PROVIDER_MASTER_KEY: 'secret-provider-master-key',
-        PROVIDER_INSTALL_ROOT: root,
+      sourceEnv,
+      OwnerHttpClient: class extends Owner {
+        attachSession(cookie, csrfToken) { attachedSession = { cookie, csrfToken }; }
       },
-      OwnerHttpClient: Owner,
+      openTemporaryOwnerSession: async (options) => {
+        lifecycle.push('owner-session-opened');
+        assert.equal(options.apiBaseUrl, 'http://127.0.0.1:41732');
+        assert.equal(options.account, 'root');
+        assert.equal(options.password, 'secret-owner-password');
+        return temporarySession;
+      },
       fetchImpl: async () => new Response('{"input_tokens":17}', { status: 200 }),
       reserveLoopbackPort: (() => {
         const ports = [41731, 41732];
@@ -274,19 +311,25 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
         return { child: { binary, exitCode: null } };
       },
       waitForHealth: async () => {},
-      stopOwned: async () => {},
+      stopOwned: async () => { lifecycle.push('process-stopped'); },
       executeTmux: async () => ({ exit_code: 0, timed_out: false, stdout, stderr: '' }),
       registry: {
         addTempRoot(value) { return value; },
-        async close() { fs.rmSync(root, { recursive: true, force: true }); return []; },
+        async close() { lifecycle.push('resources-closed'); return []; },
       },
     });
     assert.equal(result.status, 'pass');
     const encoded = JSON.stringify(result);
     assert.doesNotMatch(
       encoded,
-      /secret-app-key|secret-cookie|secret-csrf|secret-provider-master-key|owner:secret/u,
+      /secret-app-key|secret-owner-password|secret-cookie|secret-csrf|secret-provider-master-key|owner:1flowbase/u,
     );
+    assert.deepEqual(attachedSession, {
+      cookie: 'flowbase_console_session=secret-cookie',
+      csrfToken: 'secret-csrf',
+    });
+    assert.equal(lifecycle[0], 'owner-session-opened');
+    assert.ok(lifecycle.indexOf('owner-session-disposed') < lifecycle.indexOf('process-stopped'));
     assert.equal(result.evidence.publication_id, 'publication-1');
     assert.equal(result.evidence.count_tokens.input_tokens, 17);
     assert.equal(result.evidence.runtime.main_source_sha, mainSourceSha);
@@ -295,6 +338,23 @@ test('Root #1556 F09 executable runner performs the owned upgrade sequence witho
     assert.equal(result.evidence.runtime.api_server_cwd, apiServerCwd);
     assert.equal(spawned.find((row) => row.binary === apiServer).cwd, apiServerCwd);
     assert.notEqual(spawned.find((row) => row.binary === pluginRunner).cwd, apiServerCwd);
+
+    const loginFailure = await runCountTokensUpgrade({ manifest: manifestPath }, {
+      sourceEnv,
+      git: (_sourceRoot, args) => args.includes('--show-toplevel') ? mainSourceRoot : mainSourceSha,
+      reserveLoopbackPort: (() => {
+        const ports = [41733, 41734];
+        return async () => ports.shift();
+      })(),
+      spawnOwned: () => ({ child: { exitCode: null } }),
+      waitForHealth: async () => {},
+      openTemporaryOwnerSession: async () => { throw new Error('owned login failed'); },
+      stopOwned: async () => { throw new Error('owned process cleanup failed'); },
+      registry: { addTempRoot(value) { return value; }, async close() { return []; } },
+    });
+    assert.equal(loginFailure.primary_error.message, 'owned login failed');
+    assert.equal(loginFailure.cleanup.status, 'fail');
+    assert.match(loginFailure.cleanup.errors[0].message, /owned process cleanup failed/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

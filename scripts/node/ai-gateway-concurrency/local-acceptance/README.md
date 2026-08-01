@@ -10,10 +10,14 @@ ephemeral loopback ports. It connects them to the configured development databas
 only to reuse the fixed application/publication data. Shared API processes are
 never proxied, reused, stopped, or restarted.
 
-The runner reuses an existing owner session and application API key from named
-environment variables, and uploads a local DeepSeek package through the
-repository-owned plugin install action. It never builds, checks out, publishes,
-or downloads anything.
+After the owned API is healthy, the runner uses owner username/password values
+from named environment variables to open a process-local temporary session via
+the repository-owned auth helper. It attaches that session to the owner client,
+reuses the named application API key, and uploads a local DeepSeek package
+through the repository-owned plugin install action. The session is revoked
+before the owned API stops, with revocation failures recorded independently from
+the primary result. The runner never builds, checks out, publishes, or downloads
+anything.
 
 Copy `count-tokens-upgrade.run.example.json`, replace its source receipt, binary
 paths/digests, and safe local paths, then export the seven named environment
@@ -31,7 +35,8 @@ rejected. The artifact is written beneath
 publication id, frozen binary paths/digests/source SHA/ports, CountTokens result,
 hashed conversation summaries, provenance,
 and independent primary/cleanup failures. It never contains the application
-key, owner cookie, CSRF token, or raw conversation text.
+key, owner password, temporary cookie, CSRF token, database credentials,
+provider master key, or raw conversation text.
 
 The api-server child runs from the validated source cwd so its normal development
 `.env` loading remains available; explicit manifest-selected environment values

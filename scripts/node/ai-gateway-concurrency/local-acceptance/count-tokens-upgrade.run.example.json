@@ -1,5 +1,5 @@
 {
-  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v2",
+  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v4",
   "application_id": "019f5443-5b8e-74b2-90e3-c867dbddd37b",
   "main_source_sha": "replace-with-40-character-lowercase-sha",
   "main_source_receipt": "/absolute/path/to/tmp/test-governance/ai-gateway-quality-gate/main-source-sha.log",
@@ -19,8 +19,8 @@
   "environment": {
     "application_api_key": "ONEFLOWBASE_APPLICATION_API_KEY",
     "application_api_key_id": "ONEFLOWBASE_APPLICATION_API_KEY_ID",
-    "owner_cookie": "ONEFLOWBASE_OWNER_COOKIE",
-    "owner_csrf": "ONEFLOWBASE_OWNER_CSRF",
+    "owner_username": "ONEFLOWBASE_OWNER_USERNAME",
+    "owner_password": "ONEFLOWBASE_OWNER_PASSWORD",
     "database_url": "ONEFLOWBASE_DATABASE_URL",
     "provider_secret_master_key": "ONEFLOWBASE_PROVIDER_SECRET_MASTER_KEY",
     "provider_install_root": "ONEFLOWBASE_PROVIDER_INSTALL_ROOT"
