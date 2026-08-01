@@ -868,6 +868,8 @@
     "plugin_install_path": "插件安装路径",
     "host_extension_path": "宿主扩展路径",
     "extension_center": "扩展中心",
+    "organization": "组织",
+    "artifact_id": "产物标识",
     "extension_operation_submitted": "扩展操作已提交",
     "extension_operation_failed": "扩展操作失败",
     "update_extension": "更新扩展",

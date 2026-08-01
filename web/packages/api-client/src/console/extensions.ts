@@ -27,19 +27,24 @@ export interface ConsoleExtensionRiskChallenge {
 }
 
 export interface ConsoleInstalledExtension {
+  id: string;
   category: ConsoleExtensionCategory;
-  artifact_kind: string | null;
+  organization: string;
   artifact_id: string;
-  display_name: string;
-  description: string | null;
-  current_version: string;
-  system_requirements: string | null;
-  installation_status: string;
+  version: string;
+  node_id: string;
   source: string;
   trust: string;
   warnings: ConsoleExtensionWarning[];
-  installation: { id: string };
-  local_artifact: { installed_path: string | null };
+  local_path: string;
+  checksum: string;
+  signature_status: string;
+  signature_algorithm: string | null;
+  signing_key_id: string | null;
+  status: string;
+  installed_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ConsoleInstalledExtensionPage {
@@ -108,6 +113,19 @@ export interface ConsoleExtensionCompatibilityOverride {
   acknowledged_minimum_host_version: string;
 }
 
+export interface ConsoleExtensionInstallResponse {
+  installation: ConsoleInstalledExtension;
+  local_artifact_was_present: boolean;
+  node_plugin_installation_id: string | null;
+}
+
+export interface ConsoleExtensionUploadMetadata {
+  category: ConsoleExtensionCategory;
+  organization?: string;
+  artifact_id?: string;
+  version?: string;
+}
+
 interface ConsoleExtensionRiskChallengeErrorBody {
   status: number;
   code: 'extension_risk_confirmation_required';
@@ -166,14 +184,13 @@ export function installConsoleExtension(
   input: {
     category: ConsoleExtensionCategory;
     artifact_id: string;
-    artifact_kind: string | null;
     compatibility_override?: ConsoleExtensionCompatibilityOverride;
     risk_override?: ConsoleExtensionRiskOverride;
   },
   csrfToken: string,
   update = false
 ) {
-  return apiFetch<unknown>({
+  return apiFetch<ConsoleExtensionInstallResponse>({
     path: `${BASE}/${update ? 'update' : 'install'}`,
     method: 'POST',
     body: input,
@@ -183,7 +200,7 @@ export function installConsoleExtension(
 
 export function uploadConsoleExtension(
   file: File,
-  category: ConsoleExtensionCategory,
+  metadata: ConsoleExtensionUploadMetadata,
   csrfToken: string,
   overrides: {
     compatibility_override?: ConsoleExtensionCompatibilityOverride;
@@ -192,7 +209,16 @@ export function uploadConsoleExtension(
 ) {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('category', category);
+  formData.append('category', metadata.category);
+  if (metadata.organization) {
+    formData.append('organization', metadata.organization);
+  }
+  if (metadata.artifact_id) {
+    formData.append('artifact_id', metadata.artifact_id);
+  }
+  if (metadata.version) {
+    formData.append('version', metadata.version);
+  }
   if (overrides.compatibility_override) {
     formData.append(
       'compatibility_override',
@@ -203,7 +229,7 @@ export function uploadConsoleExtension(
     formData.append('risk_override', JSON.stringify(overrides.risk_override));
   }
 
-  return apiFetch<unknown>({
+  return apiFetch<ConsoleExtensionInstallResponse>({
     path: `${BASE}/install-upload`,
     method: 'POST',
     rawBody: formData,

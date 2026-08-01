@@ -59,7 +59,6 @@ describe('extension center client contract', () => {
         {
           category: 'runtime-extensions',
           artifact_id: '1flowbase.openai',
-          artifact_kind: 'model_provider',
           compatibility_override: {
             reason: 'below_minimum_host_version',
             acknowledged_current_host_version: '0.3.1',
@@ -94,12 +93,22 @@ describe('extension center client contract', () => {
   test('Root-AC-006 uploads a package and retries with exact challenge overrides', async () => {
     const file = new File(['extension'], 'extension.1flowbasepkg');
     await expect(
-      uploadConsoleExtension(file, 'runtime-extensions', 'csrf', {
-        risk_override: {
-          reason: 'user_confirmed',
-          acknowledged_warnings: ['signature_invalid']
+      uploadConsoleExtension(
+        file,
+        {
+          category: 'agent-flow',
+          organization: '@taichuy',
+          artifact_id: 'sample-flow',
+          version: '1.2.0'
+        },
+        'csrf',
+        {
+          risk_override: {
+            reason: 'user_confirmed',
+            acknowledged_warnings: ['signature_invalid']
+          }
         }
-      })
+      )
     ).resolves.toMatchObject({
       path: '/api/console/settings/extension-center/install-upload',
       method: 'POST',
@@ -109,9 +118,12 @@ describe('extension center client contract', () => {
     const request = vi.mocked(transport.apiFetch).mock.calls.at(-1)?.[0];
     expect(request?.rawBody).toBeInstanceOf(FormData);
     expect((request?.rawBody as FormData).get('file')).toBe(file);
-    expect((request?.rawBody as FormData).get('category')).toBe(
-      'runtime-extensions'
+    expect((request?.rawBody as FormData).get('category')).toBe('agent-flow');
+    expect((request?.rawBody as FormData).get('organization')).toBe('@taichuy');
+    expect((request?.rawBody as FormData).get('artifact_id')).toBe(
+      'sample-flow'
     );
+    expect((request?.rawBody as FormData).get('version')).toBe('1.2.0');
     expect((request?.rawBody as FormData).get('risk_override')).toBe(
       JSON.stringify({
         reason: 'user_confirmed',

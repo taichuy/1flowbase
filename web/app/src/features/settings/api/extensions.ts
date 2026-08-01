@@ -10,6 +10,7 @@ import {
   type ConsoleExtensionCategory,
   type ConsoleExtensionCompatibilityOverride,
   type ConsoleExtensionRiskOverride,
+  type ConsoleExtensionUploadMetadata,
   type ConsoleInstalledExtension
 } from '@1flowbase/api-client';
 
@@ -71,7 +72,6 @@ export function installSettingsExtension(
     {
       category: entry.category,
       artifact_id: entry.id,
-      artifact_kind: entry.artifact_kind,
       ...overrides
     },
     csrfToken,
@@ -81,11 +81,11 @@ export function installSettingsExtension(
 
 export function uploadSettingsExtension(
   file: File,
-  category: SettingsExtensionCategory,
+  metadata: ConsoleExtensionUploadMetadata,
   csrfToken: string,
   overrides: Parameters<typeof uploadConsoleExtension>[3] = {}
 ) {
-  return uploadConsoleExtension(file, category, csrfToken, overrides);
+  return uploadConsoleExtension(file, metadata, csrfToken, overrides);
 }
 
 export { getConsoleExtensionRiskChallenge as getSettingsExtensionRiskChallenge };

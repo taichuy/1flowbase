@@ -868,6 +868,8 @@
     "plugin_install_path": "Plugin install path",
     "host_extension_path": "Host extension path",
     "extension_center": "Extension Center",
+    "organization": "Organization",
+    "artifact_id": "Artifact ID",
     "extension_operation_submitted": "Extension operation submitted",
     "extension_operation_failed": "Extension operation failed",
     "update_extension": "Update extension",

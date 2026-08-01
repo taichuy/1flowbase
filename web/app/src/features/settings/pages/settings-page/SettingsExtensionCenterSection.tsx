@@ -8,6 +8,8 @@ import {
   Drawer,
   Empty,
   Flex,
+  Form,
+  Input,
   List,
   Modal,
   Select,
@@ -53,7 +55,16 @@ type ExtensionOperation =
       entry: SettingsExtensionCatalogEntry;
       update: boolean;
     }
-  | { kind: 'upload'; file: File; category: SettingsExtensionCategory };
+  | {
+      kind: 'upload';
+      file: File;
+      metadata: {
+        category: SettingsExtensionCategory;
+        organization?: string;
+        artifact_id?: string;
+        version?: string;
+      };
+    };
 
 const CATEGORIES: SettingsExtensionCategory[] = [
   'agent-flow',
@@ -65,7 +76,7 @@ const CATEGORIES: SettingsExtensionCategory[] = [
 ];
 
 function isInstalledRow(row: ExtensionRow): row is SettingsInstalledExtension {
-  return 'installation' in row;
+  return 'node_id' in row;
 }
 
 function extensionId(row: ExtensionRow) {
@@ -73,21 +84,27 @@ function extensionId(row: ExtensionRow) {
 }
 
 function extensionName(row: ExtensionRow) {
-  return isInstalledRow(row) ? row.display_name : row.name;
+  return isInstalledRow(row) ? row.artifact_id : row.name;
 }
 
 function extensionVersion(row: ExtensionRow) {
-  return isInstalledRow(row) ? row.current_version : row.version;
+  return row.version;
 }
 
 function extensionHostRequirement(row: ExtensionRow) {
-  return isInstalledRow(row)
-    ? row.system_requirements
-    : row.host_version_requirement;
+  return isInstalledRow(row) ? null : row.host_version_requirement;
 }
 
 function extensionSource(row: ExtensionRow) {
   return isInstalledRow(row) ? row.source : row.catalog_source;
+}
+
+function extensionDescription(row: ExtensionRow) {
+  return isInstalledRow(row) ? null : row.description;
+}
+
+function extensionInstallationStatus(row: ExtensionRow) {
+  return isInstalledRow(row) ? row.status : row.installation_status;
 }
 
 function extensionKey(row: ExtensionRow) {
@@ -114,6 +131,9 @@ export function SettingsExtensionCenterSection() {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [uploadCategory, setUploadCategory] =
     useState<SettingsExtensionCategory>();
+  const [uploadOrganization, setUploadOrganization] = useState('');
+  const [uploadArtifactId, setUploadArtifactId] = useState('');
+  const [uploadVersion, setUploadVersion] = useState('');
 
   const installedQuery = useQuery({
     queryKey: settingsInstalledExtensionsQueryKey(cursor),
@@ -175,7 +195,7 @@ export function SettingsExtensionCenterSection() {
               items: entries.map((entry) => ({
                 artifact_id: extensionId(entry),
                 current_version: isInstalledRow(entry)
-                  ? entry.current_version
+                  ? entry.version
                   : entry.current_version!
               }))
             },
@@ -210,14 +230,14 @@ export function SettingsExtensionCenterSection() {
       overrides = {}
     }: {
       operation: ExtensionOperation;
-      overrides?: Parameters<typeof uploadSettingsExtension>[2];
+      overrides?: Parameters<typeof uploadSettingsExtension>[3];
     }) => {
       if (!csrfToken) throw new Error('csrf token required');
       try {
         if (operation.kind === 'upload') {
           await uploadSettingsExtension(
             operation.file,
-            operation.category,
+            operation.metadata,
             csrfToken,
             overrides
           );
@@ -286,6 +306,9 @@ export function SettingsExtensionCenterSection() {
         setUploadOpen(false);
         setUploadFiles([]);
         setUploadCategory(undefined);
+        setUploadOrganization('');
+        setUploadArtifactId('');
+        setUploadVersion('');
       }
       await queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
@@ -344,8 +367,8 @@ export function SettingsExtensionCenterSection() {
     },
     {
       title: t('auto.description'),
-      dataIndex: 'description',
       key: 'description',
+      render: (_, row) => extensionDescription(row) ?? '—',
       ellipsis: true
     },
     {
@@ -360,8 +383,8 @@ export function SettingsExtensionCenterSection() {
     },
     {
       title: t('auto.installation'),
-      dataIndex: 'installation_status',
-      key: 'installation_status'
+      key: 'installation_status',
+      render: (_, row) => extensionInstallationStatus(row)
     },
     {
       title: t('auto.source'),
@@ -455,6 +478,19 @@ export function SettingsExtensionCenterSection() {
     activeTab === 'installed'
       ? installedQuery.data?.next_cursor
       : catalogQuery.data?.next_cursor;
+  const uploadNeedsIdentity =
+    uploadCategory === 'agent-flow' || uploadCategory === 'i18n';
+  const uploadNeedsVersion = uploadCategory === 'agent-flow';
+  const uploadFile = uploadFiles[0]?.originFileObj;
+  const uploadIdentityReady =
+    !uploadNeedsIdentity ||
+    (uploadOrganization.trim().length > 0 &&
+      uploadArtifactId.trim().length > 0 &&
+      (!uploadNeedsVersion || uploadVersion.trim().length > 0));
+  const uploadReady =
+    Boolean(uploadCategory) &&
+    uploadFile instanceof File &&
+    uploadIdentityReady;
 
   return (
     <SettingsSectionSurface heightMode="fill">
@@ -526,7 +562,7 @@ export function SettingsExtensionCenterSection() {
               {selected.category}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.description')}>
-              {selected.description ?? '—'}
+              {extensionDescription(selected) ?? '—'}
             </Descriptions.Item>
             <Descriptions.Item label={t('auto.current_version')}>
               {extensionVersion(selected)}
@@ -551,21 +587,41 @@ export function SettingsExtensionCenterSection() {
         cancelText={t('auto.cancel')}
         confirmLoading={operationMutation.isPending}
         okButtonProps={{
-          disabled:
-            !uploadCategory || !(uploadFiles[0]?.originFileObj instanceof File)
+          disabled: !uploadReady
         }}
         onCancel={() => {
           setUploadOpen(false);
           setUploadFiles([]);
           setUploadCategory(undefined);
+          setUploadOrganization('');
+          setUploadArtifactId('');
+          setUploadVersion('');
         }}
         onOk={() => {
-          const file = uploadFiles[0]?.originFileObj;
-          if (!(file instanceof File) || !uploadCategory) {
+          if (
+            !(uploadFile instanceof File) ||
+            !uploadCategory ||
+            !uploadReady
+          ) {
             message.warning(t('auto.select_plug_package_first'));
             return;
           }
-          submitOperation({ kind: 'upload', file, category: uploadCategory });
+          submitOperation({
+            kind: 'upload',
+            file: uploadFile,
+            metadata: {
+              category: uploadCategory,
+              ...(uploadNeedsIdentity
+                ? {
+                    organization: uploadOrganization.trim(),
+                    artifact_id: uploadArtifactId.trim(),
+                    ...(uploadVersion.trim()
+                      ? { version: uploadVersion.trim() }
+                      : {})
+                  }
+                : {})
+            }
+          });
         }}
       >
         <Typography.Paragraph type="secondary">
@@ -580,9 +636,45 @@ export function SettingsExtensionCenterSection() {
             label: category,
             value: category
           }))}
-          onChange={setUploadCategory}
+          onChange={(category) => {
+            setUploadCategory(category);
+            setUploadOrganization('');
+            setUploadArtifactId('');
+            setUploadVersion('');
+          }}
           style={{ width: '100%', marginBottom: 16 }}
         />
+        {uploadNeedsIdentity ? (
+          <Form layout="vertical" component={false}>
+            <Form.Item label={t('auto.organization')} required>
+              <Input
+                aria-label={t('auto.organization')}
+                value={uploadOrganization}
+                onChange={(event) =>
+                  setUploadOrganization(event.currentTarget.value)
+                }
+              />
+            </Form.Item>
+            <Form.Item label={t('auto.artifact_id')} required>
+              <Input
+                aria-label={t('auto.artifact_id')}
+                value={uploadArtifactId}
+                onChange={(event) =>
+                  setUploadArtifactId(event.currentTarget.value)
+                }
+              />
+            </Form.Item>
+            <Form.Item label={t('auto.version')} required={uploadNeedsVersion}>
+              <Input
+                aria-label={t('auto.version')}
+                value={uploadVersion}
+                onChange={(event) =>
+                  setUploadVersion(event.currentTarget.value)
+                }
+              />
+            </Form.Item>
+          </Form>
+        ) : null}
         <Upload
           maxCount={1}
           fileList={uploadFiles}

@@ -42,19 +42,24 @@ import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { SettingsExtensionCenterSection } from '../pages/settings-page/SettingsExtensionCenterSection';
 
 const installedEntry = {
+  id: 'extension-installation-1',
   category: 'runtime-extensions' as const,
-  artifact_kind: 'model_provider',
+  organization: '@taichuy',
   artifact_id: '@taichuy/openai',
-  display_name: 'OpenAI Provider',
-  description: 'Installed provider extension',
-  current_version: '1.0.0',
-  system_requirements: '>=0.3.0',
-  installation_status: 'installed',
+  version: '1.0.0',
+  node_id: 'node-1',
   source: 'official',
   trust: 'official',
   warnings: [],
-  installation: { id: 'installation-1' },
-  local_artifact: { installed_path: '/api/plugins/openai' }
+  local_path: '/api/plugins/openai',
+  checksum: 'sha256:installed',
+  signature_status: 'valid',
+  signature_algorithm: 'ed25519',
+  signing_key_id: 'official-key',
+  status: 'installed',
+  installed_by: 'user-1',
+  created_at: '2026-08-01T10:00:00Z',
+  updated_at: '2026-08-01T10:00:00Z'
 };
 
 const catalogEntry = {
@@ -166,7 +171,7 @@ describe('SettingsExtensionCenterSection', () => {
   test('Root-AC-002/003 renders seven tabs, loads installed inventory first, and checks only visible pages', async () => {
     renderSection();
 
-    expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
+    expect(await screen.findByText('@taichuy/openai')).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(7);
     expect(
       screen.getByRole('columnheader', { name: '来源' })
@@ -211,7 +216,7 @@ describe('SettingsExtensionCenterSection', () => {
 
   test('Root-AC-004 resolves and performs an installed-row update instead of switching tabs', async () => {
     renderSection();
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole('row', { name: /@taichuy\/openai/ });
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     await waitFor(() => {
@@ -291,7 +296,7 @@ describe('SettingsExtensionCenterSection', () => {
     );
     const view = renderSection();
 
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole('row', { name: /@taichuy\/openai/ });
     await waitFor(() => {
       expect(
         within(row).getByRole('button', { name: '更新' }).closest('span')
@@ -319,11 +324,117 @@ describe('SettingsExtensionCenterSection', () => {
     await waitFor(() => {
       expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
         file,
-        'runtime-extensions',
+        { category: 'runtime-extensions' },
         'csrf-123',
         {}
       );
     });
     view.unmount();
   });
+
+  test('Root-AC-004 keeps install available for all six catalog categories without artifact_kind', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
+      async (category: string) => ({
+        category,
+        catalog_page: 'page-1',
+        catalog_page_number: 1,
+        catalog_page_checksum: `sha256:${category}`,
+        catalog_page_locator: `${category}/catalog/v1/pages/1.json`,
+        limit: 20,
+        next_cursor: null,
+        total_entries: 1,
+        entries: [
+          {
+            ...catalogEntry,
+            category,
+            id: `${category}.sample`,
+            name: `${category} Extension`,
+            artifact_kind: null,
+            current_version: null,
+            installation_status: 'not_installed'
+          }
+        ]
+      })
+    );
+    renderSection();
+
+    for (const category of [
+      'agent-flow',
+      'capability-plugins',
+      'host-extensions',
+      'i18n',
+      'mcp',
+      'runtime-extensions'
+    ]) {
+      fireEvent.click(screen.getByRole('tab', { name: category }));
+      const row = await screen.findByRole('row', {
+        name: new RegExp(`${category} Extension`)
+      });
+      expect(
+        within(row).getByRole('button', { name: '安装' })
+      ).toBeInTheDocument();
+    }
+  });
+
+  test.each([
+    {
+      category: 'agent-flow' as const,
+      version: '1.2.0',
+      expectedVersion: '1.2.0'
+    },
+    {
+      category: 'i18n' as const,
+      version: '',
+      expectedVersion: undefined
+    }
+  ])(
+    'Root-AC-006 submits explicit $category upload identity without filename inference',
+    async ({ category, version, expectedVersion }) => {
+      renderSection();
+      fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
+      const uploadDialog = await screen.findByRole('dialog');
+      fireEvent.mouseDown(
+        within(uploadDialog).getByRole('combobox', { name: '类型' })
+      );
+      fireEvent.click(await screen.findByRole('option', { name: category }));
+
+      fireEvent.change(
+        within(uploadDialog).getByRole('textbox', { name: '组织' }),
+        { target: { value: '@taichuy' } }
+      );
+      fireEvent.change(
+        within(uploadDialog).getByRole('textbox', { name: '产物标识' }),
+        { target: { value: 'sample-extension' } }
+      );
+      if (version) {
+        fireEvent.change(
+          within(uploadDialog).getByRole('textbox', { name: '版本' }),
+          { target: { value: version } }
+        );
+      }
+      const file = new File(['extension'], 'opaque-upload.bin');
+      fireEvent.change(uploadDialog.querySelector('input[type="file"]')!, {
+        target: { files: [file] }
+      });
+      fireEvent.click(
+        within(uploadDialog).getByRole('button', { name: '上传并安装' })
+      );
+      const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+      await confirmation?.onOk?.();
+
+      await waitFor(() => {
+        expect(extensionsApi.uploadSettingsExtension).toHaveBeenCalledWith(
+          file,
+          {
+            category,
+            organization: '@taichuy',
+            artifact_id: 'sample-extension',
+            ...(expectedVersion ? { version: expectedVersion } : {})
+          },
+          'csrf-123',
+          {}
+        );
+      });
+    }
+  );
 });
