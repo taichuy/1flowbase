@@ -1,14 +1,17 @@
 import { useCallback, useMemo, useReducer, type SetStateAction } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Alert, Layout } from 'antd';
+import { Alert, Layout, Modal } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { ModelProviderCatalogPanel } from '../../components/model-providers/ModelProviderCatalogPanel';
 import { ModelProviderInstanceDrawer } from '../../components/model-providers/ModelProviderInstanceDrawer';
 import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
-import { OfficialPluginInstallPanel } from '../../components/model-providers/OfficialPluginInstallPanel';
+import {
+  confirmOfficialPluginUpgrade,
+  OfficialPluginInstallPanel
+} from '../../components/model-providers/OfficialPluginInstallPanel';
 import { PluginUploadInstallModal } from '../../components/model-providers/PluginUploadInstallModal';
 import {
   settingsModelProviderCatalogQueryKey,
@@ -16,8 +19,10 @@ import {
   settingsModelProviderOptionsQueryKey
 } from '../../api/model-providers';
 import {
+  fetchSettingsOfficialPluginCatalog,
   settingsOfficialPluginsQueryKey,
-  settingsPluginFamiliesQueryKey
+  settingsPluginFamiliesQueryKey,
+  type SettingsPluginFamilyEntry
 } from '../../api/plugins';
 import '../../components/model-providers/model-provider-panel.css';
 import {
@@ -161,6 +166,7 @@ export function SettingsModelProvidersSection({
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
+  const [upgradeModal, upgradeModalContextHolder] = Modal.useModal();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [sectionState, dispatchSectionState] = useReducer(
     modelProviderSectionReducer,
@@ -366,8 +372,77 @@ export function SettingsModelProvidersSection({
         }
       : null);
 
+  async function requestFamilyUpgrade(family: SettingsPluginFamilyEntry) {
+    let officialEntry =
+      officialCatalogEntries.find(
+        (entry) =>
+          entry.provider_code === family.provider_code &&
+          entry.latest_version === family.latest_version
+      ) ??
+      officialCatalogEntries.find(
+        (entry) => entry.provider_code === family.provider_code
+      );
+
+    if (!officialEntry) {
+      try {
+        const catalog = await queryClient.fetchQuery({
+          queryKey: [
+            ...settingsOfficialPluginsQueryKey,
+            'upgrade-entry',
+            family.provider_code
+          ],
+          queryFn: () =>
+            fetchSettingsOfficialPluginCatalog({
+              q: family.provider_code,
+              limit: 20
+            }),
+          staleTime: 30_000
+        });
+        officialEntry =
+          catalog.entries.find(
+            (entry) =>
+              entry.provider_code === family.provider_code &&
+              entry.latest_version === family.latest_version
+          ) ??
+          catalog.entries.find(
+            (entry) => entry.provider_code === family.provider_code
+          );
+      } catch {
+        officialEntry = undefined;
+      }
+    }
+
+    if (!officialEntry) {
+      void upgradeModal.error({
+        title: i18nText(
+          'settings',
+          'auto.official_supplier_catalog_unavailable'
+        )
+      });
+      return;
+    }
+
+    confirmOfficialPluginUpgrade({
+      modal: upgradeModal,
+      entry: officialEntry,
+      family,
+      upgrading:
+        versionMutation.isPending &&
+        versionMutation.variables?.mode === 'upgrade' &&
+        versionMutation.variables.providerCode === family.provider_code,
+      onUpgradeLatest: (entry, compatibilityOverride) => {
+        versionMutation.mutate({
+          mode: 'upgrade',
+          providerCode: entry.provider_code,
+          compatibilityOverride
+        });
+      }
+    });
+  }
+
   return (
     <>
+      {upgradeModalContextHolder}
       <SettingsSectionSurface heightMode="fill" status={sectionStatus}>
         <div className="model-provider-panel">
           <Layout className="model-provider-panel__main">
@@ -384,6 +459,12 @@ export function SettingsModelProvidersSection({
                     ? versionMutation.variables.providerCode
                     : null
                 }
+                upgradingProviderCode={
+                  versionMutation.isPending &&
+                  versionMutation.variables.mode === 'upgrade'
+                    ? versionMutation.variables.providerCode
+                    : null
+                }
                 onViewInstances={(entry) => {
                   setInstanceModalState({
                     providerCode: entry.provider_code,
@@ -395,6 +476,9 @@ export function SettingsModelProvidersSection({
                     mode: 'create',
                     providerCode: entry.provider_code
                   });
+                }}
+                onUpgradeLatest={(entry) => {
+                  void requestFamilyUpgrade(entry);
                 }}
                 onSwitchVersion={(entry, installationId) => {
                   versionMutation.mutate({
