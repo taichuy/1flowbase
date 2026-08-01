@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 插件中心统一发现与类型化安装平衡方向
-summary: 用户确认在 Settings 侧边栏首位新增插件中心，统一发现插件、MCP 配置包和工作流模板，但保留各自安装与持久化生命周期；初始化内容采用打包时锁定、首次启动幂等应用。模型供应商插件的发现、上传、安装、更新检测和安装任务统一收口扩展中心，原管理页面继续负责供应商领域配置；来源与可信度分列，签名缺失或验签失败都只告警、允许确认后继续，本地产物存在时始终以本地为准且不得自动拉取远端修复或替换。
+summary: 用户确认扩展中心平衡方向并已建立线上两层 Issue Tree #1545：统一六类官方目录与分页 catalog、本地扩展真值与安装 inventory、类型化应用与非阻塞 bootstrap、扩展中心及模型供应商安装集中管理；来源与可信度分列，签名异常只告警，本地产物存在时不得自动远程修复或替换。
 keywords:
   - plugin-center
   - official-plugins
@@ -19,7 +19,7 @@ created_at: 2026-07-13 15
 updated_at: 2026-08-01 08
 last_verified_at: 2026-08-01 08
 decision_policy: verify_before_decision
-status: direction_approved_pending_catalog_and_bootstrap_contract
+status: issue_tree_ready
 scope:
   - web/app/src/features/settings
   - api/crates/access-control/src/settings_routes.rs
@@ -63,7 +63,11 @@ scope:
 - 产物下载到宿主 `api/plugins` 与 workspace 使用分层：宿主只安装一次；模型供应商实例、CapabilityPlugin 分配、MCP 导入、Agent Flow 创建与 i18n 激活继续由目标 workspace 的领域服务和权限控制。用户已确认该边界。
 - 模型供应商现有 `runtime-extensions/model-providers/<provider_id>/` 物理目录本阶段保持不动；新统一 catalog 只将其逻辑投影为 `organization=taichuy`，物理 organization 迁移若有需要必须另行版本化。
 
-## 待继续确认
+## 线上 Issue Tree
 
-- 插件中心统一 catalog 的字段、分页和各产物类型投影契约。
-- bootstrap profile、发行锁文件、首次启动幂等策略与已有用户内容冲突策略。
+- Root：[#1545 统一官方扩展仓库目录、扩展中心与本地安装生命周期](https://github.com/taichuy/1flowbase/issues/1545)
+- D1：[#1546 统一六类官方扩展目录与静态分页 Catalog](https://github.com/taichuy/1flowbase/issues/1546)
+- D2：[#1549 建立本地扩展真值、Catalog Gateway 与安装 Inventory](https://github.com/taichuy/1flowbase/issues/1549)
+- D3：[#1548 建立类型化应用与非阻塞默认扩展 Bootstrap](https://github.com/taichuy/1flowbase/issues/1548)
+- D4：[#1547 交付扩展中心并集中模型供应商插件安装管理](https://github.com/taichuy/1flowbase/issues/1547)
+- GitHub 原生 sub-issue 关系已建立，全部处于 `phase:ready`；后续以 Root 正文和 Control Ledger 为唯一计划真值。
