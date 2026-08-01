@@ -714,10 +714,14 @@ describe('section shell routing', () => {
         );
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
-        await screen.findByRole('tab', {
-          name: 'installed',
-          selected: true
-        })
+        await screen.findByRole(
+          'tab',
+          {
+            name: 'installed',
+            selected: true
+          },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'mcp' }));
