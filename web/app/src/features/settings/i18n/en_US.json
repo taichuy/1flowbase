@@ -882,6 +882,10 @@
     "update_check_failed": "Update status could not be determined",
     "install": "Install",
     "installed_extensions": "Installed extensions",
+    "installed_versions": "Installed versions",
+    "signature_status": "Signature status",
+    "checksum": "Checksum",
+    "local_path": "Local path",
     "no_extensions": "No extensions"
   }
 }

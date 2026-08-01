@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,19 +14,23 @@ import {
   Modal,
   Select,
   Space,
-  Table,
   Tabs,
   Tag,
   Tooltip,
   Typography,
   Upload,
   message,
-  type TableColumnsType,
   type UploadFile
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import {
+  DataTable,
+  DataTableColumnSettings,
+  type DataTableColumn
+} from '../../../../shared/ui/data-table/DataTable';
+import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
   checkSettingsExtensionUpdates,
   fetchSettingsExtensionCatalog,
@@ -108,7 +112,7 @@ function extensionInstallationStatus(row: ExtensionRow) {
 }
 
 function extensionKey(row: ExtensionRow) {
-  return `${row.category}:${extensionCatalogId(row)}`;
+  return extensionCatalogId(row);
 }
 
 export function SettingsExtensionCenterSection() {
@@ -119,7 +123,9 @@ export function SettingsExtensionCenterSection() {
     'installed' | SettingsExtensionCategory
   >('installed');
   const [cursor, setCursor] = useState<string>();
-  const [cursorHistory, setCursorHistory] = useState<string[]>([]);
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>(
+    []
+  );
   const [selected, setSelected] = useState<ExtensionRow | null>(null);
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {}
@@ -146,9 +152,17 @@ export function SettingsExtensionCenterSection() {
       activeTab === 'installed'
         ? ['settings', 'extension-center', 'catalog', 'inactive']
         : settingsExtensionCatalogQueryKey(activeTab, cursor),
-    queryFn: () => {
-      if (activeTab === 'installed') throw new Error('catalog tab required');
-      return fetchSettingsExtensionCatalog(activeTab, cursor);
+    queryFn: async () => {
+      const category = activeTab;
+      if (category === 'installed') throw new Error('catalog tab required');
+      const page = await fetchSettingsExtensionCatalog(category, cursor);
+      if (
+        page.category !== category ||
+        page.entries.some((entry) => entry.category !== category)
+      ) {
+        throw new Error('extension catalog category mismatch');
+      }
+      return page;
     },
     enabled: activeTab !== 'installed',
     retry: false
@@ -158,7 +172,9 @@ export function SettingsExtensionCenterSection() {
     () =>
       activeTab === 'installed'
         ? (installedQuery.data?.entries ?? [])
-        : (catalogQuery.data?.entries ?? []),
+        : catalogQuery.data?.category === activeTab
+          ? catalogQuery.data.entries
+          : [],
     [activeTab, catalogQuery.data?.entries, installedQuery.data?.entries]
   );
 
@@ -196,13 +212,16 @@ export function SettingsExtensionCenterSection() {
                 catalog_id: extensionCatalogId(entry),
                 current_version: isInstalledRow(entry)
                   ? entry.version
-                  : entry.current_version!
+                  : entry.current_version!,
+                installed_versions: isInstalledRow(entry)
+                  ? entry.installed_versions.map((version) => version.version)
+                  : [entry.current_version!]
               }))
             },
             csrfToken
           );
           return result.items.map(
-            (item) => [`${category}:${item.catalog_id}`, item.status] as const
+            (item) => [item.catalog_id, item.status] as const
           );
         } catch {
           return entries.map(
@@ -316,168 +335,212 @@ export function SettingsExtensionCenterSection() {
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
+  const runOperation = operationMutation.mutateAsync;
 
-  const submitOperation = (operation: ExtensionOperation) => {
-    Modal.confirm({
-      title:
-        operation.kind === 'upload'
-          ? t('auto.upload_plugin')
-          : operation.update
-            ? t('auto.update_extension')
-            : t('auto.install_extension'),
-      content: t('auto.extension_install_confirmation'),
-      okText: t('auto.confirm'),
-      cancelText: t('auto.cancel'),
-      onOk: () => operationMutation.mutateAsync({ operation })
-    });
-  };
+  const submitOperation = useCallback(
+    (operation: ExtensionOperation) => {
+      Modal.confirm({
+        title:
+          operation.kind === 'upload'
+            ? t('auto.upload_plugin')
+            : operation.update
+              ? t('auto.update_extension')
+              : t('auto.install_extension'),
+        content: t('auto.extension_install_confirmation'),
+        okText: t('auto.confirm'),
+        cancelText: t('auto.cancel'),
+        onOk: () => runOperation({ operation })
+      });
+    },
+    [runOperation, t]
+  );
 
-  const resolveInstalledUpdate = async (row: SettingsInstalledExtension) => {
-    const key = extensionKey(row);
-    setResolvingUpdateKey(key);
-    try {
-      const entry = await fetchSettingsExtensionCatalogEntry(
-        row.category,
-        row.catalog_id
-      );
-      submitOperation({ kind: 'catalog', entry, update: true });
-    } catch {
-      setUpdateStates((current) => ({
-        ...current,
-        [key]: 'unknown_error'
-      }));
-      message.error(t('auto.extension_operation_failed'));
-    } finally {
-      setResolvingUpdateKey(null);
-    }
-  };
+  const resolveInstalledUpdate = useCallback(
+    async (row: SettingsInstalledExtension) => {
+      const key = extensionKey(row);
+      setResolvingUpdateKey(key);
+      try {
+        const entry = await fetchSettingsExtensionCatalogEntry(
+          row.category,
+          row.catalog_id
+        );
+        submitOperation({ kind: 'catalog', entry, update: true });
+      } catch {
+        setUpdateStates((current) => ({
+          ...current,
+          [key]: 'unknown_error'
+        }));
+        message.error(t('auto.extension_operation_failed'));
+      } finally {
+        setResolvingUpdateKey(null);
+      }
+    },
+    [submitOperation, t]
+  );
 
-  const columns: TableColumnsType<ExtensionRow> = [
-    {
-      title: t('auto.name'),
-      key: 'name',
-      render: (_, row) => extensionName(row),
-      ellipsis: true
-    },
-    {
-      title: t('auto.kind'),
-      dataIndex: 'category',
-      key: 'category',
-      render: (value: string) => <Tag>{value}</Tag>
-    },
-    {
-      title: t('auto.description'),
-      key: 'description',
-      render: (_, row) => extensionDescription(row) ?? '—',
-      ellipsis: true
-    },
-    {
-      title: t('auto.current_version'),
-      key: 'version',
-      render: (_, row) => extensionVersion(row)
-    },
-    {
-      title: t('auto.system_requirements'),
-      key: 'host_version_requirement',
-      render: (_, row) => extensionHostRequirement(row) ?? '—'
-    },
-    {
-      title: t('auto.installation'),
-      key: 'installation_status',
-      render: (_, row) => extensionInstallationStatus(row)
-    },
-    {
-      title: t('auto.source'),
-      key: 'source',
-      render: (_, row) => extensionSource(row)
-    },
-    { title: t('auto.trust'), dataIndex: 'trust', key: 'trust' },
-    {
-      title: t('auto.operation'),
-      key: 'actions',
-      fixed: 'right',
-      render: (_, row) => {
-        const key = extensionKey(row);
-        const updateState = updateStates[key];
-        const action = isInstalledRow(row) ? (
-          <span data-update-state={updateState ?? 'unknown_error'}>
-            <Tooltip
-              title={
-                updateState === 'update_available'
-                  ? t('auto.update_available')
-                  : updateState === 'current'
-                    ? t('auto.currently_latest_version')
-                    : t('auto.update_check_failed')
-              }
-            >
+  const columns = useMemo<Array<DataTableColumn<ExtensionRow>>>(
+    () => [
+      {
+        title: t('auto.name'),
+        key: 'name',
+        width: 180,
+        render: (_, row) => extensionName(row),
+        ellipsis: true
+      },
+      {
+        title: t('auto.kind'),
+        dataIndex: 'category',
+        key: 'category',
+        width: 180,
+        render: (value) => <Tag>{String(value)}</Tag>
+      },
+      {
+        title: t('auto.description'),
+        key: 'description',
+        width: 280,
+        sizing: 'fill',
+        render: (_, row) => extensionDescription(row) ?? '—',
+        ellipsis: true
+      },
+      {
+        title: t('auto.current_version'),
+        key: 'version',
+        width: 130,
+        render: (_, row) => extensionVersion(row)
+      },
+      {
+        title: t('auto.system_requirements'),
+        key: 'host_version_requirement',
+        width: 160,
+        render: (_, row) => extensionHostRequirement(row) ?? '—'
+      },
+      {
+        title: t('auto.installation'),
+        key: 'installation_status',
+        width: 120,
+        render: (_, row) => extensionInstallationStatus(row)
+      },
+      {
+        title: t('auto.source'),
+        key: 'source',
+        width: 160,
+        render: (_, row) => extensionSource(row)
+      },
+      {
+        title: t('auto.trust'),
+        dataIndex: 'trust',
+        key: 'trust',
+        width: 120
+      },
+      {
+        title: t('auto.operation'),
+        key: 'actions',
+        width: 150,
+        minWidth: 150,
+        align: 'center',
+        render: (_, row) => {
+          const key = extensionKey(row);
+          const updateState = updateStates[key];
+          const action = isInstalledRow(row) ? (
+            <span data-update-state={updateState ?? 'unknown_error'}>
+              <Tooltip
+                title={
+                  updateState === 'update_available'
+                    ? t('auto.update_available')
+                    : updateState === 'current'
+                      ? t('auto.currently_latest_version')
+                      : t('auto.update_check_failed')
+                }
+              >
+                <Badge
+                  dot
+                  color={
+                    updateState === 'update_available'
+                      ? '#ffba00'
+                      : updateState === 'current'
+                        ? 'transparent'
+                        : '#fb565b'
+                  }
+                >
+                  <Button
+                    type="link"
+                    loading={resolvingUpdateKey === key}
+                    onClick={() => void resolveInstalledUpdate(row)}
+                  >
+                    {t('auto.update')}
+                  </Button>
+                </Badge>
+              </Tooltip>
+            </span>
+          ) : (
+            <span data-update-state={updateState ?? 'not_installed'}>
               <Badge
                 dot
                 color={
-                  updateState === 'update_available'
-                    ? '#ffba00'
-                    : updateState === 'current'
-                      ? 'transparent'
-                      : '#fb565b'
+                  row.installation_status === 'not_installed'
+                    ? 'transparent'
+                    : updateState === 'update_available'
+                      ? '#ffba00'
+                      : updateState === 'current'
+                        ? 'transparent'
+                        : '#fb565b'
                 }
               >
                 <Button
                   type="link"
-                  loading={resolvingUpdateKey === key}
-                  onClick={() => void resolveInstalledUpdate(row)}
+                  loading={operationMutation.isPending}
+                  onClick={() =>
+                    submitOperation({
+                      kind: 'catalog',
+                      entry: row,
+                      update: row.installation_status !== 'not_installed'
+                    })
+                  }
                 >
-                  {t('auto.update')}
+                  {row.installation_status === 'not_installed'
+                    ? t('auto.install')
+                    : t('auto.update')}
                 </Button>
               </Badge>
-            </Tooltip>
-          </span>
-        ) : (
-          <span data-update-state={updateState ?? 'not_installed'}>
-            <Badge
-              dot
-              color={
-                row.installation_status === 'not_installed'
-                  ? 'transparent'
-                  : updateState === 'update_available'
-                    ? '#ffba00'
-                    : updateState === 'current'
-                      ? 'transparent'
-                      : '#fb565b'
-              }
-            >
-              <Button
-                type="link"
-                loading={operationMutation.isPending}
-                onClick={() =>
-                  submitOperation({
-                    kind: 'catalog',
-                    entry: row,
-                    update: row.installation_status !== 'not_installed'
-                  })
-                }
-              >
-                {row.installation_status === 'not_installed'
-                  ? t('auto.install')
-                  : t('auto.update')}
+            </span>
+          );
+          return (
+            <Space size={4}>
+              {action}
+              <Button type="link" onClick={() => setSelected(row)}>
+                {t('auto.view')}
               </Button>
-            </Badge>
-          </span>
-        );
-        return (
-          <Space size={4}>
-            {action}
-            <Button type="link" onClick={() => setSelected(row)}>
-              {t('auto.view')}
-            </Button>
-          </Space>
-        );
+            </Space>
+          );
+        }
       }
-    }
-  ];
+    ],
+    [
+      operationMutation.isPending,
+      resolveInstalledUpdate,
+      resolvingUpdateKey,
+      submitOperation,
+      t,
+      updateStates
+    ]
+  );
+  const tableConfiguration = usePersistedDataTableConfiguration({
+    columns,
+    storageKey: 'settings.extension_center'
+  });
 
   const nextCursor =
     activeTab === 'installed'
       ? installedQuery.data?.next_cursor
       : catalogQuery.data?.next_cursor;
+  const totalEntries =
+    activeTab === 'installed'
+      ? (installedQuery.data?.total_entries ?? 0)
+      : (catalogQuery.data?.total_entries ?? 0);
+  const tableLoading =
+    activeTab === 'installed'
+      ? installedQuery.isLoading || installedQuery.isFetching
+      : catalogQuery.isLoading || catalogQuery.isFetching;
   const uploadNeedsIdentity =
     uploadCategory === 'agent-flow' || uploadCategory === 'i18n';
   const uploadNeedsVersion = uploadCategory === 'agent-flow';
@@ -497,15 +560,12 @@ export function SettingsExtensionCenterSection() {
       <Flex vertical gap={16}>
         <Tabs
           activeKey={activeTab}
-          tabBarExtraContent={
-            <Button onClick={() => setUploadOpen(true)}>
-              {t('auto.upload_plugin')}
-            </Button>
-          }
           onChange={(key) => {
             setActiveTab(key as typeof activeTab);
             setCursor(undefined);
             setCursorHistory([]);
+            setSelected(null);
+            setUpdateStates({});
           }}
           items={[
             { key: 'installed', label: t('auto.installed_extensions') },
@@ -515,68 +575,113 @@ export function SettingsExtensionCenterSection() {
             }))
           ]}
         />
-        <Table<ExtensionRow>
+        <DataTable<ExtensionRow>
           rowKey={(row) => extensionKey(row)}
           columns={columns}
+          configuration={tableConfiguration}
           dataSource={rows}
-          loading={installedQuery.isLoading || catalogQuery.isLoading}
-          locale={{
-            emptyText: <Empty description={t('auto.no_extensions')} />
-          }}
-          pagination={false}
-          scroll={{ x: 1280 }}
-        />
-        <Flex justify="end" gap={8}>
-          <Button
-            disabled={cursorHistory.length === 0}
-            onClick={() => {
-              const history = cursorHistory.slice(0, -1);
-              setCursor(history.at(-1));
-              setCursorHistory(history);
-            }}
-          >
-            {t('auto.previous_page')}
-          </Button>
-          <Button
-            disabled={!nextCursor}
-            onClick={() => {
+          emptyText={<Empty description={t('auto.no_extensions')} />}
+          loading={tableLoading}
+          toolbar={
+            <Flex justify="flex-end" gap={8} wrap>
+              <Button onClick={() => setUploadOpen(true)}>
+                {t('auto.upload_plugin')}
+              </Button>
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={tableConfiguration}
+              />
+            </Flex>
+          }
+          cursorPagination={{
+            currentPage: cursorHistory.length + 1,
+            hasPreviousPage: cursorHistory.length > 0,
+            hasNextPage: Boolean(nextCursor),
+            previousLabel: t('auto.previous_page'),
+            nextLabel: t('auto.next_page'),
+            total: totalEntries,
+            onPreviousPage: () => {
+              const previousCursor = cursorHistory.at(-1);
+              setCursor(previousCursor);
+              setCursorHistory((history) => history.slice(0, -1));
+            },
+            onNextPage: () => {
               if (!nextCursor) return;
-              setCursorHistory((history) => [...history, nextCursor]);
+              setCursorHistory((history) => [...history, cursor]);
               setCursor(nextCursor);
-            }}
-          >
-            {t('auto.next_page')}
-          </Button>
-        </Flex>
+            }
+          }}
+        />
       </Flex>
 
       <Drawer
         open={Boolean(selected)}
         title={selected ? extensionName(selected) : undefined}
-        width={420}
+        width={560}
         onClose={() => setSelected(null)}
       >
         {selected ? (
-          <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label={t('auto.kind')}>
-              {selected.category}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('auto.description')}>
-              {extensionDescription(selected) ?? '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('auto.current_version')}>
-              {extensionVersion(selected)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('auto.system_requirements')}>
-              {extensionHostRequirement(selected) ?? '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('auto.source')}>
-              {extensionSource(selected)}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('auto.trust')}>
-              {selected.trust}
-            </Descriptions.Item>
-          </Descriptions>
+          <Flex vertical gap={16}>
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label={t('auto.kind')}>
+                {selected.category}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('auto.description')}>
+                {extensionDescription(selected) ?? '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('auto.current_version')}>
+                {extensionVersion(selected)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('auto.system_requirements')}>
+                {extensionHostRequirement(selected) ?? '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('auto.source')}>
+                {extensionSource(selected)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('auto.trust')}>
+                {selected.trust}
+              </Descriptions.Item>
+            </Descriptions>
+            {isInstalledRow(selected) ? (
+              <List
+                bordered
+                header={
+                  <Typography.Text strong>
+                    {t('auto.installed_versions')}
+                  </Typography.Text>
+                }
+                dataSource={selected.installed_versions}
+                renderItem={(installedVersion) => (
+                  <List.Item>
+                    <Descriptions column={1} size="small">
+                      <Descriptions.Item label={t('auto.current_version')}>
+                        {installedVersion.version}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('auto.source')}>
+                        {installedVersion.source}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('auto.trust')}>
+                        {installedVersion.trust}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('auto.signature_status')}>
+                        {installedVersion.signature_status}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('auto.checksum')}>
+                        <Typography.Text copyable ellipsis>
+                          {installedVersion.checksum}
+                        </Typography.Text>
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('auto.local_path')}>
+                        <Typography.Text copyable ellipsis>
+                          {installedVersion.local_path}
+                        </Typography.Text>
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </List.Item>
+                )}
+              />
+            ) : null}
+          </Flex>
         ) : null}
       </Drawer>
 

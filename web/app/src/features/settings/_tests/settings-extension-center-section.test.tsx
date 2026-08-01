@@ -60,7 +60,41 @@ const installedEntry = {
   status: 'installed',
   installed_by: 'user-1',
   created_at: '2026-08-01T10:00:00Z',
-  updated_at: '2026-08-01T10:00:00Z'
+  updated_at: '2026-08-01T10:00:00Z',
+  installed_versions: [
+    {
+      id: 'extension-installation-1',
+      version: '1.0.0',
+      source: 'official',
+      trust: 'official',
+      warnings: [],
+      local_path: '/api/plugins/openai/1.0.0',
+      checksum: 'sha256:installed',
+      signature_status: 'valid',
+      signature_algorithm: 'ed25519',
+      signing_key_id: 'official-key',
+      status: 'installed',
+      installed_by: 'user-1',
+      created_at: '2026-08-01T10:00:00Z',
+      updated_at: '2026-08-01T10:00:00Z'
+    },
+    {
+      id: 'extension-installation-0',
+      version: '0.9.0',
+      source: 'upload',
+      trust: 'unknown',
+      warnings: [],
+      local_path: '/api/plugins/openai/0.9.0',
+      checksum: 'sha256:previous',
+      signature_status: 'missing',
+      signature_algorithm: null,
+      signing_key_id: null,
+      status: 'installed',
+      installed_by: 'user-1',
+      created_at: '2026-07-01T10:00:00Z',
+      updated_at: '2026-07-01T10:00:00Z'
+    }
+  ]
 };
 
 const catalogEntry = {
@@ -157,6 +191,7 @@ describe('SettingsExtensionCenterSection', () => {
     authenticate();
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
       limit: 20,
+      total_entries: 1,
       next_cursor: null,
       entries: [installedEntry]
     });
@@ -212,7 +247,8 @@ describe('SettingsExtensionCenterSection', () => {
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
-              current_version: '1.0.0'
+              current_version: '1.0.0',
+              installed_versions: ['1.0.0', '0.9.0']
             }
           ]
         },
@@ -235,6 +271,39 @@ describe('SettingsExtensionCenterSection', () => {
         expect.objectContaining({ catalog_page: 'page-1' }),
         'csrf-123'
       );
+    });
+  });
+
+  test('D4-AC-013 renders one family row and keeps every installed version in the view drawer', async () => {
+    renderSection();
+
+    const openaiRows = await screen.findAllByRole('row', { name: /openai/ });
+    expect(openaiRows).toHaveLength(1);
+    fireEvent.click(
+      within(openaiRows[0]).getByRole('button', { name: '查看' })
+    );
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('已安装版本')).toBeInTheDocument();
+    expect(within(drawer).getByText('0.9.0')).toBeInTheDocument();
+    expect(
+      within(drawer).getByText('/api/plugins/openai/0.9.0')
+    ).toBeInTheDocument();
+  });
+
+  test('D4-AC-014 never renders a response from a different catalog category under the active tab', async () => {
+    renderSection();
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'agent-flow' }));
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'agent-flow',
+        undefined
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('OpenAI Provider')).not.toBeInTheDocument();
+      expect(screen.queryByText('openai')).not.toBeInTheDocument();
     });
   });
 

@@ -15,6 +15,23 @@ export interface ConsoleExtensionWarning {
   overridable: boolean;
 }
 
+export interface ConsoleInstalledExtensionVersion {
+  id: string;
+  version: string;
+  source: string;
+  trust: string;
+  warnings: ConsoleExtensionWarning[];
+  local_path: string;
+  checksum: string;
+  signature_status: string;
+  signature_algorithm: string | null;
+  signing_key_id: string | null;
+  status: string;
+  installed_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ConsoleExtensionCompatibilityChallenge {
   reason: 'below_minimum_host_version';
   current_host_version: string;
@@ -46,10 +63,12 @@ export interface ConsoleInstalledExtension {
   installed_by: string;
   created_at: string;
   updated_at: string;
+  installed_versions: ConsoleInstalledExtensionVersion[];
 }
 
 export interface ConsoleInstalledExtensionPage {
   limit: number;
+  total_entries: number;
   next_cursor: string | null;
   entries: ConsoleInstalledExtension[];
 }
@@ -169,7 +188,11 @@ export function checkConsoleExtensionUpdates(
   input: {
     category: ConsoleExtensionCategory;
     catalog_page: string | null;
-    items: Array<{ catalog_id: string; current_version: string }>;
+    items: Array<{
+      catalog_id: string;
+      current_version: string;
+      installed_versions: string[];
+    }>;
   },
   csrfToken: string
 ) {

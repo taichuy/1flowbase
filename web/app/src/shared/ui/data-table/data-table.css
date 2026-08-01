@@ -57,7 +57,12 @@
 .data-table__pagination {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   flex: 0 0 auto;
+}
+
+.data-table__cursor-pagination {
+  gap: 8px;
 }
 
 .data-table__header-cell {
