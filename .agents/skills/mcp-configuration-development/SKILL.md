@@ -46,7 +46,7 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 - `short_description` 写“调用后得到什么”；普通能力的 `full_description` 使用空字符串 `""`。
 - 仅当跨字段、跨 Tool、跨状态或跨制品的组合契约无法由其他字段表达，且缺失会导致错误调用时填写 `full_description`。
 - 把 Agent 参数名、含义和必填性写入 `input_mapping` 的映射配置；不要要求业务 DTO 重复维护 MCP 专用文案。
-- 检查必需容器对象是否能由 mapping 实际构造；当全部子字段为空会导致容器被省略时，不伪造值，优先配置有真实语义的字段，否则报告运行时 mapping 缺口。
+- 检查必需容器对象是否能由当前接口 request Schema 自动物化；用真实 `mcp.call` 证明空对象可达目标业务边界，不为通过 Schema 伪造 selector 或占位值。
 - 不配置 `children_count`；它由启用的子 Group、可见 Binding 和启用 Tool 在运行时派生。
 - 不借配置任务调整产品语义、业务权限、后端 DTO、MCP 协议或运行时代码。发现这些缺口时停止对应写入并报告证据。
 
@@ -60,6 +60,8 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 - `mcp.get` 暴露的 Schema 与已保存 mapping 不一致，或 `mcp.call` 未按后端约束执行。
 - 现有配置发生并发变化，最小差异不再可靠。
 - 配置管理调用只返回通用错误且本地日志或单项读取仍不能定位失败阶段。
+
+单个候选 Tool 命中停止条件时，只停止依赖该能力的路径并回滚其无消费者配置；不影响已独立验证的同领域能力继续装配。若已发布能力没有可绑定 operation、必需凭据或安全调用 contract，不创建伪 invocation Tool。
 
 ## Output
 

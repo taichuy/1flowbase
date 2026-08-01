@@ -7,6 +7,7 @@
 - 任务范围有明确的 GUI 起点、用户目标和可观察结果。
 - 每个 Tool 都能追溯到当前 bindable interface 与后端 contract。
 - 参数名、必填性、结果、风险、权限和状态约束已交叉验证。
+- 应用级模型 registration 与节点执行模型 contract 已分别验证，没有把 capability 展示项冒充 `provider_code/model_id`。
 - 没有把旧文档、截图或静态能力清单当作唯一真值。
 
 ### Virtual UI
@@ -26,6 +27,7 @@
 - Group 与 Binding 引用有效，启用、可见与排序状态符合目标。
 - 没有写入或配置 `children_count`。
 - 必需容器对象已通过真实 `mcp.call` 证明能由 mapping 构造，没有用虚假占位值绕过 Schema。
+- 已发布能力只有在存在可绑定 operation 与可验证认证 contract 时才配置 invocation Tool；否则明确记录缺口。
 - 本轮停止或失败后不存在无 Tool 的空 Group、错误复用 Binding 或无消费者新 Tool。
 
 ### Runtime
@@ -37,6 +39,7 @@
 3. `mcp.get` 返回正确的 short/full description、mapped input Schema、result Schema、risk 和 description validation 信息。
 4. `mcp.call` 使用 `mcp.get` 返回的 contract 成功执行，并验证可观察结果。
 5. 至少验证一个关键失败边界，例如缺失必填参数、非法状态、无权限、错误稳定标识或错误 `des_id`。
+6. 涉及模型节点时，从成功 run/trace 核对实际 provider、model 与 protocol；保存或编译成功不能替代执行证据。
 
 ## Coverage Table
 
@@ -53,6 +56,8 @@
 - 运行时缺口：保存配置正确，但 `list/get/call` 未按 contract 输出或执行；报告代码证据，不在本 Skill 中修复。
 - 未分类调用缺口：协议只返回通用错误且没有本地结构化日志或其他证据；不得猜成配置或业务错误。
 - 产品决策缺口：GUI 与后端表达不同目标或无法判断 canonical 行为；返回需求对齐。
+
+单个 Tool 的运行时缺口不自动否定整个领域。回滚该 Tool 的无消费者配置后，覆盖表逐项结算；只有它是完成用户目标的必要条件时才把领域状态标为阻断。
 
 ## Completion Rule
 

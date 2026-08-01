@@ -68,11 +68,25 @@ Tool record 是跨 Binding 共享的 Agent contract，Binding alias 只能改显
 
 ## Mapping Containers
 
-mapping 以叶子字段生成目标结构时，空值可能被省略。接口若要求 `mapping.output` 之类容器存在，但其所有叶子都可空，必须验证实际 interface arguments 仍包含该容器：
+接口 wrapper 会依据当前 request Schema 递归物化 `path`、`query`、`body` 中缺失的 required object container。mapping 仍只表达有真实业务含义的 Agent 输入：
 
-- 有真实业务含义的非空字段时，配置并验证它，例如明确的结果 selector。
-- 只有空对象才合法时，不填写虚假占位值；将无法构造必需空容器归为运行时 mapping 缺口。
-- 不把通用 `-32603` 当成业务校验结论；使用本地结构化日志确认是 mapping、request Schema、response Schema 还是目标接口错误。
+- 不为 `mapping.output` 之类必需空对象增加虚假 selector、父容器参数或占位值。
+- 用真实 `mcp.call` 验证请求已经越过 `request_schema` 并到达目标业务边界；保存成功、明确业务拒绝或 `target_interface/http_status` 都可作为到达证据。
+- present `""` 与 `null` 必须原样交给 JSON Schema 判断是否合法；只有路径不存在才属于 mapping required 缺失。
+- 若 current `mcp.get` Schema、保存 mapping 与运行结果仍不一致，按运行时缺口停止依赖该 Tool，不用宽松 Schema 或噪音字段绕过。
+
+## Invocation Contract
+
+发布成功不自动意味着存在可绑定的 MCP 调用能力。只有 interface catalog 提供当前 operation，且认证、凭据、请求与结果 contract 都能从源码和运行态验证时，才创建 invocation Tool。publication `operation=null`、必需 application credential 缺失或仅有无法绑定的通用 HTTP 入口时，保留发布、状态和运行观测能力并报告调用缺口，不伪造执行目标。
+
+## Registered Capability and Execution Model
+
+应用级模型注册与节点执行配置是两个 contract。注册项可以只表达 capability、表单或可用模态，不保证包含 LLM 节点执行所需的 `provider_code`、`model_id` 或协议参数：
+
+- 先按节点当前 Schema 核对执行字段，再从可验证的 provider/model 来源取值。
+- 不把 registration 名称、展示名或 capability 列表直接填入 LLM 节点执行字段。
+- 模型目录 Tool 不可调用时，可只读取用户明确提供的参考应用验证当前 contract，但不得修改参考应用，也不得把一次性模型标识写入 Skill。
+- 验收以真实单点或整链 trace 中的 provider、model 与 protocol 为准，不以保存草稿成功代替执行证据。
 
 ## Discovery Policy
 
@@ -100,3 +114,5 @@ mapping 以叶子字段生成目标结构时，空值可能被省略。接口若
 5. 最后调整 discovery policy 并执行真实调用。
 
 中途停止时，不保留没有可调用 Tool 的空 Group、语义不兼容的复用 Binding 或无消费者的新 Tool。只回滚本轮创建且确认无其他消费者的记录；已有记录和并发变化不得擅自恢复旧值。
+
+候选 Tool 因 `response_schema`、不可绑定 interface 或独立 contract 缺口失败时，先回滚该 Tool 与 Binding，再继续不依赖它的能力；不要让一个目录查询能力阻断整个领域生命周期。

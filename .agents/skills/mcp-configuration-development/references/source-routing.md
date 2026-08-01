@@ -13,7 +13,7 @@
 | 当前已经配置什么 | MCP catalog/API/管理界面读模型 | 实例、Group、Tool、Binding、policy 分项读取 |
 | Agent 实际能看到什么 | `mcp.list`、`mcp.get` | 协议路由与运行时测试 |
 | Agent 实际能否调用 | `mcp.call` | 后端持久化结果或可观察副作用 |
-| MCP 只返回通用调用错误 | 本地开发服务结构化日志 | 失败 Tool、interface、阶段与单项重试 |
+| MCP 调用失败 | JSON-RPC `category`、`field`、`http_status` | 本地结构化日志、失败 Tool、interface 与阶段 |
 
 ## Search Strategy
 
@@ -32,7 +32,7 @@
 - interface catalog 有能力但 GUI 没有对应用户目标时，不自动暴露；先确认它是公开任务还是内部基础能力。
 - 已保存配置与当前源码冲突时，以当前可验证 contract 为目标，保留最小修复差异并说明迁移影响。
 - 运行时输出与保存配置冲突时，记录运行时缺口并停止依赖该行为的批量配置。
-- MCP 只返回 `-32603` 等通用错误时，不按错误外观猜分类。在本地开发环境读取对应服务结构化日志，区分参数映射、请求 Schema、响应 Schema、目标业务拒绝和基础设施异常；无法取得证据时标记未分类运行时缺口。
+- 优先使用 JSON-RPC `category`、`field` 与可选 `http_status` 区分参数、Tool 配置、请求/响应 Schema、interface catalog 和目标业务边界。只有返回 `interface_dispatch`、通用错误或分类与证据冲突时才读取本地结构化日志；无法取得证据时标记未分类运行时缺口。
 
 ## Scope Control
 
