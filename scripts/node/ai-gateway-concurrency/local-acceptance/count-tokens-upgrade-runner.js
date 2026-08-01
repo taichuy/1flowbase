@@ -26,7 +26,7 @@ const {
 } = require('./count-tokens-upgrade');
 
 const APPLICATION_ID = '019f5443-5b8e-74b2-90e3-c867dbddd37b';
-const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v4';
+const RUN_SCHEMA = '1flowbase.local-count-tokens-upgrade-run/v5';
 const FORBIDDEN_PORTS = new Set([3100, 7800, 7801]);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
@@ -68,6 +68,10 @@ function envName(value, label) {
   const name = requireValue(value, label);
   if (!/^[A-Z][A-Z0-9_]*$/u.test(name)) throw new Error(`${label} must be a safe environment name`);
   return name;
+}
+
+function optionalEnvName(value, label) {
+  return value === undefined || value === null ? null : envName(value, label);
 }
 
 function safeClaim(value, label) {
@@ -192,11 +196,11 @@ function loadRunManifest(filePath, dependencies = {}) {
       ownerUsername: envName(value.environment?.owner_username, 'owner username env name'),
       ownerPassword: envName(value.environment?.owner_password, 'owner password env name'),
       databaseUrl: envName(value.environment?.database_url, 'database URL env name'),
-      providerSecretMasterKey: envName(
+      providerSecretMasterKey: optionalEnvName(
         value.environment?.provider_secret_master_key,
         'provider secret master key env name',
       ),
-      providerInstallRoot: envName(
+      providerInstallRoot: optionalEnvName(
         value.environment?.provider_install_root,
         'provider install root env name',
       ),
@@ -208,6 +212,11 @@ function loadRunManifest(filePath, dependencies = {}) {
 
 function envValue(sourceEnv, name, label) {
   return requireValue(sourceEnv?.[name], `${label} (${name})`);
+}
+
+function optionalEnvValue(sourceEnv, name) {
+  if (!name || typeof sourceEnv?.[name] !== 'string' || !sourceEnv[name].trim()) return null;
+  return sourceEnv[name].trim();
 }
 
 function publicError(error) {
@@ -371,6 +380,9 @@ async function startFrozenServices({
     OPENAI_API_KEY: '', OPENAI_BASE_URL: '', ANTHROPIC_API_KEY: '',
     ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: '', CLAUDE_CODE_OAUTH_TOKEN: '',
   };
+  const apiParentEnv = { ...sourceEnv };
+  delete apiParentEnv.API_PROVIDER_INSTALL_ROOT;
+  delete apiParentEnv.API_PROVIDER_SECRET_MASTER_KEY;
   services.pluginProcess = spawnProcess(manifest.pluginRunner.path, {
     ...scrubbed,
     PLUGIN_RUNNER_ADDR: `127.0.0.1:${pluginPort}`,
@@ -386,11 +398,11 @@ async function startFrozenServices({
     API_DATABASE_URL: databaseUrl,
     API_DATABASE_POOL_MAX_CONNECTIONS: '5',
     API_PLUGIN_RUNNER_INTERNAL_BASE_URL: pluginRunnerBaseUrl,
-    API_PROVIDER_INSTALL_ROOT: providerInstallRoot,
-    API_PROVIDER_SECRET_MASTER_KEY: providerSecretMasterKey,
+    ...(providerInstallRoot ? { API_PROVIDER_INSTALL_ROOT: providerInstallRoot } : {}),
+    ...(providerSecretMasterKey ? { API_PROVIDER_SECRET_MASTER_KEY: providerSecretMasterKey } : {}),
     API_COOKIE_NAME: manifest.cookieName,
     API_COOKIE_SECURE: 'false',
-  }, { cwd: manifest.apiServerCwd, parentEnv: sourceEnv });
+  }, { cwd: manifest.apiServerCwd, parentEnv: apiParentEnv });
   await health(apiBaseUrl, 'api-server', {
     fetchImpl: dependencies.fetchImpl || globalThis.fetch,
     processHandle: services.apiProcess,
@@ -424,15 +436,11 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     const ownerUsername = envValue(sourceEnv, manifest.env.ownerUsername, 'owner username');
     const ownerPassword = envValue(sourceEnv, manifest.env.ownerPassword, 'owner password');
     const databaseUrl = databaseUrlFromEnv(sourceEnv, manifest.env.databaseUrl);
-    const providerSecretMasterKey = envValue(
-      sourceEnv,
-      manifest.env.providerSecretMasterKey,
-      'provider secret master key',
-    );
-    const providerInstallRoot = requireDirectory(
-      envValue(sourceEnv, manifest.env.providerInstallRoot, 'provider install root'),
-      'provider install root',
-    );
+    const providerSecretMasterKey = optionalEnvValue(sourceEnv, manifest.env.providerSecretMasterKey);
+    const providerInstallRootValue = optionalEnvValue(sourceEnv, manifest.env.providerInstallRoot);
+    const providerInstallRoot = providerInstallRootValue
+      ? requireDirectory(providerInstallRootValue, 'provider install root override')
+      : null;
     secrets.credentials.push(apiKey, ownerPassword, providerSecretMasterKey);
     secrets.credentialUrls.push(databaseUrl);
     const tempRoot = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-count-tokens-upgrade-')));

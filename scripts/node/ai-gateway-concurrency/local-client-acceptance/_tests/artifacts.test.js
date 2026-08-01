@@ -31,7 +31,7 @@ test('AC-009 redacts explicit and shaped secrets from structured artifacts', () 
 
 test('Root #1556 F11 redacts by structure without corrupting schema text with a short DB password', () => {
   const safe = redact({
-    schema_version: '1flowbase.local-count-tokens-upgrade-run/v4',
+    schema_version: '1flowbase.local-count-tokens-upgrade-run/v5',
     provider_path: '/opt/1flowbase/providers/deepseek',
     owner_password: 'owner-password',
     primary_error: {
@@ -42,7 +42,7 @@ test('Root #1556 F11 redacts by structure without corrupting schema text with a 
     credentialUrls: ['postgres://owner:1flowbase@127.0.0.1/dev'],
   });
 
-  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v4');
+  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v5');
   assert.equal(safe.provider_path, '/opt/1flowbase/providers/deepseek');
   assert.equal(safe.owner_password, '<redacted>');
   assert.match(safe.primary_error.message, /postgres:\/\/<redacted>@127\.0\.0\.1\/dev/u);

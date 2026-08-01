@@ -20,7 +20,7 @@ the primary result. The runner never builds, checks out, publishes, or downloads
 anything.
 
 Copy `count-tokens-upgrade.run.example.json`, replace its source receipt, binary
-paths/digests, and safe local paths, then export the seven named environment
+paths/digests, and safe local paths, then export the five named environment
 variables. Run exactly:
 
 ```bash
@@ -38,9 +38,12 @@ and independent primary/cleanup failures. It never contains the application
 key, owner password, temporary cookie, CSRF token, database credentials,
 provider master key, or raw conversation text.
 
-The api-server child runs from the validated source cwd so its normal development
-`.env` loading remains available; explicit manifest-selected environment values
-still override its port, database, plugin-runner URL, provider master key, and
-provider install root. A child that exits before health produces bounded typed
-stdout/stderr diagnostics, which pass through the same secret redaction as the
-rest of the artifact.
+The api-server child runs from the validated source cwd so product `ApiConfig`
+loads its normal development `.env` and owns the canonical provider master-key
+and install-root defaults. The runner explicitly overrides only its owned port,
+database, plugin-runner URL, and cookie settings. A manifest may optionally name
+`provider_secret_master_key` or `provider_install_root` environment overrides;
+the runner injects them only when the named environment value is non-empty.
+Missing optional names or values are not configuration failures. A child that
+exits before health produces bounded typed stdout/stderr diagnostics, which pass
+through the same secret redaction as the rest of the artifact.
