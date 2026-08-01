@@ -281,6 +281,43 @@ async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
 }
 
 #[tokio::test]
+async fn in_memory_repository_rejects_cross_scope_grant_for_workspace_model() {
+    let repository = InMemoryModelDefinitionRepository::default();
+    let service = ModelDefinitionService::new(repository.clone());
+    let created = service
+        .create_model(CreateModelDefinitionCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            data_source_instance_id: None,
+            external_resource_key: None,
+            external_table_id: None,
+            code: "workspace_grant_fixture".into(),
+            title: "Workspace Grant Fixture".into(),
+            status: None,
+        })
+        .await
+        .unwrap();
+
+    let error = ModelDefinitionRepository::create_scope_data_model_grant(
+        &repository,
+        &CreateScopeDataModelGrantInput {
+            grant_id: Uuid::now_v7(),
+            scope_kind: DataModelScopeKind::System,
+            scope_id: SYSTEM_SCOPE_ID,
+            data_model_id: created.id,
+            enabled: true,
+            permission_profile: domain::ScopeDataModelPermissionProfile::ScopeAll,
+            created_by: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("workspace_model_scope_grant_mismatch"));
+}
+
+#[tokio::test]
 async fn create_model_defaults_to_main_source_published_status() {
     let service = ModelDefinitionService::for_tests();
 
