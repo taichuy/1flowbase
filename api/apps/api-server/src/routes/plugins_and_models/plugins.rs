@@ -16,7 +16,7 @@ use control_plane::plugin_management::{
     InstallPluginResult, InstallUploadedPluginCommand, OfficialPluginCatalogEntry,
     OfficialPluginCatalogFilter, OfficialPluginCatalogView, PluginCatalogEntry,
     PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
-    PluginManagementService, RefreshCurrentNodePluginArtifactCommand,
+    PluginManagementService, PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand,
     RefreshPluginPackageCatalogProjectionCommand, SwitchPluginVersionCommand,
     UpgradeLatestPluginFamilyCommand,
 };
@@ -56,6 +56,7 @@ pub struct InstallPluginBody {
 pub struct InstallOfficialPluginBody {
     pub plugin_id: String,
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
+    pub risk_override: Option<PluginRiskOverrideBody>,
 }
 
 #[derive(ToSchema)]
@@ -65,16 +66,23 @@ pub(super) struct PluginUploadMultipartBody {
     file: Vec<u8>,
 }
 
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct PluginCompatibilityOverrideBody {
     pub reason: String,
     pub acknowledged_current_host_version: String,
     pub acknowledged_minimum_host_version: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct PluginRiskOverrideBody {
+    pub reason: String,
+    pub acknowledged_warnings: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpgradeLatestPluginFamilyBody {
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
+    pub risk_override: Option<PluginRiskOverrideBody>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -310,6 +318,7 @@ pub fn router() -> Router<Arc<ApiState>> {
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
+        .merge(extension_center::route_assembly())
         .route(
             "/plugins/catalog",
             console_get(
@@ -495,6 +504,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
+pub(crate) mod extension_center;
 pub(crate) mod settings_routes;
 
 pub(super) fn base_service(
@@ -570,6 +580,15 @@ fn to_compatibility_override(
         reason: value.reason,
         acknowledged_current_host_version: value.acknowledged_current_host_version,
         acknowledged_minimum_host_version: value.acknowledged_minimum_host_version,
+    })
+}
+
+pub(super) fn to_risk_override(
+    value: Option<PluginRiskOverrideBody>,
+) -> Option<PluginRiskOverride> {
+    value.map(|value| PluginRiskOverride {
+        reason: value.reason,
+        acknowledged_warnings: value.acknowledged_warnings,
     })
 }
 
@@ -1091,6 +1110,7 @@ pub async fn install_official_plugin(
             actor_user_id: context.user.id,
             plugin_id: body.plugin_id,
             compatibility_override: to_compatibility_override(body.compatibility_override),
+            risk_override: to_risk_override(body.risk_override),
         })
         .await?;
 
@@ -1186,13 +1206,17 @@ pub async fn upgrade_latest(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let body = body.map(|Json(body)| body);
+    let compatibility_override = body
+        .as_ref()
+        .and_then(|body| to_compatibility_override(body.compatibility_override.clone()));
+    let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
     let task = service(&state, "plugins.families.upgrade")
         .upgrade_latest(UpgradeLatestPluginFamilyCommand {
             actor_user_id: context.user.id,
             provider_code,
-            compatibility_override: body
-                .map(|Json(body)| body.compatibility_override)
-                .and_then(to_compatibility_override),
+            compatibility_override,
+            risk_override,
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))

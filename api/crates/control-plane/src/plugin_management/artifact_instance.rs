@@ -25,6 +25,16 @@ struct PluginArtifactMarker {
     version: String,
     checksum: Option<String>,
     manifest_fingerprint: Option<String>,
+    #[serde(default)]
+    source_kind: Option<String>,
+    #[serde(default)]
+    trust_level: Option<String>,
+    #[serde(default)]
+    signature_status: Option<String>,
+    #[serde(default)]
+    signature_algorithm: Option<String>,
+    #[serde(default)]
+    signing_key_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -41,6 +51,121 @@ where
     R: AuthRepository + PluginRepository,
     H: ProviderRuntimePort,
 {
+    pub async fn rebuild_inventory_from_local_receipts(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<usize> {
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        ensure_root_actor(&actor)?;
+        let existing = self
+            .repository
+            .list_installations()
+            .await?
+            .into_iter()
+            .map(|installation| (installation.plugin_id, installation.plugin_version))
+            .collect::<HashSet<_>>();
+        let installed_root = self.install_root.join("installed");
+        let mut rebuilt = 0usize;
+        let Ok(families) = fs::read_dir(&installed_root) else {
+            return Ok(0);
+        };
+        for family in families.filter_map(|entry| entry.ok()) {
+            let Ok(versions) = fs::read_dir(family.path()) else {
+                continue;
+            };
+            for version in versions.filter_map(|entry| entry.ok()) {
+                let install_path = version.path();
+                if !install_path.is_dir() {
+                    continue;
+                }
+                let Ok(receipt) = read_artifact_marker(&install_path) else {
+                    continue;
+                };
+                if existing.contains(&(receipt.plugin_id.clone(), receipt.version.clone())) {
+                    continue;
+                }
+                let Ok(manifest) = load_plugin_manifest(&install_path) else {
+                    continue;
+                };
+                let package_id = manifest
+                    .versioned_plugin_id()
+                    .map_err(map_framework_error)?;
+                if package_id != receipt.plugin_id || manifest.version != receipt.version {
+                    continue;
+                }
+                let package_kind = route_plugin_package(&manifest)?;
+                let plugin_type = match package_kind {
+                    RoutedPluginPackageKind::HostExtension => "host_extension",
+                    RoutedPluginPackageKind::ModelProviderRuntime => "model_provider",
+                    RoutedPluginPackageKind::DataSourceRuntime => "data_source",
+                    RoutedPluginPackageKind::CapabilityPlugin => "capability_plugin",
+                };
+                let desired_state = if package_kind == RoutedPluginPackageKind::HostExtension {
+                    domain::PluginDesiredState::PendingRestart
+                } else {
+                    domain::PluginDesiredState::Disabled
+                };
+                let availability_status = if package_kind == RoutedPluginPackageKind::HostExtension
+                {
+                    domain::PluginAvailabilityStatus::PendingRestart
+                } else {
+                    domain::PluginAvailabilityStatus::Disabled
+                };
+                let signature_is_valid = matches!(
+                    receipt.signature_status.as_deref(),
+                    Some("verified" | "builtin")
+                );
+                let installation = self
+                    .repository
+                    .upsert_installation(&UpsertPluginInstallationInput {
+                        installation_id: Uuid::now_v7(),
+                        provider_code: manifest
+                            .plugin_code()
+                            .map_err(map_framework_error)?
+                            .to_string(),
+                        plugin_id: receipt.plugin_id,
+                        plugin_version: receipt.version,
+                        contract_version: manifest.contract_version,
+                        protocol: manifest.runtime.protocol,
+                        display_name: manifest.display_name,
+                        source_kind: receipt
+                            .source_kind
+                            .unwrap_or_else(|| manifest.source_kind.clone()),
+                        trust_level: receipt
+                            .trust_level
+                            .unwrap_or_else(|| manifest.trust_level.clone()),
+                        verification_status: if signature_is_valid {
+                            domain::PluginVerificationStatus::Valid
+                        } else {
+                            domain::PluginVerificationStatus::Invalid
+                        },
+                        desired_state,
+                        artifact_status: domain::PluginArtifactStatus::Ready,
+                        runtime_status: domain::PluginRuntimeStatus::Inactive,
+                        availability_status,
+                        package_path: None,
+                        installed_path: install_path.display().to_string(),
+                        checksum: receipt.checksum,
+                        manifest_fingerprint: receipt.manifest_fingerprint,
+                        signature_status: receipt.signature_status,
+                        signature_algorithm: receipt.signature_algorithm,
+                        signing_key_id: receipt.signing_key_id,
+                        last_load_error: None,
+                        metadata_json: json!({
+                            "install_kind": "local_receipt_rebuild",
+                            "plugin_type": plugin_type,
+                        }),
+                        actor_user_id,
+                    })
+                    .await?;
+                self.refresh_current_node_artifact_snapshot(&installation)
+                    .await?;
+                rebuilt = rebuilt.saturating_add(1);
+            }
+        }
+        Ok(rebuilt)
+    }
+
     pub async fn refresh_current_node_artifact(
         &self,
         command: RefreshCurrentNodePluginArtifactCommand,
@@ -72,6 +197,31 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         self.ensure_model_provider_target(&installation)?;
+
+        // Installed files are the node truth. Refreshing or repairing metadata must never
+        // replace a present local development artifact with a registry download.
+        let local_artifact = self
+            .refresh_current_node_artifact_snapshot(&installation)
+            .await?;
+        if let Some(warning) = local_artifact.last_error.as_deref() {
+            self.repository
+                .append_audit_log(&audit_log(
+                    Some(actor.current_workspace_id),
+                    Some(command.actor_user_id),
+                    "plugin_installation",
+                    Some(installation.id),
+                    "plugin.local_artifact_warning",
+                    json!({
+                        "warning": warning,
+                        "node_id": self.node_id,
+                        "remote_io": false,
+                    }),
+                ))
+                .await?;
+        }
+        if local_artifact.installed_path.is_some() && local_artifact.artifact_status.is_ready() {
+            return Ok(local_artifact);
+        }
 
         let package_bytes = self
             .package_bytes_for_current_node_install(&installation)
@@ -123,6 +273,11 @@ where
                 &installation.plugin_version,
                 checksum,
                 Some(&manifest_fingerprint),
+                Some(&installation.source_kind),
+                Some(&installation.trust_level),
+                installation.signature_status.as_deref(),
+                installation.signature_algorithm.as_deref(),
+                installation.signing_key_id.as_deref(),
             )?;
             self.refresh_current_node_artifact_snapshot(&installation)
                 .await
@@ -212,18 +367,6 @@ where
         &self,
         installation: &domain::PluginInstallationRecord,
     ) -> Result<Vec<u8>> {
-        let official_snapshot = self.official_source.list_official_catalog().await?;
-        if let Some(entry) = official_snapshot.entries.into_iter().find(|entry| {
-            entry.provider_code == installation.provider_code
-                && entry.latest_version == installation.plugin_version
-        }) {
-            return Ok(self
-                .official_source
-                .download_plugin(&entry)
-                .await?
-                .package_bytes);
-        }
-
         if let Some(package_path) = installation.package_path.as_deref() {
             let path = Path::new(package_path);
             if path.is_file() {
@@ -234,6 +377,18 @@ where
                     )
                 });
             }
+        }
+
+        let official_snapshot = self.official_source.list_official_catalog().await?;
+        if let Some(entry) = official_snapshot.entries.into_iter().find(|entry| {
+            entry.provider_code == installation.provider_code
+                && entry.latest_version == installation.plugin_version
+        }) {
+            return Ok(self
+                .official_source
+                .download_plugin(&entry)
+                .await?
+                .package_bytes);
         }
 
         Err(ControlPlaneError::Conflict("plugin_artifact_package_unavailable").into())
@@ -454,12 +609,22 @@ pub(super) fn write_artifact_marker(
     version: &str,
     checksum: Option<&str>,
     manifest_fingerprint: Option<&str>,
+    source_kind: Option<&str>,
+    trust_level: Option<&str>,
+    signature_status: Option<&str>,
+    signature_algorithm: Option<&str>,
+    signing_key_id: Option<&str>,
 ) -> Result<()> {
     let marker = PluginArtifactMarker {
         plugin_id: plugin_id.to_string(),
         version: version.to_string(),
         checksum: checksum.map(str::to_string),
         manifest_fingerprint: manifest_fingerprint.map(str::to_string),
+        source_kind: source_kind.map(str::to_string),
+        trust_level: trust_level.map(str::to_string),
+        signature_status: signature_status.map(str::to_string),
+        signature_algorithm: signature_algorithm.map(str::to_string),
+        signing_key_id: signing_key_id.map(str::to_string),
     };
     let bytes = serde_json::to_vec_pretty(&marker)?;
     fs::write(install_path.join(ARTIFACT_MARKER_FILE), bytes).with_context(|| {
@@ -521,14 +686,14 @@ async fn inspect_artifact_path(
     match (&installation.checksum, &marker.checksum) {
         (Some(expected), Some(actual)) if expected != actual => {
             return ScannedPluginArtifact {
-                artifact_status: domain::PluginArtifactInstanceStatus::Mismatched,
+                artifact_status: domain::PluginArtifactInstanceStatus::Ready,
                 last_error: Some("checksum_mismatch".to_string()),
                 ..base
             };
         }
         (Some(_), None) => {
             return ScannedPluginArtifact {
-                artifact_status: domain::PluginArtifactInstanceStatus::Mismatched,
+                artifact_status: domain::PluginArtifactInstanceStatus::Ready,
                 last_error: Some("checksum_missing".to_string()),
                 ..base
             };
@@ -566,7 +731,7 @@ async fn inspect_artifact_path(
     };
     if marker.manifest_fingerprint.as_deref() != Some(actual_fingerprint.as_str()) {
         return ScannedPluginArtifact {
-            artifact_status: domain::PluginArtifactInstanceStatus::Mismatched,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
             last_error: Some("manifest_fingerprint_mismatch".to_string()),
             ..base
         };
@@ -574,7 +739,7 @@ async fn inspect_artifact_path(
     if let Some(expected) = installation.manifest_fingerprint.as_deref() {
         if expected != actual_fingerprint {
             return ScannedPluginArtifact {
-                artifact_status: domain::PluginArtifactInstanceStatus::Mismatched,
+                artifact_status: domain::PluginArtifactInstanceStatus::Ready,
                 last_error: Some("expected_manifest_fingerprint_mismatch".to_string()),
                 ..base
             };

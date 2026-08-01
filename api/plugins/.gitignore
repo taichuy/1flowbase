@@ -1,6 +1,7 @@
 *
 !.gitignore
 !README.md
+!default-extensions.lock.json
 !host-extensions/
 !host-extensions/**
 !capability-plugins/

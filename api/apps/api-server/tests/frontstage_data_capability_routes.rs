@@ -245,6 +245,11 @@ async fn fixture() -> Fixture {
         official_plugin_source: Arc::new(NoopPluginSource),
         official_agent_flow_template_source: Arc::new(NoopAgentFlowSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
+        official_extension_catalog_source: Arc::new(
+            api_server::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(
+                &config,
+            ),
+        ),
         official_i18n_catalog_update_service:
             api_server::app_state::build_official_i18n_catalog_update_service(
                 store.clone(),

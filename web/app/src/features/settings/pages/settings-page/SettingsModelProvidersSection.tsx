@@ -1,159 +1,21 @@
-import { useCallback, useMemo, useReducer, type SetStateAction } from 'react';
+import { useMemo, useState } from 'react';
 
+import { Alert, Layout } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
-import { Alert, Layout, Modal, Typography } from 'antd';
-import type { UploadFile } from 'antd/es/upload/interface';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { ModelProviderCatalogPanel } from '../../components/model-providers/ModelProviderCatalogPanel';
 import { ModelProviderInstanceDrawer } from '../../components/model-providers/ModelProviderInstanceDrawer';
 import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
-import { OfficialPluginInstallPanel } from '../../components/model-providers/OfficialPluginInstallPanel';
-import { PluginUploadInstallModal } from '../../components/model-providers/PluginUploadInstallModal';
-import {
-  settingsModelProviderCatalogQueryKey,
-  settingsModelProviderInstancesQueryKey,
-  settingsModelProviderOptionsQueryKey
-} from '../../api/model-providers';
-import {
-  settingsOfficialPluginsQueryKey,
-  settingsPluginFamiliesQueryKey
-} from '../../api/plugins';
 import '../../components/model-providers/model-provider-panel.css';
+import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import {
   getErrorMessage,
-  MODEL_PROVIDER_MAIN_INSTANCE_QUERY_KEY_PREFIX,
-  MODEL_PROVIDER_MODELS_QUERY_KEY_PREFIX,
-  resetUploadState,
   type ModelProviderDrawerState,
-  type ModelProviderInstanceModalState,
-  type RecentVersionSwitchNotice,
-  type UploadResultSummary
+  type ModelProviderInstanceModalState
 } from './model-providers/shared';
-import { frontstageBlockCatalogQueryKeyPrefix } from '../../../frontstage/api/block-catalog';
 import { useModelProviderData } from './model-providers/use-model-provider-data';
 import { useModelProviderMutations } from './model-providers/use-model-provider-mutations';
-import { useOfficialPluginTask } from './model-providers/use-official-plugin-task';
-import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import { i18nText } from '../../../../shared/i18n/text';
-
-interface ModelProviderSectionState {
-  drawerState: ModelProviderDrawerState;
-  instanceModalState: ModelProviderInstanceModalState;
-  uploadModalOpen: boolean;
-  uploadFileList: UploadFile[];
-  uploadValidationMessage: string | null;
-  uploadResultSummary: UploadResultSummary;
-  recentVersionSwitchNotice: RecentVersionSwitchNotice;
-  officialSearchQuery: string;
-}
-
-type ModelProviderSectionAction =
-  | {
-      type: 'setDrawerState';
-      value: SetStateAction<ModelProviderDrawerState>;
-    }
-  | {
-      type: 'setInstanceModalState';
-      value: SetStateAction<ModelProviderInstanceModalState>;
-    }
-  | { type: 'setUploadModalOpen'; value: SetStateAction<boolean> }
-  | { type: 'setUploadFileList'; value: SetStateAction<UploadFile[]> }
-  | {
-      type: 'setUploadValidationMessage';
-      value: SetStateAction<string | null>;
-    }
-  | {
-      type: 'setUploadResultSummary';
-      value: SetStateAction<UploadResultSummary>;
-    }
-  | {
-      type: 'setRecentVersionSwitchNotice';
-      value: SetStateAction<RecentVersionSwitchNotice>;
-    }
-  | { type: 'setOfficialSearchQuery'; value: SetStateAction<string> };
-
-const initialModelProviderSectionState: ModelProviderSectionState = {
-  drawerState: null,
-  instanceModalState: null,
-  uploadModalOpen: false,
-  uploadFileList: [],
-  uploadValidationMessage: null,
-  uploadResultSummary: null,
-  recentVersionSwitchNotice: null,
-  officialSearchQuery: ''
-};
-
-function resolveSetState<T>(value: SetStateAction<T>, current: T): T {
-  return typeof value === 'function'
-    ? (value as (previous: T) => T)(current)
-    : value;
-}
-
-function modelProviderSectionReducer(
-  state: ModelProviderSectionState,
-  action: ModelProviderSectionAction
-): ModelProviderSectionState {
-  switch (action.type) {
-    case 'setDrawerState':
-      return {
-        ...state,
-        drawerState: resolveSetState(action.value, state.drawerState)
-      };
-    case 'setInstanceModalState':
-      return {
-        ...state,
-        instanceModalState: resolveSetState(
-          action.value,
-          state.instanceModalState
-        )
-      };
-    case 'setUploadModalOpen':
-      return {
-        ...state,
-        uploadModalOpen: resolveSetState(action.value, state.uploadModalOpen)
-      };
-    case 'setUploadFileList':
-      return {
-        ...state,
-        uploadFileList: resolveSetState(action.value, state.uploadFileList)
-      };
-    case 'setUploadValidationMessage':
-      return {
-        ...state,
-        uploadValidationMessage: resolveSetState(
-          action.value,
-          state.uploadValidationMessage
-        )
-      };
-    case 'setUploadResultSummary':
-      return {
-        ...state,
-        uploadResultSummary: resolveSetState(
-          action.value,
-          state.uploadResultSummary
-        )
-      };
-    case 'setRecentVersionSwitchNotice':
-      return {
-        ...state,
-        recentVersionSwitchNotice: resolveSetState(
-          action.value,
-          state.recentVersionSwitchNotice
-        )
-      };
-    case 'setOfficialSearchQuery':
-      return {
-        ...state,
-        officialSearchQuery: resolveSetState(
-          action.value,
-          state.officialSearchQuery
-        )
-      };
-  }
-
-  return state;
-}
 
 export function SettingsModelProvidersSection({
   canManage
@@ -162,121 +24,16 @@ export function SettingsModelProvidersSection({
 }) {
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const [modal, modalContextHolder] = Modal.useModal();
-  const [sectionState, dispatchSectionState] = useReducer(
-    modelProviderSectionReducer,
-    initialModelProviderSectionState
-  );
-  const {
-    drawerState,
-    instanceModalState,
-    uploadModalOpen,
-    uploadFileList,
-    uploadValidationMessage,
-    uploadResultSummary,
-    recentVersionSwitchNotice,
-    officialSearchQuery
-  } = sectionState;
-  const setDrawerState = useCallback(
-    (value: SetStateAction<ModelProviderDrawerState>) =>
-      dispatchSectionState({ type: 'setDrawerState', value }),
-    []
-  );
-  const setInstanceModalState = useCallback(
-    (value: SetStateAction<ModelProviderInstanceModalState>) =>
-      dispatchSectionState({ type: 'setInstanceModalState', value }),
-    []
-  );
-  const setUploadModalOpen = useCallback(
-    (value: SetStateAction<boolean>) =>
-      dispatchSectionState({ type: 'setUploadModalOpen', value }),
-    []
-  );
-  const setUploadFileList = useCallback(
-    (value: SetStateAction<UploadFile[]>) =>
-      dispatchSectionState({ type: 'setUploadFileList', value }),
-    []
-  );
-  const setUploadValidationMessage = useCallback(
-    (value: SetStateAction<string | null>) =>
-      dispatchSectionState({ type: 'setUploadValidationMessage', value }),
-    []
-  );
-  const setUploadResultSummary = useCallback(
-    (value: SetStateAction<UploadResultSummary>) =>
-      dispatchSectionState({ type: 'setUploadResultSummary', value }),
-    []
-  );
-  const setRecentVersionSwitchNotice = useCallback(
-    (value: SetStateAction<RecentVersionSwitchNotice>) =>
-      dispatchSectionState({ type: 'setRecentVersionSwitchNotice', value }),
-    []
-  );
-  const setOfficialSearchQuery = useCallback(
-    (value: SetStateAction<string>) =>
-      dispatchSectionState({ type: 'setOfficialSearchQuery', value }),
-    []
-  );
-  const clearUploadState = () => {
-    resetUploadState(
-      setUploadFileList,
-      setUploadValidationMessage,
-      setUploadResultSummary
-    );
-  };
-
-  const handleOfficialInstallSettled = async (status: 'success' | 'failed') => {
-    if (status !== 'success') {
-      return;
-    }
-
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: settingsModelProviderCatalogQueryKey
-      }),
-      queryClient.invalidateQueries({
-        queryKey: settingsModelProviderInstancesQueryKey
-      }),
-      queryClient.invalidateQueries({
-        queryKey: settingsPluginFamiliesQueryKey
-      }),
-      queryClient.invalidateQueries({
-        queryKey: settingsModelProviderOptionsQueryKey
-      }),
-      queryClient.invalidateQueries({
-        queryKey: MODEL_PROVIDER_MAIN_INSTANCE_QUERY_KEY_PREFIX
-      }),
-      queryClient.invalidateQueries({
-        queryKey: MODEL_PROVIDER_MODELS_QUERY_KEY_PREFIX
-      }),
-      queryClient.invalidateQueries({
-        queryKey: settingsOfficialPluginsQueryKey
-      }),
-      queryClient.invalidateQueries({
-        queryKey: frontstageBlockCatalogQueryKeyPrefix
-      })
-    ]);
-    queryClient.removeQueries({
-      queryKey: frontstageBlockCatalogQueryKeyPrefix,
-      type: 'inactive'
-    });
-  };
-  const { officialInstallState, setOfficialInstallState, pluginTaskQuery } =
-    useOfficialPluginTask({
-      onSettled: handleOfficialInstallSettled
-    });
+  const [drawerState, setDrawerState] =
+    useState<ModelProviderDrawerState>(null);
+  const [instanceModalState, setInstanceModalState] =
+    useState<ModelProviderInstanceModalState>(null);
   const {
     catalogQuery,
-    familiesQuery,
-    officialCatalogQuery,
     instancesQuery,
     optionsQuery,
     mainInstanceQuery,
-    families,
-    officialCatalogEntries,
-    officialSourceMeta,
-    currentCatalogEntriesByProviderCode,
-    familiesByProviderCode,
+    catalogEntries,
     editingInstance,
     editingModelCatalog,
     drawerCatalogEntry,
@@ -285,11 +42,7 @@ export function SettingsModelProvidersSection({
     modalCatalogEntry,
     modalProviderOption,
     overviewRows
-  } = useModelProviderData({
-    drawerState,
-    instanceModalState,
-    officialSearchQuery
-  });
+  } = useModelProviderData({ drawerState, instanceModalState });
   const {
     createMutation,
     updateMutation,
@@ -299,27 +52,15 @@ export function SettingsModelProvidersSection({
     validateMutation,
     refreshMutation,
     revealSecretMutation,
-    deleteMutation,
-    familyDeleteMutation,
-    officialInstallMutation,
-    uploadMutation,
-    refreshCurrentNodeArtifactMutation,
-    installCurrentNodeArtifactMutation,
-    versionMutation
+    deleteMutation
   } = useModelProviderMutations({
     csrfToken,
     queryClient,
-    setDrawerState,
-    setInstanceModalState,
-    setOfficialInstallState,
-    setUploadValidationMessage,
-    setUploadResultSummary,
-    setRecentVersionSwitchNotice
+    setDrawerState
   });
 
   const errorMessage =
     getErrorMessage(catalogQuery.error) ??
-    getErrorMessage(familiesQuery.error) ??
     getErrorMessage(instancesQuery.error) ??
     getErrorMessage(optionsQuery.error) ??
     getErrorMessage(mainInstanceQuery.error) ??
@@ -331,15 +72,7 @@ export function SettingsModelProvidersSection({
     getErrorMessage(revealSecretMutation.error) ??
     getErrorMessage(validateMutation.error) ??
     getErrorMessage(refreshMutation.error) ??
-    getErrorMessage(deleteMutation.error) ??
-    getErrorMessage(familyDeleteMutation.error) ??
-    getErrorMessage(officialInstallMutation.error) ??
-    getErrorMessage(versionMutation.error) ??
-    getErrorMessage(refreshCurrentNodeArtifactMutation.error) ??
-    getErrorMessage(installCurrentNodeArtifactMutation.error) ??
-    getErrorMessage(pluginTaskQuery.error);
-  const uploadErrorMessage =
-    uploadValidationMessage ?? getErrorMessage(uploadMutation.error);
+    getErrorMessage(deleteMutation.error);
   const sectionStatus = useMemo(
     () =>
       errorMessage ? (
@@ -347,9 +80,6 @@ export function SettingsModelProvidersSection({
       ) : null,
     [errorMessage]
   );
-  const officialCatalogErrorMessage = officialCatalogQuery.error
-    ? i18nText('settings', 'auto.official_supplier_catalog_unavailable')
-    : null;
   const modalMainInstance =
     mainInstanceQuery.data ??
     (modalProviderOption
@@ -375,44 +105,15 @@ export function SettingsModelProvidersSection({
 
   return (
     <>
-      {modalContextHolder}
       <SettingsSectionSurface heightMode="fill" status={sectionStatus}>
         <div className="model-provider-panel">
           <Layout className="model-provider-panel__main">
             <Layout.Content className="model-provider-panel__left">
               <ModelProviderCatalogPanel
                 overviewRows={overviewRows}
-                entries={families}
-                currentCatalogEntries={currentCatalogEntriesByProviderCode}
-                loading={familiesQuery.isLoading}
+                entries={catalogEntries}
+                loading={catalogQuery.isLoading}
                 canManage={canManage}
-                deletingProviderCode={
-                  familyDeleteMutation.isPending
-                    ? (familyDeleteMutation.variables ?? null)
-                    : null
-                }
-                switchingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables.mode === 'switch'
-                    ? versionMutation.variables.providerCode
-                    : null
-                }
-                upgradingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables.mode === 'upgrade'
-                    ? versionMutation.variables.providerCode
-                    : null
-                }
-                refreshingArtifactInstallationId={
-                  refreshCurrentNodeArtifactMutation.isPending
-                    ? (refreshCurrentNodeArtifactMutation.variables ?? null)
-                    : null
-                }
-                installingArtifactInstallationId={
-                  installCurrentNodeArtifactMutation.isPending
-                    ? (installCurrentNodeArtifactMutation.variables ?? null)
-                    : null
-                }
                 onViewInstances={(entry) => {
                   setInstanceModalState({
                     providerCode: entry.provider_code,
@@ -425,117 +126,8 @@ export function SettingsModelProvidersSection({
                     providerCode: entry.provider_code
                   });
                 }}
-                onUpgradeLatest={(entry) => {
-                  versionMutation.mutate({
-                    mode: 'upgrade',
-                    providerCode: entry.provider_code
-                  });
-                }}
-                onSwitchVersion={(entry, installationId) => {
-                  versionMutation.mutate({
-                    mode: 'switch',
-                    providerCode: entry.provider_code,
-                    installationId
-                  });
-                }}
-                onRefreshCurrentNodeArtifact={(entry) => {
-                  refreshCurrentNodeArtifactMutation.mutate(
-                    entry.current_installation_id
-                  );
-                }}
-                onInstallCurrentNodeArtifact={(entry) => {
-                  installCurrentNodeArtifactMutation.mutate(
-                    entry.current_installation_id
-                  );
-                }}
-                onDelete={(entry) => {
-                  void modal.confirm({
-                    title: i18nText('settings', 'auto.delete_supplier'),
-                    icon: null,
-                    centered: true,
-                    okText: i18nText('settings', 'auto.delete'),
-                    okType: 'danger',
-                    cancelText: i18nText('settings', 'auto.cancel'),
-                    okButtonProps: {
-                      loading:
-                        familyDeleteMutation.isPending &&
-                        familyDeleteMutation.variables === entry.provider_code
-                    },
-                    content: (
-                      <div className="model-provider-panel__install-confirm">
-                        <div className="model-provider-panel__install-confirm-card">
-                          <Typography.Title level={5}>
-                            {entry.display_name}
-                          </Typography.Title>
-                          <Typography.Paragraph type="secondary">
-                            {i18nText(
-                              'settings',
-                              'auto.deletion_all_instances_installation_records_local_plug_files_provider_cleaned'
-                            )}
-                          </Typography.Paragraph>
-                          <Typography.Paragraph type="secondary">
-                            {i18nText(
-                              'settings',
-                              'auto.existing_process_node_still_references_provider_subsequent_error_reports_normal'
-                            )}
-                          </Typography.Paragraph>
-                        </div>
-                      </div>
-                    ),
-                    onOk: async () => {
-                      await familyDeleteMutation.mutateAsync(
-                        entry.provider_code
-                      );
-                    }
-                  });
-                }}
               />
             </Layout.Content>
-
-            <Layout.Sider
-              width={360}
-              theme="light"
-              className="model-provider-panel__sidebar"
-            >
-              <OfficialPluginInstallPanel
-                sourceMeta={officialSourceMeta}
-                entries={officialCatalogEntries}
-                catalogErrorMessage={officialCatalogErrorMessage}
-                familiesByProviderCode={familiesByProviderCode}
-                searchQuery={officialSearchQuery}
-                loading={officialCatalogQuery.isLoading}
-                canManage={canManage}
-                activePluginId={officialInstallState.pluginId}
-                installState={officialInstallState.status}
-                upgradingProviderCode={
-                  versionMutation.isPending &&
-                  versionMutation.variables?.mode === 'upgrade'
-                    ? (versionMutation.variables.providerCode ?? null)
-                    : null
-                }
-                onInstall={(entry, compatibilityOverride) => {
-                  officialInstallMutation.mutate({
-                    pluginId: entry.plugin_id,
-                    compatibilityOverride
-                  });
-                }}
-                onOpenUpload={() => {
-                  setUploadModalOpen(true);
-                  clearUploadState();
-                }}
-                onSearchQueryChange={setOfficialSearchQuery}
-                onRetryCatalog={() => {
-                  void officialCatalogQuery.refetch();
-                }}
-                onUpgradeLatest={(entry, compatibilityOverride) => {
-                  versionMutation.mutate({
-                    mode: 'upgrade',
-                    providerCode: entry.provider_code,
-                    compatibilityOverride
-                  });
-                }}
-              />
-            </Layout.Sider>
           </Layout>
         </div>
       </SettingsSectionSurface>
@@ -628,30 +220,9 @@ export function SettingsModelProvidersSection({
         refreshing={refreshMutation.isPending}
         deleting={deleteMutation.isPending}
         canManage={canManage}
-        versionSwitchNotice={
-          instanceModalState &&
-          recentVersionSwitchNotice?.providerCode ===
-            instanceModalState.providerCode
-            ? {
-                targetVersion: recentVersionSwitchNotice.targetVersion,
-                migratedInstanceCount:
-                  recentVersionSwitchNotice.migratedInstanceCount
-              }
-            : null
-        }
-        onClose={() => {
-          setInstanceModalState(null);
-          setRecentVersionSwitchNotice((current) =>
-            current && current.providerCode === instanceModalState?.providerCode
-              ? null
-              : current
-          );
-        }}
+        onClose={() => setInstanceModalState(null)}
         onEdit={(instance) => {
-          setDrawerState({
-            mode: 'edit',
-            instanceId: instance.id
-          });
+          setDrawerState({ mode: 'edit', instanceId: instance.id });
         }}
         onRefreshCandidates={(instance) => {
           validateMutation.mutate(instance.id);
@@ -663,10 +234,7 @@ export function SettingsModelProvidersSection({
           deleteMutation.mutate(instance.id);
         }}
         onToggleAutoIncludeNewInstances={(checked) => {
-          if (!instanceModalState || !modalMainInstance) {
-            return;
-          }
-
+          if (!instanceModalState || !modalMainInstance) return;
           updateMainInstanceSettingsMutation.mutate({
             providerCode: instanceModalState.providerCode,
             auto_include_new_instances: checked,
@@ -675,10 +243,7 @@ export function SettingsModelProvidersSection({
           });
         }}
         onChangeDistributionRule={(modelId, distributionRule) => {
-          if (!instanceModalState || !modalMainInstance) {
-            return;
-          }
-
+          if (!instanceModalState || !modalMainInstance) return;
           const existingPolicy = modalMainInstance.model_routing_policies.find(
             (policy) => policy.model_id === modelId
           );
@@ -717,9 +282,7 @@ export function SettingsModelProvidersSection({
           excludedProviderInstanceIds,
           onSuccess
         ) => {
-          if (!instanceModalState || !modalMainInstance) {
-            return;
-          }
+          if (!instanceModalState || !modalMainInstance) return;
           const existingPolicy = modalMainInstance.model_routing_policies.find(
             (policy) => policy.model_id === modelId
           );
@@ -749,33 +312,6 @@ export function SettingsModelProvidersSection({
             instance,
             included_in_main: checked
           });
-        }}
-      />
-
-      <PluginUploadInstallModal
-        open={uploadModalOpen}
-        submitting={uploadMutation.isPending}
-        resultSummary={uploadResultSummary}
-        errorMessage={uploadErrorMessage}
-        fileList={uploadFileList}
-        onClose={() => {
-          setUploadModalOpen(false);
-          clearUploadState();
-        }}
-        onChange={(nextFiles) => {
-          clearUploadState();
-          setUploadFileList(nextFiles.slice(-1));
-        }}
-        onSubmit={() => {
-          const file = uploadFileList[0]?.originFileObj;
-          if (!(file instanceof File)) {
-            setUploadValidationMessage(
-              i18nText('settings', 'auto.select_plug_package_first')
-            );
-            return;
-          }
-
-          uploadMutation.mutate(file);
         }}
       />
     </>

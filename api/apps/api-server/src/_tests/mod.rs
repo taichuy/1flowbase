@@ -27,6 +27,7 @@ mod me_routes;
 mod member_routes;
 mod model_provider_icon_routes;
 mod model_provider_routes;
+mod official_extension_catalog_source;
 mod official_i18n_catalog_source;
 mod plugin_routes;
 mod provider_request_log_worker;

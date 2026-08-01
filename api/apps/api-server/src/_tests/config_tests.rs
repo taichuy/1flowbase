@@ -119,6 +119,89 @@ fn api_config_defaults_to_development_and_unrestricted_cors() {
 }
 
 #[test]
+fn root_1545_ac_2_extension_catalog_defaults_derive_six_v1_indexes_from_repository() {
+    let config = ApiConfig::from_env_map(&[
+        (
+            "API_DATABASE_URL",
+            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
+        ),
+        ("API_OFFICIAL_PLUGIN_REPOSITORY", "acme/extensions"),
+        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
+        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
+        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
+        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
+    ])
+    .unwrap();
+
+    for category in [
+        "agent-flow",
+        "capability-plugins",
+        "host-extensions",
+        "i18n",
+        "mcp",
+        "runtime-extensions",
+    ] {
+        let source = config
+            .resolve_official_extension_catalog_source(category)
+            .unwrap();
+        assert_eq!(source.source_kind, "official_repository");
+        assert_eq!(
+            source.index_url,
+            format!(
+                "https://raw.githubusercontent.com/acme/extensions/main/{category}/catalog/v1/index.json"
+            )
+        );
+    }
+}
+
+#[test]
+fn root_1545_ac_2_extension_catalog_mirror_base_and_category_override_are_explicit() {
+    let config = ApiConfig::from_env_map(&[
+        (
+            "API_DATABASE_URL",
+            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
+        ),
+        (
+            "API_OFFICIAL_EXTENSION_CATALOG_MIRROR_BASE_URL",
+            "https://mirror.example/extensions/",
+        ),
+        (
+            "API_OFFICIAL_EXTENSION_CATALOG_I18N_INDEX_URL",
+            "https://locale.example/catalog/index.json",
+        ),
+        (
+            "API_OFFICIAL_MCP_BUNDLE_CATALOG_URL",
+            "https://legacy.example/mcp/catalog.json",
+        ),
+        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
+        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
+        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
+        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        config
+            .resolve_official_extension_catalog_source("runtime-extensions")
+            .unwrap()
+            .index_url,
+        "https://mirror.example/extensions/runtime-extensions/catalog/v1/index.json"
+    );
+    assert_eq!(
+        config
+            .resolve_official_extension_catalog_source("i18n")
+            .unwrap()
+            .index_url,
+        "https://locale.example/catalog/index.json"
+    );
+    assert_eq!(
+        config.resolve_official_mcp_bundle_source().catalog_url,
+        "https://legacy.example/mcp/catalog.json",
+        "legacy settings remain owned by legacy domain pages"
+    );
+}
+
+#[test]
 fn api_config_defaults_provider_install_root_to_api_workspace_plugins_directory() {
     let config = ApiConfig::from_env_map(&[
         (

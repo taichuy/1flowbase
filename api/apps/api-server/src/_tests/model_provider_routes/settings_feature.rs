@@ -611,7 +611,14 @@ async fn model_providers_feature_only_completes_plugin_install_and_family_lifecy
                 .header("x-csrf-token", &actor_csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "plugin_id": "1flowbase.openai_compatible" }).to_string(),
+                    json!({
+                        "plugin_id": "1flowbase.openai_compatible",
+                        "risk_override": {
+                            "reason": "route fixture accepts unsigned package",
+                            "acknowledged_warnings": ["signature_missing"]
+                        }
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )

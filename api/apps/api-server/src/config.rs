@@ -51,6 +51,8 @@ pub struct ApiConfig {
     pub official_plugin_github_proxy_url: Option<String>,
     pub official_plugin_signature_required: bool,
     pub official_plugin_trusted_public_keys_json: String,
+    pub official_extension_catalog_sources:
+        BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
     pub official_agent_flow_template_default_index_url: String,
     pub official_agent_flow_template_mirror_index_url: Option<String>,
     pub official_mcp_bundle_default_catalog_url: String,
@@ -76,6 +78,13 @@ pub struct ResolvedOfficialPluginSourceConfig {
     pub registry_url: String,
     pub github_proxy_url: Option<String>,
     pub trust_mode: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedOfficialExtensionCatalogSourceConfig {
+    pub source_kind: String,
+    pub index_url: String,
+    pub github_proxy_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,7 +203,12 @@ impl ApiConfig {
         let official_plugin_trusted_public_keys_json = map
             .get("API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON")
             .cloned()
-            .unwrap_or_else(|| "[]".to_string());
+            .unwrap_or_else(default_official_plugin_trusted_public_keys_json);
+        let official_extension_catalog_sources = resolve_official_extension_catalog_sources(
+            &map,
+            &official_plugin_repository,
+            official_plugin_github_proxy_url.clone(),
+        );
         let official_agent_flow_template_default_index_url = map
             .get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_DEFAULT_INDEX_URL")
             .cloned()
@@ -310,6 +324,7 @@ impl ApiConfig {
             official_plugin_github_proxy_url,
             official_plugin_signature_required,
             official_plugin_trusted_public_keys_json,
+            official_extension_catalog_sources,
             official_agent_flow_template_default_index_url,
             official_agent_flow_template_mirror_index_url,
             official_mcp_bundle_default_catalog_url,
@@ -446,6 +461,73 @@ impl ApiConfig {
         })
         .collect()
     }
+
+    pub fn resolve_official_extension_catalog_source(
+        &self,
+        category: &str,
+    ) -> Option<ResolvedOfficialExtensionCatalogSourceConfig> {
+        self.official_extension_catalog_sources
+            .get(category)
+            .cloned()
+    }
+}
+
+const OFFICIAL_EXTENSION_CATALOG_CATEGORIES: [(&str, &str); 6] = [
+    ("agent-flow", "AGENT_FLOW"),
+    ("capability-plugins", "CAPABILITY_PLUGINS"),
+    ("host-extensions", "HOST_EXTENSIONS"),
+    ("i18n", "I18N"),
+    ("mcp", "MCP"),
+    ("runtime-extensions", "RUNTIME_EXTENSIONS"),
+];
+
+fn resolve_official_extension_catalog_sources(
+    map: &BTreeMap<String, String>,
+    repository: &str,
+    github_proxy_url: Option<String>,
+) -> BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig> {
+    let default_base = format!("https://raw.githubusercontent.com/{repository}/main");
+    let mirror_base = map
+        .get("API_OFFICIAL_EXTENSION_CATALOG_MIRROR_BASE_URL")
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    OFFICIAL_EXTENSION_CATALOG_CATEGORIES
+        .into_iter()
+        .map(|(category, env_suffix)| {
+            let explicit_key = format!("API_OFFICIAL_EXTENSION_CATALOG_{env_suffix}_INDEX_URL");
+            let explicit = map
+                .get(&explicit_key)
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let (source_kind, index_url) = if let Some(index_url) = explicit {
+                ("configured_mirror", index_url.to_string())
+            } else if let Some(base) = mirror_base {
+                (
+                    "configured_mirror",
+                    format!(
+                        "{}/{category}/catalog/v1/index.json",
+                        base.trim_end_matches('/')
+                    ),
+                )
+            } else {
+                (
+                    "official_repository",
+                    format!("{default_base}/{category}/catalog/v1/index.json"),
+                )
+            };
+            (
+                category.to_string(),
+                ResolvedOfficialExtensionCatalogSourceConfig {
+                    source_kind: source_kind.to_string(),
+                    index_url,
+                    github_proxy_url: github_proxy_url.clone(),
+                },
+            )
+        })
+        .collect()
 }
 
 fn default_api_node_id(provider_install_root: &str) -> String {
@@ -505,6 +587,10 @@ fn default_provider_install_root() -> String {
         .join("plugins")
         .display()
         .to_string()
+}
+
+fn default_official_plugin_trusted_public_keys_json() -> String {
+    r#"[{"key_id":"official-key-2026-04","algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAuk3oonNd85FNP8CBRKj8RVvpdbhreoJiCguEJXPSgwg=\n-----END PUBLIC KEY-----"}]"#.to_string()
 }
 
 fn default_business_file_local_root() -> String {

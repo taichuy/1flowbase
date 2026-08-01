@@ -8,6 +8,7 @@ pub mod base;
 pub mod builtin_data_model;
 pub mod console_policy;
 pub mod data_source;
+pub mod extension_installation;
 pub mod file_management;
 pub mod flow;
 pub mod frontend_block_catalog;
@@ -60,6 +61,12 @@ pub use data_source::{
     data_source_secret_ref, DataSourceCatalogCacheRecord, DataSourceCatalogRefreshStatus,
     DataSourceDefaults, DataSourceInstanceRecord, DataSourceInstanceStatus,
     DataSourcePreviewSessionRecord, DataSourceSecretRecord,
+};
+pub use extension_installation::{
+    ExtensionCatalogIdentity, ExtensionCategory, ExtensionCompatibilityWarning,
+    ExtensionInstallationIdentity, ExtensionInstallationReceipt, ExtensionInstallationRecord,
+    ExtensionInstallationStatus, ExtensionIntegrityWarning, ExtensionRiskChallenge,
+    ExtensionSignatureStatus,
 };
 pub use file_management::{
     FileStorageHealthStatus, FileStorageRecord, FileTableRecord, FileTableScopeKind,

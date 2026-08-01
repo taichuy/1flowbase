@@ -22,6 +22,9 @@ pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.data-models";
 pub const SYSTEM_DOCS_SETTINGS_FEATURE_ID: &str = "system.docs";
 pub const SYSTEM_DOCS_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.docs";
+pub const SYSTEM_EXTENSION_CENTER_SETTINGS_FEATURE_ID: &str = "system.extension-center";
+pub const SYSTEM_EXTENSION_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.extension-center";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_ID: &str = "system.files";
 pub const SYSTEM_FILES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.access.system.files";
 pub const SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_ID: &str = "system.host-infrastructure";
@@ -106,6 +109,45 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_EXTENSION_CENTER_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.extension-center".to_string(),
+                surface_key: "extension-center".to_string(),
+                path: "/settings/extension-center".to_string(),
+                label_key: "auto.extension_center".to_string(),
+                description_key: "console.policy_groups.settings.system.extension-center.description"
+                    .to_string(),
+                order: 50,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/extension-center/installed"),
+                (
+                    "GET",
+                    "/api/console/settings/extension-center/catalog/{category}",
+                ),
+                (
+                    "GET",
+                    "/api/console/settings/extension-center/catalog/{category}/{catalog_id}",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/extension-center/update-check",
+                ),
+                ("POST", "/api/console/settings/extension-center/install"),
+                (
+                    "POST",
+                    "/api/console/settings/extension-center/install-upload",
+                ),
+                ("POST", "/api/console/settings/extension-center/update"),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {

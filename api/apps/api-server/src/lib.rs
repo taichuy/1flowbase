@@ -8,6 +8,7 @@ pub mod config;
 pub mod console_policy_migration;
 pub mod console_surface_registry;
 pub mod error_response;
+pub mod extension_bootstrap;
 pub mod host_extension_boot;
 pub mod host_extension_loader;
 pub mod host_extensions;
@@ -16,6 +17,7 @@ pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
 pub mod official_agent_flow_templates;
+pub mod official_extension_catalog;
 pub mod official_i18n_catalog_seed;
 pub mod official_i18n_catalog_source;
 pub mod official_mcp_bundles;
@@ -347,6 +349,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
         ));
+    let official_extension_catalog_source = Arc::new(
+        official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config),
+    );
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
@@ -357,6 +362,31 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     )
     .with_node_id(config.api_node_id.clone())
     .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
+    plugin_management
+        .rebuild_inventory_from_local_receipts(bootstrap_result.root_user_id)
+        .await?;
+    match extension_bootstrap::load_locked_extension_bootstrap(&api_workspace_root()?) {
+        Ok(entries) => {
+            for result in plugin_management
+                .bootstrap_locked_extensions(bootstrap_result.root_user_id, &entries)
+                .await
+            {
+                if let Some(warning) = result.warning {
+                    tracing::warn!(
+                        extension_id = %warning.extension_id,
+                        version = %warning.version,
+                        stage = warning.stage,
+                        error = %warning.message,
+                        "default extension bootstrap warning; core startup continues"
+                    );
+                }
+            }
+        }
+        Err(error) => tracing::warn!(
+            error = %error,
+            "default extension bootstrap manifest unavailable; core startup continues"
+        ),
+    }
     plugin_management
         .ensure_builtin_plugin(
             control_plane::plugin_management::EnsureBuiltinPluginCommand {
@@ -421,6 +451,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         official_plugin_source,
         official_agent_flow_template_source,
         official_mcp_bundle_source,
+        official_extension_catalog_source,
         official_i18n_catalog_update_service,
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),

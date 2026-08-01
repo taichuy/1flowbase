@@ -13,6 +13,7 @@ export * from './console-data-models';
 export * from './console-file-management';
 export * from './console/frontend-blocks';
 export * from './console/frontstage';
+export * from './console/extensions';
 export * from './console/i18n-catalog';
 export * from './console-auth-center';
 export * from './console-model-providers';

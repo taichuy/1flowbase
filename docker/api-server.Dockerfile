@@ -22,6 +22,17 @@ RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/lo
       cargo build --release -p api-server --bin api-server \
     && cp /workspace/api/target-cache/release/api-server /workspace/api/api-server
 
+FROM alpine:3.22 AS default-extension
+
+ARG TARGETARCH
+
+RUN apk add --no-cache ca-certificates curl jq
+
+COPY api/plugins/default-extensions.lock.json /tmp/default-extensions.lock.json
+COPY scripts/shell/package-default-extension.sh /usr/local/bin/package-default-extension
+
+RUN package-default-extension /tmp/default-extensions.lock.json "${TARGETARCH}" /default-extensions
+
 FROM debian:trixie-slim AS runtime-base
 
 ARG APP_UID=1000
@@ -36,6 +47,7 @@ RUN apt-get update \
   && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin flowbase
 
 COPY api/plugins /app/api/plugins
+COPY --from=default-extension /default-extensions /app/api/plugins/bootstrap
 
 RUN mkdir -p \
     /app/api/storage \

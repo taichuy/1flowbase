@@ -865,6 +865,23 @@
     "kernel_memory": "内核",
     "shared_memory": "共享",
     "plugin_install_path": "插件安装路径",
-    "host_extension_path": "宿主扩展路径"
+    "host_extension_path": "宿主扩展路径",
+    "extension_center": "扩展中心",
+    "organization": "组织",
+    "artifact_id": "产物标识",
+    "extension_operation_submitted": "扩展操作已提交",
+    "extension_operation_failed": "扩展操作失败",
+    "update_extension": "更新扩展",
+    "install_extension": "安装扩展",
+    "extension_install_confirmation": "确认安装该扩展吗？",
+    "current_version": "当前版本",
+    "system_requirements": "系统要求",
+    "installation": "安装状态",
+    "trust": "可信度",
+    "update_available": "检测到可用更新",
+    "update_check_failed": "无法确定更新状态",
+    "install": "安装",
+    "installed_extensions": "已安装扩展",
+    "no_extensions": "暂无扩展"
   }
 }

@@ -1,5 +1,6 @@
 pub mod application_mapper;
 pub mod auth_mapper;
+pub mod extension_installation;
 pub mod flow_mapper;
 pub mod frontend_block_catalog_mapper;
 pub mod js_dependency_mapper;
