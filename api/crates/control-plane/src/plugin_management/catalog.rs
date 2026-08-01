@@ -125,6 +125,7 @@ pub struct LocalExtensionInventoryEntry {
     pub installation: domain::PluginInstallationRecord,
     pub local_artifact: domain::PluginArtifactInstanceRecord,
     pub category: String,
+    pub artifact_kind: Option<String>,
     pub source: String,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarning>,
@@ -577,6 +578,22 @@ where
             }
             entries.push(LocalExtensionInventoryEntry {
                 category: item_category.to_string(),
+                artifact_kind: Some(
+                    installation
+                        .metadata_json
+                        .get("plugin_type")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| {
+                            if is_host_extension_installation(&installation) {
+                                "host_extension".to_string()
+                            } else if is_model_provider_installation(&installation) {
+                                "model_provider".to_string()
+                            } else {
+                                "capability_plugin".to_string()
+                            }
+                        }),
+                ),
                 source: extension_source(&installation.source_kind).to_string(),
                 trust: extension_trust(&installation).to_string(),
                 warnings: extension_warnings(&installation, &artifact),

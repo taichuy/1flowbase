@@ -50,6 +50,7 @@ pub struct ExtensionRiskWarningResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInventoryEntryResponse {
     pub category: String,
+    pub artifact_kind: Option<String>,
     pub artifact_id: String,
     pub display_name: String,
     pub description: Option<String>,
@@ -210,6 +211,7 @@ fn to_local_inventory_entry(
 ) -> LocalExtensionInventoryEntryResponse {
     LocalExtensionInventoryEntryResponse {
         category: entry.category,
+        artifact_kind: entry.artifact_kind,
         artifact_id: entry.artifact_id,
         display_name: entry.display_name,
         description: entry.description,
