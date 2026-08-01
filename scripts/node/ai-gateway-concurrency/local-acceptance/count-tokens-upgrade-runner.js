@@ -440,7 +440,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
   let primaryError = null;
   let observed = null;
   let cleanupErrors = [];
-  const secrets = { credentials: [], credentialUrls: [] };
+  const secrets = { descriptors: [] };
   let artifactPath = null;
   try {
     manifest = loadRunManifest(rawOptions.manifest, dependencies);
@@ -456,13 +456,14 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
       ? requireDirectory(providerInstallRootValue, 'provider install root override')
       : null;
     const apiEnvironment = loadApiFileEnvironment(manifest.apiServerCwd, dependencies);
-    secrets.credentials.push(
-      apiKey,
-      ownerPassword,
-      providerSecretMasterKey,
-      ...Object.values(apiEnvironment.values),
+    secrets.descriptors.push(
+      { kind: 'credential', value: apiKey },
+      { kind: 'credential', value: ownerPassword },
+      { kind: 'credential', value: providerSecretMasterKey },
+      ...Object.entries(apiEnvironment.values)
+        .map(([key, value]) => ({ kind: 'env', key, value })),
+      { kind: 'credential_url', value: databaseUrl },
     );
-    secrets.credentialUrls.push(databaseUrl);
     const tempRoot = registry.addTempRoot(fs.mkdtempSync(path.join(os.tmpdir(), '1flowbase-count-tokens-upgrade-')));
     services = {};
     services = await startFrozenServices({
@@ -477,7 +478,10 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
       password: ownerPassword,
       fetchImpl,
     });
-    secrets.credentials.push(temporarySession.cookie, temporarySession.csrfToken);
+    secrets.descriptors.push(
+      { kind: 'credential', value: temporarySession.cookie },
+      { kind: 'credential', value: temporarySession.csrfToken },
+    );
     if (!temporarySession.cookie.startsWith(`${manifest.cookieName}=`)) {
       throw new Error('owner session cookie does not match the frozen API cookie name');
     }

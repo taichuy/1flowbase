@@ -50,4 +50,8 @@ process are excluded unless the source `.env` or an optional override supplies
 them. Artifacts record only the derived `.env` path and, when the file exists,
 its SHA-256; they never record parsed values. A child that exits before health
 produces bounded typed stdout/stderr diagnostics, which pass through the same
-secret redaction as the rest of the artifact.
+secret redaction as the rest of the artifact. Dotenv diagnostic redaction is
+key-aware: password, secret, token, private credential, API-key, and
+credential-bearing database URL values are protected across raw and encoded
+representations, while public trusted keys, schema identifiers, and paths remain
+unchanged.

@@ -49,6 +49,94 @@ test('Root #1556 F11 redacts by structure without corrupting schema text with a 
   assert.doesNotMatch(JSON.stringify(safe), /owner-password|owner:1flowbase/u);
 });
 
+test('Root #1556 F14 redacts finite raw, escaped, percent, and collision-ordered variants', () => {
+  const shortSecret = 'credential-value';
+  const longSecret = 'credential-value-with-suffix';
+  const escapedSecret = 'secret-"quoted"\\path/%';
+  const jsonEscaped = JSON.stringify(escapedSecret).slice(1, -1);
+  const doubleEscaped = JSON.stringify(jsonEscaped).slice(1, -1);
+  const percentEncoded = encodeURIComponent(escapedSecret);
+  const safe = redact({
+    primary_error: {
+      message: [
+        escapedSecret,
+        JSON.stringify({ password: escapedSecret }),
+        JSON.stringify(JSON.stringify({ password: escapedSecret })),
+        percentEncoded,
+        longSecret,
+        shortSecret,
+      ].join('\n'),
+    },
+  }, {
+    descriptors: [
+      { kind: 'credential', value: escapedSecret },
+      { kind: 'credential', value: shortSecret },
+      { kind: 'credential', value: longSecret },
+    ],
+  });
+
+  for (const variant of [escapedSecret, jsonEscaped, doubleEscaped, percentEncoded,
+    shortSecret, longSecret]) {
+    assert.equal(safe.primary_error.message.includes(variant), false, `diagnostic leaked ${variant}`);
+  }
+  assert.deepEqual(safe.primary_error.message.split('\n').slice(-2), [
+    '<redacted>',
+    '<redacted>',
+  ]);
+});
+
+test('Root #1556 F14 classifies dotenv secrets while preserving public material and common text', () => {
+  const trustedKeys = JSON.stringify([{
+    key_id: 'dotenv-key',
+    public_key_pem: 'quoted-json-value',
+  }]);
+  const schema = '1flowbase.local-count-tokens-upgrade-run/v5';
+  const providerPath = '/opt/1flowbase/providers/deepseek';
+  const apiKeyId = 'public-api-key-id';
+  const secretResolver = 'env';
+  const privateValue = 'private-credential-value';
+  const diagnostic = JSON.stringify({
+    trustedKeys, schema, providerPath, apiKeyId, secretResolver, privateValue,
+  });
+  const safe = redact({ primary_error: { message: diagnostic } }, {
+    descriptors: [
+      { kind: 'env', key: 'API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON', value: trustedKeys },
+      { kind: 'env', key: 'ACCEPTANCE_SCHEMA', value: schema },
+      { kind: 'env', key: 'PROVIDER_PATH', value: providerPath },
+      { kind: 'env', key: 'BOOTSTRAP_WORKSPACE_NAME', value: '1flowbase' },
+      { kind: 'env', key: 'APPLICATION_API_KEY_ID', value: apiKeyId },
+      { kind: 'env', key: 'API_SECRET_RESOLVER', value: secretResolver },
+      { kind: 'env', key: 'API_PRIVATE_CREDENTIAL', value: privateValue },
+    ],
+  });
+  const parsed = JSON.parse(safe.primary_error.message);
+
+  assert.equal(parsed.trustedKeys, trustedKeys);
+  assert.equal(parsed.schema, schema);
+  assert.equal(parsed.providerPath, providerPath);
+  assert.equal(parsed.apiKeyId, apiKeyId);
+  assert.equal(parsed.secretResolver, secretResolver);
+  assert.equal(parsed.privateValue, '<redacted>');
+  assert.match(safe.primary_error.message, /dotenv-key|quoted-json-value|1flowbase/u);
+});
+
+test('Root #1556 F14 sanitizes DB URL userinfo without replacing common password text', () => {
+  const databaseUrl = 'postgres://owner:1flowbase@127.0.0.1:35432/1flowbase';
+  const safe = redact({
+    schema_version: '1flowbase.local-count-tokens-upgrade-run/v5',
+    primary_error: {
+      message: `raw=${databaseUrl} encoded=${encodeURIComponent(databaseUrl)}`,
+    },
+  }, {
+    descriptors: [{ kind: 'env', key: 'API_DATABASE_URL', value: databaseUrl }],
+  });
+
+  assert.equal(safe.schema_version, '1flowbase.local-count-tokens-upgrade-run/v5');
+  assert.match(safe.primary_error.message,
+    /raw=postgres:\/\/<redacted>@127\.0\.0\.1:35432\/1flowbase/u);
+  assert.doesNotMatch(safe.primary_error.message, /owner:1flowbase|postgres%3A/u);
+});
+
 test('AC-009 validates schema and writes a mode-0600 redacted artifact', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-client-artifact-'));
   try {

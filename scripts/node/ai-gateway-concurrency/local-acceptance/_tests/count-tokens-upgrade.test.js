@@ -230,6 +230,9 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
       'API_COOKIE_NAME=dotenv_cookie_must_not_win',
       'BOOTSTRAP_WORKSPACE_NAME="dotenv-workspace"',
       "BOOTSTRAP_ROOT_EMAIL='dotenv-root@example.test'",
+      'BOOTSTRAP_ROOT_PASSWORD=dotenv-root-password',
+      'ACCEPTANCE_SCHEMA=1flowbase.local-count-tokens-upgrade-run/v5',
+      'PROVIDER_PATH=/opt/1flowbase/providers/deepseek',
       `API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON='${trustedKeysJson}'`,
       '',
     ].join('\n');
@@ -463,10 +466,16 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
       registry: disposableRegistry(),
     });
     assert.match(loginFailure.primary_error.message, /^owned login failed/u);
-    assert.doesNotMatch(JSON.stringify(loginFailure),
+    const loginFailureJson = JSON.stringify(loginFailure);
+    assert.match(loginFailureJson,
       /dotenv-workspace|dotenv-root@example|dotenv-key|quoted-json-value/u);
-    assert.doesNotMatch(JSON.stringify(loginFailure),
-      /dotenv-password|dotenv_cookie_must_not_win|dotenv-provider|127\.0\.0\.1:999[89]/u);
+    assert.match(loginFailureJson,
+      /1flowbase\.local-count-tokens-upgrade-run\/v5|\/opt\/1flowbase\/providers\/deepseek/u);
+    assert.equal(loginFailure.primary_error.message.includes(productProviderRoot), true);
+    assert.match(loginFailure.primary_error.message,
+      /postgres:\/\/<redacted>@127\.0\.0\.1\/wrong/u);
+    assert.doesNotMatch(loginFailureJson,
+      /dotenv-password|dotenv-root-password|dotenv-provider-master-key/u);
     assert.equal(loginFailure.cleanup.status, 'fail');
     assert.match(loginFailure.cleanup.errors[0].message, /owned process cleanup failed/u);
     assert.equal(overrideApiEnvs[0].API_PROVIDER_SECRET_MASTER_KEY, 'secret-provider-master-key');
