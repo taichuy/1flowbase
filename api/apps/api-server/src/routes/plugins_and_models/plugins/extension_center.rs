@@ -1,16 +1,24 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    io::{Cursor, Read},
+    sync::Arc,
+};
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
     http::{HeaderMap, StatusCode},
-    middleware, Json,
+    middleware,
+    response::{IntoResponse, Response},
+    Json,
 };
 use control_plane::plugin_management::{
-    ExtensionCatalogCategory, InstallOfficialExtensionCommand, InstallUploadedPluginCommand,
-    LocalExtensionInventoryEntry, PluginManagementService,
+    ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
+    ExtensionRiskOverride, InstallExtensionArtifactCommand, InstallExtensionNodePluginCommand,
+    PluginManagementService,
 };
+use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
 use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
 use utoipa::{IntoParams, ToSchema};
@@ -20,18 +28,17 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
-    official_extension_catalog::OfficialExtensionCatalogEntry,
+    official_extension_catalog::{
+        OfficialExtensionArtifactDescriptor, OfficialExtensionCatalogEntry,
+    },
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
 use super::{
-    base_service, enforce_plugin_upload_limit, parse_uuid, read_upload_file,
-    to_artifact_instance_response, to_compatibility_override, to_install_response,
-    to_installation_response_with_artifact, to_risk_override, InstallPluginResponse,
-    PluginArtifactInstanceResponse, PluginCompatibilityOverrideBody, PluginInstallationResponse,
-    PluginRiskOverrideBody, PluginUploadMultipartBody, MAX_PLUGIN_UPLOAD_BYTES,
+    base_service, enforce_plugin_upload_limit, format_time, parse_uuid,
+    PluginCompatibilityOverrideBody, PluginRiskOverrideBody, MAX_PLUGIN_UPLOAD_BYTES,
 };
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
@@ -57,19 +64,24 @@ pub struct ExtensionCompatibilityWarningResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocalExtensionInventoryEntryResponse {
+    pub id: String,
     pub category: String,
-    pub artifact_kind: Option<String>,
+    pub organization: String,
     pub artifact_id: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub current_version: String,
-    pub system_requirements: Option<String>,
-    pub installation_status: String,
+    pub version: String,
+    pub node_id: String,
     pub source: String,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
-    pub installation: PluginInstallationResponse,
-    pub local_artifact: PluginArtifactInstanceResponse,
+    pub local_path: String,
+    pub checksum: String,
+    pub signature_status: String,
+    pub signature_algorithm: Option<String>,
+    pub signing_key_id: Option<String>,
+    pub status: String,
+    pub installed_by: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -77,6 +89,27 @@ pub struct LocalExtensionInventoryPageResponse {
     pub limit: usize,
     pub next_cursor: Option<String>,
     pub entries: Vec<LocalExtensionInventoryEntryResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ExtensionInstallResponse {
+    pub installation: LocalExtensionInventoryEntryResponse,
+    pub local_artifact_was_present: bool,
+    pub node_plugin_installation_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ExtensionRiskChallengeErrorResponse {
+    pub status: u16,
+    pub code: String,
+    pub message: String,
+    pub risk_challenge: ExtensionRiskChallengeResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct ExtensionRiskChallengeResponse {
+    pub warnings: Vec<ExtensionRiskWarningResponse>,
+    pub compatibility: Option<ExtensionCompatibilityWarningResponse>,
 }
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
@@ -157,9 +190,21 @@ pub struct ExtensionUpdateCheckResponse {
 pub struct InstallOfficialExtensionBody {
     pub category: String,
     pub artifact_id: String,
-    pub artifact_kind: Option<String>,
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
     pub risk_override: Option<PluginRiskOverrideBody>,
+}
+
+#[derive(ToSchema)]
+#[allow(dead_code)]
+pub struct ExtensionUploadMultipartBody {
+    #[schema(value_type = String, format = Binary)]
+    file: Vec<u8>,
+    category: Option<String>,
+    organization: Option<String>,
+    artifact_id: Option<String>,
+    version: Option<String>,
+    risk_override: Option<String>,
+    compatibility_override: Option<String>,
 }
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -224,34 +269,42 @@ fn service(
     base_service(state).for_extension_center_console_operation(operation_id)
 }
 
+fn extension_installation_service(
+    state: &ApiState,
+) -> ExtensionInstallationService<MainDurableStore> {
+    ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+}
+
 fn to_local_inventory_entry(
-    entry: LocalExtensionInventoryEntry,
+    entry: domain::ExtensionInstallationRecord,
 ) -> LocalExtensionInventoryEntryResponse {
     LocalExtensionInventoryEntryResponse {
-        category: entry.category,
-        artifact_kind: entry.artifact_kind,
-        artifact_id: entry.artifact_id,
-        display_name: entry.display_name,
-        description: entry.description,
-        current_version: entry.current_version,
-        system_requirements: entry.system_requirements,
-        installation_status: entry.installation_status,
+        id: entry.id.to_string(),
+        category: entry.identity.category.as_str().to_string(),
+        organization: entry.identity.organization,
+        artifact_id: entry.identity.artifact_id,
+        version: entry.identity.version,
+        node_id: entry.identity.node_id,
         source: entry.source,
         trust: entry.trust,
         warnings: entry
             .warnings
             .into_iter()
             .map(|warning| ExtensionRiskWarningResponse {
-                message: warning_message(&warning.code),
+                message: warning.message,
                 code: warning.code,
                 overridable: warning.overridable,
             })
             .collect(),
-        installation: to_installation_response_with_artifact(
-            entry.installation,
-            Some(entry.local_artifact.clone()),
-        ),
-        local_artifact: to_artifact_instance_response(entry.local_artifact),
+        local_path: entry.local_path,
+        checksum: entry.checksum,
+        signature_status: entry.signature_status.as_str().to_string(),
+        signature_algorithm: entry.signature_algorithm,
+        signing_key_id: entry.signing_key_id,
+        status: entry.status.as_str().to_string(),
+        installed_by: entry.installed_by.to_string(),
+        created_at: format_time(entry.created_at),
+        updated_at: format_time(entry.updated_at),
     }
 }
 
@@ -267,11 +320,17 @@ pub async fn list_local_extension_inventory(
     headers: HeaderMap,
     Query(query): Query<LocalExtensionInventoryQuery>,
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
+    let _context = require_session(&state, &headers).await?;
     let category = query
         .category
         .as_deref()
-        .map(ExtensionCatalogCategory::parse)
+        .map(|value| {
+            domain::ExtensionCategory::parse(value).ok_or(
+                control_plane::errors::ControlPlaneError::InvalidInput(
+                    "extension_catalog_category",
+                ),
+            )
+        })
         .transpose()?;
     let cursor = query
         .cursor
@@ -279,14 +338,27 @@ pub async fn list_local_extension_inventory(
         .map(|value| parse_uuid(value, "cursor"))
         .transpose()?;
     let limit = query.limit.unwrap_or(20).clamp(1, 50);
-    let page = service(&state, "extension_center.installed.view")
-        .list_local_inventory(context.user.id, category, cursor, limit)
+    let mut entries = extension_installation_service(&state)
+        .list_installed_for_node(&state.api_node_id)
         .await?;
+    if let Some(category) = category {
+        entries.retain(|entry| entry.identity.category == category);
+    }
+    let start = cursor
+        .and_then(|cursor| entries.iter().position(|entry| entry.id == cursor))
+        .map_or(0, |index| index.saturating_add(1));
+    let page_entries = entries
+        .into_iter()
+        .skip(start)
+        .take(limit)
+        .collect::<Vec<_>>();
+    let next_cursor = (page_entries.len() == limit)
+        .then(|| page_entries.last().map(|entry| entry.id.to_string()))
+        .flatten();
     Ok(Json(ApiSuccess::new(LocalExtensionInventoryPageResponse {
-        limit: page.limit,
-        next_cursor: page.next_cursor,
-        entries: page
-            .entries
+        limit,
+        next_cursor,
+        entries: page_entries
             .into_iter()
             .map(to_local_inventory_entry)
             .collect(),
@@ -296,37 +368,43 @@ pub async fn list_local_extension_inventory(
 #[derive(Debug, Clone)]
 struct InstalledCatalogJoin {
     current_version: String,
-    artifact_kind: Option<String>,
     source: String,
     trust: String,
 }
 
 async fn installed_catalog_joins(
     state: &ApiState,
-    actor_user_id: Uuid,
     category: ExtensionCatalogCategory,
 ) -> Result<HashMap<String, InstalledCatalogJoin>, ApiError> {
-    let mut cursor = None;
     let mut joins = HashMap::new();
-    loop {
-        let page = service(state, "extension_center.catalog.view")
-            .list_local_inventory(actor_user_id, Some(category), cursor, 50)
-            .await?;
-        for entry in page.entries {
-            joins.insert(
-                entry.artifact_id,
-                InstalledCatalogJoin {
-                    current_version: entry.current_version,
-                    artifact_kind: entry.artifact_kind,
-                    source: entry.source,
-                    trust: entry.trust,
-                },
-            );
+    for entry in extension_installation_service(state)
+        .list_installed_for_node(&state.api_node_id)
+        .await?
+    {
+        if entry.identity.category.as_str() != category.as_str() {
+            continue;
         }
-        let Some(next_cursor) = page.next_cursor else {
-            break;
+        let join = InstalledCatalogJoin {
+            current_version: entry.identity.version.clone(),
+            source: entry.source,
+            trust: entry.trust,
         };
-        cursor = Some(parse_uuid(&next_cursor, "extension_inventory_cursor")?);
+        joins.insert(
+            format!(
+                "{}.{}",
+                entry.identity.organization, entry.identity.artifact_id
+            ),
+            join.clone(),
+        );
+        joins.insert(
+            format!(
+                "{}:{}/{}",
+                category.as_str(),
+                entry.identity.organization,
+                entry.identity.artifact_id
+            ),
+            join,
+        );
     }
     Ok(joins)
 }
@@ -397,14 +475,16 @@ fn current_host_version() -> &'static str {
 fn catalog_entry_compatibility(
     entry: &OfficialExtensionCatalogEntry,
 ) -> Option<ExtensionCompatibilityWarningResponse> {
-    if host_version_requirement_is_satisfied(
-        current_host_version(),
-        &entry.host_version_requirement,
-    ) {
+    compatibility_for_requirement(&entry.host_version_requirement)
+}
+
+fn compatibility_for_requirement(
+    host_version_requirement: &str,
+) -> Option<ExtensionCompatibilityWarningResponse> {
+    if host_version_requirement_is_satisfied(current_host_version(), host_version_requirement) {
         return None;
     }
-    let minimum_host_version = entry
-        .host_version_requirement
+    let minimum_host_version = host_version_requirement
         .trim()
         .strip_prefix(">=")?
         .trim()
@@ -482,7 +562,7 @@ fn project_catalog_entry(
         } else {
             "not_installed".to_string()
         },
-        artifact_kind: installation.and_then(|value| value.artifact_kind.clone()),
+        artifact_kind: None,
         installation_source: installation.map(|value| value.source.clone()),
         trust: installation
             .map(|value| value.trust.clone())
@@ -494,7 +574,6 @@ fn project_catalog_entry(
 
 async fn load_catalog_page(
     state: &ApiState,
-    actor_user_id: Uuid,
     category: ExtensionCatalogCategory,
     cursor: Option<String>,
 ) -> Result<ExtensionCatalogGatewayPageResponse, ApiError> {
@@ -502,7 +581,7 @@ async fn load_catalog_page(
         .official_extension_catalog_source
         .list_page(category.as_str(), cursor.as_deref())
         .await?;
-    let installed = installed_catalog_joins(state, actor_user_id, category).await?;
+    let installed = installed_catalog_joins(state, category).await?;
     let trusted_key_ids = state
         .official_plugin_source
         .trusted_public_keys()
@@ -544,9 +623,9 @@ pub async fn list_extension_catalog_gateway(
     headers: HeaderMap,
     Query(query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
+    let _context = require_session(&state, &headers).await?;
     let category = ExtensionCatalogCategory::parse(&category)?;
-    let page = load_catalog_page(&state, context.user.id, category, query.cursor).await?;
+    let page = load_catalog_page(&state, category, query.cursor).await?;
     Ok(Json(ApiSuccess::new(page)))
 }
 
@@ -563,7 +642,7 @@ pub async fn get_extension_catalog_entry(
     headers: HeaderMap,
     Query(_query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayEntryResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
+    let _context = require_session(&state, &headers).await?;
     let category = ExtensionCatalogCategory::parse(&category)?;
     let located = state
         .official_extension_catalog_source
@@ -572,7 +651,7 @@ pub async fn get_extension_catalog_entry(
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_catalog_entry",
         ))?;
-    let installed = installed_catalog_joins(&state, context.user.id, category).await?;
+    let installed = installed_catalog_joins(&state, category).await?;
     let trusted_key_ids = state
         .official_plugin_source
         .trusted_public_keys()
@@ -613,8 +692,7 @@ pub async fn check_extension_catalog_page_updates(
         .into());
     }
     let category = ExtensionCatalogCategory::parse(&body.category)?;
-    let page =
-        load_catalog_page(&state, context.user.id, category, body.catalog_page.clone()).await?;
+    let page = load_catalog_page(&state, category, body.catalog_page.clone()).await?;
     let latest = page
         .entries
         .into_iter()
@@ -645,40 +723,499 @@ pub async fn check_extension_catalog_page_updates(
     })))
 }
 
+#[derive(Debug)]
+struct NodePluginInspection {
+    category: ExtensionCatalogCategory,
+    organization: String,
+    artifact_id: String,
+    plugin_id: String,
+    version: String,
+    minimum_host_version: String,
+    signature_status: domain::ExtensionSignatureStatus,
+    signature_algorithm: Option<String>,
+    signing_key_id: Option<String>,
+}
+
+#[derive(Debug)]
+struct UploadedExtensionArtifact {
+    category: ExtensionCatalogCategory,
+    organization: String,
+    artifact_id: String,
+    version: String,
+    minimum_host_version: Option<String>,
+    node_plugin: bool,
+    signature_status: domain::ExtensionSignatureStatus,
+    signature_algorithm: Option<String>,
+    signing_key_id: Option<String>,
+}
+
+#[derive(Default)]
+struct ExtensionUploadFields {
+    file_name: Option<String>,
+    artifact_bytes: Option<Vec<u8>>,
+    category: Option<String>,
+    organization: Option<String>,
+    artifact_id: Option<String>,
+    version: Option<String>,
+    risk_override: Option<PluginRiskOverrideBody>,
+    compatibility_override: Option<PluginCompatibilityOverrideBody>,
+}
+
+enum PreflightDecision {
+    Challenge,
+    Accepted(Option<serde_json::Value>),
+}
+
+fn extension_identity(
+    category: ExtensionCatalogCategory,
+    organization: &str,
+    artifact_id: &str,
+    version: &str,
+    node_id: &str,
+) -> Result<domain::ExtensionInstallationIdentity, ApiError> {
+    let category = domain::ExtensionCategory::parse(category.as_str()).ok_or(
+        control_plane::errors::ControlPlaneError::InvalidInput("extension_catalog_category"),
+    )?;
+    Ok(domain::ExtensionInstallationIdentity {
+        category,
+        organization: organization.to_string(),
+        artifact_id: artifact_id.to_string(),
+        version: version.to_string(),
+        node_id: node_id.to_string(),
+    })
+}
+
+fn is_node_plugin_category(category: ExtensionCatalogCategory) -> bool {
+    matches!(
+        category,
+        ExtensionCatalogCategory::HostExtensions
+            | ExtensionCatalogCategory::RuntimeExtensions
+            | ExtensionCatalogCategory::CapabilityPlugins
+    )
+}
+
+fn risk_warning(code: &str, message: &str) -> ExtensionRiskWarningResponse {
+    ExtensionRiskWarningResponse {
+        code: code.to_string(),
+        message: message.to_string(),
+        overridable: true,
+    }
+}
+
+fn artifact_preflight_challenge(
+    entry: &OfficialExtensionCatalogEntry,
+    descriptor: &OfficialExtensionArtifactDescriptor,
+    trusted_key_ids: &[String],
+) -> ExtensionRiskChallengeResponse {
+    let mut warnings = Vec::new();
+    if descriptor.expected_checksum.is_none() {
+        warnings.push(risk_warning(
+            "checksum_missing",
+            "The artifact does not include an expected checksum.",
+        ));
+    }
+    match descriptor
+        .signature
+        .as_ref()
+        .and_then(|signature| signature.get("key_id"))
+        .and_then(serde_json::Value::as_str)
+    {
+        None => warnings.push(risk_warning(
+            "signature_missing",
+            "The artifact does not include a verifiable signature.",
+        )),
+        Some(key_id) if !trusted_key_ids.iter().any(|trusted| trusted == key_id) => {
+            warnings.push(risk_warning(
+                "signing_key_unknown",
+                "The artifact was signed by a key that is not configured as trusted.",
+            ));
+        }
+        Some(_) => {}
+    }
+    warnings.sort_by(|left, right| left.code.cmp(&right.code));
+    ExtensionRiskChallengeResponse {
+        warnings,
+        compatibility: catalog_entry_compatibility(entry),
+    }
+}
+
+fn validate_preflight_overrides(
+    challenge: &ExtensionRiskChallengeResponse,
+    risk_override: Option<&PluginRiskOverrideBody>,
+    compatibility_override: Option<&PluginCompatibilityOverrideBody>,
+) -> Result<PreflightDecision, ApiError> {
+    if !challenge.warnings.is_empty() {
+        let Some(risk_override) = risk_override else {
+            return Ok(PreflightDecision::Challenge);
+        };
+        let acknowledged = risk_override
+            .acknowledged_warnings
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if risk_override.reason.trim().is_empty()
+            || challenge
+                .warnings
+                .iter()
+                .any(|warning| !acknowledged.contains(&warning.code))
+        {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "extension_risk_override",
+            )
+            .into());
+        }
+    }
+    if let Some(compatibility) = challenge.compatibility.as_ref() {
+        let Some(override_value) = compatibility_override else {
+            return Ok(PreflightDecision::Challenge);
+        };
+        if override_value.reason != compatibility.reason
+            || override_value.acknowledged_current_host_version
+                != compatibility.current_host_version
+            || override_value.acknowledged_minimum_host_version
+                != compatibility.minimum_host_version
+        {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "extension_compatibility_override",
+            )
+            .into());
+        }
+    } else if compatibility_override.is_some() {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "extension_compatibility_override",
+        )
+        .into());
+    }
+    let receipt = (risk_override.is_some() || compatibility_override.is_some()).then(|| {
+        serde_json::json!({
+            "risk_override": risk_override,
+            "compatibility_override": compatibility_override,
+        })
+    });
+    Ok(PreflightDecision::Accepted(receipt))
+}
+
+fn challenge_response(challenge: ExtensionRiskChallengeResponse) -> Response {
+    (
+        StatusCode::CONFLICT,
+        Json(ExtensionRiskChallengeErrorResponse {
+            status: StatusCode::CONFLICT.as_u16(),
+            code: "extension_risk_confirmation_required".to_string(),
+            message: "Extension installation requires risk confirmation.".to_string(),
+            risk_challenge: challenge,
+        }),
+    )
+        .into_response()
+}
+
+fn domain_challenge_response(
+    challenge: domain::ExtensionRiskChallenge,
+    compatibility: Option<ExtensionCompatibilityWarningResponse>,
+) -> Response {
+    challenge_response(ExtensionRiskChallengeResponse {
+        warnings: challenge
+            .warnings
+            .into_iter()
+            .map(|warning| ExtensionRiskWarningResponse {
+                code: warning.code,
+                message: warning.message,
+                overridable: warning.overridable,
+            })
+            .collect(),
+        compatibility,
+    })
+}
+
+fn signature_status_from_descriptor(
+    descriptor: &OfficialExtensionArtifactDescriptor,
+    trusted_key_ids: &[String],
+) -> domain::ExtensionSignatureStatus {
+    match descriptor
+        .signature
+        .as_ref()
+        .and_then(|signature| signature.get("key_id"))
+        .and_then(serde_json::Value::as_str)
+    {
+        None => domain::ExtensionSignatureStatus::Missing,
+        Some(key_id) if trusted_key_ids.iter().any(|trusted| trusted == key_id) => {
+            domain::ExtensionSignatureStatus::Verified
+        }
+        Some(_) => domain::ExtensionSignatureStatus::UnknownKey,
+    }
+}
+
+fn signature_status_from_intake(status: &str) -> domain::ExtensionSignatureStatus {
+    match status {
+        "verified" => domain::ExtensionSignatureStatus::Verified,
+        "unsigned" => domain::ExtensionSignatureStatus::Missing,
+        "unknown_key" => domain::ExtensionSignatureStatus::UnknownKey,
+        _ => domain::ExtensionSignatureStatus::Invalid,
+    }
+}
+
+async fn inspect_node_plugin(
+    state: &ApiState,
+    file_name: &str,
+    artifact_bytes: &[u8],
+    source_kind: &str,
+) -> Result<NodePluginInspection, ApiError> {
+    let intake = intake_package_bytes(
+        artifact_bytes,
+        &PackageIntakePolicy {
+            source_kind: source_kind.to_string(),
+            trust_mode: "allow_unsigned".to_string(),
+            expected_artifact_sha256: None,
+            trusted_public_keys: state.official_plugin_source.trusted_public_keys(),
+            original_filename: Some(file_name.to_string()),
+        },
+    )
+    .await?;
+    let manifest = intake.manifest.clone();
+    let artifact_id = manifest.plugin_code()?.to_string();
+    let category = match manifest.consumption_kind {
+        PluginConsumptionKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
+        PluginConsumptionKind::RuntimeExtension => ExtensionCatalogCategory::RuntimeExtensions,
+        PluginConsumptionKind::CapabilityPlugin => ExtensionCatalogCategory::CapabilityPlugins,
+    };
+    let inspection = NodePluginInspection {
+        category,
+        organization: manifest.vendor,
+        artifact_id,
+        plugin_id: manifest.plugin_id,
+        version: manifest.version,
+        minimum_host_version: manifest.minimum_host_version,
+        signature_status: signature_status_from_intake(&intake.signature_status),
+        signature_algorithm: intake.signature_algorithm,
+        signing_key_id: intake.signing_key_id,
+    };
+    let _ = tokio::fs::remove_dir_all(&intake.extracted_root).await;
+    Ok(inspection)
+}
+
+async fn register_node_plugin(
+    state: &ApiState,
+    actor_user_id: Uuid,
+    operation_id: &'static str,
+    category: ExtensionCatalogCategory,
+    installation: &domain::ExtensionInstallationRecord,
+    file_name: String,
+    source_kind: String,
+) -> Result<String, ApiError> {
+    let package_bytes = tokio::fs::read(&installation.local_path).await?;
+    let result = service(state, operation_id)
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id,
+            category,
+            file_name,
+            package_bytes,
+            source_kind,
+        })
+        .await?;
+    Ok(result.installation.id.to_string())
+}
+
 async fn install_or_update_official_extension(
     state: &ApiState,
     headers: &HeaderMap,
     body: InstallOfficialExtensionBody,
     operation_id: &'static str,
-) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
+) -> Result<Response, ApiError> {
     let context = require_session(state, headers).await?;
     require_csrf(headers, &context)?;
     let category = ExtensionCatalogCategory::parse(&body.category)?;
-    let expected_plugin_type = body
-        .artifact_kind
-        .as_deref()
-        .or_else(|| category.fixed_plugin_type());
-    if !category.application().installs_node_artifact || expected_plugin_type.is_none() {
+    let located = state
+        .official_extension_catalog_source
+        .find_entry(category.as_str(), &body.artifact_id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "extension_catalog_entry",
+        ))?;
+    if located.entry.category != category.as_str() || located.entry.id != body.artifact_id {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_requires_domain_application",
+            "extension_catalog_identity",
         )
         .into());
     }
-    let result = service(state, operation_id)
-        .install_official_extension(InstallOfficialExtensionCommand {
+    let identity = extension_identity(
+        category,
+        &located.entry.organization,
+        &located.entry.artifact,
+        &located.entry.version,
+        &state.api_node_id,
+    )?;
+    let install_service = extension_installation_service(state);
+    let source_kind = if located.source_kind == "official_repository" {
+        "official_registry"
+    } else {
+        "mirror_registry"
+    };
+    if let Some(installation) = install_service.find_local_installation(&identity).await? {
+        let node_plugin_installation_id = if is_node_plugin_category(category) {
+            Some(
+                register_node_plugin(
+                    state,
+                    context.user.id,
+                    operation_id,
+                    category,
+                    &installation,
+                    "extension.1flowbasepkg".to_string(),
+                    source_kind.to_string(),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        return Ok((
+            StatusCode::OK,
+            Json(ApiSuccess::new(ExtensionInstallResponse {
+                installation: to_local_inventory_entry(installation),
+                local_artifact_was_present: true,
+                node_plugin_installation_id,
+            })),
+        )
+            .into_response());
+    }
+
+    let descriptor = state
+        .official_extension_catalog_source
+        .resolve_artifact(&located.entry)?;
+    let trusted_key_ids = state
+        .official_plugin_source
+        .trusted_public_keys()
+        .iter()
+        .map(|key| key.key_id.clone())
+        .collect::<Vec<_>>();
+    let preflight = artifact_preflight_challenge(&located.entry, &descriptor, &trusted_key_ids);
+    let declared_warnings = preflight
+        .warnings
+        .iter()
+        .map(|warning| domain::ExtensionIntegrityWarning {
+            code: warning.code.clone(),
+            message: warning.message.clone(),
+            overridable: warning.overridable,
+        })
+        .collect();
+    let confirmation_receipt = match validate_preflight_overrides(
+        &preflight,
+        body.risk_override.as_ref(),
+        body.compatibility_override.as_ref(),
+    )? {
+        PreflightDecision::Challenge => return Ok(challenge_response(preflight)),
+        PreflightDecision::Accepted(receipt) => receipt,
+    };
+    let downloaded = state
+        .official_extension_catalog_source
+        .download_artifact(&located.entry)
+        .await?;
+    let mut signature_status =
+        signature_status_from_descriptor(&downloaded.descriptor, &trusted_key_ids);
+    let mut signature_algorithm = downloaded
+        .descriptor
+        .signature
+        .as_ref()
+        .and_then(|signature| signature.get("algorithm"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let mut signing_key_id = downloaded
+        .descriptor
+        .signature
+        .as_ref()
+        .and_then(|signature| signature.get("key_id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    if is_node_plugin_category(category) {
+        let inspection = inspect_node_plugin(
+            state,
+            &downloaded.file_name,
+            &downloaded.artifact_bytes,
+            source_kind,
+        )
+        .await?;
+        if inspection.category != category
+            || inspection.version != located.entry.version
+            || inspection.artifact_id != located.entry.artifact
+            || inspection.plugin_id != located.entry.artifact
+        {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "extension_artifact_identity",
+            )
+            .into());
+        }
+        signature_status = inspection.signature_status;
+        signature_algorithm = inspection.signature_algorithm;
+        signing_key_id = inspection.signing_key_id;
+    }
+    let trust = match (source_kind, signature_status) {
+        ("official_registry", domain::ExtensionSignatureStatus::Verified) => "official",
+        (_, domain::ExtensionSignatureStatus::Verified) => "trusted",
+        _ => "unknown",
+    };
+    let risk_override = body.risk_override.map(|value| ExtensionRiskOverride {
+        reason: value.reason,
+        acknowledged_warnings: value.acknowledged_warnings,
+    });
+    let outcome = install_service
+        .install_from_bytes(InstallExtensionArtifactCommand {
             actor_user_id: context.user.id,
-            artifact_id: body.artifact_id,
-            expected_plugin_type: expected_plugin_type
-                .expect("installable categories require an artifact kind")
-                .to_string(),
-            compatibility_override: to_compatibility_override(body.compatibility_override),
-            risk_override: to_risk_override(body.risk_override),
+            category,
+            organization: located.entry.organization,
+            artifact_id: located.entry.artifact,
+            version: located.entry.version,
+            node_id: state.api_node_id.clone(),
+            artifact_bytes: downloaded.artifact_bytes,
+            source: if source_kind == "official_registry" {
+                "official".to_string()
+            } else {
+                "mirror".to_string()
+            },
+            trust: trust.to_string(),
+            expected_checksum: downloaded.descriptor.expected_checksum,
+            signature_status,
+            signature_algorithm,
+            signing_key_id,
+            declared_warnings,
+            risk_override,
+            confirmation_receipt,
         })
         .await?;
+    let (installation, local_artifact_was_present) = match outcome {
+        ExtensionArtifactInstallOutcome::RiskConfirmationRequired { risk_challenge } => {
+            return Ok(domain_challenge_response(
+                risk_challenge,
+                preflight.compatibility,
+            ));
+        }
+        ExtensionArtifactInstallOutcome::Installed {
+            installation,
+            local_artifact_was_present,
+        } => (installation, local_artifact_was_present),
+    };
+    let node_plugin_installation_id = if is_node_plugin_category(category) {
+        Some(
+            register_node_plugin(
+                state,
+                context.user.id,
+                operation_id,
+                category,
+                &installation,
+                downloaded.file_name,
+                source_kind.to_string(),
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_install_response(result))),
-    ))
+        Json(ApiSuccess::new(ExtensionInstallResponse {
+            installation: to_local_inventory_entry(installation),
+            local_artifact_was_present,
+            node_plugin_installation_id,
+        })),
+    )
+        .into_response())
 }
 
 #[utoipa::path(
@@ -686,13 +1223,13 @@ async fn install_or_update_official_extension(
     path = "/api/console/settings/extension-center/install",
     operation_id = "extension_center_install",
     request_body = InstallOfficialExtensionBody,
-    responses((status = 201, body = InstallPluginResponse), (status = 409, body = crate::error_response::ErrorBody))
+    responses((status = 201, body = ExtensionInstallResponse), (status = 409, body = ExtensionRiskChallengeErrorResponse))
 )]
 pub async fn install_official_extension(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<InstallOfficialExtensionBody>,
-) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
+) -> Result<Response, ApiError> {
     install_or_update_official_extension(&state, &headers, body, "extension_center.install").await
 }
 
@@ -701,43 +1238,17 @@ pub async fn install_official_extension(
     path = "/api/console/settings/extension-center/update",
     operation_id = "extension_center_update",
     request_body = InstallOfficialExtensionBody,
-    responses((status = 201, body = InstallPluginResponse), (status = 409, body = crate::error_response::ErrorBody))
+    responses((status = 201, body = ExtensionInstallResponse), (status = 409, body = ExtensionRiskChallengeErrorResponse))
 )]
 pub async fn update_official_extension(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<InstallOfficialExtensionBody>,
-) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
+) -> Result<Response, ApiError> {
     install_or_update_official_extension(&state, &headers, body, "extension_center.update").await
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/console/settings/extension-center/install-upload",
-    operation_id = "extension_center_install_upload",
-    request_body(content = inline(PluginUploadMultipartBody), content_type = "multipart/form-data"),
-    responses((status = 201, body = InstallPluginResponse), (status = 400, body = crate::error_response::ErrorBody))
-)]
-pub async fn install_uploaded_extension(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    mut multipart: Multipart,
-) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let (file_name, package_bytes) = read_upload_file(&mut multipart).await?;
-    let result = service(&state, "extension_center.install.upload")
-        .install_uploaded_plugin(InstallUploadedPluginCommand {
-            actor_user_id: context.user.id,
-            file_name,
-            package_bytes,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_install_response(result))),
-    ))
-}
-
+pub(crate) mod upload;
+pub use upload::install_uploaded_extension;
 #[cfg(test)]
 mod _tests;

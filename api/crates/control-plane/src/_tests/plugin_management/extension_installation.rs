@@ -14,6 +14,7 @@ use crate::{
         ExtensionArtifactInstallOutcome, ExtensionCatalogCategory, ExtensionInstallationService,
         ExtensionRiskOverride, InstallExtensionArtifactCommand, EXTENSION_RISK_CHECKSUM_MISMATCH,
         EXTENSION_RISK_SIGNATURE_INVALID, EXTENSION_RISK_SIGNATURE_MISSING,
+        EXTENSION_RISK_SIGNING_KEY_UNKNOWN,
     },
     ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput},
 };
@@ -124,7 +125,9 @@ fn command(
         signature_status: domain::ExtensionSignatureStatus::Verified,
         signature_algorithm: Some("ed25519".into()),
         signing_key_id: Some("official-2026".into()),
+        declared_warnings: Vec::new(),
         risk_override: None,
+        confirmation_receipt: None,
     }
 }
 
@@ -229,6 +232,12 @@ async fn root_1545_ac5_integrity_warnings_require_an_exact_override_and_never_bl
             "invalid-signature",
             EXTENSION_RISK_SIGNATURE_INVALID,
             domain::ExtensionSignatureStatus::Invalid,
+            None,
+        ),
+        (
+            "unknown-key",
+            EXTENSION_RISK_SIGNING_KEY_UNKNOWN,
+            domain::ExtensionSignatureStatus::UnknownKey,
             None,
         ),
     ] {

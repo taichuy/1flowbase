@@ -3,10 +3,11 @@ use std::{fs, path::PathBuf, sync::Arc};
 use crate::{
     errors::ControlPlaneError,
     plugin_management::{
-        AssignPluginCommand, EnablePluginCommand, InstallOfficialPluginCommand,
-        InstallPluginCommand, InstallUploadedPluginCommand, OfficialPluginCatalogFilter,
-        PluginCatalogFilter, PluginCompatibilityOverride, PluginManagementService,
-        PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand, PLUGIN_RISK_SIGNATURE_MISSING,
+        AssignPluginCommand, EnablePluginCommand, ExtensionCatalogCategory,
+        InstallExtensionNodePluginCommand, InstallOfficialPluginCommand, InstallPluginCommand,
+        InstallUploadedPluginCommand, OfficialPluginCatalogFilter, PluginCatalogFilter,
+        PluginCompatibilityOverride, PluginManagementService, PluginRiskOverride,
+        RefreshCurrentNodePluginArtifactCommand, PLUGIN_RISK_SIGNATURE_MISSING,
     },
     ports::{
         CreatePluginTaskInput, FrontendBlockCatalogRepository, JsDependencyRepository,
@@ -25,6 +26,46 @@ use super::support::{
     create_provider_fixture_with_node_contribution, requested_locales, seed_test_installation,
     MemoryOfficialPluginSource, MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
+
+#[tokio::test]
+async fn root_1545_ac_3_generic_inventory_node_artifact_dual_registers_runtime_plugin() {
+    let workspace_id = Uuid::now_v7();
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.extension-center").unwrap(),
+            "extension_center.install.upload",
+        )
+        .await;
+    let install_root =
+        std::env::temp_dir().join(format!("extension-node-registration-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    )
+    .for_extension_center_console_operation("extension_center.install.upload");
+
+    let result = service
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::CapabilityPlugins,
+            file_name: "capability.1flowbasepkg".to_string(),
+            package_bytes: build_capability_plugin_package_bytes(),
+            source_kind: "uploaded".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.installation.metadata_json["plugin_type"],
+        "capability_plugin"
+    );
+    assert_eq!(repository.list_installations().await.unwrap().len(), 1);
+    let _ = fs::remove_dir_all(install_root);
+}
 
 #[tokio::test]
 async fn model_provider_settings_reject_capability_upload_before_install_side_effects() {

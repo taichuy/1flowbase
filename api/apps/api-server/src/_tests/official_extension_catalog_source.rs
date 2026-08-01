@@ -105,8 +105,87 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
 
     let i18n = source.list_page("i18n", None).await.unwrap();
     assert_eq!(i18n.entries[0].id, "i18n:taichuy/i18n-fixture");
+    requests.lock().unwrap().clear();
+    let downloaded = source.download_artifact(&i18n.entries[0]).await.unwrap();
+    assert_eq!(downloaded.artifact_bytes, b"i18n-artifact");
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &["/i18n/artifacts/i18n-fixture.bin"]
+    );
 
     server.abort();
+}
+
+#[test]
+fn root_1545_ac_3_platform_download_selects_current_target_and_rewrites_github_proxy() {
+    let category = "runtime-extensions";
+    let source = ApiOfficialExtensionCatalogSource::new(BTreeMap::from([(
+        category.to_string(),
+        ResolvedOfficialExtensionCatalogSourceConfig {
+            source_kind: "configured_mirror".to_string(),
+            index_url: "https://example.test/index.json".to_string(),
+            github_proxy_url: Some("https://proxy.example".to_string()),
+        },
+    )]));
+    let os = std::env::consts::OS;
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        value => value,
+    };
+    let libc = if os == "linux" {
+        Some(if cfg!(target_env = "musl") {
+            "musl"
+        } else {
+            "gnu"
+        })
+    } else if os == "windows" {
+        Some("msvc")
+    } else {
+        None
+    };
+    let mut entry = serde_json::from_value::<
+        crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    >(catalog_entry(
+        "https://example.test",
+        category,
+        1,
+        "runtime-extensions:taichuy/runtime-fixture",
+        "runtime-fixture",
+    ))
+    .unwrap();
+    entry.download_locator = json!({
+        "kind": "platform_release_assets",
+        "artifacts": [
+            {
+                "os": "unsupported",
+                "arch": arch,
+                "libc": libc,
+                "locator": "https://github.com/acme/extensions/releases/download/v1/wrong.pkg",
+                "checksum": format!("sha256:{}", "b".repeat(64)),
+                "signature": null
+            },
+            {
+                "os": os,
+                "arch": arch,
+                "libc": libc,
+                "locator": "https://github.com/acme/extensions/releases/download/v1/right.pkg",
+                "checksum": format!("sha256:{}", "c".repeat(64)),
+                "signature": {"algorithm": "ed25519", "key_id": "official-key"}
+            }
+        ]
+    });
+
+    let descriptor = source.resolve_artifact(&entry).unwrap();
+    assert_eq!(descriptor.locator_kind, "platform_release_assets");
+    assert_eq!(
+        descriptor.locator,
+        "https://proxy.example/https://github.com/acme/extensions/releases/download/v1/right.pkg"
+    );
+    assert_eq!(
+        descriptor.expected_checksum.as_deref(),
+        Some(format!("sha256:{}", "c".repeat(64)).as_str())
+    );
 }
 
 async fn catalog_response(
@@ -139,6 +218,7 @@ fn catalog_documents(
             Vec::new()
         } else {
             vec![catalog_entry(
+                base_url,
                 category,
                 1,
                 &format!("{category}:taichuy/{category}-fixture"),
@@ -158,6 +238,7 @@ fn catalog_documents(
                     "runtime-2",
                     None,
                     vec![catalog_entry(
+                        base_url,
                         category,
                         2,
                         "runtime-extensions:taichuy/later-runtime",
@@ -179,6 +260,16 @@ fn catalog_documents(
                 github_proxy_url: None,
             },
         );
+        if category != "host-extensions" {
+            documents.insert(
+                format!("/{category}/artifacts/{category}-fixture.bin"),
+                if category == "i18n" {
+                    b"i18n-artifact".to_vec()
+                } else {
+                    format!("{category}-artifact").into_bytes()
+                },
+            );
+        }
     }
     (documents, sources)
 }
@@ -231,7 +322,7 @@ fn catalog_page(
     .unwrap()
 }
 
-fn catalog_entry(category: &str, page: u32, id: &str, artifact: &str) -> Value {
+fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: &str) -> Value {
     json!({
         "id": id,
         "name": format!("{artifact} display name"),
@@ -249,7 +340,7 @@ fn catalog_entry(category: &str, page: u32, id: &str, artifact: &str) -> Value {
         "checksum": artifact_checksum(),
         "download_locator": {
             "kind": "repository_file",
-            "locator": format!("https://example.test/{category}/{artifact}.zip")
+            "locator": format!("{base_url}/{category}/artifacts/{artifact}.bin")
         },
         "catalog_page": page
     })

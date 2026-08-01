@@ -11,6 +11,7 @@ use crate::{errors::ControlPlaneError, ports::ExtensionInstallationRepository};
 use super::ExtensionCatalogCategory;
 
 pub const EXTENSION_RISK_CHECKSUM_MISMATCH: &str = "checksum_mismatch";
+pub const EXTENSION_RISK_CHECKSUM_MISSING: &str = "checksum_missing";
 pub const EXTENSION_RISK_SIGNATURE_MISSING: &str = "signature_missing";
 pub const EXTENSION_RISK_SIGNATURE_INVALID: &str = "signature_invalid";
 pub const EXTENSION_RISK_SIGNING_KEY_UNKNOWN: &str = "signing_key_unknown";
@@ -36,7 +37,9 @@ pub struct InstallExtensionArtifactCommand {
     pub signature_status: domain::ExtensionSignatureStatus,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
+    pub declared_warnings: Vec<domain::ExtensionIntegrityWarning>,
     pub risk_override: Option<ExtensionRiskOverride>,
+    pub confirmation_receipt: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,10 +95,13 @@ where
             Err(error) => return Err(error).context("failed to read local extension artifact"),
         };
         let initial_checksum = sha256_checksum(&artifact_bytes);
-        let initial_warnings = integrity_warnings(
-            command.expected_checksum.as_deref(),
-            &initial_checksum,
-            command.signature_status,
+        let initial_warnings = merge_integrity_warnings(
+            command.declared_warnings.clone(),
+            integrity_warnings(
+                command.expected_checksum.as_deref(),
+                &initial_checksum,
+                command.signature_status,
+            ),
         );
         match validate_risk_override(&initial_warnings, command.risk_override.as_ref())? {
             RiskOverrideDecision::Challenge(risk_challenge) => {
@@ -116,12 +122,15 @@ where
             .await
             .context("failed to read installed extension artifact")?;
         let actual_checksum = sha256_checksum(&installed_bytes);
-        let warnings = integrity_warnings(
-            command.expected_checksum.as_deref(),
-            &actual_checksum,
-            command.signature_status,
+        let warnings = merge_integrity_warnings(
+            command.declared_warnings.clone(),
+            integrity_warnings(
+                command.expected_checksum.as_deref(),
+                &actual_checksum,
+                command.signature_status,
+            ),
         );
-        let override_receipt =
+        let risk_override_receipt =
             match validate_risk_override(&warnings, command.risk_override.as_ref())? {
                 RiskOverrideDecision::Challenge(risk_challenge) => {
                     return Ok(ExtensionArtifactInstallOutcome::RiskConfirmationRequired {
@@ -130,6 +139,13 @@ where
                 }
                 RiskOverrideDecision::Accepted(receipt) => receipt,
             };
+        let override_receipt = match (risk_override_receipt, command.confirmation_receipt) {
+            (None, None) => None,
+            (risk, confirmation) => Some(json!({
+                "risk": risk,
+                "confirmation": confirmation,
+            })),
+        };
 
         let receipt = domain::ExtensionInstallationReceipt {
             source: command.source.clone(),
@@ -195,6 +211,28 @@ where
             }
         }
         Ok(installed)
+    }
+
+    pub async fn find_local_installation(
+        &self,
+        identity: &domain::ExtensionInstallationIdentity,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        let Some(mut record) = self
+            .repository
+            .find_extension_installation(identity)
+            .await?
+        else {
+            return Ok(None);
+        };
+        match fs::metadata(&record.local_path).await {
+            Ok(metadata) if metadata.is_file() => {
+                record.status = domain::ExtensionInstallationStatus::Installed;
+                Ok(Some(record))
+            }
+            Ok(_) => Ok(None),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error).context("failed to inspect local extension artifact"),
+        }
     }
 
     pub async fn reconcile_node_inventory(&self, node_id: &str) -> Result<usize> {
@@ -289,7 +327,12 @@ fn integrity_warnings(
     signature_status: domain::ExtensionSignatureStatus,
 ) -> Vec<domain::ExtensionIntegrityWarning> {
     let mut warnings = Vec::new();
-    if expected_checksum.is_some_and(|expected| expected != actual_checksum) {
+    if expected_checksum.is_none() {
+        warnings.push(warning(
+            EXTENSION_RISK_CHECKSUM_MISSING,
+            "The artifact does not include an expected checksum.",
+        ));
+    } else if expected_checksum.is_some_and(|expected| expected != actual_checksum) {
         warnings.push(warning(
             EXTENSION_RISK_CHECKSUM_MISMATCH,
             "The artifact checksum does not match the catalog checksum.",
@@ -320,6 +363,19 @@ fn warning(code: &str, message: &str) -> domain::ExtensionIntegrityWarning {
         message: message.to_string(),
         overridable: true,
     }
+}
+
+fn merge_integrity_warnings(
+    mut declared: Vec<domain::ExtensionIntegrityWarning>,
+    discovered: Vec<domain::ExtensionIntegrityWarning>,
+) -> Vec<domain::ExtensionIntegrityWarning> {
+    for warning in discovered {
+        if !declared.iter().any(|current| current.code == warning.code) {
+            declared.push(warning);
+        }
+    }
+    declared.sort_by(|left, right| left.code.cmp(&right.code));
+    declared
 }
 
 enum RiskOverrideDecision {

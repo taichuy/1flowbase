@@ -31,6 +31,14 @@ pub struct InstallUploadedPluginCommand {
     pub package_bytes: Vec<u8>,
 }
 
+pub struct InstallExtensionNodePluginCommand {
+    pub actor_user_id: Uuid,
+    pub category: ExtensionCatalogCategory,
+    pub file_name: String,
+    pub package_bytes: Vec<u8>,
+    pub source_kind: String,
+}
+
 pub struct EnsureBuiltinPluginCommand {
     pub actor_user_id: Uuid,
     pub package_root: String,
@@ -661,6 +669,43 @@ where
             json!({
                 "install_kind": "upload",
                 "file_name": file_name,
+            }),
+        )
+        .await
+    }
+
+    pub async fn install_extension_node_plugin(
+        &self,
+        command: InstallExtensionNodePluginCommand,
+    ) -> Result<InstallPluginResult> {
+        let intake = intake_package_bytes(
+            &command.package_bytes,
+            &PackageIntakePolicy {
+                source_kind: command.source_kind.clone(),
+                trust_mode: "allow_unsigned".to_string(),
+                expected_artifact_sha256: None,
+                trusted_public_keys: self.official_source.trusted_public_keys(),
+                original_filename: Some(command.file_name.clone()),
+            },
+        )
+        .await?;
+        let expected_category = match intake.manifest.consumption_kind {
+            PluginConsumptionKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
+            PluginConsumptionKind::RuntimeExtension => ExtensionCatalogCategory::RuntimeExtensions,
+            PluginConsumptionKind::CapabilityPlugin => ExtensionCatalogCategory::CapabilityPlugins,
+        };
+        if expected_category != command.category {
+            return Err(ControlPlaneError::InvalidInput("extension_catalog_category").into());
+        }
+        route_plugin_package(&intake.manifest)?;
+        self.install_intake_result(
+            command.actor_user_id,
+            intake,
+            Some(command.package_bytes),
+            json!({
+                "install_kind": "extension_inventory_node_registration",
+                "file_name": command.file_name,
+                "category": command.category.as_str(),
             }),
         )
         .await
