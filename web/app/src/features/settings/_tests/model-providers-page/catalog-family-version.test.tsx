@@ -491,7 +491,6 @@ describe('ModelProvidersPage - catalog and family version', () => {
       },
       { timeout: 10_000 }
     );
-    expect(await screen.findByText('0.1.0')).toBeInTheDocument();
     expect(
       screen.queryByText('当前使用 0.1.0，最新版本 0.2.0')
     ).not.toBeInTheDocument();
@@ -503,6 +502,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
       },
       { timeout: 10_000 }
     );
+    expect(within(catalogRow).getByText('0.1.0')).toBeInTheDocument();
 
     expect(
       within(catalogRow).queryByRole('button', { name: /更\s*新/ })
