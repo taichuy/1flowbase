@@ -237,21 +237,47 @@ async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
     assert_eq!(created.scope_id, Uuid::nil());
     assert!(created.physical_table_name.starts_with("rtm_workspace_"));
 
-    let grant = service
-        .load_runtime_scope_grant(
-            &ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
-            created.id,
-            runtime_core::runtime_acl::RuntimeDataAction::View,
-        )
+    for action in [
+        runtime_core::runtime_acl::RuntimeDataAction::View,
+        runtime_core::runtime_acl::RuntimeDataAction::Create,
+        runtime_core::runtime_acl::RuntimeDataAction::Update,
+        runtime_core::runtime_acl::RuntimeDataAction::Delete,
+    ] {
+        let grant = service
+            .load_runtime_scope_grant(
+                &ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
+                created.id,
+                action,
+            )
+            .await
+            .unwrap()
+            .expect("workspace owner grant should authorize every runtime CRUD action");
+        assert_eq!(grant.scope_kind, DataModelScopeKind::Workspace);
+        assert_eq!(grant.scope_id, Uuid::nil());
+        assert_eq!(
+            grant.permission_profile,
+            domain::ScopeDataModelPermissionProfile::ScopeAll
+        );
+    }
+
+    let persisted_grants = service
+        .list_scope_grants(Uuid::nil(), created.id)
         .await
-        .unwrap()
-        .expect("workspace create path should persist a workspace grant");
-    assert_eq!(grant.scope_kind, DataModelScopeKind::Workspace);
-    assert_eq!(grant.scope_id, Uuid::nil());
-    assert_eq!(
-        grant.permission_profile,
-        domain::ScopeDataModelPermissionProfile::ScopeAll
-    );
+        .unwrap();
+    assert_eq!(persisted_grants.len(), 1);
+    let replayed = service
+        .create_scope_grant(CreateScopeDataModelGrantCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            scope_id: Uuid::nil(),
+            data_model_id: created.id,
+            enabled: true,
+            permission_profile: "scope_all".into(),
+            confirm_unsafe_external_source_system_all: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!(replayed.id, persisted_grants[0].id);
 }
 
 #[tokio::test]

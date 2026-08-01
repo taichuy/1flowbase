@@ -146,6 +146,22 @@ fn ensure_system_all_grant_allowed(
     Ok(())
 }
 
+fn ensure_model_accepts_scope_grant(
+    model: &domain::ModelDefinitionRecord,
+    scope_kind: DataModelScopeKind,
+    scope_id: Uuid,
+) -> Result<(), ControlPlaneError> {
+    if model.scope_kind == DataModelScopeKind::Workspace
+        && (scope_kind != DataModelScopeKind::Workspace || scope_id != model.scope_id)
+    {
+        return Err(ControlPlaneError::PermissionDenied(
+            "workspace_model_scope_grant_mismatch",
+        ));
+    }
+
+    Ok(())
+}
+
 fn ensure_protected_model_override_authorized(
     actor: &domain::ActorContext,
     model: &domain::ModelDefinitionRecord,
@@ -1006,11 +1022,27 @@ where
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
         ensure_scope_grant_lifecycle_authorized(&actor, command.scope_kind, command.scope_id)?;
         ensure_system_all_grant_allowed(&actor, command.scope_kind, permission_profile)?;
+        ensure_model_accepts_scope_grant(&model, command.scope_kind, command.scope_id)?;
         ensure_unsafe_external_system_all_confirmed(
             &model,
             permission_profile,
             command.confirm_unsafe_external_source_system_all,
         )?;
+
+        if let Some(existing) = self
+            .repository
+            .list_scope_data_model_grants(command.scope_kind, command.scope_id)
+            .await?
+            .into_iter()
+            .find(|grant| grant.data_model_id == command.data_model_id)
+        {
+            if existing.enabled == command.enabled
+                && existing.permission_profile == permission_profile
+            {
+                return Ok(existing);
+            }
+            return Err(ControlPlaneError::Conflict("scope_data_model_grant_exists").into());
+        }
 
         let grant = self
             .repository
@@ -1064,6 +1096,7 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("scope_data_model_grant"))?;
         ensure_scope_grant_lifecycle_authorized(&actor, existing.scope_kind, existing.scope_id)?;
+        ensure_model_accepts_scope_grant(&model, existing.scope_kind, existing.scope_id)?;
         let permission_profile = match command.permission_profile {
             Some(permission_profile) => {
                 domain::ScopeDataModelPermissionProfile::parse(&permission_profile)

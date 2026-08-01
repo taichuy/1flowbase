@@ -576,7 +576,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
 }
 
 #[tokio::test]
-async fn model_definition_repository_rejects_scope_grant_for_workspace_model() {
+async fn model_definition_repository_accepts_owner_scope_grant_for_workspace_model() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -624,13 +624,15 @@ async fn model_definition_repository_rejects_scope_grant_for_workspace_model() {
             created_by: None,
         },
     )
-    .await;
-    let error = created.unwrap_err();
-    assert!(error.to_string().contains("model_definition"));
+    .await
+    .unwrap();
+    assert_eq!(created.scope_kind, DataModelScopeKind::Workspace);
+    assert_eq!(created.scope_id, workspace_id);
+    assert_eq!(created.data_model_id, workspace_model.id);
 }
 
 #[tokio::test]
-async fn model_definition_repository_rejects_scope_grant_update_for_workspace_model() {
+async fn model_definition_repository_rejects_cross_scope_grants_for_workspace_model() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -666,18 +668,98 @@ async fn model_definition_repository_rejects_scope_grant_update_for_workspace_mo
     .await
     .unwrap();
 
+    for (scope_kind, scope_id) in [
+        (DataModelScopeKind::System, SYSTEM_SCOPE_ID),
+        (DataModelScopeKind::Workspace, Uuid::now_v7()),
+    ] {
+        let created = ModelDefinitionRepository::create_scope_data_model_grant(
+            &store,
+            &CreateScopeDataModelGrantInput {
+                grant_id: Uuid::now_v7(),
+                scope_kind,
+                scope_id,
+                data_model_id: workspace_model.id,
+                enabled: true,
+                permission_profile: ScopeDataModelPermissionProfile::ScopeAll,
+                created_by: None,
+            },
+        )
+        .await;
+        let error = created.unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("workspace_model_scope_grant_mismatch"));
+    }
+}
+
+#[tokio::test]
+async fn model_definition_repository_updates_owner_scope_grant_for_workspace_model() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = Uuid::now_v7();
+    let tenant_id = root_tenant_id(&store).await;
+    sqlx::query(
+        "insert into workspaces (id, tenant_id, name, created_by, updated_by) values ($1, $2, $3, null, null)",
+    )
+    .bind(workspace_id)
+    .bind(tenant_id)
+    .bind(format!("Grant Update Workspace {}", workspace_id.simple()))
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let workspace_model = ModelDefinitionRepository::create_model_definition(
+        &store,
+        &CreateModelDefinitionInput {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            scope_id: workspace_id,
+            data_source_instance_id: None,
+            source_kind: domain::DataModelSourceKind::MainSource,
+            external_resource_key: None,
+            external_table_id: None,
+            external_capability_snapshot: None,
+            code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
+            title: "Workspace Grant Update Model".into(),
+            status: DataModelStatus::Published,
+            protection: DataModelProtection::default(),
+        },
+    )
+    .await
+    .unwrap();
+    let grant_id = Uuid::now_v7();
+    ModelDefinitionRepository::create_scope_data_model_grant(
+        &store,
+        &CreateScopeDataModelGrantInput {
+            grant_id,
+            scope_kind: DataModelScopeKind::Workspace,
+            scope_id: workspace_id,
+            data_model_id: workspace_model.id,
+            enabled: true,
+            permission_profile: ScopeDataModelPermissionProfile::ScopeAll,
+            created_by: None,
+        },
+    )
+    .await
+    .unwrap();
+
     let updated = ModelDefinitionRepository::update_scope_data_model_grant(
         &store,
         &UpdateScopeDataModelGrantInput {
             data_model_id: workspace_model.id,
-            grant_id: Uuid::now_v7(),
+            grant_id,
             enabled: false,
-            permission_profile: ScopeDataModelPermissionProfile::ScopeAll,
+            permission_profile: ScopeDataModelPermissionProfile::Owner,
         },
     )
-    .await;
-    let error = updated.unwrap_err();
-    assert!(error.to_string().contains("model_definition"));
+    .await
+    .unwrap();
+    assert!(!updated.enabled);
+    assert_eq!(
+        updated.permission_profile,
+        ScopeDataModelPermissionProfile::Owner
+    );
 }
 
 #[tokio::test]

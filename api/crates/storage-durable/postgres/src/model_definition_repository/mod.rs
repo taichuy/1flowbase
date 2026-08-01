@@ -1114,7 +1114,13 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         &self,
         input: &CreateScopeDataModelGrantInput,
     ) -> Result<domain::ScopeDataModelGrantRecord> {
-        ensure_system_model_definition(self.pool(), input.data_model_id).await?;
+        ensure_model_accepts_scope_grant(
+            self.pool(),
+            input.data_model_id,
+            input.scope_kind,
+            input.scope_id,
+        )
+        .await?;
 
         let row = sqlx::query(
             r#"
@@ -1157,7 +1163,16 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         &self,
         input: &UpdateScopeDataModelGrantInput,
     ) -> Result<domain::ScopeDataModelGrantRecord> {
-        ensure_system_model_definition(self.pool(), input.data_model_id).await?;
+        let existing_scope =
+            load_scope_data_model_grant_scope(self.pool(), input.data_model_id, input.grant_id)
+                .await?;
+        ensure_model_accepts_scope_grant(
+            self.pool(),
+            input.data_model_id,
+            existing_scope.0,
+            existing_scope.1,
+        )
+        .await?;
 
         let row = sqlx::query(
             r#"
@@ -1385,26 +1400,57 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
     }
 }
 
-async fn ensure_system_model_definition(pool: &sqlx::PgPool, model_id: Uuid) -> Result<()> {
-    let exists = sqlx::query_scalar::<_, bool>(
+async fn ensure_model_accepts_scope_grant(
+    pool: &sqlx::PgPool,
+    model_id: Uuid,
+    grant_scope_kind: domain::DataModelScopeKind,
+    grant_scope_id: Uuid,
+) -> Result<()> {
+    let model_scope = sqlx::query_as::<_, (String, Uuid)>(
         r#"
-        select exists(
-            select 1
-            from model_definitions
-            where id = $1
-              and scope_kind = 'system'
-        )
+        select scope_kind, scope_id
+        from model_definitions
+        where id = $1
         "#,
     )
     .bind(model_id)
-    .fetch_one(pool)
-    .await?;
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ControlPlaneError::NotFound("model_definition"))?;
+    let model_scope_kind = domain::DataModelScopeKind::from_db(&model_scope.0);
 
-    if exists {
-        Ok(())
-    } else {
-        Err(ControlPlaneError::NotFound("model_definition").into())
+    if model_scope_kind == domain::DataModelScopeKind::Workspace
+        && (grant_scope_kind != domain::DataModelScopeKind::Workspace
+            || grant_scope_id != model_scope.1)
+    {
+        return Err(
+            ControlPlaneError::PermissionDenied("workspace_model_scope_grant_mismatch").into(),
+        );
     }
+
+    Ok(())
+}
+
+async fn load_scope_data_model_grant_scope(
+    pool: &sqlx::PgPool,
+    model_id: Uuid,
+    grant_id: Uuid,
+) -> Result<(domain::DataModelScopeKind, Uuid)> {
+    let (scope_kind, scope_id) = sqlx::query_as::<_, (String, Uuid)>(
+        r#"
+        select scope_kind, scope_id
+        from scope_data_model_grants
+        where data_model_id = $1
+          and id = $2
+        "#,
+    )
+    .bind(model_id)
+    .bind(grant_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ControlPlaneError::NotFound("scope_data_model_grant"))?;
+
+    Ok((domain::DataModelScopeKind::from_db(&scope_kind), scope_id))
 }
 
 fn map_scope_data_model_grant(
