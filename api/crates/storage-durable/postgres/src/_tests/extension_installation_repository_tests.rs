@@ -76,6 +76,28 @@ fn input(actor_user_id: Uuid) -> UpsertExtensionInstallationInput {
 }
 
 #[tokio::test]
+async fn root_1545_bf1_repository_lists_newest_stable_identity_version_first() {
+    let (store, actor) = seed_store().await;
+    let mut older = input(actor.id);
+    older.identity.version = "1.1.0".to_string();
+    ExtensionInstallationRepository::upsert_extension_installation(&store, &older)
+        .await
+        .unwrap();
+    let mut newer = input(actor.id);
+    newer.identity.version = "1.2.0".to_string();
+    ExtensionInstallationRepository::upsert_extension_installation(&store, &newer)
+        .await
+        .unwrap();
+
+    let records =
+        ExtensionInstallationRepository::list_extension_installations_for_node(&store, "node-a")
+            .await
+            .unwrap();
+    assert_eq!(records[0].identity.version, "1.2.0");
+    assert_eq!(records[1].identity.version, "1.1.0");
+}
+
+#[tokio::test]
 async fn root_1545_extension_repository_upserts_stable_identity_and_keeps_source_trust_separate() {
     let (store, actor) = seed_store().await;
     let first =

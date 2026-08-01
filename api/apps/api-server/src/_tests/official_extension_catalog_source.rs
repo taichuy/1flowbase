@@ -71,6 +71,10 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
     requests.lock().unwrap().clear();
     let runtime_page = source.list_page("runtime-extensions", None).await.unwrap();
     assert_eq!(
+        runtime_page.entries[0].id,
+        "runtime-extensions:taichuy/openai"
+    );
+    assert_eq!(
         runtime_page.metadata.next_cursor.as_deref(),
         Some("runtime-2")
     );
@@ -217,12 +221,17 @@ fn catalog_documents(
         let page_one_entries = if category == "host-extensions" {
             Vec::new()
         } else {
+            let artifact = if category == "runtime-extensions" {
+                "openai".to_string()
+            } else {
+                format!("{category}-fixture")
+            };
             vec![catalog_entry(
                 base_url,
                 category,
                 1,
-                &format!("{category}:taichuy/{category}-fixture"),
-                &format!("{category}-fixture"),
+                &format!("{category}:taichuy/{artifact}"),
+                &artifact,
             )]
         };
         let next_cursor = (category == "runtime-extensions").then_some("runtime-2");

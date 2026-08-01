@@ -42,12 +42,74 @@ impl ExtensionCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExtensionCatalogIdentity {
+    category: ExtensionCategory,
+    organization: String,
+    artifact_id: String,
+}
+
+impl ExtensionCatalogIdentity {
+    pub fn parse(category: ExtensionCategory, catalog_id: &str) -> Option<Self> {
+        let (catalog_category, artifact_path) = catalog_id.split_once(':')?;
+        let (organization, artifact_id) = artifact_path.split_once('/')?;
+        let identity = Self {
+            category,
+            organization: organization.to_string(),
+            artifact_id: artifact_id.to_string(),
+        };
+        if catalog_category != category.as_str()
+            || !valid_catalog_segment(organization)
+            || !valid_catalog_segment(artifact_id)
+            || identity.catalog_id() != catalog_id
+        {
+            return None;
+        }
+        Some(identity)
+    }
+
+    pub fn catalog_id(&self) -> String {
+        format!(
+            "{}:{}/{}",
+            self.category.as_str(),
+            self.organization,
+            self.artifact_id
+        )
+    }
+
+    pub fn organization(&self) -> &str {
+        &self.organization
+    }
+
+    pub fn artifact_id(&self) -> &str {
+        &self.artifact_id
+    }
+}
+
+fn valid_catalog_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.trim() == value
+        && !matches!(value, "." | "..")
+        && !value.contains([':', '/', '\\', '\0'])
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExtensionInstallationIdentity {
     pub category: ExtensionCategory,
     pub organization: String,
     pub artifact_id: String,
     pub version: String,
     pub node_id: String,
+}
+
+impl ExtensionInstallationIdentity {
+    pub fn catalog_id(&self) -> String {
+        ExtensionCatalogIdentity {
+            category: self.category,
+            organization: self.organization.clone(),
+            artifact_id: self.artifact_id.clone(),
+        }
+        .catalog_id()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

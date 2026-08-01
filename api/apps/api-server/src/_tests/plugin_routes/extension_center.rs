@@ -44,7 +44,8 @@ async fn root_1545_ac_5_install_route_rejects_missing_csrf_before_catalog_networ
                 .body(Body::from(
                     json!({
                         "category": "i18n",
-                        "artifact_id": "i18n:taichuy/platform"
+                        "catalog_id": "i18n:taichuy/platform",
+                        "version": "2.0.1"
                     })
                     .to_string(),
                 ))

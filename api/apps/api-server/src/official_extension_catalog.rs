@@ -105,7 +105,7 @@ pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
     async fn find_entry(
         &self,
         category: &str,
-        artifact_id: &str,
+        catalog_id: &str,
     ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>>;
 
     fn resolve_artifact(
@@ -272,7 +272,7 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
     async fn find_entry(
         &self,
         category: &str,
-        artifact_id: &str,
+        catalog_id: &str,
     ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>> {
         let (source, index) = self.fetch_index(category).await?;
         for page_reference in &index.pages {
@@ -280,7 +280,7 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
             if let Some(entry) = page
                 .entries
                 .into_iter()
-                .find(|entry| entry.id == artifact_id)
+                .find(|entry| entry.id == catalog_id)
             {
                 return Ok(Some(LocatedOfficialExtensionCatalogEntry {
                     source_kind: source.source_kind.clone(),
@@ -494,10 +494,18 @@ fn validate_page(
         || page.page != page_reference.page
         || page.cursor != page_reference.cursor
         || page.entries.len() != page_reference.entry_count
-        || page
-            .entries
-            .iter()
-            .any(|entry| entry.category != category || entry.catalog_page != page_reference.page)
+        || page.entries.iter().any(|entry| {
+            entry.category != category
+                || entry.catalog_page != page_reference.page
+                || domain::ExtensionCategory::parse(category)
+                    .and_then(|category| {
+                        domain::ExtensionCatalogIdentity::parse(category, &entry.id)
+                    })
+                    .map_or(true, |identity| {
+                        identity.organization() != entry.organization
+                            || identity.artifact_id() != entry.artifact
+                    })
+        })
     {
         bail!("official extension catalog page contract mismatch");
     }
