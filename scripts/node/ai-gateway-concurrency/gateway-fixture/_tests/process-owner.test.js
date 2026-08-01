@@ -6,6 +6,7 @@ const test = require('node:test');
 
 const {
   DIAGNOSTIC_STREAM_LIMIT,
+  OwnedProcessHealthTimeoutError,
   assertLoopbackPortAvailable,
   waitForHealth,
 } = require('../process-owner');
@@ -78,4 +79,45 @@ test('owned child startup exit exposes typed bounded stdout and stderr diagnosti
       return true;
     },
   );
+});
+
+test('owned child health timeout exposes typed bounded stdout and stderr diagnostics', async () => {
+  const stdout = `stdout-prefix-${'x'.repeat(DIAGNOSTIC_STREAM_LIMIT + 100)}`;
+  const stderr = `stderr-prefix-${'y'.repeat(DIAGNOSTIC_STREAM_LIMIT + 200)}`;
+  const processHandle = {
+    child: { exitCode: null, signalCode: null },
+    stdout: () => stdout,
+    stderr: () => stderr,
+  };
+  let fetchCalls = 0;
+  await assert.rejects(
+    waitForHealth('http://127.0.0.1:41731', 'api-server', {
+      processHandle,
+      timeoutMs: 5,
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return { ok: false };
+      },
+    }),
+    (error) => {
+      assert.equal(error instanceof OwnedProcessHealthTimeoutError, true);
+      assert.equal(error.code, 'owned_service_health_timeout');
+      assert.equal(error.message, 'api-server did not become healthy before timeout');
+      assert.deepEqual(error.diagnostic, {
+        service: 'api-server',
+        exit_code: null,
+        signal: null,
+        stdout: {
+          text: 'x'.repeat(DIAGNOSTIC_STREAM_LIMIT),
+          truncated_bytes: Buffer.byteLength(stdout) - DIAGNOSTIC_STREAM_LIMIT,
+        },
+        stderr: {
+          text: 'y'.repeat(DIAGNOSTIC_STREAM_LIMIT),
+          truncated_bytes: Buffer.byteLength(stderr) - DIAGNOSTIC_STREAM_LIMIT,
+        },
+      });
+      return true;
+    },
+  );
+  assert.equal(fetchCalls, 1);
 });

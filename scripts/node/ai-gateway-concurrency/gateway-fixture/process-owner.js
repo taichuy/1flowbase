@@ -18,18 +18,31 @@ function boundedDiagnostic(value) {
   };
 }
 
+function ownedProcessDiagnostic(service, processHandle) {
+  return {
+    service,
+    exit_code: processHandle?.child?.exitCode ?? null,
+    signal: processHandle?.child?.signalCode ?? null,
+    stdout: boundedDiagnostic(processHandle?.stdout?.()),
+    stderr: boundedDiagnostic(processHandle?.stderr?.()),
+  };
+}
+
 class OwnedProcessExitError extends Error {
   constructor(service, processHandle, status) {
     super(`${service} exited before becoming healthy (${status})`);
     this.name = 'OwnedProcessExitError';
     this.code = 'owned_service_startup_exit';
-    this.diagnostic = {
-      service,
-      exit_code: processHandle.child?.exitCode ?? null,
-      signal: processHandle.child?.signalCode ?? null,
-      stdout: boundedDiagnostic(processHandle.stdout?.()),
-      stderr: boundedDiagnostic(processHandle.stderr?.()),
-    };
+    this.diagnostic = ownedProcessDiagnostic(service, processHandle);
+  }
+}
+
+class OwnedProcessHealthTimeoutError extends Error {
+  constructor(service, processHandle) {
+    super(`${service} did not become healthy before timeout`);
+    this.name = 'OwnedProcessHealthTimeoutError';
+    this.code = 'owned_service_health_timeout';
+    this.diagnostic = ownedProcessDiagnostic(service, processHandle);
   }
 }
 
@@ -109,7 +122,8 @@ async function waitForHealth(
     assertOwnedChildRunning(processHandle, service);
     await delay(100);
   }
-  throw new Error(`${service} did not become healthy`);
+  assertOwnedChildRunning(processHandle, service);
+  throw new OwnedProcessHealthTimeoutError(service, processHandle);
 }
 
 async function stopOwned(processHandle, { delayImpl = delay } = {}) {
@@ -126,6 +140,7 @@ async function stopOwned(processHandle, { delayImpl = delay } = {}) {
 module.exports = {
   DIAGNOSTIC_STREAM_LIMIT,
   OwnedProcessExitError,
+  OwnedProcessHealthTimeoutError,
   assertLoopbackPortAvailable,
   reserveLoopbackPort,
   spawnOwned,
