@@ -387,6 +387,7 @@ pub struct ModelProviderOptionTargetResponse {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ModelProviderRequestLogsQuery {
+    pub flow_run_id: Option<Uuid>,
     pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
@@ -403,6 +404,7 @@ pub struct ModelProviderRequestLogsQuery {
 pub struct ModelProviderRequestLogResponse {
     pub attempt_id: String,
     pub flow_run_id: String,
+    pub node_run_id: Option<String>,
     pub application_id: Option<String>,
     pub conversation_id: Option<String>,
     pub application_name: String,
@@ -991,6 +993,7 @@ pub async fn list_request_logs(
     let page = settings_service(&state, "model_providers.request_logs.view")
         .list_request_logs(ListModelProviderRequestLogsCommand {
             actor: context.actor,
+            flow_run_id: query.flow_run_id,
             application_name: query.application_name,
             provider_instance_id: query.provider_instance_id,
             model_id: query.model_id,
@@ -1118,6 +1121,7 @@ fn to_request_log_response(
     ModelProviderRequestLogResponse {
         attempt_id: record.attempt_id.to_string(),
         flow_run_id: record.flow_run_id.to_string(),
+        node_run_id: record.node_run_id.map(|id| id.to_string()),
         application_id: record.application_id.map(|id| id.to_string()),
         conversation_id: record.conversation_id,
         application_name: record.application_name,
@@ -1516,10 +1520,12 @@ mod request_log_response_tests {
     #[test]
     fn request_log_response_uses_persisted_duration_fields() {
         let started_at = datetime!(2026-07-11 10:55:28 UTC);
+        let node_run_id = Uuid::now_v7();
         let response =
             to_request_log_response(control_plane::ports::ModelProviderRequestLogRecord {
                 attempt_id: Uuid::now_v7(),
                 flow_run_id: Uuid::now_v7(),
+                node_run_id: Some(node_run_id),
                 application_id: Some(Uuid::now_v7()),
                 conversation_id: Some("conversation-1".into()),
                 application_name: "凡人".into(),
@@ -1545,6 +1551,7 @@ mod request_log_response_tests {
                 total_duration_ms: Some(7426),
             });
 
+        assert_eq!(response.node_run_id, Some(node_run_id.to_string()));
         assert_eq!(response.time_to_first_token_ms, Some(3350));
         assert_eq!(response.total_duration_ms, Some(7426));
     }

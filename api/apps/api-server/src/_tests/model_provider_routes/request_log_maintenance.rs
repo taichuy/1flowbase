@@ -6,6 +6,84 @@ use crate::_tests::support::{
 use uuid::Uuid;
 
 #[tokio::test]
+async fn request_log_route_filters_flow_run_in_workspace_and_returns_node_run_ac_003() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let workspace_id: Uuid = sqlx::query_scalar(
+        r#"
+        select memberships.workspace_id
+        from workspace_memberships memberships
+        join users on users.id = memberships.user_id
+        where users.account = 'root'
+        order by memberships.created_at asc
+        limit 1
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let other_workspace_id = Uuid::now_v7();
+    let flow_run_id = Uuid::now_v7();
+    let other_flow_run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into model_provider_request_logs (
+            id, scope_id, attempt_id, flow_run_id, node_run_id, application_name, attempt_index,
+            provider_code, protocol, upstream_model_id, status,
+            failed_after_first_token, started_at, created_at
+        ) values
+            ($1, $2, $1, $3, $4, 'Linked request', 1,
+             'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now()),
+            ($5, $2, $5, $3, null, 'Legacy request', 1,
+             'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now()),
+            ($6, $2, $6, $7, null, 'Other run', 1,
+             'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now()),
+            ($8, $9, $8, $3, null, 'Other workspace', 1,
+             'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now())
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(flow_run_id)
+    .bind(node_run_id)
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(other_flow_run_id)
+    .bind(Uuid::now_v7())
+    .bind(other_workspace_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/settings/model-providers/request-logs?flow_run_id={flow_run_id}"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let items = payload["data"]["items"].as_array().expect("request logs");
+    assert_eq!(payload["data"]["total_count"], 2);
+    assert!(items
+        .iter()
+        .all(|item| item["flow_run_id"] == flow_run_id.to_string()));
+    assert!(items
+        .iter()
+        .any(|item| item["node_run_id"] == node_run_id.to_string()));
+    assert!(items.iter().any(|item| item["node_run_id"].is_null()));
+}
+
+#[tokio::test]
 async fn request_log_maintenance_routes_enforce_csrf_permission_and_openapi_contract() {
     // AC-008: both commands use the authenticated console security boundary.
     let app = test_app().await;

@@ -151,6 +151,7 @@ where
         scope_id,
         application_name,
         flow_run_id,
+        node_run_id,
         Some(application_id),
         conversation_id,
         &attempts,

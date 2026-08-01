@@ -1293,6 +1293,8 @@ pub struct ProviderRequestLogTask {
     pub attempt_id: Uuid,
     pub flow_run_id: Uuid,
     #[serde(default)]
+    pub node_run_id: Option<Uuid>,
+    #[serde(default)]
     pub application_id: Option<Uuid>,
     #[serde(default)]
     pub conversation_id: Option<String>,
@@ -1345,6 +1347,7 @@ pub struct ClearModelProviderRequestLogsBatchResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListModelProviderRequestLogsPageInput {
     pub scope_id: Uuid,
+    pub flow_run_id: Option<Uuid>,
     pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
@@ -1360,6 +1363,7 @@ pub struct ListModelProviderRequestLogsPageInput {
 pub struct ModelProviderRequestLogRecord {
     pub attempt_id: Uuid,
     pub flow_run_id: Uuid,
+    pub node_run_id: Option<Uuid>,
     pub application_id: Option<Uuid>,
     pub conversation_id: Option<String>,
     pub application_name: String,
