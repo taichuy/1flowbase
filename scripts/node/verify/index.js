@@ -19,6 +19,7 @@ const {
   backendThresholds,
 } = require('../testing/coverage-thresholds.js');
 const {
+  BACKEND_CONSISTENCY_GROUPS,
   BACKEND_CONSISTENCY_TARGETS,
   BACKEND_CI_TEST_SHARDS,
   BACKEND_SHARDS,
@@ -378,23 +379,25 @@ async function runBackend(argv = [], deps = {}) {
   });
 }
 
-function buildBackendConsistencyCommands({ cargoJobs, cargoTestThreads }) {
-  return BACKEND_CONSISTENCY_TARGETS.map((target) => ({
-    label: target.label,
-    command: 'cargo',
-    args: [
-      'test',
-      '-p',
-      target.packageName,
-      '--jobs',
-      String(cargoJobs),
-      target.filter,
-      '--',
-      `--test-threads=${cargoTestThreads}`,
-    ],
-    cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
-  }));
+function buildBackendConsistencyCommands({ cargoJobs, cargoTestThreads, group = null }) {
+  return BACKEND_CONSISTENCY_TARGETS
+    .filter((target) => group === null || target.group === group)
+    .map((target) => ({
+      label: target.label,
+      command: 'cargo',
+      args: [
+        'test',
+        '-p',
+        target.packageName,
+        '--jobs',
+        String(cargoJobs),
+        target.filter,
+        '--',
+        `--test-threads=${cargoTestThreads}`,
+      ],
+      cwd: 'api',
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+    }));
 }
 
 function runBackendConsistencyCommandSequence(sequenceOptions) {
@@ -431,10 +434,15 @@ function runBackendConsistencyCommandSequence(sequenceOptions) {
 async function runBackendConsistency(argv = [], deps = {}) {
   if (argv.includes('-h') || argv.includes('--help')) {
     (deps.writeStdout || ((text) => process.stdout.write(text)))(
-      'Usage: node scripts/node/cli/verify-backend-consistency.js\n'
+      'Usage: node scripts/node/cli/verify-backend-consistency.js [control-runtime|storage|api]\n'
         + 'Runs targeted backend Rust data/state consistency regression suites.\n'
     );
     return 0;
+  }
+
+  const [group = null, ...extraArgs] = argv;
+  if (extraArgs.length > 0 || (group !== null && !BACKEND_CONSISTENCY_GROUPS.includes(group))) {
+    throw new Error(`Unknown backend consistency group: ${argv.join(' ')}`);
   }
 
   const repoRoot = deps.repoRoot || getRepoRoot();
@@ -445,13 +453,14 @@ async function runBackendConsistency(argv = [], deps = {}) {
   return managedRunner({
     repoRoot,
     env,
-    scope: 'verify-backend-consistency',
+    scope: group ? `verify-backend-consistency-${group}` : 'verify-backend-consistency',
     lockMode: 'heavy',
-    commandDisplay: 'node scripts/node/cli/verify-backend-consistency.js',
+    commandDisplay: `node scripts/node/cli/verify-backend-consistency.js${group ? ` ${group}` : ''}`,
     runtimeConfig,
     commands: buildBackendConsistencyCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
+      group,
     }),
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,
@@ -1263,6 +1272,7 @@ async function main(argv = [], deps = {}) {
 }
 
 module.exports = {
+  BACKEND_CONSISTENCY_GROUPS,
   BACKEND_CONSISTENCY_TARGETS,
   BACKEND_CI_TEST_SHARDS,
   BACKEND_SHARDS,

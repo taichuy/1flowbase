@@ -117,7 +117,7 @@ describe('StartModelListField', () => {
     expect(
       maxContextInput.compareDocumentPosition(contextInput) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     fireEvent.change(maxContextInput, { target: { value: '353' } });
     expect(contextInput).toHaveValue('353');

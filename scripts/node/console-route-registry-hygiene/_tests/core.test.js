@@ -143,7 +143,7 @@ test('evaluateConsoleRouteRegistryHygiene reports registry and API binding drift
   assert.ok(!rules.includes('settings-section-api-console-binding'));
 });
 
-test('main writes json and markdown reports under tmp/test-governance', async () => {
+test('console route registry main writes json and markdown reports under tmp/test-governance', async () => {
   const repoRoot = createFixtureRepo();
   const stdout = [];
   const stderr = [];

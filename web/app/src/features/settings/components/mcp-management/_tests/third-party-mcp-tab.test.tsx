@@ -218,11 +218,11 @@ describe('ThirdPartyMcpTab', () => {
     expect(
       cancelButton.compareDocumentPosition(testButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       testButton.compareDocumentPosition(saveButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     fireEvent.click(testButton);
 

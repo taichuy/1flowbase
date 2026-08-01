@@ -195,7 +195,7 @@ describe('frontstage topbar root routing', () => {
     );
 
     await waitFor(() => {
-      expect(frontStagePageView.props?.onMovePageNode).toBeDefined();
+      expect(frontStagePageView.props?.onMovePageNode).toEqual(expect.any(Function));
     });
     await act(async () => {
       await frontStagePageView.props?.onMovePageNode?.('page-in-group', {

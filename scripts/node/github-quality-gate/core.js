@@ -12,6 +12,7 @@ const {
   upsertIssueCommentWithMarker,
 } = require('./github-api.js');
 const {
+  BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   buildGateCommand,
   COVERAGE_BACKEND_COMPONENT_SCOPES,
   DEFAULT_AGGREGATE_SCOPES,
@@ -384,7 +385,7 @@ function readBackendConsistencyTargetReport(repoRoot) {
 }
 
 function buildBackendConsistencyTargets({ repoRoot, scope }) {
-  if (scope !== 'ci' && scope !== 'backend-consistency') {
+  if (scope !== 'ci' && !scope.startsWith('backend-consistency')) {
     return [];
   }
 
@@ -1138,6 +1139,7 @@ async function runQualityGate({
 }
 
 module.exports = {
+  BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   buildAggregateReport,
   buildGateCommand,
   boundIssueBody,

@@ -219,6 +219,63 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
     ]
   );
 
+  assert.deepEqual(parseBackendCliArgs(['test', 'storage-postgres-3-of-4']), {
+    help: false,
+    target: 'test',
+    shard: 'storage-postgres-3-of-4',
+  });
+  assert.deepEqual(
+    buildCommands({
+      cargoJobs: 4,
+      cargoTestThreads: 2,
+      repoRoot: '/repo-root',
+      env: {},
+      target: 'test',
+      shard: 'storage-postgres-3-of-4',
+    }).map((command) => ({ label: command.label, args: command.args })),
+    [{
+      label: 'cargo-nextest-storage-postgres-3-of-4',
+      args: [
+        'nextest',
+        'run',
+        '--package',
+        'storage-postgres',
+        '--partition',
+        'hash:3/4',
+        '--test-threads',
+        '2',
+        '--no-fail-fast',
+        '--no-tests=fail',
+      ],
+    }]
+  );
+
+  assert.deepEqual(
+    buildCommands({
+      cargoJobs: 4,
+      cargoTestThreads: 2,
+      repoRoot: '/repo-root',
+      env: {},
+      target: 'test',
+      shard: 'runtime-storage-fast',
+    })[0].args.slice(0, 13),
+    [
+      'test',
+      '--package',
+      'runtime-core',
+      '--package',
+      'orchestration-runtime',
+      '--package',
+      'publish-gateway',
+      '--package',
+      'storage-durable',
+      '--package',
+      'storage-ephemeral',
+      '--package',
+      'storage-object',
+    ]
+  );
+
   assert.deepEqual(parseBackendCliArgs(['image-llm-vision']), {
     help: false,
     target: 'image-llm-vision',
