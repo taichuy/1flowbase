@@ -51,7 +51,7 @@ import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 
 function runtimeMetrics(
-  cpuUsagePercent: number,
+  cpuUsagePercent: number | null,
   capturedAt: string,
   relatedProcessBytes: number,
   relatedProcessCount: number
@@ -104,6 +104,16 @@ function runtimeMetrics(
       written_bytes_per_second: 8192
     }
   };
+}
+
+function warmingRuntimeProfile() {
+  const profile = runtimeProfile();
+  profile.runtime_targets[0]!.metrics.cpu = {
+    ...profile.runtime_targets[0]!.metrics.cpu,
+    availability: 'warming_up',
+    usage_percent: null
+  };
+  return profile;
 }
 
 function runtimeProfile(sampleIndex = 0) {
@@ -180,11 +190,12 @@ function renderPanel() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <SystemRuntimePanel />
     </QueryClientProvider>
   );
+  return { ...rendered, queryClient };
 }
 
 describe('SystemRuntimePanel', () => {
@@ -366,6 +377,24 @@ describe('SystemRuntimePanel', () => {
       await screen.findByRole('option', { name: 'Plugin Runner' })
     );
     expect(screen.getByText('37.5%')).toBeInTheDocument();
+  });
+
+  test('shows zero during CPU warm-up and replaces it with the first sampled value', async () => {
+    systemRuntimeApi.fetchSettingsSystemRuntimeProfile
+      .mockResolvedValueOnce(warmingRuntimeProfile())
+      .mockResolvedValue(runtimeProfile());
+    const { queryClient } = renderPanel();
+
+    await screen.findByText('资源监控');
+    expect(screen.getByText('0%')).toBeInTheDocument();
+    expect(screen.queryByText('采样中')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: systemRuntimeApi.settingsSystemRuntimeQueryKey
+      });
+    });
+    expect(screen.getByText('12.5%')).toBeInTheDocument();
   });
 
   test('stops polling after three consecutive collection failures', async () => {

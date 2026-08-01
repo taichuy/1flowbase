@@ -830,7 +830,6 @@
     "runtime_collecting": "实时采集中",
     "runtime_collection_paused": "采集已暂停",
     "runtime_collection_stopped": "采集已停止",
-    "runtime_sampling": "采样中",
     "runtime_sample_stale": "等待新样本",
     "runtime_scope_cgroup": "容器范围",
     "runtime_scope_host": "宿主范围",

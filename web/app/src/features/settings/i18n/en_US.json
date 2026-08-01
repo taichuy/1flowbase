@@ -830,7 +830,6 @@
     "runtime_collecting": "Collecting live",
     "runtime_collection_paused": "Collection paused",
     "runtime_collection_stopped": "Collection stopped",
-    "runtime_sampling": "Sampling",
     "runtime_sample_stale": "Waiting for a fresh sample",
     "runtime_scope_cgroup": "Container scope",
     "runtime_scope_host": "Host scope",

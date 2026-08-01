@@ -119,8 +119,6 @@ function usagePercent(
 
 function availabilityText(availability: RuntimeMetrics['cpu']['availability']) {
   switch (availability) {
-    case 'warming_up':
-      return i18nText('settings', 'auto.runtime_sampling');
     case 'stale':
       return i18nText('settings', 'auto.runtime_sample_stale');
     case 'unavailable':
@@ -181,7 +179,9 @@ function MetricGauge({
 }) {
   const display =
     percent === null
-      ? (availabilityText(availability) ?? '—')
+      ? availability === 'warming_up'
+        ? '0%'
+        : (availabilityText(availability) ?? '—')
       : `${percent.toFixed(1)}%`;
   return (
     <div className="system-runtime-panel__metric-gauge">
