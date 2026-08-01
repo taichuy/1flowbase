@@ -1,0 +1,4 @@
+interface:
+  display_name: "MCP Configuration Development"
+  short_description: "从源码构建、修复并验证 MCP Virtual UI 配置"
+  default_prompt: "Use $mcp-configuration-development to build or repair a task-oriented MCP Virtual UI from the current 1flowbase source."
