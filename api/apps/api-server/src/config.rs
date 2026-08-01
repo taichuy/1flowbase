@@ -194,7 +194,7 @@ impl ApiConfig {
         let official_plugin_trusted_public_keys_json = map
             .get("API_OFFICIAL_PLUGIN_TRUSTED_PUBLIC_KEYS_JSON")
             .cloned()
-            .unwrap_or_else(|| "[]".to_string());
+            .unwrap_or_else(default_official_plugin_trusted_public_keys_json);
         let official_agent_flow_template_default_index_url = map
             .get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_DEFAULT_INDEX_URL")
             .cloned()
@@ -505,6 +505,10 @@ fn default_provider_install_root() -> String {
         .join("plugins")
         .display()
         .to_string()
+}
+
+fn default_official_plugin_trusted_public_keys_json() -> String {
+    r#"[{"key_id":"official-key-2026-04","algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAuk3oonNd85FNP8CBRKj8RVvpdbhreoJiCguEJXPSgwg=\n-----END PUBLIC KEY-----"}]"#.to_string()
 }
 
 fn default_business_file_local_root() -> String {

@@ -924,7 +924,7 @@ where
         .await
     }
 
-    async fn install_intake_result(
+    pub(super) async fn install_intake_result(
         &self,
         actor_user_id: Uuid,
         intake: PackageIntakeResult,

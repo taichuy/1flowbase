@@ -1,0 +1,27 @@
+{
+  "schema_version": "1flowbase.extension-bootstrap-lock/v1",
+  "defaults": [
+    {
+      "category": "model_provider",
+      "id": "1flowbase.anthropic",
+      "version": "0.1.33",
+      "checksum": "sha256:0d8f6143d139fc36ed609a95acfa3881a37a30bd7b80b68b3b6338b4d6d85970",
+      "source": "official_registry",
+      "artifact_url": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/anthropic-v0.1.33/1flowbase@anthropic@0.1.33@linux-amd64@0d8f6143d139fc36ed609a95acfa3881a37a30bd7b80b68b3b6338b4d6d85970.1flowbasepkg",
+      "installed_path": "installed/anthropic/0.1.33",
+      "bundled_path": "bootstrap/anthropic-0.1.33-linux-amd64.1flowbasepkg",
+      "bootstrap": true
+    },
+    {
+      "category": "model_provider",
+      "id": "1flowbase.anthropic",
+      "version": "0.1.33",
+      "checksum": "sha256:5648b0afbbc1d399517dec327c9a85ff90ab16181cc1118fa909f64e4fa1e0b8",
+      "source": "official_registry",
+      "artifact_url": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/anthropic-v0.1.33/1flowbase@anthropic@0.1.33@linux-arm64@5648b0afbbc1d399517dec327c9a85ff90ab16181cc1118fa909f64e4fa1e0b8.1flowbasepkg",
+      "installed_path": "installed/anthropic/0.1.33",
+      "bundled_path": "bootstrap/anthropic-0.1.33-linux-arm64.1flowbasepkg",
+      "bootstrap": true
+    }
+  ]
+}

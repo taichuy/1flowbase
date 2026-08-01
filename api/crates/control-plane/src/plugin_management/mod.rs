@@ -1,4 +1,5 @@
 mod artifact_instance;
+mod bootstrap;
 mod catalog;
 mod catalog_projection;
 mod family;
@@ -56,6 +57,7 @@ use crate::{
 };
 
 pub use artifact_instance::*;
+pub use bootstrap::*;
 pub use catalog::*;
 pub use catalog_projection::*;
 pub use family::*;
@@ -386,8 +388,15 @@ fn merge_install_detail_metadata(
     metadata_json: &mut serde_json::Value,
     detail_json: &serde_json::Value,
 ) {
-    if let Some(install_kind) = detail_json.get("install_kind").cloned() {
-        metadata_json["install_kind"] = install_kind;
+    for key in [
+        "install_kind",
+        "official_plugin_id",
+        "bootstrap_source",
+        "domain_binding_owner",
+    ] {
+        if let Some(value) = detail_json.get(key).cloned() {
+            metadata_json[key] = value;
+        }
     }
     if let Some(compatibility_override) = detail_json.get("compatibility_override").cloned() {
         metadata_json["compatibility_override"] = compatibility_override;

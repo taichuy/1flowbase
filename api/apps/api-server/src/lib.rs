@@ -8,6 +8,7 @@ pub mod config;
 pub mod console_policy_migration;
 pub mod console_surface_registry;
 pub mod error_response;
+pub mod extension_bootstrap;
 pub mod host_extension_boot;
 pub mod host_extension_loader;
 pub mod host_extensions;
@@ -360,6 +361,28 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     plugin_management
         .rebuild_inventory_from_local_receipts(bootstrap_result.root_user_id)
         .await?;
+    match extension_bootstrap::load_locked_extension_bootstrap(&api_workspace_root()?) {
+        Ok(entries) => {
+            for result in plugin_management
+                .bootstrap_locked_extensions(bootstrap_result.root_user_id, &entries)
+                .await
+            {
+                if let Some(warning) = result.warning {
+                    tracing::warn!(
+                        extension_id = %warning.extension_id,
+                        version = %warning.version,
+                        stage = warning.stage,
+                        error = %warning.message,
+                        "default extension bootstrap warning; core startup continues"
+                    );
+                }
+            }
+        }
+        Err(error) => tracing::warn!(
+            error = %error,
+            "default extension bootstrap manifest unavailable; core startup continues"
+        ),
+    }
     plugin_management
         .ensure_builtin_plugin(
             control_plane::plugin_management::EnsureBuiltinPluginCommand {

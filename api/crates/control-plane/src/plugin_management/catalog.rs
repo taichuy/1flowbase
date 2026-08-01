@@ -25,7 +25,8 @@ pub struct PluginCatalogView {
     pub i18n_catalog: I18nCatalog,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExtensionCatalogCategory {
     HostExtension,
     ModelProvider,
@@ -33,6 +34,33 @@ pub enum ExtensionCatalogCategory {
     CapabilityPlugin,
     McpBundle,
     AgentFlowTemplate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionDomainBindingOwner {
+    Host,
+    RuntimeExtension,
+    CapabilityPlugin,
+    Mcp,
+    AgentFlow,
+}
+
+impl ExtensionDomainBindingOwner {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::RuntimeExtension => "runtime_extension",
+            Self::CapabilityPlugin => "capability_plugin",
+            Self::Mcp => "mcp",
+            Self::AgentFlow => "agent_flow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypedExtensionApplication {
+    pub installs_node_artifact: bool,
+    pub binding_owner: ExtensionDomainBindingOwner,
 }
 
 impl ExtensionCatalogCategory {
@@ -66,6 +94,20 @@ impl ExtensionCatalogCategory {
             Self::DataSource => Some("data_source"),
             Self::CapabilityPlugin => Some("capability_plugin"),
             Self::McpBundle | Self::AgentFlowTemplate => None,
+        }
+    }
+
+    pub fn application(self) -> TypedExtensionApplication {
+        let binding_owner = match self {
+            Self::HostExtension => ExtensionDomainBindingOwner::Host,
+            Self::ModelProvider | Self::DataSource => ExtensionDomainBindingOwner::RuntimeExtension,
+            Self::CapabilityPlugin => ExtensionDomainBindingOwner::CapabilityPlugin,
+            Self::McpBundle => ExtensionDomainBindingOwner::Mcp,
+            Self::AgentFlowTemplate => ExtensionDomainBindingOwner::AgentFlow,
+        };
+        TypedExtensionApplication {
+            installs_node_artifact: self.plugin_type().is_some(),
+            binding_owner,
         }
     }
 }
