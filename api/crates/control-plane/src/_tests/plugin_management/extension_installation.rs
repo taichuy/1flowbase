@@ -131,6 +131,131 @@ fn command(
     }
 }
 
+fn legacy_provider_installation(
+    installed_path: &std::path::Path,
+) -> domain::PluginInstallationRecord {
+    let now = OffsetDateTime::now_utc();
+    domain::PluginInstallationRecord {
+        id: Uuid::now_v7(),
+        provider_code: "openai".into(),
+        plugin_id: "openai@1.0.0".into(),
+        plugin_version: "1.0.0".into(),
+        contract_version: "1flowbase.provider/v2".into(),
+        protocol: "stdio_json".into(),
+        display_name: "OpenAI".into(),
+        source_kind: "official_registry".into(),
+        trust_level: "verified_official".into(),
+        verification_status: domain::PluginVerificationStatus::Valid,
+        desired_state: domain::PluginDesiredState::ActiveRequested,
+        artifact_status: domain::PluginArtifactStatus::Ready,
+        runtime_status: domain::PluginRuntimeStatus::Active,
+        availability_status: domain::PluginAvailabilityStatus::Available,
+        package_path: None,
+        installed_path: installed_path.display().to_string(),
+        checksum: Some(checksum(b"legacy-provider")),
+        manifest_fingerprint: Some(checksum(b"legacy-manifest")),
+        signature_status: Some("verified".into()),
+        signature_algorithm: Some("ed25519".into()),
+        signing_key_id: Some("official-key-2026-04".into()),
+        last_load_error: None,
+        metadata_json: serde_json::json!({ "plugin_type": "model_provider" }),
+        created_by: Uuid::now_v7(),
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+const LEGACY_PROVIDER_MANIFEST: &str = r#"manifest_version: 1
+plugin_id: openai
+version: 1.0.0
+vendor: taichuy
+display_name: OpenAI
+description: OpenAI model provider
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes:
+  - model_provider
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.3.1
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/openai-provider
+  capabilities: []
+node_contributions: []
+"#;
+
+#[tokio::test]
+async fn root_1545_remediation_adopts_legacy_provider_in_place_idempotently() {
+    let root = test_root("legacy-adoption");
+    let legacy_path = root.join("installed/openai/1.0.0");
+    tokio::fs::create_dir_all(&legacy_path).await.unwrap();
+    tokio::fs::write(legacy_path.join("manifest.yaml"), LEGACY_PROVIDER_MANIFEST)
+        .await
+        .unwrap();
+    tokio::fs::write(
+        legacy_path.join(".1flowbase-artifact.json"),
+        br#"{"plugin_id":"openai@1.0.0","version":"1.0.0"}"#,
+    )
+    .await
+    .unwrap();
+    let manifest_before = tokio::fs::read(legacy_path.join("manifest.yaml"))
+        .await
+        .unwrap();
+    let installation = legacy_provider_installation(&legacy_path);
+    let repository = MemoryExtensionInstallationRepository::default();
+    let service = ExtensionInstallationService::new(repository.clone(), &root);
+
+    let first = service
+        .adopt_plugin_installations("node-a", std::slice::from_ref(&installation))
+        .await
+        .unwrap();
+    let second = service
+        .adopt_plugin_installations("node-a", std::slice::from_ref(&installation))
+        .await
+        .unwrap();
+
+    assert_eq!(first.adopted, 1);
+    assert_eq!(first.already_present, 0);
+    assert!(first.warnings.is_empty());
+    assert_eq!(second.adopted, 0);
+    assert_eq!(second.already_present, 1);
+    assert!(second.warnings.is_empty());
+    let records = service.list_installed_for_node("node-a").await.unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].identity.category.as_str(), "runtime-extensions");
+    assert_eq!(records[0].identity.organization, "taichuy");
+    assert_eq!(records[0].identity.artifact_id, "openai");
+    assert_eq!(records[0].identity.version, "1.0.0");
+    assert_eq!(records[0].local_path, installation.installed_path);
+    assert_eq!(records[0].source, "official_registry");
+    assert_eq!(records[0].trust, "official");
+    assert_eq!(
+        records[0].receipt["plugin_installation_id"],
+        installation.id.to_string()
+    );
+    assert_eq!(
+        tokio::fs::read(legacy_path.join("manifest.yaml"))
+            .await
+            .unwrap(),
+        manifest_before
+    );
+    assert!(!root.join("installed/runtime-extensions").exists());
+
+    let _ = tokio::fs::remove_dir_all(root).await;
+}
+
 #[tokio::test]
 async fn root_1545_ac3_all_six_categories_install_into_canonical_local_truth() {
     let root = test_root("six-categories");
