@@ -564,6 +564,10 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /- repo-backend-static/u);
   assert.match(workflow, /- repo-backend-image-llm-vision/u);
   assert.match(workflow, /- repo-backend-clippy-runtime-storage/u);
+  assert.match(workflow, /- repo-backend-test-runtime-storage-fast/u);
+  assert.match(workflow, /- repo-backend-test-storage-postgres-1-of-4/u);
+  assert.match(workflow, /- repo-backend-test-storage-postgres-4-of-4/u);
+  assert.doesNotMatch(workflow, /- repo-backend-test-runtime-storage$/mu);
   assert.match(workflow, /- repo-backend-test-control-plane/u);
   assert.match(workflow, /- repo-backend-test-api-server-1-of-4/u);
   assert.match(workflow, /- repo-backend-test-api-server-4-of-4/u);
@@ -617,7 +621,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /start_postgres: \$\{\{ startsWith\(matrix\.scope, 'repo-backend-test-'\) \}\}/u,
   );
-  assert.match(workflow, /scope: backend-consistency/u);
+  assert.match(workflow, /scope: backend-consistency-\$\{\{ matrix\.group \}\}/u);
   assert.match(workflow, /scope: coverage-frontend/u);
   assert.match(workflow, /scope: container-images/u);
   assert.match(workflow, /publish_issue: "false"/u);
@@ -636,7 +640,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /name: test-governance-repo-frontend/u);
   assert.match(workflow, /name: test-governance-repo-frontend-react-doctor/u);
   assert.match(workflow, /name: test-governance-\$\{\{ matrix\.scope \}\}/u);
-  assert.match(workflow, /name: test-governance-backend-consistency/u);
+  assert.match(workflow, /name: test-governance-backend-consistency-\$\{\{ matrix\.group \}\}/u);
   assert.match(workflow, /name: test-governance-coverage-frontend/u);
   assert.doesNotMatch(workflow, /name: test-governance-state-protocols/u);
   assert.match(workflow, /name: test-governance-container-images/u);
@@ -672,7 +676,7 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   );
   assert.match(
     workflow,
-    /backend-consistency-gate:[\s\S]*?name: Restore Rust backend consistency quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend-consistency\/target[\s\S]*?key: rust-quality-gate-backend-consistency-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /backend-consistency-gate:[\s\S]*?name: Restore Rust backend consistency quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend-consistency\/\$\{\{ matrix\.group \}\}\/target[\s\S]*?key: rust-quality-gate-backend-consistency-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.group \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
     workflow,
@@ -684,7 +688,7 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   );
   assert.match(
     workflow,
-    /single-scope-gate:[\s\S]*?name: Restore Rust single-scope quality gate cache[\s\S]*?if: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| inputs\.scope == 'backend-consistency' \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}[\s\S]*?key: rust-quality-gate-\$\{\{ \(inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\)\) && 'coverage' \|\| 'backend' \}\}-\$\{\{ runner\.os \}\}-\$\{\{ inputs\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /single-scope-gate:[\s\S]*?name: Restore Rust single-scope quality gate cache[\s\S]*?if: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}[\s\S]*?key: rust-quality-gate-\$\{\{ \(inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\)\) && 'coverage' \|\| 'backend' \}\}-\$\{\{ runner\.os \}\}-\$\{\{ inputs\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.doesNotMatch(workflow, /cargo test --no-run/u);
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
@@ -761,7 +765,7 @@ test("quality gate workflow keeps non-ci dispatch scopes on a single targeted jo
   assert.match(workflow, /scope: \$\{\{ env\.QUALITY_GATE_SCOPE \}\}/u);
   assert.match(
     workflow,
-    /start_postgres: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| inputs\.scope == 'backend-consistency' \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-test-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}/u,
+    /start_postgres: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-test-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}/u,
   );
   assert.match(workflow, /publish_issue: "true"/u);
   assert.doesNotMatch(

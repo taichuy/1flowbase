@@ -5,7 +5,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { BACKEND_CONSISTENCY_TARGETS } = require('../../verify/index.js');
+const {
+  BACKEND_CONSISTENCY_GROUPS,
+  BACKEND_CONSISTENCY_TARGETS,
+} = require('../../verify/index.js');
 const {
   buildCommands,
   main,
@@ -31,6 +34,19 @@ test('buildCommands targets backend consistency suites without workspace-wide re
     assert.deepEqual(command.args.slice(3, 5), ['--jobs', '4']);
     assert.deepEqual(command.args.slice(6), ['--', '--test-threads=1']);
   }
+});
+
+test('buildCommands partitions the consistency inventory without overlap or omission', () => {
+  const groupedLabels = BACKEND_CONSISTENCY_GROUPS.flatMap((group) => (
+    buildCommands({ cargoJobs: 4, cargoTestThreads: 1, group })
+      .map((command) => command.label)
+  ));
+
+  assert.deepEqual(
+    groupedLabels.slice().sort(),
+    BACKEND_CONSISTENCY_TARGETS.map((target) => target.label).sort()
+  );
+  assert.equal(new Set(groupedLabels).size, BACKEND_CONSISTENCY_TARGETS.length);
 });
 
 test('main routes backend consistency through the heavy managed gate', async () => {
@@ -63,6 +79,36 @@ test('main routes backend consistency through the heavy managed gate', async () 
   assert.deepEqual(
     capturedOptions.commands,
     buildCommands({ cargoJobs: 2, cargoTestThreads: 1 })
+  );
+});
+
+test('main routes one consistency group through an independently reportable scope', async () => {
+  let capturedOptions = null;
+
+  const status = await main(['storage'], {
+    repoRoot: '/repo-root',
+    env: {},
+    runtimeConfig: {
+      backend: { cargoJobs: 2, cargoTestThreads: 1 },
+      locks: { waitTimeoutMinutes: 30, waitTimeoutMs: 1_800_000, pollIntervalMs: 5000 },
+    },
+    managedRunnerImpl(options) {
+      capturedOptions = options;
+      return 0;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.equal(capturedOptions.scope, 'verify-backend-consistency-storage');
+  assert.equal(
+    capturedOptions.commandDisplay,
+    'node scripts/node/cli/verify-backend-consistency.js storage'
+  );
+  assert.deepEqual(
+    capturedOptions.commands.map((command) => command.label),
+    BACKEND_CONSISTENCY_TARGETS
+      .filter((target) => target.group === 'storage')
+      .map((target) => target.label)
   );
 });
 

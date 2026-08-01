@@ -2,6 +2,7 @@ const path = require('node:path');
 
 const { backendThresholds } = require('../testing/coverage-thresholds.js');
 const {
+  BACKEND_CONSISTENCY_GROUPS,
   BACKEND_CI_TEST_SHARDS,
   BACKEND_SHARDS,
 } = require('../verify/index.js');
@@ -26,11 +27,13 @@ const COVERAGE_API_SERVER_SHARDED_SCOPES = Array.from(
   { length: 4 },
   (_, index) => `coverage-backend-api-server-sharded-${index + 1}-of-4`
 );
+const BACKEND_CONSISTENCY_COMPONENT_SCOPES = BACKEND_CONSISTENCY_GROUPS
+  .map((group) => `backend-consistency-${group}`);
 const DEFAULT_AGGREGATE_SCOPES = [
   'repo-tooling',
   'repo-frontend',
   ...REPO_BACKEND_COMPONENT_SCOPES,
-  'backend-consistency',
+  ...BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   'coverage-frontend',
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
 ];
@@ -53,6 +56,7 @@ const VALID_SCOPES = new Set([
   ...REPO_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_BACKEND_COMPONENT_SCOPES,
   ...COVERAGE_API_SERVER_SHARDED_SCOPES,
+  ...BACKEND_CONSISTENCY_COMPONENT_SCOPES,
 ]);
 const PACKED_CLI_ENTRIES = new Set(['container-image-security', 'verify-backend-consistency']);
 
@@ -210,6 +214,17 @@ function buildGateCommand({ repoRoot, scope }) {
     };
   }
 
+  if (scope.startsWith('backend-consistency-')) {
+    return {
+      command,
+      args: [
+        resolveCliEntry(repoRoot, 'verify-backend-consistency'),
+        scope.replace(/^backend-consistency-/u, ''),
+      ],
+      cwd: repoRoot,
+    };
+  }
+
   for (const target of REPO_BACKEND_SHARD_TARGETS) {
     for (const shard of REPO_BACKEND_SHARDS_BY_TARGET[target]) {
       if (scope === `repo-backend-${target}-${shard.key}`) {
@@ -230,6 +245,7 @@ function buildGateCommand({ repoRoot, scope }) {
 }
 
 module.exports = {
+  BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   buildGateCommand,
   COVERAGE_BACKEND_COMPONENT_SCOPES,
   DEFAULT_AGGREGATE_SCOPES,

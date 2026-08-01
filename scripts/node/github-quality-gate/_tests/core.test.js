@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
+  BACKEND_CONSISTENCY_COMPONENT_SCOPES,
   buildReport,
   buildGateCommand,
   boundIssueBody,
@@ -128,9 +129,24 @@ test('buildGateCommand maps supported scopes to repository verify scripts', () =
     cwd: repoRoot,
   });
 
+  assert.deepEqual(buildGateCommand({
+    repoRoot,
+    scope: 'repo-backend-test-storage-postgres-2-of-4',
+  }), {
+    command: process.execPath,
+    args: [path.join(repoRoot, 'scripts', 'node', 'verify-backend.js'), 'test', 'storage-postgres-2-of-4'],
+    cwd: repoRoot,
+  });
+
   assert.deepEqual(buildGateCommand({ repoRoot, scope: 'backend-consistency' }), {
     command: process.execPath,
     args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'verify-backend-consistency.js')],
+    cwd: repoRoot,
+  });
+
+  assert.deepEqual(buildGateCommand({ repoRoot, scope: 'backend-consistency-api' }), {
+    command: process.execPath,
+    args: [path.join(repoRoot, 'scripts', 'node', 'cli', 'verify-backend-consistency.js'), 'api'],
     cwd: repoRoot,
   });
 
@@ -847,24 +863,26 @@ test('runQualityGateAggregate publishes one report from parallel quality gate ar
       warningFiles: [],
     });
   }
-  writeArtifact('test-governance-backend-consistency', {
-    reportType: 'ci',
-    status: 'passed',
-    scope: 'backend-consistency',
-    exitCode: 0,
-    coverageSummaries: [],
-    backendConsistencyTargets: [{
-      label: 'consistency-runtime-engine',
-      packageName: 'runtime-core',
-      filter: 'runtime_engine_tests',
+  for (const scope of BACKEND_CONSISTENCY_COMPONENT_SCOPES) {
+    writeArtifact(`test-governance-${scope}`, {
+      reportType: 'ci',
       status: 'passed',
+      scope,
       exitCode: 0,
-      durationMs: 250,
-      passedCount: 9,
-      failedCount: 0,
-    }],
-    warningFiles: [],
-  });
+      coverageSummaries: [],
+      backendConsistencyTargets: scope === 'backend-consistency-control-runtime' ? [{
+        label: 'consistency-runtime-engine',
+        packageName: 'runtime-core',
+        filter: 'runtime_engine_tests',
+        status: 'passed',
+        exitCode: 0,
+        durationMs: 250,
+        passedCount: 9,
+        failedCount: 0,
+      }] : [],
+      warningFiles: [],
+    });
+  }
   writeArtifact('test-governance-coverage-frontend', {
     reportType: 'ci',
     status: 'passed',
@@ -985,15 +1003,17 @@ test('runQualityGateAggregate keeps component warning logs advisory when compone
       warningFiles: [],
     });
   }
-  writeArtifact('test-governance-backend-consistency', {
-    reportType: 'ci',
-    status: 'passed',
-    scope: 'backend-consistency',
-    exitCode: 0,
-    coverageSummaries: [],
-    backendConsistencyTargets: [],
-    warningFiles: [],
-  });
+  for (const scope of BACKEND_CONSISTENCY_COMPONENT_SCOPES) {
+    writeArtifact(`test-governance-${scope}`, {
+      reportType: 'ci',
+      status: 'passed',
+      scope,
+      exitCode: 0,
+      coverageSummaries: [],
+      backendConsistencyTargets: [],
+      warningFiles: [],
+    });
+  }
   writeArtifact('test-governance-coverage-frontend', {
     reportType: 'ci',
     status: 'passed',

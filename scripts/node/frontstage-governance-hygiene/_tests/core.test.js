@@ -220,7 +220,7 @@ test('evaluateFrontstageGovernanceHygiene accepts stable fixture with only stati
   assert.equal(report.findings[0].rule, 'frontstage-page-tree-cycle-static-proof');
 });
 
-test('main writes json and markdown reports under tmp/test-governance', async () => {
+test('frontstage governance main writes json and markdown reports under tmp/test-governance', async () => {
   const repoRoot = createFixtureRepo({ healthy: false });
   const stdout = [];
   const stderr = [];

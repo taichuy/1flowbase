@@ -102,7 +102,9 @@ describe('StartModelListField', () => {
   });
 
   test('links derived token defaults, preserves custom values, and rejects an oversized context', () => {
-    render(<StartModelListField value={[]} onChange={vi.fn()} />);
+    render(
+      <StartModelListField title="模型列表" value={[]} onChange={vi.fn()} />
+    );
 
     fireEvent.click(screen.getByLabelText('新增模型'));
 
@@ -115,7 +117,7 @@ describe('StartModelListField', () => {
     expect(
       maxContextInput.compareDocumentPosition(contextInput) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     fireEvent.change(maxContextInput, { target: { value: '353' } });
     expect(contextInput).toHaveValue('353');

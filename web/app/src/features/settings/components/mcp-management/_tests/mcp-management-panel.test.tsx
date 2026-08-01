@@ -492,7 +492,9 @@ function visibleTextEntries(root: HTMLElement, text: string) {
 
 async function setFullDescription(value: string) {
   await waitFor(() => {
-    expect(vditorMock.instances.at(-1)).toBeDefined();
+    expect(vditorMock.instances.at(-1)).toMatchObject({
+      options: { input: expect.any(Function) }
+    });
   });
   const editor = vditorMock.instances.at(-1);
 
@@ -855,7 +857,7 @@ describe('McpManagementPanel', () => {
     expect(
       editButton.compareDocumentPosition(directoryEditorButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     expect(
       directoryEditorButton.querySelector('.anticon-setting')
@@ -1463,7 +1465,7 @@ describe('McpManagementPanel', () => {
     expect(
       cancelButton.compareDocumentPosition(saveButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       within(modalScrollBody).queryByRole('button', { name: /取\s*消/ })
     ).not.toBeInTheDocument();
@@ -1485,7 +1487,7 @@ describe('McpManagementPanel', () => {
     expect(
       bindingCancelButton.compareDocumentPosition(bindingSaveButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       within(modalScrollBody).queryByRole('button', { name: /取\s*消/ })
     ).not.toBeInTheDocument();
@@ -1745,15 +1747,15 @@ describe('McpManagementPanel', () => {
     expect(
       desIdField.compareDocumentPosition(statusField) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       statusField.compareDocumentPosition(shortDescriptionField) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       statusField.compareDocumentPosition(fullDescriptionField) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   test('opens the requested tab from the URL search param', () => {
@@ -2246,11 +2248,11 @@ describe('McpManagementPanel', () => {
     expect(
       closeButton.compareDocumentPosition(clearButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       clearButton.compareDocumentPosition(saveButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(saveButton).toHaveClass('ant-btn-primary');
     fireEvent.click(screen.getByRole('button', { name: /保存$/ }));
 
@@ -2290,7 +2292,10 @@ describe('McpManagementPanel', () => {
       />
     );
     await waitFor(() => {
-      expect(vditorMock.instances[0]).toBeDefined();
+      expect(vditorMock.instances[0]).toMatchObject({
+        setValue: expect.any(Function),
+        getValue: expect.any(Function)
+      });
     });
     const editor = vditorMock.instances[0];
 

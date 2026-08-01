@@ -233,11 +233,11 @@ describe('SystemRuntimePanel', () => {
     expect(
       overviewSection!.compareDocumentPosition(environmentSection!) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       environmentSection!.compareDocumentPosition(monitorSection!) &
         Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
       within(environmentSection!).getByRole('combobox', { name: '运行目标' })
     ).toBeInTheDocument();

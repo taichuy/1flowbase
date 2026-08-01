@@ -30,7 +30,11 @@ on:
           - repo-backend-clippy-runtime-storage
           - repo-backend-clippy-apps
           - repo-backend-test-core-libs
-          - repo-backend-test-runtime-storage
+          - repo-backend-test-runtime-storage-fast
+          - repo-backend-test-storage-postgres-1-of-4
+          - repo-backend-test-storage-postgres-2-of-4
+          - repo-backend-test-storage-postgres-3-of-4
+          - repo-backend-test-storage-postgres-4-of-4
           - repo-backend-test-control-plane
           - repo-backend-test-api-server-1-of-4
           - repo-backend-test-api-server-2-of-4
@@ -42,6 +46,9 @@ on:
           - repo-backend-check-apps
           - backend
           - backend-consistency
+          - backend-consistency-control-runtime
+          - backend-consistency-storage
+          - backend-consistency-api
           - state-protocols
           - coverage
           - coverage-frontend
@@ -117,10 +124,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
-        if: ${{ startsWith(inputs.scope, 'repo-backend-test-api-server-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' }}
+        if: ${{ startsWith(inputs.scope, 'repo-backend-test-api-server-') || startsWith(inputs.scope, 'repo-backend-test-storage-postgres-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' }}
       - name: Resolve release-seeded Rust cache tag
         id: release_seed_tag
-        if: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || inputs.scope == 'backend-consistency' || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
+        if: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,7 +171,7 @@ jobs:
           rsync -a "tmp/container-cache/api-server/$RUST_RELEASE_SEEDED_CACHE_ARCH/cargo-git/" "$cargo_home/git/"
           rsync -a "tmp/container-cache/api-server/$RUST_RELEASE_SEEDED_CACHE_ARCH/target/" "$CARGO_TARGET_DIR/"
       - name: Restore Rust single-scope quality gate cache
-        if: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || inputs.scope == 'backend-consistency' || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
+        if: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
         uses: actions/cache@v5
         with:
           path: |
@@ -186,7 +193,7 @@ jobs:
           report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "true"
-          start_postgres: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || inputs.scope == 'backend-consistency' || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-test-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
+          start_postgres: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-test-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6
         if: always()
@@ -327,7 +334,11 @@ jobs:
           - repo-backend-clippy-runtime-storage
           - repo-backend-clippy-apps
           - repo-backend-test-core-libs
-          - repo-backend-test-runtime-storage
+          - repo-backend-test-runtime-storage-fast
+          - repo-backend-test-storage-postgres-1-of-4
+          - repo-backend-test-storage-postgres-2-of-4
+          - repo-backend-test-storage-postgres-3-of-4
+          - repo-backend-test-storage-postgres-4-of-4
           - repo-backend-test-control-plane
           - repo-backend-test-api-server-1-of-4
           - repo-backend-test-api-server-2-of-4
@@ -345,7 +356,7 @@ jobs:
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
-        if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') }}
+        if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') || startsWith(matrix.scope, 'repo-backend-test-storage-postgres-') }}
       - name: Resolve release-seeded Rust cache tag
         id: release_seed_tag
         if: ${{ matrix.scope != 'repo-backend-static' && matrix.scope != 'repo-backend-fmt' }}
@@ -425,6 +436,13 @@ jobs:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - control-runtime
+          - storage
+          - api
     steps:
       - uses: actions/checkout@v5
         with:
@@ -468,7 +486,7 @@ jobs:
         shell: bash
         env:
           RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_tag.outputs.cache_arch }}
-          CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-backend-consistency/target
+          CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-backend-consistency/${{ matrix.group }}/target
         run: |
           set -euo pipefail
           cargo_home="${CARGO_HOME:-$HOME/.cargo}"
@@ -482,25 +500,26 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tmp/quality-gate-cache/rust-backend-consistency/target
-          key: rust-quality-gate-backend-consistency-${{ runner.os }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+            tmp/quality-gate-cache/rust-backend-consistency/${{ matrix.group }}/target
+          key: rust-quality-gate-backend-consistency-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-backend-consistency-${{ runner.os }}-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-backend-consistency-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-backend-consistency-${{ runner.os }}-${{ matrix.group }}-
             rust-quality-gate-backend-consistency-${{ runner.os }}-
       - uses: ./.github/actions/quality-gate
         env:
-          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-backend-consistency/target
+          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-backend-consistency/${{ matrix.group }}/target
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
         with:
-          scope: backend-consistency
+          scope: backend-consistency-${{ matrix.group }}
           report_type: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           environment: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
           publish_issue: "false"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: test-governance-backend-consistency
+          name: test-governance-backend-consistency-${{ matrix.group }}
           path: tmp/test-governance
 
   coverage-frontend-gate:
@@ -875,7 +894,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

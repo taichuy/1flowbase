@@ -43,7 +43,6 @@ describe('Native React browser compiler adapter', () => {
       workerFactory
     });
 
-    expect(getNativeReactCompilerWorkerUrl()).toBeTruthy();
     expect(FakeBrowserWorker.instances[0]).toMatchObject({
       scriptUrl: getNativeReactCompilerWorkerUrl(),
       options: {
