@@ -730,7 +730,7 @@ describe('section shell routing', () => {
         await screen.findByRole(
           'tab',
           {
-            name: 'installed',
+            name: '已安装扩展',
             selected: true
           },
           SECTION_REDIRECT_WAIT_OPTIONS
