@@ -74,8 +74,10 @@ test('Root #1556 P13 controlled negative rejects a publication change during plu
 test('Root #1556 F16 preserves the uploaded-local fallback when after installation is omitted', async () => {
   const archiveSha = 'a'.repeat(64);
   const installationIdValue = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
+  const beforeInstallationId = '019fbac1-a20d-7830-94f3-74c9040b0169';
   const actions = [];
   let uploads = 0;
+  let currentInstallationId = beforeInstallationId;
   const owner = {
     async uploadPackage() {
       uploads += 1;
@@ -88,13 +90,17 @@ test('Root #1556 F16 preserves the uploaded-local fallback when after installati
         },
       };
     },
-    async write(pathname) { actions.push(pathname); },
+    async write(pathname, method, body) {
+      actions.push({ pathname, method, body });
+      currentInstallationId = body.installation_id;
+    },
     async read() {
       return { data: { entries: [{
         provider_code: 'deepseek',
-        current_installation_id: installationIdValue,
-        current_version: '2.0.0',
-        current_local_artifact: { local_checksum: archiveSha },
+        current_installation_id: currentInstallationId,
+        current_version: currentInstallationId === installationIdValue ? '2.0.0' : '1.0.0',
+        current_local_artifact: { local_checksum: currentInstallationId === installationIdValue
+          ? archiveSha : 'before-checksum' },
       }] } };
     },
   };
@@ -107,9 +113,67 @@ test('Root #1556 F16 preserves the uploaded-local fallback when after installati
   assert.equal(transition.afterPlugin.installation_id, installationIdValue);
   assert.equal(uploads, 1);
   assert.deepEqual(actions, [
-    `/api/console/plugins/${installationIdValue}/enable`,
-    `/api/console/plugins/${installationIdValue}/assign`,
+    {
+      pathname: '/api/console/plugins/families/deepseek/switch-version',
+      method: 'POST',
+      body: { installation_id: installationIdValue },
+    },
   ]);
+});
+
+test('Root #1556 F21 rejects a switch-version response that leaves another installation current', async () => {
+  const target = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
+  const current = '019fbac1-a20d-7830-94f3-74c9040b0169';
+  const writes = [];
+  const owner = {
+    async read() {
+      return { data: { entries: [{
+        provider_code: 'deepseek',
+        current_installation_id: current,
+        current_version: '1.0.0',
+        current_local_artifact: { local_checksum: 'before-checksum' },
+      }] } };
+    },
+    async write(pathname, method, body) { writes.push({ pathname, method, body }); },
+  };
+
+  await assert.rejects(
+    transitionLocalUpgrade(owner, {
+      afterInstallationId: target,
+      afterPackage: '/local/deepseek.1flowbasepkg',
+    }, 'a'.repeat(64)),
+    new RegExp(`DeepSeek current installation did not become ${target}`, 'u'),
+  );
+  assert.deepEqual(writes, [{
+    pathname: '/api/console/plugins/families/deepseek/switch-version',
+    method: 'POST',
+    body: { installation_id: target },
+  }]);
+});
+
+test('Root #1556 F21 already-current shortcut still verifies the expected package checksum', async () => {
+  const target = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
+  let writes = 0;
+  const owner = {
+    async read() {
+      return { data: { entries: [{
+        provider_code: 'deepseek',
+        current_installation_id: target,
+        current_version: '2.0.0',
+        current_local_artifact: { local_checksum: 'b'.repeat(64) },
+      }] } };
+    },
+    async write() { writes += 1; },
+  };
+
+  await assert.rejects(
+    transitionLocalUpgrade(owner, {
+      afterInstallationId: target,
+      afterPackage: '/local/deepseek.1flowbasepkg',
+    }, 'a'.repeat(64)),
+    /existing local DeepSeek installation checksum does not match after_package/u,
+  );
+  assert.equal(writes, 0);
 });
 
 test('Root #1556 F09 rejects shared service ports and fixes the token-bound application', async () => {
@@ -220,8 +284,7 @@ test('Root #1556 F13 structural contract owns frozen services and validated sour
   for (const required of [
     'OwnerHttpClient',
     'owner.uploadPackage(archivePath)',
-    '/enable',
-    '/assign',
+    '/api/console/plugins/families/deepseek/switch-version',
     'pinnedClaudeProvenance',
     'executeTmux',
     'spawnOwned',
@@ -310,6 +373,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     const upgradePackage = path.join(root, 'deepseek.1flowbasepkg');
     const beforeInstallationId = '019fbac1-a20d-7830-94f3-74c9040b0169';
     const afterInstallationId = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
+    const initialInstallationId = '019fb000-0000-7000-8000-000000000001';
     const artifact = path.join(root, 'tmp/test-governance/result.json');
     fs.writeFileSync(executable, '#!/bin/sh\n', { mode: 0o700 });
     fs.writeFileSync(apiServer, '#!/bin/sh\n', { mode: 0o700 });
@@ -384,7 +448,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
       },
       artifact,
     }));
-    let currentInstallationId = null;
+    let currentInstallationId = initialInstallationId;
     let uploadCalls = 0;
     const pluginActions = [];
     class Owner {
@@ -412,9 +476,11 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
           installation: { id: afterInstallationId, provider_code: 'deepseek', plugin_version: '2.0.0' },
         };
       }
-      async write(pathname) {
-        pluginActions.push(pathname);
-        if (pathname.endsWith('/assign')) currentInstallationId = pathname.split('/').at(-2);
+      async write(pathname, method, body) {
+        pluginActions.push({ pathname, method, body });
+        if (pathname.endsWith('/switch-version')) {
+          currentInstallationId = body.installation_id;
+        }
         return { data: { status: 'succeeded' } };
       }
     }
@@ -502,12 +568,20 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.equal(result.evidence.plugin_upgrade.before.installation_id, beforeInstallationId);
     assert.equal(result.evidence.plugin_upgrade.after.installation_id, afterInstallationId);
     assert.equal(uploadCalls, 0);
-    assert.deepEqual(pluginActions.slice(0, 4), [
-      `/api/console/plugins/${beforeInstallationId}/enable`,
-      `/api/console/plugins/${beforeInstallationId}/assign`,
-      `/api/console/plugins/${afterInstallationId}/enable`,
-      `/api/console/plugins/${afterInstallationId}/assign`,
+    assert.deepEqual(pluginActions.slice(0, 2), [
+      {
+        pathname: '/api/console/plugins/families/deepseek/switch-version',
+        method: 'POST',
+        body: { installation_id: beforeInstallationId },
+      },
+      {
+        pathname: '/api/console/plugins/families/deepseek/switch-version',
+        method: 'POST',
+        body: { installation_id: afterInstallationId },
+      },
     ]);
+    assert.equal(pluginActions.filter(({ pathname }) => pathname.endsWith('/enable')).length, 0);
+    assert.equal(pluginActions.filter(({ pathname }) => pathname.endsWith('/assign')).length, 0);
     assert.deepEqual(result.evidence.runtime.api_env_source, {
       path: apiEnvPath,
       sha256: crypto.createHash('sha256').update(apiEnvContent).digest('hex'),
@@ -608,7 +682,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.equal(overrideApiEnvs[0].API_PROVIDER_SECRET_MASTER_KEY, 'secret-provider-master-key');
     assert.equal(overrideApiEnvs[0].API_PROVIDER_INSTALL_ROOT, root);
 
-    currentInstallationId = null;
+    currentInstallationId = initialInstallationId;
     const afterPackageSha256 = crypto.createHash('sha256').update('after-package').digest('hex');
     const initialApiLogs = [
       'INFO anthropic compatible route boundary route="messages" phase="received"',
@@ -698,7 +772,7 @@ test('Root #1556 F13 executable runner loads owned API dotenv without recording 
     assert.doesNotMatch(fs.readFileSync(artifact, 'utf8'),
       /followup-partial-raw-secret|raw stderr/u);
 
-    currentInstallationId = null;
+    currentInstallationId = initialInstallationId;
     let rotatedTurn = 0;
     const rotatedSecret = 'rotated-log-secret-canary';
     const prefixMismatch = await runCountTokensUpgrade({ manifest: manifestPath }, {

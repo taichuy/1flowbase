@@ -437,8 +437,6 @@ async function installLocalUpgrade(owner, archivePath) {
   if (installation?.provider_code !== 'deepseek' || typeof installation.id !== 'string') {
     throw new Error('local upgrade package is not a DeepSeek installation');
   }
-  await owner.write(`/api/console/plugins/${installation.id}/enable`);
-  await owner.write(`/api/console/plugins/${installation.id}/assign`);
   return {
     installation_id: installation.id,
     version: installation.plugin_version,
@@ -446,9 +444,14 @@ async function installLocalUpgrade(owner, archivePath) {
   };
 }
 
-async function activateLocalInstallation(owner, installationIdValue) {
-  await owner.write(`/api/console/plugins/${installationIdValue}/enable`);
-  await owner.write(`/api/console/plugins/${installationIdValue}/assign`);
+async function switchDeepSeekVersion(owner, installationIdValue) {
+  const before = await readDeepSeekFamily(owner);
+  if (before.installation_id === installationIdValue) return before;
+  await owner.write(
+    '/api/console/plugins/families/deepseek/switch-version',
+    'POST',
+    { installation_id: installationIdValue },
+  );
   const current = await readDeepSeekFamily(owner);
   if (current.installation_id !== installationIdValue) {
     throw new Error(`DeepSeek current installation did not become ${installationIdValue}`);
@@ -458,7 +461,7 @@ async function activateLocalInstallation(owner, installationIdValue) {
 
 async function transitionLocalUpgrade(owner, manifest, afterPackageSha256) {
   if (manifest.afterInstallationId) {
-    const afterPlugin = await activateLocalInstallation(owner, manifest.afterInstallationId);
+    const afterPlugin = await switchDeepSeekVersion(owner, manifest.afterInstallationId);
     if (checksum(afterPlugin.package_sha256) !== afterPackageSha256) {
       throw new Error('existing local DeepSeek installation checksum does not match after_package');
     }
@@ -466,7 +469,7 @@ async function transitionLocalUpgrade(owner, manifest, afterPackageSha256) {
   }
 
   const installed = await installLocalUpgrade(owner, manifest.afterPackage);
-  const afterPlugin = await readDeepSeekFamily(owner);
+  const afterPlugin = await switchDeepSeekVersion(owner, installed.installation_id);
   if (afterPlugin.installation_id !== installed.installation_id
     || afterPlugin.version !== installed.version
     || checksum(afterPlugin.package_sha256) !== checksum(installed.package_sha256)
@@ -631,7 +634,7 @@ async function runCountTokensUpgrade(rawOptions, dependencies = {}) {
     owner = new (dependencies.OwnerHttpClient || OwnerHttpClient)(services.apiBaseUrl, fetchImpl);
     owner.attachSession(temporarySession.cookie, temporarySession.csrfToken);
     const baselinePublicationId = await activePublication(owner, manifest.applicationId);
-    const beforePlugin = await activateLocalInstallation(owner, manifest.beforeInstallationId);
+    const beforePlugin = await switchDeepSeekVersion(owner, manifest.beforeInstallationId);
     const publicationId = await activePublication(owner, manifest.applicationId);
     if (publicationId !== baselinePublicationId) {
       throw new Error('baseline DeepSeek assignment changed the active publication');
