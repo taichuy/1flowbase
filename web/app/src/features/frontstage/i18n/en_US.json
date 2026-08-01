@@ -297,6 +297,8 @@
     "console": "Console",
     "confirm_write_run": "Confirm this write run",
     "confirm_write_run_description": "This draft run will call a write interface; authorization applies only to the current run_id.",
+    "confirm_runtime_write": "Confirm write operation",
+    "confirm_runtime_write_description": "This block is requesting {{value1}} {{value2}}. Continue only if you trust this operation; authorization applies once to this request.",
     "maximize_window": "Maximize window",
     "restore_window": "Restore window",
     "unsaved_close_title": "Close unsaved code?",

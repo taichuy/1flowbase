@@ -24,6 +24,12 @@ export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
   tabId: string;
   csrfToken?: string | null;
   resolveBlockId(requestId: string): string | null;
+  confirmRuntimeWrite?(input: {
+    blockId: string;
+    method: string;
+    path: string;
+    requestId: string;
+  }): Promise<boolean>;
   baseUrl?: string;
   locationLike?: ApiBaseUrlLocation;
   client?: FrontstageJsBlockCapabilityClient;
@@ -197,10 +203,28 @@ export function createFrontstageJsBlockCapabilityHandlers(
       try {
         return await dispatch();
       } catch (error) {
-        if (!isWriteGrantRequired(error) || !draftRun) throw error;
-        if (!(await confirmDraftRunWrite(draftRun))) {
+        if (
+          !isWriteGrantRequired(error) ||
+          !isFrontstageWriteMethod(effect.method)
+        ) {
+          throw error;
+        }
+        const writeConfirmed = draftRun
+          ? await confirmDraftRunWrite(draftRun)
+          : await options.confirmRuntimeWrite?.({
+              blockId,
+              method: effect.method,
+              path: effect.path,
+              requestId: effect.requestId
+            });
+        if (!writeConfirmed) {
           throw new Error('Write interface call was cancelled.');
         }
+        if (revokedDraftRuns.has(effect.requestId)) {
+          throw new Error('Draft run capability has been revoked.');
+        }
+        const draftHash =
+          draftRun?.draftHash ?? createRuntimeDraftHash(effect.requestId);
         const grant = await client.issueFrontstageCallableWriteGrant(
           options.workspaceId,
           options.pageId,
@@ -210,7 +234,7 @@ export function createFrontstageJsBlockCapabilityHandlers(
             method: effect.method,
             path: effect.path,
             run_id: effect.requestId,
-            draft_hash: draftRun.draftHash
+            draft_hash: draftHash
           },
           requireCsrfToken(options.csrfToken),
           baseUrl
@@ -236,12 +260,17 @@ function createDispatchInput(
     method: effect.method,
     path: effect.path,
     run_id: effect.requestId,
-    draft_hash: draftRun?.draftHash ?? 'runtime',
+    draft_hash:
+      draftRun?.draftHash ?? createRuntimeDraftHash(effect.requestId),
     ...(effect.request === undefined
       ? {}
       : { request: effect.request as FrontstageCallableRequest }),
     ...(writeGrant ? { write_grant: writeGrant } : {})
   };
+}
+
+function createRuntimeDraftHash(requestId: string): string {
+  return `runtime:${requestId}`;
 }
 
 function isWriteGrantRequired(error: unknown): boolean {

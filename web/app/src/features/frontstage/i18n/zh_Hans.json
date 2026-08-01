@@ -297,6 +297,8 @@
     "console": "控制台",
     "confirm_write_run": "确认本次写操作",
     "confirm_write_run_description": "本次草稿运行会调用写接口；授权仅对当前 run_id 有效。",
+    "confirm_runtime_write": "确认写操作",
+    "confirm_runtime_write_description": "当前区块请求执行 {{value1}} {{value2}}。请仅在信任该操作时继续；授权仅对本次请求生效。",
     "maximize_window": "最大化窗口",
     "restore_window": "还原窗口",
     "unsaved_close_title": "关闭未保存的代码？",
