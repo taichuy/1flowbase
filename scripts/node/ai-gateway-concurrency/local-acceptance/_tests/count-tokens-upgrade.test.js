@@ -1,12 +1,21 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
   buildCountTokensUpgradeEvidence,
   loadCountTokensUpgradeFixture,
 } = require('../count-tokens-upgrade');
+const {
+  APPLICATION_ID,
+  isolatedBaseUrl,
+  runCountTokensUpgrade,
+} = require('../count-tokens-upgrade-runner');
 
 function observed() {
   return {
@@ -46,4 +55,140 @@ test('Root #1556 P13 controlled negative rejects a publication change during plu
     () => buildCountTokensUpgradeEvidence(loadCountTokensUpgradeFixture(), value),
     /republished the application/u,
   );
+});
+
+test('Root #1556 F08 rejects shared service ports and fixes the token-bound application', () => {
+  assert.equal(APPLICATION_ID, '019f5443-5b8e-74b2-90e3-c867dbddd37b');
+  assert.equal(isolatedBaseUrl('http://127.0.0.1:41731', 'fixture'), 'http://127.0.0.1:41731');
+  for (const port of [3100, 7800, 7801]) {
+    assert.throws(
+      () => isolatedBaseUrl(`http://127.0.0.1:${port}`, 'fixture'),
+      new RegExp(`protected port ${port}`, 'u'),
+    );
+  }
+});
+
+test('Root #1556 F08 structural contract uses the existing owners and preserves both failure channels', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../count-tokens-upgrade-runner.js'),
+    'utf8',
+  );
+  for (const required of [
+    'OwnerHttpClient',
+    'owner.uploadPackage(archivePath)',
+    '/enable',
+    '/assign',
+    'pinnedClaudeProvenance',
+    'executeTmux',
+    'await registry.close()',
+    'primary_error:',
+    'cleanup,',
+  ]) {
+    assert.ok(source.includes(required), `runner omitted ${required}`);
+  }
+  assert.match(source, /const sourceEnv = dependencies\.sourceEnv \|\| process\.env;[\s\S]*try \{[\s\S]*finally \{/u);
+  assert.doesNotMatch(source, /signIn\(|\/api\/public\/auth\/sign-in/u);
+});
+
+test('Root #1556 F08 missing configuration is typed unavailable beside cleanup failure', async () => {
+  const result = await runCountTokensUpgrade({}, {
+    sourceEnv: {},
+    registry: { async close() { return [{ owner: 'tmux', message: 'cleanup fixture' }]; } },
+  });
+  assert.equal(result.status, 'fail');
+  assert.equal(result.availability, 'unavailable');
+  assert.equal(result.primary_error.code, 'configuration_unavailable');
+  assert.equal(result.cleanup.status, 'fail');
+  assert.equal(result.cleanup.errors[0].message, 'cleanup fixture');
+});
+
+test('Root #1556 F08 executable runner performs the owned upgrade sequence without recording secrets', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'count-tokens-upgrade-runner-'));
+  try {
+    const executable = path.join(root, 'claude');
+    const packageManifest = path.join(root, 'package.json');
+    const upgradePackage = path.join(root, 'deepseek.1flowbasepkg');
+    const artifact = path.join(root, 'tmp/test-governance/result.json');
+    fs.writeFileSync(executable, '#!/bin/sh\n', { mode: 0o700 });
+    fs.writeFileSync(packageManifest, JSON.stringify({ name: '@anthropic-ai/claude-code', version: '1.2.3' }));
+    fs.writeFileSync(upgradePackage, 'after-package');
+    const manifestPath = path.join(root, 'run.json');
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      schema_version: '1flowbase.local-count-tokens-upgrade-run/v1',
+      application_id: APPLICATION_ID,
+      endpoints: {
+        console_base_url: 'http://127.0.0.1:41731',
+        gateway_base_url: 'http://127.0.0.1:41732',
+      },
+      model: 'deepseek-fixture',
+      environment: {
+        application_api_key: 'APP_KEY', application_api_key_id: 'APP_KEY_ID',
+        owner_cookie: 'OWNER_COOKIE', owner_csrf: 'OWNER_CSRF',
+      },
+      upgrade: { after_package: upgradePackage },
+      claude: {
+        executable,
+        provenance: {
+          package_manifest: packageManifest,
+          package_name: '@anthropic-ai/claude-code',
+          package_version: '1.2.3',
+          package_integrity: 'sha512-fixture',
+          install_command: 'pre-existing pinned local installation',
+        },
+      },
+      artifact,
+    }));
+    let upgraded = false;
+    class Owner {
+      attachSession() {}
+      async read(pathname) {
+        if (pathname.endsWith('/api-keys')) {
+          return { data: [{ id: 'key-id', enabled: true, token_prefix: 'secret' }] };
+        }
+        if (pathname.endsWith('/api-publication')) {
+          return { data: { id: 'publication-1', application_id: APPLICATION_ID, active: true, api_enabled: true } };
+        }
+        return { data: { entries: [{
+          provider_code: 'deepseek',
+          current_installation_id: upgraded ? 'installation-after' : 'installation-before',
+          current_version: upgraded ? '2.0.0' : '1.0.0',
+          current_local_artifact: { local_checksum: upgraded
+            ? crypto.createHash('sha256').update('after-package').digest('hex')
+            : 'before-checksum' },
+        }] } };
+      }
+      async uploadPackage() {
+        upgraded = true;
+        return {
+          archive_sha256: crypto.createHash('sha256').update('after-package').digest('hex'),
+          installation: { id: 'installation-after', provider_code: 'deepseek', plugin_version: '2.0.0' },
+        };
+      }
+      async write() { return { data: { status: 'succeeded' } }; }
+    }
+    const stdout = [
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } }),
+      JSON.stringify({ type: 'result', is_error: false, terminal_reason: 'completed', result: 'ok' }),
+    ].join('\n');
+    const result = await runCountTokensUpgrade({ manifest: manifestPath }, {
+      sourceEnv: {
+        APP_KEY: 'secret-app-key', APP_KEY_ID: 'key-id',
+        OWNER_COOKIE: 'secret-cookie', OWNER_CSRF: 'secret-csrf',
+      },
+      OwnerHttpClient: Owner,
+      fetchImpl: async () => new Response('{"input_tokens":17}', { status: 200 }),
+      executeTmux: async () => ({ exit_code: 0, timed_out: false, stdout, stderr: '' }),
+      registry: {
+        addTempRoot(value) { return value; },
+        async close() { fs.rmSync(root, { recursive: true, force: true }); return []; },
+      },
+    });
+    assert.equal(result.status, 'pass');
+    const encoded = JSON.stringify(result);
+    assert.doesNotMatch(encoded, /secret-app-key|secret-cookie|secret-csrf/u);
+    assert.equal(result.evidence.publication_id, 'publication-1');
+    assert.equal(result.evidence.count_tokens.input_tokens, 17);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

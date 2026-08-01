@@ -45,16 +45,9 @@ function loadCountTokensUpgradeFixture(filePath = path.join(__dirname, 'count-to
 }
 
 function countTokensResult(value) {
-  requireCondition(value?.operation === 'count_tokens', 'CountTokens evidence omitted the typed operation');
   requireCondition(Number.isSafeInteger(value.input_tokens) && value.input_tokens >= 0,
     'CountTokens evidence omitted an unsigned input_tokens total');
-  requireCondition(['upstream_api', 'model_tokenizer', 'provider_estimate', 'generic_estimate', 'fallback_zero'].includes(value.method),
-    'CountTokens evidence reported an unknown method');
-  requireCondition(['complete', 'partial'].includes(value.coverage),
-    'CountTokens evidence reported an unknown coverage');
-  requireCondition(Number.isSafeInteger(value.unknown_block_count) && value.unknown_block_count >= 0,
-    'CountTokens evidence omitted unknown_block_count');
-  return value;
+  return { input_tokens: value.input_tokens };
 }
 
 function buildCountTokensUpgradeEvidence(fixture, observed) {

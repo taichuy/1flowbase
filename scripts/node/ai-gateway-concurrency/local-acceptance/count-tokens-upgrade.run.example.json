@@ -1,0 +1,29 @@
+{
+  "schema_version": "1flowbase.local-count-tokens-upgrade-run/v1",
+  "application_id": "019f5443-5b8e-74b2-90e3-c867dbddd37b",
+  "endpoints": {
+    "console_base_url": "http://127.0.0.1:41731",
+    "gateway_base_url": "http://127.0.0.1:41732"
+  },
+  "model": "1flowbase",
+  "environment": {
+    "application_api_key": "ONEFLOWBASE_APPLICATION_API_KEY",
+    "application_api_key_id": "ONEFLOWBASE_APPLICATION_API_KEY_ID",
+    "owner_cookie": "ONEFLOWBASE_OWNER_COOKIE",
+    "owner_csrf": "ONEFLOWBASE_OWNER_CSRF"
+  },
+  "upgrade": {
+    "after_package": "/absolute/path/to/deepseek-upgrade.1flowbasepkg"
+  },
+  "claude": {
+    "executable": "/absolute/path/to/claude",
+    "provenance": {
+      "package_manifest": "/absolute/path/to/@anthropic-ai/claude-code/package.json",
+      "package_name": "@anthropic-ai/claude-code",
+      "package_version": "pinned-version",
+      "package_integrity": "sha512-pinned-integrity",
+      "install_command": "pre-existing pinned local installation"
+    }
+  },
+  "artifact": "tmp/test-governance/ai-gateway-concurrency/local-count-tokens-upgrade.json"
+}

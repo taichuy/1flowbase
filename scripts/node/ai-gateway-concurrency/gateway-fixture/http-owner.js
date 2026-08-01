@@ -11,6 +11,14 @@ class OwnerHttpClient {
     this.csrf = null;
   }
 
+  attachSession(cookie, csrf) {
+    if (typeof cookie !== 'string' || !cookie.trim() || typeof csrf !== 'string' || !csrf.trim()) {
+      throw new Error('owner session cookie and CSRF token are required');
+    }
+    this.cookie = cookie;
+    this.csrf = csrf;
+  }
+
   async request(pathname, { method = 'GET', body, multipart = false, csrf = false } = {}) {
     const headers = { accept: 'application/json' };
     if (this.cookie) headers.cookie = this.cookie;

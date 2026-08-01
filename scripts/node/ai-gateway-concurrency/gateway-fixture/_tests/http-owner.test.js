@@ -8,6 +8,14 @@ const test = require('node:test');
 
 const { OwnerHttpClient } = require('../http-owner');
 
+test('owner HTTP client accepts a pre-owned session without signing in', () => {
+  const client = new OwnerHttpClient('http://127.0.0.1:9000');
+  client.attachSession('session=fixed', 'csrf-fixed');
+  assert.equal(client.cookie, 'session=fixed');
+  assert.equal(client.csrf, 'csrf-fixed');
+  assert.throws(() => client.attachSession('', 'csrf'), /required/u);
+});
+
 // Root #1377 AC-001/008: the fixture uses the real cookie/CSRF/multipart owner contract.
 test('owner client carries sign-in cookie and CSRF into writes', async () => {
   const calls = [];
