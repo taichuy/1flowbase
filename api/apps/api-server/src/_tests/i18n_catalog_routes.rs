@@ -68,7 +68,7 @@ async fn delivery_1545_d6_installed_i18n_catalog_previews_and_activates_local_ar
                 category: ExtensionCatalogCategory::I18n,
                 organization: "taichuy".into(),
                 artifact_id: "platform".into(),
-                version: "2.0.1".into(),
+                version: "2.0.2".into(),
                 node_id: state.api_node_id.clone(),
                 artifact_bytes: bytes.clone(),
                 source: "official".into(),
@@ -108,7 +108,7 @@ async fn delivery_1545_d6_installed_i18n_catalog_previews_and_activates_local_ar
     let preview: Value =
         serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
     let revision = preview["data"]["revision"].as_i64().unwrap();
-    assert_eq!(preview["data"]["installed_catalog_version"], "2.0.1");
+    assert_eq!(preview["data"]["installed_catalog_version"], "2.0.2");
 
     let activate = app
         .oneshot(
