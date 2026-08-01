@@ -48,6 +48,58 @@ fn trace(node_id: &str, output_payload: Value, error_payload: Option<Value>) -> 
     typed_trace(node_id, "llm", output_payload, error_payload)
 }
 
+fn answer_presentation_plan() -> orchestration_runtime::compiled_plan::CompiledPlan {
+    serde_json::from_value(json!({
+        "flow_id": Uuid::nil(),
+        "source_draft_id": "draft-1",
+        "schema_version": "1flowbase.flow/v2",
+        "topological_order": ["node-llm", "node-answer"],
+        "edges": [],
+        "compile_issues": [],
+        "nodes": {
+            "node-llm": {
+                "node_id": "node-llm",
+                "node_type": "llm",
+                "alias": "LLM",
+                "container_id": null,
+                "dependency_node_ids": [],
+                "downstream_node_ids": ["node-answer"],
+                "bindings": {},
+                "outputs": [{
+                    "key": "text",
+                    "title": "Text",
+                    "value_type": "string",
+                    "selector": ["text"]
+                }],
+                "config": {}
+            },
+            "node-answer": {
+                "node_id": "node-answer",
+                "node_type": "answer",
+                "alias": "Answer",
+                "container_id": null,
+                "dependency_node_ids": ["node-llm"],
+                "downstream_node_ids": [],
+                "bindings": {
+                    "answer_template": {
+                        "kind": "selector",
+                        "raw_value": ["node-llm", "text"],
+                        "selector_paths": [["node-llm", "text"]]
+                    }
+                },
+                "outputs": [{
+                    "key": "answer",
+                    "title": "Answer",
+                    "value_type": "string",
+                    "selector": ["answer"]
+                }],
+                "config": {}
+            }
+        }
+    }))
+    .unwrap()
+}
+
 #[test]
 fn checkpoint_snapshot_from_record_reads_active_node_ids() {
     let checkpoint = checkpoint_record(
@@ -186,55 +238,7 @@ fn completed_flow_output_uses_terminal_node_payload() {
 fn ac_005_terminal_answer_presentation_is_materialized_from_canonical_provider_events() {
     use plugin_framework::provider_contract::{ProviderFinishReason, ProviderStreamEvent};
 
-    let plan: orchestration_runtime::compiled_plan::CompiledPlan = serde_json::from_value(json!({
-        "flow_id": Uuid::nil(),
-        "source_draft_id": "draft-1",
-        "schema_version": "1flowbase.flow/v2",
-        "topological_order": ["node-llm", "node-answer"],
-        "edges": [],
-        "compile_issues": [],
-        "nodes": {
-            "node-llm": {
-                "node_id": "node-llm",
-                "node_type": "llm",
-                "alias": "LLM",
-                "container_id": null,
-                "dependency_node_ids": [],
-                "downstream_node_ids": ["node-answer"],
-                "bindings": {},
-                "outputs": [{
-                    "key": "text",
-                    "title": "Text",
-                    "value_type": "string",
-                    "selector": ["text"]
-                }],
-                "config": {}
-            },
-            "node-answer": {
-                "node_id": "node-answer",
-                "node_type": "answer",
-                "alias": "Answer",
-                "container_id": null,
-                "dependency_node_ids": ["node-llm"],
-                "downstream_node_ids": [],
-                "bindings": {
-                    "answer_template": {
-                        "kind": "selector",
-                        "raw_value": ["node-llm", "text"],
-                        "selector_paths": [["node-llm", "text"]]
-                    }
-                },
-                "outputs": [{
-                    "key": "answer",
-                    "title": "Answer",
-                    "value_type": "string",
-                    "selector": ["answer"]
-                }],
-                "config": {}
-            }
-        }
-    }))
-    .unwrap();
+    let plan = answer_presentation_plan();
     let mut llm_trace = trace("node-llm", json!({ "text": "wrong fallback" }), None);
     llm_trace.provider_events = vec![
         ProviderStreamEvent::TextDelta {
@@ -308,6 +312,85 @@ fn ac_005_terminal_answer_presentation_is_materialized_from_canonical_provider_e
     assert_eq!(
         failed_partial["__canonical_answer_presentation"],
         json!(true)
+    );
+}
+
+#[test]
+fn ac_001_answer_presentation_projects_multiple_strict_provider_rounds() {
+    use plugin_framework::provider_contract::{ProviderFinishReason, ProviderStreamEvent};
+
+    let plan = answer_presentation_plan();
+    let mut llm_trace = trace("node-llm", json!({ "text": "wrong fallback" }), None);
+    llm_trace.provider_events = vec![
+        ProviderStreamEvent::TextDelta {
+            delta: "<think>first round reasoning".to_string(),
+        },
+        ProviderStreamEvent::Finish {
+            reason: ProviderFinishReason::ToolCall,
+        },
+        ProviderStreamEvent::ReasoningDelta {
+            delta: "second round reasoning".to_string(),
+        },
+        ProviderStreamEvent::TextDelta {
+            delta: "second round answer".to_string(),
+        },
+        ProviderStreamEvent::Finish {
+            reason: ProviderFinishReason::ToolCall,
+        },
+    ];
+    let outcome = FlowDebugExecutionOutcome {
+        stop_reason: ExecutionStopReason::Completed,
+        variable_pool: Map::from_iter([
+            ("node-llm".to_string(), json!({ "text": "wrong fallback" })),
+            (
+                "node-answer".to_string(),
+                json!({ "answer": "wrong fallback" }),
+            ),
+        ]),
+        checkpoint_snapshot: None,
+        operation_terminal: None,
+        node_traces: vec![
+            llm_trace,
+            typed_trace(
+                "node-answer",
+                "answer",
+                json!({ "answer": "wrong fallback" }),
+                None,
+            ),
+        ],
+    };
+
+    let events = answer_presentation_terminal_events(
+        Some(&plan),
+        &outcome,
+        None,
+        "node-answer",
+        &json!({ "answer": "wrong fallback" }),
+    )
+    .expect("each Provider round should have an independent canonical terminal");
+    let projected = events
+        .iter()
+        .filter_map(|event| {
+            matches!(event.event_type.as_str(), "reasoning_delta" | "text_delta").then(|| {
+                (
+                    event.event_type.as_str(),
+                    event.payload["text"].as_str().unwrap(),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        projected,
+        vec![
+            ("reasoning_delta", "first round reasoning"),
+            ("reasoning_delta", "second round reasoning"),
+            ("text_delta", "second round answer"),
+        ]
+    );
+    assert_eq!(
+        canonical_terminal_output_payload(Some(&plan), &outcome).unwrap()["answer"],
+        json!("second round answer")
     );
 }
 

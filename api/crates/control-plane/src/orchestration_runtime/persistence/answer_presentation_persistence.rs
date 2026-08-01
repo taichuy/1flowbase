@@ -197,8 +197,13 @@ fn canonical_flow_projection(
 fn canonical_trace_projection(
     trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
 ) -> Result<(Option<String>, Vec<CanonicalProviderDelta>)> {
-    let mut writer = RuntimeCanonicalStreamWriter::new(trace.node_id.clone());
+    let mut provider_round = 0usize;
+    let mut writer = RuntimeCanonicalStreamWriter::new(format!(
+        "{}:provider-round:{provider_round}",
+        trace.node_id
+    ));
     let mut deltas = Vec::new();
+    let mut text = String::new();
     let has_content_event = trace.provider_events.iter().any(|event| {
         matches!(
             event,
@@ -213,11 +218,22 @@ fn canonical_trace_projection(
         }
     }
     for event in &trace.provider_events {
+        if writer.state().terminal().is_some() {
+            text.push_str(writer.state().accumulated().text().as_str());
+            provider_round += 1;
+            // A node trace flattens multiple Provider invocations performed by visible internal
+            // tools. Each invocation was already validated by its own strict live writer; the
+            // presentation projection must preserve that terminal as a round boundary.
+            writer = RuntimeCanonicalStreamWriter::new(format!(
+                "{}:provider-round:{provider_round}",
+                trace.node_id
+            ));
+        }
         deltas.extend(writer.write(event)?);
     }
     deltas.extend(writer.complete()?);
-    let text = writer.state().accumulated().text().as_str();
-    Ok(((!text.is_empty()).then(|| text.to_string()), deltas))
+    text.push_str(writer.state().accumulated().text().as_str());
+    Ok(((!text.is_empty()).then_some(text), deltas))
 }
 
 fn waiting_node_id(
