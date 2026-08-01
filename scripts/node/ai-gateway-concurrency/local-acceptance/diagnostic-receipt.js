@@ -111,7 +111,7 @@ function correlatedApiBoundaries(apiOutput, selected) {
   const closes = lines.map(canonicalClose).filter(Boolean)
     .filter((close) => close.index > start.index);
   return {
-    correlation: observed({ method: 'selected_installation' }),
+    correlation: observed({ method: 'assigned_installation_identity' }),
     owned_api_request: observed({ operation: start.operation }),
     provider_operation: {
       operation: start.operation,
@@ -132,26 +132,29 @@ function deepestBoundary(boundaries) {
   if (boundaries.provider_operation.end.status === 'observed') return 'provider_operation_end';
   if (boundaries.provider_operation.start.status === 'observed') return 'provider_operation_start';
   if (boundaries.selected_installation.status === 'observed') return 'selected_installation';
+  if (boundaries.client_transport.status === 'observed') return 'client_transport';
   if (boundaries.claude_tmux.status === 'observed') return 'claude_tmux';
   return 'not_observed';
 }
 
-function buildDiagnosticReceipt({ details, clientResult, apiOutput, selectedInstallation }) {
-  const selected = selectedInstallation
-    && /^[a-z0-9_-]{1,64}$/u.test(selectedInstallation.provider_code || '')
-    && UUID_PATTERN.test(selectedInstallation.installation_id || '')
-    && SHA256_PATTERN.test(selectedInstallation.package_sha256 || '')
-    && /^[0-9A-Za-z.+-]{1,64}$/u.test(selectedInstallation.version || '')
+function buildDiagnosticReceipt({
+  details, clientResult, apiOutput, selectedInstallation: assignedInstallation,
+}) {
+  const assigned = assignedInstallation
+    && /^[a-z0-9_-]{1,64}$/u.test(assignedInstallation.provider_code || '')
+    && UUID_PATTERN.test(assignedInstallation.installation_id || '')
+    && SHA256_PATTERN.test(assignedInstallation.package_sha256 || '')
+    && /^[0-9A-Za-z.+-]{1,64}$/u.test(assignedInstallation.version || '')
     ? {
-      provider_code: selectedInstallation.provider_code,
-      installation_id: selectedInstallation.installation_id,
-      version: selectedInstallation.version,
-      package_sha256: selectedInstallation.package_sha256,
+      provider_code: assignedInstallation.provider_code,
+      installation_id: assignedInstallation.installation_id,
+      version: assignedInstallation.version,
+      package_sha256: assignedInstallation.package_sha256,
     }
     : null;
   const clientEvents = structuredClientEvents(clientResult?.stdout);
-  const apiBoundaries = selected
-    ? correlatedApiBoundaries(apiOutput, selected)
+  const apiBoundaries = assigned
+    ? correlatedApiBoundaries(apiOutput, assigned)
     : {
       correlation: missing('unknown'),
       owned_api_request: missing('unknown'),
@@ -165,7 +168,10 @@ function buildDiagnosticReceipt({ details, clientResult, apiOutput, selectedInst
     client_transport: TRANSPORT_STATUSES.has(details?.transport_status)
       ? observed({ outcome: details.transport_status })
       : missing('unknown'),
-    selected_installation: selected ? observed(selected) : missing('unknown'),
+    assigned_installation: assigned ? observed(assigned) : missing('unknown'),
+    selected_installation: apiBoundaries.correlation.status === 'observed'
+      ? observed(assigned)
+      : missing(apiBoundaries.correlation.status),
     owned_api_request: apiBoundaries.owned_api_request,
     provider_operation: apiBoundaries.provider_operation,
     canonical_sse_terminal: apiBoundaries.canonical_sse_terminal,

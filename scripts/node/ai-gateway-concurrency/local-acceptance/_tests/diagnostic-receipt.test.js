@@ -7,7 +7,7 @@ const { buildDiagnosticReceipt } = require('../diagnostic-receipt');
 
 const INSTALLATION_ID = '019fbdde-70e8-7862-a2cf-7f9846a4bd1b';
 const PACKAGE_SHA256 = 'a'.repeat(64);
-const SELECTED = Object.freeze({
+const ASSIGNED = Object.freeze({
   provider_code: 'deepseek',
   installation_id: INSTALLATION_ID,
   version: '0.1.18',
@@ -26,7 +26,7 @@ function providerTrace(phase, status) {
   ].join(' ');
 }
 
-function receipt({ stdout = '', apiOutput = '', selectedInstallation = SELECTED } = {}) {
+function receipt({ stdout = '', apiOutput = '', selectedInstallation = ASSIGNED } = {}) {
   return buildDiagnosticReceipt({
     details: { stage: 'followup', turn_index: 1, transport_status: 'timed_out' },
     clientResult: { stdout, stderr: 'raw-stderr-secret' },
@@ -53,9 +53,13 @@ test('Root #1556 F17 timeout receipt parses partial Claude events and provider s
   assert.equal(result.boundaries.client_transport.outcome, 'timed_out');
   assert.deepEqual(result.boundaries.claude_tmux.structured_event_types,
     ['message_start', 'content_block_delta']);
+  assert.deepEqual(result.boundaries.assigned_installation, {
+    status: 'observed',
+    ...ASSIGNED,
+  });
   assert.deepEqual(result.boundaries.selected_installation, {
     status: 'observed',
-    ...SELECTED,
+    ...ASSIGNED,
   });
   assert.equal(result.boundaries.owned_api_request.status, 'observed');
   assert.equal(result.boundaries.provider_operation.start.status, 'observed');
@@ -104,6 +108,20 @@ test('Root #1556 F17 receipt recognizes Anthropic message_stop without retaining
   assert.doesNotMatch(JSON.stringify(result), /message-stop-secret/u);
 });
 
+test('Root #1556 F17 current assignment alone does not prove runtime selection', () => {
+  const result = receipt();
+
+  assert.deepEqual(result.boundaries.assigned_installation, {
+    status: 'observed',
+    ...ASSIGNED,
+  });
+  assert.equal(result.correlation.status, 'not_observed');
+  assert.equal(result.boundaries.selected_installation.status, 'not_observed');
+  assert.equal(result.boundaries.owned_api_request.status, 'not_observed');
+  assert.equal(result.boundaries.provider_operation.start.status, 'not_observed');
+  assert.equal(result.deepest_observed_boundary, 'client_transport');
+});
+
 test('Root #1556 F17 malformed, unallowlisted, ambiguous, and missing anchors never become false facts', () => {
   const rawSecret = 'unallowlisted-secret-canary';
   const malformed = receipt({
@@ -118,16 +136,21 @@ test('Root #1556 F17 malformed, unallowlisted, ambiguous, and missing anchors ne
     ].join('\n'),
   });
   assert.equal(malformed.boundaries.claude_tmux.status, 'not_observed');
+  assert.equal(malformed.boundaries.assigned_installation.status, 'observed');
+  assert.equal(malformed.boundaries.selected_installation.status, 'not_observed');
   assert.equal(malformed.boundaries.owned_api_request.status, 'not_observed');
   assert.equal(malformed.boundaries.provider_operation.start.status, 'not_observed');
   assert.equal(malformed.boundaries.provider_operation.end.status, 'not_observed');
   assert.equal(malformed.boundaries.canonical_sse_terminal.status, 'not_observed');
   assert.equal(malformed.boundaries.anthropic_sse_terminal.status, 'not_observed');
+  assert.equal(malformed.deepest_observed_boundary, 'client_transport');
   assert.doesNotMatch(JSON.stringify(malformed), /unallowlisted-secret-canary/u);
 
   const ambiguous = receipt({
     apiOutput: [providerTrace('start', 'started'), providerTrace('start', 'started')].join('\n'),
   });
   assert.equal(ambiguous.correlation.status, 'unknown');
+  assert.equal(ambiguous.boundaries.assigned_installation.status, 'observed');
+  assert.equal(ambiguous.boundaries.selected_installation.status, 'unknown');
   assert.equal(ambiguous.boundaries.provider_operation.start.status, 'unknown');
 });
