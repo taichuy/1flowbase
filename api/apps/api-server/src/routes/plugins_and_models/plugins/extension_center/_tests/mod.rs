@@ -408,6 +408,7 @@ fn root_1545_ac_5_uploaded_invalid_signature_remains_overridable() {
         signature_status: domain::ExtensionSignatureStatus::Invalid,
         signature_algorithm: Some("ed25519".to_string()),
         signing_key_id: Some("unknown".to_string()),
+        application_action: domain::ExtensionApplicationAction::ActivateI18n,
     });
     assert_eq!(
         challenge

@@ -1,0 +1,10 @@
+{
+  "auto": {
+    "activate_translation_catalog": "Activate translation catalog",
+    "activate": "Activate",
+    "active_version": "Active version",
+    "installed_version": "Installed version",
+    "translation_catalog_activation_preserves_customizations": "Activating this catalog keeps existing custom translations and overrides.",
+    "translation_catalog_activated": "Translation catalog activated"
+  }
+}

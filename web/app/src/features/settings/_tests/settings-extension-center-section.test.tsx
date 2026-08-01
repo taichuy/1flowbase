@@ -550,7 +550,7 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       await screen.findByRole('dialog', { name: /导入应用压缩包/ })
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     expect(
       applicationsApi.importInstalledApplicationExtension
     ).not.toHaveBeenCalled();
@@ -695,7 +695,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
     expect(within(dialog).getByText('2.0.0')).toBeInTheDocument();
     expect(within(dialog).getByText('2.0.1')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: '激活' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /激\s*活/ }));
     await waitFor(() => {
       expect(
         extensionsApi.activateSettingsInstalledI18nExtension

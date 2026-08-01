@@ -47,7 +47,7 @@ export function ExtensionApplicationFlow({
   onClose: () => void;
   onApplied: () => Promise<void>;
 }) {
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation('settingsExtensionCenter');
   const [agentPreview, setAgentPreview] =
     useState<AgentFlowTemplatePreview | null>(null);
   const [agentName, setAgentName] = useState('');
@@ -217,7 +217,7 @@ export function ExtensionApplicationFlow({
         },
         csrfToken
       );
-      message.success(t('auto.i18n_extension_activated'));
+      message.success(t('auto.translation_catalog_activated'));
       await onApplied();
       onClose();
     } catch (error) {
@@ -248,7 +248,7 @@ export function ExtensionApplicationFlow({
       />
       <Modal
         open={target?.action === 'activate_i18n' && i18nPreview !== null}
-        title={t('auto.activate_i18n_extension')}
+        title={t('auto.activate_translation_catalog')}
         okText={t('auto.activate')}
         confirmLoading={busy}
         onCancel={onClose}
@@ -274,7 +274,9 @@ export function ExtensionApplicationFlow({
               </Descriptions.Item>
             </Descriptions>
             <Typography.Text type="secondary">
-              {t('auto.i18n_extension_activation_preserves_customizations')}
+              {t(
+                'auto.translation_catalog_activation_preserves_customizations'
+              )}
             </Typography.Text>
           </Space>
         ) : null}
