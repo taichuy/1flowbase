@@ -874,7 +874,6 @@
     "extension_operation_failed": "扩展操作失败",
     "update_extension": "更新扩展",
     "install_extension": "安装扩展",
-    "extension_warning_confirmation": "该产物存在兼容性或完整性警告。确认后仍可继续，本地产物始终优先。",
     "extension_install_confirmation": "确认安装该扩展吗？",
     "current_version": "当前版本",
     "system_requirements": "系统要求",

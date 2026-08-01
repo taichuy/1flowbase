@@ -29,6 +29,7 @@ export interface ConsoleExtensionRiskChallenge {
 export interface ConsoleInstalledExtension {
   id: string;
   category: ConsoleExtensionCategory;
+  catalog_id: string;
   organization: string;
   artifact_id: string;
   version: string;
@@ -184,6 +185,7 @@ export function installConsoleExtension(
   input: {
     category: ConsoleExtensionCategory;
     artifact_id: string;
+    version: string;
     compatibility_override?: ConsoleExtensionCompatibilityOverride;
     risk_override?: ConsoleExtensionRiskOverride;
   },

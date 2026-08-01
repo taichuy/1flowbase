@@ -42,7 +42,12 @@ describe('extension center client contract', () => {
         {
           category: 'runtime-extensions',
           catalog_page: 'page-2',
-          items: [{ artifact_id: '1flowbase.openai', current_version: '1.0.0' }]
+          items: [
+            {
+              artifact_id: 'runtime-extensions:taichuy/openai',
+              current_version: '1.0.0'
+            }
+          ]
         },
         'csrf'
       )
@@ -58,7 +63,8 @@ describe('extension center client contract', () => {
       installConsoleExtension(
         {
           category: 'runtime-extensions',
-          artifact_id: '1flowbase.openai',
+          artifact_id: 'runtime-extensions:taichuy/openai',
+          version: '1.1.0',
           compatibility_override: {
             reason: 'below_minimum_host_version',
             acknowledged_current_host_version: '0.3.1',
@@ -75,6 +81,11 @@ describe('extension center client contract', () => {
     ).resolves.toMatchObject({
       path: '/api/console/settings/extension-center/update',
       method: 'POST',
+      body: {
+        category: 'runtime-extensions',
+        artifact_id: 'runtime-extensions:taichuy/openai',
+        version: '1.1.0'
+      },
       csrfToken: 'csrf'
     });
   });
@@ -83,10 +94,10 @@ describe('extension center client contract', () => {
     await expect(
       getConsoleExtensionCatalogEntry(
         'runtime-extensions',
-        '@taichuy/model provider'
+        'runtime-extensions:taichuy/model provider'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/settings/extension-center/catalog/runtime-extensions/%40taichuy%2Fmodel%20provider'
+      path: '/api/console/settings/extension-center/catalog/runtime-extensions/runtime-extensions%3Ataichuy%2Fmodel%20provider'
     });
   });
 

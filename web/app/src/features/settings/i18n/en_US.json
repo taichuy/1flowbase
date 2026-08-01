@@ -874,7 +874,6 @@
     "extension_operation_failed": "Extension operation failed",
     "update_extension": "Update extension",
     "install_extension": "Install extension",
-    "extension_warning_confirmation": "This artifact has compatibility or integrity warnings. Confirm to continue; the local artifact will remain authoritative.",
     "extension_install_confirmation": "Confirm this extension installation?",
     "current_version": "Current version",
     "system_requirements": "System requirements",

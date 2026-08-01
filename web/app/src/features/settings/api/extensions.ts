@@ -72,6 +72,7 @@ export function installSettingsExtension(
     {
       category: entry.category,
       artifact_id: entry.id,
+      version: entry.version,
       ...overrides
     },
     csrfToken,

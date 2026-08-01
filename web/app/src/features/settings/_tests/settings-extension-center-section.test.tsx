@@ -44,8 +44,9 @@ import { SettingsExtensionCenterSection } from '../pages/settings-page/SettingsE
 const installedEntry = {
   id: 'extension-installation-1',
   category: 'runtime-extensions' as const,
+  catalog_id: 'runtime-extensions:taichuy/openai',
   organization: '@taichuy',
-  artifact_id: '@taichuy/openai',
+  artifact_id: 'openai',
   version: '1.0.0',
   node_id: 'node-1',
   source: 'official',
@@ -64,7 +65,7 @@ const installedEntry = {
 
 const catalogEntry = {
   category: 'runtime-extensions' as const,
-  id: '@taichuy/openai',
+  id: 'runtime-extensions:taichuy/openai',
   name: 'OpenAI Provider',
   organization: '@taichuy',
   artifact: 'openai',
@@ -126,6 +127,21 @@ function renderSection() {
   return render(<SettingsExtensionCenterSection />, { wrapper });
 }
 
+async function selectUploadCategory(
+  uploadDialog: HTMLElement,
+  category: string
+) {
+  const combobox = within(uploadDialog).getByRole('combobox', { name: '类型' });
+  const pointerTarget = combobox.closest('.ant-select-selector');
+  if (!pointerTarget) {
+    throw new Error('upload category Select has no visible pointer target');
+  }
+
+  fireEvent.mouseDown(pointerTarget);
+  const listbox = await screen.findByRole('listbox');
+  fireEvent.click(within(listbox).getByRole('option', { name: category }));
+}
+
 describe('SettingsExtensionCenterSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -155,7 +171,7 @@ describe('SettingsExtensionCenterSection', () => {
       catalog_page: null,
       items: [
         {
-          artifact_id: '@taichuy/openai',
+          artifact_id: 'runtime-extensions:taichuy/openai',
           current_version: '1.0.0',
           latest_version: '1.1.0',
           status: 'update_available'
@@ -171,7 +187,7 @@ describe('SettingsExtensionCenterSection', () => {
   test('Root-AC-002/003 renders seven tabs, loads installed inventory first, and checks only visible pages', async () => {
     renderSection();
 
-    expect(await screen.findByText('@taichuy/openai')).toBeInTheDocument();
+    expect(await screen.findByText('openai')).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(7);
     expect(
       screen.getByRole('columnheader', { name: '来源' })
@@ -187,7 +203,7 @@ describe('SettingsExtensionCenterSection', () => {
           catalog_page: null,
           items: [
             {
-              artifact_id: '@taichuy/openai',
+              artifact_id: 'runtime-extensions:taichuy/openai',
               current_version: '1.0.0'
             }
           ]
@@ -216,13 +232,16 @@ describe('SettingsExtensionCenterSection', () => {
 
   test('Root-AC-004 resolves and performs an installed-row update instead of switching tabs', async () => {
     renderSection();
-    const row = await screen.findByRole('row', { name: /@taichuy\/openai/ });
+    const row = await screen.findByRole('row', { name: /openai/ });
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     await waitFor(() => {
       expect(
         extensionsApi.fetchSettingsExtensionCatalogEntry
-      ).toHaveBeenCalledWith('runtime-extensions', '@taichuy/openai');
+      ).toHaveBeenCalledWith(
+        'runtime-extensions',
+        'runtime-extensions:taichuy/openai'
+      );
     });
     const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
     await confirmation?.onOk?.();
@@ -296,7 +315,7 @@ describe('SettingsExtensionCenterSection', () => {
     );
     const view = renderSection();
 
-    const row = await screen.findByRole('row', { name: /@taichuy\/openai/ });
+    const row = await screen.findByRole('row', { name: /openai/ });
     await waitFor(() => {
       expect(
         within(row).getByRole('button', { name: '更新' }).closest('span')
@@ -308,12 +327,7 @@ describe('SettingsExtensionCenterSection', () => {
     const uploadDialog = await screen.findByRole('dialog');
     const input = uploadDialog.querySelector('input[type="file"]');
     const file = new File(['extension'], 'extension.1flowbasepkg');
-    fireEvent.mouseDown(
-      within(uploadDialog).getByRole('combobox', { name: '类型' })
-    );
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'runtime-extensions' })
-    );
+    await selectUploadCategory(uploadDialog, 'runtime-extensions');
     fireEvent.change(input!, { target: { files: [file] } });
     fireEvent.click(
       within(uploadDialog).getByRole('button', { name: '上传并安装' })
@@ -393,10 +407,7 @@ describe('SettingsExtensionCenterSection', () => {
       renderSection();
       fireEvent.click(screen.getByRole('button', { name: '上传插件' }));
       const uploadDialog = await screen.findByRole('dialog');
-      fireEvent.mouseDown(
-        within(uploadDialog).getByRole('combobox', { name: '类型' })
-      );
-      fireEvent.click(await screen.findByRole('option', { name: category }));
+      await selectUploadCategory(uploadDialog, category);
 
       fireEvent.change(
         within(uploadDialog).getByRole('textbox', { name: '组织' }),

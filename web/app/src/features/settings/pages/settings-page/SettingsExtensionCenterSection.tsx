@@ -79,8 +79,8 @@ function isInstalledRow(row: ExtensionRow): row is SettingsInstalledExtension {
   return 'node_id' in row;
 }
 
-function extensionId(row: ExtensionRow) {
-  return isInstalledRow(row) ? row.artifact_id : row.id;
+function extensionCatalogId(row: ExtensionRow) {
+  return isInstalledRow(row) ? row.catalog_id : row.id;
 }
 
 function extensionName(row: ExtensionRow) {
@@ -108,7 +108,7 @@ function extensionInstallationStatus(row: ExtensionRow) {
 }
 
 function extensionKey(row: ExtensionRow) {
-  return `${row.category}:${extensionId(row)}`;
+  return `${row.category}:${extensionCatalogId(row)}`;
 }
 
 export function SettingsExtensionCenterSection() {
@@ -193,7 +193,7 @@ export function SettingsExtensionCenterSection() {
                   ? null
                   : (catalogQuery.data?.catalog_page ?? null),
               items: entries.map((entry) => ({
-                artifact_id: extensionId(entry),
+                artifact_id: extensionCatalogId(entry),
                 current_version: isInstalledRow(entry)
                   ? entry.version
                   : entry.current_version!
@@ -338,7 +338,7 @@ export function SettingsExtensionCenterSection() {
     try {
       const entry = await fetchSettingsExtensionCatalogEntry(
         row.category,
-        row.artifact_id
+        row.catalog_id
       );
       submitOperation({ kind: 'catalog', entry, update: true });
     } catch {
