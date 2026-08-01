@@ -1105,6 +1105,16 @@ async fn mcp_instance_discovery_policy_updates_validate_and_isolate_list_behavio
     assert_eq!(data_items.len(), 3);
     assert!(data_items[0].get("path").is_some());
     assert!(data_items[0].get("children_count").is_some());
+    let system_group = data_items
+        .iter()
+        .find(|item| item["path"] == json!("/system"))
+        .unwrap();
+    assert_eq!(system_group["children_count"], json!(1));
+    let runtime_group = data_items
+        .iter()
+        .find(|item| item["path"] == json!("/system/runtime"))
+        .unwrap();
+    assert_eq!(runtime_group["children_count"], json!(0));
 
     let regex_list_response = app
         .clone()

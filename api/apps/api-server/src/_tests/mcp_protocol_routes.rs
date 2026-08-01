@@ -251,6 +251,31 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
         .unwrap();
     assert_eq!(create_tool_response.status(), StatusCode::CREATED);
 
+    let create_group_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/taichuy/groups")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "path": "/runtime",
+                        "display_name": "Runtime",
+                        "description_short": "Runtime topology tools",
+                        "enabled": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_group_response.status(), StatusCode::OK);
+
     let create_binding_response = app
         .clone()
         .oneshot(
@@ -293,10 +318,20 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
     let listed_items = list_payload["result"]["structuredContent"]
         .as_array()
         .unwrap();
-    assert_eq!(listed_items.len(), 1);
-    assert_eq!(listed_items[0]["id"], json!("runtime_profile"));
-    assert_eq!(listed_items[0]["item_kind"], json!("tool"));
-    assert!(listed_items[0].get("full_description").is_none());
+    assert_eq!(listed_items.len(), 2);
+    let group = listed_items
+        .iter()
+        .find(|item| item["item_kind"] == json!("group"))
+        .unwrap();
+    assert_eq!(group["path"], json!("/runtime"));
+    assert_eq!(group["children_count"], json!(1));
+    let listed_tool = listed_items
+        .iter()
+        .find(|item| item["item_kind"] == json!("tool"))
+        .unwrap();
+    assert_eq!(listed_tool["id"], json!("runtime_profile"));
+    assert_eq!(listed_tool["children_count"], json!(0));
+    assert!(listed_tool.get("full_description").is_none());
 
     let get_payload = call_mcp(
         &app,
@@ -360,6 +395,126 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
     )
     .await;
     assert_eq!(missing_tool_payload["error"]["code"], json!(-32602));
+}
+
+#[tokio::test]
+async fn mcp_get_projects_input_mapping_into_agent_schema() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+
+    let create_tool_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/tools")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tool_id": "mapped_interface_catalog",
+                        "des_id": "mapped123",
+                        "name": "Mapped interface catalog",
+                        "short_description": "List bindable interfaces.",
+                        "full_description": "",
+                        "execution_target": {
+                            "kind": "interface_wrapper",
+                            "interface_id": "list_mcp_interface_capabilities"
+                        },
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": {
+                            "interface_parameters": [{
+                                "name": "bindable_only",
+                                "field_type": "boolean",
+                                "parameter_type": "url",
+                                "description": "Backend interface description",
+                                "required": false
+                            }],
+                            "mappings": [{
+                                "interface_param": "bindable_only",
+                                "mcp_param": "filters.only_bindable",
+                                "description": "Only include interfaces that can be bound.",
+                                "required": true
+                            }]
+                        },
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "low",
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_tool_response.status(), StatusCode::CREATED);
+
+    let create_binding_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/taichuy/tool-bindings")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "group_path": "/",
+                        "tool_id": "mapped_interface_catalog",
+                        "display_alias": null,
+                        "visible": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_binding_response.status(), StatusCode::CREATED);
+
+    let get_payload = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":9,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.get",
+                "arguments":{"tool_id":"mapped_interface_catalog"}
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        get_payload["result"]["structuredContent"]["input_schema"],
+        json!({
+            "type": "object",
+            "required": ["filters"],
+            "properties": {
+                "filters": {
+                    "type": "object",
+                    "required": ["only_bindable"],
+                    "properties": {
+                        "only_bindable": {
+                            "type": ["boolean", "null"],
+                            "description": "Only include interfaces that can be bound."
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        })
+    );
 }
 
 #[tokio::test]

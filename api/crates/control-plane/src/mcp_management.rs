@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use anyhow::Result;
 use rand_core::{OsRng, RngCore};
@@ -1141,6 +1141,25 @@ where
             .list_mcp_tool_bindings(&[instance.id])
             .await?;
         let tools = self.repository.list_mcp_tools(workspace_id).await?;
+        let enabled_tool_ids = tools
+            .iter()
+            .filter(|tool| tool.status == domain::McpToolStatus::Enabled)
+            .map(|tool| tool.id)
+            .collect::<HashSet<_>>();
+        let mut children_counts = HashMap::<String, i64>::new();
+        for group in groups.iter().filter(|group| group.enabled) {
+            if let Some(parent_path) = parent_group_path(&group.path) {
+                *children_counts.entry(parent_path.to_owned()).or_default() += 1;
+            }
+        }
+        for binding in bindings
+            .iter()
+            .filter(|binding| binding.visible && enabled_tool_ids.contains(&binding.tool_record_id))
+        {
+            *children_counts
+                .entry(binding.group_path.clone())
+                .or_default() += 1;
+        }
         let base_path = path.unwrap_or(instance.default_entry_path.as_str());
         let max_depth = depth
             .unwrap_or(discovery_policy.list_max_depth)
@@ -1162,13 +1181,17 @@ where
                 &group.display_name,
                 group.description_short.as_deref(),
             ) {
+                let children_count = children_counts
+                    .get(&group.path)
+                    .copied()
+                    .unwrap_or_default();
                 items.push(domain::McpListItemSummary {
                     id: group.id.to_string(),
                     item_kind: domain::McpListItemKind::Group,
                     path: group.path,
                     name: group.display_name,
                     description_short: group.description_short,
-                    children_count: 0,
+                    children_count,
                     risk_level: None,
                 });
             }
@@ -1381,6 +1404,19 @@ pub(crate) fn input_mapping_requires_des_id(input_mapping: &serde_json::Value) -
 
 fn path_matches(base_path: &str, candidate: &str) -> bool {
     base_path == "/" || candidate == base_path || candidate.starts_with(&format!("{base_path}/"))
+}
+
+fn parent_group_path(path: &str) -> Option<&str> {
+    let path = path.trim_end_matches('/');
+    if path.is_empty() || path == "/" {
+        return None;
+    }
+    let separator = path.rfind('/')?;
+    if separator == 0 {
+        Some("/")
+    } else {
+        Some(&path[..separator])
+    }
 }
 
 fn list_item_matches_keywords(

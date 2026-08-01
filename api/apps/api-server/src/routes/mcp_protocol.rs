@@ -21,6 +21,8 @@ use crate::{
     middleware::require_session::{require_session, RequestCredential},
 };
 
+mod input_schema;
+
 #[derive(Deserialize)]
 struct JsonRpcRequest {
     jsonrpc: String,
@@ -143,7 +145,10 @@ async fn handle_mcp_request(
                         "name": tool.name,
                         "short_description": tool.short_description,
                         "full_description": tool.full_description,
-                        "input_schema": tool.parameter_schema,
+                        "input_schema": input_schema::mapped_schema(
+                            &tool.parameter_schema,
+                            &tool.input_mapping,
+                        ),
                         "result_schema": tool.result_schema,
                         "risk_level": tool.risk_level,
                         "des_id": tool.des_id,
