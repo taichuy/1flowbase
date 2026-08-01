@@ -142,6 +142,14 @@ async function selectUploadCategory(
   fireEvent.click(within(listbox).getByRole('option', { name: category }));
 }
 
+async function submitEnabledUpload(uploadDialog: HTMLElement) {
+  const submit = within(uploadDialog).getByRole('button', {
+    name: '上传并安装'
+  });
+  await waitFor(() => expect(submit).toBeEnabled());
+  fireEvent.click(submit);
+}
+
 describe('SettingsExtensionCenterSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -329,9 +337,7 @@ describe('SettingsExtensionCenterSection', () => {
     const file = new File(['extension'], 'extension.1flowbasepkg');
     await selectUploadCategory(uploadDialog, 'runtime-extensions');
     fireEvent.change(input!, { target: { files: [file] } });
-    fireEvent.click(
-      within(uploadDialog).getByRole('button', { name: '上传并安装' })
-    );
+    await submitEnabledUpload(uploadDialog);
     const uploadConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
     await uploadConfirmation?.onOk?.();
 
@@ -427,9 +433,7 @@ describe('SettingsExtensionCenterSection', () => {
       fireEvent.change(uploadDialog.querySelector('input[type="file"]')!, {
         target: { files: [file] }
       });
-      fireEvent.click(
-        within(uploadDialog).getByRole('button', { name: '上传并安装' })
-      );
+      await submitEnabledUpload(uploadDialog);
       const confirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
       await confirmation?.onOk?.();
 
