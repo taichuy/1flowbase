@@ -66,7 +66,7 @@ test('AC-028/029: paired provider lock is portable and exact', () => {
   assert.match(lock.official_plugins.revision, /^[a-f0-9]{40}$/u);
   assert.equal(
     lock.official_plugins.revision,
-    '38599e36d5e60ed37e2660c3e8d089ed2b2bf78a'
+    '1308af8c37a437928c4f082c324f7943ef258edc'
   );
   assert.doesNotMatch(JSON.stringify(lock), /\/home\//u);
 });
