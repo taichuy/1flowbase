@@ -377,6 +377,35 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
     );
     assert_eq!(catalog_payload["data"]["types"][0]["label"], "Agent Flow");
     assert_eq!(catalog_payload["data"]["types"][1]["label"], "Workflow");
+    // AC-001: the backend catalog is the complete Application type and Workflow trigger truth.
+    assert!(catalog_payload["data"]["types"][0]["description"]
+        .as_str()
+        .is_some_and(|description| description.contains("AI Gateway")));
+    assert!(catalog_payload["data"]["types"][1]["description"]
+        .as_str()
+        .is_some_and(
+            |description| description.contains("extension") && description.contains("schedule")
+        ));
+    assert_eq!(
+        catalog_payload["data"]["workflow_triggers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|trigger| trigger["value"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["extension", "schedule"]
+    );
+    assert!(catalog_payload["data"]["workflow_triggers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|trigger| trigger["value"] != "form"));
+    assert!(
+        catalog_payload["data"]["workflow_triggers"][0]["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("/api/ex/{slug}")
+                && description.contains("does not require an Application API Key"))
+    );
     assert!(catalog_payload["data"]["types"]
         .as_array()
         .unwrap()

@@ -8,7 +8,13 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-async fn create_application(app: &axum::Router, cookie: &str, csrf: &str, name: &str) -> String {
+async fn create_application(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    application_type: &str,
+    name: &str,
+) -> String {
     let response = app
         .clone()
         .oneshot(
@@ -20,7 +26,7 @@ async fn create_application(app: &axum::Router, cookie: &str, csrf: &str, name: 
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "application_type": "agent_flow",
+                        "application_type": application_type,
                         "name": name,
                         "description": "node contribution test application",
                         "icon": "RobotOutlined",
@@ -354,19 +360,28 @@ async fn assign_js_dependency_pack(
 }
 
 #[tokio::test]
-async fn node_contribution_routes_list_registry_entries_for_application_workspace() {
+async fn node_contribution_route_returns_type_specific_unified_application_node_catalogs() {
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let application_id = create_application(&app, &cookie, &csrf, "Node Contribution Target").await;
+    let agent_flow_id = create_application(
+        &app,
+        &cookie,
+        &csrf,
+        "agent_flow",
+        "Agent Flow Node Catalog",
+    )
+    .await;
+    let workflow_id =
+        create_application(&app, &cookie, &csrf, "workflow", "Workflow Node Catalog").await;
     let _ = seed_node_contribution_registry(&database_url).await;
 
-    let response = app
+    let agent_flow_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/api/console/node-contributions?application_id={application_id}"
+                    "/api/console/node-contributions?application_id={agent_flow_id}"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -375,40 +390,168 @@ async fn node_contribution_routes_list_registry_entries_for_application_workspac
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(agent_flow_response.status(), StatusCode::OK);
+    let body = to_bytes(agent_flow_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let agent_flow_payload: Value = serde_json::from_slice(&body).unwrap();
+    let agent_flow_nodes = agent_flow_payload["data"]["nodes"].as_array().unwrap();
 
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let payload: Value = serde_json::from_slice(&body).unwrap();
-    let entry = payload["data"][0].clone();
+    // AC-002: boundaries are application-type specific while executable processing nodes and
+    // workspace plugin contributions are shared.
+    assert!(agent_flow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "start"));
+    assert!(agent_flow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "answer"));
+    assert!(!agent_flow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "workflow_start"));
+    assert!(!agent_flow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "workflow_end"));
 
-    assert_eq!(payload["data"].as_array().unwrap().len(), 1);
-    assert_eq!(entry["plugin_id"].as_str(), Some("fixture_provider@1.2.3"));
+    let sql = agent_flow_nodes
+        .iter()
+        .find(|entry| entry["node_type"] == "sql")
+        .expect("SQL must be present in the unified built-in catalog");
+    assert_eq!(sql["source_kind"], "builtin");
+    assert_eq!(sql["runtime_status"], "ready");
+    assert!(sql["field_contract"]["config_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "config.data_source_instance_id"));
+    assert!(sql["field_contract"]["input_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field["key"] == "bindings.sql"));
+
+    let unavailable = agent_flow_nodes
+        .iter()
+        .find(|entry| entry["node_type"] == "knowledge_retrieval")
+        .expect("known built-in contracts remain discoverable");
+    assert_eq!(unavailable["runtime_status"], "unavailable");
+
+    let plugin = agent_flow_nodes
+        .iter()
+        .find(|entry| entry["source_kind"] == "plugin")
+        .expect("assigned workspace plugin contribution must be present");
+    assert_eq!(plugin["node_type"], "plugin_node");
+    assert_eq!(plugin["runtime_status"], "ready");
+    assert_eq!(plugin["dependency_status"], "ready");
+    assert_eq!(plugin["plugin"]["plugin_id"], "fixture_provider@1.2.3");
     assert_eq!(
-        entry["plugin_unique_identifier"].as_str(),
-        Some("fixture_provider")
+        plugin["plugin"]["plugin_unique_identifier"],
+        "fixture_provider"
     );
-    assert_eq!(entry["package_id"].as_str(), Some("fixture_provider@1.2.3"));
-    assert_eq!(entry["plugin_version"].as_str(), Some("1.2.3"));
-    assert_eq!(entry["contribution_code"].as_str(), Some("fixture_prompt"));
-    assert_eq!(entry["node_shell"].as_str(), Some("action"));
-    assert_eq!(entry["category"].as_str(), Some("ai"));
-    assert_eq!(entry["title"].as_str(), Some("Fixture Prompt"));
-    assert_eq!(entry["description"].as_str(), Some("Prompt node fixture"));
-    assert_eq!(entry["dependency_status"].as_str(), Some("ready"));
+    assert_eq!(plugin["plugin"]["package_id"], "fixture_provider@1.2.3");
+    assert_eq!(plugin["plugin"]["contribution_code"], "fixture_prompt");
     assert_eq!(
-        entry["schema_version"].as_str(),
-        Some("1flowbase.node-contribution/v2")
+        plugin["plugin"]["schema_version"],
+        "1flowbase.node-contribution/v2"
     );
     assert_eq!(
-        entry["contribution_checksum"].as_str(),
-        Some("sha256:contribution")
+        plugin["plugin"]["contribution_checksum"],
+        "sha256:contribution"
     );
     assert_eq!(
-        entry["compiled_contribution_hash"].as_str(),
-        Some("sha256:compiled")
+        plugin["plugin"]["compiled_contribution_hash"],
+        "sha256:compiled"
     );
-    assert_eq!(entry["side_effect_policy"].as_str(), Some("external_read"));
-    assert_eq!(entry["experimental"].as_bool(), Some(false));
+
+    let workflow_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/console/node-contributions?application_id={workflow_id}"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(workflow_response.status(), StatusCode::OK);
+    let body = to_bytes(workflow_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let workflow_payload: Value = serde_json::from_slice(&body).unwrap();
+    let workflow_nodes = workflow_payload["data"]["nodes"].as_array().unwrap();
+
+    assert!(workflow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "workflow_start"));
+    assert!(workflow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "workflow_end"));
+    assert!(!workflow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "start"));
+    assert!(!workflow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "answer"));
+    assert!(workflow_nodes
+        .iter()
+        .any(|entry| entry["node_type"] == "sql"));
+
+    // AC-003: Workflow Start exposes the exact persisted flow-document field vocabulary.
+    let workflow_start = workflow_nodes
+        .iter()
+        .find(|entry| entry["node_type"] == "workflow_start")
+        .unwrap();
+    let fields = workflow_start["field_contract"]["config_fields"]
+        .as_array()
+        .unwrap();
+    let input_type = fields
+        .iter()
+        .find(|field| field["key"] == "config.input_fields[].inputType")
+        .unwrap();
+    assert_eq!(
+        input_type["allowed_values"],
+        json!([
+            "text",
+            "paragraph",
+            "select",
+            "number",
+            "checkbox",
+            "file",
+            "file_list",
+            "url"
+        ])
+    );
+    let source = fields
+        .iter()
+        .find(|field| field["key"] == "config.input_fields[].source")
+        .unwrap();
+    assert_eq!(
+        source["allowed_values"],
+        json!(["path", "query", "body", "form"])
+    );
+    assert!(source["description"]
+        .as_str()
+        .is_some_and(|description| description.contains("not a Workflow trigger")));
+    for property in [
+        "key",
+        "label",
+        "inputType",
+        "valueType",
+        "required",
+        "placeholder",
+        "defaultValue",
+        "maxLength",
+        "hidden",
+        "options",
+        "source",
+    ] {
+        assert!(fields
+            .iter()
+            .any(|field| field["key"] == format!("config.input_fields[].{property}")));
+    }
 }
 
 #[tokio::test]
