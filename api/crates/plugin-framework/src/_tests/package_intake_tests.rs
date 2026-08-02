@@ -5,10 +5,13 @@ use std::{
     process::Command,
 };
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::pkcs8::{spki::der::pem::LineEnding, DecodePublicKey, EncodePublicKey};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use flate2::{write::GzEncoder, Compression};
-use plugin_framework::{intake_package_bytes, PackageIntakePolicy, TrustedPublicKey};
+use plugin_framework::{
+    intake_package_bytes, verify_trusted_ed25519_artifact, PackageIntakePolicy, TrustedPublicKey,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tar::Builder;
@@ -19,6 +22,59 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 enum ArchiveFormat {
     TarGz,
     Zip,
+}
+
+#[test]
+fn trusted_artifact_verifier_rejects_checksum_signature_and_unknown_key_tampering() {
+    let bytes = br#"{"template_id":"fixture"}"#;
+    let signing_key = SigningKey::from_bytes(&[23; 32]);
+    let trusted = TrustedPublicKey {
+        key_id: "fixture-key".into(),
+        algorithm: "ed25519".into(),
+        public_key_pem: signing_key
+            .verifying_key()
+            .to_public_key_pem(LineEnding::LF)
+            .unwrap(),
+    };
+    let checksum = format!("sha256:{:x}", Sha256::digest(bytes));
+    let signature = STANDARD.encode(signing_key.sign(bytes).to_bytes());
+
+    verify_trusted_ed25519_artifact(
+        bytes,
+        &checksum,
+        "ed25519",
+        "fixture-key",
+        &signature,
+        std::slice::from_ref(&trusted),
+    )
+    .unwrap();
+    assert!(verify_trusted_ed25519_artifact(
+        b"tampered",
+        &checksum,
+        "ed25519",
+        "fixture-key",
+        &signature,
+        std::slice::from_ref(&trusted),
+    )
+    .is_err());
+    assert!(verify_trusted_ed25519_artifact(
+        bytes,
+        &checksum,
+        "ed25519",
+        "fixture-key",
+        &STANDARD.encode([0; 64]),
+        std::slice::from_ref(&trusted),
+    )
+    .is_err());
+    assert!(verify_trusted_ed25519_artifact(
+        bytes,
+        &checksum,
+        "ed25519",
+        "unknown-key",
+        &signature,
+        &[trusted],
+    )
+    .is_err());
 }
 
 struct SignedFixtureInput<'a> {

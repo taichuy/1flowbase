@@ -821,6 +821,65 @@ async fn ac_001_failed_batch_export_does_not_partially_increment_release_version
 }
 
 #[tokio::test]
+async fn agent_flow_library_import_creates_a_new_application_without_overwriting_existing_rows() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"application_type": "agent_flow", "name": "Existing application"})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let existing: Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let existing_id = existing["data"]["id"].as_str().unwrap();
+
+    let imported = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/orchestration/templates/official/multimodal-mount-test/import")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"release_version": 1, "name": "Imported local template"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(imported.status(), StatusCode::CREATED);
+    let imported: Value =
+        serde_json::from_slice(&to_bytes(imported.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_ne!(imported["data"]["application"]["id"], existing_id);
+
+    let existing_after = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/console/applications/{existing_id}"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(existing_after.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_workspace_application()
 {
     let (state, _) = test_api_state_with_database_url().await;
@@ -1192,9 +1251,9 @@ async fn ac_004_workflow_extension_json_round_trip_preserves_registration_config
 }
 
 #[tokio::test]
-async fn application_orchestration_official_template_routes_list_and_download_catalog_entry() {
+async fn application_orchestration_template_library_routes_list_and_sync_catalog_release() {
     let app = test_app().await;
-    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let catalog = app
         .clone()
@@ -1210,52 +1269,37 @@ async fn application_orchestration_official_template_routes_list_and_download_ca
     assert_eq!(catalog.status(), StatusCode::OK);
     let catalog_body: Value =
         serde_json::from_slice(&to_bytes(catalog.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(catalog_body["data"]["remote_available"], json!(true));
+    let entry = &catalog_body["data"]["templates"][0];
+    assert_eq!(entry["template_id"], json!("multimodal-mount-test"));
+    assert_eq!(entry["remote_versions"][0]["release_version"], json!(1));
     assert_eq!(
-        catalog_body["data"]["source"]["source_label"],
-        "Official source"
+        entry["remote_versions"][0]["application"]["name"],
+        json!("多模态挂载测试")
     );
-    assert_eq!(
-        catalog_body["data"]["source"]["source_kind"],
-        "official_registry"
-    );
-    assert_eq!(
-        catalog_body["data"]["source"]["index_url"],
-        "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json"
-    );
-    let entry = &catalog_body["data"]["entries"][0];
+    assert_eq!(entry["local_versions"], json!([]));
+    assert_eq!(entry["current_release_version"], json!(null));
 
-    assert_eq!(entry["workflow_id"], json!("multimodal-mount-test"));
-    assert_eq!(
-        entry["schema_version"],
-        json!("1flowbase.application-template/v1")
-    );
-    assert_eq!(entry["application"]["name"], json!("多模态挂载测试"));
-    assert!(entry.get("dependency_summary").is_none());
-    assert!(entry.get("tags").is_none());
-    assert!(entry.get("author").is_none());
-    assert!(entry.get("status").is_none());
-
-    let template = app
+    let synced = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/applications/orchestration/templates/official/multimodal-mount-test")
+                .method("POST")
+                .uri("/api/console/applications/orchestration/templates/official/multimodal-mount-test/sync")
                 .header("cookie", &cookie)
-                .body(Body::empty())
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"release_version": 1}).to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(template.status(), StatusCode::OK);
-    let template_body: Value =
-        serde_json::from_slice(&to_bytes(template.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(synced.status(), StatusCode::OK);
+    let synced_body: Value =
+        serde_json::from_slice(&to_bytes(synced.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(
-        template_body["data"]["schema_version"],
-        json!("1flowbase.application-template/v1")
+        synced_body["data"]["template_id"],
+        json!("multimodal-mount-test")
     );
-    assert_eq!(
-        template_body["data"]["application"]["name"],
-        json!("多模态挂载测试")
-    );
-    assert_eq!(template_body["data"]["dependencies"], json!([]));
+    assert_eq!(synced_body["data"]["release_version"], json!(1));
 }

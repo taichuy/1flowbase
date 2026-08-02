@@ -293,52 +293,99 @@ impl OfficialPluginSourcePort for InMemoryOfficialPluginSource {
 }
 
 #[async_trait]
-impl OfficialAgentFlowTemplateSourcePort for InMemoryOfficialAgentFlowTemplateSource {
-    async fn list_catalog_page(
-        &self,
-        _cursor: Option<String>,
-    ) -> anyhow::Result<OfficialAgentFlowTemplateCatalogSnapshot> {
+impl AgentFlowTemplateLibraryPort for InMemoryOfficialAgentFlowTemplateSource {
+    async fn catalog(&self) -> anyhow::Result<AgentFlowTemplateLibraryCatalog> {
         let template = build_agent_flow_template_package();
         let template_bytes = serde_json::to_vec(&template)?;
-
-        Ok(OfficialAgentFlowTemplateCatalogSnapshot {
-            source: OfficialAgentFlowTemplateCatalogSource {
-                source_kind: "official_registry".to_string(),
-                source_label: "官方源".to_string(),
-                index_url:
-                    "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json"
-                        .to_string(),
+        let version = AgentFlowCatalogVersion {
+            template_id: "multimodal-mount-test".into(),
+            release_version: 1,
+            exported_from_system_version: "0.3.1".into(),
+            exported_at: "2026-06-16T00:00:00Z".into(),
+            application: AgentFlowCatalogApplication {
+                name: template.application.name.clone(),
+                description: template.application.description.clone(),
             },
-            page: OfficialAgentFlowTemplateCatalogPage {
-                page: 1,
-                page_size: 100,
-                next_cursor: None,
-            },
-            entries: vec![OfficialAgentFlowTemplateCatalogEntry {
-                workflow_id: "multimodal-mount-test".to_string(),
-                schema_version: "1flowbase.application-template/v1".to_string(),
-                application: template.application.clone(),
-                template_url:
-                    "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/workflows/multimodal-mount-test/template.json"
-                        .to_string(),
-                template_sha256: format!("sha256:{:x}", Sha256::digest(&template_bytes)),
-                updated_at: "2026-06-16T00:00:00.000Z".to_string(),
+            download_url: "https://example.invalid/template.json".into(),
+            checksum: format!("sha256:{:x}", Sha256::digest(&template_bytes)),
+            algorithm: "ed25519".into(),
+            key_id: "test-key".into(),
+            signature: String::new(),
+        };
+        Ok(AgentFlowTemplateLibraryCatalog {
+            remote_available: true,
+            remote_error: None,
+            templates: vec![AgentFlowTemplateLibraryEntry {
+                template_id: "multimodal-mount-test".into(),
+                source_path: Some("agent-flow/multimodal-mount-test/".into()),
+                remote_versions: vec![version],
+                local_versions: Vec::new(),
+                current_release_version: None,
             }],
         })
     }
 
-    async fn download_template(
+    async fn sync(
         &self,
-        workflow_id: &str,
-    ) -> anyhow::Result<control_plane::flow::AgentFlowTemplatePackage> {
-        if workflow_id != "multimodal-mount-test" {
-            return Err(control_plane::errors::ControlPlaneError::NotFound(
-                "official_agent_flow_template",
-            )
-            .into());
-        }
+        template_id: &str,
+        release_version: Option<u64>,
+    ) -> anyhow::Result<LocalAgentFlowTemplateReceipt> {
+        Ok(test_agent_flow_receipt(
+            template_id,
+            release_version.unwrap_or(1),
+        ))
+    }
 
-        Ok(build_agent_flow_template_package())
+    async fn import_artifact(
+        &self,
+        _template_id: &str,
+        _release_version: Option<u64>,
+    ) -> anyhow::Result<Vec<u8>> {
+        Ok(serde_json::to_vec(&build_agent_flow_template_package())?)
+    }
+
+    async fn switch_current(
+        &self,
+        template_id: &str,
+        release_version: u64,
+    ) -> anyhow::Result<LocalAgentFlowTemplateReceipt> {
+        Ok(test_agent_flow_receipt(template_id, release_version))
+    }
+
+    async fn delete_local_version(
+        &self,
+        _template_id: &str,
+        _release_version: u64,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn repair(
+        &self,
+        template_id: &str,
+        release_version: u64,
+    ) -> anyhow::Result<LocalAgentFlowTemplateReceipt> {
+        Ok(test_agent_flow_receipt(template_id, release_version))
+    }
+}
+
+fn test_agent_flow_receipt(
+    template_id: &str,
+    release_version: u64,
+) -> LocalAgentFlowTemplateReceipt {
+    LocalAgentFlowTemplateReceipt {
+        template_id: template_id.into(),
+        release_version,
+        exported_from_system_version: "0.3.1".into(),
+        exported_at: "2026-06-16T00:00:00Z".into(),
+        application: AgentFlowCatalogApplication {
+            name: "多模态挂载测试".into(),
+            description: String::new(),
+        },
+        checksum: format!("sha256:{}", "a".repeat(64)),
+        algorithm: "ed25519".into(),
+        key_id: "test-key".into(),
+        signature: String::new(),
     }
 }
 

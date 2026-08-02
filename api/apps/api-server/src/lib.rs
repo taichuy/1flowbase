@@ -335,7 +335,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let resolved_official_agent_flow_template_source =
         config.resolve_official_agent_flow_template_source();
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
-    let official_agent_flow_template_cache = infrastructure.cache_store();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
     let official_extension_catalog_source = Arc::new(
         official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config),
@@ -348,13 +347,14 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             } else {
                 "allow_unsigned".to_string()
             },
-            trusted_public_keys,
+            trusted_public_keys.clone(),
         ),
     );
     let official_agent_flow_template_source = Arc::new(
-        official_agent_flow_templates::ApiOfficialAgentFlowTemplateRegistry::new(
+        official_agent_flow_templates::ApiAgentFlowTemplateLibrary::new(
             resolved_official_agent_flow_template_source,
-            official_agent_flow_template_cache,
+            std::path::PathBuf::from(&config.agent_flow_template_library_root),
+            trusted_public_keys,
         ),
     );
     let official_mcp_bundle_source =

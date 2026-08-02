@@ -435,8 +435,28 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "authenticated",
             ),
             (
-                "GET",
-                "/api/console/applications/orchestration/templates/official/:workflow_id",
+                "POST",
+                "/api/console/applications/orchestration/templates/official/:template_id/sync",
+                "authenticated",
+            ),
+            (
+                "POST",
+                "/api/console/applications/orchestration/templates/official/:template_id/import",
+                "applications.orchestration.template.import",
+            ),
+            (
+                "POST",
+                "/api/console/applications/orchestration/templates/official/:template_id/current/:release_version",
+                "authenticated",
+            ),
+            (
+                "DELETE",
+                "/api/console/applications/orchestration/templates/official/:template_id/releases/:release_version",
+                "authenticated",
+            ),
+            (
+                "POST",
+                "/api/console/applications/orchestration/templates/official/:template_id/releases/:release_version/repair",
                 "authenticated",
             ),
             (

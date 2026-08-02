@@ -12,7 +12,7 @@ use access_control::{
 };
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{Multipart, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::Response,
     Json, Router,
@@ -45,7 +45,7 @@ use orchestration_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -54,7 +54,7 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
-        console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
+        console_delete, console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
     },
 };
 
@@ -83,11 +83,6 @@ pub struct ApplicationArchiveUploadBody {
     pub file: String,
     pub name: Option<String>,
     pub description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogQuery {
-    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -157,15 +152,6 @@ pub struct AgentFlowTemplateDependencyResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct AgentFlowTemplatePackageResponse {
-    pub schema_version: String,
-    pub application: AgentFlowTemplateApplicationResponse,
-    #[schema(value_type = Object)]
-    pub flow_document: serde_json::Value,
-    pub dependencies: Vec<AgentFlowTemplateDependencyResponse>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct AgentFlowTemplateDependencyStatusResponse {
     pub dependency: AgentFlowTemplateDependencyResponse,
     pub status: String,
@@ -214,34 +200,63 @@ pub struct ImportAgentFlowTemplateResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogSourceResponse {
-    pub source_kind: String,
-    pub source_label: String,
-    pub index_url: String,
+pub struct AgentFlowTemplateCatalogApplicationResponse {
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogPageResponse {
-    pub page: u32,
-    pub page_size: usize,
-    pub next_cursor: Option<String>,
+pub struct AgentFlowTemplateRemoteVersionResponse {
+    pub template_id: String,
+    pub release_version: u64,
+    pub exported_from_system_version: String,
+    pub exported_at: String,
+    pub application: AgentFlowTemplateCatalogApplicationResponse,
+    pub download_url: String,
+    pub checksum: String,
+    pub algorithm: String,
+    pub key_id: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogEntryResponse {
-    pub workflow_id: String,
-    pub schema_version: String,
-    pub application: AgentFlowTemplateApplicationResponse,
-    pub template_url: String,
-    pub template_sha256: String,
-    pub updated_at: String,
+pub struct AgentFlowTemplateLocalVersionResponse {
+    pub template_id: String,
+    pub release_version: u64,
+    pub exported_from_system_version: String,
+    pub exported_at: String,
+    pub application: AgentFlowTemplateCatalogApplicationResponse,
+    pub checksum: String,
+    pub algorithm: String,
+    pub key_id: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AgentFlowTemplateLibraryEntryResponse {
+    pub template_id: String,
+    pub source_path: Option<String>,
+    pub remote_versions: Vec<AgentFlowTemplateRemoteVersionResponse>,
+    pub local_versions: Vec<AgentFlowTemplateLocalVersionResponse>,
+    pub current_release_version: Option<u64>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OfficialAgentFlowTemplateCatalogResponse {
-    pub source: OfficialAgentFlowTemplateCatalogSourceResponse,
-    pub page: OfficialAgentFlowTemplateCatalogPageResponse,
-    pub entries: Vec<OfficialAgentFlowTemplateCatalogEntryResponse>,
+    pub remote_available: bool,
+    pub remote_error: Option<String>,
+    pub templates: Vec<AgentFlowTemplateLibraryEntryResponse>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AgentFlowTemplateVersionBody {
+    pub release_version: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ImportLibraryAgentFlowTemplateBody {
+    pub release_version: Option<u64>,
+    pub name: Option<String>,
+    pub description: Option<String>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -301,8 +316,29 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(list_official_agent_flow_template_catalog, Authenticated),
         )
         .route(
-            "/applications/orchestration/templates/official/:workflow_id",
-            console_get(download_official_agent_flow_template, Authenticated),
+            "/applications/orchestration/templates/official/:template_id/sync",
+            console_post(sync_official_agent_flow_template, Authenticated),
+        )
+        .route(
+            "/applications/orchestration/templates/official/:template_id/import",
+            console_post(
+                import_official_agent_flow_template,
+                ConsoleOperation(
+                    APPLICATIONS_ORCHESTRATION_TEMPLATE_IMPORT_OPERATION_ID.to_string(),
+                ),
+            ),
+        )
+        .route(
+            "/applications/orchestration/templates/official/:template_id/current/:release_version",
+            console_post(switch_official_agent_flow_template_current, Authenticated),
+        )
+        .route(
+            "/applications/orchestration/templates/official/:template_id/releases/:release_version",
+            console_delete(delete_official_agent_flow_template_release, Authenticated),
+        )
+        .route(
+            "/applications/orchestration/templates/official/:template_id/releases/:release_version/repair",
+            console_post(repair_official_agent_flow_template_release, Authenticated),
         )
         .route(
             "/applications/:id/orchestration/versions/:version_id/restore",
@@ -811,31 +847,62 @@ pub async fn export_application_archive(
 }
 
 fn to_official_agent_flow_template_catalog_response(
-    catalog: crate::official_agent_flow_templates::OfficialAgentFlowTemplateCatalogSnapshot,
+    catalog: crate::official_agent_flow_templates::AgentFlowTemplateLibraryCatalog,
 ) -> OfficialAgentFlowTemplateCatalogResponse {
     OfficialAgentFlowTemplateCatalogResponse {
-        source: OfficialAgentFlowTemplateCatalogSourceResponse {
-            source_kind: catalog.source.source_kind,
-            source_label: catalog.source.source_label,
-            index_url: catalog.source.index_url,
-        },
-        page: OfficialAgentFlowTemplateCatalogPageResponse {
-            page: catalog.page.page,
-            page_size: catalog.page.page_size,
-            next_cursor: catalog.page.next_cursor,
-        },
-        entries: catalog
-            .entries
+        remote_available: catalog.remote_available,
+        remote_error: catalog.remote_error,
+        templates: catalog
+            .templates
             .into_iter()
-            .map(|entry| OfficialAgentFlowTemplateCatalogEntryResponse {
-                workflow_id: entry.workflow_id,
-                schema_version: entry.schema_version,
-                application: to_template_application_response(entry.application),
-                template_url: entry.template_url,
-                template_sha256: entry.template_sha256,
-                updated_at: entry.updated_at,
+            .map(|entry| AgentFlowTemplateLibraryEntryResponse {
+                template_id: entry.template_id,
+                source_path: entry.source_path,
+                remote_versions: entry
+                    .remote_versions
+                    .into_iter()
+                    .map(|version| AgentFlowTemplateRemoteVersionResponse {
+                        template_id: version.template_id,
+                        release_version: version.release_version,
+                        exported_from_system_version: version.exported_from_system_version,
+                        exported_at: version.exported_at,
+                        application: AgentFlowTemplateCatalogApplicationResponse {
+                            name: version.application.name,
+                            description: version.application.description,
+                        },
+                        download_url: version.download_url,
+                        checksum: version.checksum,
+                        algorithm: version.algorithm,
+                        key_id: version.key_id,
+                        signature: version.signature,
+                    })
+                    .collect(),
+                local_versions: entry
+                    .local_versions
+                    .into_iter()
+                    .map(to_local_agent_flow_template_version_response)
+                    .collect(),
+                current_release_version: entry.current_release_version,
             })
             .collect(),
+    }
+}
+
+fn to_local_agent_flow_template_version_response(
+    receipt: crate::official_agent_flow_templates::LocalAgentFlowTemplateReceipt,
+) -> AgentFlowTemplateLocalVersionResponse {
+    AgentFlowTemplateLocalVersionResponse {
+        template_id: receipt.template_id,
+        release_version: receipt.release_version,
+        exported_from_system_version: receipt.exported_from_system_version,
+        exported_at: receipt.exported_at,
+        application: AgentFlowTemplateCatalogApplicationResponse {
+            name: receipt.application.name,
+            description: receipt.application.description,
+        },
+        checksum: receipt.checksum,
+        algorithm: receipt.algorithm,
+        key_id: receipt.key_id,
     }
 }
 
@@ -976,21 +1043,6 @@ fn to_template_dependency_response(
         package_id: dependency.package_id,
         contribution_checksum: dependency.contribution_checksum,
         compiled_contribution_hash: dependency.compiled_contribution_hash,
-    }
-}
-
-fn to_template_package_response(
-    template: AgentFlowTemplatePackage,
-) -> AgentFlowTemplatePackageResponse {
-    AgentFlowTemplatePackageResponse {
-        schema_version: template.schema_version,
-        application: to_template_application_response(template.application),
-        flow_document: template.flow_document,
-        dependencies: template
-            .dependencies
-            .into_iter()
-            .map(to_template_dependency_response)
-            .collect(),
     }
 }
 
@@ -1143,7 +1195,8 @@ pub async fn save_draft(
 #[utoipa::path(
     get,
     path = "/api/console/applications/orchestration/templates/official-catalog",
-    params(OfficialAgentFlowTemplateCatalogQuery),
+    summary = "List the Agent Flow template library",
+    description = "Combines remote availability and release history with locally verified releases and the current local pointer.",
     responses(
         (status = 200, body = OfficialAgentFlowTemplateCatalogResponse),
         (status = 401, body = crate::error_response::ErrorBody)
@@ -1152,21 +1205,9 @@ pub async fn save_draft(
 pub async fn list_official_agent_flow_template_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Query(query): Query<OfficialAgentFlowTemplateCatalogQuery>,
 ) -> Result<Json<ApiSuccess<OfficialAgentFlowTemplateCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let mut catalog = state
-        .official_agent_flow_template_source
-        .list_catalog_page(query.cursor)
-        .await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    catalog.source.source_label = crate::app_state::resolve_official_source_label(
-        &state,
-        &locale,
-        &catalog.source.source_kind,
-        catalog.source.source_label,
-    )
-    .await?;
+    require_session(&state, &headers).await?;
+    let catalog = state.official_agent_flow_template_source.catalog().await?;
 
     Ok(Json(ApiSuccess::new(
         to_official_agent_flow_template_catalog_response(catalog),
@@ -1174,31 +1215,155 @@ pub async fn list_official_agent_flow_template_catalog(
 }
 
 #[utoipa::path(
-    get,
-    path = "/api/console/applications/orchestration/templates/official/{workflow_id}",
-    params(
-        ("workflow_id" = String, Path, description = "Official AgentFlow template workflow id")
-    ),
+    post,
+    path = "/api/console/applications/orchestration/templates/official/{template_id}/sync",
+    summary = "Sync an Agent Flow template release",
+    description = "Downloads, checksum-verifies, signature-verifies, stores, and selects the latest or requested official release.",
+    params(("template_id" = String, Path, description = "Stable Agent Flow template ID")),
+    request_body = AgentFlowTemplateVersionBody,
     responses(
-        (status = 200, body = AgentFlowTemplatePackageResponse),
+        (status = 200, body = AgentFlowTemplateLocalVersionResponse),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
-pub async fn download_official_agent_flow_template(
+pub async fn sync_official_agent_flow_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workflow_id): Path<String>,
-) -> Result<Json<ApiSuccess<AgentFlowTemplatePackageResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let template = state
+    Path(template_id): Path<String>,
+    Json(body): Json<AgentFlowTemplateVersionBody>,
+) -> Result<Json<ApiSuccess<AgentFlowTemplateLocalVersionResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let receipt = state
         .official_agent_flow_template_source
-        .download_template(&workflow_id)
+        .sync(&template_id, body.release_version)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        to_local_agent_flow_template_version_response(receipt),
+    )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/orchestration/templates/official/{template_id}/import",
+    summary = "Import a local Agent Flow template release",
+    description = "Imports a new application from the selected local release, syncing remote latest first only when the template has no local releases.",
+    params(("template_id" = String, Path, description = "Stable Agent Flow template ID")),
+    request_body = ImportLibraryAgentFlowTemplateBody,
+    responses((status = 201, body = ImportAgentFlowTemplateResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn import_official_agent_flow_template(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(template_id): Path<String>,
+    Json(body): Json<ImportLibraryAgentFlowTemplateBody>,
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiSuccess<ImportAgentFlowTemplateResponse>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let locale =
+        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
+    let bytes = state
+        .official_agent_flow_template_source
+        .import_artifact(&template_id, body.release_version)
+        .await?;
+    let entry = single_application_entry(parse_application_archive(&bytes)?)?;
+    let resources = FlowService::new(state.store.clone())
+        .load_agent_flow_template_resources(context.user.id)
+        .await?;
+    let imported = ApplicationArchiveService::new(state.store.clone())
+        .import_archive(ImportApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            entry,
+            name: body.name,
+            description: body.description,
+            resources,
+            source_extension_installation_id: None,
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(
+            to_import_response(&state, &locale, imported).await?,
+        )),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/orchestration/templates/official/{template_id}/current/{release_version}",
+    summary = "Switch the current Agent Flow template release",
+    description = "Atomically selects an already verified local release without changing any application.",
+    params(("template_id" = String, Path), ("release_version" = u64, Path)),
+    responses((status = 200, body = AgentFlowTemplateLocalVersionResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn switch_official_agent_flow_template_current(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((template_id, release_version)): Path<(String, u64)>,
+) -> Result<Json<ApiSuccess<AgentFlowTemplateLocalVersionResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let receipt = state
+        .official_agent_flow_template_source
+        .switch_current(&template_id, release_version)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        to_local_agent_flow_template_version_response(receipt),
+    )))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/applications/orchestration/templates/official/{template_id}/releases/{release_version}",
+    summary = "Delete a local Agent Flow template release",
+    description = "Deletes one local release and selects the highest remaining release when the deleted release was current.",
+    params(("template_id" = String, Path), ("release_version" = u64, Path)),
+    responses((status = 204), (status = 401, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn delete_official_agent_flow_template_release(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((template_id, release_version)): Path<(String, u64)>,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    state
+        .official_agent_flow_template_source
+        .delete_local_version(&template_id, release_version)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/orchestration/templates/official/{template_id}/releases/{release_version}/repair",
+    summary = "Repair a local Agent Flow template release",
+    description = "Redownloads the same remote identity only when its checksum matches the existing local receipt, then verifies and replaces local files.",
+    params(("template_id" = String, Path), ("release_version" = u64, Path)),
+    responses((status = 200, body = AgentFlowTemplateLocalVersionResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn repair_official_agent_flow_template_release(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((template_id, release_version)): Path<(String, u64)>,
+) -> Result<Json<ApiSuccess<AgentFlowTemplateLocalVersionResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let receipt = state
+        .official_agent_flow_template_source
+        .repair(&template_id, release_version)
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_template_package_response(
-        template,
-    ))))
+    Ok(Json(ApiSuccess::new(
+        to_local_agent_flow_template_version_response(receipt),
+    )))
 }
 
 #[utoipa::path(

@@ -233,6 +233,7 @@ async fn test_state_with_runtime_profile_state(
                 vec![
                     std::path::PathBuf::from(&config.business_file_local_root),
                     std::path::PathBuf::from(&config.provider_install_root),
+                    std::path::PathBuf::from(&config.agent_flow_template_library_root),
                 ],
             ))),
             store: store.clone(),

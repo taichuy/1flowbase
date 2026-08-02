@@ -4,9 +4,7 @@ use api_server::{
     app_with_state_and_config,
     config::{ApiConfig, ApiEnvironment},
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::{
-        OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateSourcePort,
-    },
+    official_agent_flow_templates::AgentFlowTemplateLibraryPort,
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
@@ -102,21 +100,7 @@ impl OfficialPluginSourcePort for NoopOfficialPluginSource {
 }
 
 #[async_trait]
-impl OfficialAgentFlowTemplateSourcePort for NoopOfficialAgentFlowTemplateSource {
-    async fn list_catalog_page(
-        &self,
-        _cursor: Option<String>,
-    ) -> anyhow::Result<OfficialAgentFlowTemplateCatalogSnapshot> {
-        anyhow::bail!("official AgentFlow template source not configured for health route tests")
-    }
-
-    async fn download_template(
-        &self,
-        _workflow_id: &str,
-    ) -> anyhow::Result<control_plane::flow::AgentFlowTemplatePackage> {
-        anyhow::bail!("official AgentFlow template source not configured for health route tests")
-    }
-}
+impl AgentFlowTemplateLibraryPort for NoopOfficialAgentFlowTemplateSource {}
 
 fn default_test_config() -> ApiConfig {
     let database_url = std::env::var("API_DATABASE_URL")

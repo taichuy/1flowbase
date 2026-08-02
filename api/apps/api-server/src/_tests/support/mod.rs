@@ -42,9 +42,8 @@ use crate::{
     config::ApiConfig,
     host_infrastructure::build_local_host_infrastructure,
     official_agent_flow_templates::{
-        OfficialAgentFlowTemplateCatalogEntry, OfficialAgentFlowTemplateCatalogPage,
-        OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateCatalogSource,
-        OfficialAgentFlowTemplateSourcePort,
+        AgentFlowCatalogApplication, AgentFlowCatalogVersion, AgentFlowTemplateLibraryCatalog,
+        AgentFlowTemplateLibraryEntry, AgentFlowTemplateLibraryPort, LocalAgentFlowTemplateReceipt,
     },
     official_extension_catalog::{
         DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,

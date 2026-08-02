@@ -1,214 +1,229 @@
-use axum::{
-    http::{StatusCode, Uri},
-    response::{IntoResponse, Response},
-    Json, Router,
-};
+use axum::{routing::get, Router};
+use base64::{engine::general_purpose::STANDARD, Engine};
+use ed25519_dalek::{pkcs8::EncodePublicKey, Signer, SigningKey};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
-use storage_ephemeral::MokaCacheStore;
+use std::path::PathBuf;
 
-use crate::config::ResolvedOfficialAgentFlowTemplateSourceConfig;
-use crate::official_agent_flow_templates::{
-    ApiOfficialAgentFlowTemplateRegistry, OfficialAgentFlowTemplateSourcePort,
+use crate::{
+    config::ResolvedOfficialAgentFlowTemplateSourceConfig,
+    official_agent_flow_templates::{AgentFlowTemplateLibraryPort, ApiAgentFlowTemplateLibrary},
 };
 
-const RAW_INDEX_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json";
-const RAW_PAGE_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/pages/1.json";
-const RAW_TEMPLATE_URL: &str = "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/workflows/multimodal-mount-test/template.json";
-
 #[tokio::test]
-async fn official_agent_flow_template_registry_uses_proxy_and_verifies_template_hash() {
-    let template_bytes = template_bytes();
-    let template_sha256 = format!("sha256:{:x}", Sha256::digest(&template_bytes));
+async fn agent_flow_library_syncs_signed_releases_and_manages_current_history() {
+    let artifact = template_bytes();
+    let signing_key = SigningKey::from_bytes(&[17; 32]);
+    let signature = STANDARD.encode(signing_key.sign(&artifact).to_bytes());
+    let checksum = format!("sha256:{:x}", Sha256::digest(&artifact));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let proxy_url = format!("http://{}/proxy", listener.local_addr().unwrap());
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let catalog = catalog_document(&base, &checksum, &signature);
+    let artifact_for_server = artifact.clone();
     let server = tokio::spawn(async move {
-        axum::serve(listener, Router::new().fallback(proxy_response))
-            .await
-            .unwrap();
-    });
-    let registry = ApiOfficialAgentFlowTemplateRegistry::new(
-        ResolvedOfficialAgentFlowTemplateSourceConfig {
-            source_kind: "official_registry".to_string(),
-            source_label: "官方源".to_string(),
-            index_url: RAW_INDEX_URL.to_string(),
-            github_proxy_url: Some(proxy_url.clone()),
-        },
-        Arc::new(MokaCacheStore::new(
-            "flowbase:test:official-agent-flow-templates",
-            128,
-        )),
-    );
-
-    let catalog = registry.list_catalog_page(None).await.unwrap();
-    let entry = catalog.entries.first().unwrap();
-
-    assert_eq!(
-        catalog.source.index_url,
-        format!("{proxy_url}/{RAW_INDEX_URL}")
-    );
-    assert_eq!(
-        catalog.page.next_cursor, None,
-        "single generated page should not advertise a cursor"
-    );
-    assert_eq!(entry.workflow_id, "multimodal-mount-test");
-    assert_eq!(
-        entry.template_url,
-        format!("{proxy_url}/{RAW_TEMPLATE_URL}")
-    );
-    assert_eq!(entry.template_sha256, template_sha256);
-    assert_eq!(entry.application.name, "多模态挂载测试");
-
-    let downloaded = registry
-        .download_template("multimodal-mount-test")
+        axum::serve(
+            listener,
+            Router::new()
+                .route(
+                    "/catalog.json",
+                    get(move || {
+                        let catalog = catalog.clone();
+                        async move { axum::Json(catalog) }
+                    }),
+                )
+                .route(
+                    "/releases/1/template.json",
+                    get(move || {
+                        let artifact = artifact_for_server.clone();
+                        async move { artifact }
+                    }),
+                ),
+        )
         .await
         .unwrap();
-    assert_eq!(downloaded.application.name, "多模态挂载测试");
+    });
+    let root = temp_library_root();
+    let library = ApiAgentFlowTemplateLibrary::new(
+        ResolvedOfficialAgentFlowTemplateSourceConfig {
+            source_kind: "official_registry".into(),
+            source_label: "Official".into(),
+            index_url: format!("{base}/catalog.json"),
+            github_proxy_url: None,
+        },
+        root.clone(),
+        vec![plugin_framework::TrustedPublicKey {
+            key_id: "fixture-key".into(),
+            algorithm: "ed25519".into(),
+            public_key_pem: signing_key
+                .verifying_key()
+                .to_public_key_pem(Default::default())
+                .unwrap(),
+        }],
+    );
+
+    assert_eq!(
+        library.import_artifact("support-flow", None).await.unwrap(),
+        artifact,
+        "the first import must sync remote latest into the local library"
+    );
+    assert_eq!(
+        std::fs::read(root.join("support-flow/releases/1/template.json")).unwrap(),
+        artifact
+    );
+    assert!(root.join("support-flow/releases/1/receipt.json").is_file());
+    assert_eq!(
+        std::fs::read_to_string(root.join("support-flow/current")).unwrap(),
+        "1"
+    );
+    let catalog = library.catalog().await.unwrap();
+    assert!(catalog.remote_available);
+    assert_eq!(catalog.templates[0].local_versions.len(), 1);
+    library.switch_current("support-flow", 1).await.unwrap();
+    library.repair("support-flow", 1).await.unwrap();
 
     server.abort();
+    assert_eq!(
+        library.import_artifact("support-flow", None).await.unwrap(),
+        artifact,
+        "an existing local template must import without a remote request"
+    );
+    let offline = library.catalog().await.unwrap();
+    assert!(!offline.remote_available);
+    assert_eq!(offline.templates[0].local_versions.len(), 1);
+    let mut second_receipt: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(root.join("support-flow/releases/1/receipt.json")).unwrap(),
+    )
+    .unwrap();
+    second_receipt["release_version"] = json!(2);
+    std::fs::create_dir_all(root.join("support-flow/releases/2")).unwrap();
+    std::fs::write(
+        root.join("support-flow/releases/2/template.json"),
+        &artifact,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("support-flow/releases/2/receipt.json"),
+        serde_json::to_vec(&second_receipt).unwrap(),
+    )
+    .unwrap();
+    library.switch_current("support-flow", 2).await.unwrap();
+    library
+        .delete_local_version("support-flow", 2)
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(root.join("support-flow/current")).unwrap(),
+        "1",
+        "deleting current must select the highest remaining local release"
+    );
+    library
+        .delete_local_version("support-flow", 1)
+        .await
+        .unwrap();
+    assert!(!root.join("support-flow").exists());
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn official_agent_flow_template_registry_caches_pages_in_ephemeral_cache_store() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let proxy_url = format!("http://{}/proxy", listener.local_addr().unwrap());
-    let server = tokio::spawn(async move {
-        axum::serve(listener, Router::new().fallback(proxy_response))
-            .await
-            .unwrap();
-    });
-    let cache = Arc::new(MokaCacheStore::new(
-        "flowbase:test:official-agent-flow-templates",
-        128,
-    ));
-    let registry = ApiOfficialAgentFlowTemplateRegistry::new(
-        ResolvedOfficialAgentFlowTemplateSourceConfig {
-            source_kind: "official_registry".to_string(),
-            source_label: "官方源".to_string(),
-            index_url: RAW_INDEX_URL.to_string(),
-            github_proxy_url: Some(proxy_url),
-        },
-        cache.clone(),
-    );
-
-    let first_catalog = registry.list_catalog_page(None).await.unwrap();
-    assert_eq!(
-        first_catalog.entries.first().unwrap().workflow_id,
-        "multimodal-mount-test"
-    );
-    server.abort();
-
-    let cached_catalog = registry.list_catalog_page(None).await.unwrap();
-    assert_eq!(
-        cached_catalog.entries.first().unwrap().workflow_id,
-        "multimodal-mount-test"
-    );
-    let cached_domains = control_plane::ports::CacheStore::list_cache_domains(cache.as_ref())
-        .await
-        .unwrap();
-    let template_domain = cached_domains
-        .iter()
-        .find(|domain| domain.domain_code == "official-agent-flow-templates")
-        .unwrap();
-    assert_eq!(
-        template_domain.entry_count, 2,
-        "index and page should be cached as separate ephemeral cache entries"
-    );
-}
-
-async fn proxy_response(uri: Uri) -> Response {
-    let path = uri.path();
-    if path.ends_with("index.json") {
-        let page_json = serde_json::to_vec(&page_document()).unwrap();
-        return Json(json!({
-            "version": 1,
-            "generated_at": "2026-06-16T00:00:00.000Z",
-            "page_size": 100,
-            "total_entries": 1,
-            "first_page_url": RAW_PAGE_URL,
-            "pages": [{
-                "page": 1,
-                "url": RAW_PAGE_URL,
-                "entry_count": 1,
-                "sha256": format!("sha256:{:x}", Sha256::digest(&page_json))
-            }]
+async fn agent_flow_library_rejects_catalog_release_checksum_changes() {
+    let root = temp_library_root();
+    let release = root.join("support-flow/releases/1");
+    std::fs::create_dir_all(&release).unwrap();
+    std::fs::write(release.join("template.json"), b"{}").unwrap();
+    std::fs::write(
+        release.join("receipt.json"),
+        serde_json::to_vec(&json!({
+            "template_id": "support-flow",
+            "release_version": 1,
+            "exported_from_system_version": "0.3.1",
+            "exported_at": "2026-08-02T00:00:00Z",
+            "application": {"name": "Support", "description": ""},
+            "checksum": format!("sha256:{}", "a".repeat(64)),
+            "algorithm": "ed25519",
+            "key_id": "fixture-key",
+            "signature": ""
         }))
-        .into_response();
-    }
-    if path.ends_with("pages/1.json") {
-        return Json(page_document()).into_response();
-    }
-    if path.ends_with("template.json") {
-        return template_bytes().into_response();
-    }
-
-    StatusCode::NOT_FOUND.into_response()
+        .unwrap(),
+    )
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let catalog = catalog_document(&base, &format!("sha256:{}", "b".repeat(64)), "");
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route(
+                "/catalog.json",
+                get(move || async move { axum::Json(catalog) }),
+            ),
+        )
+        .await
+        .unwrap();
+    });
+    let library = ApiAgentFlowTemplateLibrary::new(
+        ResolvedOfficialAgentFlowTemplateSourceConfig {
+            source_kind: "official_registry".into(),
+            source_label: "Official".into(),
+            index_url: format!("{base}/catalog.json"),
+            github_proxy_url: None,
+        },
+        root.clone(),
+        Vec::new(),
+    );
+    assert!(library.sync("support-flow", Some(1)).await.is_err());
+    server.abort();
+    let _ = std::fs::remove_dir_all(root);
 }
 
-fn page_document() -> serde_json::Value {
-    let template_bytes = template_bytes();
+fn catalog_document(base: &str, checksum: &str, signature: &str) -> serde_json::Value {
     json!({
-        "version": 1,
-        "page": 1,
-        "page_size": 100,
-        "next_page_url": null,
-        "entries": [{
-            "workflow_id": "multimodal-mount-test",
-            "schema_version": "1flowbase.application-template/v1",
-            "application": {
-                "application_type": "agent_flow",
-                "name": "多模态挂载测试",
-                "description": "",
-                "icon": "RobotOutlined",
-                "icon_type": "iconfont",
-                "icon_background": "#E6F7F2"
-            },
-            "template_url": RAW_TEMPLATE_URL,
-            "template_sha256": format!("sha256:{:x}", Sha256::digest(&template_bytes)),
-            "updated_at": "2026-06-16T00:00:00.000Z"
+        "schema_version": "1flowbase.agent-flow-catalog/v1",
+        "templates": [{
+            "template_id": "support-flow",
+            "source_path": "./",
+            "versions": [{
+                "template_id": "support-flow",
+                "release_version": 1,
+                "exported_from_system_version": "0.3.1",
+                "exported_at": "2026-08-02T00:00:00Z",
+                "application": {"name": "Support", "description": ""},
+                "download_url": format!("{base}/releases/1/template.json"),
+                "checksum": checksum,
+                "algorithm": "ed25519",
+                "key_id": "fixture-key",
+                "signature": signature
+            }]
         }]
     })
 }
 
 fn template_bytes() -> Vec<u8> {
     serde_json::to_vec(&json!({
-        "schema_version": "1flowbase.application-template/v1",
-        "application": {
-            "application_type": "agent_flow",
-            "name": "多模态挂载测试",
-            "description": "",
-            "icon": "RobotOutlined",
-            "icon_type": "iconfont",
-            "icon_background": "#E6F7F2"
-        },
-        "flow_document": {
-            "schemaVersion": domain::FLOW_SCHEMA_VERSION,
-            "meta": {
-                "flowId": "019eb647-bee3-7ae2-a89d-5c6bca7921ad",
-                "name": "多模态挂载测试",
+        "schema_version": "1flowbase.application-archive/v1",
+        "applications": [{
+            "template_id": "support-flow",
+            "release_version": 1,
+            "exported_from_system_version": "0.3.1",
+            "exported_at": "2026-08-02T00:00:00Z",
+            "application": {
+                "application_type": "agent_flow",
+                "workflow_trigger_type": null,
+                "name": "Support",
                 "description": "",
-                "tags": []
+                "icon": null,
+                "icon_type": null,
+                "icon_background": null
             },
-            "graph": {
-                "nodes": [
-                    {
-                        "id": "node-start",
-                        "type": "start",
-                        "alias": "Start",
-                        "config": { "input_fields": [] },
-                        "outputs": [],
-                        "bindings": {},
-                        "position": { "x": 0, "y": 0 },
-                        "containerId": null,
-                        "description": "",
-                        "configVersion": 1
-                    }
-                ],
-                "edges": []
-            }
-        },
-        "dependencies": []
+            "flow_document": {"graph": {"nodes": [], "edges": []}},
+            "dependencies": []
+        }]
     }))
     .unwrap()
+}
+
+fn temp_library_root() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "1flowbase-agent-flow-library-{}",
+        uuid::Uuid::now_v7()
+    ))
 }

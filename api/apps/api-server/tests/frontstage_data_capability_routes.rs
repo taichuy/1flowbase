@@ -5,9 +5,7 @@ use api_server::{
     app_with_state_and_config,
     config::ApiConfig,
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::{
-        OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateSourcePort,
-    },
+    official_agent_flow_templates::AgentFlowTemplateLibraryPort,
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
@@ -92,21 +90,7 @@ impl OfficialPluginSourcePort for NoopPluginSource {
 struct NoopAgentFlowSource;
 
 #[async_trait]
-impl OfficialAgentFlowTemplateSourcePort for NoopAgentFlowSource {
-    async fn list_catalog_page(
-        &self,
-        _cursor: Option<String>,
-    ) -> anyhow::Result<OfficialAgentFlowTemplateCatalogSnapshot> {
-        anyhow::bail!("agent flow source unavailable in frontstage callable tests")
-    }
-
-    async fn download_template(
-        &self,
-        _workflow_id: &str,
-    ) -> anyhow::Result<control_plane::flow::AgentFlowTemplatePackage> {
-        anyhow::bail!("agent flow source unavailable in frontstage callable tests")
-    }
-}
+impl AgentFlowTemplateLibraryPort for NoopAgentFlowSource {}
 
 #[derive(Clone, Default)]
 struct NoopMcpSource;

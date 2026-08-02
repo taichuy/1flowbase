@@ -4,6 +4,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::{pkcs8::DecodePublicKey, Signature, Verifier, VerifyingKey};
 use flate2::read::GzDecoder;
 use serde::Deserialize;
@@ -24,6 +25,47 @@ pub struct TrustedPublicKey {
     pub key_id: String,
     pub algorithm: String,
     pub public_key_pem: String,
+}
+
+pub fn verify_trusted_ed25519_artifact(
+    artifact_bytes: &[u8],
+    expected_checksum: &str,
+    algorithm: &str,
+    key_id: &str,
+    signature_base64: &str,
+    trusted_public_keys: &[TrustedPublicKey],
+) -> Result<(), PluginFrameworkError> {
+    let expected = normalize_sha256(expected_checksum)?;
+    let actual = sha256_hex(artifact_bytes);
+    if actual != expected {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "artifact checksum mismatch",
+        ));
+    }
+    if algorithm != "ed25519" {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "unsupported artifact signature algorithm",
+        ));
+    }
+    let trusted_key = trusted_public_keys
+        .iter()
+        .find(|key| key.key_id == key_id && key.algorithm == algorithm)
+        .ok_or_else(|| PluginFrameworkError::invalid_provider_package("unknown signing key"))?;
+    let verifying_key =
+        VerifyingKey::from_public_key_pem(&trusted_key.public_key_pem).map_err(|error| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "trusted public key {key_id} is invalid: {error}"
+            ))
+        })?;
+    let signature_bytes = STANDARD.decode(signature_base64).map_err(|_| {
+        PluginFrameworkError::invalid_provider_package("artifact signature is not valid base64")
+    })?;
+    let signature = parse_signature(&signature_bytes)?;
+    verifying_key
+        .verify(artifact_bytes, &signature)
+        .map_err(|_| {
+            PluginFrameworkError::invalid_provider_package("artifact signature is invalid")
+        })
 }
 
 #[derive(Debug, Clone)]

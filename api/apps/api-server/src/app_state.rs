@@ -26,7 +26,7 @@ use crate::{
     },
 };
 use crate::{
-    official_agent_flow_templates::OfficialAgentFlowTemplateSourcePort,
+    official_agent_flow_templates::AgentFlowTemplateLibraryPort,
     official_extension_catalog::OfficialExtensionCatalogSourcePort,
     official_i18n_catalog_source::ApiOfficialI18nCatalogSource,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
@@ -300,7 +300,7 @@ pub struct ApiState {
     pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     pub plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
-    pub official_agent_flow_template_source: Arc<dyn OfficialAgentFlowTemplateSourcePort>,
+    pub official_agent_flow_template_source: Arc<dyn AgentFlowTemplateLibraryPort>,
     pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
     pub official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
     pub official_i18n_catalog_update_service:
