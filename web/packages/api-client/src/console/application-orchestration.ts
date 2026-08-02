@@ -90,35 +90,56 @@ export interface ExportConsoleApplicationArchiveInput {
   application_ids: string[];
 }
 
-export interface ConsoleOfficialAgentFlowTemplateCatalogSource {
-  source_kind: string;
-  source_label: string;
-  index_url: string;
+export interface ConsoleAgentFlowTemplateCatalogApplication {
+  name: string;
+  description: string;
 }
 
-export interface ConsoleOfficialAgentFlowTemplateCatalogPage {
-  page: number;
-  page_size: number;
-  next_cursor: string | null;
+export interface ConsoleAgentFlowTemplateRemoteVersion {
+  template_id: string;
+  release_version: number;
+  exported_from_system_version: string;
+  exported_at: string;
+  application: ConsoleAgentFlowTemplateCatalogApplication;
+  download_url: string;
+  checksum: string;
+  algorithm: string;
+  key_id: string;
+  signature: string;
 }
 
-export interface ConsoleOfficialAgentFlowTemplateCatalogEntry {
-  workflow_id: string;
-  schema_version: string;
-  application: ConsoleAgentFlowTemplateApplication;
-  template_url: string;
-  template_sha256: string;
-  updated_at: string;
+export interface ConsoleAgentFlowTemplateLocalVersion {
+  template_id: string;
+  release_version: number;
+  exported_from_system_version: string;
+  exported_at: string;
+  application: ConsoleAgentFlowTemplateCatalogApplication;
+  checksum: string;
+  algorithm: string;
+  key_id: string;
+}
+
+export interface ConsoleAgentFlowTemplateLibraryEntry {
+  template_id: string;
+  source_path: string | null;
+  remote_versions: ConsoleAgentFlowTemplateRemoteVersion[];
+  local_versions: ConsoleAgentFlowTemplateLocalVersion[];
+  current_release_version: number | null;
 }
 
 export interface ConsoleOfficialAgentFlowTemplateCatalog {
-  source: ConsoleOfficialAgentFlowTemplateCatalogSource;
-  page: ConsoleOfficialAgentFlowTemplateCatalogPage;
-  entries: ConsoleOfficialAgentFlowTemplateCatalogEntry[];
+  remote_available: boolean;
+  remote_error: string | null;
+  templates: ConsoleAgentFlowTemplateLibraryEntry[];
 }
 
-export interface ListConsoleOfficialAgentFlowTemplateCatalogRequest {
-  cursor?: string | null;
+export interface ConsoleAgentFlowTemplateVersionInput {
+  release_version?: number;
+}
+
+export interface ImportConsoleLibraryAgentFlowTemplateInput extends ConsoleAgentFlowTemplateVersionInput {
+  name?: string;
+  description?: string;
 }
 
 export interface ConsoleAgentFlowTemplateDependencyStatus {
@@ -293,31 +314,97 @@ export function importConsoleInstalledApplicationExtension(
 }
 
 export function listConsoleOfficialAgentFlowTemplateCatalog(
-  request: ListConsoleOfficialAgentFlowTemplateCatalogRequest = {},
   baseUrl?: string
 ): Promise<ConsoleOfficialAgentFlowTemplateCatalog> {
-  const params = new URLSearchParams();
-
-  if (request.cursor) {
-    params.set('cursor', request.cursor);
-  }
-
-  const query = params.size > 0 ? `?${params.toString()}` : '';
-
   return apiFetch<ConsoleOfficialAgentFlowTemplateCatalog>({
-    path: `/api/console/applications/orchestration/templates/official-catalog${query}`,
+    path: '/api/console/applications/orchestration/templates/official-catalog',
     baseUrl
   });
 }
 
-export function downloadConsoleOfficialAgentFlowTemplate(
-  workflowId: string,
+export function syncConsoleOfficialAgentFlowTemplate(
+  templateId: string,
+  input: ConsoleAgentFlowTemplateVersionInput,
+  csrfToken: string,
   baseUrl?: string
-): Promise<ConsoleAgentFlowTemplatePackage> {
-  return apiFetch<ConsoleAgentFlowTemplatePackage>({
-    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(
-      workflowId
-    )}`,
+): Promise<ConsoleAgentFlowTemplateLocalVersion> {
+  return apiFetch<ConsoleAgentFlowTemplateLocalVersion>({
+    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(templateId)}/sync`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function previewConsoleOfficialAgentFlowTemplate(
+  templateId: string,
+  input: ConsoleAgentFlowTemplateVersionInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleAgentFlowTemplatePreview> {
+  return apiFetch<ConsoleAgentFlowTemplatePreview>({
+    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(templateId)}/preview`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function importConsoleOfficialAgentFlowTemplate(
+  templateId: string,
+  input: ImportConsoleLibraryAgentFlowTemplateInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ImportConsoleAgentFlowTemplateResponse> {
+  return apiFetch<ImportConsoleAgentFlowTemplateResponse>({
+    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(templateId)}/import`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function switchConsoleOfficialAgentFlowTemplateCurrent(
+  templateId: string,
+  releaseVersion: number,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleAgentFlowTemplateLocalVersion> {
+  return apiFetch<ConsoleAgentFlowTemplateLocalVersion>({
+    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(templateId)}/current/${releaseVersion}`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleOfficialAgentFlowTemplateRelease(
+  templateId: string,
+  releaseVersion: number,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<void> {
+  return apiFetch<void>({
+    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(templateId)}/releases/${releaseVersion}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function repairConsoleOfficialAgentFlowTemplateRelease(
+  templateId: string,
+  releaseVersion: number,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleAgentFlowTemplateLocalVersion> {
+  return apiFetch<ConsoleAgentFlowTemplateLocalVersion>({
+    path: `/api/console/applications/orchestration/templates/official/${encodeURIComponent(templateId)}/releases/${releaseVersion}/repair`,
+    method: 'POST',
+    csrfToken,
     baseUrl
   });
 }

@@ -883,6 +883,7 @@
     "translation_catalog_activation_preserves_customizations": "Activating this catalog keeps existing custom translations and overrides.",
     "translation_catalog_activated": "Translation catalog activated",
     "translation_catalog_is_current": "The translation catalog is current",
+    "go_to_agent_flow_templates": "Go to Agent Flow template management",
     "go_to_mcp_management": "Go to MCP Management",
     "go_to_language_management": "Go to language management",
     "current_version": "Current version",

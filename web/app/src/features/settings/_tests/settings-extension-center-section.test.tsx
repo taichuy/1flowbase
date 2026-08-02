@@ -67,6 +67,11 @@ vi.mock('../api/extensions', () => extensionsApi);
 vi.mock('../api/i18n-catalog', () => i18nCatalogApi);
 vi.mock('../../applications/api/applications', () => applicationsApi);
 vi.mock('../api/mcp-management', () => mcpManagementApi);
+vi.mock('../../templates/components/AgentFlowTemplateLibrary', () => ({
+  AgentFlowTemplateLibrary: ({ variant }: { variant?: string }) => (
+    <div data-testid="agent-flow-template-library" data-variant={variant} />
+  )
+}));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => routerApi.navigate
 }));
@@ -383,18 +388,13 @@ describe('SettingsExtensionCenterSection', () => {
     ).toBeInTheDocument();
   });
 
-  test('D4-AC-014 never renders a response from a different catalog category under the active tab', async () => {
+  test('D4-AC-014 routes Agent Flow to the shared local template library instead of the generic catalog', async () => {
     renderSection('agent-flow');
-    await waitFor(() => {
-      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
-        'agent-flow',
-        undefined
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByText('OpenAI Provider')).not.toBeInTheDocument();
-      expect(screen.queryByText('openai')).not.toBeInTheDocument();
-    });
+    expect(
+      await screen.findByTestId('agent-flow-template-library')
+    ).toHaveAttribute('data-variant', 'compact');
+    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
+    expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
   });
 
   test('Root-AC-004 resolves and performs an installed-row update instead of switching tabs', async () => {
@@ -467,7 +467,7 @@ describe('SettingsExtensionCenterSection', () => {
     pendingUpdate.resolve(updateResult);
     await waitFor(() => {
       expect(targetButton).not.toHaveClass('ant-btn-loading');
-      expect(otherButton).not.toBeDisabled();
+      expect(otherButton).toBeEnabled();
     });
   });
 
@@ -500,9 +500,10 @@ describe('SettingsExtensionCenterSection', () => {
 
     await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(1));
     expect(
-      within(
-        screen.getByRole('row', { name: /OpenAI Provider/ })
-      ).getByRole('button', { name: /更新$/ })
+      within(screen.getByRole('row', { name: /OpenAI Provider/ })).getByRole(
+        'button',
+        { name: /更新$/ }
+      )
     ).toHaveClass('ant-btn-loading');
     const riskConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
     render(riskConfirmation?.content as ReactNode);
@@ -527,9 +528,10 @@ describe('SettingsExtensionCenterSection', () => {
     });
     await waitFor(() => {
       expect(
-        within(
-          screen.getByRole('row', { name: /OpenAI Provider/ })
-        ).getByRole('button', { name: /更新$/ })
+        within(screen.getByRole('row', { name: /OpenAI Provider/ })).getByRole(
+          'button',
+          { name: /更新$/ }
+        )
       ).not.toHaveClass('ant-btn-loading');
     });
   });
@@ -555,7 +557,7 @@ describe('SettingsExtensionCenterSection', () => {
     view.unmount();
   });
 
-  test('Root-AC-004 keeps install available for all six catalog categories without artifact_kind', async () => {
+  test('Root-AC-004 keeps generic install available for the five non-Agent-Flow catalog categories', async () => {
     extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
       async (category: string) => ({
         category,
@@ -579,10 +581,9 @@ describe('SettingsExtensionCenterSection', () => {
         ]
       })
     );
-    const view = renderSection('agent-flow');
+    const view = renderSection('capability-plugins');
 
     for (const category of [
-      'agent-flow',
       'capability-plugins',
       'host-extensions',
       'i18n',
@@ -599,11 +600,11 @@ describe('SettingsExtensionCenterSection', () => {
     }
   });
 
-  test('AC-001 loads only the catalog row being installed and disables the other row', async () => {
+  test('AC-001 loads only the generic catalog row being installed and disables the other row', async () => {
     const fusionEntry = {
       ...catalogEntry,
-      id: 'agent-flow:taichuy/fusion',
-      category: 'agent-flow' as const,
+      id: 'capability-plugins:taichuy/fusion',
+      category: 'capability-plugins' as const,
       artifact: 'fusion',
       name: 'Fusion',
       current_version: null,
@@ -611,16 +612,16 @@ describe('SettingsExtensionCenterSection', () => {
     };
     const deepseekEntry = {
       ...fusionEntry,
-      id: 'agent-flow:taichuy/deepseek-v4',
+      id: 'capability-plugins:taichuy/deepseek-v4',
       artifact: 'deepseek-v4',
       name: 'Deepseek V4'
     };
     extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
-      category: 'agent-flow',
+      category: 'capability-plugins',
       catalog_page: 'start',
       catalog_page_number: 1,
       catalog_page_checksum: 'sha256:agent',
-      catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+      catalog_page_locator: 'capability-plugins/catalog/v1/pages/1.json',
       limit: 20,
       next_cursor: null,
       total_entries: 2,
@@ -638,7 +639,7 @@ describe('SettingsExtensionCenterSection', () => {
       pendingInstall.promise
     );
 
-    renderSection('agent-flow');
+    renderSection('capability-plugins');
     const targetRow = await screen.findByRole('row', { name: /Fusion/ });
     await screen.findByRole('row', { name: /Deepseek V4/ });
     const targetButton = within(targetRow).getByRole('button', {
@@ -673,7 +674,7 @@ describe('SettingsExtensionCenterSection', () => {
         screen.getByRole('row', { name: /Deepseek V4/ })
       ).getByRole('button', { name: '安装' });
       expect(currentTargetButton).not.toHaveClass('ant-btn-loading');
-      expect(currentOtherButton).not.toBeDisabled();
+      expect(currentOtherButton).toBeEnabled();
     });
   });
 
@@ -693,56 +694,15 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('D6-AC-001 installs Agent Flow without a generic confirmation and opens the shared application import preview', async () => {
-    const agentCatalogEntry = {
-      ...catalogEntry,
-      id: 'agent-flow:taichuy/fusion',
-      category: 'agent-flow' as const,
-      artifact: 'fusion',
-      name: 'Fusion',
-      current_version: null,
-      installation_status: 'not_installed'
-    };
-    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
-      category: 'agent-flow',
-      catalog_page: 'start',
-      catalog_page_number: 1,
-      catalog_page_checksum: 'sha256:agent',
-      catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
-      limit: 20,
-      next_cursor: null,
-      total_entries: 1,
-      entries: [agentCatalogEntry]
-    });
-    extensionsApi.installSettingsExtension.mockResolvedValue({
-      installation: { ...installedEntry, id: 'agent-installation-1' },
-      local_artifact_was_present: false,
-      node_plugin_installation_id: null,
-      application_action: 'import_agent_flow',
-      application_status: 'not_applied'
-    });
+  test('D6-AC-001 exposes Agent Flow management and never enters generic install/application flows', async () => {
     renderSection('agent-flow');
-    const row = await screen.findByRole('row', { name: /Fusion/ });
-    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
-
-    await waitFor(() => {
-      expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
-        agentCatalogEntry,
-        'csrf-123',
-        {},
-        false
-      );
-      expect(
-        applicationsApi.previewInstalledApplicationExtension
-      ).toHaveBeenCalledWith('agent-installation-1');
-    });
-    expect(Modal.confirm).not.toHaveBeenCalled();
     expect(
-      await screen.findByRole('dialog', { name: /导入应用压缩包/ })
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+      await screen.findByRole('link', { name: '前往 Agent Flow 模板管理' })
+    ).toHaveAttribute('href', '/templates');
+    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
+    expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
     expect(
-      applicationsApi.importInstalledApplicationExtension
+      applicationsApi.previewInstalledApplicationExtension
     ).not.toHaveBeenCalled();
   });
 

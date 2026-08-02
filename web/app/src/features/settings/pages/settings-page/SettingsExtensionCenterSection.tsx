@@ -21,6 +21,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { AgentFlowTemplateLibrary } from '../../../templates/components/AgentFlowTemplateLibrary';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -123,7 +124,53 @@ function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
 }
 
-export function SettingsExtensionCenterSection({
+function AgentFlowExtensionCenterSection() {
+  const { t } = useTranslation('settings');
+  const navigate = useNavigate();
+
+  return (
+    <SettingsSectionSurface heightMode="fill">
+      <Flex vertical gap={16}>
+        <Tabs
+          activeKey="agent-flow"
+          tabBarExtraContent={
+            <Typography.Link href="/templates">
+              {t('auto.go_to_agent_flow_templates')}
+            </Typography.Link>
+          }
+          onChange={(key) => {
+            void navigate({
+              to: '/settings/extension-center/$category',
+              params: { category: key },
+              search: { cursor: undefined }
+            });
+          }}
+          items={[
+            { key: 'installed', label: t('auto.installed_extensions') },
+            ...CATEGORIES.map((category) => ({
+              key: category,
+              label: category
+            }))
+          ]}
+        />
+        <AgentFlowTemplateLibrary variant="compact" />
+      </Flex>
+    </SettingsSectionSurface>
+  );
+}
+
+export function SettingsExtensionCenterSection(props: {
+  category: SettingsExtensionCenterCategory;
+  cursor?: string;
+}) {
+  if (props.category === 'agent-flow') {
+    return <AgentFlowExtensionCenterSection />;
+  }
+
+  return <GenericExtensionCenterSection {...props} />;
+}
+
+function GenericExtensionCenterSection({
   category: activeTab,
   cursor
 }: {
@@ -183,7 +230,12 @@ export function SettingsExtensionCenterSection({
         : catalogQuery.data?.category === activeTab
           ? catalogQuery.data.entries
           : [],
-    [activeTab, catalogQuery.data?.entries, installedQuery.data?.entries]
+    [
+      activeTab,
+      catalogQuery.data?.category,
+      catalogQuery.data?.entries,
+      installedQuery.data?.entries
+    ]
   );
 
   useEffect(() => {
