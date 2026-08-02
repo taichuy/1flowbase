@@ -317,7 +317,7 @@ describe('Agent Flow template library', () => {
     });
     const importDialog = (
       await screen.findByText('导入应用压缩包')
-    ).closest('[role="dialog"]');
+    ).closest<HTMLElement>('[role="dialog"]');
     expect(importDialog).not.toBeNull();
     if (!importDialog) throw new Error('shared application import dialog missing');
     fireEvent.click(
