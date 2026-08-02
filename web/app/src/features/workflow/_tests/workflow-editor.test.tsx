@@ -17,7 +17,7 @@ function createWorkflowInitialState() {
     },
     versions: [],
     autosave_interval_seconds: 30,
-    user_protection_limit: 10,
+    user_protection_limit: 10
   };
 }
 
@@ -25,7 +25,8 @@ const workflowTriggerContext = {
   applicationId: 'app-1',
   triggerType: 'schedule' as const,
   mapping: undefined,
-  schedule: null
+  schedule: null,
+  workflowStartFieldContract: undefined
 };
 
 describe('WorkflowEditor assembly', () => {

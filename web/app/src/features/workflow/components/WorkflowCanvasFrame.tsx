@@ -1,8 +1,4 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
 import {
@@ -17,10 +13,12 @@ import { useNavigate } from '@tanstack/react-router';
 
 import type {
   ConsoleApplicationEnvironmentVariable,
-  ConsoleNodeContributionEntry,
+  ConsoleApplicationNodeCatalog,
   SaveConsoleApplicationDraftInput,
   ConsoleApplicationOrchestrationState
 } from '@1flowbase/api-client';
+
+import '../register';
 
 import { useAuthStore } from '../../../state/auth-store';
 import { i18nText } from '../../../shared/i18n/text';
@@ -68,7 +66,7 @@ import {
   countIssuesByNodeId,
   getDocumentWithLatestViewport
 } from '../../agent-flow/components/editor/canvas-frame/document';
-import { buildWorkflowNodePickerOptions } from '../lib/picker-options';
+import { buildNodePickerOptions } from '../../flow-editor';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 import { validateWorkflowDocument } from '../lib/validate-document';
 import { WorkflowOverlay } from './WorkflowOverlay';
@@ -81,7 +79,7 @@ interface WorkflowCanvasFrameProps {
   applicationId: string;
   applicationName: string;
   initialEnvironmentVariables: ConsoleApplicationEnvironmentVariable[];
-  nodeContributions: ConsoleNodeContributionEntry[];
+  nodeCatalog: ConsoleApplicationNodeCatalog;
   triggerContext: WorkflowTriggerContext;
   saveDraftOverride?: (
     input: SaveConsoleApplicationDraftInput
@@ -95,7 +93,7 @@ export function WorkflowCanvasFrame({
   applicationId,
   applicationName,
   initialEnvironmentVariables,
-  nodeContributions,
+  nodeCatalog,
   triggerContext,
   saveDraftOverride,
   restoreVersionOverride
@@ -183,8 +181,8 @@ export function WorkflowCanvasFrame({
     (issue) => issue.level === 'error'
   ).length;
   const nodePickerOptions = useMemo(
-    () => buildWorkflowNodePickerOptions(nodeContributions),
-    [nodeContributions]
+    () => buildNodePickerOptions(nodeCatalog.nodes),
+    [nodeCatalog.nodes]
   );
   const activeContainerId = activeContainerPath.at(-1) ?? null;
   const boundedNodeDetailWidth = clampNodeDetailWidth(nodeDetailWidth, 1200);
@@ -316,9 +314,7 @@ export function WorkflowCanvasFrame({
     setPanelState({ historyOpen: true });
   }
 
-  function handleNodeDetailResizeStart(
-    event: ReactMouseEvent<HTMLDivElement>
-  ) {
+  function handleNodeDetailResizeStart(event: ReactMouseEvent<HTMLDivElement>) {
     const startX = event.clientX;
     const startWidth = boundedNodeDetailWidth;
 

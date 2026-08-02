@@ -27,7 +27,8 @@ import {
 } from '../../lib/document/transforms/node';
 import { setViewport } from '../../lib/document/transforms/viewport';
 import { createLlmToolSourceHandleId } from '../../lib/llm-node-config';
-import { BUILTIN_NODE_PICKER_OPTIONS } from '../../lib/plugin-node-definitions';
+import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
+import { createBuiltinCatalogNode } from '../fixtures/application-node-catalog';
 
 function createNestedContainerDocument() {
   const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
@@ -561,11 +562,15 @@ describe('agent flow document transforms', () => {
       (node) => node.id === 'node-llm'
     );
 
+    const [toolResultOption] = buildNodePickerOptions([
+      createBuiltinCatalogNode('tool_result', {
+        title: 'Tool Result',
+        category: 'io'
+      })
+    ]);
     const next = replaceNodeWithOption(document, {
       nodeId: 'node-llm',
-      option: BUILTIN_NODE_PICKER_OPTIONS.find(
-        (option) => option.type === 'tool_result'
-      )!
+      option: toolResultOption
     });
     const replacedNode = next.graph.nodes.find(
       (node) => node.id === 'node-llm'

@@ -1,7 +1,7 @@
 import type {
   ConsoleApplicationEnvironmentVariable,
+  ConsoleApplicationNodeCatalog,
   ConsoleApplicationOrchestrationState,
-  ConsoleNodeContributionEntry,
   SaveConsoleApplicationDraftInput
 } from '@1flowbase/api-client';
 import type { ReactNode } from 'react';
@@ -15,7 +15,7 @@ export interface AgentFlowEditorAssemblyProps {
   applicationName: string;
   initialState: ConsoleApplicationOrchestrationState;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
-  nodeContributions?: ConsoleNodeContributionEntry[];
+  nodeCatalog?: ConsoleApplicationNodeCatalog;
   saveDraftOverride?: (
     input: SaveConsoleApplicationDraftInput
   ) => Promise<ConsoleApplicationOrchestrationState>;
@@ -30,7 +30,7 @@ export function AgentFlowEditorAssembly({
   applicationName,
   initialState,
   initialEnvironmentVariables = [],
-  nodeContributions = [],
+  nodeCatalog = { nodes: [] },
   saveDraftOverride,
   restoreVersionOverride,
   topSlot
@@ -46,7 +46,7 @@ export function AgentFlowEditorAssembly({
               applicationId={applicationId}
               applicationName={applicationName}
               initialEnvironmentVariables={initialEnvironmentVariables}
-              nodeContributions={nodeContributions}
+              nodeCatalog={nodeCatalog}
               saveDraftOverride={saveDraftOverride}
               restoreVersionOverride={restoreVersionOverride}
             />

@@ -33,10 +33,14 @@ describe('flow editor kernel import boundary', () => {
     expect(source).not.toContain('capabilities');
   });
 
-  test('AC-002 makes the kernel the source owner for authoring contracts', () => {
-    const source = readSourceFiles(path.join(kernelRoot, 'authoring')).join('\n');
+  test('AC-004 maps server catalog entries without owning an availability list', () => {
+    const source = readSourceFiles(path.join(kernelRoot, 'authoring')).join(
+      '\n'
+    );
 
-    expect(source).toContain('SHARED_EXECUTION_NODE_PICKER_TYPES');
+    expect(source).toContain('ConsoleApplicationNodeCatalogEntry');
+    expect(source).toContain('buildNodePickerOptions');
+    expect(source).not.toContain('SHARED_EXECUTION_NODE_PICKER_TYPES');
     expect(source).toContain('registerNodeRuntimeContract');
     expect(source).toContain('validateAuthoringDocument');
     expect(source).toContain('normalizeStartInputField');

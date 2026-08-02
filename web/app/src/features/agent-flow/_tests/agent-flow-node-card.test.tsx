@@ -589,8 +589,13 @@ describe('AgentFlowNodeCard', () => {
       label: 'Code',
       description: 'Run code',
       category: 'data',
-      inputKeys: [],
-      outputKeys: []
+      field_contract: {
+        config_fields: [],
+        input_fields: [],
+        output_fields: []
+      },
+      disabled: false,
+      disabledReason: null
     } satisfies NodePickerOption;
     const baseData = {
       nodeId: 'node-if-else',
@@ -682,8 +687,13 @@ describe('AgentFlowNodeCard', () => {
       label: 'Code',
       description: 'Run code',
       category: 'data',
-      inputKeys: [],
-      outputKeys: []
+      field_contract: {
+        config_fields: [],
+        input_fields: [],
+        output_fields: []
+      },
+      disabled: false,
+      disabledReason: null
     } satisfies NodePickerOption;
 
     const { rerender } = render(

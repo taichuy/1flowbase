@@ -1,16 +1,16 @@
 import {
   listConsoleNodeContributions,
-  type ConsoleNodeContributionEntry
+  type ConsoleApplicationNodeCatalog
 } from '@1flowbase/api-client';
 
 import { getApplicationsApiBaseUrl } from '../../applications/api/applications';
 
-export type AgentFlowNodeContributionEntry = ConsoleNodeContributionEntry;
+export type ApplicationNodeCatalog = ConsoleApplicationNodeCatalog;
 
-export const nodeContributionsQueryKey = (applicationId: string) =>
+export const applicationNodeCatalogQueryKey = (applicationId: string) =>
   ['applications', applicationId, 'node-contributions'] as const;
 
-export function fetchNodeContributions(applicationId: string) {
+export function fetchApplicationNodeCatalog(applicationId: string) {
   return listConsoleNodeContributions(
     applicationId,
     getApplicationsApiBaseUrl()

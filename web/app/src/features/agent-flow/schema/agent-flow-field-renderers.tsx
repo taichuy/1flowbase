@@ -1,4 +1,7 @@
-import type { ConsoleReferencedI18nMessage } from '@1flowbase/api-client';
+import type {
+  ConsoleApplicationNodeContractField,
+  ConsoleReferencedI18nMessage
+} from '@1flowbase/api-client';
 import type {
   FlowAuthoringDocument,
   FlowConditionGroupDocument,
@@ -797,6 +800,25 @@ function renderStartInputFieldsField({
     typeof workflowTriggerContext.triggerType === 'string'
       ? workflowTriggerContext.triggerType
       : null;
+  const workflowStartFieldContract =
+    typeof workflowTriggerContext === 'object' &&
+    workflowTriggerContext !== null &&
+    'workflowStartFieldContract' in workflowTriggerContext
+      ? workflowTriggerContext.workflowStartFieldContract
+      : null;
+  const configFields =
+    typeof workflowStartFieldContract === 'object' &&
+    workflowStartFieldContract !== null &&
+    'config_fields' in workflowStartFieldContract &&
+    Array.isArray(workflowStartFieldContract.config_fields)
+      ? (workflowStartFieldContract.config_fields as ConsoleApplicationNodeContractField[])
+      : [];
+  const inputTypeContract = configFields.find(
+    (field) => field.key === 'config.input_fields[].inputType'
+  );
+  const sourceContract = configFields.find(
+    (field) => field.key === 'config.input_fields[].source'
+  );
   const contractKind: StartInputContractKind =
     node?.type === 'workflow_start'
       ? triggerType === 'schedule'
@@ -805,12 +827,22 @@ function renderStartInputFieldsField({
       : 'agent';
   const sourceOptions =
     contractKind === 'workflow_http'
-      ? ((block.options ?? []) as StartInputSourceOption[])
+      ? (sourceContract?.allowed_values ?? [])
+          .filter(
+            (value): value is StartInputSourceOption['value'] =>
+              value === 'path' ||
+              value === 'query' ||
+              value === 'body' ||
+              value === 'form'
+          )
+          .map((value) => ({ value, label: value }))
       : [];
 
   return (
     <StartInputFieldsField
       contractKind={contractKind}
+      inputTypeContract={inputTypeContract}
+      sourceContract={sourceContract}
       title={block.label}
       value={adapter.getValue(block.path)}
       sourceOptions={sourceOptions}

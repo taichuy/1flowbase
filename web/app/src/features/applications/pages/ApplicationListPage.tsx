@@ -301,7 +301,11 @@ export function ApplicationListPage() {
   }
 
   const applications = applicationsQuery.data ?? [];
-  const catalog = applicationCatalogQuery.data ?? { types: [], tags: [] };
+  const catalog = applicationCatalogQuery.data ?? {
+    types: [],
+    workflow_triggers: [],
+    tags: []
+  };
   const availableTags = mergeTagCatalog(catalog.tags, optimisticTags);
   const typeTabs = toApplicationTypeTabs(catalog.types, t);
   const typeLabels = new Map(

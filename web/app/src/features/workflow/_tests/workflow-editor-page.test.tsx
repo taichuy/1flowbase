@@ -12,7 +12,10 @@ test('AC-002 keeps the thinking loading state while workflow data loads', () => 
   vi.spyOn(orchestrationApi, 'fetchOrchestrationState').mockImplementation(
     () => new Promise(() => undefined)
   );
-  vi.spyOn(nodeContributionsApi, 'fetchNodeContributions').mockResolvedValue([]);
+  vi.spyOn(
+    nodeContributionsApi,
+    'fetchApplicationNodeCatalog'
+  ).mockResolvedValue({ nodes: [] });
   vi.spyOn(
     applicationsApi,
     'fetchApplicationEnvironmentVariables'

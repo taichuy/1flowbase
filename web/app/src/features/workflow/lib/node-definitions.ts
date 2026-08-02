@@ -33,13 +33,7 @@ export function createWorkflowStartContract(): NodeRuntimeUiContract {
           key: 'config.input_fields',
           title: i18nText('workflow', 'auto.input_parameters'),
           renderer: 'start_input_fields',
-          valueType: 'array',
-          options: [
-            { value: 'path', label: 'path' },
-            { value: 'query', label: 'query' },
-            { value: 'body', label: 'body' },
-            { value: 'form', label: 'form' }
-          ]
+          valueType: 'array'
         })
       ])
     ]

@@ -1,4 +1,7 @@
-import type { ConsoleWorkflowTriggerType } from '@1flowbase/api-client';
+import type {
+  ConsoleApplicationNodeFieldContract,
+  ConsoleWorkflowTriggerType
+} from '@1flowbase/api-client';
 
 import type {
   ApplicationApiMapping,
@@ -10,6 +13,7 @@ export interface WorkflowTriggerContext {
   triggerType: ConsoleWorkflowTriggerType | null;
   mapping: ApplicationApiMapping | null | undefined;
   schedule: WorkflowScheduleTrigger | null | undefined;
+  workflowStartFieldContract: ConsoleApplicationNodeFieldContract | undefined;
 }
 
 export function asWorkflowTriggerContext(

@@ -11,17 +11,17 @@ import { describe, expect, test, vi } from 'vitest';
 import { agentFlowRendererRegistry } from '../schema/agent-flow-renderer-registry';
 import { buildCommonConfigBlocks } from '../schema/node-schema-fragments';
 import { createAgentFlowNodeSchemaAdapter } from '../schema/node-schema-adapter';
-import { WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS } from '../../workflow/lib/picker-options';
 import { resolveAgentFlowNodeSchema } from '../schema/node-schema-registry';
 import { createNodeDocument } from '../lib/document/node-factory';
 import {
   builtinNodeRuntimeContractTypes,
   getBuiltinNodeRuntimeContract
 } from '../lib/node-definitions/contracts';
+import { buildNodePickerOptions } from '../lib/plugin-node-definitions';
 import {
-  BUILTIN_NODE_PICKER_OPTIONS,
-  type NodePickerOption
-} from '../lib/plugin-node-definitions';
+  createPluginCatalogNode,
+  createPluginNodeIdentity
+} from './fixtures/application-node-catalog';
 
 function getNode(
   document: ReturnType<typeof createDefaultAgentFlowDocument>,
@@ -254,36 +254,6 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
-  test('registers start and answer nodes for the built-in node picker', () => {
-    expect(BUILTIN_NODE_PICKER_OPTIONS).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'builtin',
-          type: 'start',
-          label: 'Start'
-        }),
-        expect.objectContaining({
-          kind: 'builtin',
-          type: 'answer',
-          label: 'Answer'
-        }),
-        expect.objectContaining({
-          kind: 'builtin',
-          type: 'tool_result',
-          label: 'Tool Result'
-        })
-      ])
-    );
-    expect(BUILTIN_NODE_PICKER_OPTIONS).toEqual(
-      expect.not.arrayContaining([
-        expect.objectContaining({
-          kind: 'builtin',
-          type: 'tool'
-        })
-      ])
-    );
-  });
-
   test('renders generated output variables as a readonly shared config section', () => {
     const schema = resolveAgentFlowNodeSchema('llm');
 
@@ -408,50 +378,6 @@ describe('agent-flow node schema registry', () => {
         })
       ])
     );
-  });
-
-  test('keeps workflow picker options separate from AgentFlow picker options', () => {
-    expect(BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)).toEqual(
-      expect.arrayContaining(['start', 'answer'])
-    );
-    expect(
-      BUILTIN_NODE_PICKER_OPTIONS.map((option) => option.type)
-    ).not.toEqual(expect.arrayContaining(['workflow_start', 'workflow_end']));
-
-    const workflowPickerTypes = WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.map(
-      (option) => option.type
-    );
-
-    expect(workflowPickerTypes.slice(0, 2)).toEqual([
-      'workflow_start',
-      'workflow_end'
-    ]);
-    expect(workflowPickerTypes).not.toContain('start');
-    expect(workflowPickerTypes).not.toContain('answer');
-    expect(workflowPickerTypes).toEqual(
-      expect.arrayContaining([
-        'llm',
-        'if_else',
-        'code',
-        'template_transform',
-        'http_request',
-        'variable_assigner'
-      ])
-    );
-    expect(workflowPickerTypes).not.toEqual(
-      expect.arrayContaining(['knowledge_retrieval', 'question_classifier'])
-    );
-  });
-
-  test('reuses the AgentFlow general execution node set for workflow picker', () => {
-    const agentFlowGeneralTypes = BUILTIN_NODE_PICKER_OPTIONS.map(
-      (option) => option.type
-    ).filter((type) => type !== 'start' && type !== 'answer');
-    const workflowGeneralTypes = WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.map(
-      (option) => option.type
-    ).filter((type) => type !== 'workflow_start' && type !== 'workflow_end');
-
-    expect(workflowGeneralTypes).toEqual(agentFlowGeneralTypes);
   });
 
   test('keeps Code on the main input, JavaScript source, and editable output flow', () => {
@@ -601,22 +527,7 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
-  test('registers built-in Data Model CRUD nodes for picker and schema-driven config', () => {
-    const pickerTypes = BUILTIN_NODE_PICKER_OPTIONS.map(
-      (option) => option.type
-    );
-
-    expect(pickerTypes).toEqual(
-      expect.arrayContaining([
-        'data_model_list',
-        'data_model_get',
-        'data_model_create',
-        'data_model_update',
-        'data_model_delete'
-      ])
-    );
-    expect(pickerTypes).not.toContain('data_model');
-
+  test('registers built-in Data Model CRUD runtime contracts and schema-driven config', () => {
     for (const nodeType of [
       'data_model_list',
       'data_model_get',
@@ -828,22 +739,6 @@ describe('agent-flow node schema registry', () => {
         Array.isArray(getBuiltinNodeRuntimeContract(nodeType)!.defaults.outputs)
       ).toBe(true);
     }
-  });
-
-  test('builds builtin picker options from runtime contract metadata and ports', () => {
-    const llmContract = getBuiltinNodeRuntimeContract('llm');
-    const llmOption = BUILTIN_NODE_PICKER_OPTIONS.find(
-      (option) => option.type === 'llm'
-    );
-
-    expect(llmOption).toEqual(
-      expect.objectContaining({
-        label: llmContract?.meta.title,
-        description: llmContract?.defaults.description,
-        category: llmContract?.card.category,
-        outputKeys: llmContract?.ports.outputs.map((output) => output.key)
-      })
-    );
   });
 
   test('Start defaults to no outputs and derive variables from input config', () => {
@@ -1080,48 +975,24 @@ describe('agent-flow node schema registry', () => {
   });
 
   test('rejects unavailable plugin contribution options in the node factory', () => {
-    const disabledContributionOption = {
-      kind: 'plugin_contribution',
-      label: 'Disabled Exporter',
-      disabled: true,
-      disabledReason: '缺少依赖插件',
-      contribution: {
-        installation_id: 'installation-1',
-        provider_code: 'sql_pack',
-        plugin_id: 'sql_pack@0.1.0',
-        plugin_version: '0.1.0',
-        contribution_code: 'disabled_exporter',
-        node_shell: 'action',
-        plugin_unique_identifier: 'sql_pack',
-        package_id: 'sql_pack@0.1.0',
-        contribution_checksum: 'sha256:disabled-exporter',
-        compiled_contribution_hash: 'sha256:compiled-disabled-exporter',
-        category: 'export',
-        title: 'Disabled Exporter',
-        description: 'Disabled plugin node',
-        dependency_status: 'missing_plugin',
-        schema_version: '1flowbase.node-contribution/v2',
-        output_schema_snapshot: {
-          outputs: [{ key: 'result', title: 'Result', valueType: 'json' }]
-        },
-        experimental: false,
-        icon: 'database',
-        schema_ui: {},
-        output_schema: {
-          outputs: [{ key: 'result', title: 'Result', valueType: 'json' }]
-        },
-        side_effect_policy: 'external_read',
-        infra_contracts: [],
-        required_auth: [],
-        visibility: 'public',
-        dependency_installation_kind: 'model_provider',
-        dependency_plugin_version_range: '^0.1.0'
-      }
-    } satisfies NodePickerOption;
+    const [disabledContributionOption] = buildNodePickerOptions([
+      createPluginCatalogNode(
+        createPluginNodeIdentity({
+          contribution_code: 'disabled_exporter',
+          title: 'Disabled Exporter'
+        }),
+        {
+          title: 'Disabled Exporter',
+          runtime_status: 'unavailable',
+          runtime_status_description: '缺少依赖插件',
+          dependency_status: 'missing_plugin'
+        }
+      )
+    ]);
 
     expect(() =>
       createNodeDocument(disabledContributionOption, 'node-disabled')
-    ).toThrow('Plugin contribution is unavailable');
+    ).toThrow('Catalog node is unavailable');
   });
 
   test('does not share nested contract defaults across created node documents', () => {

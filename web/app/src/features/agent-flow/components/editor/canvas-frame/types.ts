@@ -1,7 +1,7 @@
 import type {
   ConsoleApplicationEnvironmentVariable,
+  ConsoleApplicationNodeCatalog,
   ConsoleApplicationOrchestrationState,
-  ConsoleNodeContributionEntry,
   SaveConsoleApplicationDraftInput
 } from '@1flowbase/api-client';
 
@@ -9,7 +9,7 @@ export interface AgentFlowCanvasFrameProps {
   applicationId: string;
   applicationName: string;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
-  nodeContributions: ConsoleNodeContributionEntry[];
+  nodeCatalog: ConsoleApplicationNodeCatalog;
   saveDraftOverride?: (
     input: SaveConsoleApplicationDraftInput
   ) => Promise<ConsoleApplicationOrchestrationState>;

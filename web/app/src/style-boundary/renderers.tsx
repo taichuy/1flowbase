@@ -17,8 +17,7 @@ import {
   seedStyleBoundaryCommonFetch,
   seedStyleBoundaryFrontstageFetch,
   seedStyleBoundarySettingsFetch,
-  seedStyleBoundaryTemplateFetch,
-  styleBoundaryNodeContributions
+  seedStyleBoundaryTemplateFetch
 } from './scene-fixtures';
 import { SettingsMcpManagementStyleBoundaryScene } from './SettingsMcpManagementStyleBoundaryScene';
 import { SettingsSystemRuntimeStyleBoundaryScene } from './SettingsSystemRuntimeStyleBoundaryScene';
@@ -74,7 +73,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
           applicationId="app-1"
           applicationName="Support Agent"
           initialState={createStyleBoundaryOrchestrationState()}
-          nodeContributions={styleBoundaryNodeContributions}
+          nodeCatalog={{ nodes: [] }}
         />
       </div>
     );

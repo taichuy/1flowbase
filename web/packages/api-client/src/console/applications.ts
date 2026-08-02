@@ -23,17 +23,26 @@ export interface ConsoleApplicationTag {
   name: string;
 }
 
-export interface ConsoleApplicationTagCatalogEntry extends ConsoleApplicationTag {
+export interface ConsoleApplicationTagCatalogEntry
+  extends ConsoleApplicationTag {
   application_count: number;
 }
 
 export interface ConsoleApplicationTypeOption {
   value: ConsoleApplicationType;
   label: string;
+  description: string;
+}
+
+export interface ConsoleWorkflowTriggerTypeOption {
+  value: ConsoleWorkflowTriggerType;
+  label: string;
+  description: string;
 }
 
 export interface ConsoleApplicationCatalog {
   types: ConsoleApplicationTypeOption[];
+  workflow_triggers: ConsoleWorkflowTriggerTypeOption[];
   tags: ConsoleApplicationTagCatalogEntry[];
 }
 

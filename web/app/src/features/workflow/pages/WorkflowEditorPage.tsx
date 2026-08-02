@@ -22,8 +22,8 @@ import {
   workflowScheduleTriggerQueryKey
 } from '../../applications/api/public-api';
 import {
-  fetchNodeContributions,
-  nodeContributionsQueryKey
+  applicationNodeCatalogQueryKey,
+  fetchApplicationNodeCatalog
 } from '../../agent-flow/api/node-contributions';
 import {
   fetchOrchestrationState,
@@ -45,9 +45,9 @@ export function WorkflowEditorPage({
     queryKey: orchestrationQueryKey(applicationId),
     queryFn: () => fetchOrchestrationState(applicationId)
   });
-  const nodeContributionsQuery = useQuery({
-    queryKey: nodeContributionsQueryKey(applicationId),
-    queryFn: () => fetchNodeContributions(applicationId)
+  const nodeCatalogQuery = useQuery({
+    queryKey: applicationNodeCatalogQueryKey(applicationId),
+    queryFn: () => fetchApplicationNodeCatalog(applicationId)
   });
   const environmentVariablesQuery = useQuery({
     queryKey: applicationEnvironmentVariablesQueryKey(applicationId),
@@ -67,14 +67,23 @@ export function WorkflowEditorPage({
       applicationId,
       triggerType: workflowTriggerType,
       mapping: mappingQuery.data,
-      schedule: scheduleQuery.data ?? null
+      schedule: scheduleQuery.data ?? null,
+      workflowStartFieldContract: nodeCatalogQuery.data?.nodes.find(
+        (node) => node.node_type === 'workflow_start'
+      )?.field_contract
     }),
-    [applicationId, mappingQuery.data, scheduleQuery.data, workflowTriggerType]
+    [
+      applicationId,
+      mappingQuery.data,
+      nodeCatalogQuery.data?.nodes,
+      scheduleQuery.data,
+      workflowTriggerType
+    ]
   );
 
   if (
     orchestrationQuery.isPending ||
-    nodeContributionsQuery.isPending ||
+    nodeCatalogQuery.isPending ||
     environmentVariablesQuery.isPending
   ) {
     return <LoadingState compact />;
@@ -82,13 +91,13 @@ export function WorkflowEditorPage({
 
   if (
     orchestrationQuery.isError ||
-    nodeContributionsQuery.isError ||
+    nodeCatalogQuery.isError ||
     environmentVariablesQuery.isError
   ) {
     const error = orchestrationQuery.isError
       ? orchestrationQuery.error
-      : nodeContributionsQuery.isError
-        ? nodeContributionsQuery.error
+      : nodeCatalogQuery.isError
+        ? nodeCatalogQuery.error
         : environmentVariablesQuery.error;
 
     if (error instanceof ApiClientError && error.status === 403) {
@@ -119,7 +128,7 @@ export function WorkflowEditorPage({
       workflowTriggerContext={workflowTriggerContext}
       initialState={orchestrationQuery.data}
       initialEnvironmentVariables={environmentVariablesQuery.data}
-      nodeContributions={nodeContributionsQuery.data}
+      nodeCatalog={nodeCatalogQuery.data}
     />
   );
 }

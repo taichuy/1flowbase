@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applicationsApi = vi.hoisted(() => ({
   applicationsQueryKey: ['applications'],
-  createApplication: vi.fn()
+  applicationCatalogQueryKey: ['applications', 'catalog'],
+  createApplication: vi.fn(),
+  fetchApplicationCatalog: vi.fn()
 }));
 
 vi.mock('../api/applications', async (importOriginal) => ({
@@ -29,11 +31,38 @@ describe('ApplicationFormModal create intent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     applicationsApi.createApplication.mockResolvedValue({ id: 'app-workflow' });
+    applicationsApi.fetchApplicationCatalog.mockResolvedValue({
+      types: [
+        {
+          value: 'agent_flow',
+          label: 'Agent Flow',
+          description: '后端 Agent Flow 描述'
+        },
+        {
+          value: 'workflow',
+          label: 'Workflow',
+          description: '后端 Workflow 描述'
+        }
+      ],
+      workflow_triggers: [
+        {
+          value: 'extension',
+          label: '扩展接口',
+          description: '后端扩展触发描述'
+        },
+        {
+          value: 'schedule',
+          label: '定时调度',
+          description: '后端定时触发描述'
+        }
+      ],
+      tags: []
+    });
     publicApi.saveApplicationApiMapping.mockResolvedValue({});
     publicApi.saveWorkflowScheduleTrigger.mockResolvedValue({});
   });
 
-  test('keeps form semantics after migrating to the shared modal shell', () => {
+  test('AC-004 renders Application types and descriptions from the backend catalog', async () => {
     render(
       <AppProviders>
         <ApplicationFormModal
@@ -45,7 +74,9 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
 
-    expect(screen.getByText('新建应用')).toBeInTheDocument();
+    expect(await screen.findByText('新建应用')).toBeInTheDocument();
+    expect(screen.getByText('后端 Agent Flow 描述')).toBeInTheDocument();
+    expect(screen.getByText('后端 Workflow 描述')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '名称' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '创建应用' })
@@ -75,7 +106,8 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
+    expect(screen.getByText('后端扩展触发描述')).toBeInTheDocument();
     expect(screen.getByText('/api/ex/')).toBeInTheDocument();
     expect(screen.queryByText('访问策略')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '接口子路径' }), {
@@ -118,7 +150,7 @@ describe('ApplicationFormModal create intent', () => {
       </AppProviders>
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /Workflow/i }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
     const triggerTypeSelect = screen.getByRole('combobox', {
       name: '触发方式'
     });
