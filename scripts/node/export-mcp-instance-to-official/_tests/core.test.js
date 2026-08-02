@@ -10,6 +10,7 @@ const {
   nextPatch,
   replaceDirectoryAtomically,
 } = require('../core.js');
+const { readArguments } = require('../cli.js');
 
 function zip(entries) {
   const local = [];
@@ -84,6 +85,14 @@ function exportedArchive() {
 test('AC-001 bumps only the patch component', () => {
   assert.equal(nextPatch('1.2.3'), '1.2.4');
   assert.throws(() => nextPatch('1.2'), /semantic version/);
+});
+
+test('CLI help short-circuits and the API defaults to the local api-server port', () => {
+  assert.deepEqual(readArguments(['--help']), { help: true });
+  assert.deepEqual(readArguments(['-h']), { help: true });
+  assert.equal(readArguments([
+    '--instance-id', 'example', '--target', '/tmp/mcp/@taichuy/example',
+  ]).apiBaseUrl, 'http://127.0.0.1:7800');
 });
 
 test('AC-002 rejects path traversal and symlink ZIP entries', () => {
