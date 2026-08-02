@@ -34,15 +34,7 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     permissionKey: null,
     guard: 'session-required'
   },
-  {
-    id: 'embedded-apps',
-    path: '/embedded-apps',
-    navLabelKey: "auto.subsystem",
-    chromeSlot: 'primary',
-    selectedMatchers: [(pathname) => pathname.startsWith('/embedded-apps')],
-    permissionKey: 'embedded_app.view.all',
-    guard: 'session-required'
-  },
+  // Keep embedded apps hidden because the roadmap is distant and may change.
   {
     id: 'templates',
     path: '/templates',

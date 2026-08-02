@@ -15,7 +15,6 @@ import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { AppShellFrame } from '../app-shell/AppShellFrame';
 import { SignInPage } from '../features/auth/pages/SignInPage';
 import type { ApplicationSectionKey } from '../features/applications/lib/application-sections';
-import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import {
   fetchFrontstagePageContent,
   frontstagePageContentQueryKey
@@ -219,17 +218,6 @@ const applicationMonitoringRoute = createRoute({
       />
     );
   }
-});
-
-const embeddedAppsRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/embedded-apps',
-  notFoundComponent: NotFoundPage,
-  component: () => (
-    <RouteGuard routeId="embedded-apps">
-      <EmbeddedAppsPage />
-    </RouteGuard>
-  )
 });
 
 const templatesRoute = createRoute({
@@ -848,7 +836,7 @@ const routeTree = rootRoute.addChildren([
     applicationApiRoute,
     applicationLogsRoute,
     applicationMonitoringRoute,
-    embeddedAppsRoute,
+    // Keep embedded apps hidden because the roadmap is distant and may change.
     templatesRoute,
     settingsIndexRoute,
     settingsDocsRoute,

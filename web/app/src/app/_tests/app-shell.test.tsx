@@ -16,12 +16,6 @@ vi.mock('@1flowbase/api-client', () => ({
         surface_kind: 'system'
       },
       {
-        route_id: 'embedded-apps',
-        surface_key: 'embedded-apps',
-        path: '/embedded-apps',
-        surface_kind: 'system'
-      },
-      {
         route_id: 'templates',
         surface_key: 'templates',
         path: '/templates',
@@ -44,14 +38,6 @@ vi.mock('@1flowbase/api-client', () => ({
         order: 1
       },
       {
-        item_id: 'embedded-apps',
-        route_id: 'embedded-apps',
-        parent_item_id: null,
-        label_key: 'auto.subsystem',
-        navigation_slot: 'primary',
-        order: 3
-      },
-      {
         item_id: 'templates',
         route_id: 'templates',
         parent_item_id: null,
@@ -72,6 +58,13 @@ vi.mock('@1flowbase/api-client', () => ({
   }),
   getConsoleApplicationCatalog: vi.fn().mockResolvedValue({
     types: [{ value: 'agent_flow', label: 'AgentFlow' }],
+    workflow_triggers: [
+      {
+        value: 'extension',
+        label: 'Extension',
+        description: 'Extension trigger'
+      }
+    ],
     tags: []
   }),
   listConsoleApplications: vi.fn().mockResolvedValue([
@@ -148,8 +141,8 @@ describe('App shell', () => {
         await within(primaryNavigation).findByRole('link', { name: '工作台' })
       ).toBeInTheDocument();
       expect(
-        within(primaryNavigation).getByRole('link', { name: '子系统' })
-      ).toBeInTheDocument();
+        within(primaryNavigation).queryByRole('link', { name: '子系统' })
+      ).not.toBeInTheDocument();
       expect(
         within(primaryNavigation).getByRole('link', { name: '模板' })
       ).toBeInTheDocument();
@@ -178,14 +171,12 @@ describe('App shell', () => {
     15000
   );
 
-  test('renders the embedded apps route', async () => {
+  test('does not expose the embedded apps route', async () => {
     window.history.pushState({}, '', '/embedded-apps');
 
     render(<App />);
 
-    expect(
-      await screen.findByRole('heading', { name: '子系统', level: 2 })
-    ).toBeInTheDocument();
+    expect(await screen.findByText('页面不存在')).toBeInTheDocument();
   });
 
   test('keeps the shell content container full width instead of capping to 1200px', () => {

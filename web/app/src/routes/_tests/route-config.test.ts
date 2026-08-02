@@ -13,7 +13,6 @@ describe('route truth layer', () => {
     expect(APP_ROUTES.map((route) => route.id)).toEqual([
       'home',
       'application-detail',
-      'embedded-apps',
       'templates',
       'settings',
       'me',
@@ -52,9 +51,7 @@ describe('route truth layer', () => {
     expect(
       APP_ROUTES.find((route) => route.id === 'application-detail')?.permissionKey
     ).toBeNull();
-    expect(APP_ROUTES.find((route) => route.id === 'embedded-apps')?.permissionKey).toBe(
-      'embedded_app.view.all'
-    );
+    expect(APP_ROUTES.find((route) => route.id === 'embedded-apps')).toBeUndefined();
     expect(APP_ROUTES.find((route) => route.id === 'templates')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'settings')?.permissionKey).toBeNull();
     expect(APP_ROUTES.find((route) => route.id === 'sign-in')?.guard).toBe('public-only');
