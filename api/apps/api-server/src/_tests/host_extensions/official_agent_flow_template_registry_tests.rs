@@ -62,9 +62,12 @@ async fn agent_flow_library_syncs_signed_releases_and_manages_current_history() 
     );
 
     assert_eq!(
-        library.import_artifact("support-flow", None).await.unwrap(),
+        library
+            .resolve_artifact("support-flow", None)
+            .await
+            .unwrap(),
         artifact,
-        "the first import must sync remote latest into the local library"
+        "the first preview must sync remote latest into the local library"
     );
     assert_eq!(
         std::fs::read(root.join("support-flow/releases/1/template.json")).unwrap(),
@@ -83,10 +86,27 @@ async fn agent_flow_library_syncs_signed_releases_and_manages_current_history() 
 
     server.abort();
     assert_eq!(
-        library.import_artifact("support-flow", None).await.unwrap(),
+        library
+            .resolve_artifact("support-flow", None)
+            .await
+            .unwrap(),
         artifact,
-        "an existing local template must import without a remote request"
+        "an existing local template must preview without a remote request"
     );
+    std::fs::write(
+        root.join("support-flow/releases/1/template.json"),
+        b"tampered",
+    )
+    .unwrap();
+    assert!(library
+        .resolve_artifact("support-flow", None)
+        .await
+        .is_err());
+    std::fs::write(
+        root.join("support-flow/releases/1/template.json"),
+        &artifact,
+    )
+    .unwrap();
     let offline = library.catalog().await.unwrap();
     assert!(!offline.remote_available);
     assert_eq!(offline.templates[0].local_versions.len(), 1);

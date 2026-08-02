@@ -441,6 +441,11 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "POST",
+                "/api/console/applications/orchestration/templates/official/:template_id/preview",
+                "authenticated",
+            ),
+            (
+                "POST",
                 "/api/console/applications/orchestration/templates/official/:template_id/import",
                 "applications.orchestration.template.import",
             ),

@@ -320,6 +320,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(sync_official_agent_flow_template, Authenticated),
         )
         .route(
+            "/applications/orchestration/templates/official/:template_id/preview",
+            console_post(preview_official_agent_flow_template, Authenticated),
+        )
+        .route(
             "/applications/orchestration/templates/official/:template_id/import",
             console_post(
                 import_official_agent_flow_template,
@@ -1246,6 +1250,41 @@ pub async fn sync_official_agent_flow_template(
 
 #[utoipa::path(
     post,
+    path = "/api/console/applications/orchestration/templates/official/{template_id}/preview",
+    summary = "Preview an Agent Flow template release",
+    description = "Loads and re-verifies the selected local release, syncing it first only when the template has no local releases, then previews without creating or modifying an application.",
+    params(("template_id" = String, Path, description = "Stable Agent Flow template ID")),
+    request_body = AgentFlowTemplateVersionBody,
+    responses((status = 200, body = AgentFlowTemplatePreviewResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn preview_official_agent_flow_template(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(template_id): Path<String>,
+    Json(body): Json<AgentFlowTemplateVersionBody>,
+) -> Result<Json<ApiSuccess<AgentFlowTemplatePreviewResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let bytes = state
+        .official_agent_flow_template_source
+        .resolve_artifact(&template_id, body.release_version)
+        .await?;
+    let entry = single_application_entry(parse_application_archive(&bytes)?)?;
+    let resources = FlowService::new(state.store.clone())
+        .load_agent_flow_template_resources(context.user.id)
+        .await?;
+    let preview = ApplicationArchiveService::new(state.store.clone())
+        .preview_archive(PreviewApplicationArchiveCommand {
+            actor_user_id: context.user.id,
+            entry,
+            resources,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(to_template_preview_response(preview))))
+}
+
+#[utoipa::path(
+    post,
     path = "/api/console/applications/orchestration/templates/official/{template_id}/import",
     summary = "Import a local Agent Flow template release",
     description = "Imports a new application from the selected local release, syncing remote latest first only when the template has no local releases.",
@@ -1271,7 +1310,7 @@ pub async fn import_official_agent_flow_template(
         crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     let bytes = state
         .official_agent_flow_template_source
-        .import_artifact(&template_id, body.release_version)
+        .resolve_artifact(&template_id, body.release_version)
         .await?;
     let entry = single_application_entry(parse_application_archive(&bytes)?)?;
     let resources = FlowService::new(state.store.clone())

@@ -880,6 +880,58 @@ async fn agent_flow_library_import_creates_a_new_application_without_overwriting
 }
 
 #[tokio::test]
+async fn agent_flow_library_preview_returns_existing_preview_without_application_side_effects() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let before = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let before: Value =
+        serde_json::from_slice(&to_bytes(before.into_body(), usize::MAX).await.unwrap()).unwrap();
+
+    let preview = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/orchestration/templates/official/multimodal-mount-test/preview")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"release_version": 1}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(preview.status(), StatusCode::OK);
+    let preview: Value =
+        serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(preview["data"]["application"]["name"], "多模态挂载测试");
+
+    let after = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let after: Value =
+        serde_json::from_slice(&to_bytes(after.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(after["data"], before["data"]);
+}
+
+#[tokio::test]
 async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_workspace_application()
 {
     let (state, _) = test_api_state_with_database_url().await;

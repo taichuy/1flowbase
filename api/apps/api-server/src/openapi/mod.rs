@@ -74,6 +74,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::application_orchestration::import_installed_application_extension,
         crate::routes::application_orchestration::list_official_agent_flow_template_catalog,
         crate::routes::application_orchestration::sync_official_agent_flow_template,
+        crate::routes::application_orchestration::preview_official_agent_flow_template,
         crate::routes::application_orchestration::import_official_agent_flow_template,
         crate::routes::application_orchestration::switch_official_agent_flow_template_current,
         crate::routes::application_orchestration::delete_official_agent_flow_template_release,

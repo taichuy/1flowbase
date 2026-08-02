@@ -110,7 +110,7 @@ pub trait AgentFlowTemplateLibraryPort: Send + Sync {
         let _ = (template_id, release_version);
         bail!("Agent Flow template library is unavailable")
     }
-    async fn import_artifact(
+    async fn resolve_artifact(
         &self,
         template_id: &str,
         release_version: Option<u64>,
@@ -356,7 +356,7 @@ impl AgentFlowTemplateLibraryPort for ApiAgentFlowTemplateLibrary {
         self.install_remote_version(version, false).await
     }
 
-    async fn import_artifact(
+    async fn resolve_artifact(
         &self,
         template_id: &str,
         release_version: Option<u64>,

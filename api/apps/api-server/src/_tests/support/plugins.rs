@@ -336,7 +336,7 @@ impl AgentFlowTemplateLibraryPort for InMemoryOfficialAgentFlowTemplateSource {
         ))
     }
 
-    async fn import_artifact(
+    async fn resolve_artifact(
         &self,
         _template_id: &str,
         _release_version: Option<u64>,
