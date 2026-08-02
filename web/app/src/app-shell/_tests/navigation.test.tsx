@@ -201,6 +201,7 @@ describe('Navigation', () => {
     const topLevelItems = within(nav).getAllByRole('menuitem');
     expect(topLevelItems.map((item) => item.textContent)).toEqual([
       '工作台',
+      '子系统',
       '模板',
       '新增菜单'
     ]);
@@ -237,7 +238,7 @@ describe('Navigation', () => {
     expect(slugInput).not.toHaveValue(initialSlug);
   });
 
-  test('renders supported primary navigation and hides unregistered backend routes', async () => {
+  test('renders primary console navigation and keeps settings out of the primary rail', async () => {
     resetAuthStore();
 
     renderNavigation('/embedded-apps');
@@ -248,8 +249,8 @@ describe('Navigation', () => {
       await within(nav).findByRole('link', { name: '工作台' })
     ).toBeInTheDocument();
     expect(
-      within(nav).queryByRole('link', { name: '子系统' })
-    ).not.toBeInTheDocument();
+      within(nav).getByRole('link', { name: '子系统' })
+    ).toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: '模板' })).toHaveAttribute(
       'href',
       '/templates'
@@ -283,7 +284,7 @@ describe('Navigation', () => {
       }
     });
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      consoleNavigationForPrimaryRoutes(['templates'])
+      consoleNavigationForPrimaryRoutes(['embedded-apps'])
     );
 
     renderNavigation('/embedded-apps');
@@ -295,12 +296,14 @@ describe('Navigation', () => {
       ).not.toBeInTheDocument();
     });
     expect(
-      within(nav).queryByRole('link', { name: '子系统' })
-    ).not.toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: '模板' })).toHaveAttribute(
+      within(nav).getByRole('link', { name: '子系统' })
+    ).toHaveAttribute(
       'href',
-      '/templates'
+      '/embedded-apps'
     );
+    expect(
+      within(nav).queryByRole('link', { name: '模板' })
+    ).not.toBeInTheDocument();
   });
 
   test('shows registry error instead of falling back to local primary routes', async () => {
