@@ -184,7 +184,7 @@ struct InstalledMcpExtensionImportResponse {
     import_report: domain::McpBundleImportReport,
 }
 
-#[derive(Debug, Serialize, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 struct InstalledMcpExtensionIntegrityChallengeResponse {
     status: u16,
     code: String,
