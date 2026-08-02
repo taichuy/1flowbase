@@ -272,12 +272,16 @@ fn workflow_result_schema(document: &Value) -> Value {
         .iter()
         .filter_map(|output| {
             let key = output.get("key").and_then(Value::as_str)?;
-            let value_type = match output.get("valueType").and_then(Value::as_str) {
-                Some("number") => WorkflowStartHttpInputValueType::Number,
-                Some("boolean") => WorkflowStartHttpInputValueType::Boolean,
-                _ => WorkflowStartHttpInputValueType::String,
+            let schema = match output.get("valueType").and_then(Value::as_str) {
+                Some("string") => json!({ "type": "string" }),
+                Some("number") => json!({ "type": "number" }),
+                Some("boolean") => json!({ "type": "boolean" }),
+                Some("object") => json!({ "type": "object" }),
+                Some("array" | "array[object]") => json!({ "type": "array" }),
+                Some("json" | "unknown") | None => json!({}),
+                Some(_) => json!({}),
             };
-            Some((key.to_string(), value_type_schema(value_type)))
+            Some((key.to_string(), schema))
         })
         .collect::<Map<_, _>>();
     json!({
