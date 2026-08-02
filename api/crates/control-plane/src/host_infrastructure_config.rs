@@ -23,6 +23,7 @@ use crate::{
 
 pub struct HostInfrastructureConfigService<R> {
     repository: R,
+    node_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +72,7 @@ struct ProviderGroupKey {
 
 #[derive(Debug, Clone)]
 struct ProviderGroup {
-    installation: domain::PluginInstallationRecord,
+    installation: domain::LocalPluginInstallationRecord,
     extension_id: String,
     provider_code: String,
     display_name: String,
@@ -85,8 +86,11 @@ impl<R> HostInfrastructureConfigService<R>
 where
     R: PluginRepository + HostInfrastructureConfigRepository,
 {
-    pub fn new(repository: R) -> Self {
-        Self { repository }
+    pub fn new(repository: R, node_id: impl Into<String>) -> Self {
+        Self {
+            repository,
+            node_id: node_id.into(),
+        }
     }
 
     pub async fn list_providers(&self) -> Result<HostInfrastructureProviderConfigList> {
@@ -114,7 +118,7 @@ where
                 provider_code: group.provider_code,
                 display_name: group.display_name,
                 description: group.description,
-                runtime_status: group.installation.runtime_status.as_str().to_string(),
+                runtime_status: group.installation.runtime_status().as_str().to_string(),
                 desired_state: group.installation.desired_state.as_str().to_string(),
                 config_ref: group.config_ref,
                 contracts: group.contracts,
@@ -165,7 +169,7 @@ where
             .update_desired_state(&UpdatePluginDesiredStateInput {
                 installation_id: group.installation.id,
                 desired_state: domain::PluginDesiredState::PendingRestart,
-                availability_status: domain::PluginAvailabilityStatus::PendingRestart,
+                actor_user_id: command.actor_user_id,
             })
             .await?;
         let saved_config = self
@@ -199,7 +203,17 @@ where
             .into_iter()
             .filter(crate::host_extension::is_host_extension_installation)
         {
-            let contribution = load_installed_host_extension_contribution(&installation)?;
+            let Some(local) = self
+                .repository
+                .get_local_installation(&self.node_id, installation.id)
+                .await?
+            else {
+                continue;
+            };
+            if !local.artifact.artifact_status.is_ready() {
+                continue;
+            }
+            let contribution = load_installed_host_extension_contribution(&local)?;
             for provider in contribution.infrastructure_providers {
                 let key = ProviderGroupKey {
                     installation_id: installation.id,
@@ -207,7 +221,7 @@ where
                     config_ref: provider.config_ref.clone(),
                 };
                 let entry = groups.entry(key).or_insert_with(|| ProviderGroup {
-                    installation: installation.clone(),
+                    installation: local.clone(),
                     extension_id: contribution.extension_id.clone(),
                     provider_code: provider.provider_code.clone(),
                     display_name: provider.display_name.clone(),
@@ -228,9 +242,13 @@ where
 }
 
 fn load_installed_host_extension_contribution(
-    installation: &domain::PluginInstallationRecord,
+    installation: &domain::LocalPluginInstallationRecord,
 ) -> Result<plugin_framework::HostExtensionContributionManifest> {
-    let install_root = Path::new(&installation.installed_path);
+    let install_root = Path::new(
+        installation
+            .local_path()
+            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+    );
     let manifest_path = install_root.join("manifest.yaml");
     let manifest_raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("failed to read {}", manifest_path.display()))?;

@@ -19,7 +19,7 @@ const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm
 #[derive(Clone)]
 struct RuntimeProviderInvocationPin {
     instance: domain::ModelProviderInstanceRecord,
-    installation: domain::PluginInstallationRecord,
+    installation: domain::LocalPluginInstallationRecord,
     package: ProviderPackage,
 }
 
@@ -43,7 +43,11 @@ where
         self.apply_provider_transport(runtime, &mut input)?;
         let instance = self.resolve_llm_instance(runtime).await?;
         let installation = self.ready_installation(instance.installation_id).await?;
-        let package = load_provider_package(&installation.installed_path)?;
+        let package = load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        )?;
         input.provider_config = build_provider_runtime_config(
             &self.repository,
             &self.provider_secret_master_key,
@@ -63,7 +67,11 @@ where
         let attempted = async {
             let instance = self.resolve_llm_instance(runtime).await?;
             let installation = self.ready_installation(instance.installation_id).await?;
-            let package = load_provider_package(&installation.installed_path)?;
+            let package = load_provider_package(
+                installation
+                    .local_path()
+                    .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+            )?;
             input.set_provider_config(
                 build_provider_runtime_config(
                     &self.repository,
@@ -127,12 +135,16 @@ where
         {
             return Err(ControlPlaneError::InvalidInput("provider_code").into());
         }
-        if installation.availability_status != domain::PluginAvailabilityStatus::Available {
+        if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
 
         let package_load_started = std::time::Instant::now();
-        let package = load_provider_package(&installation.installed_path)?;
+        let package = load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        )?;
         tracing::debug!(
             package_load_ms = package_load_started.elapsed().as_millis() as u64,
             "package load finished"
@@ -880,7 +892,7 @@ where
     async fn ready_installation(
         &self,
         installation_id: Uuid,
-    ) -> Result<domain::PluginInstallationRecord> {
+    ) -> Result<domain::LocalPluginInstallationRecord> {
         match (
             self.api_node_id.as_deref(),
             self.provider_install_root.as_deref(),
@@ -894,7 +906,7 @@ where
                 )
                 .await
             }
-            _ => reconcile_installation_snapshot(&self.repository, installation_id).await,
+            _ => Err(ControlPlaneError::Conflict("plugin_node_context_required").into()),
         }
     }
 }
@@ -1039,8 +1051,7 @@ where
         if matches!(
             installation.desired_state,
             domain::PluginDesiredState::Disabled
-        ) || installation.availability_status != domain::PluginAvailabilityStatus::Available
-        {
+        ) {
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
         if !instance.enabled_model_ids.is_empty()
@@ -1089,7 +1100,7 @@ where
         {
             return Err(ControlPlaneError::InvalidInput("installation_id").into());
         }
-        if installation.availability_status != domain::PluginAvailabilityStatus::Available {
+        if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
 

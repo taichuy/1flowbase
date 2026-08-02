@@ -1,31 +1,30 @@
 use async_trait::async_trait;
-use domain::PluginInstallationRecord;
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub struct ValidateCapabilityConfigInput {
-    pub installation: PluginInstallationRecord,
+    pub installation: domain::LocalPluginInstallationRecord,
     pub contribution_code: String,
     pub config_payload: Value,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolveCapabilityOptionsInput {
-    pub installation: PluginInstallationRecord,
+    pub installation: domain::LocalPluginInstallationRecord,
     pub contribution_code: String,
     pub config_payload: Value,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolveCapabilityOutputSchemaInput {
-    pub installation: PluginInstallationRecord,
+    pub installation: domain::LocalPluginInstallationRecord,
     pub contribution_code: String,
     pub config_payload: Value,
 }
 
 #[derive(Debug, Clone)]
 pub struct ExecuteCapabilityNodeInput {
-    pub installation: PluginInstallationRecord,
+    pub installation: domain::LocalPluginInstallationRecord,
     pub contribution_code: String,
     pub config_payload: Value,
     pub input_payload: Value,

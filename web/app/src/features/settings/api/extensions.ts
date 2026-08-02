@@ -1,6 +1,7 @@
 import {
   applyConsoleInstalledMcpExtension,
   checkConsoleExtensionUpdates,
+  deleteConsoleInstalledExtension,
   getConsoleExtensionCatalogEntry,
   getConsoleInstalledMcpExtensionConflict,
   getConsoleInstalledMcpExtensionIntegrityChallenge,
@@ -98,6 +99,13 @@ export function installSettingsExtension(
     csrfToken,
     update
   );
+}
+
+export function deleteSettingsInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return deleteConsoleInstalledExtension(installationId, csrfToken);
 }
 
 export function previewSettingsInstalledMcpExtension(

@@ -177,6 +177,7 @@ impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
 
     async fn list_workspace_frontend_blocks(
         &self,
+        _node_id: &str,
         _workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
         Ok(Vec::new())
@@ -366,7 +367,7 @@ async fn ac_1281_frontend_blocks_policy_only_allows_without_legacy_grant() {
     )
     .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
 
-    FrontendBlockCatalogService::new(repository)
+    FrontendBlockCatalogService::new(repository, "test-node")
         .list_frontend_blocks(ListFrontendBlockCatalogQuery {
             actor_user_id: Uuid::now_v7(),
         })
@@ -382,7 +383,7 @@ async fn ac_1281_frontend_blocks_legacy_only_does_not_authorize() {
         Vec::new(),
     );
 
-    assert!(FrontendBlockCatalogService::new(repository)
+    assert!(FrontendBlockCatalogService::new(repository, "test-node")
         .list_frontend_blocks(ListFrontendBlockCatalogQuery {
             actor_user_id: Uuid::now_v7(),
         })

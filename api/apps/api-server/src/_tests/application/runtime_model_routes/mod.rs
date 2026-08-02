@@ -322,20 +322,22 @@ async fn seed_runtime_data_source_instance_with_options(
     let installation_id = uuid::Uuid::now_v7();
     let assignment_id = uuid::Uuid::now_v7();
     let data_source_instance_id = uuid::Uuid::now_v7();
+    let installed_path = options
+        .installed_path
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| package.path().display().to_string());
 
     sqlx::query(
         r#"
-        insert into plugin_installations (
-            id, provider_code, plugin_id, plugin_version, contract_version, protocol,
-            display_name, source_kind, trust_level, verification_status, desired_state,
-            artifact_status, runtime_status, availability_status, installed_path,
-            metadata_json, created_by
+        insert into extension_installations (
+            id, category, organization, artifact_id, artifact_version, plugin_id,
+            contract_version, protocol, display_name, source_kind, trust_level,
+            verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
-            $1, $2, 'fixture_external_data_source@0.1.0',
-            '0.1.0', $3, 'stdio_json',
+            $1, 'capability-plugins', 'test', $2, '0.1.0',
+            'fixture_external_data_source@0.1.0', $3, 'stdio_json',
             'Fixture External Data Source', 'uploaded', 'unverified', 'valid',
-            $4, $5, $6, $7, $8,
-            '{}', $9
+            $4, 'missing', '{}', $5
         )
         "#,
     )
@@ -343,16 +345,24 @@ async fn seed_runtime_data_source_instance_with_options(
     .bind(options.provider_code)
     .bind(options.contract_version)
     .bind(options.desired_state)
+    .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_path,
+            artifact_status, runtime_status, availability_status
+        ) values ($1, $2, '0.1.0', $3, $4, $5, $6)
+        "#,
+    )
+    .bind(crate::_tests::support::test_config().api_node_id)
+    .bind(installation_id)
+    .bind(installed_path)
     .bind(options.artifact_status)
     .bind(options.runtime_status)
     .bind(options.availability_status)
-    .bind(
-        options
-            .installed_path
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| package.path().display().to_string()),
-    )
-    .bind(actor_user_id)
     .execute(&pool)
     .await
     .unwrap();

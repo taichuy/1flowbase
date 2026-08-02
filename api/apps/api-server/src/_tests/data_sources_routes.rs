@@ -13,8 +13,7 @@ use axum::{
 };
 use control_plane::ports::{CreatePluginAssignmentInput, UpsertPluginInstallationInput};
 use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
-    PluginVerificationStatus,
+    PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
 };
 use plugin_framework::compute_manifest_fingerprint;
 use serde_json::{json, Value};
@@ -217,6 +216,8 @@ async fn seed_data_source_installation(
         &state.store,
         &UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".into(),
             provider_code: "fixture_data_source".into(),
             plugin_id: "fixture_data_source@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -227,19 +228,33 @@ async fn seed_data_source_installation(
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Active,
-            availability_status: PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: installed_path.display().to_string(),
-            checksum: None,
-            manifest_fingerprint: Some(manifest_fingerprint),
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    <storage_durable::MainDurableStore as control_plane::ports::PluginRepository>::upsert_artifact_instance(
+        &state.store,
+        &control_plane::ports::UpsertPluginArtifactInstanceInput {
+            node_id: state.api_node_id.clone(),
+            installation_id,
+            local_version: Some("0.1.0".into()),
+            local_checksum: None,
+            local_path: Some(installed_path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: Some(manifest_fingerprint),
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Active,
+            availability_status: PluginAvailabilityStatus::Available,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
         },
     )
     .await

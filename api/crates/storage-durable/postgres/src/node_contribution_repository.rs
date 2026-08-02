@@ -173,12 +173,12 @@ impl NodeContributionRepository for PgControlPlaneStore {
             left join plugin_assignments pa
                 on pa.workspace_id = $1
                and pa.installation_id = reg.installation_id
-            left join plugin_installations assigned
+            left join extension_installations assigned
                 on assigned.id = pa.installation_id
-            left join plugin_installations installed
-                on installed.id = reg.installation_id
+            left join extension_installations installed
+               on installed.id = reg.installation_id
                and installed.plugin_id = reg.package_id
-               and installed.plugin_version = reg.plugin_version
+               and installed.artifact_version = reg.plugin_version
                and installed.contract_version = '1flowbase.capability/v1'
             where reg.schema_version = '1flowbase.node-contribution/v2'
             order by reg.category asc, reg.title asc, reg.contribution_code asc

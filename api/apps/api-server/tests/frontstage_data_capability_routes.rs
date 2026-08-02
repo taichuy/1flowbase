@@ -187,6 +187,7 @@ async fn fixture() -> Fixture {
                 store.clone(),
                 api_provider_runtime,
                 config.provider_secret_master_key.clone(),
+                config.api_node_id.clone(),
             )),
         ),
     );

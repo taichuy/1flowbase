@@ -246,7 +246,7 @@ where
     async fn ready_installation(
         &self,
         installation_id: Uuid,
-    ) -> Result<domain::PluginInstallationRecord> {
+    ) -> Result<domain::LocalPluginInstallationRecord> {
         match (self.node_id.as_deref(), self.install_root.as_deref()) {
             (Some(node_id), Some(install_root)) => {
                 ready_current_node_plugin_installation(
@@ -257,11 +257,7 @@ where
                 )
                 .await
             }
-            _ => self
-                .repository
-                .get_installation(installation_id)
-                .await?
-                .ok_or(ControlPlaneError::NotFound("plugin_installation").into()),
+            _ => Err(ControlPlaneError::Conflict("plugin_node_context_required").into()),
         }
     }
 
@@ -347,7 +343,10 @@ where
         let mut entries = Vec::with_capacity(installations.len());
         for installation in installations {
             let installation = self.ready_installation(installation.id).await?;
-            let installed_path = installation.installed_path.clone();
+            let installed_path = installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?
+                .to_string();
             let package = tokio::task::spawn_blocking(move || {
                 plugin_framework::DataSourcePackage::load_from_dir(installed_path)
             })
@@ -357,11 +356,11 @@ where
             }
             entries.push(DataSourceCatalogEntryView {
                 installation_id: installation.id,
-                source_code: installation.provider_code,
-                plugin_id: installation.plugin_id,
-                plugin_version: installation.plugin_version,
-                display_name: installation.display_name,
-                protocol: installation.protocol,
+                source_code: installation.installation.provider_code,
+                plugin_id: installation.installation.plugin_id,
+                plugin_version: installation.installation.plugin_version,
+                display_name: installation.installation.display_name,
+                protocol: installation.installation.protocol,
                 config_schema: package.definition.config_schema,
             });
         }
@@ -460,13 +459,16 @@ where
             }
             let installation = self.ready_installation(instance.installation_id).await?;
             if installation.desired_state == domain::PluginDesiredState::Disabled
-                || installation.availability_status != domain::PluginAvailabilityStatus::Available
+                || installation.availability_status() != domain::PluginAvailabilityStatus::Available
                 || installation.contract_version != "1flowbase.data_source/v1"
                 || installation.provider_code != instance.source_code
             {
                 continue;
             }
-            let installed_path = installation.installed_path.clone();
+            let installed_path = installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?
+                .to_string();
             let package = tokio::task::spawn_blocking(move || {
                 plugin_framework::DataSourcePackage::load_from_dir(installed_path)
             })
@@ -1166,7 +1168,7 @@ where
 
     async fn ensure_runtime_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> Result<()> {
         match self.runtime.ensure_loaded(installation).await {
             Ok(()) => {

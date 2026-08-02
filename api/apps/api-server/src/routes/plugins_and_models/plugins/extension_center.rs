@@ -17,6 +17,7 @@ use control_plane::plugin_management::{
     group_installed_extension_families, ExtensionArtifactInstallOutcome, ExtensionCatalogCategory,
     ExtensionInstallationService, ExtensionRiskOverride, InstallExtensionArtifactCommand,
     InstallExtensionNodePluginCommand, InstalledExtensionFamily, PluginManagementService,
+    SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
 use serde::{Deserialize, Serialize};
@@ -68,17 +69,20 @@ pub struct ExtensionCompatibilityWarningResponse {
 pub struct LocalExtensionInstalledVersionResponse {
     pub id: String,
     pub version: String,
-    pub source: String,
-    pub trust: String,
+    pub source_kind: String,
+    pub trust_level: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
-    pub local_path: String,
-    pub checksum: String,
+    pub local_path: Option<String>,
+    pub expected_checksum: Option<String>,
+    pub local_checksum: Option<String>,
     pub signature_status: String,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
     pub status: String,
     pub is_current: bool,
-    pub installed_by: String,
+    pub deletable: bool,
+    pub delete_reasons: Vec<String>,
+    pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -92,11 +96,12 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub artifact_id: String,
     pub version: String,
     pub node_id: String,
-    pub source: String,
-    pub trust: String,
+    pub source_kind: String,
+    pub trust_level: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
-    pub local_path: String,
-    pub checksum: String,
+    pub local_path: Option<String>,
+    pub expected_checksum: Option<String>,
+    pub local_checksum: Option<String>,
     pub signature_status: String,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
@@ -104,7 +109,7 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub is_current: bool,
     pub application_action: String,
     pub application_status: String,
-    pub installed_by: String,
+    pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
     pub installed_versions: Vec<LocalExtensionInstalledVersionResponse>,
@@ -339,17 +344,20 @@ fn to_installed_version(
     LocalExtensionInstalledVersionResponse {
         id: entry.id.to_string(),
         version: entry.identity.version.clone(),
-        source: entry.source.clone(),
-        trust: entry.trust.clone(),
+        source_kind: entry.source_kind.clone(),
+        trust_level: entry.trust_level.clone(),
         warnings: to_risk_warnings(&entry.warnings),
         local_path: entry.local_path.clone(),
-        checksum: entry.checksum.clone(),
+        expected_checksum: entry.expected_checksum.clone(),
+        local_checksum: entry.local_checksum.clone(),
         signature_status: entry.signature_status.as_str().to_string(),
         signature_algorithm: entry.signature_algorithm.clone(),
         signing_key_id: entry.signing_key_id.clone(),
         status: entry.status.as_str().to_string(),
         is_current: entry.is_current,
-        installed_by: entry.installed_by.to_string(),
+        deletable: false,
+        delete_reasons: Vec::new(),
+        created_by: entry.created_by.to_string(),
         created_at: format_time(entry.created_at),
         updated_at: format_time(entry.updated_at),
     }
@@ -366,12 +374,13 @@ fn to_local_inventory_family(
         organization: entry.identity.organization,
         artifact_id: entry.identity.artifact_id,
         version: entry.identity.version,
-        node_id: entry.identity.node_id,
-        source: entry.source,
-        trust: entry.trust,
+        node_id: entry.node_id,
+        source_kind: entry.source_kind,
+        trust_level: entry.trust_level,
         warnings: to_risk_warnings(&entry.warnings),
         local_path: entry.local_path,
-        checksum: entry.checksum,
+        expected_checksum: entry.expected_checksum,
+        local_checksum: entry.local_checksum,
         signature_status: entry.signature_status.as_str().to_string(),
         signature_algorithm: entry.signature_algorithm,
         signing_key_id: entry.signing_key_id,
@@ -379,7 +388,7 @@ fn to_local_inventory_family(
         is_current: entry.is_current,
         application_action: entry.application_action.as_str().to_string(),
         application_status: default_application_status(entry.application_action).to_string(),
-        installed_by: entry.installed_by.to_string(),
+        created_by: entry.created_by.to_string(),
         created_at: format_time(entry.created_at),
         updated_at: format_time(entry.updated_at),
         installed_versions: installed_versions
@@ -471,6 +480,23 @@ pub async fn list_local_extension_inventory(
         )
         .await?;
         let mut response = to_local_inventory_family_entry(family);
+        for version in &mut response.installed_versions {
+            if let Some(decision) =
+                control_plane::ports::ExtensionInstallationRepository::extension_deletion_decision(
+                    &state.store,
+                    &state.api_node_id,
+                    Uuid::parse_str(&version.id).map_err(|_| {
+                        control_plane::errors::ControlPlaneError::InvalidInput(
+                            "extension_installation_id",
+                        )
+                    })?,
+                )
+                .await?
+            {
+                version.deletable = decision.deletable;
+                version.delete_reasons = decision.reasons;
+            }
+        }
         response.application_status = status.to_string();
         entries.push(response);
     }
@@ -513,8 +539,8 @@ pub async fn select_local_extension_installation(
     path = "/api/console/settings/extension-center/installed/{installation_id}",
     operation_id = "extension_center_delete_installed_version",
     summary = "Delete an installed extension version",
-    description = "Deletes one local artifact, marks its installation missing, and transactionally selects a remaining installed version when necessary.",
-    responses((status = 200, body = LocalExtensionInventoryEntryResponse), (status = 404, body = crate::error_response::ErrorBody))
+    description = "Deletes one non-current, unreferenced local artifact. Current, reserved, assigned, active, or referenced versions return a conflict.",
+    responses((status = 200, body = LocalExtensionInventoryEntryResponse), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn delete_local_extension_installation(
     State(state): State<Arc<ApiState>>,
@@ -565,8 +591,8 @@ fn project_installed_catalog_joins(
             entry.identity.catalog_id(),
             InstalledCatalogJoin {
                 current_version: entry.identity.version,
-                source: entry.source,
-                trust: entry.trust,
+                source: entry.source_kind,
+                trust: entry.trust_level,
             },
         );
     }
@@ -986,7 +1012,6 @@ fn extension_identity(
         organization: organization.to_string(),
         artifact_id: artifact_id.to_string(),
         version: version.to_string(),
-        node_id: node_id.to_string(),
     })
 }
 
@@ -1241,28 +1266,6 @@ async fn inspect_node_plugin(
     Ok(inspection)
 }
 
-async fn register_node_plugin(
-    state: &ApiState,
-    actor_user_id: Uuid,
-    operation_id: &'static str,
-    category: ExtensionCatalogCategory,
-    installation: &domain::ExtensionInstallationRecord,
-    file_name: String,
-    source_kind: String,
-) -> Result<String, ApiError> {
-    let package_bytes = tokio::fs::read(&installation.local_path).await?;
-    let result = service(state, operation_id)
-        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
-            actor_user_id,
-            category,
-            file_name,
-            package_bytes,
-            source_kind,
-        })
-        .await?;
-    Ok(result.installation.id.to_string())
-}
-
 async fn install_or_update_official_extension(
     state: &ApiState,
     headers: &HeaderMap,
@@ -1279,25 +1282,12 @@ async fn install_or_update_official_extension(
         &state.api_node_id,
     )?;
     let install_service = extension_installation_service(state);
-    if let Some(installation) = install_service.find_local_installation(&identity).await? {
+    if let Some(installation) = install_service
+        .find_local_installation(&state.api_node_id, &identity)
+        .await?
+    {
         let node_plugin_installation_id = if is_node_plugin_category(category) {
-            let source_kind = match installation.source.as_str() {
-                "official" => "official_registry",
-                "mirror" => "mirror_registry",
-                value => value,
-            };
-            Some(
-                register_node_plugin(
-                    state,
-                    context.user.id,
-                    operation_id,
-                    category,
-                    &installation,
-                    "extension.1flowbasepkg".to_string(),
-                    source_kind.to_string(),
-                )
-                .await?,
-            )
+            Some(installation.id.to_string())
         } else {
             None
         };
@@ -1419,6 +1409,65 @@ async fn install_or_update_official_extension(
         reason: value.reason,
         acknowledged_warnings: value.acknowledged_warnings,
     });
+    if is_node_plugin_category(category) {
+        let installed = service(state, operation_id)
+            .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+                actor_user_id: context.user.id,
+                category,
+                file_name: downloaded.file_name,
+                package_bytes: downloaded.artifact_bytes,
+                source_kind: source_kind.to_string(),
+            })
+            .await?;
+        if operation_id == "extension_center.update"
+            && installed
+                .installation
+                .metadata_json
+                .get("plugin_type")
+                .and_then(serde_json::Value::as_str)
+                == Some("model_provider")
+        {
+            let current = control_plane::ports::PluginRepository::list_assignments(
+                &state.store,
+                context.actor.current_workspace_id,
+            )
+            .await?
+            .into_iter()
+            .find(|assignment| assignment.provider_code == installed.installation.provider_code);
+            if current
+                .is_some_and(|assignment| assignment.installation_id != installed.installation.id)
+            {
+                service(state, operation_id)
+                    .switch_version(SwitchPluginVersionCommand {
+                        actor_user_id: context.user.id,
+                        provider_code: installed.installation.provider_code.clone(),
+                        target_installation_id: installed.installation.id,
+                    })
+                    .await?;
+            }
+        }
+        let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
+            &state.store,
+            &state.api_node_id,
+            installed.installation.id,
+        )
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "extension_installation",
+        ))?;
+        return Ok((
+            StatusCode::CREATED,
+            Json(ApiSuccess::new(ExtensionInstallResponse {
+                application_action: installation.application_action.as_str().to_string(),
+                application_status: default_application_status(installation.application_action)
+                    .to_string(),
+                installation: to_local_inventory_entry(installation.clone()),
+                local_artifact_was_present: false,
+                node_plugin_installation_id: Some(installation.id.to_string()),
+            })),
+        )
+            .into_response());
+    }
     let outcome = install_service
         .install_from_bytes(InstallExtensionArtifactCommand {
             actor_user_id: context.user.id,
@@ -1456,22 +1505,7 @@ async fn install_or_update_official_extension(
             local_artifact_was_present,
         } => (installation, local_artifact_was_present),
     };
-    let node_plugin_installation_id = if is_node_plugin_category(category) {
-        Some(
-            register_node_plugin(
-                state,
-                context.user.id,
-                operation_id,
-                category,
-                &installation,
-                downloaded.file_name,
-                source_kind.to_string(),
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
+    let node_plugin_installation_id = None;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(ExtensionInstallResponse {

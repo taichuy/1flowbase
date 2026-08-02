@@ -2,10 +2,7 @@ use control_plane::ports::{
     CreatePluginAssignmentInput, NodeContributionRegistryInput, NodeContributionRepository,
     PluginRepository, ReplaceInstallationNodeContributionsInput, UpsertPluginInstallationInput,
 };
-use domain::{
-    NodeContributionDependencyStatus, PluginArtifactStatus, PluginAvailabilityStatus,
-    PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
-};
+use domain::{NodeContributionDependencyStatus, PluginDesiredState, PluginVerificationStatus};
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -80,15 +77,12 @@ async fn insert_installation(
     } else {
         PluginDesiredState::Disabled
     };
-    let availability_status = if enabled {
-        PluginAvailabilityStatus::InstallIncomplete
-    } else {
-        PluginAvailabilityStatus::Disabled
-    };
     PluginRepository::upsert_installation(
         store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: provider_code.into(),
             plugin_id: format!("{provider_code}@{version}"),
             plugin_version: version.into(),
@@ -99,18 +93,12 @@ async fn insert_installation(
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status,
-            package_path: None,
-            installed_path: format!("/tmp/plugins/{provider_code}/{version}"),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor_id,
         },
     )
@@ -131,15 +119,12 @@ async fn insert_installation_with_plugin_id(
     } else {
         PluginDesiredState::Disabled
     };
-    let availability_status = if enabled {
-        PluginAvailabilityStatus::InstallIncomplete
-    } else {
-        PluginAvailabilityStatus::Disabled
-    };
     PluginRepository::upsert_installation(
         store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: provider_code.into(),
             plugin_id: plugin_id.into(),
             plugin_version: version.into(),
@@ -150,18 +135,12 @@ async fn insert_installation_with_plugin_id(
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status,
-            package_path: None,
-            installed_path: format!("/tmp/plugins/{plugin_id}/{version}"),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor_id,
         },
     )

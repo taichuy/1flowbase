@@ -176,13 +176,16 @@ fn events_for_result(result: &ProviderInvocationResult) -> Vec<ProviderStreamEve
 
 #[async_trait]
 impl ProviderRuntimePort for InMemoryProviderRuntime {
-    async fn ensure_loaded(&self, _installation: &domain::PluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _installation: &domain::LocalPluginInstallationRecord,
+    ) -> Result<()> {
         Ok(())
     }
 
     async fn validate_provider(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Value> {
         Ok(json!({ "ok": true }))
@@ -190,7 +193,7 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
 
     async fn list_models(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Vec<plugin_framework::provider_contract::ProviderModelDescriptor>> {
         Ok(vec![])
@@ -198,7 +201,7 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
 
     async fn invoke_stream(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> Result<crate::ports::ProviderRuntimeInvocationOutput> {
         if let Some(captured_inputs) = &self.captured_inputs {
@@ -260,7 +263,7 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
 
     async fn invoke_stream_with_live_events(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
         live_events: Option<crate::ports::ProviderLiveEventSenders>,
     ) -> Result<crate::ports::ProviderRuntimeInvocationOutput> {

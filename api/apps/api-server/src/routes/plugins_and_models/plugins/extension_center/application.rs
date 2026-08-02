@@ -1,4 +1,5 @@
 use control_plane::{
+    errors::ControlPlaneError,
     plugin_management::ExtensionCatalogCategory,
     ports::{ApplicationRepository, I18nCatalogRepository, McpManagementRepository},
 };
@@ -74,7 +75,13 @@ pub(super) async fn workspace_application_status(
             else {
                 return Ok("not_applied");
             };
-            let bytes = tokio::fs::read(&entry.local_path).await?;
+            let local_path = entry
+                .local_path
+                .as_deref()
+                .ok_or(ControlPlaneError::Conflict(
+                    "extension_artifact_path_missing",
+                ))?;
+            let bytes = tokio::fs::read(local_path).await?;
             let inspection = tokio::task::spawn_blocking(move || {
                 crate::official_i18n_catalog_seed::inspect_catalog_seed(&bytes)
             })

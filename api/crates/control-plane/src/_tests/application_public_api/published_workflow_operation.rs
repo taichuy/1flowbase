@@ -3,11 +3,11 @@ use control_plane::application_public_api::{
         ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
         WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
     },
+    publications::ApplicationPublicationVersionRecord,
     published_workflow_operation::{
         validate_published_workflow_contract, workflow_route_shapes_conflict,
         PublishedWorkflowOperation, PublishedWorkflowOperationError,
     },
-    publications::ApplicationPublicationVersionRecord,
 };
 use serde_json::json;
 use time::OffsetDateTime;
@@ -149,8 +149,5 @@ fn workflow_result_schema_preserves_array_and_object_output_types() {
         operation.result_schema["properties"]["metadata"],
         json!({ "type": "object" })
     );
-    assert_eq!(
-        operation.result_schema["properties"]["payload"],
-        json!({})
-    );
+    assert_eq!(operation.result_schema["properties"]["payload"], json!({}));
 }

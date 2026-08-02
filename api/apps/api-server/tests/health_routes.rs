@@ -171,6 +171,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
                 store.clone(),
                 api_provider_runtime,
                 config.provider_secret_master_key.clone(),
+                config.api_node_id.clone(),
             )),
         ),
     );

@@ -16,10 +16,10 @@ match_when:
   - 调整模型供应商仓库目录、Registry、安装入口或页面
   - 设计官方插件仓库驱动的初始化内容与打包流程
 created_at: 2026-07-13 15
-updated_at: 2026-08-01 08
-last_verified_at: 2026-08-01 08
+updated_at: 2026-08-03 00
+last_verified_at: 2026-08-03 00
 decision_policy: verify_before_decision
-status: issue_tree_ready
+status: superseded_by_unified_extension_lifecycle
 scope:
   - web/app/src/features/settings
   - api/crates/access-control/src/settings_routes.rs
@@ -30,6 +30,11 @@ scope:
 ---
 
 # 插件中心统一发现与类型化安装平衡方向
+
+> Superseded at `2026-08-03 00`: 用户基于项目仍处早期阶段，否决继续保留
+> `plugin_installations` 与 `extension_installations` 两套安装生命周期真值；后续以
+> `.memory/project-memory/2026-08-03-unified-extension-installation-lifecycle.md`
+> 记录的统一生命周期方向为准。本文仅保留此前边界与 Issue Tree 证据。
 
 ## 谁在做什么
 

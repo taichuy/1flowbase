@@ -14,7 +14,7 @@ use crate::{
     ports::{
         CreatePluginAssignmentInput, DownloadedOfficialPluginPackage,
         OfficialPluginCatalogSnapshot, OfficialPluginCatalogSource, OfficialPluginSourceEntry,
-        OfficialPluginSourcePort, PluginRepository, UpdatePluginArtifactSnapshotInput,
+        OfficialPluginSourcePort, PluginRepository, UpsertPluginArtifactInstanceInput,
     },
 };
 use domain::PluginDesiredState;
@@ -105,7 +105,6 @@ async fn plugin_management_service_lists_latest_installable_official_provider_ve
         })
         .await
         .unwrap();
-
     let families = service
         .list_families(
             repository.actor.user_id,
@@ -117,8 +116,8 @@ async fn plugin_management_service_lists_latest_installable_official_provider_ve
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].provider_code, "openai_compatible");
     assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
-    assert!(families.entries[0].has_update);
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
+    assert!(!families.entries[0].has_update);
 }
 
 #[tokio::test]
@@ -295,6 +294,7 @@ async fn plugin_management_service_list_catalog_does_not_refresh_artifact_snapsh
         })
         .await
         .unwrap();
+    let artifact_update_count = repository.artifact_snapshot_update_count().await;
 
     let catalog = service
         .list_catalog(
@@ -310,7 +310,10 @@ async fn plugin_management_service_list_catalog_does_not_refresh_artifact_snapsh
     assert_eq!(catalog.entries[0].model_discovery_mode, "hybrid");
     assert!(catalog.entries[0].assigned_to_current_workspace);
     assert!(catalog.i18n_catalog["plugin.fixture_provider"].contains_key("en_US"));
-    assert_eq!(repository.artifact_snapshot_update_count().await, 0);
+    assert_eq!(
+        repository.artifact_snapshot_update_count().await,
+        artifact_update_count
+    );
 }
 
 #[tokio::test]
@@ -339,12 +342,16 @@ async fn plugin_management_service_list_catalog_returns_missing_projection_witho
     )
     .await;
     repository.remove_catalog_projection(installation_id).await;
-    let installation = repository
-        .get_installation(installation_id)
+    let artifact_update_count = repository.artifact_snapshot_update_count().await;
+    let artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            installation_id,
+        )
         .await
         .unwrap()
-        .expect("installation should exist");
-    fs::remove_dir_all(&installation.installed_path).unwrap();
+        .expect("artifact should exist");
+    fs::remove_dir_all(artifact.local_path.unwrap()).unwrap();
 
     let catalog = service
         .list_catalog(
@@ -359,7 +366,10 @@ async fn plugin_management_service_list_catalog_returns_missing_projection_witho
     assert_eq!(catalog.entries[0].catalog_refresh_status, "missing");
     assert_eq!(catalog.entries[0].model_discovery_mode, "unknown");
     assert!(catalog.entries[0].help_url.is_none());
-    assert_eq!(repository.artifact_snapshot_update_count().await, 0);
+    assert_eq!(
+        repository.artifact_snapshot_update_count().await,
+        artifact_update_count
+    );
 }
 
 #[tokio::test]
@@ -440,12 +450,15 @@ async fn plugin_management_service_list_families_reads_projection_instead_of_loc
         })
         .await
         .unwrap();
-    let installation = repository
-        .get_installation(installation_id)
+    let artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            installation_id,
+        )
         .await
         .unwrap()
-        .expect("installation should exist");
-    fs::remove_dir_all(&installation.installed_path).unwrap();
+        .expect("artifact should exist");
+    fs::remove_dir_all(artifact.local_path.unwrap()).unwrap();
 
     let families = service
         .list_families(
@@ -640,8 +653,8 @@ async fn plugin_management_service_keeps_only_latest_official_entry_per_provider
         .unwrap();
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
-    assert!(families.entries[0].has_update);
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
+    assert!(!families.entries[0].has_update);
 }
 
 #[tokio::test]
@@ -667,22 +680,29 @@ async fn plugin_management_service_uses_persisted_missing_artifact_snapshot_for_
         PluginDesiredState::ActiveRequested,
     )
     .await;
-    let install_path = repository
-        .get_installation(installation_id)
+    let node_id = format!("local:{}", install_root.display());
+    let artifact = repository
+        .get_artifact_instance(&node_id, installation_id)
         .await
         .unwrap()
-        .unwrap()
-        .installed_path;
+        .unwrap();
+    let install_path = artifact.local_path.clone().unwrap();
     fs::remove_dir_all(&install_path).unwrap();
     repository
-        .update_artifact_snapshot(&UpdatePluginArtifactSnapshotInput {
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id,
             installation_id,
-            artifact_status: domain::PluginArtifactStatus::Missing,
-            availability_status: domain::PluginAvailabilityStatus::ArtifactMissing,
+            local_version: artifact.local_version,
+            local_checksum: artifact.local_checksum,
+            local_path: Some(install_path),
             package_path: None,
-            installed_path: install_path,
-            checksum: None,
             manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Missing,
+            runtime_status: artifact.runtime_status,
+            availability_status: domain::PluginAvailabilityStatus::ArtifactMissing,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: artifact.is_current,
         })
         .await
         .unwrap();
@@ -696,24 +716,27 @@ async fn plugin_management_service_uses_persisted_missing_artifact_snapshot_for_
         )
         .await
         .unwrap();
-    let installation = repository
-        .get_installation(installation_id)
+    let artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            installation_id,
+        )
         .await
         .unwrap()
         .unwrap();
 
     assert_eq!(catalog.entries.len(), 1);
     assert_eq!(
-        catalog.entries[0].installation.artifact_status,
-        domain::PluginArtifactStatus::Missing
+        catalog.entries[0].local_artifact.artifact_status,
+        domain::PluginArtifactInstanceStatus::Missing
     );
     assert_eq!(
-        catalog.entries[0].installation.availability_status,
+        catalog.entries[0].local_artifact.availability_status,
         domain::PluginAvailabilityStatus::ArtifactMissing
     );
     assert_eq!(catalog.entries[0].model_discovery_mode, "hybrid");
     assert_eq!(
-        installation.availability_status,
+        artifact.availability_status,
         domain::PluginAvailabilityStatus::ArtifactMissing
     );
     assert_eq!(

@@ -88,6 +88,12 @@
       "backfillSource": "applications.scope_id",
       "writePathSource": "application repository writes scope_id from applications.scope_id while preserving application_id/name primary identity"
     },
+    "application_extension_sources": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "application_id -> applications.scope_id",
+      "backfillSource": "applications.scope_id",
+      "writePathSource": "application extension import writes one source row for the owning application and retains the exact installation reference"
+    },
     "application_js_dependency_selections": {
       "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
       "backfillSource": "workspace_id"
@@ -183,6 +189,14 @@
       "created_byGeneration": "telemetry rows are append-only system observations; actor fields are nullable until a repository write path exists",
       "updated_byGeneration": "telemetry rows are append-only system observations; actor fields are nullable until a repository write path exists",
       "writePathSource": "temporary migration trigger fills scope_id; replace with telemetry repository-owned scope_id writes by 2026-09-30"
+    },
+    "extension_artifact_instances": {
+      "category": "system_runtime",
+      "scopeGenerationSource": "installation_id -> extension_installations.scope_id with node_id as the physical deployment discriminator",
+      "backfillSource": "extension_installations.scope_id",
+      "created_byGeneration": "node artifact rows are system runtime observations; installation actor metadata remains on extension_installations",
+      "updated_byGeneration": "node artifact health updates are system runtime observations; installation actor metadata remains on extension_installations",
+      "writePathSource": "plugin installation and explicit reconcile write node-local artifact state keyed by node_id and installation_id"
     },
     "file_storages": {
       "category": "system_global",
@@ -280,6 +294,12 @@
     "mcp_instances": {
       "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
       "backfillSource": "workspace_id"
+    },
+    "mcp_extension_bundle_imports": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "generated workspace ownership follows workspace_id",
+      "backfillSource": "workspace_id",
+      "writePathSource": "MCP bundle import records the exact workspace and unified extension installation reference"
     },
     "mcp_groups": {
       "category": "join_or_child",
@@ -395,13 +415,13 @@
       "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
       "backfillSource": "workspace_id"
     },
-    "plugin_installations": {
+    "extension_installations": {
       "category": "system_global",
-      "scopeGenerationSource": "SYSTEM_SCOPE_ID fixed host plugin package lifecycle routing",
+      "scopeGenerationSource": "SYSTEM_SCOPE_ID fixed extension package lifecycle routing",
       "backfillSource": "SYSTEM_SCOPE_ID",
-      "created_byGeneration": "plugin installation rows are created by an actor when available; bootstrap/system paths may remain nullable only if the schema permits it",
-      "updated_byGeneration": "plugin installation updater follows actor context when available; historical rows backfill from created_by",
-      "writePathSource": "plugin repository writes SYSTEM_SCOPE_ID for host package lifecycle records; workspace assignment remains in plugin_assignments"
+      "created_byGeneration": "extension installation rows are created by the installation actor",
+      "updated_byGeneration": "extension installation updater follows actor context; migrated rows backfill from created_by",
+      "writePathSource": "unified extension repositories write SYSTEM_SCOPE_ID for logical installations; workspace activation remains in plugin_assignments"
     },
     "plugin_tasks": {
       "category": "mixed_plugin_task",
@@ -556,6 +576,17 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "application_extension_sources": {
+      "kind": "bounded_application_source",
+      "reason": "one extension source row is bounded by its owning application and uses application_id as its stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "authenticators": {
       "kind": "system_reference_table",
       "reason": "system authenticator reference table is configured globally and is not routed by workspace scope",
@@ -652,9 +683,20 @@
         "managed-table-scope-time-index"
       ]
     },
-    "plugin_artifact_instances": {
+    "extension_artifact_instances": {
       "kind": "bounded_projection",
-      "reason": "bounded plugin artifact projection is keyed by plugin installation and node without unbounded history",
+      "reason": "bounded extension artifact projection is keyed by unified installation and node without unbounded history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "mcp_extension_bundle_imports": {
+      "kind": "bounded_workspace_import",
+      "reason": "one MCP bundle import result is bounded by workspace and unified extension installation composite identity",
       "skip": [
         "managed-table-id",
         "managed-table-created-at",

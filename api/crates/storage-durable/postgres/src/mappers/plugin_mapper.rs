@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use domain::{
-    PluginArtifactInstanceRecord, PluginArtifactInstanceStatus, PluginArtifactStatus,
-    PluginAssignmentRecord, PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
+    PluginArtifactInstanceRecord, PluginArtifactInstanceStatus, PluginAssignmentRecord,
+    PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
     PluginPackageCatalogProjectionRecord, PluginPackageCatalogProjectionStatus,
     PluginRuntimeStatus, PluginTaskKind, PluginTaskRecord, PluginTaskStatus,
     PluginVerificationStatus,
@@ -12,6 +12,9 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct StoredPluginInstallationRow {
     pub id: Uuid,
+    pub scope_id: Uuid,
+    pub category: String,
+    pub organization: String,
     pub provider_code: String,
     pub plugin_id: String,
     pub plugin_version: String,
@@ -22,19 +25,14 @@ pub struct StoredPluginInstallationRow {
     pub trust_level: String,
     pub verification_status: String,
     pub desired_state: String,
-    pub artifact_status: String,
-    pub runtime_status: String,
-    pub availability_status: String,
-    pub package_path: Option<String>,
-    pub installed_path: String,
-    pub checksum: Option<String>,
-    pub manifest_fingerprint: Option<String>,
-    pub signature_status: Option<String>,
+    pub expected_checksum: Option<String>,
+    pub signature_status: String,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
-    pub last_load_error: Option<String>,
     pub metadata_json: serde_json::Value,
+    pub is_system_reserved: bool,
     pub created_by: Uuid,
+    pub updated_by: Option<Uuid>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -55,11 +53,15 @@ pub struct StoredPluginArtifactInstanceRow {
     pub installation_id: Uuid,
     pub local_version: Option<String>,
     pub local_checksum: Option<String>,
-    pub installed_path: Option<String>,
+    pub local_path: Option<String>,
+    pub package_path: Option<String>,
+    pub manifest_fingerprint: Option<String>,
     pub artifact_status: String,
     pub runtime_status: String,
+    pub availability_status: String,
     pub checked_at: OffsetDateTime,
     pub last_error: Option<String>,
+    pub is_current: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +100,10 @@ impl PgPluginMapper {
     ) -> Result<PluginInstallationRecord> {
         Ok(PluginInstallationRecord {
             id: row.id,
+            scope_id: row.scope_id,
+            category: domain::ExtensionCategory::parse(&row.category)
+                .ok_or_else(|| anyhow!("unknown extension category: {}", row.category))?,
+            organization: row.organization,
             provider_code: row.provider_code,
             plugin_id: row.plugin_id,
             plugin_version: row.plugin_version,
@@ -108,19 +114,20 @@ impl PgPluginMapper {
             trust_level: row.trust_level,
             verification_status: parse_verification_status(&row.verification_status)?,
             desired_state: parse_desired_state(&row.desired_state)?,
-            artifact_status: parse_artifact_status(&row.artifact_status)?,
-            runtime_status: parse_runtime_status(&row.runtime_status)?,
-            availability_status: parse_availability_status(&row.availability_status)?,
-            package_path: row.package_path,
-            installed_path: row.installed_path,
-            checksum: row.checksum,
-            manifest_fingerprint: row.manifest_fingerprint,
-            signature_status: row.signature_status,
+            expected_checksum: row.expected_checksum,
+            signature_status: domain::ExtensionSignatureStatus::parse(&row.signature_status)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "unknown extension signature_status: {}",
+                        row.signature_status
+                    )
+                })?,
             signature_algorithm: row.signature_algorithm,
             signing_key_id: row.signing_key_id,
-            last_load_error: row.last_load_error,
             metadata_json: row.metadata_json,
+            is_system_reserved: row.is_system_reserved,
             created_by: row.created_by,
+            updated_by: row.updated_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -145,11 +152,15 @@ impl PgPluginMapper {
             installation_id: row.installation_id,
             local_version: row.local_version,
             local_checksum: row.local_checksum,
-            installed_path: row.installed_path,
+            local_path: row.local_path,
+            package_path: row.package_path,
+            manifest_fingerprint: row.manifest_fingerprint,
             artifact_status: parse_artifact_instance_status(&row.artifact_status)?,
             runtime_status: parse_runtime_status(&row.runtime_status)?,
+            availability_status: parse_availability_status(&row.availability_status)?,
             checked_at: row.checked_at,
             last_error: row.last_error,
+            is_current: row.is_current,
         })
     }
 
@@ -212,17 +223,6 @@ pub fn parse_desired_state(value: &str) -> Result<PluginDesiredState> {
         "pending_restart" => Ok(PluginDesiredState::PendingRestart),
         "active_requested" => Ok(PluginDesiredState::ActiveRequested),
         _ => Err(anyhow!("unknown plugin desired_state: {value}")),
-    }
-}
-
-pub fn parse_artifact_status(value: &str) -> Result<PluginArtifactStatus> {
-    match value {
-        "missing" => Ok(PluginArtifactStatus::Missing),
-        "staged" => Ok(PluginArtifactStatus::Staged),
-        "ready" => Ok(PluginArtifactStatus::Ready),
-        "corrupted" => Ok(PluginArtifactStatus::Corrupted),
-        "install_incomplete" => Ok(PluginArtifactStatus::InstallIncomplete),
-        _ => Err(anyhow!("unknown plugin artifact_status: {value}")),
     }
 }
 

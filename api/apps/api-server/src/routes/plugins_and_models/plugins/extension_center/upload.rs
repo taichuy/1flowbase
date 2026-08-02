@@ -343,20 +343,12 @@ async fn install_uploaded_artifact(
         &state.api_node_id,
     )?;
     let install_service = extension_installation_service(state);
-    if let Some(installation) = install_service.find_local_installation(&identity).await? {
+    if let Some(installation) = install_service
+        .find_local_installation(&state.api_node_id, &identity)
+        .await?
+    {
         let node_plugin_installation_id = if artifact.node_plugin {
-            Some(
-                register_node_plugin(
-                    state,
-                    actor_user_id,
-                    "extension_center.install.upload",
-                    artifact.category,
-                    &installation,
-                    file_name,
-                    "uploaded".to_string(),
-                )
-                .await?,
-            )
+            Some(installation.id.to_string())
         } else {
             None
         };
@@ -395,6 +387,38 @@ async fn install_uploaded_artifact(
         reason: value.reason,
         acknowledged_warnings: value.acknowledged_warnings,
     });
+    if artifact.node_plugin {
+        let installed = service(state, "extension_center.install.upload")
+            .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+                actor_user_id,
+                category: artifact.category,
+                file_name,
+                package_bytes: artifact_bytes,
+                source_kind: "uploaded".to_string(),
+            })
+            .await?;
+        let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
+            &state.store,
+            &state.api_node_id,
+            installed.installation.id,
+        )
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "extension_installation",
+        ))?;
+        return Ok((
+            StatusCode::CREATED,
+            Json(ApiSuccess::new(ExtensionInstallResponse {
+                application_action: installation.application_action.as_str().to_string(),
+                application_status: default_application_status(installation.application_action)
+                    .to_string(),
+                installation: to_local_inventory_entry(installation.clone()),
+                local_artifact_was_present: false,
+                node_plugin_installation_id: Some(installation.id.to_string()),
+            })),
+        )
+            .into_response());
+    }
     let outcome = install_service
         .install_from_bytes(InstallExtensionArtifactCommand {
             actor_user_id,
@@ -432,22 +456,7 @@ async fn install_uploaded_artifact(
             local_artifact_was_present,
         } => (installation, local_artifact_was_present),
     };
-    let node_plugin_installation_id = if artifact.node_plugin {
-        Some(
-            register_node_plugin(
-                state,
-                actor_user_id,
-                "extension_center.install.upload",
-                artifact.category,
-                &installation,
-                file_name,
-                "uploaded".to_string(),
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
+    let node_plugin_installation_id = None;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(ExtensionInstallResponse {

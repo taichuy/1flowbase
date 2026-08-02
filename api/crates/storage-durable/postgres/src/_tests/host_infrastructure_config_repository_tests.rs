@@ -2,10 +2,7 @@ use control_plane::ports::{
     HostInfrastructureConfigRepository, PluginRepository,
     UpsertHostInfrastructureProviderConfigInput, UpsertPluginInstallationInput,
 };
-use domain::{
-    HostInfrastructureConfigStatus, PluginArtifactStatus, PluginAvailabilityStatus,
-    PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
-};
+use domain::{HostInfrastructureConfigStatus, PluginDesiredState, PluginVerificationStatus};
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -64,6 +61,8 @@ async fn seed_store() -> (PgControlPlaneStore, domain::UserRecord, Uuid) {
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "redis-infra-host".into(),
             plugin_id: "redis-infra-host@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -74,18 +73,12 @@ async fn seed_store() -> (PgControlPlaneStore, domain::UserRecord, Uuid) {
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::PendingRestart,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::PendingRestart,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/redis-infra-host/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )

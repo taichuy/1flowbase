@@ -41,7 +41,6 @@ use crate::{
     capability_plugin_runtime::{CapabilityPluginRuntimePort, ExecuteCapabilityNodeInput},
     errors::ControlPlaneError,
     model_provider::failover_queue::{freeze_queue_items, FailoverQueueSnapshotItem},
-    plugin_lifecycle::reconcile_installation_snapshot,
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,

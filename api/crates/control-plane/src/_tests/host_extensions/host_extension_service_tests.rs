@@ -112,19 +112,24 @@ async fn uploaded_host_extension_is_saved_as_pending_restart() {
         result.installation.desired_state,
         PluginDesiredState::PendingRestart
     );
+    let artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            result.installation.id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(artifact.runtime_status, PluginRuntimeStatus::Inactive);
     assert_eq!(
-        result.installation.runtime_status,
-        PluginRuntimeStatus::Inactive
-    );
-    assert_eq!(
-        result.installation.availability_status,
+        artifact.availability_status,
         PluginAvailabilityStatus::PendingRestart
     );
     assert_eq!(
         result.task.status_message.as_deref(),
         Some("installed; restart required")
     );
-    assert!(result.installation.package_path.is_some());
+    assert!(artifact.package_path.is_some());
     assert_eq!(
         repository
             .list_pending_restart_host_extensions()

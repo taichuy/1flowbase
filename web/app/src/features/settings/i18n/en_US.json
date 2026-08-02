@@ -896,6 +896,7 @@
     "install": "Install",
     "installed_extensions": "Installed extensions",
     "installed_versions": "Installed versions",
+    "sync_latest": "Sync latest",
     "signature_status": "Signature status",
     "checksum": "Checksum",
     "local_path": "Local path",

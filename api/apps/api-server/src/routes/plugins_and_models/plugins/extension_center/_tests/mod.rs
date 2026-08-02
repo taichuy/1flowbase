@@ -202,21 +202,23 @@ fn installation_record(
             organization: "taichuy".to_string(),
             artifact_id: "openai".to_string(),
             version: version.to_string(),
-            node_id: "node-a".to_string(),
         },
-        source: "official".to_string(),
-        trust: "official".to_string(),
-        local_path: "/tmp/openai".to_string(),
-        checksum: "sha256:fixture".to_string(),
+        source_kind: "official_repository".to_string(),
+        trust_level: "verified_official".to_string(),
+        expected_checksum: Some("sha256:fixture".to_string()),
         signature_status: domain::ExtensionSignatureStatus::Verified,
         signature_algorithm: Some("ed25519".to_string()),
         signing_key_id: Some("official-key-2026-04".to_string()),
         warnings: Vec::new(),
         receipt: json!({}),
         application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
+        is_system_reserved: false,
+        node_id: "node-a".to_string(),
+        local_path: Some("/tmp/openai".to_string()),
+        local_checksum: Some("sha256:fixture".to_string()),
         status: domain::ExtensionInstallationStatus::Installed,
         is_current: false,
-        installed_by: Uuid::now_v7(),
+        created_by: Uuid::now_v7(),
         created_at: updated_at,
         updated_at,
     }
@@ -397,6 +399,7 @@ async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_rou
         panic!("signed Agent Flow update should install");
     };
     let store = state.store.clone();
+    let state_api_node_id = state.api_node_id.clone();
     let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
     let (cookie, csrf) =
         crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
@@ -419,6 +422,42 @@ async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_rou
         .unwrap();
     assert_eq!(selected.status(), StatusCode::OK);
 
+    let blocked_delete = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{}",
+                    older.id
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked_delete.status(), StatusCode::CONFLICT);
+
+    let selected_newer = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{}/select",
+                    newer.id
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(selected_newer.status(), StatusCode::OK);
+
     let deleted = app
         .oneshot(
             Request::builder()
@@ -435,11 +474,22 @@ async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_rou
         .await
         .unwrap();
     assert_eq!(deleted.status(), StatusCode::OK);
-    let remaining =
-        ExtensionInstallationRepository::find_extension_installation(&store, &newer.identity)
-            .await
-            .unwrap()
-            .unwrap();
+    let removed = ExtensionInstallationRepository::find_extension_installation(
+        &store,
+        &state_api_node_id,
+        &older.identity,
+    )
+    .await
+    .unwrap();
+    assert!(removed.is_none());
+    let remaining = ExtensionInstallationRepository::find_extension_installation(
+        &store,
+        &state_api_node_id,
+        &newer.identity,
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert!(remaining.is_current);
 }
 

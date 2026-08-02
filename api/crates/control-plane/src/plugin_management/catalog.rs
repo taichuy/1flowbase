@@ -197,13 +197,17 @@ fn extension_warnings(
     if let Some(code) = artifact.last_error.as_deref() {
         codes.push(code.to_string());
     }
-    match installation.signature_status.as_deref() {
-        Some("verified" | "builtin") => {}
-        Some("unknown_key") => codes.push(PLUGIN_RISK_SIGNING_KEY_UNKNOWN.to_string()),
-        Some("invalid" | "malformed_signature") => {
+    match installation.signature_status {
+        domain::ExtensionSignatureStatus::Verified => {}
+        domain::ExtensionSignatureStatus::UnknownKey => {
+            codes.push(PLUGIN_RISK_SIGNING_KEY_UNKNOWN.to_string())
+        }
+        domain::ExtensionSignatureStatus::Invalid => {
             codes.push(PLUGIN_RISK_SIGNATURE_INVALID.to_string())
         }
-        _ => codes.push(PLUGIN_RISK_SIGNATURE_MISSING.to_string()),
+        domain::ExtensionSignatureStatus::Missing => {
+            codes.push(PLUGIN_RISK_SIGNATURE_MISSING.to_string())
+        }
     }
     codes.sort();
     codes.dedup();
@@ -373,11 +377,15 @@ fn local_artifact_snapshot(
             installation_id: installation.id,
             local_version: None,
             local_checksum: None,
-            installed_path: None,
+            local_path: None,
+            package_path: None,
+            manifest_fingerprint: None,
             artifact_status: domain::PluginArtifactInstanceStatus::Missing,
             runtime_status: domain::PluginRuntimeStatus::Inactive,
+            availability_status: domain::PluginAvailabilityStatus::ArtifactMissing,
             checked_at: installation.updated_at,
             last_error: Some("artifact_snapshot_missing".to_string()),
+            is_current: false,
         }
     })
 }
@@ -576,7 +584,7 @@ where
             let artifact = self
                 .refresh_current_node_artifact_snapshot(&installation)
                 .await?;
-            if artifact.installed_path.is_none() {
+            if artifact.local_path.is_none() {
                 continue;
             }
             entries.push(LocalExtensionInventoryEntry {
@@ -846,18 +854,6 @@ where
                     .then_with(|| right.id.cmp(&left.id))
             });
         }
-        let official_by_provider = self
-            .official_source
-            .cached_official_catalog()
-            .await
-            .map(|snapshot| {
-                normalize_official_entries(snapshot.entries)
-                    .into_iter()
-                    .filter(|entry| entry.plugin_type == "model_provider")
-                    .map(|entry| (entry.provider_code.clone(), entry))
-                    .collect::<HashMap<_, _>>()
-            })
-            .unwrap_or_default();
         let mut families = Vec::with_capacity(assignments.len());
         let mut i18n_catalog = BTreeMap::new();
         for assignment in assignments {
@@ -890,10 +886,7 @@ where
                         .then_with(|| left.id.cmp(&right.id))
                 })
                 .map(|installation| installation.plugin_version.clone());
-            let latest_version = official_by_provider
-                .get(&assignment.provider_code)
-                .map(|entry| entry.latest_version.clone())
-                .or(latest_installed_version);
+            let latest_version = latest_installed_version;
             let installed_versions = installations_by_provider
                 .get(&assignment.provider_code)
                 .into_iter()
@@ -904,7 +897,14 @@ where
                     source_kind: installation.source_kind.clone(),
                     trust_level: installation.trust_level.clone(),
                     desired_state: installation.desired_state.as_str().to_string(),
-                    availability_status: installation.availability_status.as_str().to_string(),
+                    availability_status: local_artifact_snapshot(
+                        &artifact_snapshots,
+                        &self.node_id,
+                        installation,
+                    )
+                    .availability_status
+                    .as_str()
+                    .to_string(),
                     local_artifact: local_artifact_snapshot(
                         &artifact_snapshots,
                         &self.node_id,

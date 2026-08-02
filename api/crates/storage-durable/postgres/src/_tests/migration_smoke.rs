@@ -607,7 +607,7 @@ async fn migration_smoke_creates_remaining_owner_review_scoped_readiness() {
         "roles",
         "role_permissions",
         "user_role_bindings",
-        "plugin_installations",
+        "extension_installations",
         "plugin_tasks",
         "plugin_worker_leases",
         "data_source_secrets",
@@ -1129,7 +1129,7 @@ async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
         select column_name
         from information_schema.columns
         where table_schema = $1
-          and table_name = 'plugin_installations'
+          and table_name = 'extension_installations'
         "#,
     )
     .bind(&schema)
@@ -1168,13 +1168,12 @@ async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
     assert!(columns.contains(&"signature_algorithm".to_string()));
     assert!(columns.contains(&"signing_key_id".to_string()));
     assert!(columns.contains(&"desired_state".to_string()));
-    assert!(columns.contains(&"artifact_status".to_string()));
-    assert!(columns.contains(&"runtime_status".to_string()));
-    assert!(columns.contains(&"availability_status".to_string()));
-    assert!(columns.contains(&"package_path".to_string()));
-    assert!(columns.contains(&"installed_path".to_string()));
-    assert!(columns.contains(&"manifest_fingerprint".to_string()));
-    assert!(columns.contains(&"last_load_error".to_string()));
+    assert!(columns.contains(&"expected_checksum".to_string()));
+    assert!(columns.contains(&"is_system_reserved".to_string()));
+    assert!(!columns.contains(&"artifact_status".to_string()));
+    assert!(!columns.contains(&"runtime_status".to_string()));
+    assert!(!columns.contains(&"availability_status".to_string()));
+    assert!(!columns.contains(&"local_path".to_string()));
     assert!(!columns.contains(&"enabled".to_string()));
     assert!(!columns.contains(&"install_path".to_string()));
     assert!(task_columns.contains(&"status".to_string()));
@@ -1183,7 +1182,7 @@ async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
 }
 
 #[tokio::test]
-async fn migration_smoke_creates_plugin_artifact_instances_table() {
+async fn migration_smoke_creates_extension_artifact_instances_table() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let schema: String = sqlx::query_scalar("select current_schema()")
@@ -1195,7 +1194,7 @@ async fn migration_smoke_creates_plugin_artifact_instances_table() {
         select column_name
         from information_schema.columns
         where table_schema = $1
-          and table_name = 'plugin_artifact_instances'
+          and table_name = 'extension_artifact_instances'
         "#,
     )
     .bind(&schema)
@@ -1211,7 +1210,7 @@ async fn migration_smoke_creates_plugin_artifact_instances_table() {
         join unnest(c.conkey) with ordinality as cols(attnum, ord) on true
         join pg_attribute a on a.attrelid = r.oid and a.attnum = cols.attnum
         where n.nspname = $1
-          and r.relname = 'plugin_artifact_instances'
+          and r.relname = 'extension_artifact_instances'
           and c.contype = 'p'
         order by cols.ord
         "#,
@@ -1227,8 +1226,8 @@ async fn migration_smoke_creates_plugin_artifact_instances_table() {
         join pg_class r on r.oid = c.conrelid
         join pg_namespace n on n.oid = r.relnamespace
         where n.nspname = $1
-          and r.relname = 'plugin_artifact_instances'
-          and c.conname = 'plugin_artifact_instances_artifact_status_check'
+          and r.relname = 'extension_artifact_instances'
+          and c.conname = 'extension_artifact_instances_artifact_status_check'
         "#,
     )
     .bind(&schema)
@@ -1240,7 +1239,11 @@ async fn migration_smoke_creates_plugin_artifact_instances_table() {
     assert!(columns.contains(&"installation_id".to_string()));
     assert!(columns.contains(&"local_version".to_string()));
     assert!(columns.contains(&"local_checksum".to_string()));
-    assert!(columns.contains(&"installed_path".to_string()));
+    assert!(columns.contains(&"local_path".to_string()));
+    assert!(columns.contains(&"package_path".to_string()));
+    assert!(columns.contains(&"manifest_fingerprint".to_string()));
+    assert!(columns.contains(&"availability_status".to_string()));
+    assert!(columns.contains(&"is_current".to_string()));
     assert!(columns.contains(&"artifact_status".to_string()));
     assert!(columns.contains(&"runtime_status".to_string()));
     assert!(columns.contains(&"checked_at".to_string()));

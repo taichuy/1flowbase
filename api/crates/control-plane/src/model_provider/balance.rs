@@ -41,10 +41,14 @@ where
         instance.installation_id,
     )
     .await?;
-    if installation.availability_status != domain::PluginAvailabilityStatus::Available {
+    if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
         return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
     }
-    let package = load_provider_package(&installation.installed_path)?;
+    let package = load_provider_package(
+        installation
+            .local_path()
+            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+    )?;
     let secret_json = repository
         .get_secret_json(instance.id, provider_secret_master_key)
         .await?

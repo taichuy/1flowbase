@@ -7,9 +7,12 @@ use serde_json::{json, Map, Value};
 use crate::errors::ControlPlaneError;
 
 pub(super) async fn load_data_source_config_schema(
-    installation: &domain::PluginInstallationRecord,
+    installation: &domain::LocalPluginInstallationRecord,
 ) -> Result<Vec<PluginFormFieldSchema>> {
-    let installed_path = installation.installed_path.clone();
+    let installed_path = installation
+        .local_path()
+        .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?
+        .to_string();
     let expected_source_code = installation.provider_code.clone();
     let package = tokio::task::spawn_blocking(move || {
         plugin_framework::DataSourcePackage::load_from_dir(installed_path)

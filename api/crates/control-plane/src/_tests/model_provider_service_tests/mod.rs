@@ -19,8 +19,7 @@ use crate::{
         CreatePluginAssignmentInput, CreatePluginTaskInput, ModelProviderRepository,
         PluginRepository, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
         ReassignModelProviderInstancesInput, RoleConsolePolicyReader,
-        UpdateModelProviderInstanceInput, UpdatePluginArtifactSnapshotInput,
-        UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
+        UpdateModelProviderInstanceInput, UpdatePluginDesiredStateInput,
         UpdatePluginTaskStatusInput, UpdateProfileInput, UpsertModelProviderCatalogCacheInput,
         UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
         UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
@@ -28,10 +27,11 @@ use crate::{
     },
 };
 use domain::{
-    ActorContext, AuditLogRecord, AuthenticatorRecord, ModelProviderCatalogCacheRecord,
+    ActorContext, AuditLogRecord, AuthenticatorRecord, ExtensionCategory, ExtensionSignatureStatus,
+    LocalPluginInstallationRecord, ModelProviderCatalogCacheRecord,
     ModelProviderCatalogRefreshStatus, ModelProviderInstanceRecord, ModelProviderInstanceStatus,
     ModelProviderMainInstanceRecord, ModelProviderPreviewSessionRecord, ModelProviderSecretRecord,
-    PermissionDefinition, PluginArtifactInstanceRecord, PluginArtifactStatus,
+    PermissionDefinition, PluginArtifactInstanceRecord, PluginArtifactInstanceStatus,
     PluginAssignmentRecord, PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
     PluginPackageCatalogProjectionRecord, PluginPackageCatalogProjectionStatus,
     PluginRuntimeStatus, PluginTaskRecord, PluginVerificationStatus, ScopeContext, UserRecord,
@@ -116,6 +116,9 @@ impl MemoryModelProviderRepository {
         let installation_id = Uuid::now_v7();
         let installation = PluginInstallationRecord {
             id: installation_id,
+            scope_id: domain::SYSTEM_SCOPE_ID,
+            category: ExtensionCategory::RuntimeExtensions,
+            organization: "1flowbase".to_string(),
             provider_code: "fixture_provider".to_string(),
             plugin_id: "fixture_provider@0.1.0".to_string(),
             plugin_version: "0.1.0".to_string(),
@@ -126,27 +129,14 @@ impl MemoryModelProviderRepository {
             trust_level: "unverified".to_string(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: if matches!(desired_state, PluginDesiredState::Disabled) {
-                PluginRuntimeStatus::Inactive
-            } else {
-                PluginRuntimeStatus::Active
-            },
-            availability_status: if matches!(desired_state, PluginDesiredState::Disabled) {
-                PluginAvailabilityStatus::Disabled
-            } else {
-                PluginAvailabilityStatus::Available
-            },
-            package_path: None,
-            installed_path: install_path.to_string(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             created_by: self.actor.user_id,
+            updated_by: None,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
         };
@@ -154,6 +144,32 @@ impl MemoryModelProviderRepository {
             .write()
             .await
             .insert(installation_id, installation);
+        self.artifact_instances.write().await.insert(
+            ("test-node".to_string(), installation_id),
+            PluginArtifactInstanceRecord {
+                node_id: "test-node".to_string(),
+                installation_id,
+                local_version: Some("0.1.0".to_string()),
+                local_checksum: None,
+                local_path: Some(install_path.to_string()),
+                package_path: None,
+                manifest_fingerprint: None,
+                artifact_status: PluginArtifactInstanceStatus::Ready,
+                runtime_status: if matches!(desired_state, PluginDesiredState::Disabled) {
+                    PluginRuntimeStatus::Inactive
+                } else {
+                    PluginRuntimeStatus::Active
+                },
+                availability_status: if matches!(desired_state, PluginDesiredState::Disabled) {
+                    PluginAvailabilityStatus::Disabled
+                } else {
+                    PluginAvailabilityStatus::Available
+                },
+                checked_at: OffsetDateTime::now_utc(),
+                last_error: None,
+                is_current: assigned,
+            },
+        );
         self.upsert_plugin_package_catalog_projection(&UpsertPluginPackageCatalogProjectionInput {
             installation_id,
             package_code: "fixture_provider".to_string(),
@@ -272,15 +288,6 @@ impl MemoryModelProviderRepository {
             .await
             .remove(&installation_id);
     }
-
-    async fn installation(&self, installation_id: Uuid) -> PluginInstallationRecord {
-        self.installations
-            .read()
-            .await
-            .get(&installation_id)
-            .cloned()
-            .expect("installation should exist for test")
-    }
 }
 
 #[async_trait]
@@ -388,6 +395,9 @@ impl PluginRepository for MemoryModelProviderRepository {
     ) -> Result<PluginInstallationRecord> {
         let record = PluginInstallationRecord {
             id: input.installation_id,
+            scope_id: domain::SYSTEM_SCOPE_ID,
+            category: input.category,
+            organization: input.organization.clone(),
             provider_code: input.provider_code.clone(),
             plugin_id: input.plugin_id.clone(),
             plugin_version: input.plugin_version.clone(),
@@ -398,19 +408,14 @@ impl PluginRepository for MemoryModelProviderRepository {
             trust_level: input.trust_level.clone(),
             verification_status: input.verification_status,
             desired_state: input.desired_state,
-            artifact_status: input.artifact_status,
-            runtime_status: input.runtime_status,
-            availability_status: input.availability_status,
-            package_path: input.package_path.clone(),
-            installed_path: input.installed_path.clone(),
-            checksum: input.checksum.clone(),
-            manifest_fingerprint: input.manifest_fingerprint.clone(),
-            signature_status: input.signature_status.clone(),
+            expected_checksum: input.expected_checksum.clone(),
+            signature_status: input.signature_status,
             signature_algorithm: input.signature_algorithm.clone(),
             signing_key_id: input.signing_key_id.clone(),
-            last_load_error: input.last_load_error.clone(),
             metadata_json: input.metadata_json.clone(),
+            is_system_reserved: input.is_system_reserved,
             created_by: input.actor_user_id,
+            updated_by: None,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
         };
@@ -525,42 +530,6 @@ impl PluginRepository for MemoryModelProviderRepository {
             .get_mut(&input.installation_id)
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         installation.desired_state = input.desired_state;
-        installation.availability_status = input.availability_status;
-        Ok(installation.clone())
-    }
-
-    async fn update_artifact_snapshot(
-        &self,
-        input: &UpdatePluginArtifactSnapshotInput,
-    ) -> Result<PluginInstallationRecord> {
-        self.artifact_snapshot_updates
-            .write()
-            .await
-            .push(input.installation_id);
-        let mut installations = self.installations.write().await;
-        let installation = installations
-            .get_mut(&input.installation_id)
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        installation.artifact_status = input.artifact_status;
-        installation.availability_status = input.availability_status;
-        installation.package_path = input.package_path.clone();
-        installation.installed_path = input.installed_path.clone();
-        installation.checksum = input.checksum.clone();
-        installation.manifest_fingerprint = input.manifest_fingerprint.clone();
-        Ok(installation.clone())
-    }
-
-    async fn update_runtime_snapshot(
-        &self,
-        input: &UpdatePluginRuntimeSnapshotInput,
-    ) -> Result<PluginInstallationRecord> {
-        let mut installations = self.installations.write().await;
-        let installation = installations
-            .get_mut(&input.installation_id)
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        installation.runtime_status = input.runtime_status;
-        installation.availability_status = input.availability_status;
-        installation.last_load_error = input.last_load_error.clone();
         Ok(installation.clone())
     }
 
@@ -573,11 +542,15 @@ impl PluginRepository for MemoryModelProviderRepository {
             installation_id: input.installation_id,
             local_version: input.local_version.clone(),
             local_checksum: input.local_checksum.clone(),
-            installed_path: input.installed_path.clone(),
+            local_path: input.local_path.clone(),
+            package_path: input.package_path.clone(),
+            manifest_fingerprint: input.manifest_fingerprint.clone(),
             artifact_status: input.artifact_status,
             runtime_status: input.runtime_status,
+            availability_status: input.availability_status,
             checked_at: input.checked_at,
             last_error: input.last_error.clone(),
+            is_current: input.is_current,
         };
         self.artifact_instances.write().await.insert(
             (record.node_id.clone(), record.installation_id),
@@ -1067,13 +1040,13 @@ impl MemoryProviderRuntime {
 
 #[async_trait]
 impl ProviderRuntimePort for MemoryProviderRuntime {
-    async fn ensure_loaded(&self, _installation: &PluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(&self, _installation: &LocalPluginInstallationRecord) -> Result<()> {
         Ok(())
     }
 
     async fn validate_provider(
         &self,
-        installation: &PluginInstallationRecord,
+        installation: &LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> Result<Value> {
         self.validate_calls.write().await.push(installation.id);
@@ -1087,7 +1060,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
 
     async fn list_models(
         &self,
-        installation: &PluginInstallationRecord,
+        installation: &LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Vec<ProviderModelDescriptor>> {
         if let Some(message) = self.list_models_error.read().await.clone() {
@@ -1109,7 +1082,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
 
     async fn invoke_stream(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _input: ProviderInvocationInput,
     ) -> Result<ProviderRuntimeInvocationOutput> {
         Ok(ProviderRuntimeInvocationOutput {

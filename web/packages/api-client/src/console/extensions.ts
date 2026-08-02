@@ -35,17 +35,20 @@ export interface ConsoleExtensionWarning {
 export interface ConsoleInstalledExtensionVersion {
   id: string;
   version: string;
-  source: string;
-  trust: string;
+  source_kind: string;
+  trust_level: string;
   warnings: ConsoleExtensionWarning[];
-  local_path: string;
-  checksum: string;
+  local_path: string | null;
+  expected_checksum: string | null;
+  local_checksum: string | null;
   signature_status: string;
   signature_algorithm: string | null;
   signing_key_id: string | null;
   status: string;
   is_current: boolean;
-  installed_by: string;
+  deletable: boolean;
+  delete_reasons: string[];
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -69,11 +72,12 @@ export interface ConsoleInstalledExtension {
   artifact_id: string;
   version: string;
   node_id: string;
-  source: string;
-  trust: string;
+  source_kind: string;
+  trust_level: string;
   warnings: ConsoleExtensionWarning[];
-  local_path: string;
-  checksum: string;
+  local_path: string | null;
+  expected_checksum: string | null;
+  local_checksum: string | null;
   signature_status: string;
   signature_algorithm: string | null;
   signing_key_id: string | null;
@@ -81,7 +85,7 @@ export interface ConsoleInstalledExtension {
   is_current: boolean;
   application_action: ConsoleExtensionApplicationAction;
   application_status: ConsoleExtensionApplicationStatus;
-  installed_by: string;
+  created_by: string;
   created_at: string;
   updated_at: string;
   installed_versions: ConsoleInstalledExtensionVersion[];

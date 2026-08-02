@@ -3,11 +3,10 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        CommitPluginInstallationProjectionInput, CreatePluginAssignmentInput,
-        CreatePluginTaskInput, PluginRepository, UpdatePluginArtifactSnapshotInput,
-        UpdatePluginDesiredStateInput, UpdatePluginRuntimeSnapshotInput,
-        UpdatePluginTaskStatusInput, UpsertPluginArtifactInstanceInput,
-        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
+        CommitPluginInstallationInput, CreatePluginAssignmentInput, CreatePluginTaskInput,
+        PluginRepository, UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput,
+        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+        UpsertPluginPackageCatalogProjectionInput,
     },
 };
 use sqlx::Row;
@@ -26,6 +25,9 @@ pub(crate) fn map_installation(
 ) -> Result<domain::PluginInstallationRecord> {
     PgPluginMapper::to_installation_record(StoredPluginInstallationRow {
         id: row.get("id"),
+        scope_id: row.get("scope_id"),
+        category: row.get("category"),
+        organization: row.get("organization"),
         provider_code: row.get("provider_code"),
         plugin_id: row.get("plugin_id"),
         plugin_version: row.get("plugin_version"),
@@ -36,19 +38,14 @@ pub(crate) fn map_installation(
         trust_level: row.get("trust_level"),
         verification_status: row.get("verification_status"),
         desired_state: row.get("desired_state"),
-        artifact_status: row.get("artifact_status"),
-        runtime_status: row.get("runtime_status"),
-        availability_status: row.get("availability_status"),
-        package_path: row.get("package_path"),
-        installed_path: row.get("installed_path"),
-        checksum: row.get("checksum"),
-        manifest_fingerprint: row.get("manifest_fingerprint"),
+        expected_checksum: row.get("expected_checksum"),
         signature_status: row.get("signature_status"),
         signature_algorithm: row.get("signature_algorithm"),
         signing_key_id: row.get("signing_key_id"),
-        last_load_error: row.get("last_load_error"),
         metadata_json: row.get("metadata_json"),
+        is_system_reserved: row.get("is_system_reserved"),
         created_by: row.get("created_by"),
+        updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     })
@@ -73,11 +70,15 @@ fn map_artifact_instance(
         installation_id: row.get("installation_id"),
         local_version: row.get("local_version"),
         local_checksum: row.get("local_checksum"),
-        installed_path: row.get("installed_path"),
+        local_path: row.get("local_path"),
+        package_path: row.get("package_path"),
+        manifest_fingerprint: row.get("manifest_fingerprint"),
         artifact_status: row.get("artifact_status"),
         runtime_status: row.get("runtime_status"),
+        availability_status: row.get("availability_status"),
         checked_at: row.get("checked_at"),
         last_error: row.get("last_error"),
+        is_current: row.get("is_current"),
     })
 }
 
@@ -115,14 +116,11 @@ fn map_catalog_projection(
 
 #[async_trait]
 impl PluginRepository for PgControlPlaneStore {
-    async fn commit_plugin_installation_projection(
+    async fn commit_plugin_installation(
         &self,
-        input: &CommitPluginInstallationProjectionInput,
+        input: &CommitPluginInstallationInput,
     ) -> Result<domain::PluginInstallationRecord> {
-        crate::plugin_installation_commit_repository::commit_plugin_installation_projection(
-            self, input,
-        )
-        .await
+        crate::plugin_installation_commit_repository::commit_plugin_installation(self, input).await
     }
 
     async fn upsert_installation(
@@ -131,12 +129,14 @@ impl PluginRepository for PgControlPlaneStore {
     ) -> Result<domain::PluginInstallationRecord> {
         let row = sqlx::query(
             r#"
-            insert into plugin_installations (
+            insert into extension_installations (
                 id,
                 scope_id,
-                provider_code,
+                category,
+                organization,
+                artifact_id,
+                artifact_version,
                 plugin_id,
-                plugin_version,
                 contract_version,
                 protocol,
                 display_name,
@@ -144,29 +144,26 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level,
                 verification_status,
                 desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
+                expected_checksum,
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                last_load_error,
                 metadata_json,
+                is_system_reserved,
                 created_by,
                 updated_by
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-                $21, $22, $23, $24, $25, $26
+                $21, $22
             )
-            on conflict (plugin_id) do update
+            on conflict (plugin_id) where plugin_id is not null do update
             set
-                provider_code = excluded.provider_code,
-                plugin_version = excluded.plugin_version,
+                scope_id = excluded.scope_id,
+                category = excluded.category,
+                organization = excluded.organization,
+                artifact_id = excluded.artifact_id,
+                artifact_version = excluded.artifact_version,
                 contract_version = excluded.contract_version,
                 protocol = excluded.protocol,
                 display_name = excluded.display_name,
@@ -174,25 +171,22 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level = excluded.trust_level,
                 verification_status = excluded.verification_status,
                 desired_state = excluded.desired_state,
-                artifact_status = excluded.artifact_status,
-                runtime_status = excluded.runtime_status,
-                availability_status = excluded.availability_status,
-                package_path = excluded.package_path,
-                installed_path = excluded.installed_path,
-                checksum = excluded.checksum,
-                manifest_fingerprint = excluded.manifest_fingerprint,
+                expected_checksum = excluded.expected_checksum,
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,
                 signing_key_id = excluded.signing_key_id,
-                last_load_error = excluded.last_load_error,
                 metadata_json = excluded.metadata_json,
+                is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
                 updated_at = now()
             returning
                 id,
-                provider_code,
+                scope_id,
+                category,
+                organization,
+                artifact_id as provider_code,
                 plugin_id,
-                plugin_version,
+                artifact_version as plugin_version,
                 contract_version,
                 protocol,
                 display_name,
@@ -200,28 +194,25 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level,
                 verification_status,
                 desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
+                expected_checksum,
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                last_load_error,
                 metadata_json,
+                is_system_reserved,
                 created_by,
+                updated_by,
                 created_at,
                 updated_at
             "#,
         )
         .bind(input.installation_id)
         .bind(domain::SYSTEM_SCOPE_ID)
+        .bind(input.category.as_str())
+        .bind(&input.organization)
         .bind(&input.provider_code)
-        .bind(&input.plugin_id)
         .bind(&input.plugin_version)
+        .bind(&input.plugin_id)
         .bind(&input.contract_version)
         .bind(&input.protocol)
         .bind(&input.display_name)
@@ -229,18 +220,12 @@ impl PluginRepository for PgControlPlaneStore {
         .bind(&input.trust_level)
         .bind(input.verification_status.as_str())
         .bind(input.desired_state.as_str())
-        .bind(input.artifact_status.as_str())
-        .bind(input.runtime_status.as_str())
-        .bind(input.availability_status.as_str())
-        .bind(input.package_path.as_deref())
-        .bind(&input.installed_path)
-        .bind(input.checksum.as_deref())
-        .bind(input.manifest_fingerprint.as_deref())
-        .bind(input.signature_status.as_deref())
+        .bind(input.expected_checksum.as_deref())
+        .bind(input.signature_status.as_str())
         .bind(input.signature_algorithm.as_deref())
         .bind(input.signing_key_id.as_deref())
-        .bind(input.last_load_error.as_deref())
         .bind(&input.metadata_json)
+        .bind(input.is_system_reserved)
         .bind(input.actor_user_id)
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
@@ -257,9 +242,12 @@ impl PluginRepository for PgControlPlaneStore {
             r#"
             select
                 id,
-                provider_code,
+                scope_id,
+                category,
+                organization,
+                artifact_id as provider_code,
                 plugin_id,
-                plugin_version,
+                artifact_version as plugin_version,
                 contract_version,
                 protocol,
                 display_name,
@@ -267,23 +255,19 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level,
                 verification_status,
                 desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
+                expected_checksum,
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                last_load_error,
                 metadata_json,
+                is_system_reserved,
                 created_by,
+                updated_by,
                 created_at,
                 updated_at
-            from plugin_installations
+            from extension_installations
             where id = $1
+              and plugin_id is not null
             "#,
         )
         .bind(installation_id)
@@ -298,9 +282,12 @@ impl PluginRepository for PgControlPlaneStore {
             r#"
             select
                 id,
-                provider_code,
+                scope_id,
+                category,
+                organization,
+                artifact_id as provider_code,
                 plugin_id,
-                plugin_version,
+                artifact_version as plugin_version,
                 contract_version,
                 protocol,
                 display_name,
@@ -308,22 +295,18 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level,
                 verification_status,
                 desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
+                expected_checksum,
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                last_load_error,
                 metadata_json,
+                is_system_reserved,
                 created_by,
+                updated_by,
                 created_at,
                 updated_at
-            from plugin_installations
+            from extension_installations
+            where plugin_id is not null
             order by updated_at desc, id desc
             "#,
         )
@@ -433,8 +416,8 @@ impl PluginRepository for PgControlPlaneStore {
     async fn delete_installation(&self, installation_id: Uuid) -> Result<()> {
         let deleted = sqlx::query_scalar::<_, Uuid>(
             r#"
-            delete from plugin_installations
-            where id = $1
+            delete from extension_installations
+            where id = $1 and plugin_id is not null
             returning id
             "#,
         )
@@ -456,9 +439,12 @@ impl PluginRepository for PgControlPlaneStore {
             r#"
             select
                 id,
-                provider_code,
+                scope_id,
+                category,
+                organization,
+                artifact_id as provider_code,
                 plugin_id,
-                plugin_version,
+                artifact_version as plugin_version,
                 contract_version,
                 protocol,
                 display_name,
@@ -466,24 +452,19 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level,
                 verification_status,
                 desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
+                expected_checksum,
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                last_load_error,
                 metadata_json,
+                is_system_reserved,
                 created_by,
+                updated_by,
                 created_at,
                 updated_at
-            from plugin_installations
+            from extension_installations
             where desired_state = 'pending_restart'
-              and contract_version = '1flowbase.host_extension/v1'
+              and category = 'host-extensions'
             order by updated_at desc, id desc
             "#,
         )
@@ -499,17 +480,20 @@ impl PluginRepository for PgControlPlaneStore {
     ) -> Result<domain::PluginInstallationRecord> {
         let row = sqlx::query(
             r#"
-            update plugin_installations
+            update extension_installations
             set
                 desired_state = $2,
-                availability_status = $3,
+                updated_by = $3,
                 updated_at = now()
-            where id = $1
+            where id = $1 and plugin_id is not null
             returning
                 id,
-                provider_code,
+                scope_id,
+                category,
+                organization,
+                artifact_id as provider_code,
                 plugin_id,
-                plugin_version,
+                artifact_version as plugin_version,
                 contract_version,
                 protocol,
                 display_name,
@@ -517,142 +501,21 @@ impl PluginRepository for PgControlPlaneStore {
                 trust_level,
                 verification_status,
                 desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
+                expected_checksum,
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                last_load_error,
                 metadata_json,
+                is_system_reserved,
                 created_by,
+                updated_by,
                 created_at,
                 updated_at
             "#,
         )
         .bind(input.installation_id)
         .bind(input.desired_state.as_str())
-        .bind(input.availability_status.as_str())
-        .fetch_optional(self.pool())
-        .await?;
-
-        match row {
-            Some(row) => map_installation(row),
-            None => bail!(ControlPlaneError::NotFound("plugin_installation")),
-        }
-    }
-
-    async fn update_artifact_snapshot(
-        &self,
-        input: &UpdatePluginArtifactSnapshotInput,
-    ) -> Result<domain::PluginInstallationRecord> {
-        let row = sqlx::query(
-            r#"
-            update plugin_installations
-            set
-                artifact_status = $2,
-                availability_status = $3,
-                package_path = $4,
-                installed_path = $5,
-                checksum = $6,
-                manifest_fingerprint = $7,
-                updated_at = now()
-            where id = $1
-            returning
-                id,
-                provider_code,
-                plugin_id,
-                plugin_version,
-                contract_version,
-                protocol,
-                display_name,
-                source_kind,
-                trust_level,
-                verification_status,
-                desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
-                signature_status,
-                signature_algorithm,
-                signing_key_id,
-                last_load_error,
-                metadata_json,
-                created_by,
-                created_at,
-                updated_at
-            "#,
-        )
-        .bind(input.installation_id)
-        .bind(input.artifact_status.as_str())
-        .bind(input.availability_status.as_str())
-        .bind(input.package_path.as_deref())
-        .bind(&input.installed_path)
-        .bind(input.checksum.as_deref())
-        .bind(input.manifest_fingerprint.as_deref())
-        .fetch_optional(self.pool())
-        .await?;
-
-        match row {
-            Some(row) => map_installation(row),
-            None => bail!(ControlPlaneError::NotFound("plugin_installation")),
-        }
-    }
-
-    async fn update_runtime_snapshot(
-        &self,
-        input: &UpdatePluginRuntimeSnapshotInput,
-    ) -> Result<domain::PluginInstallationRecord> {
-        let row = sqlx::query(
-            r#"
-            update plugin_installations
-            set
-                runtime_status = $2,
-                availability_status = $3,
-                last_load_error = $4,
-                updated_at = now()
-            where id = $1
-            returning
-                id,
-                provider_code,
-                plugin_id,
-                plugin_version,
-                contract_version,
-                protocol,
-                display_name,
-                source_kind,
-                trust_level,
-                verification_status,
-                desired_state,
-                artifact_status,
-                runtime_status,
-                availability_status,
-                package_path,
-                installed_path,
-                checksum,
-                manifest_fingerprint,
-                signature_status,
-                signature_algorithm,
-                signing_key_id,
-                last_load_error,
-                metadata_json,
-                created_by,
-                created_at,
-                updated_at
-            "#,
-        )
-        .bind(input.installation_id)
-        .bind(input.runtime_status.as_str())
-        .bind(input.availability_status.as_str())
-        .bind(input.last_load_error.as_deref())
+        .bind(input.actor_user_id)
         .fetch_optional(self.pool())
         .await?;
 
@@ -668,47 +531,66 @@ impl PluginRepository for PgControlPlaneStore {
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let row = sqlx::query(
             r#"
-            insert into plugin_artifact_instances (
+            insert into extension_artifact_instances (
                 node_id,
                 installation_id,
                 local_version,
                 local_checksum,
-                installed_path,
+                local_path,
+                package_path,
+                manifest_fingerprint,
                 artifact_status,
                 runtime_status,
+                availability_status,
                 checked_at,
-                last_error
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                last_error,
+                is_current
+            ) values (
+                $1, $2, $3, $4, $5, $6, $7,
+                $8, $9, $10, $11, $12, $13
+            )
             on conflict (node_id, installation_id) do update
             set
                 local_version = excluded.local_version,
                 local_checksum = excluded.local_checksum,
-                installed_path = excluded.installed_path,
+                local_path = excluded.local_path,
+                package_path = excluded.package_path,
+                manifest_fingerprint = excluded.manifest_fingerprint,
                 artifact_status = excluded.artifact_status,
                 runtime_status = excluded.runtime_status,
+                availability_status = excluded.availability_status,
                 checked_at = excluded.checked_at,
-                last_error = excluded.last_error
+                last_error = excluded.last_error,
+                is_current = excluded.is_current
             returning
                 node_id,
                 installation_id,
                 local_version,
                 local_checksum,
-                installed_path,
+                local_path,
+                package_path,
+                manifest_fingerprint,
                 artifact_status,
                 runtime_status,
+                availability_status,
                 checked_at,
-                last_error
+                last_error,
+                is_current
             "#,
         )
         .bind(&input.node_id)
         .bind(input.installation_id)
         .bind(input.local_version.as_deref())
         .bind(input.local_checksum.as_deref())
-        .bind(input.installed_path.as_deref())
+        .bind(input.local_path.as_deref())
+        .bind(input.package_path.as_deref())
+        .bind(input.manifest_fingerprint.as_deref())
         .bind(input.artifact_status.as_str())
         .bind(input.runtime_status.as_str())
+        .bind(input.availability_status.as_str())
         .bind(input.checked_at)
         .bind(input.last_error.as_deref())
+        .bind(input.is_current)
         .fetch_one(self.pool())
         .await?;
 
@@ -727,12 +609,16 @@ impl PluginRepository for PgControlPlaneStore {
                 installation_id,
                 local_version,
                 local_checksum,
-                installed_path,
+                local_path,
+                package_path,
+                manifest_fingerprint,
                 artifact_status,
                 runtime_status,
+                availability_status,
                 checked_at,
-                last_error
-            from plugin_artifact_instances
+                last_error,
+                is_current
+            from extension_artifact_instances
             where node_id = $1 and installation_id = $2
             "#,
         )
@@ -755,12 +641,16 @@ impl PluginRepository for PgControlPlaneStore {
                 installation_id,
                 local_version,
                 local_checksum,
-                installed_path,
+                local_path,
+                package_path,
+                manifest_fingerprint,
                 artifact_status,
                 runtime_status,
+                availability_status,
                 checked_at,
-                last_error
-            from plugin_artifact_instances
+                last_error,
+                is_current
+            from extension_artifact_instances
             where node_id = $1
             order by checked_at desc, installation_id desc
             "#,

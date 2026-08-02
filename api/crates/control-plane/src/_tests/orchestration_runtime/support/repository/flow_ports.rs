@@ -794,40 +794,6 @@ impl PluginRepository for InMemoryOrchestrationRuntimeRepository {
             .get_mut(&input.installation_id)
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         installation.desired_state = input.desired_state;
-        installation.availability_status = input.availability_status;
-        Ok(installation.clone())
-    }
-
-    async fn update_artifact_snapshot(
-        &self,
-        input: &crate::ports::UpdatePluginArtifactSnapshotInput,
-    ) -> Result<domain::PluginInstallationRecord> {
-        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
-        let installation = inner
-            .installations_by_id
-            .get_mut(&input.installation_id)
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        installation.artifact_status = input.artifact_status;
-        installation.availability_status = input.availability_status;
-        installation.package_path = input.package_path.clone();
-        installation.installed_path = input.installed_path.clone();
-        installation.checksum = input.checksum.clone();
-        installation.manifest_fingerprint = input.manifest_fingerprint.clone();
-        Ok(installation.clone())
-    }
-
-    async fn update_runtime_snapshot(
-        &self,
-        input: &crate::ports::UpdatePluginRuntimeSnapshotInput,
-    ) -> Result<domain::PluginInstallationRecord> {
-        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
-        let installation = inner
-            .installations_by_id
-            .get_mut(&input.installation_id)
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        installation.runtime_status = input.runtime_status;
-        installation.availability_status = input.availability_status;
-        installation.last_load_error = input.last_load_error.clone();
         Ok(installation.clone())
     }
 
@@ -840,11 +806,15 @@ impl PluginRepository for InMemoryOrchestrationRuntimeRepository {
             installation_id: input.installation_id,
             local_version: input.local_version.clone(),
             local_checksum: input.local_checksum.clone(),
-            installed_path: input.installed_path.clone(),
+            local_path: input.local_path.clone(),
+            package_path: input.package_path.clone(),
+            manifest_fingerprint: input.manifest_fingerprint.clone(),
             artifact_status: input.artifact_status,
             runtime_status: input.runtime_status,
+            availability_status: input.availability_status,
             checked_at: input.checked_at,
             last_error: input.last_error.clone(),
+            is_current: input.is_current,
         };
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
         inner.artifact_instances_by_key.insert(

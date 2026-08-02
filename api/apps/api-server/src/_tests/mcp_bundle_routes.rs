@@ -403,9 +403,15 @@ async fn app_with_installed_mcp_extension(
         panic!("verified MCP fixture must install without confirmation");
     };
     if let Some(bytes) = replacement_local_bytes {
-        tokio::fs::write(&installation.local_path, bytes)
-            .await
-            .unwrap();
+        tokio::fs::write(
+            installation
+                .local_path
+                .as_deref()
+                .expect("fixture local path"),
+            bytes,
+        )
+        .await
+        .unwrap();
     }
     Arc::get_mut(&mut state).unwrap().official_mcp_bundle_source =
         Arc::new(FailingLegacyMcpCatalogSource);

@@ -41,7 +41,7 @@ struct PluginArtifactMarker {
 struct ScannedPluginArtifact {
     local_version: Option<String>,
     local_checksum: Option<String>,
-    installed_path: Option<String>,
+    local_path: Option<String>,
     artifact_status: domain::PluginArtifactInstanceStatus,
     last_error: Option<String>,
 }
@@ -131,12 +131,6 @@ where
                 } else {
                     domain::PluginDesiredState::Disabled
                 };
-                let availability_status = if package_kind == RoutedPluginPackageKind::HostExtension
-                {
-                    domain::PluginAvailabilityStatus::PendingRestart
-                } else {
-                    domain::PluginAvailabilityStatus::Disabled
-                };
                 let signature_is_valid = matches!(
                     receipt.signature_status.as_deref(),
                     Some("verified" | "builtin")
@@ -145,6 +139,19 @@ where
                     .repository
                     .upsert_installation(&UpsertPluginInstallationInput {
                         installation_id: Uuid::now_v7(),
+                        category: match package_kind {
+                            RoutedPluginPackageKind::HostExtension => {
+                                domain::ExtensionCategory::HostExtensions
+                            }
+                            RoutedPluginPackageKind::ModelProviderRuntime
+                            | RoutedPluginPackageKind::DataSourceRuntime => {
+                                domain::ExtensionCategory::RuntimeExtensions
+                            }
+                            RoutedPluginPackageKind::CapabilityPlugin => {
+                                domain::ExtensionCategory::CapabilityPlugins
+                            }
+                        },
+                        organization: manifest.vendor.clone(),
                         provider_code: manifest
                             .plugin_code()
                             .map_err(map_framework_error)?
@@ -166,21 +173,17 @@ where
                             domain::PluginVerificationStatus::Invalid
                         },
                         desired_state,
-                        artifact_status: domain::PluginArtifactStatus::Ready,
-                        runtime_status: domain::PluginRuntimeStatus::Inactive,
-                        availability_status,
-                        package_path: None,
-                        installed_path: install_path.display().to_string(),
-                        checksum: receipt.checksum,
-                        manifest_fingerprint: receipt.manifest_fingerprint,
-                        signature_status: receipt.signature_status,
+                        expected_checksum: receipt.checksum,
+                        signature_status: super::install::extension_signature_status(
+                            receipt.signature_status.as_deref(),
+                        ),
                         signature_algorithm: receipt.signature_algorithm,
                         signing_key_id: receipt.signing_key_id,
-                        last_load_error: None,
                         metadata_json: json!({
                             "install_kind": "local_receipt_rebuild",
                             "plugin_type": plugin_type,
                         }),
+                        is_system_reserved: false,
                         actor_user_id,
                     })
                     .await?;
@@ -245,7 +248,7 @@ where
             local_artifact.last_error.as_deref(),
         )
         .await?;
-        if local_artifact.installed_path.is_some() && local_artifact.artifact_status.is_ready() {
+        if local_artifact.local_path.is_some() && local_artifact.artifact_status.is_ready() {
             return Ok(local_artifact);
         }
 
@@ -257,7 +260,7 @@ where
             &PackageIntakePolicy {
                 source_kind: installation.source_kind.clone(),
                 trust_mode: "allow_unsigned".to_string(),
-                expected_artifact_sha256: installation.checksum.clone(),
+                expected_artifact_sha256: installation.expected_checksum.clone(),
                 trusted_public_keys: self.official_source.trusted_public_keys(),
                 original_filename: Some(format!(
                     "{}-{}.1flowbasepkg",
@@ -284,7 +287,7 @@ where
                 compute_manifest_fingerprint(&install_path.join("manifest.yaml"))
                     .await
                     .map_err(map_framework_error)?;
-            if let Some(expected) = installation.manifest_fingerprint.as_deref() {
+            if let Some(expected) = local_artifact.manifest_fingerprint.as_deref() {
                 if expected != manifest_fingerprint {
                     return Err(ControlPlaneError::Conflict("plugin_artifact_mismatched").into());
                 }
@@ -292,7 +295,7 @@ where
             let checksum = intake
                 .checksum
                 .as_deref()
-                .or(installation.checksum.as_deref());
+                .or(installation.expected_checksum.as_deref());
             write_artifact_marker(
                 &install_path,
                 &installation.plugin_id,
@@ -301,7 +304,7 @@ where
                 Some(&manifest_fingerprint),
                 Some(&installation.source_kind),
                 Some(&installation.trust_level),
-                installation.signature_status.as_deref(),
+                Some(installation.signature_status.as_str()),
                 installation.signature_algorithm.as_deref(),
                 installation.signing_key_id.as_deref(),
             )?;
@@ -330,25 +333,14 @@ where
         &self,
         installation: &domain::PluginInstallationRecord,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
-        self.repository
-            .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
-                node_id: self.node_id.clone(),
-                installation_id: installation.id,
-                local_version: Some(installation.plugin_version.clone()),
-                local_checksum: installation.checksum.clone(),
-                installed_path: Some(installation.installed_path.clone()),
-                artifact_status: domain::PluginArtifactInstanceStatus::Ready,
-                runtime_status: domain::PluginRuntimeStatus::Inactive,
-                checked_at: OffsetDateTime::now_utc(),
-                last_error: None,
-            })
+        self.refresh_current_node_artifact_snapshot(installation)
             .await
     }
 
     pub(super) async fn ready_current_node_installation(
         &self,
         installation_id: Uuid,
-    ) -> Result<domain::PluginInstallationRecord> {
+    ) -> Result<domain::LocalPluginInstallationRecord> {
         let installation = self
             .repository
             .get_installation(installation_id)
@@ -363,14 +355,13 @@ where
             ))
             .into());
         }
-        let installed_path = artifact
-            .installed_path
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_missing"))?;
-        let mut local_installation = installation;
-        local_installation.installed_path = installed_path;
-        local_installation.artifact_status = domain::PluginArtifactStatus::Ready;
-        local_installation.runtime_status = artifact.runtime_status;
-        Ok(local_installation)
+        if artifact.local_path.is_none() {
+            return Err(ControlPlaneError::Conflict("plugin_artifact_missing").into());
+        }
+        Ok(domain::LocalPluginInstallationRecord {
+            installation,
+            artifact,
+        })
     }
 
     pub(super) async fn mark_current_node_runtime_status(
@@ -393,7 +384,14 @@ where
         &self,
         installation: &domain::PluginInstallationRecord,
     ) -> Result<Vec<u8>> {
-        if let Some(package_path) = installation.package_path.as_deref() {
+        let artifact = self
+            .repository
+            .get_artifact_instance(&self.node_id, installation.id)
+            .await?;
+        if let Some(package_path) = artifact
+            .as_ref()
+            .and_then(|artifact| artifact.package_path.as_deref())
+        {
             let path = Path::new(package_path);
             if path.is_file() {
                 return fs::read(path).with_context(|| {
@@ -435,12 +433,13 @@ where
         .get_artifact_instance(node_id, installation.id)
         .await?;
     let runtime_status = existing
+        .as_ref()
         .filter(|existing| {
             existing.artifact_status.is_ready()
                 && scanned.artifact_status.is_ready()
                 && existing.local_version == scanned.local_version
                 && existing.local_checksum == scanned.local_checksum
-                && existing.installed_path == scanned.installed_path
+                && existing.local_path == scanned.local_path
         })
         .map(|existing| existing.runtime_status)
         .unwrap_or(domain::PluginRuntimeStatus::Inactive);
@@ -450,11 +449,27 @@ where
             installation_id: installation.id,
             local_version: scanned.local_version,
             local_checksum: scanned.local_checksum,
-            installed_path: scanned.installed_path,
+            local_path: scanned.local_path,
+            package_path: existing
+                .as_ref()
+                .and_then(|record| record.package_path.clone()),
+            manifest_fingerprint: existing
+                .as_ref()
+                .and_then(|record| record.manifest_fingerprint.clone()),
             artifact_status: scanned.artifact_status,
             runtime_status,
+            availability_status: derive_availability_status(
+                installation.desired_state,
+                if scanned.artifact_status.is_ready() {
+                    domain::PluginArtifactStatus::Ready
+                } else {
+                    domain::PluginArtifactStatus::Missing
+                },
+                runtime_status,
+            ),
             checked_at: OffsetDateTime::now_utc(),
             last_error: scanned.last_error,
+            is_current: existing.as_ref().is_none_or(|record| record.is_current),
         })
         .await
 }
@@ -462,9 +477,9 @@ where
 pub async fn ready_current_node_plugin_installation<R>(
     repository: &R,
     node_id: &str,
-    install_root: &Path,
+    _install_root: &Path,
     installation_id: Uuid,
-) -> Result<domain::PluginInstallationRecord>
+) -> Result<domain::LocalPluginInstallationRecord>
 where
     R: PluginRepository + ?Sized,
 {
@@ -472,35 +487,26 @@ where
         .get_installation(installation_id)
         .await?
         .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-    if let Some(existing) = repository
+    let artifact = repository
         .get_artifact_instance(node_id, installation_id)
         .await?
-    {
-        if load_failed_snapshot_matches_installation(&existing, &installation, install_root) {
-            return Err(ControlPlaneError::Conflict("plugin_runtime_load_failed").into());
-        }
+        .ok_or(ControlPlaneError::Conflict("plugin_artifact_missing"))?;
+    if artifact.artifact_status == domain::PluginArtifactInstanceStatus::LoadFailed {
+        return Err(ControlPlaneError::Conflict("plugin_runtime_load_failed").into());
     }
-    let artifact = refresh_current_node_plugin_artifact_instance(
-        repository,
-        node_id,
-        install_root,
-        &installation,
-    )
-    .await?;
     if !artifact.artifact_status.is_ready() {
         return Err(ControlPlaneError::Conflict(error_code_for_artifact_status(
             artifact.artifact_status,
         ))
         .into());
     }
-    let installed_path = artifact
-        .installed_path
-        .ok_or(ControlPlaneError::Conflict("plugin_artifact_missing"))?;
-    let mut local_installation = installation;
-    local_installation.installed_path = installed_path;
-    local_installation.artifact_status = domain::PluginArtifactStatus::Ready;
-    local_installation.runtime_status = artifact.runtime_status;
-    Ok(local_installation)
+    if artifact.local_path.is_none() {
+        return Err(ControlPlaneError::Conflict("plugin_artifact_missing").into());
+    }
+    Ok(domain::LocalPluginInstallationRecord {
+        installation,
+        artifact,
+    })
 }
 
 pub async fn mark_current_node_plugin_runtime_status<R>(
@@ -520,56 +526,49 @@ where
         domain::PluginRuntimeStatus::LoadFailed => domain::PluginArtifactInstanceStatus::LoadFailed,
         _ => domain::PluginArtifactInstanceStatus::Ready,
     };
-    let (local_version, local_checksum, installed_path) = existing
-        .map(|record| {
-            (
-                record.local_version,
-                record.local_checksum,
-                record.installed_path,
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                Some(installation.plugin_version.clone()),
-                installation.checksum.clone(),
-                Some(installation.installed_path.clone()),
-            )
-        });
+    let (local_version, local_checksum, local_path, package_path, manifest_fingerprint, is_current) =
+        existing
+            .map(|record| {
+                (
+                    record.local_version,
+                    record.local_checksum,
+                    record.local_path,
+                    record.package_path,
+                    record.manifest_fingerprint,
+                    record.is_current,
+                )
+            })
+            .unwrap_or_else(|| {
+                (
+                    Some(installation.plugin_version.clone()),
+                    installation.expected_checksum.clone(),
+                    None,
+                    None,
+                    None,
+                    false,
+                )
+            });
     repository
         .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
             node_id: node_id.to_string(),
             installation_id: installation.id,
             local_version,
             local_checksum,
-            installed_path,
+            local_path,
+            package_path,
+            manifest_fingerprint,
             artifact_status,
             runtime_status,
+            availability_status: derive_availability_status(
+                installation.desired_state,
+                domain::PluginArtifactStatus::Ready,
+                runtime_status,
+            ),
             checked_at: OffsetDateTime::now_utc(),
             last_error,
+            is_current,
         })
         .await
-}
-
-fn load_failed_snapshot_matches_installation(
-    artifact: &domain::PluginArtifactInstanceRecord,
-    installation: &domain::PluginInstallationRecord,
-    install_root: &Path,
-) -> bool {
-    if artifact.artifact_status != domain::PluginArtifactInstanceStatus::LoadFailed {
-        return false;
-    }
-    if artifact.local_version.as_deref() != Some(installation.plugin_version.as_str()) {
-        return false;
-    }
-    if let Some(expected_checksum) = installation.checksum.as_deref() {
-        if artifact.local_checksum.as_deref() != Some(expected_checksum) {
-            return false;
-        }
-    }
-    let expected_path = expected_current_node_artifact_path(install_root, installation)
-        .display()
-        .to_string();
-    artifact.installed_path.as_deref() == Some(expected_path.as_str())
 }
 
 async fn scan_current_node_artifact_at(
@@ -593,7 +592,7 @@ async fn scan_current_node_artifact_at(
     ScannedPluginArtifact {
         local_version: None,
         local_checksum: None,
-        installed_path: None,
+        local_path: None,
         artifact_status: domain::PluginArtifactInstanceStatus::Missing,
         last_error: Some("artifact_missing".to_string()),
     }
@@ -672,7 +671,7 @@ async fn inspect_artifact_path(
             return ScannedPluginArtifact {
                 local_version: None,
                 local_checksum: None,
-                installed_path: None,
+                local_path: None,
                 artifact_status: domain::PluginArtifactInstanceStatus::Missing,
                 last_error: Some(error),
             };
@@ -681,7 +680,7 @@ async fn inspect_artifact_path(
             return ScannedPluginArtifact {
                 local_version: None,
                 local_checksum: None,
-                installed_path: Some(path.display().to_string()),
+                local_path: Some(path.display().to_string()),
                 artifact_status: domain::PluginArtifactInstanceStatus::Corrupted,
                 last_error: Some(error),
             };
@@ -690,7 +689,7 @@ async fn inspect_artifact_path(
     let base = ScannedPluginArtifact {
         local_version: Some(marker.version.clone()),
         local_checksum: marker.checksum.clone(),
-        installed_path: Some(path.display().to_string()),
+        local_path: Some(path.display().to_string()),
         artifact_status: domain::PluginArtifactInstanceStatus::Ready,
         last_error: None,
     };
@@ -709,7 +708,7 @@ async fn inspect_artifact_path(
             ..base
         };
     }
-    match (&installation.checksum, &marker.checksum) {
+    match (&installation.expected_checksum, &marker.checksum) {
         (Some(expected), Some(actual)) if expected != actual => {
             return ScannedPluginArtifact {
                 artifact_status: domain::PluginArtifactInstanceStatus::Ready,
@@ -762,16 +761,6 @@ async fn inspect_artifact_path(
             ..base
         };
     }
-    if let Some(expected) = installation.manifest_fingerprint.as_deref() {
-        if expected != actual_fingerprint {
-            return ScannedPluginArtifact {
-                artifact_status: domain::PluginArtifactInstanceStatus::Ready,
-                last_error: Some("expected_manifest_fingerprint_mismatch".to_string()),
-                ..base
-            };
-        }
-    }
-
     base
 }
 

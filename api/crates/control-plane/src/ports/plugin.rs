@@ -3,6 +3,8 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct UpsertPluginInstallationInput {
     pub installation_id: Uuid,
+    pub category: domain::ExtensionCategory,
+    pub organization: String,
     pub provider_code: String,
     pub plugin_id: String,
     pub plugin_version: String,
@@ -13,25 +15,18 @@ pub struct UpsertPluginInstallationInput {
     pub trust_level: String,
     pub verification_status: domain::PluginVerificationStatus,
     pub desired_state: domain::PluginDesiredState,
-    pub artifact_status: domain::PluginArtifactStatus,
-    pub runtime_status: domain::PluginRuntimeStatus,
-    pub availability_status: domain::PluginAvailabilityStatus,
-    pub package_path: Option<String>,
-    pub installed_path: String,
-    pub checksum: Option<String>,
-    pub manifest_fingerprint: Option<String>,
-    pub signature_status: Option<String>,
+    pub expected_checksum: Option<String>,
+    pub signature_status: domain::ExtensionSignatureStatus,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
-    pub last_load_error: Option<String>,
     pub metadata_json: serde_json::Value,
+    pub is_system_reserved: bool,
     pub actor_user_id: Uuid,
 }
 
 #[derive(Debug, Clone)]
-pub struct CommitPluginInstallationProjectionInput {
+pub struct CommitPluginInstallationInput {
     pub installation: UpsertPluginInstallationInput,
-    pub extension_installation: UpsertExtensionInstallationInput,
     pub artifact_instance: UpsertPluginArtifactInstanceInput,
     pub package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
     pub node_contributions: ReplaceInstallationNodeContributionsInput,
@@ -72,26 +67,7 @@ pub struct UpdatePluginTaskStatusInput {
 pub struct UpdatePluginDesiredStateInput {
     pub installation_id: Uuid,
     pub desired_state: domain::PluginDesiredState,
-    pub availability_status: domain::PluginAvailabilityStatus,
-}
-
-#[derive(Debug, Clone)]
-pub struct UpdatePluginArtifactSnapshotInput {
-    pub installation_id: Uuid,
-    pub artifact_status: domain::PluginArtifactStatus,
-    pub availability_status: domain::PluginAvailabilityStatus,
-    pub package_path: Option<String>,
-    pub installed_path: String,
-    pub checksum: Option<String>,
-    pub manifest_fingerprint: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct UpdatePluginRuntimeSnapshotInput {
-    pub installation_id: Uuid,
-    pub runtime_status: domain::PluginRuntimeStatus,
-    pub availability_status: domain::PluginAvailabilityStatus,
-    pub last_load_error: Option<String>,
+    pub actor_user_id: Uuid,
 }
 
 #[derive(Debug, Clone)]
@@ -100,11 +76,15 @@ pub struct UpsertPluginArtifactInstanceInput {
     pub installation_id: Uuid,
     pub local_version: Option<String>,
     pub local_checksum: Option<String>,
-    pub installed_path: Option<String>,
+    pub local_path: Option<String>,
+    pub package_path: Option<String>,
+    pub manifest_fingerprint: Option<String>,
     pub artifact_status: domain::PluginArtifactInstanceStatus,
     pub runtime_status: domain::PluginRuntimeStatus,
+    pub availability_status: domain::PluginAvailabilityStatus,
     pub checked_at: time::OffsetDateTime,
     pub last_error: Option<String>,
+    pub is_current: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -217,11 +197,11 @@ pub trait OfficialPluginSourcePort: Send + Sync {
 
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
-    async fn commit_plugin_installation_projection(
+    async fn commit_plugin_installation(
         &self,
-        _input: &CommitPluginInstallationProjectionInput,
+        _input: &CommitPluginInstallationInput,
     ) -> anyhow::Result<domain::PluginInstallationRecord> {
-        anyhow::bail!("plugin installation projection commit is not supported")
+        anyhow::bail!("unified plugin installation commit is not supported")
     }
     async fn upsert_installation(
         &self,
@@ -231,6 +211,22 @@ pub trait PluginRepository: Send + Sync {
         &self,
         installation_id: Uuid,
     ) -> anyhow::Result<Option<domain::PluginInstallationRecord>>;
+    async fn get_local_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::LocalPluginInstallationRecord>> {
+        let Some(installation) = self.get_installation(installation_id).await? else {
+            return Ok(None);
+        };
+        let Some(artifact) = self.get_artifact_instance(node_id, installation_id).await? else {
+            return Ok(None);
+        };
+        Ok(Some(domain::LocalPluginInstallationRecord {
+            installation,
+            artifact,
+        }))
+    }
     async fn list_installations(&self) -> anyhow::Result<Vec<domain::PluginInstallationRecord>>;
     async fn upsert_plugin_package_catalog_projection(
         &self,
@@ -250,14 +246,6 @@ pub trait PluginRepository: Send + Sync {
     async fn update_desired_state(
         &self,
         input: &UpdatePluginDesiredStateInput,
-    ) -> anyhow::Result<domain::PluginInstallationRecord>;
-    async fn update_artifact_snapshot(
-        &self,
-        input: &UpdatePluginArtifactSnapshotInput,
-    ) -> anyhow::Result<domain::PluginInstallationRecord>;
-    async fn update_runtime_snapshot(
-        &self,
-        input: &UpdatePluginRuntimeSnapshotInput,
     ) -> anyhow::Result<domain::PluginInstallationRecord>;
     async fn upsert_artifact_instance(
         &self,
@@ -416,6 +404,7 @@ pub trait FrontendBlockCatalogRepository: Send + Sync {
 
     async fn list_workspace_frontend_blocks(
         &self,
+        node_id: &str,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::FrontendBlockCatalogEntry>>;
 }

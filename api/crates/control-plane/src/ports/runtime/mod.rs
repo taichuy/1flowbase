@@ -1443,21 +1443,21 @@ pub struct ProviderLiveEventSenders {
 pub trait ProviderRuntimePort: Send + Sync {
     async fn ensure_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()>;
     async fn validate_provider(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
     async fn list_models(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: serde_json::Value,
     ) -> anyhow::Result<Vec<ProviderModelDescriptor>>;
     async fn get_balance(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: serde_json::Value,
     ) -> anyhow::Result<ProviderBalanceResult> {
         let _ = installation;
@@ -1466,7 +1466,7 @@ pub trait ProviderRuntimePort: Send + Sync {
     }
     async fn count_tokens(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> anyhow::Result<ProviderCountTokensResult> {
         let _ = installation;
@@ -1475,7 +1475,7 @@ pub trait ProviderRuntimePort: Send + Sync {
     }
     async fn compact(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderCompactResult> {
         let _ = installation;
@@ -1484,12 +1484,12 @@ pub trait ProviderRuntimePort: Send + Sync {
     }
     async fn invoke_stream(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput>;
     async fn invoke_stream_with_live_events(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
         live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
@@ -1502,39 +1502,39 @@ pub trait ProviderRuntimePort: Send + Sync {
 pub trait DataSourceRuntimePort: Send + Sync {
     async fn ensure_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()>;
     async fn validate_config(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         config_json: serde_json::Value,
         secret_json: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
     async fn test_connection(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         config_json: serde_json::Value,
         secret_json: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
     async fn discover_catalog(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         config_json: serde_json::Value,
         secret_json: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
     async fn describe_resource(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceDescribeResourceInput,
     ) -> anyhow::Result<DataSourceResourceDescriptor>;
     async fn preview_read(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourcePreviewReadInput,
     ) -> anyhow::Result<DataSourcePreviewReadOutput>;
     async fn execute_sql(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceExecuteSqlInput,
     ) -> anyhow::Result<NativeSqlExecutionOutput> {
         let _ = (installation, input);

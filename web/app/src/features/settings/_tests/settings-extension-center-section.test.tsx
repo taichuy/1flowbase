@@ -34,6 +34,7 @@ const extensionsApi = vi.hoisted(() => ({
   fetchSettingsExtensionCatalogEntry: vi.fn(),
   checkSettingsExtensionUpdates: vi.fn(),
   installSettingsExtension: vi.fn(),
+  deleteSettingsInstalledExtension: vi.fn(),
   getSettingsExtensionRiskChallenge: vi.fn(),
   previewSettingsInstalledMcpExtension: vi.fn(),
   applySettingsInstalledMcpExtension: vi.fn(),
@@ -91,11 +92,12 @@ const installedEntry = {
   artifact_id: 'openai',
   version: '1.0.0',
   node_id: 'node-1',
-  source: 'official',
-  trust: 'official',
+  source_kind: 'official',
+  trust_level: 'official',
   warnings: [],
   local_path: '/api/plugins/openai',
-  checksum: 'sha256:installed',
+  expected_checksum: 'sha256:installed',
+  local_checksum: 'sha256:installed',
   signature_status: 'valid',
   signature_algorithm: 'ed25519',
   signing_key_id: 'official-key',
@@ -103,41 +105,47 @@ const installedEntry = {
   is_current: true,
   application_action: 'configure_model_provider' as const,
   application_status: 'available' as const,
-  installed_by: 'user-1',
+  created_by: 'user-1',
   created_at: '2026-08-01T10:00:00Z',
   updated_at: '2026-08-01T10:00:00Z',
   installed_versions: [
     {
       id: 'extension-installation-1',
       version: '1.0.0',
-      source: 'official',
-      trust: 'official',
+      source_kind: 'official',
+      trust_level: 'official',
       warnings: [],
       local_path: '/api/plugins/openai/1.0.0',
-      checksum: 'sha256:installed',
+      expected_checksum: 'sha256:installed',
+      local_checksum: 'sha256:installed',
       signature_status: 'valid',
       signature_algorithm: 'ed25519',
       signing_key_id: 'official-key',
       status: 'installed',
       is_current: true,
-      installed_by: 'user-1',
+      deletable: false,
+      delete_reasons: ['current_version'],
+      created_by: 'user-1',
       created_at: '2026-08-01T10:00:00Z',
       updated_at: '2026-08-01T10:00:00Z'
     },
     {
       id: 'extension-installation-0',
       version: '0.9.0',
-      source: 'upload',
-      trust: 'unknown',
+      source_kind: 'upload',
+      trust_level: 'unknown',
       warnings: [],
       local_path: '/api/plugins/openai/0.9.0',
-      checksum: 'sha256:previous',
+      expected_checksum: 'sha256:previous',
+      local_checksum: 'sha256:previous',
       signature_status: 'missing',
       signature_algorithm: null,
       signing_key_id: null,
       status: 'installed',
       is_current: false,
-      installed_by: 'user-1',
+      deletable: true,
+      delete_reasons: [],
+      created_by: 'user-1',
       created_at: '2026-07-01T10:00:00Z',
       updated_at: '2026-07-01T10:00:00Z'
     }
@@ -276,6 +284,7 @@ describe('SettingsExtensionCenterSection', () => {
       application_action: 'configure_model_provider',
       application_status: 'available'
     });
+    extensionsApi.deleteSettingsInstalledExtension.mockResolvedValue(undefined);
     extensionsApi.getSettingsExtensionRiskChallenge.mockReturnValue(null);
     extensionsApi.getSettingsInstalledMcpExtensionConflict.mockReturnValue(
       null
@@ -342,7 +351,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
     expect(
       screen
-        .getByRole('button', { name: '更新' })
+        .getByRole('button', { name: '同步最新版本' })
         .closest('[data-update-state]')
     ).toHaveAttribute('data-update-state', 'update_available');
 
@@ -399,6 +408,16 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       within(drawer).getByText('/api/plugins/openai/0.9.0')
     ).toBeInTheDocument();
+    const deleteButtons = within(drawer).getAllByRole('button', { name: '删除' });
+    expect(deleteButtons[0]).toBeDisabled();
+    expect(deleteButtons[1]).toBeEnabled();
+    fireEvent.click(deleteButtons[1]);
+    const confirm = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
+    await confirm?.onOk?.();
+    expect(extensionsApi.deleteSettingsInstalledExtension).toHaveBeenCalledWith(
+      'extension-installation-0',
+      'csrf-123'
+    );
   });
 
   test('AC-005 routes Agent Flow through the generic catalog and links to local template management', async () => {
@@ -435,9 +454,13 @@ describe('SettingsExtensionCenterSection', () => {
     const row = await screen.findByRole('row', { name: /openai/ });
     fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() =>
-      expect(within(row).getByRole('button', { name: '更新' })).toBeEnabled()
+      expect(
+        within(row).getByRole('button', { name: '同步最新版本' })
+      ).toBeEnabled()
     );
-    fireEvent.click(within(row).getByRole('button', { name: '更新' }));
+    fireEvent.click(
+      within(row).getByRole('button', { name: '同步最新版本' })
+    );
 
     await waitFor(() => {
       expect(
@@ -505,10 +528,10 @@ describe('SettingsExtensionCenterSection', () => {
     const targetRow = await screen.findByRole('row', { name: /openai/ });
     const otherRow = await screen.findByRole('row', { name: /anthropic/ });
     const targetButton = within(targetRow).getByRole('button', {
-      name: '更新'
+      name: '同步最新版本'
     });
     const otherButton = within(otherRow).getByRole('button', {
-      name: '更新'
+      name: '同步最新版本'
     });
     fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
@@ -606,7 +629,9 @@ describe('SettingsExtensionCenterSection', () => {
     fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
       expect(
-        within(row).getByRole('button', { name: '更新' }).closest('span')
+        within(row)
+          .getByRole('button', { name: '同步最新版本' })
+          .closest('span')
           ?.parentElement
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });

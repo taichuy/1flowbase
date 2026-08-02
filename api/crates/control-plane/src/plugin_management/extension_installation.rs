@@ -9,29 +9,13 @@ use uuid::Uuid;
 
 use crate::{errors::ControlPlaneError, ports::ExtensionInstallationRepository};
 
-use super::{
-    catalog::{extension_source, extension_trust, extension_trust_values},
-    route_plugin_package, ExtensionCatalogCategory, RoutedPluginPackageKind,
-};
+use super::ExtensionCatalogCategory;
 
 pub const EXTENSION_RISK_CHECKSUM_MISMATCH: &str = "checksum_mismatch";
 pub const EXTENSION_RISK_CHECKSUM_MISSING: &str = "checksum_missing";
 pub const EXTENSION_RISK_SIGNATURE_MISSING: &str = "signature_missing";
 pub const EXTENSION_RISK_SIGNATURE_INVALID: &str = "signature_invalid";
 pub const EXTENSION_RISK_SIGNING_KEY_UNKNOWN: &str = "signing_key_unknown";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LegacyExtensionAdoptionWarning {
-    pub plugin_installation_id: Uuid,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LegacyExtensionAdoptionReport {
-    pub adopted: usize,
-    pub already_present: usize,
-    pub warnings: Vec<LegacyExtensionAdoptionWarning>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtensionRiskOverride {
@@ -152,118 +136,6 @@ impl<R> ExtensionInstallationService<R>
 where
     R: ExtensionInstallationRepository,
 {
-    pub async fn adopt_plugin_installations(
-        &self,
-        node_id: &str,
-        installations: &[domain::PluginInstallationRecord],
-    ) -> Result<LegacyExtensionAdoptionReport> {
-        let mut report = LegacyExtensionAdoptionReport::default();
-        for installation in installations {
-            match self.adopt_plugin_installation(node_id, installation).await {
-                Ok(LegacyExtensionAdoptionDisposition::Adopted) => {
-                    report.adopted = report.adopted.saturating_add(1);
-                }
-                Ok(LegacyExtensionAdoptionDisposition::AlreadyPresent) => {
-                    report.already_present = report.already_present.saturating_add(1);
-                }
-                Err(error) => report.warnings.push(LegacyExtensionAdoptionWarning {
-                    plugin_installation_id: installation.id,
-                    message: error.to_string(),
-                }),
-            }
-        }
-        Ok(report)
-    }
-
-    async fn adopt_plugin_installation(
-        &self,
-        node_id: &str,
-        installation: &domain::PluginInstallationRecord,
-    ) -> Result<LegacyExtensionAdoptionDisposition> {
-        let local_path = PathBuf::from(&installation.installed_path);
-        if !legacy_installation_is_present(&local_path).await? {
-            anyhow::bail!("legacy plugin installation path is not a readable local package");
-        }
-        let manifest_path = local_path.join("manifest.yaml");
-        let manifest_raw = fs::read_to_string(&manifest_path)
-            .await
-            .with_context(|| format!("failed to read {}", manifest_path.display()))?;
-        let manifest = plugin_framework::parse_plugin_manifest(&manifest_raw)
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        let artifact_id = manifest
-            .plugin_code()
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?
-            .to_string();
-        if artifact_id != installation.provider_code
-            || manifest.version != installation.plugin_version
-        {
-            anyhow::bail!("legacy plugin installation identity does not match its local manifest");
-        }
-        let category = match route_plugin_package(&manifest)? {
-            RoutedPluginPackageKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
-            RoutedPluginPackageKind::ModelProviderRuntime
-            | RoutedPluginPackageKind::DataSourceRuntime => {
-                ExtensionCatalogCategory::RuntimeExtensions
-            }
-            RoutedPluginPackageKind::CapabilityPlugin => {
-                ExtensionCatalogCategory::CapabilityPlugins
-            }
-        };
-        let application_action = application_action_for_manifest(&manifest);
-        let identity = domain::ExtensionInstallationIdentity {
-            category: domain::ExtensionCategory::parse(category.as_str())
-                .ok_or(ControlPlaneError::InvalidInput("extension_category"))?,
-            organization: manifest.vendor,
-            artifact_id,
-            version: manifest.version,
-            node_id: node_id.to_string(),
-        };
-        if self
-            .repository
-            .find_extension_installation(&identity)
-            .await?
-            .is_some()
-        {
-            return Ok(LegacyExtensionAdoptionDisposition::AlreadyPresent);
-        }
-
-        let signature_status = legacy_signature_status(installation.signature_status.as_deref());
-        let checksum = installation
-            .checksum
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string());
-        let warnings = integrity_warnings(
-            installation.checksum.as_deref(),
-            &checksum,
-            signature_status,
-        );
-        self.repository
-            .upsert_extension_installation(&crate::ports::UpsertExtensionInstallationInput {
-                installation_id: Uuid::now_v7(),
-                identity,
-                source: extension_source(&installation.source_kind).to_string(),
-                trust: extension_trust(installation).to_string(),
-                local_path: installation.installed_path.clone(),
-                checksum,
-                signature_status,
-                signature_algorithm: installation.signature_algorithm.clone(),
-                signing_key_id: installation.signing_key_id.clone(),
-                warnings,
-                receipt: json!({
-                    "kind": "adopted_plugin_installation",
-                    "artifact_layout": "unpacked_directory",
-                    "plugin_installation_id": installation.id,
-                    "manifest_fingerprint": installation.manifest_fingerprint,
-                }),
-                application_action,
-                status: domain::ExtensionInstallationStatus::Installed,
-                is_current: true,
-                installed_by: installation.created_by,
-            })
-            .await?;
-        Ok(LegacyExtensionAdoptionDisposition::Adopted)
-    }
-
     pub async fn install_from_bytes(
         &self,
         command: InstallExtensionArtifactCommand,
@@ -353,7 +225,7 @@ where
         };
         let existing = self
             .repository
-            .find_extension_installation(&identity)
+            .find_extension_installation(&command.node_id, &identity)
             .await?;
         let installation = self
             .repository
@@ -363,10 +235,12 @@ where
                     .map(|record| record.id)
                     .unwrap_or_else(Uuid::now_v7),
                 identity,
-                source: command.source,
-                trust: command.trust,
+                node_id: command.node_id,
+                source_kind: canonical_extension_source_kind(&command.source).to_string(),
+                trust_level: canonical_extension_trust_level(&command.trust).to_string(),
                 local_path: local_path.to_string_lossy().into_owned(),
-                checksum: actual_checksum,
+                expected_checksum: receipt.expected_checksum.clone(),
+                local_checksum: actual_checksum,
                 signature_status: command.signature_status,
                 signature_algorithm: command.signature_algorithm,
                 signing_key_id: command.signing_key_id,
@@ -375,7 +249,7 @@ where
                 application_action: command.application_action,
                 status: domain::ExtensionInstallationStatus::Installed,
                 is_current: true,
-                installed_by: command.actor_user_id,
+                created_by: command.actor_user_id,
             })
             .await?;
 
@@ -409,23 +283,17 @@ where
 
     pub async fn find_local_installation(
         &self,
+        node_id: &str,
         identity: &domain::ExtensionInstallationIdentity,
     ) -> Result<Option<domain::ExtensionInstallationRecord>> {
-        let Some(mut record) = self
+        let Some(record) = self
             .repository
-            .find_extension_installation(identity)
+            .find_extension_installation(node_id, identity)
             .await?
         else {
             return Ok(None);
         };
-        match local_artifact_is_present(&record.local_path).await {
-            Ok(true) => {
-                record.status = domain::ExtensionInstallationStatus::Installed;
-                Ok(Some(record))
-            }
-            Ok(false) => Ok(None),
-            Err(error) => Err(error).context("failed to inspect local extension artifact"),
-        }
+        Ok((record.status == domain::ExtensionInstallationStatus::Installed).then_some(record))
     }
 
     pub async fn find_local_installation_by_id(
@@ -440,11 +308,15 @@ where
         else {
             return Ok(None);
         };
-        match local_artifact_is_present(&record.local_path).await {
+        let Some(local_path) = record.local_path.as_deref() else {
+            return Ok(None);
+        };
+        match local_artifact_is_present(local_path).await {
             Ok(true) => Ok(Some(record)),
             Ok(false) => {
                 self.repository
                     .set_extension_installation_status(
+                        node_id,
                         installation_id,
                         domain::ExtensionInstallationStatus::Missing,
                     )
@@ -467,11 +339,15 @@ where
         else {
             return Ok(None);
         };
-        match local_artifact_is_present(&record.local_path).await {
+        let Some(local_path) = record.local_path.as_deref() else {
+            return Ok(None);
+        };
+        match local_artifact_is_present(local_path).await {
             Ok(true) => {}
             Ok(false) => {
                 self.repository
                     .set_extension_installation_status(
+                        node_id,
                         installation_id,
                         domain::ExtensionInstallationStatus::Missing,
                     )
@@ -497,14 +373,54 @@ where
         else {
             return Ok(None);
         };
-        match fs::remove_file(&record.local_path).await {
-            Ok(()) => {}
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => return Err(error).context("failed to delete extension artifact"),
+        let decision = self
+            .repository
+            .extension_deletion_decision(node_id, installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
+        if !decision.deletable {
+            return Err(
+                ControlPlaneError::Conflict(deletion_conflict_code(&decision.reasons)).into(),
+            );
         }
-        self.repository
+        let Some(local_path) = record.local_path.as_deref() else {
+            return Ok(None);
+        };
+        let local_path = PathBuf::from(local_path);
+        let tombstone = local_path.with_file_name(format!(
+            ".{}.deleting-{}",
+            local_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("extension-artifact"),
+            Uuid::now_v7()
+        ));
+        let moved = match fs::rename(&local_path, &tombstone).await {
+            Ok(()) => true,
+            Err(error) if error.kind() == ErrorKind::NotFound => false,
+            Err(error) => return Err(error).context("failed to stage extension artifact deletion"),
+        };
+        let removed = self
+            .repository
             .remove_extension_installation(node_id, installation_id)
-            .await
+            .await;
+        let removed = match removed {
+            Ok(removed) => removed,
+            Err(error) => {
+                if moved {
+                    fs::rename(&tombstone, &local_path)
+                        .await
+                        .context("failed to restore extension artifact after database rejection")?;
+                }
+                return Err(error);
+            }
+        };
+        if moved {
+            remove_local_artifact(&tombstone)
+                .await
+                .context("failed to remove staged extension artifact")?;
+        }
+        Ok(removed)
     }
 
     pub async fn reconcile_node_inventory(&self, node_id: &str) -> Result<usize> {
@@ -519,6 +435,7 @@ where
                     if record.status != domain::ExtensionInstallationStatus::Installed {
                         self.repository
                             .set_extension_installation_status(
+                                node_id,
                                 record.id,
                                 domain::ExtensionInstallationStatus::Installed,
                             )
@@ -528,6 +445,7 @@ where
                 Ok(false) => {
                     self.repository
                         .set_extension_installation_status(
+                            node_id,
                             record.id,
                             domain::ExtensionInstallationStatus::Missing,
                         )
@@ -541,89 +459,39 @@ where
     }
 }
 
-pub(super) fn extension_projection_for_plugin_installation(
-    node_id: &str,
-    installation: &crate::ports::UpsertPluginInstallationInput,
-    manifest: &plugin_framework::PluginManifestV1,
-) -> Result<crate::ports::UpsertExtensionInstallationInput> {
-    let category = match route_plugin_package(manifest)? {
-        RoutedPluginPackageKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
-        RoutedPluginPackageKind::ModelProviderRuntime
-        | RoutedPluginPackageKind::DataSourceRuntime => ExtensionCatalogCategory::RuntimeExtensions,
-        RoutedPluginPackageKind::CapabilityPlugin => ExtensionCatalogCategory::CapabilityPlugins,
-    };
-    let signature_status = legacy_signature_status(installation.signature_status.as_deref());
-    let checksum = installation
-        .checksum
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-    Ok(crate::ports::UpsertExtensionInstallationInput {
-        installation_id: Uuid::now_v7(),
-        identity: domain::ExtensionInstallationIdentity {
-            category: domain::ExtensionCategory::parse(category.as_str())
-                .ok_or(ControlPlaneError::InvalidInput("extension_category"))?,
-            organization: manifest.vendor.clone(),
-            artifact_id: manifest
-                .plugin_code()
-                .map_err(|error| anyhow::anyhow!(error.to_string()))?
-                .to_string(),
-            version: manifest.version.clone(),
-            node_id: node_id.to_string(),
-        },
-        source: extension_source(&installation.source_kind).to_string(),
-        trust: extension_trust_values(&installation.source_kind, &installation.trust_level)
-            .to_string(),
-        local_path: installation.installed_path.clone(),
-        checksum: checksum.clone(),
-        signature_status,
-        signature_algorithm: installation.signature_algorithm.clone(),
-        signing_key_id: installation.signing_key_id.clone(),
-        warnings: integrity_warnings(
-            installation.checksum.as_deref(),
-            &checksum,
-            signature_status,
-        ),
-        receipt: json!({
-            "kind": "plugin_installation_projection",
-            "artifact_layout": "unpacked_directory",
-            "plugin_installation_id": installation.installation_id,
-            "manifest_fingerprint": installation.manifest_fingerprint,
-        }),
-        application_action: application_action_for_manifest(manifest),
-        status: domain::ExtensionInstallationStatus::Installed,
-        is_current: true,
-        installed_by: installation.actor_user_id,
-    })
-}
-
-fn application_action_for_manifest(
-    manifest: &plugin_framework::PluginManifestV1,
-) -> domain::ExtensionApplicationAction {
-    if manifest
-        .slot_codes
-        .iter()
-        .any(|slot| slot == "model_provider")
-    {
-        domain::ExtensionApplicationAction::ConfigureModelProvider
-    } else {
-        domain::ExtensionApplicationAction::None
+fn deletion_conflict_code(reasons: &[String]) -> &'static str {
+    match reasons.first().map(String::as_str) {
+        Some("system_reserved") => "extension_system_reserved",
+        Some("current_version") => "extension_current_version",
+        Some("workspace_assignment") => "extension_workspace_assignment",
+        Some("active_task") => "extension_active_task",
+        Some("active_worker") => "extension_active_worker",
+        Some("model_provider_instance") => "extension_model_provider_instance",
+        Some("model_provider_preview") => "extension_model_provider_preview",
+        Some("data_source_instance") => "extension_data_source_instance",
+        Some("host_infrastructure_config") => "extension_host_infrastructure_config",
+        Some("application_js_selection") => "extension_application_js_selection",
+        Some("application_source") => "extension_application_source",
+        Some("mcp_import") => "extension_mcp_import",
+        _ => "extension_installation_delete_blocked",
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LegacyExtensionAdoptionDisposition {
-    Adopted,
-    AlreadyPresent,
+fn canonical_extension_source_kind(source: &str) -> &str {
+    match source {
+        "official" => "official_registry",
+        "mirror" => "mirror_registry",
+        "upload" => "uploaded",
+        canonical => canonical,
+    }
 }
 
-async fn legacy_installation_is_present(path: &PathBuf) -> Result<bool> {
-    match fs::metadata(path).await {
-        Ok(metadata) if metadata.is_dir() => {
-            Ok(fs::metadata(path.join("manifest.yaml")).await.is_ok())
-        }
-        Ok(_) => Ok(false),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(error).context("failed to inspect legacy plugin installation"),
+fn canonical_extension_trust_level(trust: &str) -> &str {
+    match trust {
+        "official" => "verified_official",
+        "trusted" => "checksum_only",
+        "unknown" => "unverified",
+        canonical => canonical,
     }
 }
 
@@ -640,14 +508,29 @@ async fn local_artifact_is_present(path: &str) -> std::io::Result<bool> {
     }
 }
 
+async fn remove_local_artifact(path: &std::path::Path) -> std::io::Result<()> {
+    let path = path.to_path_buf();
+    match fs::metadata(&path).await {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path).await,
+        Ok(_) => fs::remove_file(path).await,
+        Err(error) => Err(error),
+    }
+}
+
 async fn local_artifact_matches_record(
     record: &domain::ExtensionInstallationRecord,
 ) -> std::io::Result<bool> {
-    let path = PathBuf::from(&record.local_path);
+    let Some(local_path) = record.local_path.as_deref() else {
+        return Ok(false);
+    };
+    let path = PathBuf::from(local_path);
     match fs::metadata(&path).await {
         Ok(metadata) if metadata.is_file() => {
             let bytes = fs::read(path).await?;
-            Ok(record.checksum == "unknown" || sha256_checksum(&bytes) == record.checksum)
+            Ok(record
+                .expected_checksum
+                .as_deref()
+                .is_none_or(|expected| sha256_checksum(&bytes) == expected))
         }
         Ok(metadata) if metadata.is_dir() => {
             Ok(fs::metadata(path.join("manifest.yaml")).await.is_ok())
@@ -655,15 +538,6 @@ async fn local_artifact_matches_record(
         Ok(_) => Ok(false),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error),
-    }
-}
-
-fn legacy_signature_status(value: Option<&str>) -> domain::ExtensionSignatureStatus {
-    match value {
-        Some("verified" | "builtin") => domain::ExtensionSignatureStatus::Verified,
-        Some("unknown_key") => domain::ExtensionSignatureStatus::UnknownKey,
-        Some("invalid") => domain::ExtensionSignatureStatus::Invalid,
-        _ => domain::ExtensionSignatureStatus::Missing,
     }
 }
 
@@ -689,7 +563,6 @@ fn installation_identity(
         organization: command.organization.clone(),
         artifact_id: command.artifact_id.clone(),
         version: command.version.clone(),
-        node_id: command.node_id.clone(),
     })
 }
 
@@ -753,7 +626,7 @@ pub fn installed_extension_integrity_warnings(
     merge_integrity_warnings(
         installation.warnings.clone(),
         integrity_warnings(
-            Some(&installation.checksum),
+            installation.expected_checksum.as_deref(),
             &sha256_checksum(artifact_bytes),
             installation.signature_status,
         ),

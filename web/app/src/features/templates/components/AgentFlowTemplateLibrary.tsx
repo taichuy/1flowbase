@@ -272,7 +272,7 @@ export function AgentFlowTemplateLibrary() {
                         ) : null}
                       </Space>
                     }
-                    description={version.source}
+                    description={version.source_kind}
                   />
                 </List.Item>
               )}

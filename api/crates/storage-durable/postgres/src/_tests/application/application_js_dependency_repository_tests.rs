@@ -4,10 +4,7 @@ use control_plane::ports::{
     PluginRepository, ReplaceApplicationJsDependencySelectionInput,
     ReplaceInstallationJsDependenciesInput, UpsertPluginInstallationInput,
 };
-use domain::{
-    ApplicationType, PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState,
-    PluginRuntimeStatus, PluginVerificationStatus,
-};
+use domain::{ApplicationType, PluginDesiredState, PluginVerificationStatus};
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -80,6 +77,8 @@ async fn seed_js_dependency(
         store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: format!("fixture_js_dependency_pack_{version}"),
             plugin_id: format!("fixture_js_dependency_pack@{version}"),
             plugin_version: version.into(),
@@ -90,18 +89,12 @@ async fn seed_js_dependency(
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: format!("/tmp/plugins/fixture_js_dependency_pack/{version}"),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor_id,
         },
     )

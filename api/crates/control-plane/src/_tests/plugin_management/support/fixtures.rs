@@ -785,6 +785,8 @@ capabilities:
     let installation = repository
         .upsert_installation(&UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: ExtensionCategory::RuntimeExtensions,
+            organization: "1flowbase".into(),
             provider_code: provider_code.into(),
             plugin_id: format!("{provider_code}@{plugin_version}"),
             plugin_version: plugin_version.into(),
@@ -795,28 +797,40 @@ capabilities:
             trust_level: "checksum_only".into(),
             verification_status: domain::PluginVerificationStatus::Valid,
             desired_state,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: if matches!(desired_state, PluginDesiredState::Disabled) {
-                PluginAvailabilityStatus::Disabled
-            } else {
-                PluginAvailabilityStatus::InstallIncomplete
-            },
-            package_path: None,
-            installed_path: package_root.display().to_string(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({
                 "help_url": "https://example.com/help",
                 "default_base_url": "https://api.example.com",
                 "model_discovery_mode": "hybrid",
                 "supported_model_types": ["llm"],
             }),
+            is_system_reserved: false,
             actor_user_id: repository.actor.user_id,
+        })
+        .await
+        .unwrap();
+    repository
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: format!("local:{}", install_root.display()),
+            installation_id: installation.id,
+            local_version: Some(plugin_version.into()),
+            local_checksum: None,
+            local_path: Some(package_root.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: Some(manifest_fingerprint),
+            artifact_status: PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: if matches!(desired_state, PluginDesiredState::Disabled) {
+                PluginAvailabilityStatus::Disabled
+            } else {
+                PluginAvailabilityStatus::InstallIncomplete
+            },
+            checked_at: OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
         })
         .await
         .unwrap();

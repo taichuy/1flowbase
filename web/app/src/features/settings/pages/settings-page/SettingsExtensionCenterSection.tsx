@@ -30,6 +30,7 @@ import {
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
   checkSettingsExtensionUpdates,
+  deleteSettingsInstalledExtension,
   fetchSettingsExtensionCatalog,
   fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
@@ -93,7 +94,7 @@ function extensionHostRequirement(row: ExtensionRow) {
 }
 
 function extensionSource(row: ExtensionRow) {
-  return isInstalledRow(row) ? row.source : row.catalog_source;
+  return isInstalledRow(row) ? row.source_kind : row.catalog_source;
 }
 
 function extensionDescription(row: ExtensionRow) {
@@ -402,6 +403,18 @@ function GenericExtensionCenterSection({
       message.error(t('auto.extension_operation_failed'));
     }
   });
+  const deleteVersionMutation = useMutation({
+    mutationFn: async (installationId: string) => {
+      if (!csrfToken) throw new Error('csrf token required');
+      return deleteSettingsInstalledExtension(installationId, csrfToken);
+    },
+    onSuccess: async () => {
+      setSelected(null);
+      message.success(t('auto.extension_operation_completed'));
+      await invalidateExtensionApplicationState();
+    },
+    onError: () => message.error(t('auto.extension_operation_failed'))
+  });
   const runOperation = operationMutation.mutateAsync;
 
   const submitOperation = useCallback(
@@ -493,9 +506,10 @@ function GenericExtensionCenterSection({
       },
       {
         title: t('auto.trust'),
-        dataIndex: 'trust',
         key: 'trust',
-        width: 120
+        width: 120,
+        render: (_, row) =>
+          isInstalledRow(row) ? row.trust_level : row.trust
       },
       {
         title: t('auto.operation'),
@@ -542,7 +556,7 @@ function GenericExtensionCenterSection({
                       }
                       onClick={() => void resolveInstalledUpdate(row)}
                     >
-                      {t('auto.update')}
+                      {t('auto.sync_latest')}
                     </Button>
                   </Badge>
                 </Tooltip>
@@ -759,7 +773,7 @@ function GenericExtensionCenterSection({
                 {extensionSource(selected)}
               </Descriptions.Item>
               <Descriptions.Item label={t('auto.trust')}>
-                {selected.trust}
+                {isInstalledRow(selected) ? selected.trust_level : selected.trust}
               </Descriptions.Item>
             </Descriptions>
             {isInstalledRow(selected) ? (
@@ -772,28 +786,66 @@ function GenericExtensionCenterSection({
                 }
                 dataSource={selected.installed_versions}
                 renderItem={(installedVersion) => (
-                  <List.Item>
+                  <List.Item
+                    actions={[
+                      <Tooltip
+                        key="delete"
+                        title={
+                          installedVersion.deletable
+                            ? undefined
+                            : installedVersion.delete_reasons.join(', ')
+                        }
+                      >
+                        <Button
+                          type="link"
+                          danger
+                          disabled={!installedVersion.deletable}
+                          loading={
+                            deleteVersionMutation.isPending &&
+                            deleteVersionMutation.variables === installedVersion.id
+                          }
+                          onClick={() =>
+                            Modal.confirm({
+                              title: t('auto.confirm_delete'),
+                              content: installedVersion.version,
+                              okText: t('auto.delete'),
+                              cancelText: t('auto.cancel'),
+                              okButtonProps: { danger: true },
+                              onOk: () =>
+                                deleteVersionMutation.mutateAsync(
+                                  installedVersion.id
+                                )
+                            })
+                          }
+                        >
+                          {t('auto.delete')}
+                        </Button>
+                      </Tooltip>
+                    ]}
+                  >
                     <Descriptions column={1} size="small">
                       <Descriptions.Item label={t('auto.current_version')}>
                         {installedVersion.version}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.source')}>
-                        {installedVersion.source}
+                        {installedVersion.source_kind}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.trust')}>
-                        {installedVersion.trust}
+                        {installedVersion.trust_level}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.signature_status')}>
                         {installedVersion.signature_status}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.checksum')}>
                         <Typography.Text copyable ellipsis>
-                          {installedVersion.checksum}
+                          {installedVersion.local_checksum ??
+                            installedVersion.expected_checksum ??
+                            '—'}
                         </Typography.Text>
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.local_path')}>
                         <Typography.Text copyable ellipsis>
-                          {installedVersion.local_path}
+                          {installedVersion.local_path ?? '—'}
                         </Typography.Text>
                       </Descriptions.Item>
                     </Descriptions>

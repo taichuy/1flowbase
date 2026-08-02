@@ -158,6 +158,9 @@ impl InMemoryOrchestrationRuntimeRepository {
         let now = OffsetDateTime::now_utc();
         let installation = domain::PluginInstallationRecord {
             id: installation_id,
+            scope_id: domain::SYSTEM_SCOPE_ID,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "1flowbase".to_string(),
             provider_code: "fixture_provider".to_string(),
             plugin_id: "fixture_provider@0.1.0".to_string(),
             plugin_version: "0.1.0".to_string(),
@@ -168,24 +171,22 @@ impl InMemoryOrchestrationRuntimeRepository {
             trust_level: "unverified".to_string(),
             verification_status: domain::PluginVerificationStatus::Valid,
             desired_state: domain::PluginDesiredState::ActiveRequested,
-            artifact_status: domain::PluginArtifactStatus::Ready,
-            runtime_status: domain::PluginRuntimeStatus::Active,
-            availability_status: domain::PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: install_path.clone(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             created_by: Uuid::nil(),
+            updated_by: None,
             created_at: now,
             updated_at: now,
         };
         let capability_installation = domain::PluginInstallationRecord {
             id: capability_installation_id,
+            scope_id: domain::SYSTEM_SCOPE_ID,
+            category: domain::ExtensionCategory::CapabilityPlugins,
+            organization: "1flowbase".to_string(),
             provider_code: "fixture_capability".to_string(),
             plugin_id: "fixture_capability@0.1.0".to_string(),
             plugin_version: "0.1.0".to_string(),
@@ -196,19 +197,14 @@ impl InMemoryOrchestrationRuntimeRepository {
             trust_level: "unverified".to_string(),
             verification_status: domain::PluginVerificationStatus::Valid,
             desired_state: domain::PluginDesiredState::ActiveRequested,
-            artifact_status: domain::PluginArtifactStatus::Ready,
-            runtime_status: domain::PluginRuntimeStatus::Active,
-            availability_status: domain::PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: capability_install_path.clone(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             created_by: Uuid::nil(),
+            updated_by: None,
             created_at: now,
             updated_at: now,
         };
@@ -340,11 +336,15 @@ impl InMemoryOrchestrationRuntimeRepository {
                             installation_id,
                             local_version: Some("0.1.0".to_string()),
                             local_checksum: None,
-                            installed_path: Some(install_path),
+                            local_path: Some(install_path),
+                            package_path: None,
+                            manifest_fingerprint: None,
                             artifact_status: domain::PluginArtifactInstanceStatus::Ready,
                             runtime_status: domain::PluginRuntimeStatus::Active,
+                            availability_status: domain::PluginAvailabilityStatus::Available,
                             checked_at: now,
                             last_error: None,
+                            is_current: true,
                         },
                     ),
                     (
@@ -354,11 +354,15 @@ impl InMemoryOrchestrationRuntimeRepository {
                             installation_id: capability_installation_id,
                             local_version: Some("0.1.0".to_string()),
                             local_checksum: None,
-                            installed_path: Some(capability_install_path),
+                            local_path: Some(capability_install_path),
+                            package_path: None,
+                            manifest_fingerprint: None,
                             artifact_status: domain::PluginArtifactInstanceStatus::Ready,
                             runtime_status: domain::PluginRuntimeStatus::Active,
+                            availability_status: domain::PluginAvailabilityStatus::Available,
                             checked_at: now,
                             last_error: None,
+                            is_current: true,
                         },
                     ),
                 ]),
@@ -769,7 +773,11 @@ impl InMemoryOrchestrationRuntimeRepository {
             .get_mut(&installation_id)
             .expect("installation should exist");
         installation.desired_state = desired_state;
-        installation.availability_status = availability_status;
+        for artifact in inner.artifact_instances_by_key.values_mut() {
+            if artifact.installation_id == installation_id {
+                artifact.availability_status = availability_status;
+            }
+        }
     }
 
     pub(crate) fn seed_included_provider_instances(&self) -> (Uuid, Uuid) {

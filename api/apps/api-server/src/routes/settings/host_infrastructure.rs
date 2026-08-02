@@ -914,13 +914,14 @@ pub async fn list_host_infrastructure_providers(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
     require_session(&state, &headers).await?;
-    let providers = HostInfrastructureConfigService::new(state.store.clone())
-        .list_providers()
-        .await?
-        .providers
-        .into_iter()
-        .map(to_provider_response)
-        .collect();
+    let providers =
+        HostInfrastructureConfigService::new(state.store.clone(), state.api_node_id.clone())
+            .list_providers()
+            .await?
+            .providers
+            .into_iter()
+            .map(to_provider_response)
+            .collect();
 
     Ok(Json(ApiSuccess::new(providers)))
 }
@@ -943,15 +944,16 @@ pub async fn save_host_infrastructure_provider_config(
     let installation_id = Uuid::parse_str(&installation_id)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("installation_id"))?;
 
-    let result = HostInfrastructureConfigService::new(state.store.clone())
-        .save_provider_config(SaveHostInfrastructureProviderConfigCommand {
-            actor_user_id: context.user.id,
-            installation_id,
-            provider_code,
-            enabled_contracts: body.enabled_contracts,
-            config_json: body.config_json,
-        })
-        .await?;
+    let result =
+        HostInfrastructureConfigService::new(state.store.clone(), state.api_node_id.clone())
+            .save_provider_config(SaveHostInfrastructureProviderConfigCommand {
+                actor_user_id: context.user.id,
+                installation_id,
+                provider_code,
+                enabled_contracts: body.enabled_contracts,
+                config_json: body.config_json,
+            })
+            .await?;
 
     Ok(Json(ApiSuccess::new(
         SaveHostInfrastructureProviderConfigResponse {

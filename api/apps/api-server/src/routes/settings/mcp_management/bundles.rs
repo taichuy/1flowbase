@@ -661,7 +661,14 @@ async fn load_mcp_bundle_source(
             if installation.identity.category != domain::ExtensionCategory::Mcp {
                 return Err(ControlPlaneError::InvalidInput("extension_installation_id").into());
             }
-            let bytes = tokio::fs::read(&installation.local_path).await?;
+            let local_path =
+                installation
+                    .local_path
+                    .as_deref()
+                    .ok_or(ControlPlaneError::Conflict(
+                        "extension_artifact_path_missing",
+                    ))?;
+            let bytes = tokio::fs::read(local_path).await?;
             let integrity_warnings = installed_extension_integrity_warnings(&installation, &bytes);
             Ok(LoadedMcpBundleSource {
                 extension_installation_id: Some(installation_id),

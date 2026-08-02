@@ -196,31 +196,31 @@ pub trait DataSourceRepository: Send + Sync {
 pub trait DataSourceCrudRuntimePort: Send + Sync {
     async fn list_records(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceListRecordsInput,
     ) -> anyhow::Result<DataSourceListRecordsOutput>;
 
     async fn get_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceGetRecordInput,
     ) -> anyhow::Result<DataSourceGetRecordOutput>;
 
     async fn create_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceCreateRecordInput,
     ) -> anyhow::Result<DataSourceCreateRecordOutput>;
 
     async fn update_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceUpdateRecordInput,
     ) -> anyhow::Result<DataSourceUpdateRecordOutput>;
 
     async fn delete_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceDeleteRecordInput,
     ) -> anyhow::Result<DataSourceDeleteRecordOutput>;
 }

@@ -433,14 +433,20 @@ async fn list_catalog_uses_persisted_missing_artifact_snapshot() {
         .await;
     fs::remove_dir_all(&package_root).unwrap();
     repository
-        .update_artifact_snapshot(&UpdatePluginArtifactSnapshotInput {
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: "test-node".to_string(),
             installation_id,
-            artifact_status: PluginArtifactStatus::Missing,
-            availability_status: PluginAvailabilityStatus::ArtifactMissing,
+            local_version: Some("0.1.0".to_string()),
+            local_checksum: None,
+            local_path: Some(package_root.display().to_string()),
             package_path: None,
-            installed_path: package_root.display().to_string(),
-            checksum: None,
             manifest_fingerprint: None,
+            artifact_status: PluginArtifactInstanceStatus::Missing,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: PluginAvailabilityStatus::ArtifactMissing,
+            checked_at: OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: true,
         })
         .await
         .unwrap();
@@ -449,7 +455,8 @@ async fn list_catalog_uses_persisted_missing_artifact_snapshot() {
         repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",
-    );
+    )
+    .with_node_artifact_context("test-node", package_root.parent().unwrap());
 
     let catalog = service
         .list_catalog(
@@ -458,12 +465,19 @@ async fn list_catalog_uses_persisted_missing_artifact_snapshot() {
         )
         .await
         .unwrap();
-    let installation = repository.installation(installation_id).await;
+    let artifact = repository
+        .get_artifact_instance("test-node", installation_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     assert!(catalog.entries.is_empty());
-    assert_eq!(installation.artifact_status, PluginArtifactStatus::Missing);
     assert_eq!(
-        installation.availability_status,
+        artifact.artifact_status,
+        PluginArtifactInstanceStatus::Missing
+    );
+    assert_eq!(
+        artifact.availability_status,
         PluginAvailabilityStatus::ArtifactMissing
     );
     assert_eq!(

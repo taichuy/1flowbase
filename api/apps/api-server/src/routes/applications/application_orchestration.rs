@@ -417,7 +417,13 @@ async fn installed_application_archive_entry(
     {
         return Err(ControlPlaneError::InvalidInput("agent_flow_extension_installation").into());
     }
-    let bytes = tokio::fs::read(&installation.local_path).await?;
+    let local_path = installation
+        .local_path
+        .as_deref()
+        .ok_or(ControlPlaneError::Conflict(
+            "extension_artifact_path_missing",
+        ))?;
+    let bytes = tokio::fs::read(local_path).await?;
     let warnings = installed_extension_integrity_warnings(&installation, &bytes);
     let package = tokio::task::spawn_blocking(move || parse_application_archive(&bytes))
         .await

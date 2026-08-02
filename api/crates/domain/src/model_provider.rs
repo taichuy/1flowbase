@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::{ExtensionCategory, ExtensionSignatureStatus};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginVerificationStatus {
@@ -192,6 +194,9 @@ impl PluginTaskStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginInstallationRecord {
     pub id: Uuid,
+    pub scope_id: Uuid,
+    pub category: ExtensionCategory,
+    pub organization: String,
     pub provider_code: String,
     pub plugin_id: String,
     pub plugin_version: String,
@@ -202,19 +207,14 @@ pub struct PluginInstallationRecord {
     pub trust_level: String,
     pub verification_status: PluginVerificationStatus,
     pub desired_state: PluginDesiredState,
-    pub artifact_status: PluginArtifactStatus,
-    pub runtime_status: PluginRuntimeStatus,
-    pub availability_status: PluginAvailabilityStatus,
-    pub package_path: Option<String>,
-    pub installed_path: String,
-    pub checksum: Option<String>,
-    pub manifest_fingerprint: Option<String>,
-    pub signature_status: Option<String>,
+    pub expected_checksum: Option<String>,
+    pub signature_status: ExtensionSignatureStatus,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
-    pub last_load_error: Option<String>,
     pub metadata_json: serde_json::Value,
+    pub is_system_reserved: bool,
     pub created_by: Uuid,
+    pub updated_by: Option<Uuid>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -225,11 +225,43 @@ pub struct PluginArtifactInstanceRecord {
     pub installation_id: Uuid,
     pub local_version: Option<String>,
     pub local_checksum: Option<String>,
-    pub installed_path: Option<String>,
+    pub local_path: Option<String>,
+    pub package_path: Option<String>,
+    pub manifest_fingerprint: Option<String>,
     pub artifact_status: PluginArtifactInstanceStatus,
     pub runtime_status: PluginRuntimeStatus,
+    pub availability_status: PluginAvailabilityStatus,
     pub checked_at: OffsetDateTime,
     pub last_error: Option<String>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalPluginInstallationRecord {
+    pub installation: PluginInstallationRecord,
+    pub artifact: PluginArtifactInstanceRecord,
+}
+
+impl std::ops::Deref for LocalPluginInstallationRecord {
+    type Target = PluginInstallationRecord;
+
+    fn deref(&self) -> &Self::Target {
+        &self.installation
+    }
+}
+
+impl LocalPluginInstallationRecord {
+    pub fn local_path(&self) -> Option<&str> {
+        self.artifact.local_path.as_deref()
+    }
+
+    pub fn availability_status(&self) -> PluginAvailabilityStatus {
+        self.artifact.availability_status
+    }
+
+    pub fn runtime_status(&self) -> PluginRuntimeStatus {
+        self.artifact.runtime_status
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

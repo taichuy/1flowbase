@@ -122,17 +122,10 @@ pub struct PluginInstallationResponse {
     pub trust_level: String,
     pub verification_status: String,
     pub desired_state: String,
-    pub artifact_status: String,
-    pub runtime_status: String,
-    pub availability_status: String,
-    pub package_path: Option<String>,
-    pub installed_path: String,
-    pub checksum: Option<String>,
-    pub manifest_fingerprint: Option<String>,
-    pub signature_status: Option<String>,
+    pub expected_checksum: Option<String>,
+    pub signature_status: String,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
-    pub last_load_error: Option<String>,
     pub local_artifact: Option<PluginArtifactInstanceResponse>,
     #[schema(value_type = Object)]
     pub metadata_json: serde_json::Value,
@@ -146,9 +139,12 @@ pub struct PluginArtifactInstanceResponse {
     pub installation_id: String,
     pub local_version: Option<String>,
     pub local_checksum: Option<String>,
-    pub installed_path: Option<String>,
+    pub local_path: Option<String>,
+    pub package_path: Option<String>,
+    pub manifest_fingerprint: Option<String>,
     pub artifact_status: String,
     pub runtime_status: String,
+    pub availability_status: String,
     pub checked_at: String,
     pub last_error: Option<String>,
 }
@@ -635,12 +631,6 @@ async fn read_upload_file(multipart: &mut Multipart) -> Result<(String, Vec<u8>)
     Err(control_plane::errors::ControlPlaneError::InvalidInput("plugin_file").into())
 }
 
-fn to_installation_response(
-    installation: domain::PluginInstallationRecord,
-) -> PluginInstallationResponse {
-    to_installation_response_with_artifact(installation, None)
-}
-
 fn to_installation_response_with_artifact(
     installation: domain::PluginInstallationRecord,
     local_artifact: Option<domain::PluginArtifactInstanceRecord>,
@@ -658,17 +648,10 @@ fn to_installation_response_with_artifact(
         trust_level: installation.trust_level,
         verification_status: installation.verification_status.as_str().to_string(),
         desired_state: installation.desired_state.as_str().to_string(),
-        artifact_status: installation.artifact_status.as_str().to_string(),
-        runtime_status: installation.runtime_status.as_str().to_string(),
-        availability_status: installation.availability_status.as_str().to_string(),
-        package_path: installation.package_path,
-        installed_path: installation.installed_path,
-        checksum: installation.checksum,
-        manifest_fingerprint: installation.manifest_fingerprint,
-        signature_status: installation.signature_status,
+        expected_checksum: installation.expected_checksum,
+        signature_status: installation.signature_status.as_str().to_string(),
         signature_algorithm: installation.signature_algorithm,
         signing_key_id: installation.signing_key_id,
-        last_load_error: installation.last_load_error,
         local_artifact: local_artifact.map(to_artifact_instance_response),
         metadata_json: installation.metadata_json,
         created_at: format_time(installation.created_at),
@@ -684,9 +667,12 @@ fn to_artifact_instance_response(
         installation_id: artifact.installation_id.to_string(),
         local_version: artifact.local_version,
         local_checksum: artifact.local_checksum,
-        installed_path: artifact.installed_path,
+        local_path: artifact.local_path,
+        package_path: artifact.package_path,
+        manifest_fingerprint: artifact.manifest_fingerprint,
         artifact_status: artifact.artifact_status.as_str().to_string(),
         runtime_status: artifact.runtime_status.as_str().to_string(),
+        availability_status: artifact.availability_status.as_str().to_string(),
         checked_at: format_time(artifact.checked_at),
         last_error: artifact.last_error,
     }
@@ -702,7 +688,10 @@ pub(crate) fn runtime_slot_for_contract(contract_version: &str) -> Option<String
 
 fn to_install_response(result: InstallPluginResult) -> InstallPluginResponse {
     InstallPluginResponse {
-        installation: to_installation_response(result.installation),
+        installation: to_installation_response_with_artifact(
+            result.installation,
+            Some(result.local_artifact),
+        ),
         task: to_task_response(result.task),
     }
 }

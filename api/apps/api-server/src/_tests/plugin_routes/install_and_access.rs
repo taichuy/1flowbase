@@ -70,28 +70,31 @@ async fn plugin_routes_install_enable_assign_and_query_tasks() {
     );
     assert_eq!(
         install_payload["data"]["installation"]["signature_status"],
-        "unsigned"
+        "missing"
     );
     assert_eq!(
         install_payload["data"]["installation"]["desired_state"],
         "disabled"
     );
     assert_eq!(
-        install_payload["data"]["installation"]["artifact_status"],
+        install_payload["data"]["installation"]["local_artifact"]["artifact_status"],
         "ready"
     );
     assert_eq!(
-        install_payload["data"]["installation"]["runtime_status"],
+        install_payload["data"]["installation"]["local_artifact"]["runtime_status"],
         "inactive"
     );
     assert_eq!(
-        install_payload["data"]["installation"]["availability_status"],
+        install_payload["data"]["installation"]["local_artifact"]["availability_status"],
         "disabled"
     );
-    assert!(install_payload["data"]["installation"]["package_path"].is_null());
-    assert!(install_payload["data"]["installation"]["manifest_fingerprint"].is_string());
-    assert!(install_payload["data"]["installation"]["last_load_error"].is_null());
-    let installed_path = install_payload["data"]["installation"]["installed_path"]
+    assert!(install_payload["data"]["installation"]["local_artifact"]["package_path"].is_null());
+    assert!(
+        install_payload["data"]["installation"]["local_artifact"]["manifest_fingerprint"]
+            .is_string()
+    );
+    assert!(install_payload["data"]["installation"]["local_artifact"]["last_error"].is_null());
+    let installed_path = install_payload["data"]["installation"]["local_artifact"]["local_path"]
         .as_str()
         .unwrap()
         .to_string();

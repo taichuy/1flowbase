@@ -39,7 +39,7 @@ async fn map_resource_to_model_rejects_foreign_instance_workspace() {
 impl DataSourceCrudRuntimePort for StubDataSourceRuntime {
     async fn list_records(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourceListRecordsInput,
     ) -> Result<DataSourceListRecordsOutput> {
         assert_eq!(input.resource_key, "contacts");
@@ -55,7 +55,7 @@ impl DataSourceCrudRuntimePort for StubDataSourceRuntime {
 
     async fn get_record(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourceGetRecordInput,
     ) -> Result<DataSourceGetRecordOutput> {
         Ok(DataSourceGetRecordOutput {
@@ -66,7 +66,7 @@ impl DataSourceCrudRuntimePort for StubDataSourceRuntime {
 
     async fn create_record(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourceCreateRecordInput,
     ) -> Result<DataSourceCreateRecordOutput> {
         Ok(DataSourceCreateRecordOutput {
@@ -77,7 +77,7 @@ impl DataSourceCrudRuntimePort for StubDataSourceRuntime {
 
     async fn update_record(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourceUpdateRecordInput,
     ) -> Result<DataSourceUpdateRecordOutput> {
         Ok(DataSourceUpdateRecordOutput {
@@ -88,7 +88,7 @@ impl DataSourceCrudRuntimePort for StubDataSourceRuntime {
 
     async fn delete_record(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourceDeleteRecordInput,
     ) -> Result<DataSourceDeleteRecordOutput> {
         assert_eq!(input.record_id, "contact-1");
@@ -103,7 +103,10 @@ impl DataSourceCrudRuntimePort for StubDataSourceRuntime {
 #[tokio::test]
 async fn data_source_crud_runtime_port_exposes_owner_scope_aware_crud_contract() {
     let port = StubDataSourceRuntime::ready();
-    let installation = seeded_installation();
+    let installation = LocalPluginInstallationRecord {
+        installation: seeded_installation(),
+        artifact: seeded_artifact(),
+    };
     let context = DataSourceRecordScopeContext {
         owner_id: Some("user-1".to_string()),
         scope_id: Some("workspace-1".to_string()),

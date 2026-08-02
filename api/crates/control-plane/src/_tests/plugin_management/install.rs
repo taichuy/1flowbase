@@ -11,10 +11,10 @@ use crate::{
     },
     ports::{
         CreatePluginTaskInput, FrontendBlockCatalogRepository, JsDependencyRepository,
-        NodeContributionRepository, PluginRepository, UpdatePluginArtifactSnapshotInput,
+        NodeContributionRepository, PluginRepository,
     },
 };
-use domain::{NodeContributionDependencyStatus, PluginTaskStatus};
+use domain::{ExtensionSignatureStatus, NodeContributionDependencyStatus, PluginTaskStatus};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -221,7 +221,12 @@ async fn plugin_management_service_refreshes_empty_current_node_without_global_p
         })
         .await
         .unwrap();
-    let global_installed_path = install.installation.installed_path.clone();
+    let node_a_artifact = repository
+        .get_artifact_instance("node-a", install.installation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let global_installed_path = node_a_artifact.local_path.clone();
 
     let node_b_artifact = service_b
         .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
@@ -234,14 +239,14 @@ async fn plugin_management_service_refreshes_empty_current_node_without_global_p
     assert_eq!(node_b_artifact.node_id, "node-b");
     assert_eq!(node_b_artifact.artifact_status.as_str(), "missing");
     assert!(node_b_artifact.local_version.is_none());
-    assert!(node_b_artifact.installed_path.is_none());
-    let global_after_refresh = repository
-        .get_installation(install.installation.id)
+    assert!(node_b_artifact.local_path.is_none());
+    let node_a_after_refresh = repository
+        .get_artifact_instance("node-a", install.installation.id)
         .await
         .unwrap()
         .expect("installation should remain present");
-    assert_eq!(global_after_refresh.installed_path, global_installed_path);
-    assert_eq!(global_after_refresh.artifact_status.as_str(), "ready");
+    assert_eq!(node_a_after_refresh.local_path, global_installed_path);
+    assert_eq!(node_a_after_refresh.artifact_status.as_str(), "ready");
 }
 
 #[tokio::test]
@@ -288,7 +293,15 @@ async fn ac_be_1_plugin_management_rebuilds_inventory_from_local_receipt() {
     let installations = rebuilt_repository.list_installations().await.unwrap();
     assert_eq!(installations.len(), 1);
     assert_eq!(installations[0].source_kind, "uploaded");
-    assert!(PathBuf::from(&installations[0].installed_path).is_dir());
+    let artifact = rebuilt_repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            installations[0].id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(PathBuf::from(artifact.local_path.unwrap()).is_dir());
 }
 
 #[tokio::test]
@@ -344,9 +357,14 @@ async fn plugin_management_service_marks_current_node_artifact_outdated_for_stal
     assert_eq!(stale_artifact.node_id, "node-old");
     assert_eq!(stale_artifact.local_version.as_deref(), Some("0.1.0"));
     assert_eq!(stale_artifact.artifact_status.as_str(), "outdated");
+    let expected_artifact = repository
+        .get_artifact_instance("node-new", expected.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_ne!(
-        stale_artifact.installed_path.as_deref(),
-        Some(expected.installed_path.as_str())
+        stale_artifact.local_path.as_deref(),
+        expected_artifact.local_path.as_deref()
     );
 }
 
@@ -374,23 +392,9 @@ async fn ac_be_4_plugin_management_service_keeps_local_artifact_ready_when_expec
         domain::PluginDesiredState::ActiveRequested,
     )
     .await;
-    let installation = repository
-        .get_installation(installation_id)
-        .await
-        .unwrap()
-        .expect("installation should exist");
     repository
-        .update_artifact_snapshot(&UpdatePluginArtifactSnapshotInput {
-            installation_id,
-            artifact_status: installation.artifact_status,
-            availability_status: installation.availability_status,
-            package_path: installation.package_path,
-            installed_path: installation.installed_path,
-            checksum: Some(format!("sha256:{}", "b".repeat(64))),
-            manifest_fingerprint: installation.manifest_fingerprint,
-        })
-        .await
-        .unwrap();
+        .set_expected_checksum(installation_id, Some(format!("sha256:{}", "b".repeat(64))))
+        .await;
 
     let artifact = service
         .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
@@ -455,12 +459,12 @@ async fn plugin_management_service_lists_official_catalog_and_installs_latest_re
     assert_eq!(install.installation.provider_code, "openai_compatible");
     assert_eq!(install.installation.source_kind, "official_registry");
     assert_eq!(
-        install.installation.checksum.as_deref(),
+        install.installation.expected_checksum.as_deref(),
         Some(format!("sha256:{:x}", Sha256::digest(&expected_package_bytes)).as_str())
     );
     assert_eq!(
-        install.installation.signature_status.as_deref(),
-        Some("unsigned")
+        install.installation.signature_status,
+        ExtensionSignatureStatus::Missing
     );
     assert_eq!(install.installation.trust_level, "unverified");
     assert_eq!(install.task.status, PluginTaskStatus::Succeeded);
@@ -654,8 +658,8 @@ async fn plugin_management_service_installs_uploaded_signed_package_as_verified_
     assert_eq!(result.installation.source_kind, "uploaded");
     assert_eq!(result.installation.trust_level, "verified_official");
     assert_eq!(
-        result.installation.signature_status.as_deref(),
-        Some("verified")
+        result.installation.signature_status,
+        ExtensionSignatureStatus::Verified
     );
 }
 
@@ -886,10 +890,13 @@ async fn plugin_management_service_syncs_frontend_block_catalog_and_requires_ass
         .unwrap()
         .installation;
 
-    let hidden_entries =
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&repository, workspace_id)
-            .await
-            .unwrap();
+    let hidden_entries = FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+        &repository,
+        &format!("local:{}", install_root.display()),
+        workspace_id,
+    )
+    .await
+    .unwrap();
     assert!(hidden_entries.is_empty());
 
     service
@@ -907,10 +914,13 @@ async fn plugin_management_service_syncs_frontend_block_catalog_and_requires_ass
         .await
         .unwrap();
 
-    let entries =
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&repository, workspace_id)
-            .await
-            .unwrap();
+    let entries = FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+        &repository,
+        &format!("local:{}", install_root.display()),
+        workspace_id,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].installation_id, installation.id);
@@ -1005,8 +1015,14 @@ async fn plugin_reinstall_catalog_failure_preserves_previous_installation_catalo
         .await
         .unwrap()
         .installation;
-    let installed_entry = PathBuf::from(&original.installed_path).join("blocks/hero/index.html");
-    let original_artifact = fs::read_to_string(&installed_entry).unwrap();
+    let original_artifact = repository
+        .get_artifact_instance(&format!("local:{}", install_root.display()), original.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let installed_entry = PathBuf::from(original_artifact.local_path.as_deref().unwrap())
+        .join("blocks/hero/index.html");
+    let original_artifact_contents = fs::read_to_string(&installed_entry).unwrap();
 
     let manifest_path = package_root.join("manifest.yaml");
     let manifest = fs::read_to_string(&manifest_path).unwrap();
@@ -1037,10 +1053,10 @@ async fn plugin_reinstall_catalog_failure_preserves_previous_installation_catalo
         .unwrap()
         .unwrap();
     assert_eq!(preserved.plugin_version, original.plugin_version);
-    assert_eq!(preserved.artifact_status, original.artifact_status);
+    assert_eq!(preserved.desired_state, original.desired_state);
     assert_eq!(
         fs::read_to_string(installed_entry).unwrap(),
-        original_artifact
+        original_artifact_contents
     );
     assert!(!install_root
         .join("installed/fixture_frontend_blocks/0.2.0")
@@ -1064,10 +1080,13 @@ async fn plugin_reinstall_catalog_failure_preserves_previous_installation_catalo
         })
         .await
         .unwrap();
-    let entries =
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&repository, workspace_id)
-            .await
-            .unwrap();
+    let entries = FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+        &repository,
+        &format!("local:{}", install_root.display()),
+        workspace_id,
+    )
+    .await
+    .unwrap();
     assert_eq!(entries[0].title, "Hero Banner");
 }
 

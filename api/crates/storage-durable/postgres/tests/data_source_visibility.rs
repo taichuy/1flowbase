@@ -3,9 +3,8 @@ use control_plane::ports::{
     PluginRepository, UpsertPluginInstallationInput,
 };
 use domain::{
-    AuthenticatorRecord, DataSourceDefaults, DataSourceInstanceStatus, PluginArtifactStatus,
-    PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
-    PASSWORD_LOCAL_AUTHENTICATOR_ID,
+    AuthenticatorRecord, DataSourceDefaults, DataSourceInstanceStatus, PluginDesiredState,
+    PluginVerificationStatus, PASSWORD_LOCAL_AUTHENTICATOR_ID,
 };
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
@@ -70,6 +69,8 @@ async fn seeded_store() -> (
         &store,
         &UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "acme_hubspot_source".into(),
             plugin_id: "acme_hubspot_source@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -80,18 +81,12 @@ async fn seeded_store() -> (
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Active,
-            availability_status: PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/acme_hubspot_source/0.1.0".into(),
-            checksum: Some("abc123".into()),
-            manifest_fingerprint: None,
-            signature_status: Some("unsigned".into()),
+            expected_checksum: Some("abc123".into()),
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )

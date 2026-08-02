@@ -138,7 +138,7 @@ pub async fn list_frontstage_component_capabilities(
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     require_design_permission(&state, context.user.id, workspace_id).await?;
-    let page = FrontendComponentCatalogService::new(state.store.clone())
+    let page = FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
         .list_component_capabilities(ListFrontendComponentCapabilitiesQuery {
             workspace_id,
             installation_id: query.installation_id,
@@ -192,13 +192,14 @@ pub async fn get_frontstage_component_capability(
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     require_design_permission(&state, context.user.id, workspace_id).await?;
-    let entry = FrontendComponentCatalogService::new(state.store.clone())
-        .get_component_capability(GetFrontendComponentCapabilityQuery {
-            workspace_id,
-            component_id,
-        })
-        .await?
-        .ok_or(ControlPlaneError::NotFound("frontend_component_capability"))?;
+    let entry =
+        FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
+            .get_component_capability(GetFrontendComponentCapabilityQuery {
+                workspace_id,
+                component_id,
+            })
+            .await?
+            .ok_or(ControlPlaneError::NotFound("frontend_component_capability"))?;
 
     Ok(Json(ApiSuccess::new(to_detail_response(
         entry,
@@ -229,15 +230,16 @@ pub async fn get_frontstage_component_module_asset(
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     require_design_permission(&state, context.user.id, workspace_id).await?;
-    let asset = FrontendComponentCatalogService::new(state.store.clone())
-        .get_module_asset(GetFrontendModuleAssetQuery {
-            workspace_id,
-            sha256,
-        })
-        .await?
-        .ok_or(ControlPlaneError::NotFound(
-            "frontend_component_module_asset",
-        ))?;
+    let asset =
+        FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
+            .get_module_asset(GetFrontendModuleAssetQuery {
+                workspace_id,
+                sha256,
+            })
+            .await?
+            .ok_or(ControlPlaneError::NotFound(
+                "frontend_component_module_asset",
+            ))?;
     let mut response = Response::new(Body::from(asset.bytes));
     response.headers_mut().insert(
         header::CONTENT_TYPE,

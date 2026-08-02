@@ -464,11 +464,15 @@ async fn model_provider_service_blocks_previously_failed_current_node_runtime_wi
             installation_id,
             local_version: Some("0.1.0".to_string()),
             local_checksum: None,
-            installed_path: Some(expected_local_path.display().to_string()),
+            local_path: Some(expected_local_path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
             artifact_status: domain::PluginArtifactInstanceStatus::LoadFailed,
             runtime_status: PluginRuntimeStatus::LoadFailed,
+            availability_status: PluginAvailabilityStatus::LoadFailed,
             checked_at: OffsetDateTime::now_utc(),
             last_error: Some("runtime load failed for test".to_string()),
+            is_current: true,
         })
         .await
         .unwrap();

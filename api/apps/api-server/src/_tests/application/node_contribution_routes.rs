@@ -65,61 +65,35 @@ async fn seed_node_contribution_registry(database_url: &str) -> (Uuid, Uuid) {
 
     sqlx::query(
         r#"
-        insert into plugin_installations (
-            id,
-            provider_code,
-            plugin_id,
-            plugin_version,
-            contract_version,
-            protocol,
-            display_name,
-            source_kind,
-            trust_level,
-            verification_status,
-            desired_state,
-            artifact_status,
-            runtime_status,
-            availability_status,
-            package_path,
-            installed_path,
-            checksum,
-            manifest_fingerprint,
-            signature_status,
-            signature_algorithm,
-            signing_key_id,
-            last_load_error,
-            metadata_json,
-            created_by
+        insert into extension_installations (
+            id, category, organization, artifact_id, artifact_version, plugin_id,
+            contract_version, protocol, display_name, source_kind, trust_level,
+            verification_status, desired_state, signature_status, signature_algorithm,
+            signing_key_id, metadata_json, created_by
         ) values (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-            $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
+            $1, 'capability-plugins', 'test', 'fixture_provider', '1.2.3',
+            'fixture_provider@1.2.3', '1flowbase.capability/v1', 'stdio_json',
+            'Fixture Provider', 'uploaded', 'verified_official', 'valid',
+            'active_requested', 'verified', 'ed25519', 'fixture-key', '{}', $2
         )
         "#,
     )
     .bind(installation_id)
-    .bind("fixture_provider")
-    .bind("fixture_provider@1.2.3")
-    .bind("1.2.3")
-    .bind("1flowbase.capability/v1")
-    .bind("stdio_json")
-    .bind("Fixture Provider")
-    .bind("uploaded")
-    .bind("verified_official")
-    .bind("valid")
-    .bind("active_requested")
-    .bind("ready")
-    .bind("inactive")
-    .bind("available")
-    .bind::<Option<String>>(None)
-    .bind("/tmp/plugins/fixture_provider/1.2.3")
-    .bind::<Option<String>>(None)
-    .bind::<Option<String>>(None)
-    .bind(Some("verified"))
-    .bind(Some("ed25519"))
-    .bind(Some("fixture-key"))
-    .bind::<Option<String>>(None)
-    .bind(json!({}))
     .bind(actor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_path,
+            artifact_status, runtime_status, availability_status
+        ) values ($1, $2, '1.2.3', '/tmp/plugins/fixture_provider/1.2.3',
+            'ready', 'inactive', 'available')
+        "#,
+    )
+    .bind(crate::_tests::support::test_config().api_node_id)
+    .bind(installation_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -231,61 +205,34 @@ async fn seed_js_dependency_registry(database_url: &str) -> (Uuid, Uuid, Uuid) {
     let installation_id = Uuid::now_v7();
     sqlx::query(
         r#"
-        insert into plugin_installations (
-            id,
-            provider_code,
-            plugin_id,
-            plugin_version,
-            contract_version,
-            protocol,
-            display_name,
-            source_kind,
-            trust_level,
-            verification_status,
-            desired_state,
-            artifact_status,
-            runtime_status,
-            availability_status,
-            package_path,
-            installed_path,
-            checksum,
-            manifest_fingerprint,
-            signature_status,
-            signature_algorithm,
-            signing_key_id,
-            last_load_error,
-            metadata_json,
-            created_by
+        insert into extension_installations (
+            id, category, organization, artifact_id, artifact_version, plugin_id,
+            contract_version, protocol, display_name, source_kind, trust_level,
+            verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-            $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
+            $1, 'capability-plugins', 'test', 'fixture_js_dependency_pack', '0.1.0',
+            'fixture_js_dependency_pack@0.1.0', '1flowbase.capability/v1', 'stdio_json',
+            'Fixture JS Dependency Pack', 'uploaded', 'checksum_only', 'valid',
+            'active_requested', 'missing', '{}', $2
         )
         "#,
     )
     .bind(installation_id)
-    .bind("fixture_js_dependency_pack")
-    .bind("fixture_js_dependency_pack@0.1.0")
-    .bind("0.1.0")
-    .bind("1flowbase.capability/v1")
-    .bind("stdio_json")
-    .bind("Fixture JS Dependency Pack")
-    .bind("uploaded")
-    .bind("checksum_only")
-    .bind("valid")
-    .bind("active_requested")
-    .bind("ready")
-    .bind("inactive")
-    .bind("available")
-    .bind::<Option<String>>(None)
-    .bind("/tmp/plugins/fixture_js_dependency_pack/0.1.0")
-    .bind::<Option<String>>(None)
-    .bind::<Option<String>>(None)
-    .bind(Some("unsigned"))
-    .bind::<Option<String>>(None)
-    .bind::<Option<String>>(None)
-    .bind::<Option<String>>(None)
-    .bind(json!({}))
     .bind(actor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_path,
+            artifact_status, runtime_status, availability_status
+        ) values ($1, $2, '0.1.0', '/tmp/plugins/fixture_js_dependency_pack/0.1.0',
+            'ready', 'inactive', 'available')
+        "#,
+    )
+    .bind(crate::_tests::support::test_config().api_node_id)
+    .bind(installation_id)
     .execute(&pool)
     .await
     .unwrap();

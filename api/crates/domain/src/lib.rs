@@ -64,9 +64,9 @@ pub use data_source::{
 };
 pub use extension_installation::{
     ExtensionApplicationAction, ExtensionCatalogIdentity, ExtensionCategory,
-    ExtensionCompatibilityWarning, ExtensionInstallationIdentity, ExtensionInstallationReceipt,
-    ExtensionInstallationRecord, ExtensionInstallationStatus, ExtensionIntegrityWarning,
-    ExtensionRiskChallenge, ExtensionSignatureStatus,
+    ExtensionCompatibilityWarning, ExtensionDeletionDecision, ExtensionInstallationIdentity,
+    ExtensionInstallationReceipt, ExtensionInstallationRecord, ExtensionInstallationStatus,
+    ExtensionIntegrityWarning, ExtensionRiskChallenge, ExtensionSignatureStatus,
 };
 pub use file_management::{
     FileStorageHealthStatus, FileStorageRecord, FileTableRecord, FileTableScopeKind,
@@ -114,9 +114,10 @@ pub use mcp_management::{
     McpUpstreamSourceStatus, McpUpstreamToolSourceRecord, McpUpstreamTransport,
 };
 pub use model_provider::{
-    ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord, ModelFailoverQueueSnapshotRecord,
-    ModelFailoverQueueTemplateRecord, ModelProviderCatalogCacheRecord,
-    ModelProviderCatalogEntryRecord, ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource,
+    LocalPluginInstallationRecord, ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord,
+    ModelFailoverQueueSnapshotRecord, ModelFailoverQueueTemplateRecord,
+    ModelProviderCatalogCacheRecord, ModelProviderCatalogEntryRecord,
+    ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource,
     ModelProviderCatalogSourceRecord, ModelProviderConfiguredModel, ModelProviderDiscoveryMode,
     ModelProviderDistributionRule, ModelProviderInstanceRecord, ModelProviderInstanceStatus,
     ModelProviderMainInstanceRecord, ModelProviderMainModelRoutingPolicy,

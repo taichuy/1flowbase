@@ -41,11 +41,7 @@ use argon2::{
     Argon2,
 };
 use axum::{middleware as axum_middleware, routing::get, Json, Router};
-use control_plane::{
-    bootstrap::{BootstrapConfig, BootstrapService},
-    plugin_management::ExtensionInstallationService,
-    ports::PluginRepository,
-};
+use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use rand_core::OsRng;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -325,6 +321,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
                 store.clone(),
                 api_provider_runtime.clone(),
                 config.provider_secret_master_key.clone(),
+                config.api_node_id.clone(),
             )),
         ),
     );
@@ -363,45 +360,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     )
     .with_node_id(config.api_node_id.clone())
     .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
-    plugin_management
-        .rebuild_inventory_from_local_receipts(bootstrap_result.root_user_id)
-        .await?;
-    match store.list_installations().await {
-        Ok(installations) => {
-            let extension_installations = ExtensionInstallationService::new(
-                store.clone(),
-                config.provider_install_root.clone(),
-            );
-            match extension_installations
-                .adopt_plugin_installations(&config.api_node_id, &installations)
-                .await
-            {
-                Ok(report) => {
-                    tracing::info!(
-                        adopted = report.adopted,
-                        already_present = report.already_present,
-                        warnings = report.warnings.len(),
-                        "reconciled legacy plugin installations into extension inventory"
-                    );
-                    for warning in report.warnings {
-                        tracing::warn!(
-                            plugin_installation_id = %warning.plugin_installation_id,
-                            error = %warning.message,
-                            "legacy plugin installation adoption warning; core startup continues"
-                        );
-                    }
-                }
-                Err(error) => tracing::warn!(
-                    error = %error,
-                    "legacy plugin installation adoption unavailable; core startup continues"
-                ),
-            }
-        }
-        Err(error) => tracing::warn!(
-            error = %error,
-            "legacy plugin installation inventory unavailable; core startup continues"
-        ),
-    }
     match extension_bootstrap::load_locked_extension_bootstrap(&api_workspace_root()?) {
         Ok(entries) => {
             for result in plugin_management

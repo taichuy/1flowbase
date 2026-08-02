@@ -151,8 +151,11 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
 
 #[async_trait]
 impl ProviderRuntimePort for MemoryProviderRuntime {
-    async fn ensure_loaded(&self, installation: &PluginInstallationRecord) -> Result<()> {
-        if !Path::new(&installation.installed_path).is_dir() {
+    async fn ensure_loaded(&self, installation: &LocalPluginInstallationRecord) -> Result<()> {
+        if !installation
+            .local_path()
+            .is_some_and(|path| Path::new(path).is_dir())
+        {
             return Err(ControlPlaneError::NotFound("provider_install_path").into());
         }
         self.loaded_installations
@@ -164,7 +167,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
 
     async fn validate_provider(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Value> {
         Ok(json!({ "ok": true }))
@@ -172,7 +175,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
 
     async fn list_models(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Vec<ProviderModelDescriptor>> {
         Ok(vec![ProviderModelDescriptor {
@@ -190,7 +193,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
 
     async fn invoke_stream(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _input: ProviderInvocationInput,
     ) -> Result<ProviderRuntimeInvocationOutput> {
         Ok(ProviderRuntimeInvocationOutput {

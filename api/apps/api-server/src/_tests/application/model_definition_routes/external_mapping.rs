@@ -30,16 +30,14 @@ async fn seed_external_data_source_instance(database_url: &str) -> String {
 
     sqlx::query(
         r#"
-        insert into plugin_installations (
-            id, provider_code, plugin_id, plugin_version, contract_version, protocol,
-            display_name, source_kind, trust_level, verification_status, desired_state,
-            artifact_status, runtime_status, availability_status, installed_path,
-            metadata_json, created_by
+        insert into extension_installations (
+            id, category, organization, artifact_id, artifact_version, plugin_id,
+            contract_version, protocol, display_name, source_kind, trust_level,
+            verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
-            $1, $2, $3, '0.1.0', '1flowbase.data_source/v1', 'stdio_json',
-            'Route External Source', 'uploaded', 'unverified', 'valid', 'active_requested',
-            'ready', 'active', 'available', '/tmp/route-external-source',
-            '{}', $4
+            $1, 'capability-plugins', 'test', $2, '0.1.0', $3,
+            '1flowbase.data_source/v1', 'stdio_json', 'Route External Source',
+            'uploaded', 'unverified', 'valid', 'active_requested', 'missing', '{}', $4
         )
         "#,
     )
@@ -47,6 +45,19 @@ async fn seed_external_data_source_instance(database_url: &str) -> String {
     .bind(&provider_code)
     .bind(format!("{provider_code}@0.1.0"))
     .bind(actor_user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_path,
+            artifact_status, runtime_status, availability_status
+        ) values ($1, $2, '0.1.0', '/tmp/route-external-source', 'ready', 'active', 'available')
+        "#,
+    )
+    .bind(crate::_tests::support::test_config().api_node_id)
+    .bind(installation_id)
     .execute(&pool)
     .await
     .unwrap();

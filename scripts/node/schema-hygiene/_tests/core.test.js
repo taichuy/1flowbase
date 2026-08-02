@@ -812,7 +812,7 @@ test('default schema hygiene config exempts bounded projection and release table
 
   for (const [tableName, expectedAction] of [
     ['plugin_package_catalog_projection', 'bounded_projection_exempt'],
-    ['plugin_artifact_instances', 'bounded_projection_exempt'],
+    ['extension_artifact_instances', 'bounded_projection_exempt'],
     ['i18n_catalog_release_files', 'bounded_release_child_declared'],
     ['i18n_catalog_release_messages', 'bounded_release_child_declared'],
     ['i18n_catalog_release_translations', 'bounded_release_child_declared'],
@@ -989,7 +989,7 @@ test('default schema hygiene config declares remaining scoped readiness issue ta
     ['roles', 'mixed_role_owner_chain'],
     ['role_permissions', 'join_or_child'],
     ['user_role_bindings', 'join_or_child'],
-    ['plugin_installations', 'system_global'],
+    ['extension_installations', 'system_global'],
     ['plugin_tasks', 'mixed_plugin_task'],
     ['plugin_worker_leases', 'system_runtime'],
     ['data_source_secrets', 'join_or_child'],

@@ -128,27 +128,37 @@ async fn seed_js_dependency_pack(database_url: &str, version: &str) -> Uuid {
 
     sqlx::query(
         r#"
-        insert into plugin_installations (
-            id, provider_code, plugin_id, plugin_version, contract_version, protocol,
-            display_name, source_kind, trust_level, verification_status, desired_state,
-            artifact_status, runtime_status, availability_status, package_path, installed_path,
-            checksum, manifest_fingerprint, signature_status, signature_algorithm, signing_key_id,
-            last_load_error, metadata_json, created_by
+        insert into extension_installations (
+            id, category, organization, artifact_id, artifact_version, plugin_id,
+            contract_version, protocol, display_name, source_kind, trust_level,
+            verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
-            $1, $2, $3, $4, '1flowbase.capability/v1', 'stdio_json',
-            'Fixture JS Dependency Pack', 'uploaded', 'checksum_only', 'valid', 'active_requested',
-            'ready', 'inactive', 'available', null, $5, null, null, 'unsigned', null, null,
-            null, $6, $7
+            $1, 'capability-plugins', 'test', $2, $3, $4,
+            '1flowbase.capability/v1', 'stdio_json', 'Fixture JS Dependency Pack',
+            'uploaded', 'checksum_only', 'valid', 'active_requested', 'missing', $5, $6
         )
         "#,
     )
     .bind(installation_id)
     .bind(format!("fixture_js_dependency_pack_{version}"))
-    .bind(format!("fixture_js_dependency_pack@{version}"))
     .bind(version)
-    .bind(format!("/tmp/plugins/fixture_js_dependency_pack/{version}"))
+    .bind(format!("fixture_js_dependency_pack@{version}"))
     .bind(json!({}))
     .bind(actor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_path,
+            artifact_status, runtime_status, availability_status
+        ) values ('local:test', $1, $2, $3, 'ready', 'inactive', 'available')
+        "#,
+    )
+    .bind(installation_id)
+    .bind(version)
+    .bind(format!("/tmp/plugins/fixture_js_dependency_pack/{version}"))
     .execute(&pool)
     .await
     .unwrap();

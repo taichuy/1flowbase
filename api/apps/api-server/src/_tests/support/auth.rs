@@ -187,6 +187,7 @@ async fn test_state_with_runtime_profile_state(
                     store.clone(),
                     api_provider_runtime.clone(),
                     config.provider_secret_master_key.clone(),
+                    config.api_node_id.clone(),
                 ),
             ),
         ),

@@ -289,7 +289,10 @@ async fn load_installed_i18n_catalog(
     {
         return Err(ControlPlaneError::InvalidInput("i18n_extension_installation").into());
     }
-    let bytes = tokio::fs::read(&installation.local_path).await?;
+    let local_path = installation.local_path.as_deref().ok_or(
+        control_plane::errors::ControlPlaneError::Conflict("extension_artifact_path_missing"),
+    )?;
+    let bytes = tokio::fs::read(local_path).await?;
     let warnings = installed_extension_integrity_warnings(&installation, &bytes);
     let seed = tokio::task::spawn_blocking(move || {
         let inspection = crate::official_i18n_catalog_seed::inspect_catalog_seed(&bytes)?;

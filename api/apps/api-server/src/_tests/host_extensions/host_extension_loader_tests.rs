@@ -9,8 +9,8 @@ use control_plane::{
     ports::{AuthRepository, PluginRepository, UpsertPluginInstallationInput},
 };
 use domain::{
-    PluginArtifactInstanceStatus, PluginArtifactStatus, PluginAvailabilityStatus,
-    PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
+    PluginArtifactInstanceStatus, PluginAvailabilityStatus, PluginDesiredState,
+    PluginRuntimeStatus, PluginVerificationStatus,
 };
 use plugin_framework::compute_manifest_fingerprint;
 use serde_json::json;
@@ -132,10 +132,12 @@ async fn seed_pending_restart_host_extension(
         .await
         .unwrap();
 
-    PluginRepository::upsert_installation(
+    let installation = PluginRepository::upsert_installation(
         &state.store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::HostExtensions,
+            organization: "test".into(),
             provider_code: "fixture_host_extension".into(),
             plugin_id: format!("fixture_host_extension@{version}"),
             plugin_version: version.into(),
@@ -146,24 +148,38 @@ async fn seed_pending_restart_host_extension(
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::PendingRestart,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::PendingRestart,
-            package_path: None,
-            installed_path: installed_root.display().to_string(),
-            checksum: None,
-            manifest_fingerprint: Some(manifest_fingerprint),
-            signature_status: Some("unsigned".into()),
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
     .await
-    .unwrap()
-    .id
+    .unwrap();
+    PluginRepository::upsert_artifact_instance(
+        &state.store,
+        &control_plane::ports::UpsertPluginArtifactInstanceInput {
+            node_id: state.api_node_id.clone(),
+            installation_id: installation.id,
+            local_version: Some(version.into()),
+            local_checksum: None,
+            local_path: Some(installed_root.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: Some(manifest_fingerprint),
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: PluginAvailabilityStatus::PendingRestart,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
+        },
+    )
+    .await
+    .unwrap();
+    installation.id
 }
 
 #[tokio::test]
@@ -200,11 +216,6 @@ async fn startup_loader_scans_dropins_and_pending_restart_rows_before_serving() 
         installation.desired_state,
         PluginDesiredState::ActiveRequested
     );
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
-    assert_eq!(
-        installation.availability_status,
-        PluginAvailabilityStatus::Available
-    );
     let artifact =
         PluginRepository::get_artifact_instance(&state.store, &state.api_node_id, installation_id)
             .await
@@ -229,6 +240,13 @@ async fn startup_loader_does_not_use_another_node_host_extension_path_when_curre
     create_host_extension_installation_fixture(&other_node_root, "0.1.0", "uploaded");
     let installation_id =
         seed_pending_restart_host_extension(&base_state, &other_node_root, "0.1.0").await;
+    sqlx::query(
+        "update extension_artifact_instances set node_id = 'other-node' where installation_id = $1",
+    )
+    .bind(installation_id)
+    .execute(base_state.store.pool())
+    .await
+    .unwrap();
 
     let summary = load_host_extensions_at_startup(&base_state).await.unwrap();
     let installation = PluginRepository::get_installation(&base_state.store, installation_id)
@@ -241,8 +259,7 @@ async fn startup_loader_does_not_use_another_node_host_extension_path_when_curre
         installation_id,
     )
     .await
-    .unwrap()
-    .expect("current node missing artifact snapshot should be recorded");
+    .unwrap();
 
     assert_eq!(summary.pending_restart_count, 1);
     assert_eq!(summary.loaded_count, 0);
@@ -252,12 +269,7 @@ async fn startup_loader_does_not_use_another_node_host_extension_path_when_curre
         installation.desired_state,
         PluginDesiredState::PendingRestart
     );
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
-    assert_eq!(
-        artifact.artifact_status,
-        PluginArtifactInstanceStatus::Missing
-    );
-    assert_eq!(artifact.runtime_status, PluginRuntimeStatus::Inactive);
+    assert!(artifact.is_none());
 
     let _ = fs::remove_dir_all(other_node_root);
 }
@@ -276,18 +288,12 @@ async fn installed_host_extension_without_host_extension_yaml_becomes_load_faile
         .await
         .unwrap()
         .unwrap();
-
     assert_eq!(summary.pending_restart_count, 1);
     assert_eq!(summary.loaded_count, 0);
     assert_eq!(summary.failed_count, 1);
     assert_eq!(
         installation.desired_state,
         PluginDesiredState::PendingRestart
-    );
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
-    assert_eq!(
-        installation.availability_status,
-        PluginAvailabilityStatus::PendingRestart
     );
     let artifact = PluginRepository::get_artifact_instance(
         &base_state.store,
@@ -339,15 +345,9 @@ migrations: []
         seed_pending_restart_host_extension(&base_state, &pending_root, "0.1.0").await;
 
     let summary = load_host_extensions_at_startup(&base_state).await.unwrap();
-    let installation = PluginRepository::get_installation(&base_state.store, installation_id)
-        .await
-        .unwrap()
-        .unwrap();
-
     assert_eq!(summary.pending_restart_count, 1);
     assert_eq!(summary.loaded_count, 0);
     assert_eq!(summary.failed_count, 1);
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
     let artifact = PluginRepository::get_artifact_instance(
         &base_state.store,
         &base_state.api_node_id,
@@ -376,15 +376,9 @@ async fn entry_file_existence_alone_is_insufficient() {
         seed_pending_restart_host_extension(&base_state, &pending_root, "0.1.0").await;
 
     let summary = load_host_extensions_at_startup(&base_state).await.unwrap();
-    let installation = PluginRepository::get_installation(&base_state.store, installation_id)
-        .await
-        .unwrap()
-        .unwrap();
-
     assert_eq!(summary.pending_restart_count, 1);
     assert_eq!(summary.loaded_count, 0);
     assert_eq!(summary.failed_count, 1);
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
     let artifact = PluginRepository::get_artifact_instance(
         &base_state.store,
         &base_state.api_node_id,

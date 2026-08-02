@@ -637,7 +637,7 @@ async fn model_providers_feature_only_completes_plugin_install_and_family_lifecy
         .unwrap()
         .to_string();
     assert_eq!(
-        official_payload["data"]["installation"]["availability_status"],
+        official_payload["data"]["installation"]["local_artifact"]["availability_status"],
         "available"
     );
 
@@ -720,7 +720,7 @@ async fn model_providers_feature_only_completes_plugin_install_and_family_lifecy
         )
         .await
         .unwrap();
-    assert_eq!(delete.status(), StatusCode::OK);
+    assert_eq!(delete.status(), StatusCode::CONFLICT);
 }
 
 fn upload_body(boundary: &str, file_name: &str, package_bytes: &[u8]) -> Vec<u8> {

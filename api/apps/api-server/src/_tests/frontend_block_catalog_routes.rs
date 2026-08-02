@@ -1,6 +1,7 @@
 use crate::{
     _tests::support::{
         login_and_capture_cookie, test_api_state_with_database_url, test_app_with_database_url,
+        test_config,
     },
     provider_runtime::ApiProviderRuntime,
 };
@@ -48,27 +49,36 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
 
     sqlx::query(
         r#"
-        insert into plugin_installations (
-            id, provider_code, plugin_id, plugin_version, contract_version, protocol,
-            display_name, source_kind, trust_level, verification_status, desired_state,
-            artifact_status, runtime_status, availability_status, package_path, installed_path,
-            checksum, manifest_fingerprint, signature_status, signature_algorithm, signing_key_id,
-            last_load_error, metadata_json, created_by
+        insert into extension_installations (
+            id, category, organization, artifact_id, artifact_version, plugin_id,
+            contract_version, protocol, display_name, source_kind, trust_level,
+            verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
-            $1, $2, $3, '0.1.0',
+            $1, 'capability-plugins', 'test', $2, '0.1.0', $3,
             '1flowbase.capability/v1', 'stdio_json', 'Fixture Frontend Blocks',
-            'uploaded', 'checksum_only', 'valid', 'active_requested', 'ready', 'inactive',
-            'available', null, $4, null, null,
-            'unsigned', null, null, null, $5, $6
+            'uploaded', 'checksum_only', 'valid', 'active_requested', 'missing', $4, $5
         )
         "#,
     )
     .bind(installation_id)
     .bind(&provider_code)
     .bind(&plugin_id)
-    .bind(installed_path.display().to_string())
     .bind(json!({}))
     .bind(actor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_path,
+            artifact_status, runtime_status, availability_status
+        ) values ($1, $2, '0.1.0', $3, 'ready', 'inactive', 'available')
+        "#,
+    )
+    .bind(test_config().api_node_id)
+    .bind(installation_id)
+    .bind(installed_path.display().to_string())
     .execute(&pool)
     .await
     .unwrap();
@@ -308,12 +318,13 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         .unwrap();
     assert_eq!(missing_asset_response.status(), StatusCode::NOT_FOUND);
 
-    let installed_path: String =
-        sqlx::query_scalar("select installed_path from plugin_installations where id = $1")
-            .bind(installation_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let installed_path: String = sqlx::query_scalar(
+        "select local_path from extension_artifact_instances where installation_id = $1",
+    )
+    .bind(installation_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     std::fs::write(
         std::path::Path::new(&installed_path).join("browser-assets/native-components.js"),
         "export function Tampered() {}\n",
@@ -507,7 +518,7 @@ async fn builtin_jsx_block_bootstrap_is_idempotent() {
     .unwrap();
 
     let installation_count: i64 = sqlx::query_scalar(
-        "select count(*) from plugin_installations where provider_code = '1flowbase'",
+        "select count(*) from extension_installations where artifact_id = '1flowbase'",
     )
     .fetch_one(&pool)
     .await

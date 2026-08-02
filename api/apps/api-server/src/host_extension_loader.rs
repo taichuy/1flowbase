@@ -7,13 +7,12 @@ use anyhow::{bail, Context, Result};
 use control_plane::{
     errors::ControlPlaneError,
     host_extension::{is_host_extension_installation, is_host_extension_manifest},
-    plugin_lifecycle::derive_availability_status,
     plugin_management::{
         mark_current_node_plugin_runtime_status, ready_current_node_plugin_installation,
     },
     ports::{PluginRepository, UpdatePluginDesiredStateInput},
 };
-use domain::{PluginArtifactStatus, PluginDesiredState, PluginRuntimeStatus};
+use domain::{PluginDesiredState, PluginRuntimeStatus};
 use plugin_framework::{
     parse_host_extension_contribution_manifest, scan_host_extension_dropins_with_policy,
     HostExtensionContributionManifest, HostExtensionDropinPolicy, HostExtensionDropinScan,
@@ -38,7 +37,7 @@ pub struct HostExtensionStartupSummary {
 
 pub(crate) struct PreparedHostExtensionsAtStartup {
     pub(crate) contributions: Vec<ResolvedHostExtensionConsoleContribution>,
-    activation_candidates: Vec<domain::PluginInstallationRecord>,
+    activation_candidates: Vec<domain::LocalPluginInstallationRecord>,
     pub(crate) summary: HostExtensionStartupSummary,
 }
 
@@ -84,11 +83,6 @@ pub(crate) async fn prepare_host_extensions_at_startup(
                 PluginDesiredState::PendingRestart | PluginDesiredState::ActiveRequested
             )
     }) {
-        if installation.artifact_status != PluginArtifactStatus::Ready {
-            summary.skipped_count += 1;
-            continue;
-        }
-
         let local_installation = match ready_current_node_plugin_installation(
             store,
             api_node_id,
@@ -139,7 +133,7 @@ pub(crate) async fn prepare_host_extensions_at_startup(
 async fn mark_host_extension_load_failed(
     store: &storage_durable::MainDurableStore,
     api_node_id: &str,
-    installation: &domain::PluginInstallationRecord,
+    installation: &domain::LocalPluginInstallationRecord,
     error: &anyhow::Error,
 ) -> Result<()> {
     mark_current_node_plugin_runtime_status(
@@ -163,12 +157,8 @@ pub(crate) async fn activate_prepared_host_extensions(
         store
             .update_desired_state(&UpdatePluginDesiredStateInput {
                 installation_id: installation.id,
-                availability_status: derive_availability_status(
-                    desired_state,
-                    PluginArtifactStatus::Ready,
-                    PluginRuntimeStatus::Active,
-                ),
                 desired_state,
+                actor_user_id: installation.created_by,
             })
             .await?;
         mark_current_node_plugin_runtime_status(
@@ -241,9 +231,13 @@ fn is_current_node_artifact_conflict(error: &anyhow::Error) -> bool {
 }
 
 fn validate_host_extension_installation(
-    installation: &domain::PluginInstallationRecord,
+    installation: &domain::LocalPluginInstallationRecord,
 ) -> Result<HostExtensionContributionManifest> {
-    let install_root = Path::new(&installation.installed_path);
+    let install_root = Path::new(
+        installation
+            .local_path()
+            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+    );
     let manifest_path = install_root.join("manifest.yaml");
     let manifest_raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("failed to read {}", manifest_path.display()))?;
