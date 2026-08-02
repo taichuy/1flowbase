@@ -91,6 +91,7 @@ dependencies = [
  "reqwest 0.12.28",
  "runtime-core",
  "runtime-profile",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
