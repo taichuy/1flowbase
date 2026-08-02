@@ -410,6 +410,10 @@ fn parse_application_archive(bytes: &[u8]) -> Result<ApplicationArchivePackage, 
     Ok(ApplicationArchivePackage {
         schema_version: APPLICATION_ARCHIVE_SCHEMA_VERSION.to_string(),
         applications: vec![ApplicationArchiveEntry {
+            template_id: String::new(),
+            release_version: 0,
+            exported_from_system_version: String::new(),
+            exported_at: String::new(),
             application: ApplicationArchiveApplication {
                 application_type: template.application.application_type,
                 workflow_trigger_type: None,
@@ -766,10 +770,15 @@ pub async fn export_application_archive(
     Json(body): Json<ExportApplicationArchiveBody>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let exported_at = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive_exported_at"))?;
     let package = ApplicationArchiveService::new(state.store.clone())
         .export_archive(ExportApplicationArchiveCommand {
             actor_user_id: context.user.id,
             application_ids: body.application_ids,
+            exported_from_system_version: env!("CARGO_PKG_VERSION").to_string(),
+            exported_at,
         })
         .await?;
     let (content_type, filename, document) = match package.applications.as_slice() {

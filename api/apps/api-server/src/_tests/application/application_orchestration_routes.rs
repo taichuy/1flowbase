@@ -559,6 +559,45 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
         exported_package["applications"][0]["application"]["name"],
         json!("DeepSeek V4 测试")
     );
+    assert_eq!(
+        exported_package["applications"][0]["template_id"],
+        json!(source_id)
+    );
+    assert_eq!(
+        exported_package["applications"][0]["release_version"],
+        json!(1)
+    );
+    assert_eq!(
+        exported_package["applications"][0]["exported_from_system_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
+    assert!(exported_package["applications"][0]["exported_at"].is_string());
+
+    let repeated_export = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/archive/export")
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "application_ids": [source_id] }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let repeated_package: Value = serde_json::from_slice(
+        &to_bytes(repeated_export.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        repeated_package["applications"][0]["release_version"],
+        json!(1)
+    );
 
     let preview_boundary = "preview-application-archive";
     let preview = app
@@ -615,6 +654,10 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
     let imported_body: Value =
         serde_json::from_slice(&to_bytes(imported.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_ne!(imported_body["data"]["application"]["id"], source_id);
+    let imported_id = imported_body["data"]["application"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(
         imported_body["data"]["application"]["name"],
         json!("Imported Portable Agent")
@@ -622,6 +665,40 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
     assert_eq!(
         imported_body["data"]["application"]["application_type"],
         json!("agent_flow")
+    );
+
+    let imported_export = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/archive/export")
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "application_ids": [&imported_id] }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let imported_package: Value = serde_json::from_slice(
+        &to_bytes(imported_export.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        imported_package["applications"][0]["template_id"],
+        json!(imported_id)
+    );
+    assert_ne!(
+        imported_package["applications"][0]["template_id"],
+        exported_package["applications"][0]["template_id"]
+    );
+    assert_eq!(
+        imported_package["applications"][0]["release_version"],
+        json!(1)
     );
 
     let exported_entry = &exported_package["applications"][0];
@@ -671,6 +748,76 @@ async fn application_export_ac_001_single_application_json_previews_and_imports_
         legacy_import_body["data"]["application"]["name"],
         json!("Imported Legacy Agent")
     );
+}
+
+#[tokio::test]
+async fn ac_001_failed_batch_export_does_not_partially_increment_release_versions() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_type": "agent_flow",
+                        "name": "Atomic archive batch"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let created: Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let application_id = created["data"]["id"].as_str().unwrap();
+
+    let failed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/archive/export")
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_ids": [
+                            application_id,
+                            "ffffffff-ffff-ffff-ffff-ffffffffffff"
+                        ]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(failed.status(), StatusCode::NOT_FOUND);
+
+    let export = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/archive/export")
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "application_ids": [application_id] }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let package: Value =
+        serde_json::from_slice(&to_bytes(export.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(package["applications"][0]["release_version"], json!(1));
 }
 
 #[tokio::test]

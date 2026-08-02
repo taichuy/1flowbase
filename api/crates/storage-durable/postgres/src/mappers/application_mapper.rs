@@ -22,6 +22,8 @@ pub struct StoredApplicationRow {
     pub icon_background: Option<String>,
     pub created_by: Uuid,
     pub updated_at: OffsetDateTime,
+    pub release_version: i64,
+    pub release_digest: Option<String>,
     pub current_flow_id: Option<Uuid>,
     pub current_draft_id: Option<Uuid>,
     pub api_enabled: bool,
@@ -54,6 +56,8 @@ impl PgApplicationMapper {
             icon_background: row.icon_background,
             created_by: row.created_by,
             updated_at: row.updated_at,
+            release_version: row.release_version,
+            release_digest: row.release_digest,
             tags: serde_json::from_value::<Vec<ApplicationTag>>(row.tags)?,
             sections: application_sections(
                 application_type,

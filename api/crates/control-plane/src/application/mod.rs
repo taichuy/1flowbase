@@ -16,6 +16,7 @@ use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
     ports::{
+        ApplicationArchiveRelease, ApplicationArchiveReleaseDigest,
         ApplicationEnvironmentVariableInput, ApplicationManagementPage, ApplicationManagementQuery,
         ApplicationManagementRepository, ApplicationRepository, ApplicationVisibility,
         CreateApplicationInput, CreateApplicationTagInput, CreateWorkflowTriggerConfig,
@@ -25,6 +26,8 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod _tests;
 mod archive;
 pub mod console_policy_migration;
 mod non_crud_console_access;
@@ -1062,6 +1065,44 @@ impl crate::ports::ApplicationJsDependencySelectionRepository for InMemoryApplic
 
 #[async_trait]
 impl ApplicationRepository for InMemoryApplicationRepository {
+    async fn settle_application_archive_releases(
+        &self,
+        workspace_id: Uuid,
+        digests: &[ApplicationArchiveReleaseDigest],
+    ) -> Result<Vec<ApplicationArchiveRelease>> {
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("in-memory app repo mutex poisoned");
+        if digests.iter().any(|digest| {
+            inner
+                .applications
+                .get(&digest.application_id)
+                .is_none_or(|application| application.workspace_id != workspace_id)
+        }) {
+            return Err(ControlPlaneError::NotFound("application").into());
+        }
+
+        Ok(digests
+            .iter()
+            .map(|digest| {
+                let application = inner
+                    .applications
+                    .get_mut(&digest.application_id)
+                    .expect("application existence checked before atomic settlement");
+                if application.release_digest.as_deref() != Some(&digest.release_digest) {
+                    application.release_version += 1;
+                    application.release_digest = Some(digest.release_digest.clone());
+                }
+                ApplicationArchiveRelease {
+                    application_id: application.id,
+                    release_version: application.release_version,
+                    release_digest: digest.release_digest.clone(),
+                }
+            })
+            .collect())
+    }
+
     async fn record_application_extension_source(
         &self,
         _workspace_id: Uuid,
@@ -1414,6 +1455,8 @@ fn build_application_record(id: Uuid, input: CreateApplicationInput) -> domain::
         icon_background: input.icon_background,
         created_by: input.actor_user_id,
         updated_at: time::OffsetDateTime::now_utc(),
+        release_version: 0,
+        release_digest: None,
         tags: Vec::new(),
         sections: planned_sections(input.application_type, input.workflow_trigger_type),
     }

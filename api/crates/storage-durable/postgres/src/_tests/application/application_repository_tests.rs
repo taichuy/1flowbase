@@ -1,5 +1,6 @@
 use control_plane::ports::{
-    ApplicationRepository, ApplicationVisibility, CreateApplicationInput, DeleteApplicationInput,
+    ApplicationArchiveReleaseDigest, ApplicationRepository, ApplicationVisibility,
+    CreateApplicationInput, DeleteApplicationInput,
 };
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -70,6 +71,125 @@ async fn seed_user(store: &PgControlPlaneStore, workspace_id: Uuid, account_pref
     .unwrap();
 
     user_id
+}
+
+async fn seed_release_application(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    actor_user_id: Uuid,
+    name: &str,
+) -> domain::ApplicationRecord {
+    ApplicationRepository::create_application(
+        store,
+        &CreateApplicationInput {
+            actor_user_id,
+            workspace_id,
+            application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
+            workflow_trigger_config: None,
+            name: name.into(),
+            description: String::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        },
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn ac_001_archive_release_settlement_is_idempotent_incrementing_and_batch_atomic() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = seed_workspace(&store, "Archive releases").await;
+    let actor_user_id = seed_user(&store, workspace_id, "archive-release").await;
+    let application =
+        seed_release_application(&store, workspace_id, actor_user_id, "Versioned").await;
+
+    let first = ApplicationRepository::settle_application_archive_releases(
+        &store,
+        workspace_id,
+        &[ApplicationArchiveReleaseDigest {
+            application_id: application.id,
+            release_digest: "a".repeat(64),
+        }],
+    )
+    .await
+    .unwrap();
+    assert_eq!(first[0].release_version, 1);
+
+    let repeated = ApplicationRepository::settle_application_archive_releases(
+        &store,
+        workspace_id,
+        &[ApplicationArchiveReleaseDigest {
+            application_id: application.id,
+            release_digest: "a".repeat(64),
+        }],
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeated[0].release_version, 1);
+
+    let changed = ApplicationRepository::settle_application_archive_releases(
+        &store,
+        workspace_id,
+        &[ApplicationArchiveReleaseDigest {
+            application_id: application.id,
+            release_digest: "b".repeat(64),
+        }],
+    )
+    .await
+    .unwrap();
+    assert_eq!(changed[0].release_version, 2);
+
+    let batch_error = ApplicationRepository::settle_application_archive_releases(
+        &store,
+        workspace_id,
+        &[
+            ApplicationArchiveReleaseDigest {
+                application_id: application.id,
+                release_digest: "c".repeat(64),
+            },
+            ApplicationArchiveReleaseDigest {
+                application_id: Uuid::from_u128(u128::MAX),
+                release_digest: "d".repeat(64),
+            },
+        ],
+    )
+    .await;
+    assert!(batch_error.is_err());
+
+    let persisted: (i64, Option<String>) =
+        sqlx::query_as("select release_version, release_digest from applications where id = $1")
+            .bind(application.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(persisted, (2, Some("b".repeat(64))));
+}
+
+#[tokio::test]
+async fn ac_001_concurrent_identical_archive_release_settlement_increments_once() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let workspace_id = seed_workspace(&store, "Concurrent archive releases").await;
+    let actor_user_id = seed_user(&store, workspace_id, "archive-concurrent").await;
+    let application =
+        seed_release_application(&store, workspace_id, actor_user_id, "Concurrent").await;
+    let digest = [ApplicationArchiveReleaseDigest {
+        application_id: application.id,
+        release_digest: "e".repeat(64),
+    }];
+
+    let (left, right) = tokio::join!(
+        ApplicationRepository::settle_application_archive_releases(&store, workspace_id, &digest),
+        ApplicationRepository::settle_application_archive_releases(&store, workspace_id, &digest)
+    );
+    assert_eq!(left.unwrap()[0].release_version, 1);
+    assert_eq!(right.unwrap()[0].release_version, 1);
 }
 
 #[tokio::test]
