@@ -154,12 +154,12 @@ describe('ApplicationManagementPanel', () => {
       workflow_triggers: [
         {
           value: 'extension',
-          label: 'Extension',
+          label: '扩展接口触发',
           description: 'Expose the Workflow through /api/ex/.'
         },
         {
           value: 'schedule',
-          label: 'Schedule',
+          label: '定时触发',
           description: 'Run the Workflow from a disabled-by-default schedule.'
         }
       ],
