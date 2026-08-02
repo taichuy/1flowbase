@@ -324,6 +324,7 @@ export function I18nCatalogPage() {
               <Button
                 className="i18n-catalog-page__action"
                 icon={<GlobalOutlined />}
+                aria-label={t('auto.translation_catalog_version')}
                 onClick={() => setCatalogActivationOpen(true)}
               >
                 {t('auto.translation_catalog_version')}

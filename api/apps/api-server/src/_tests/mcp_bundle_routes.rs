@@ -199,6 +199,36 @@ fn bundle_zip_with_tool_name(
     duplicate_binding: bool,
     tool_name: &str,
 ) -> Vec<u8> {
+    bundle_zip_with_tool_name_and_binding(
+        interface_id,
+        source_version,
+        duplicate_binding,
+        tool_name,
+        "bundle_runtime_profile",
+    )
+}
+
+fn bundle_zip_with_binding_tool(
+    interface_id: &str,
+    source_version: &str,
+    binding_tool_id: &str,
+) -> Vec<u8> {
+    bundle_zip_with_tool_name_and_binding(
+        interface_id,
+        source_version,
+        false,
+        "Runtime profile",
+        binding_tool_id,
+    )
+}
+
+fn bundle_zip_with_tool_name_and_binding(
+    interface_id: &str,
+    source_version: &str,
+    duplicate_binding: bool,
+    tool_name: &str,
+    binding_tool_id: &str,
+) -> Vec<u8> {
     let tool = serde_json::to_vec_pretty(&json!({
         "tool_id": "bundle_runtime_profile",
         "name": tool_name,
@@ -229,7 +259,7 @@ fn bundle_zip_with_tool_name(
         }],
         "bindings": [{
             "group_path": "/system",
-            "tool_id": "bundle_runtime_profile",
+            "tool_id": binding_tool_id,
             "display_alias": null,
             "visible": true,
             "sort_order": 1
@@ -435,6 +465,36 @@ async fn mcp_bundle_preview_reports_older_source_and_missing_interface_without_w
         .await
         .unwrap();
     let catalog = response_json(catalog_response).await;
+    assert!(catalog["data"]["tools"].as_array().unwrap().is_empty());
+    assert!(catalog["data"]["instances"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ac_001_mcp_bundle_preview_reports_a_missing_binding_tool_as_failed() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let bundle = bundle_zip_with_binding_tool("removed_interface", "0.2.6", "missing_bundle_tool");
+
+    let response = post_bundle(
+        &app,
+        "/api/console/mcp/bundles/preview-upload",
+        &cookie,
+        &csrf,
+        &bundle,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["data"]["effect_summary"]["changes"], 1);
+    assert_eq!(payload["data"]["effect_summary"]["failed"], 1);
+    assert_eq!(payload["data"]["instances"][0]["effect"], "failed");
+    assert_eq!(payload["data"]["instances"][0]["result"], "failed");
+    assert_eq!(
+        payload["data"]["instances"][0]["reason"],
+        "binding_tool_missing"
+    );
+
+    let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
     assert!(catalog["data"]["tools"].as_array().unwrap().is_empty());
     assert!(catalog["data"]["instances"].as_array().unwrap().is_empty());
 }
@@ -763,6 +823,47 @@ async fn ac_003_installed_mcp_artifact_does_not_record_unresolved_zero_change_co
     assert_eq!(
         attempted_payload["data"]["import_report"]["effect_summary"]["changes"],
         0
+    );
+
+    let installed = get_json(
+        &app,
+        "/api/console/settings/extension-center/installed?category=mcp",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        installed["data"]["entries"][0]["application_status"],
+        "not_applied"
+    );
+}
+
+#[tokio::test]
+async fn ac_003_installed_mcp_artifact_does_not_record_a_failed_partial_import() {
+    let bundle = bundle_zip_with_binding_tool("removed_interface", "0.2.6", "missing_bundle_tool");
+    let (app, extension_installation_id) = app_with_installed_mcp_extension(bundle, None).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let attempted = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(attempted.status(), StatusCode::OK);
+    let payload = response_json(attempted).await;
+    assert_eq!(
+        payload["data"]["workspace_application_status"],
+        "partially_imported"
+    );
+    assert_eq!(
+        payload["data"]["import_report"]["effect_summary"]["changes"],
+        1
+    );
+    assert_eq!(
+        payload["data"]["import_report"]["effect_summary"]["failed"],
+        1
     );
 
     let installed = get_json(

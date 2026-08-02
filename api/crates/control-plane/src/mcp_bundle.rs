@@ -473,6 +473,20 @@ where
                             Some("instance_id_conflict"),
                         )
                     }
+                } else if instance.bindings.iter().any(|binding| {
+                    !snapshot.tools.contains_key(&binding.tool_id)
+                        && !command
+                            .package
+                            .tools
+                            .iter()
+                            .any(|tool| tool.tool_id == binding.tool_id)
+                }) {
+                    item_report(
+                        &instance.instance_id,
+                        domain::McpBundleItemEffect::Failed,
+                        "failed",
+                        Some("binding_tool_missing"),
+                    )
                 } else {
                     item_report(
                         &instance.instance_id,

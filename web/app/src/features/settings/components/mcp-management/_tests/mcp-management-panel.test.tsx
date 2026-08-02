@@ -167,6 +167,7 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 import { AppProviders } from '../../../../../app/AppProviders';
+import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 import { McpManagementPanel } from '../McpManagementPanel';
 import { McpToolDebugPanel } from '../McpToolDebugPanel';
 import { MarkdownIrEditor } from '../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
@@ -222,6 +223,30 @@ const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
     disabled_reason: null
   }
 ];
+
+function authenticate() {
+  useAuthStore.getState().setAuthenticated({
+    csrfToken: 'csrf-123',
+    actor: {
+      id: 'root-1',
+      account: 'root',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace-1'
+    },
+    me: {
+      id: 'root-1',
+      account: 'root',
+      email: 'root@example.com',
+      phone: null,
+      nickname: 'Root',
+      name: 'Root',
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: 'root',
+      permissions: []
+    }
+  });
+}
 
 const publishApplicationApiCapability: ConsoleMcpInterfaceCapability = {
   ...interfaceCapabilities[0],
@@ -506,6 +531,8 @@ async function setFullDescription(value: string) {
 describe('McpManagementPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetAuthStore();
+    authenticate();
     vditorMock.instances.length = 0;
     window.history.replaceState({}, '', '/settings/mcp-management');
     mcpManagementApi.fetchSettingsMcpClientCredential.mockResolvedValue({

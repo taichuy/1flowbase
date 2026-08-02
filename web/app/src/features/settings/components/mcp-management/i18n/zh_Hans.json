@@ -109,7 +109,6 @@
     "mcp_bundle_conflicts": "冲突",
     "mcp_bundle_unavailable": "需补充配置",
     "mcp_bundle_failed": "失败",
-    "mcp_bundle_result_imported": "已导入",
     "mcp_bundle_result_unavailable": "已导入，暂不可用",
     "mcp_bundle_result_skipped": "已跳过",
     "mcp_bundle_system_version_recorded": "当前后端系统版本会自动记录到 manifest。",

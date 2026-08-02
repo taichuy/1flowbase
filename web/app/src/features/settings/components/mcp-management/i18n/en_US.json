@@ -109,7 +109,6 @@
     "mcp_bundle_conflicts": "Conflicts",
     "mcp_bundle_unavailable": "Needs configuration",
     "mcp_bundle_failed": "Failed",
-    "mcp_bundle_result_imported": "Imported",
     "mcp_bundle_result_unavailable": "Imported, currently unavailable",
     "mcp_bundle_result_skipped": "Skipped",
     "mcp_bundle_system_version_recorded": "The current backend system version is recorded in the manifest automatically.",

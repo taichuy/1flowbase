@@ -52,6 +52,8 @@ describe('extension center client contract', () => {
           signature_algorithm: null,
           signing_key_id: null,
           status: 'installed',
+          application_action: 'none',
+          application_status: 'not_required',
           installed_by: 'user-1',
           created_at: '2026-08-01T00:00:00Z',
           updated_at: '2026-08-01T00:00:00Z',

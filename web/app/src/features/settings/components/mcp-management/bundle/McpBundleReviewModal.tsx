@@ -74,10 +74,7 @@ function resultColor(result: string) {
 function itemResult(result: string) {
   switch (result) {
     case 'imported':
-      return i18nText(
-        'settingsMcpManagement',
-        'auto.mcp_bundle_result_imported'
-      );
+      return i18nText('settingsMcpManagement', 'auto.upstream_imported');
     case 'already_present':
       return i18nText(
         'settingsMcpManagement',

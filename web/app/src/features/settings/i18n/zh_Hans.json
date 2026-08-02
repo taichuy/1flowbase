@@ -884,7 +884,7 @@
     "translation_catalog_activated": "多语言目录已激活",
     "translation_catalog_is_current": "当前已是最新多语言目录",
     "go_to_mcp_management": "前往 MCP 管理",
-    "go_to_i18n_management": "前往多语言管理",
+    "go_to_language_management": "前往多语言管理",
     "current_version": "当前版本",
     "system_requirements": "系统要求",
     "installation": "安装状态",

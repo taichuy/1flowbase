@@ -597,7 +597,7 @@ export function SettingsExtensionCenterSection({
               </Typography.Link>
             ) : activeTab === 'i18n' ? (
               <Typography.Link href="/settings/i18n">
-                {t('auto.go_to_i18n_management')}
+                {t('auto.go_to_language_management')}
               </Typography.Link>
             ) : null
           }

@@ -12,7 +12,7 @@ pub enum McpBundleFileKind {
     Connection,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpBundleFile {
     pub path: String,
     pub kind: McpBundleFileKind,
