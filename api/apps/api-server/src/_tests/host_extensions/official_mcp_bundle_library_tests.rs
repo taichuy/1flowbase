@@ -4,7 +4,10 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::{pkcs8::EncodePublicKey, Signer, SigningKey};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -82,6 +85,47 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
     assert!(root
         .join("@taichuy/zh_hans/releases/1.10.0/bundle.zip")
         .is_file());
+    installation_repository.fail_next_upsert();
+    assert!(library
+        .sync("taichuy", "zh_hans", Some("1.2.0"))
+        .await
+        .is_err());
+    assert!(
+        !root.join("@taichuy/zh_hans/releases/1.2.0").exists(),
+        "a failed new-release index must remove the activated release"
+    );
+    assert_eq!(installation_repository.records().len(), 1);
+    assert_eq!(release_directory_names(&root), vec!["1.10.0"]);
+
+    let current_bundle = root.join("@taichuy/zh_hans/releases/1.10.0/bundle.zip");
+    let previous_local_bytes = b"previous-local-release";
+    std::fs::write(&current_bundle, previous_local_bytes).unwrap();
+    installation_repository.fail_next_upsert();
+    assert!(library
+        .repair("taichuy", "zh_hans", "1.10.0")
+        .await
+        .is_err());
+    assert_eq!(
+        std::fs::read(&current_bundle).unwrap(),
+        previous_local_bytes,
+        "a failed repair index must restore the complete previous release directory"
+    );
+    assert_eq!(release_directory_names(&root), vec!["1.10.0"]);
+    std::fs::write(&current_bundle, &artifact).unwrap();
+
+    let blocked_root = temp_root();
+    let blocked_releases = blocked_root.join("@taichuy/zh_hans/releases");
+    std::fs::create_dir_all(blocked_releases.parent().unwrap()).unwrap();
+    std::fs::write(&blocked_releases, b"not-a-directory").unwrap();
+    let (blocked_library, blocked_repository) =
+        build_library(&base, blocked_root.clone(), &signing_key);
+    assert!(blocked_library
+        .sync("taichuy", "zh_hans", Some("1.2.0"))
+        .await
+        .is_err());
+    assert!(blocked_repository.records().is_empty());
+    let _ = std::fs::remove_dir_all(blocked_root);
+
     library
         .sync("taichuy", "zh_hans", Some("1.2.0"))
         .await
@@ -176,14 +220,36 @@ fn build_library(
     (library, installation_repository)
 }
 
-#[derive(Default)]
+fn release_directory_names(root: &std::path::Path) -> Vec<String> {
+    let mut names = std::fs::read_dir(root.join("@taichuy/zh_hans/releases"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
 struct TestExtensionInstallationRepository {
     records: Mutex<Vec<domain::ExtensionInstallationRecord>>,
+    fail_next_upsert: AtomicBool,
+}
+
+impl Default for TestExtensionInstallationRepository {
+    fn default() -> Self {
+        Self {
+            records: Mutex::new(Vec::new()),
+            fail_next_upsert: AtomicBool::new(false),
+        }
+    }
 }
 
 impl TestExtensionInstallationRepository {
     fn records(&self) -> Vec<domain::ExtensionInstallationRecord> {
         self.records.lock().unwrap().clone()
+    }
+
+    fn fail_next_upsert(&self) {
+        self.fail_next_upsert.store(true, Ordering::SeqCst);
     }
 }
 
@@ -193,6 +259,9 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
         &self,
         input: &control_plane::ports::UpsertExtensionInstallationInput,
     ) -> anyhow::Result<domain::ExtensionInstallationRecord> {
+        if self.fail_next_upsert.swap(false, Ordering::SeqCst) {
+            anyhow::bail!("injected extension installation index failure");
+        }
         let mut records = self.records.lock().unwrap();
         if input.is_current {
             for record in records.iter_mut().filter(|record| {

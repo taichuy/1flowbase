@@ -486,18 +486,31 @@ impl ApiOfficialMcpBundleRegistry {
             &receipt.bundle_id,
             &receipt.bundle_version,
         );
-        let release_was_present = release_directory.is_dir();
-        write_release(&self.root, &receipt, &bytes)?;
+        let staged_directory = stage_release(&self.root, &receipt, &bytes)?;
+        let backup_directory = activate_staged_release(&staged_directory, &release_directory)?;
         let is_current = if repair {
             existing.as_ref().is_some_and(|record| record.is_current)
         } else {
             true
         };
         if let Err(error) = self.index_receipt(&receipt, is_current).await {
-            if !release_was_present {
-                let _ = fs::remove_dir_all(&release_directory);
+            if let Err(rollback_error) =
+                rollback_activated_release(&release_directory, backup_directory.as_deref())
+            {
+                return Err(error).context(format!(
+                    "failed to index synchronized MCP template; release rollback also failed: {rollback_error:#}"
+                ));
             }
             return Err(error).context("failed to index synchronized MCP template");
+        }
+        if let Some(backup_directory) = backup_directory {
+            if let Err(error) = fs::remove_dir_all(&backup_directory) {
+                tracing::warn!(
+                    path = %backup_directory.display(),
+                    error = %error,
+                    "synchronized MCP template backup cleanup failed"
+                );
+            }
         }
         Ok(receipt)
     }
@@ -862,6 +875,9 @@ fn local_versions(
     let mut result = Vec::new();
     for entry in fs::read_dir(releases)? {
         let version = entry?.file_name().to_string_lossy().to_string();
+        if Version::parse(&version).is_err() {
+            continue;
+        }
         if let Some(receipt) = read_receipt(root, organization, bundle_id, &version)? {
             result.push(receipt);
         }
@@ -907,19 +923,72 @@ fn scan_local(
     Ok(result)
 }
 
-fn write_release(root: &Path, receipt: &LocalMcpBundleReceipt, bytes: &[u8]) -> Result<()> {
+fn stage_release(root: &Path, receipt: &LocalMcpBundleReceipt, bytes: &[u8]) -> Result<PathBuf> {
     let directory = release_dir(
         root,
         &receipt.organization,
         &receipt.bundle_id,
         &receipt.bundle_version,
     );
-    fs::create_dir_all(&directory)?;
-    atomic_write(&directory.join("bundle.zip"), bytes)?;
-    atomic_write(
-        &directory.join("receipt.json"),
-        &serde_json::to_vec_pretty(receipt)?,
-    )
+    let parent = directory
+        .parent()
+        .ok_or_else(|| anyhow!("MCP bundle release path has no parent"))?;
+    fs::create_dir_all(parent)?;
+    let staging = parent.join(format!(
+        ".{}.{}.staging",
+        receipt.bundle_version,
+        Uuid::now_v7()
+    ));
+    let receipt_bytes = serde_json::to_vec_pretty(receipt)?;
+    let write_result = (|| -> Result<()> {
+        fs::create_dir(&staging)?;
+        fs::write(staging.join("bundle.zip"), bytes)?;
+        fs::write(staging.join("receipt.json"), receipt_bytes)?;
+        Ok(())
+    })();
+    if let Err(error) = write_result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error).context("failed to stage synchronized MCP template release");
+    }
+    Ok(staging)
+}
+
+fn activate_staged_release(staging: &Path, release: &Path) -> Result<Option<PathBuf>> {
+    let backup = if release.exists() {
+        let backup = release.with_extension(format!("backup-{}", Uuid::now_v7()));
+        fs::rename(release, &backup)?;
+        Some(backup)
+    } else {
+        None
+    };
+    if let Err(error) = fs::rename(staging, release) {
+        if let Some(backup) = backup.as_deref() {
+            let _ = fs::rename(backup, release);
+        }
+        let _ = fs::remove_dir_all(staging);
+        return Err(error).context("failed to activate synchronized MCP template release");
+    }
+    Ok(backup)
+}
+
+fn rollback_activated_release(release: &Path, backup: Option<&Path>) -> Result<()> {
+    let discarded = release.with_extension(format!("rollback-{}", Uuid::now_v7()));
+    fs::rename(release, &discarded)
+        .context("failed to move synchronized MCP template out of the active path")?;
+    if let Some(backup) = backup {
+        if let Err(error) = fs::rename(backup, release) {
+            let _ = fs::rename(&discarded, release);
+            return Err(error).context("failed to restore the previous MCP template release");
+        }
+    }
+    if let Err(error) = fs::remove_dir_all(&discarded) {
+        tracing::warn!(
+            path = %discarded.display(),
+            error = %error,
+            "rolled back MCP template tombstone cleanup failed"
+        );
+    }
+    Ok(())
 }
 
 fn read_current(root: &Path, organization: &str, bundle_id: &str) -> Result<Option<String>> {
@@ -930,19 +999,4 @@ fn read_current(root: &Path, organization: &str, bundle_id: &str) -> Result<Opti
     let value = fs::read_to_string(path)?.trim().to_string();
     Version::parse(&value).context("invalid local MCP bundle current pointer")?;
     Ok(Some(value))
-}
-
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow!("MCP bundle path has no parent"))?;
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name().unwrap_or_default().to_string_lossy(),
-        Uuid::now_v7()
-    ));
-    fs::write(&temporary, bytes)?;
-    fs::rename(temporary, path)?;
-    Ok(())
 }
