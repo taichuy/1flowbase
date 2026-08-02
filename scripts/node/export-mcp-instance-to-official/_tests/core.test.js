@@ -108,11 +108,15 @@ test('AC-002 exports with a temporary owner session, validates, atomically repla
   const { parent, target } = fixtureTarget();
   let disposed = 0;
   let requestBody;
+  let credentialsRepoRoot;
   const archive = exportedArchive();
   const result = await exportMcpInstanceToOfficial({
     instanceId: 'system/example', target, apiBaseUrl: 'http://127.0.0.1:3000/',
   }, {
-    loadRootCredentials: () => ({ account: 'root', password: 'secret' }),
+    loadRootCredentials: ({ repoRoot }) => {
+      credentialsRepoRoot = repoRoot;
+      return { account: 'root', password: 'secret' };
+    },
     openTemporaryOwnerSession: async () => ({
       cookie: 'session=test', csrfToken: 'csrf', async dispose() { disposed += 1; },
     }),
@@ -129,6 +133,7 @@ test('AC-002 exports with a temporary owner session, validates, atomically repla
     organization: 'taichuy', bundle_id: 'example', bundle_version: '1.2.4', locale: 'zh_Hans',
   });
   assert.equal(result.exported_from_system_version, '0.3.1');
+  assert.equal(credentialsRepoRoot, path.resolve(__dirname, '../../../..'));
   assert.equal(disposed, 1);
   assert.equal(fs.existsSync(path.join(target, 'tools', 'stale.json')), false);
   assert.equal(fs.existsSync(path.join(target, 'tools', 'new.json')), true);
