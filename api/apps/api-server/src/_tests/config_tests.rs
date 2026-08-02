@@ -737,7 +737,7 @@ fn api_config_resolves_official_agent_flow_template_catalog_source() {
         ),
         (
             "API_OFFICIAL_AGENT_FLOW_TEMPLATE_MIRROR_INDEX_URL",
-            "https://mirror.example.com/agent-flow/catalog/v1/index.json",
+            "https://mirror.example.com/agent-flow/releases/v1/catalog.json",
         ),
         (
             "API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL",
@@ -752,14 +752,14 @@ fn api_config_resolves_official_agent_flow_template_catalog_source() {
 
     assert_eq!(
         config.official_agent_flow_template_default_index_url,
-        "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json"
+        "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/releases/v1/catalog.json"
     );
 
     let resolved = config.resolve_official_agent_flow_template_source();
     assert_eq!(resolved.source_kind, "mirror_registry");
     assert_eq!(
         resolved.index_url,
-        "https://mirror.example.com/agent-flow/catalog/v1/index.json"
+        "https://mirror.example.com/agent-flow/releases/v1/catalog.json"
     );
     assert_eq!(
         resolved.github_proxy_url.as_deref(),

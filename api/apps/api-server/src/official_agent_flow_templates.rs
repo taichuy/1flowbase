@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -16,6 +17,8 @@ use crate::{
 };
 
 pub const AGENT_FLOW_CATALOG_SCHEMA_VERSION: &str = "1flowbase.agent-flow-catalog/v1";
+const AGENT_FLOW_SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+const AGENT_FLOW_SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct AgentFlowCatalogApplication {
@@ -156,14 +159,15 @@ impl ApiAgentFlowTemplateLibrary {
         trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
     ) -> Self {
         Self {
-            catalog_url: rewrite_github_raw_url(
-                &source.index_url,
-                source.github_proxy_url.as_deref(),
-            ),
+            catalog_url: source.index_url,
             github_proxy_url: source.github_proxy_url,
             root,
             trusted_public_keys,
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(AGENT_FLOW_SOURCE_CONNECT_TIMEOUT)
+                .timeout(AGENT_FLOW_SOURCE_REQUEST_TIMEOUT)
+                .build()
+                .expect("Agent Flow source HTTP client configuration must be valid"),
         }
     }
 
@@ -180,20 +184,38 @@ impl ApiAgentFlowTemplateLibrary {
                 if version.template_id != template.template_id || version.release_version == 0 {
                     bail!("official Agent Flow catalog version identity mismatch");
                 }
-                version.download_url = rewrite_github_raw_url(
-                    &resolve_download_url(
-                        &self.catalog_url,
-                        &template.source_path,
-                        &version.download_url,
-                    )?,
-                    self.github_proxy_url.as_deref(),
-                );
+                version.download_url = resolve_download_url(
+                    &self.catalog_url,
+                    &template.source_path,
+                    &version.download_url,
+                )?;
             }
         }
         Ok(catalog)
     }
 
     async fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let direct_error = match self.download_bytes_once(url).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => error,
+        };
+        let proxied_url = rewrite_github_release_url(
+            &rewrite_github_raw_url(url, self.github_proxy_url.as_deref()),
+            self.github_proxy_url.as_deref(),
+        );
+        if proxied_url == url {
+            return Err(direct_error);
+        }
+        self.download_bytes_once(&proxied_url)
+            .await
+            .with_context(|| {
+                format!(
+                "official Agent Flow direct source failed before proxy fallback: {direct_error}"
+            )
+            })
+    }
+
+    async fn download_bytes_once(&self, url: &str) -> Result<Vec<u8>> {
         Ok(self
             .client
             .get(url)
@@ -515,6 +537,22 @@ fn resolve_download_url(
         base.join(source_path)?
     };
     Ok(source.join(download_url)?.to_string())
+}
+
+fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
+    let Some(github_proxy_url) = github_proxy_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return url.to_string();
+    };
+    let github_proxy_url = github_proxy_url.trim_end_matches('/');
+    let github_release_prefix = "https://github.com/";
+    let proxied_release_prefix = format!("{github_proxy_url}/{github_release_prefix}");
+    if url.starts_with(&proxied_release_prefix) || !url.starts_with(github_release_prefix) {
+        return url.to_string();
+    }
+    format!("{github_proxy_url}/{url}")
 }
 
 fn template_dir(root: &Path, template_id: &str) -> PathBuf {

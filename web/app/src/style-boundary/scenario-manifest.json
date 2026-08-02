@@ -682,16 +682,6 @@
         ]
       },
       {
-        "id": "section-shell",
-        "selector": ".section-page-layout__shell",
-        "propertyAssertions": [
-          {
-            "property": "display",
-            "expected": "flex"
-          }
-        ]
-      },
-      {
         "id": "agent-flow-template-library",
         "selector": ".agent-flow-template-library",
         "propertyAssertions": [

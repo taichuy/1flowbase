@@ -644,6 +644,13 @@ export function seedStyleBoundaryTemplateFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
+    ) {
+      return createStyleBoundaryJsonResponse({ data: [], meta: null });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
       requestUrl.pathname ===
         '/api/console/applications/orchestration/templates/official-catalog'
     ) {

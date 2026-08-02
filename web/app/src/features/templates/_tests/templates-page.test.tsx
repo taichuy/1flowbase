@@ -315,10 +315,14 @@ describe('Agent Flow template library', () => {
         templatesApi.previewOfficialAgentFlowTemplate
       ).toHaveBeenCalledWith('fusion', 2, 'csrf-123');
     });
-    const importDialog = await screen.findByRole('dialog', {
-      name: '导入应用压缩包'
-    });
-    fireEvent.click(within(importDialog).getByRole('button', { name: '取消' }));
+    const importDialog = (
+      await screen.findByText('导入应用压缩包')
+    ).closest('[role="dialog"]');
+    expect(importDialog).not.toBeNull();
+    if (!importDialog) throw new Error('shared application import dialog missing');
+    fireEvent.click(
+      within(importDialog).getByRole('button', { name: /取\s*消/ })
+    );
     fireEvent.click(
       within(localRow).getByRole('button', { name: '修复本地版本' })
     );

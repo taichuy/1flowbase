@@ -221,7 +221,7 @@ impl ApiConfig {
             .or_else(|| map.get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_INDEX_URL").cloned())
             .unwrap_or_else(|| {
                 format!(
-                    "https://raw.githubusercontent.com/{official_plugin_repository}/main/agent-flow/catalog/v1/index.json"
+                    "https://raw.githubusercontent.com/{official_plugin_repository}/main/agent-flow/releases/v1/catalog.json"
                 )
             });
         let official_agent_flow_template_mirror_index_url = map
