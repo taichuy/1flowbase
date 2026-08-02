@@ -88,6 +88,9 @@ pub fn group_installed_extension_families(
 ) -> Vec<InstalledExtensionFamily> {
     let mut grouped = BTreeMap::<String, Vec<domain::ExtensionInstallationRecord>>::new();
     for record in records {
+        if record.status != domain::ExtensionInstallationStatus::Installed {
+            continue;
+        }
         grouped
             .entry(record.identity.catalog_id())
             .or_default()
@@ -386,9 +389,13 @@ where
         &self,
         node_id: &str,
     ) -> Result<Vec<domain::ExtensionInstallationRecord>> {
-        self.repository
+        Ok(self
+            .repository
             .list_extension_installations_for_node(node_id)
-            .await
+            .await?
+            .into_iter()
+            .filter(|record| record.status == domain::ExtensionInstallationStatus::Installed)
+            .collect())
     }
 
     pub async fn list_installed_families_for_node(

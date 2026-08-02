@@ -412,14 +412,20 @@ async fn root_1545_ac4_local_artifact_wins_and_duplicate_install_is_idempotent()
         domain::ExtensionInstallationStatus::Installed
     );
     assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 1);
-    assert_eq!(
-        service.list_installed_for_node("node-a").await.unwrap()[0].status,
-        domain::ExtensionInstallationStatus::Missing
-    );
+    assert!(service
+        .list_installed_for_node("node-a")
+        .await
+        .unwrap()
+        .is_empty());
     tokio::fs::write(&second.local_path, b"corrupted")
         .await
         .unwrap();
     assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 1);
+    assert!(service
+        .list_installed_for_node("node-a")
+        .await
+        .unwrap()
+        .is_empty());
     tokio::fs::write(&second.local_path, b"local-debug")
         .await
         .unwrap();
@@ -533,6 +539,24 @@ fn root_1545_d4_ac_13_groups_installed_versions_by_stable_family_identity() {
         families[1].catalog_id(),
         "runtime-extensions:taichuy/deepseek"
     );
+}
+
+#[test]
+fn ac_001_installed_families_exclude_missing_history_and_all_missing_families() {
+    let now = OffsetDateTime::now_utc();
+    let installed = installed_record("anthropic", "1.0.0", now);
+    let mut missing_newer = installed_record("anthropic", "2.0.0", now);
+    missing_newer.status = domain::ExtensionInstallationStatus::Missing;
+    missing_newer.is_current = true;
+    let mut all_missing = installed_record("deepseek", "1.0.0", now);
+    all_missing.status = domain::ExtensionInstallationStatus::Missing;
+
+    let families = group_installed_extension_families([installed, missing_newer, all_missing]);
+
+    assert_eq!(families.len(), 1);
+    assert_eq!(families[0].current.identity.artifact_id, "anthropic");
+    assert_eq!(families[0].current.identity.version, "1.0.0");
+    assert_eq!(families[0].installed_versions.len(), 1);
 }
 
 fn installed_record(

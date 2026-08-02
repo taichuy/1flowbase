@@ -130,6 +130,29 @@ fn ac_002_catalog_projection_uses_database_current_version_for_stable_identity()
 }
 
 #[test]
+fn ac_001_catalog_join_excludes_missing_versions_and_all_missing_families() {
+    let now = OffsetDateTime::now_utc();
+    let installed = installation_record("1.0.0", now);
+    let mut missing_newer = installation_record("2.0.0", now);
+    missing_newer.status = domain::ExtensionInstallationStatus::Missing;
+    missing_newer.is_current = true;
+    let mut all_missing = installation_record("3.0.0", now);
+    all_missing.identity.artifact_id = "missing-only".to_string();
+    all_missing.status = domain::ExtensionInstallationStatus::Missing;
+
+    let joins = project_installed_catalog_joins(
+        [installed, missing_newer, all_missing],
+        super::ExtensionCatalogCategory::RuntimeExtensions,
+    );
+
+    assert_eq!(
+        joins["runtime-extensions:taichuy/openai"].current_version,
+        "1.0.0"
+    );
+    assert!(!joins.contains_key("runtime-extensions:taichuy/missing-only"));
+}
+
+#[test]
 fn root_1545_d4_ac_13_paginates_installed_families_instead_of_version_records() {
     let now = OffsetDateTime::now_utc();
     let mut anthropic_old = installation_record("0.1.18", now);

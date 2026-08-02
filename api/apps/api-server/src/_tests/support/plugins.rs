@@ -5,9 +5,6 @@ use super::*;
 pub(super) struct InMemoryOfficialPluginSource;
 
 #[derive(Clone, Default)]
-pub(super) struct InMemoryOfficialAgentFlowTemplateSource;
-
-#[derive(Clone, Default)]
 pub(super) struct InMemoryOfficialMcpBundleSource;
 
 #[derive(Clone, Default)]
@@ -289,103 +286,6 @@ impl OfficialPluginSourcePort for InMemoryOfficialPluginSource {
 
     fn trusted_public_keys(&self) -> Vec<plugin_framework::TrustedPublicKey> {
         vec![official_upload_public_key()]
-    }
-}
-
-#[async_trait]
-impl AgentFlowTemplateLibraryPort for InMemoryOfficialAgentFlowTemplateSource {
-    async fn catalog(&self) -> anyhow::Result<AgentFlowTemplateLibraryCatalog> {
-        let template = build_agent_flow_template_package();
-        let template_bytes = serde_json::to_vec(&template)?;
-        let version = AgentFlowCatalogVersion {
-            template_id: "multimodal-mount-test".into(),
-            release_version: 1,
-            exported_from_system_version: "0.3.1".into(),
-            exported_at: "2026-06-16T00:00:00Z".into(),
-            application: AgentFlowCatalogApplication {
-                name: template.application.name.clone(),
-                description: template.application.description.clone(),
-            },
-            download_url: "https://example.invalid/template.json".into(),
-            checksum: format!("sha256:{:x}", Sha256::digest(&template_bytes)),
-            algorithm: "ed25519".into(),
-            key_id: "test-key".into(),
-            signature: String::new(),
-        };
-        Ok(AgentFlowTemplateLibraryCatalog {
-            remote_available: true,
-            remote_error: None,
-            templates: vec![AgentFlowTemplateLibraryEntry {
-                template_id: "multimodal-mount-test".into(),
-                source_path: Some("agent-flow/multimodal-mount-test/".into()),
-                remote_versions: vec![version],
-                local_versions: Vec::new(),
-                current_release_version: None,
-            }],
-        })
-    }
-
-    async fn sync(
-        &self,
-        template_id: &str,
-        release_version: Option<u64>,
-    ) -> anyhow::Result<LocalAgentFlowTemplateReceipt> {
-        Ok(test_agent_flow_receipt(
-            template_id,
-            release_version.unwrap_or(1),
-        ))
-    }
-
-    async fn resolve_artifact(
-        &self,
-        _template_id: &str,
-        _release_version: Option<u64>,
-    ) -> anyhow::Result<Vec<u8>> {
-        Ok(serde_json::to_vec(&build_agent_flow_template_package())?)
-    }
-
-    async fn switch_current(
-        &self,
-        template_id: &str,
-        release_version: u64,
-    ) -> anyhow::Result<LocalAgentFlowTemplateReceipt> {
-        Ok(test_agent_flow_receipt(template_id, release_version))
-    }
-
-    async fn delete_local_version(
-        &self,
-        _template_id: &str,
-        _release_version: u64,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn repair(
-        &self,
-        template_id: &str,
-        release_version: u64,
-    ) -> anyhow::Result<LocalAgentFlowTemplateReceipt> {
-        Ok(test_agent_flow_receipt(template_id, release_version))
-    }
-}
-
-fn test_agent_flow_receipt(
-    template_id: &str,
-    release_version: u64,
-) -> LocalAgentFlowTemplateReceipt {
-    LocalAgentFlowTemplateReceipt {
-        template_id: template_id.into(),
-        release_version,
-        exported_from_system_version: "0.3.1".into(),
-        exported_at: "2026-06-16T00:00:00Z".into(),
-        application: AgentFlowCatalogApplication {
-            name: "多模态挂载测试".into(),
-            description: String::new(),
-        },
-        checksum: format!("sha256:{}", "a".repeat(64)),
-        algorithm: "ed25519".into(),
-        key_id: "test-key".into(),
-        signature: String::new(),
     }
 }
 
