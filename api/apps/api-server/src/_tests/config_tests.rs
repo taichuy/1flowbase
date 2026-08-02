@@ -222,6 +222,24 @@ fn api_config_defaults_provider_install_root_to_api_workspace_plugins_directory(
         PathBuf::from(&config.host_extension_dropin_root),
         expected_root.join("host-extension").join("dropins")
     );
+    assert_eq!(
+        PathBuf::from(&config.mcp_template_library_root),
+        current_workspace_root().join("api/storage/extension-center/mcp")
+    );
+}
+
+#[test]
+fn api_config_accepts_fixed_mcp_template_library_root_override() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.push((
+        "API_MCP_TEMPLATE_LIBRARY_ROOT",
+        "/data/extension-center/mcp",
+    ));
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    assert_eq!(
+        config.mcp_template_library_root,
+        "/data/extension-center/mcp"
+    );
 }
 
 #[test]

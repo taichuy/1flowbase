@@ -102,8 +102,8 @@ pub use mcp_bundle::{
     McpBundleEffectSummary, McpBundleFile, McpBundleFileKind, McpBundleGroup,
     McpBundleImportReport, McpBundleInstance, McpBundleInstanceDiscoveryPolicy,
     McpBundleItemEffect, McpBundleItemReport, McpBundleManifest, McpBundlePackage,
-    McpBundlePreview, McpBundleTool, McpBundleToolBinding, McpBundleUpstreamConnection,
-    McpBundleVersionStatus, MCP_BUNDLE_SCHEMA_VERSION,
+    McpBundlePreview, McpBundleSharedToolImpact, McpBundleTool, McpBundleToolBinding,
+    McpBundleUpstreamConnection, McpBundleVersionStatus, MCP_BUNDLE_SCHEMA_VERSION,
 };
 pub use mcp_management::{
     McpCallToolResult, McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage,

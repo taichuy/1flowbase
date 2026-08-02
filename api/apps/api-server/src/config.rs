@@ -42,6 +42,7 @@ pub struct ApiConfig {
     pub api_node_id: String,
     pub provider_install_root: String,
     pub agent_flow_template_library_root: String,
+    pub mcp_template_library_root: String,
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
     pub allow_unverified_filesystem_dropins: bool,
@@ -151,6 +152,10 @@ impl ApiConfig {
             .get("API_AGENT_FLOW_TEMPLATE_LIBRARY_ROOT")
             .cloned()
             .unwrap_or_else(default_agent_flow_template_library_root);
+        let mcp_template_library_root = map
+            .get("API_MCP_TEMPLATE_LIBRARY_ROOT")
+            .cloned()
+            .unwrap_or_else(default_mcp_template_library_root);
         let api_node_id = map
             .get("API_NODE_ID")
             .cloned()
@@ -321,6 +326,7 @@ impl ApiConfig {
             api_node_id,
             provider_install_root,
             agent_flow_template_library_root,
+            mcp_template_library_root,
             provider_secret_master_key,
             host_extension_dropin_root,
             allow_unverified_filesystem_dropins,
@@ -605,6 +611,18 @@ fn default_agent_flow_template_library_root() -> String {
         .join("storage")
         .join("extension-center")
         .join("agent-flow")
+        .display()
+        .to_string()
+}
+
+fn default_mcp_template_library_root() -> String {
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    find_workspace_root(&current_dir)
+        .unwrap_or(current_dir)
+        .join("api")
+        .join("storage")
+        .join("extension-center")
+        .join("mcp")
         .display()
         .to_string()
 }

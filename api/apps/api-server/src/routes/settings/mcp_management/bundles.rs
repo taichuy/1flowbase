@@ -34,16 +34,46 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     official_extension_catalog::{OfficialExtensionCatalogEntry, OfficialExtensionCatalogPage},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{
+        console_delete, console_get, console_post, ConsoleRouteAssembly,
+    },
 };
 
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 256;
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     ConsoleRouteAssembly::new()
+        .route(
+            "/mcp/bundles/library",
+            console_get(list_bundle_library, Authenticated),
+        )
+        .route(
+            "/mcp/bundles/library/:organization/:bundle_id/sync",
+            console_post(sync_library_bundle, Authenticated),
+        )
+        .route(
+            "/mcp/bundles/library/:organization/:bundle_id/preview",
+            console_post(preview_library_bundle, Authenticated),
+        )
+        .route(
+            "/mcp/bundles/library/:organization/:bundle_id/import",
+            console_post(import_library_bundle, Authenticated),
+        )
+        .route(
+            "/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
+            console_post(switch_library_bundle, Authenticated),
+        )
+        .route(
+            "/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
+            console_delete(delete_library_bundle_release, Authenticated),
+        )
+        .route(
+            "/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
+            console_post(repair_library_bundle_release, Authenticated),
+        )
         .route(
             "/mcp/bundles/official",
             console_get(
@@ -118,14 +148,7 @@ struct OfficialMcpBundleSelector {
 #[derive(Debug, Deserialize)]
 struct InstalledMcpExtensionSelector {
     extension_installation_id: String,
-    conflict_resolution: Option<McpBundleConflictResolution>,
     integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum McpBundleConflictResolution {
-    KeepExisting,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,7 +163,6 @@ struct InstalledMcpExtensionPreviewResponse {
     extension_installation_id: String,
     artifact_installation_status: String,
     workspace_application_status: String,
-    required_conflict_resolution: Option<McpBundleConflictResolution>,
     integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
     required_integrity_override: Option<domain::ExtensionRiskChallenge>,
     preview: domain::McpBundlePreview,
@@ -162,20 +184,7 @@ struct InstalledMcpExtensionImportResponse {
     import_report: domain::McpBundleImportReport,
 }
 
-#[derive(Debug, Serialize)]
-struct InstalledMcpExtensionConflictResponse {
-    status: u16,
-    code: String,
-    message: String,
-    extension_installation_id: String,
-    artifact_installation_status: String,
-    workspace_application_status: String,
-    required_conflict_resolution: McpBundleConflictResolution,
-    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
-    preview: domain::McpBundlePreview,
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Debug, Serialize)]
 struct InstalledMcpExtensionIntegrityChallengeResponse {
     status: u16,
     code: String,
@@ -192,6 +201,152 @@ struct LoadedMcpBundleSource {
     extension_installation_id: Option<uuid::Uuid>,
     package: domain::McpBundlePackage,
     integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct McpBundleLibraryVersionBody {
+    bundle_version: Option<String>,
+}
+
+async fn list_bundle_library(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::McpBundleLibraryCatalog>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let catalog = state.official_mcp_bundle_source.library_catalog().await?;
+    Ok(Json(ApiSuccess::new(catalog)))
+}
+
+async fn sync_library_bundle(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((organization, bundle_id)): Path<(String, String)>,
+    Json(body): Json<McpBundleLibraryVersionBody>,
+) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::LocalMcpBundleReceipt>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let receipt = state
+        .official_mcp_bundle_source
+        .sync(&organization, &bundle_id, body.bundle_version.as_deref())
+        .await?;
+    Ok(Json(ApiSuccess::new(receipt)))
+}
+
+async fn preview_library_bundle(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((organization, bundle_id)): Path<(String, String)>,
+    Json(body): Json<McpBundleLibraryVersionBody>,
+) -> Result<Json<ApiSuccess<domain::McpBundlePreview>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let bytes = state
+        .official_mcp_bundle_source
+        .resolve_artifact(&organization, &bundle_id, body.bundle_version.as_deref())
+        .await?;
+    let package = parse_downloaded_bundle(bytes).await?;
+    let interface_catalog =
+        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+    let preview = McpManagementService::new(state.store.clone())
+        .preview_bundle(PreviewMcpBundleCommand {
+            actor_user_id: context.user.id,
+            package,
+            interface_catalog,
+            current_system_version: current_system_version(),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(preview)))
+}
+
+async fn import_library_bundle(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((organization, bundle_id)): Path<(String, String)>,
+    Json(body): Json<McpBundleLibraryVersionBody>,
+) -> Result<Json<ApiSuccess<domain::McpBundleImportReport>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let bytes = state
+        .official_mcp_bundle_source
+        .resolve_artifact(&organization, &bundle_id, body.bundle_version.as_deref())
+        .await?;
+    let package = parse_downloaded_bundle(bytes).await?;
+    let interface_catalog =
+        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+    let report = McpManagementService::new(state.store.clone())
+        .import_bundle(ImportMcpBundleCommand {
+            actor_user_id: context.user.id,
+            package,
+            interface_catalog,
+            current_system_version: current_system_version(),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(report)))
+}
+
+async fn switch_library_bundle(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
+) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::LocalMcpBundleReceipt>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let receipt = state
+        .official_mcp_bundle_source
+        .switch_current(&organization, &bundle_id, &bundle_version)
+        .await?;
+    Ok(Json(ApiSuccess::new(receipt)))
+}
+
+async fn delete_library_bundle_release(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
+) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    state
+        .official_mcp_bundle_source
+        .delete_local_version(&organization, &bundle_id, &bundle_version)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        serde_json::json!({ "deleted": true }),
+    )))
+}
+
+async fn repair_library_bundle_release(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
+) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::LocalMcpBundleReceipt>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    McpManagementService::new(state.store.clone())
+        .authorize_bundle_management(context.user.id)
+        .await?;
+    let receipt = state
+        .official_mcp_bundle_source
+        .repair(&organization, &bundle_id, &bundle_version)
+        .await?;
+    Ok(Json(ApiSuccess::new(receipt)))
 }
 
 async fn list_official_bundles(
@@ -317,14 +472,10 @@ async fn preview_official_bundle(
         .await?;
     let response = match source.extension_installation_id {
         Some(extension_installation_id) => {
-            let required_conflict_resolution = mcp_preview_has_conflicts(&preview)
-                .then_some(McpBundleConflictResolution::KeepExisting);
             let has_import_receipt = McpManagementService::new(state.store.clone())
                 .extension_bundle_is_imported(context.user.id, extension_installation_id)
                 .await?;
-            let workspace_application_status = if required_conflict_resolution.is_some() {
-                "confirmation_required"
-            } else if preview.effect_summary.changes > 0 {
+            let workspace_application_status = if preview.effect_summary.changes > 0 {
                 "ready_to_import"
             } else if has_import_receipt {
                 "imported"
@@ -336,7 +487,6 @@ async fn preview_official_bundle(
                     extension_installation_id: extension_installation_id.to_string(),
                     artifact_installation_status: "installed".to_string(),
                     workspace_application_status: workspace_application_status.to_string(),
-                    required_conflict_resolution,
                     required_integrity_override: (!source.integrity_warnings.is_empty()).then(
                         || domain::ExtensionRiskChallenge {
                             warnings: source.integrity_warnings.clone(),
@@ -362,10 +512,6 @@ async fn import_official_bundle(
     require_csrf(&headers, &context)?;
     let interface_catalog =
         super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
-    let conflict_resolution = match &body {
-        McpBundleSourceBody::InstalledExtension(selector) => selector.conflict_resolution,
-        McpBundleSourceBody::OfficialCatalog(_) => None,
-    };
     let integrity_override = match &body {
         McpBundleSourceBody::InstalledExtension(selector) => selector
             .integrity_override
@@ -406,26 +552,6 @@ async fn import_official_bundle(
                         warnings: source.integrity_warnings.clone(),
                         compatibility: None,
                     },
-                    preview,
-                }),
-            )
-                .into_response());
-        }
-        if mcp_preview_has_conflicts(&preview)
-            && conflict_resolution != Some(McpBundleConflictResolution::KeepExisting)
-        {
-            return Ok((
-                StatusCode::CONFLICT,
-                Json(InstalledMcpExtensionConflictResponse {
-                    status: StatusCode::CONFLICT.as_u16(),
-                    code: "mcp_bundle_conflict_confirmation_required".to_string(),
-                    message: "Workspace MCP conflicts require explicit keep-existing confirmation."
-                        .to_string(),
-                    extension_installation_id: extension_installation_id.to_string(),
-                    artifact_installation_status: "installed".to_string(),
-                    workspace_application_status: "not_imported".to_string(),
-                    required_conflict_resolution: McpBundleConflictResolution::KeepExisting,
-                    integrity_warnings: source.integrity_warnings.clone(),
                     preview,
                 }),
             )
@@ -525,17 +651,13 @@ async fn load_mcp_bundle_source(
     }
 }
 
-fn mcp_preview_has_conflicts(preview: &domain::McpBundlePreview) -> bool {
-    preview.effect_summary.conflicts > 0
-}
-
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ExportMcpBundleBody {
     organization: String,
     bundle_id: String,
     bundle_version: String,
     locale: String,
-    minimum_host_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -573,7 +695,6 @@ async fn export_bundle(
             bundle_id: body.bundle_id,
             bundle_version: body.bundle_version,
             locale: body.locale,
-            minimum_host_version: body.minimum_host_version,
             current_system_version: current_system_version(),
         })
         .await?;
@@ -597,7 +718,6 @@ async fn export_instance_bundle(
             bundle_id: body.bundle_id,
             bundle_version: body.bundle_version,
             locale: body.locale,
-            minimum_host_version: body.minimum_host_version,
             current_system_version: current_system_version(),
         })
         .await?;

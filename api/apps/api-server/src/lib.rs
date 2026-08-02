@@ -354,12 +354,14 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         official_agent_flow_templates::ApiAgentFlowTemplateLibrary::new(
             resolved_official_agent_flow_template_source,
             std::path::PathBuf::from(&config.agent_flow_template_library_root),
-            trusted_public_keys,
+            trusted_public_keys.clone(),
         ),
     );
     let official_mcp_bundle_source =
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
+            std::path::PathBuf::from(&config.mcp_template_library_root),
+            trusted_public_keys,
         ));
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);

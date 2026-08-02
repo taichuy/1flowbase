@@ -180,6 +180,40 @@ async fn mcp_bundle_export_defaults_use_the_backend_system_version() {
     );
 }
 
+#[tokio::test]
+async fn mcp_bundle_library_routes_enforce_session_and_csrf() {
+    // AC-004 route contract: reads require the MCP settings scope; writes also require CSRF.
+    let app = test_app().await;
+    let anonymous = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/mcp/bundles/library")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let catalog = get_json(&app, "/api/console/mcp/bundles/library", &cookie).await;
+    assert_eq!(catalog["data"]["remote_available"], true);
+    let missing_csrf = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/bundles/library/taichuy/test_bundle/sync")
+                .header("cookie", cookie)
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+}
+
 fn sha256(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
@@ -577,13 +611,7 @@ async fn mcp_bundle_import_rolls_back_an_instance_when_assembly_fails() {
         &bundle,
     )
     .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let payload = response_json(response).await;
-    assert_eq!(payload["data"]["instances"][0]["result"], json!("failed"));
-    assert_eq!(
-        payload["data"]["instances"][0]["reason"],
-        json!("instance_write_failed")
-    );
+    assert!(response.status().is_server_error());
 
     let catalog_response = app
         .oneshot(
@@ -754,7 +782,7 @@ async fn ac_001_002_installed_mcp_artifact_reconciles_matching_workspace_without
 }
 
 #[tokio::test]
-async fn ac_003_installed_mcp_artifact_does_not_record_unresolved_zero_change_conflicts() {
+async fn installed_mcp_artifact_previews_and_applies_same_id_updates() {
     let existing = bundle_zip("removed_interface", "0.2.6", false);
     let installed_bundle = bundle_zip_with_tool_name(
         "removed_interface",
@@ -788,19 +816,19 @@ async fn ac_003_installed_mcp_artifact_does_not_record_unresolved_zero_change_co
     let preview_payload = response_json(preview).await;
     assert_eq!(
         preview_payload["data"]["workspace_application_status"],
-        "confirmation_required"
+        "ready_to_import"
     );
     assert_eq!(
         preview_payload["data"]["preview"]["effect_summary"]["changes"],
-        0
-    );
-    assert_eq!(
-        preview_payload["data"]["preview"]["effect_summary"]["conflicts"],
         1
     );
     assert_eq!(
+        preview_payload["data"]["preview"]["effect_summary"]["conflicts"],
+        0
+    );
+    assert_eq!(
         preview_payload["data"]["preview"]["tools"][0]["effect"],
-        "conflict"
+        "update"
     );
 
     let attempted = post_json(
@@ -809,8 +837,7 @@ async fn ac_003_installed_mcp_artifact_does_not_record_unresolved_zero_change_co
         &cookie,
         &csrf,
         json!({
-            "extension_installation_id": extension_installation_id,
-            "conflict_resolution": "keep_existing"
+            "extension_installation_id": extension_installation_id
         }),
     )
     .await;
@@ -818,11 +845,11 @@ async fn ac_003_installed_mcp_artifact_does_not_record_unresolved_zero_change_co
     let attempted_payload = response_json(attempted).await;
     assert_eq!(
         attempted_payload["data"]["workspace_application_status"],
-        "not_imported"
+        "imported"
     );
     assert_eq!(
         attempted_payload["data"]["import_report"]["effect_summary"]["changes"],
-        0
+        1
     );
 
     let installed = get_json(
@@ -833,12 +860,12 @@ async fn ac_003_installed_mcp_artifact_does_not_record_unresolved_zero_change_co
     .await;
     assert_eq!(
         installed["data"]["entries"][0]["application_status"],
-        "not_applied"
+        "applied"
     );
 }
 
 #[tokio::test]
-async fn ac_003_installed_mcp_artifact_does_not_record_a_failed_partial_import() {
+async fn installed_mcp_artifact_rolls_back_when_a_binding_tool_is_missing() {
     let bundle = bundle_zip_with_binding_tool("removed_interface", "0.2.6", "missing_bundle_tool");
     let (app, extension_installation_id) = app_with_installed_mcp_extension(bundle, None).await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -851,20 +878,7 @@ async fn ac_003_installed_mcp_artifact_does_not_record_a_failed_partial_import()
         json!({"extension_installation_id": extension_installation_id}),
     )
     .await;
-    assert_eq!(attempted.status(), StatusCode::OK);
-    let payload = response_json(attempted).await;
-    assert_eq!(
-        payload["data"]["workspace_application_status"],
-        "partially_imported"
-    );
-    assert_eq!(
-        payload["data"]["import_report"]["effect_summary"]["changes"],
-        1
-    );
-    assert_eq!(
-        payload["data"]["import_report"]["effect_summary"]["failed"],
-        1
-    );
+    assert_eq!(attempted.status(), StatusCode::NOT_FOUND);
 
     let installed = get_json(
         &app,
@@ -885,8 +899,7 @@ async fn delivery_1560_d5_ac_008_matching_retry_reconciles_without_conflict_conf
             .await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let confirmed_body = json!({
-        "extension_installation_id": extension_installation_id,
-        "conflict_resolution": "keep_existing"
+        "extension_installation_id": extension_installation_id
     });
     let first = post_json(
         &app,
@@ -926,7 +939,6 @@ async fn delivery_1560_d5_ac_008_matching_retry_reconciles_without_conflict_conf
         preview_payload["data"]["workspace_application_status"],
         "imported"
     );
-    assert!(preview_payload["data"]["required_conflict_resolution"].is_null());
     assert_eq!(
         preview_payload["data"]["preview"]["effect_summary"]["already_present"],
         2
@@ -1119,7 +1131,7 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
     .await;
     assert_eq!(create_binding.status(), StatusCode::CREATED);
 
-    let export = post_json(
+    let rejected_client_version = post_json(
         &app,
         "/api/console/mcp/bundles/export",
         &cookie,
@@ -1129,7 +1141,25 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
             "bundle_id": "portable_bundle",
             "bundle_version": "1.0.0",
             "locale": "zh_Hans",
-            "minimum_host_version": "0.2.0"
+            "minimum_host_version": "0.1.0"
+        }),
+    )
+    .await;
+    assert_eq!(
+        rejected_client_version.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    let export = post_json(
+        &app,
+        "/api/console/mcp/bundles/export",
+        &cookie,
+        &csrf,
+        json!({
+            "organization": "taichuy",
+            "bundle_id": "portable_bundle",
+            "bundle_version": "1.0.0",
+            "locale": "zh_Hans"
         }),
     )
     .await;
@@ -1142,6 +1172,10 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
     assert_eq!(manifest["schema_version"], json!("1flowbase.mcp.bundle/v2"));
     assert_eq!(
         manifest["exported_from_system_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
+    assert_eq!(
+        manifest["minimum_host_version"],
         json!(env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
@@ -1267,8 +1301,7 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
             "organization": "taichuy",
             "bundle_id": "selected_instance",
             "bundle_version": "1.0.0",
-            "locale": "zh_Hans",
-            "minimum_host_version": "0.2.0"
+            "locale": "zh_Hans"
         }),
     )
     .await;
