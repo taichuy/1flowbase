@@ -14,4 +14,4 @@ destination="${output_dir}/${relative_path#bootstrap/}"
 
 mkdir -p "${output_dir}"
 curl --fail --location --retry 3 --output "${destination}" "${url}"
-printf '%s  %s\n' "${checksum}" "${destination}" | sha256sum --check --status
+printf '%s  %s\n' "${checksum}" "${destination}" | sha256sum -c >/dev/null
