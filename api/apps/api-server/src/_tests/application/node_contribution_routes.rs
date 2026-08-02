@@ -429,6 +429,20 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         .iter()
         .any(|field| field["key"] == "bindings.sql"));
 
+    let llm = agent_flow_nodes
+        .iter()
+        .find(|entry| entry["node_type"] == "llm")
+        .expect("LLM must be present in the unified built-in catalog");
+    let llm_config_keys = llm["field_contract"]["config_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|field| field["key"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(llm_config_keys.contains(&"config.model_provider.provider_code"));
+    assert!(llm_config_keys.contains(&"config.model_provider.model_id"));
+    assert!(!llm_config_keys.contains(&"config.model_provider.source_instance_id"));
+
     let unavailable = agent_flow_nodes
         .iter()
         .find(|entry| entry["node_type"] == "knowledge_retrieval")

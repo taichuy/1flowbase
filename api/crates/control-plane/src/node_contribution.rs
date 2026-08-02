@@ -348,7 +348,6 @@ fn builtin_field_contract(node_type: &str, title: &str) -> ApplicationNodeFieldC
         "llm" => ApplicationNodeFieldContract {
             config_fields: vec![
                 field("config.model_provider.provider_code", "Configured model provider family.", true, &["string"], &[], None),
-                field("config.model_provider.source_instance_id", "Selected provider instance.", true, &["string"], &[], None),
                 field("config.model_provider.model_id", "Provider model identifier.", true, &["string"], &[], None),
                 field("config.llm_parameters", "Provider-supported generation parameters.", false, &["object"], &[], None),
                 field("config.response_format.mode", "Model output mode.", false, &["string"], &["text", "json_schema"], None),
