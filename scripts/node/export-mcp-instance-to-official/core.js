@@ -172,8 +172,8 @@ async function exportMcpInstanceToOfficial(options, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   let session;
   const temporaryRoot = fs.mkdtempSync(path.join(path.dirname(target), '.mcp-export-'));
-  const staged = path.join(temporaryRoot, 'bundle');
-  fs.mkdirSync(staged);
+  const staged = path.join(temporaryRoot, `@${identity.organization}`, identity.bundle_id);
+  fs.mkdirSync(staged, { recursive: true });
   try {
     session = await openSession({
       apiBaseUrl: options.apiBaseUrl.replace(/\/+$/, ''),

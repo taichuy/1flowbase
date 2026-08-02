@@ -126,6 +126,8 @@ test('AC-002 exports with a temporary owner session, validates, atomically repla
       return { ok: true, status: 200, arrayBuffer: async () => archive };
     },
     validateSource: async (bundleRoot) => {
+      assert.equal(path.basename(path.dirname(bundleRoot)), '@taichuy');
+      assert.equal(path.basename(bundleRoot), 'example');
       assert.equal(JSON.parse(fs.readFileSync(path.join(bundleRoot, 'manifest.json'))).bundle_version, '1.2.4');
     },
   });
