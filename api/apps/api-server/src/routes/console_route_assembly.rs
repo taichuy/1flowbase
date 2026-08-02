@@ -436,6 +436,11 @@ fn core_openapi_operation_ids() -> anyhow::Result<BTreeMap<(String, String), Str
         ),
         (
             "GET",
+            "/api/console/mcp/bundles/library",
+            "list_mcp_bundle_library",
+        ),
+        (
+            "GET",
             "/api/console/mcp/instances/{}/client-credential",
             "get_mcp_instance_client_credential",
         ),
@@ -498,6 +503,36 @@ fn core_openapi_operation_ids() -> anyhow::Result<BTreeMap<(String, String), Str
             "POST",
             "/api/console/mcp/bundles/preview-upload",
             "preview_uploaded_mcp_bundle",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/library/{}/{}/sync",
+            "sync_mcp_bundle_library_release",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/library/{}/{}/preview",
+            "preview_mcp_bundle_library_release",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/library/{}/{}/import",
+            "import_mcp_bundle_library_release",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/library/{}/{}/current/{}",
+            "switch_mcp_bundle_library_release",
+        ),
+        (
+            "DELETE",
+            "/api/console/mcp/bundles/library/{}/{}/releases/{}",
+            "delete_mcp_bundle_library_release",
+        ),
+        (
+            "POST",
+            "/api/console/mcp/bundles/library/{}/{}/releases/{}/repair",
+            "repair_mcp_bundle_library_release",
         ),
         (
             "POST",

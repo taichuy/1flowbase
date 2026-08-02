@@ -119,6 +119,26 @@ impl OfficialExtensionCatalogSourcePort for InMemoryOfficialExtensionCatalogSour
 
 #[async_trait]
 impl OfficialMcpBundleSourcePort for InMemoryOfficialMcpBundleSource {
+    async fn library_catalog(&self) -> anyhow::Result<McpBundleLibraryCatalog> {
+        Ok(McpBundleLibraryCatalog {
+            source: OfficialMcpBundleCatalogSource {
+                source_kind: "official_registry".into(),
+                source_label: "官方源".into(),
+                catalog_url: "https://example.com/mcp/catalog.json".into(),
+            },
+            remote_available: true,
+            remote_error: None,
+            bundles: vec![McpBundleLibraryEntry {
+                organization: "taichuy".into(),
+                bundle_id: "test_bundle".into(),
+                source_path: Some("mcp/@taichuy/test_bundle".into()),
+                remote_versions: Vec::new(),
+                local_versions: Vec::new(),
+                current_bundle_version: None,
+            }],
+        })
+    }
+
     async fn list_catalog(&self) -> anyhow::Result<OfficialMcpBundleCatalogSnapshot> {
         Ok(OfficialMcpBundleCatalogSnapshot {
             source: OfficialMcpBundleCatalogSource {

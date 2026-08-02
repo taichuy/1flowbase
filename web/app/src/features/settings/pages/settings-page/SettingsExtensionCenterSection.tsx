@@ -21,6 +21,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { McpTemplateLibrary } from '../../components/mcp-management/bundle/McpTemplateLibrary';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -123,10 +124,49 @@ function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
 }
 
+function McpExtensionCenterSection() {
+  const { t } = useTranslation('settings');
+  const navigate = useNavigate();
+
+  return (
+    <SettingsSectionSurface heightMode="fill">
+      <Flex vertical gap={16}>
+        <Tabs
+          activeKey="mcp"
+          tabBarExtraContent={
+            <Typography.Link href="/settings/mcp-management?tab=instances">
+              {t('auto.go_to_mcp_management')}
+            </Typography.Link>
+          }
+          onChange={(key) => {
+            void navigate({
+              to: '/settings/extension-center/$category',
+              params: { category: key },
+              search: { cursor: undefined }
+            });
+          }}
+          items={[
+            { key: 'installed', label: t('auto.installed_extensions') },
+            ...CATEGORIES.map((category) => ({
+              key: category,
+              label: category
+            }))
+          ]}
+        />
+        <McpTemplateLibrary variant="compact" />
+      </Flex>
+    </SettingsSectionSurface>
+  );
+}
+
 export function SettingsExtensionCenterSection(props: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
 }) {
+  if (props.category === 'mcp') {
+    return <McpExtensionCenterSection />;
+  }
+
   return <GenericExtensionCenterSection {...props} />;
 }
 

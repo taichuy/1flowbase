@@ -539,7 +539,7 @@ fn resolve_download_url(
     Ok(source.join(download_url)?.to_string())
 }
 
-fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
+pub(crate) fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
     let Some(github_proxy_url) = github_proxy_url
         .map(str::trim)
         .filter(|value| !value.is_empty())

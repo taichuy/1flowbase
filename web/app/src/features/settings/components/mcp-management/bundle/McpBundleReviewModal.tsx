@@ -1,6 +1,5 @@
 import {
   Alert,
-  Button,
   Descriptions,
   List,
   Modal,
@@ -97,6 +96,16 @@ function itemResult(result: string) {
   }
 }
 
+function itemEffect(effect: string) {
+  if (effect === 'create') {
+    return i18nText('settingsMcpManagement', 'auto.mcp_bundle_effect_create');
+  }
+  if (effect === 'update') {
+    return i18nText('settingsMcpManagement', 'auto.mcp_bundle_effect_update');
+  }
+  return effect;
+}
+
 export function McpBundleReviewModal({
   open,
   review,
@@ -117,12 +126,6 @@ export function McpBundleReviewModal({
   const warning = review ? versionWarning(review.version_status) : null;
   const importReport = review && 'status' in review ? review : null;
   const imported = Boolean(importReport);
-  const zeroChangeConflict = Boolean(
-    review &&
-    !importReport &&
-    review.effect_summary.changes === 0 &&
-    review.effect_summary.conflicts > 0
-  );
   const rows = review
     ? [
         ...review.tools.map((item) => ({ ...item, kind: 'Tool' })),
@@ -141,18 +144,13 @@ export function McpBundleReviewModal({
           ? i18nText('settingsMcpManagement', 'auto.mcp_bundle_preview')
           : imported
             ? i18nText('settings', 'auto.close')
-            : zeroChangeConflict
-              ? i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_no_changes_to_import'
-                )
-              : i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_import_anyway'
-                )
+            : i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_confirm_overwrite'
+              )
       }
       cancelButtonProps={{ style: imported ? { display: 'none' } : undefined }}
-      okButtonProps={{ disabled: loading || zeroChangeConflict }}
+      okButtonProps={{ disabled: loading }}
       confirmLoading={importing}
       onCancel={onCancel}
       onOk={imported ? onCancel : onImport}
@@ -175,24 +173,34 @@ export function McpBundleReviewModal({
             />
           ) : null}
           {warning ? <Alert showIcon type="warning" message={warning} /> : null}
-          {zeroChangeConflict ? (
+          {!imported ? (
             <Alert
               showIcon
-              type="error"
+              type="info"
               message={i18nText(
                 'settingsMcpManagement',
-                'auto.mcp_bundle_zero_change_conflict'
+                'auto.mcp_bundle_overwrite_notice'
               )}
-              action={
-                <Button
-                  type="link"
-                  href="/settings/mcp-management?tab=instances"
-                >
-                  {i18nText(
-                    'settingsMcpManagement',
-                    'auto.go_to_mcp_management'
+            />
+          ) : null}
+          {review.shared_tool_impacts.length > 0 ? (
+            <Alert
+              showIcon
+              type="warning"
+              message={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_shared_tool_impact'
+              )}
+              description={
+                <List
+                  size="small"
+                  dataSource={review.shared_tool_impacts}
+                  renderItem={(impact) => (
+                    <List.Item>
+                      {impact.tool_id}: {impact.instance_ids.join(', ')}
+                    </List.Item>
                   )}
-                </Button>
+                />
               }
             />
           ) : null}
@@ -302,6 +310,14 @@ export function McpBundleReviewModal({
             pagination={false}
             dataSource={rows}
             columns={[
+              {
+                title: i18nText(
+                  'settingsMcpManagement',
+                  'auto.mcp_bundle_effect'
+                ),
+                dataIndex: 'effect',
+                render: (value: string) => itemEffect(value)
+              },
               {
                 title: i18nText(
                   'settingsMcpManagement',

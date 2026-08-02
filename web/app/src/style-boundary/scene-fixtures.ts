@@ -1163,6 +1163,37 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/bundles/library'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          remote_available: true,
+          bundles: [
+            {
+              organization: 'taichuy',
+              bundle_id: '1flowbase_zh_hans',
+              current_bundle_version: '1.1.1',
+              remote_versions: [],
+              local_versions: [
+                {
+                  bundle_version: '1.1.1',
+                  locale: 'zh_Hans',
+                  minimum_host_version: '0.3.2',
+                  exported_from_system_version: '0.3.2',
+                  checksum: 'style-boundary-mcp-bundle',
+                  signature_status: 'verified',
+                  downloaded_at: '2026-08-02T10:00:00Z'
+                }
+              ]
+            }
+          ]
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
       requestUrl.pathname === '/api/console/mcp/interface-capabilities'
     ) {
       return new Response(

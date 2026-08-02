@@ -39,20 +39,6 @@ export function McpBundleExportModal({
     });
   }, [defaultBundleId, form, open]);
 
-  useEffect(() => {
-    if (
-      !open ||
-      !exportDefaults ||
-      form.isFieldTouched('minimum_host_version')
-    ) {
-      return;
-    }
-    form.setFieldValue(
-      'minimum_host_version',
-      exportDefaults.minimum_host_version
-    );
-  }, [exportDefaults, form, open]);
-
   return (
     <Modal
       open={open}
@@ -90,13 +76,6 @@ export function McpBundleExportModal({
         </Form.Item>
         <Form.Item name="locale" label="locale" rules={[{ required: true }]}>
           <Select options={[{ value: 'zh_Hans' }, { value: 'en_US' }]} />
-        </Form.Item>
-        <Form.Item
-          name="minimum_host_version"
-          label="minimum_host_version"
-          rules={[{ required: true }]}
-        >
-          <Input />
         </Form.Item>
         <Typography.Text type="secondary">
           {exportDefaults

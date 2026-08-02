@@ -178,6 +178,7 @@ pub enum McpBundleVersionStatus {
 #[serde(rename_all = "snake_case")]
 pub enum McpBundleItemEffect {
     Create,
+    Update,
     AlreadyPresent,
     Conflict,
     Failed,
@@ -200,6 +201,12 @@ pub struct McpBundleItemReport {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpBundleSharedToolImpact {
+    pub tool_id: String,
+    pub instance_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpBundlePreview {
     pub manifest: McpBundleManifest,
@@ -209,6 +216,7 @@ pub struct McpBundlePreview {
     pub tools: Vec<McpBundleItemReport>,
     pub instances: Vec<McpBundleItemReport>,
     pub connections: Vec<McpBundleItemReport>,
+    pub shared_tool_impacts: Vec<McpBundleSharedToolImpact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

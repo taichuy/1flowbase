@@ -120,6 +120,7 @@ export type ConsoleMcpBundleVersionStatus =
 
 export type ConsoleMcpBundleItemEffect =
   | 'create'
+  | 'update'
   | 'already_present'
   | 'conflict'
   | 'failed';
@@ -147,6 +148,10 @@ export interface ConsoleMcpBundlePreview {
   tools: ConsoleMcpBundleItemReport[];
   instances: ConsoleMcpBundleItemReport[];
   connections: ConsoleMcpBundleItemReport[];
+  shared_tool_impacts: Array<{
+    tool_id: string;
+    instance_ids: string[];
+  }>;
 }
 
 export interface ConsoleMcpBundleImportReport extends ConsoleMcpBundlePreview {
@@ -162,11 +167,9 @@ export interface ExportConsoleMcpBundleBody {
   bundle_id: string;
   bundle_version: string;
   locale: 'zh_Hans' | 'en_US';
-  minimum_host_version: string;
 }
 
 export interface ConsoleMcpBundleExportDefaults {
-  minimum_host_version: string;
   current_system_version: string;
 }
 
@@ -194,6 +197,36 @@ export interface ConsoleOfficialMcpBundleCatalog {
 export interface ConsoleOfficialMcpBundleBody {
   organization: string;
   bundle_id: string;
+}
+
+export interface ConsoleMcpTemplateLibraryVersion {
+  bundle_version: string;
+  locale: 'zh_Hans' | 'en_US';
+  minimum_host_version: string;
+  exported_from_system_version: string;
+  checksum: string;
+  algorithm?: string;
+  key_id?: string;
+  signature?: string;
+  signature_status?: string;
+  downloaded_at?: string;
+}
+
+export interface ConsoleMcpTemplateLibraryBundle {
+  organization: string;
+  bundle_id: string;
+  current_bundle_version: string | null;
+  remote_versions: ConsoleMcpTemplateLibraryVersion[];
+  local_versions: ConsoleMcpTemplateLibraryVersion[];
+}
+
+export interface ConsoleMcpTemplateLibrary {
+  remote_available: boolean;
+  bundles: ConsoleMcpTemplateLibraryBundle[];
+}
+
+export interface ConsoleMcpTemplateLibraryVersionBody {
+  bundle_version?: string;
 }
 
 export interface ConsoleMcpToolBinding {
@@ -645,6 +678,126 @@ export function importConsoleOfficialMcpBundle(
     path: '/api/console/mcp/bundles/import-official',
     method: 'POST',
     body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpTemplateLibrary(baseUrl?: string) {
+  return apiFetch<ConsoleMcpTemplateLibrary>({
+    path: '/api/console/mcp/bundles/library',
+    baseUrl
+  });
+}
+
+function mcpTemplateLibraryPath(
+  organization: string,
+  bundleId: string,
+  suffix: string
+) {
+  return `/api/console/mcp/bundles/library/${encodeURIComponent(organization)}/${encodeURIComponent(bundleId)}/${suffix}`;
+}
+
+export function syncConsoleMcpTemplateLibraryBundle(
+  organization: string,
+  bundleId: string,
+  body: ConsoleMcpTemplateLibraryVersionBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpTemplateLibraryBundle>({
+    path: mcpTemplateLibraryPath(organization, bundleId, 'sync'),
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function previewConsoleMcpTemplateLibraryBundle(
+  organization: string,
+  bundleId: string,
+  body: ConsoleMcpTemplateLibraryVersionBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpBundlePreview>({
+    path: mcpTemplateLibraryPath(organization, bundleId, 'preview'),
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function importConsoleMcpTemplateLibraryBundle(
+  organization: string,
+  bundleId: string,
+  body: ConsoleMcpTemplateLibraryVersionBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpBundleImportReport>({
+    path: mcpTemplateLibraryPath(organization, bundleId, 'import'),
+    method: 'POST',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function setConsoleMcpTemplateLibraryCurrentVersion(
+  organization: string,
+  bundleId: string,
+  bundleVersion: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: mcpTemplateLibraryPath(
+      organization,
+      bundleId,
+      `current/${encodeURIComponent(bundleVersion)}`
+    ),
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleMcpTemplateLibraryRelease(
+  organization: string,
+  bundleId: string,
+  bundleVersion: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: mcpTemplateLibraryPath(
+      organization,
+      bundleId,
+      `releases/${encodeURIComponent(bundleVersion)}`
+    ),
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function repairConsoleMcpTemplateLibraryRelease(
+  organization: string,
+  bundleId: string,
+  bundleVersion: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: mcpTemplateLibraryPath(
+      organization,
+      bundleId,
+      `releases/${encodeURIComponent(bundleVersion)}/repair`
+    ),
+    method: 'POST',
     csrfToken,
     baseUrl
   });

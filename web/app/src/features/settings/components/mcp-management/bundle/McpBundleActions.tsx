@@ -1,6 +1,6 @@
 import { UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Modal, Space, Table, Typography, message } from 'antd';
+import { Button, Modal, Space, message } from 'antd';
 import { useCallback, useRef, useState } from 'react';
 
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -8,12 +8,9 @@ import { i18nText } from '../../../../../shared/i18n/text';
 import {
   exportSettingsMcpBundle,
   fetchSettingsMcpBundleExportDefaults,
-  fetchSettingsOfficialMcpBundles,
   settingsMcpCatalogQueryKey,
   settingsMcpBundleExportDefaultsQueryKey,
-  settingsOfficialMcpBundlesQueryKey,
-  type ExportSettingsMcpBundleBody,
-  type SettingsOfficialMcpBundleEntry
+  type ExportSettingsMcpBundleBody
 } from '../../../api/mcp-management';
 import { McpBundleExportModal } from './McpBundleExportModal';
 import {
@@ -21,6 +18,7 @@ import {
   type McpBundleImportSource
 } from './McpBundleImportFlow';
 import { downloadMcpBundle } from './mcp-bundle-download';
+import { McpTemplateLibrary } from './McpTemplateLibrary';
 
 export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
@@ -31,11 +29,6 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const [sourceOpen, setSourceOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const officialBundles = useQuery({
-    queryKey: settingsOfficialMcpBundlesQueryKey,
-    queryFn: fetchSettingsOfficialMcpBundles,
-    enabled: canManage && sourceOpen
-  });
   const exportDefaults = useQuery({
     queryKey: settingsMcpBundleExportDefaultsQueryKey,
     queryFn: fetchSettingsMcpBundleExportDefaults,
@@ -56,15 +49,6 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
     setImportSource({ kind: 'upload', file });
     setSourceOpen(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }
-
-  function handleOfficial(entry: SettingsOfficialMcpBundleEntry) {
-    setImportSource({
-      kind: 'official',
-      organization: entry.organization,
-      bundleId: entry.bundle_id
-    });
-    setSourceOpen(false);
   }
 
   async function handleExport(values: ExportSettingsMcpBundleBody) {
@@ -126,57 +110,10 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
           >
             {i18nText('settingsMcpManagement', 'auto.mcp_bundle_upload_local')}
           </Button>
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            {i18nText('settingsMcpManagement', 'auto.mcp_bundle_official')}
-          </Typography.Title>
-          {officialBundles.isError ? (
-            <Alert
-              showIcon
-              type="error"
-              message={
-                officialBundles.error instanceof Error
-                  ? officialBundles.error.message
-                  : String(officialBundles.error)
-              }
-            />
-          ) : null}
-          <Table
-            size="small"
-            rowKey={(entry) => `${entry.organization}/${entry.bundle_id}`}
-            loading={officialBundles.isLoading}
-            pagination={false}
-            dataSource={officialBundles.data?.entries ?? []}
-            columns={[
-              {
-                title: i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_name'
-                ),
-                render: (_, entry) => `${entry.organization}/${entry.bundle_id}`
-              },
-              {
-                title: i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_version'
-                ),
-                dataIndex: 'latest_version'
-              },
-              { title: 'Locale', dataIndex: 'locale' },
-              {
-                title: i18nText(
-                  'settingsMcpManagement',
-                  'auto.mcp_bundle_action'
-                ),
-                render: (_, entry) => (
-                  <Button type="link" onClick={() => handleOfficial(entry)}>
-                    {i18nText(
-                      'settingsMcpManagement',
-                      'auto.mcp_bundle_preview'
-                    )}
-                  </Button>
-                )
-              }
-            ]}
+          <McpTemplateLibrary
+            enabled={sourceOpen}
+            variant="compact"
+            onImportOpen={() => setSourceOpen(false)}
           />
         </Space>
       </Modal>

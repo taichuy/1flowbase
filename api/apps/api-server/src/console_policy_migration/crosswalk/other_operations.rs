@@ -1,6 +1,13 @@
 use super::{legacy_mapping, LegacyGrantMappingSpec};
 
 const MCP_SIMPLE_OPERATIONS: &[&str] = &[
+    "mcp.bundle_library.current.switch",
+    "mcp.bundle_library.import",
+    "mcp.bundle_library.list",
+    "mcp.bundle_library.preview",
+    "mcp.bundle_library.releases.delete",
+    "mcp.bundle_library.releases.repair",
+    "mcp.bundle_library.sync",
     "mcp.bundles.export",
     "mcp.bundles.import",
     "mcp.bundles.official.list",
@@ -139,6 +146,8 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     legacy_mapping(
         "mcp_management.view.all",
         &[
+            "mcp.bundle_library.list",
+            "mcp.bundle_library.preview",
             "mcp.bundles.official.list",
             "mcp.bundles.preview",
             "mcp.catalog.export",

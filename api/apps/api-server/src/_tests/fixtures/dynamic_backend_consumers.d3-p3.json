@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 271,
-  "count": 542,
+  "projected_interface_count": 278,
+  "count": 556,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -39,6 +39,12 @@
       "DELETE",
       "/api/console/applications/:id/orchestration/debug-variable-cache",
       "Delete debug variable cache entries"
+    ],
+    [
+      "mcp.bundle_library.releases.delete",
+      "DELETE",
+      "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
+      "Delete MCP bundle library release"
     ],
     [
       "mcp.instances.delete",
@@ -423,6 +429,12 @@
       "GET",
       "/api/console/mcp/bundles/export-defaults",
       "Get MCP bundle export defaults"
+    ],
+    [
+      "mcp.bundle_library.list",
+      "GET",
+      "/api/console/mcp/bundles/library",
+      "List MCP bundle library"
     ],
     [
       "mcp.bundles.official.list",
@@ -1047,6 +1059,36 @@
       "POST",
       "/api/console/mcp/bundles/import-upload",
       "Import uploaded MCP bundle"
+    ],
+    [
+      "mcp.bundle_library.current.switch",
+      "POST",
+      "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
+      "Switch MCP bundle library release"
+    ],
+    [
+      "mcp.bundle_library.import",
+      "POST",
+      "/api/console/mcp/bundles/library/:organization/:bundle_id/import",
+      "Import MCP bundle library release"
+    ],
+    [
+      "mcp.bundle_library.preview",
+      "POST",
+      "/api/console/mcp/bundles/library/:organization/:bundle_id/preview",
+      "Preview MCP bundle library release"
+    ],
+    [
+      "mcp.bundle_library.releases.repair",
+      "POST",
+      "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
+      "Repair MCP bundle library release"
+    ],
+    [
+      "mcp.bundle_library.sync",
+      "POST",
+      "/api/console/mcp/bundles/library/:organization/:bundle_id/sync",
+      "Sync MCP bundle library release"
     ],
     [
       "preview_official_mcp_bundle",

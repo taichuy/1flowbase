@@ -70,6 +70,11 @@ vi.mock('../api/extensions', () => extensionsApi);
 vi.mock('../api/i18n-catalog', () => i18nCatalogApi);
 vi.mock('../../applications/api/applications', () => applicationsApi);
 vi.mock('../api/mcp-management', () => mcpManagementApi);
+vi.mock('../components/mcp-management/bundle/McpTemplateLibrary', () => ({
+  McpTemplateLibrary: ({ variant }: { variant?: string }) => (
+    <div data-testid="mcp-template-library" data-variant={variant} />
+  )
+}));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => routerApi.navigate
 }));
@@ -368,6 +373,11 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       await screen.findByRole('link', { name: '前往 MCP 管理' })
     ).toHaveAttribute('href', '/settings/mcp-management?tab=instances');
+    expect(screen.getByTestId('mcp-template-library')).toHaveAttribute(
+      'data-variant',
+      'compact'
+    );
+    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
 
     view.rerender(<SettingsExtensionCenterSection category="i18n" />);
     expect(
@@ -608,7 +618,7 @@ describe('SettingsExtensionCenterSection', () => {
     view.unmount();
   });
 
-  test('Root-AC-004 keeps generic install available for the five non-Agent-Flow catalog categories', async () => {
+  test('Root-AC-004 keeps generic install for four catalog categories while MCP uses its library', async () => {
     extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
       async (category: string) => ({
         category,
@@ -638,7 +648,6 @@ describe('SettingsExtensionCenterSection', () => {
       'capability-plugins',
       'host-extensions',
       'i18n',
-      'mcp',
       'runtime-extensions'
     ] as const) {
       view.rerender(<SettingsExtensionCenterSection category={category} />);
@@ -649,6 +658,13 @@ describe('SettingsExtensionCenterSection', () => {
         within(row).getByRole('button', { name: '安装' })
       ).toBeInTheDocument();
     }
+
+    view.rerender(<SettingsExtensionCenterSection category="mcp" />);
+    expect(screen.getByTestId('mcp-template-library')).toHaveAttribute(
+      'data-variant',
+      'compact'
+    );
+    expect(screen.queryByText('mcp Extension')).not.toBeInTheDocument();
   });
 
   test('AC-001 loads only the generic catalog row being installed and disables the other row', async () => {
@@ -836,7 +852,8 @@ describe('SettingsExtensionCenterSection', () => {
           }
         ],
         instances: [],
-        connections: []
+        connections: [],
+        shared_tool_impacts: []
       }
     });
     extensionsApi.applySettingsInstalledMcpExtension.mockResolvedValue({
@@ -872,7 +889,8 @@ describe('SettingsExtensionCenterSection', () => {
           }
         ],
         instances: [],
-        connections: []
+        connections: [],
+        shared_tool_impacts: []
       }
     });
     renderSection('installed');
@@ -937,7 +955,8 @@ describe('SettingsExtensionCenterSection', () => {
         }
       ],
       instances: [],
-      connections: []
+      connections: [],
+      shared_tool_impacts: []
     };
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
       limit: 20,
@@ -966,7 +985,7 @@ describe('SettingsExtensionCenterSection', () => {
     const row = await screen.findByRole('row', { name: /present/ });
     fireEvent.click(within(row).getByRole('button', { name: '应用到工作区' }));
     expect(await screen.findByText('tool.weather')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '仍然导入' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
 
     await waitFor(() =>
       expect(
@@ -978,7 +997,7 @@ describe('SettingsExtensionCenterSection', () => {
     ).toBeInTheDocument();
   });
 
-  test('AC-001/003 blocks a zero-change MCP conflict instead of pretending to apply it', async () => {
+  test('AC-001/003 confirms instance overwrite without keep_existing conflict resolution', async () => {
     const mcpEntry = {
       ...installedEntry,
       id: 'mcp-installation-conflict',
@@ -1028,7 +1047,8 @@ describe('SettingsExtensionCenterSection', () => {
           }
         ],
         instances: [],
-        connections: []
+        connections: [],
+        shared_tool_impacts: []
       }
     });
 
@@ -1038,15 +1058,15 @@ describe('SettingsExtensionCenterSection', () => {
 
     expect(
       await screen.findByText(
-        '当前配置与扩展内容存在冲突，请前往 MCP 管理处理。'
+        '导入会按 instance_id 创建或原子覆盖实例；模板同步不会修改已导入实例。'
       )
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '没有可导入的变更' })
-    ).toBeDisabled();
-    expect(
-      extensionsApi.applySettingsInstalledMcpExtension
-    ).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
+    await waitFor(() =>
+      expect(
+        extensionsApi.applySettingsInstalledMcpExtension
+      ).toHaveBeenCalledWith(mcpEntry.id, 'csrf-123', {})
+    );
   });
 
   test('D6-AC-003 previews and activates the installed local i18n catalog', async () => {

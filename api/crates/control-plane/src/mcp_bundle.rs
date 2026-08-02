@@ -11,12 +11,7 @@ use crate::{
         input_mapping_requires_des_id, normalize_des_id, validate_identifier, validate_path,
         validate_positive, McpManagementService,
     },
-    ports::{
-        CreateMcpInstanceGraphInput, CreateMcpInstanceInput, CreateMcpToolBindingInput,
-        CreateMcpToolInput, CreateMcpUpstreamConnectionInput, McpManagementRepository,
-        UpdateMcpInstanceDiscoveryPolicyInput, UpsertMcpGroupInput,
-        UpsertMcpUpstreamToolSourceInput,
-    },
+    ports::{CreateMcpToolInput, McpManagementRepository, ReplaceMcpBundleGraphInput},
 };
 
 pub struct PreviewMcpBundleCommand {
@@ -39,7 +34,6 @@ pub struct ExportMcpBundleCommand {
     pub bundle_id: String,
     pub bundle_version: String,
     pub locale: String,
-    pub minimum_host_version: String,
     pub current_system_version: String,
 }
 
@@ -50,7 +44,6 @@ pub struct ExportMcpInstanceBundleCommand {
     pub bundle_id: String,
     pub bundle_version: String,
     pub locale: String,
-    pub minimum_host_version: String,
     pub current_system_version: String,
 }
 
@@ -60,7 +53,6 @@ struct McpBundleExportRequest {
     bundle_id: String,
     bundle_version: String,
     locale: String,
-    minimum_host_version: String,
     current_system_version: String,
 }
 
@@ -134,7 +126,6 @@ where
                 bundle_id: command.bundle_id,
                 bundle_version: command.bundle_version,
                 locale: command.locale,
-                minimum_host_version: command.minimum_host_version,
                 current_system_version: command.current_system_version,
             },
             McpBundleExportScope::Workspace,
@@ -153,7 +144,6 @@ where
                 bundle_id: command.bundle_id,
                 bundle_version: command.bundle_version,
                 locale: command.locale,
-                minimum_host_version: command.minimum_host_version,
                 current_system_version: command.current_system_version,
             },
             McpBundleExportScope::Instance(command.instance_id),
@@ -170,8 +160,8 @@ where
         validate_identifier(&request.bundle_id, "bundle_id")?;
         Version::parse(&request.bundle_version)
             .map_err(|_| ControlPlaneError::InvalidInput("bundle_version"))?;
-        Version::parse(&request.minimum_host_version)
-            .map_err(|_| ControlPlaneError::InvalidInput("minimum_host_version"))?;
+        Version::parse(&request.current_system_version)
+            .map_err(|_| ControlPlaneError::InvalidInput("current_system_version"))?;
         if !matches!(request.locale.as_str(), "zh_Hans" | "en_US") {
             return Err(ControlPlaneError::InvalidInput("locale").into());
         }
@@ -303,7 +293,7 @@ where
                 bundle_id: request.bundle_id,
                 bundle_version: request.bundle_version,
                 locale: request.locale,
-                minimum_host_version: request.minimum_host_version,
+                minimum_host_version: request.current_system_version.clone(),
                 exported_from_system_version: request.current_system_version,
                 exported_at,
                 files: Vec::new(),
@@ -402,12 +392,7 @@ where
                             None,
                         )
                     } else {
-                        item_report(
-                            &tool.tool_id,
-                            domain::McpBundleItemEffect::Conflict,
-                            "skipped",
-                            Some("tool_id_conflict"),
-                        )
+                        update_item_report(&tool.tool_id)
                     }
                 } else {
                     match &tool.execution_target {
@@ -466,12 +451,7 @@ where
                             None,
                         )
                     } else {
-                        item_report(
-                            &instance.instance_id,
-                            domain::McpBundleItemEffect::Conflict,
-                            "skipped",
-                            Some("instance_id_conflict"),
-                        )
+                        update_item_report(&instance.instance_id)
                     }
                 } else if instance.bindings.iter().any(|binding| {
                     !snapshot.tools.contains_key(&binding.tool_id)
@@ -511,12 +491,7 @@ where
                             None,
                         )
                     } else {
-                        item_report(
-                            &connection.connection_id.to_string(),
-                            domain::McpBundleItemEffect::Conflict,
-                            "skipped",
-                            Some("connection_id_conflict"),
-                        )
+                        update_item_report(&connection.connection_id.to_string())
                     }
                 } else {
                     item_report(
@@ -529,6 +504,7 @@ where
             })
             .collect();
         let effect_summary = summarize_bundle_effects(&tools, &instances, &connections);
+        let shared_tool_impacts = shared_tool_impacts(&command.package, &snapshot, &interfaces);
 
         Ok(domain::McpBundlePreview {
             version_status: compare_system_versions(
@@ -541,6 +517,7 @@ where
             tools,
             instances,
             connections,
+            shared_tool_impacts,
         })
     }
 
@@ -551,235 +528,58 @@ where
         let actor = self.authorize_manage(command.actor_user_id).await?;
         validate_package(&command.package)?;
         let interfaces = bindable_interfaces(command.interface_catalog);
-        let mut snapshot = self
+        let snapshot = self
             .load_mcp_bundle_workspace_snapshot(actor.current_workspace_id)
             .await?;
-        let mut connection_reports = Vec::with_capacity(command.package.connections.len());
-        for connection in &command.package.connections {
-            if let Some(existing) = snapshot.connections.get(&connection.connection_id) {
-                connection_reports.push(
-                    if bundle_connection_is_already_present(connection, existing) {
-                        item_report(
-                            &connection.connection_id.to_string(),
-                            domain::McpBundleItemEffect::AlreadyPresent,
-                            "already_present",
-                            None,
-                        )
-                    } else {
-                        item_report(
-                            &connection.connection_id.to_string(),
-                            domain::McpBundleItemEffect::Conflict,
-                            "skipped",
-                            Some("connection_id_conflict"),
-                        )
-                    },
-                );
-                continue;
-            }
-            let result = self
-                .repository
-                .create_mcp_upstream_connection(&CreateMcpUpstreamConnectionInput {
-                    id: connection.connection_id,
+        let tools = command
+            .package
+            .tools
+            .iter()
+            .map(|tool| {
+                let plan = bundle_tool_plan(tool, &interfaces);
+                CreateMcpToolInput {
+                    id: Uuid::now_v7(),
                     actor_user_id: command.actor_user_id,
                     workspace_id: actor.current_workspace_id,
-                    name: connection.name.clone(),
-                    endpoint: connection.endpoint.clone(),
-                    transport: connection.transport,
-                    auth_type: connection.auth_type,
-                    custom_header_name: connection.custom_header_name.clone(),
-                    status: domain::McpUpstreamConnectionStatus::Disabled,
-                })
-                .await;
-            match result {
-                Ok(record) => {
-                    snapshot
-                        .connections
-                        .insert(connection.connection_id, record);
-                    connection_reports.push(item_report(
-                        &connection.connection_id.to_string(),
-                        domain::McpBundleItemEffect::Create,
-                        "unavailable",
-                        Some("credentials_missing"),
-                    ));
+                    tool_id: tool.tool_id.clone(),
+                    name: tool.name.clone(),
+                    short_description: tool.short_description.clone(),
+                    full_description: tool.full_description.clone(),
+                    execution_target: tool.execution_target.clone(),
+                    parameter_schema: plan.parameter_schema,
+                    result_schema: plan.result_schema,
+                    input_mapping: tool.input_mapping.clone(),
+                    output_mapping: tool.output_mapping.clone(),
+                    permission_code: plan.permission_code,
+                    risk_level: plan.risk_level,
+                    des_id: normalize_des_id(None),
+                    des_id_required: input_mapping_requires_des_id(&tool.input_mapping),
+                    status: plan.status,
                 }
-                Err(_) => connection_reports.push(item_report(
-                    &connection.connection_id.to_string(),
-                    domain::McpBundleItemEffect::Failed,
-                    "failed",
-                    Some("connection_write_failed"),
-                )),
-            }
-        }
+            })
+            .collect::<Vec<_>>();
 
-        let mut tool_reports = Vec::with_capacity(command.package.tools.len());
-        for tool in &command.package.tools {
-            if let Some(existing) = snapshot.tools.get(&tool.tool_id) {
-                tool_reports.push(
-                    if bundle_tool_is_already_present(tool, existing, &interfaces) {
-                        item_report(
-                            &tool.tool_id,
-                            domain::McpBundleItemEffect::AlreadyPresent,
-                            "already_present",
-                            None,
-                        )
-                    } else {
-                        item_report(
-                            &tool.tool_id,
-                            domain::McpBundleItemEffect::Conflict,
-                            "skipped",
-                            Some("tool_id_conflict"),
-                        )
-                    },
-                );
-                continue;
-            }
-
-            let plan = bundle_tool_plan(tool, &interfaces);
-            let unavailable_reason =
-                bundle_tool_unavailable_reason(tool, &interfaces, &snapshot.connections);
-            let input = CreateMcpToolInput {
-                id: Uuid::now_v7(),
-                actor_user_id: command.actor_user_id,
-                workspace_id: actor.current_workspace_id,
-                tool_id: tool.tool_id.clone(),
-                name: tool.name.clone(),
-                short_description: tool.short_description.clone(),
-                full_description: tool.full_description.clone(),
-                execution_target: tool.execution_target.clone(),
-                parameter_schema: plan.parameter_schema,
-                result_schema: plan.result_schema,
-                input_mapping: tool.input_mapping.clone(),
-                output_mapping: tool.output_mapping.clone(),
-                permission_code: plan.permission_code,
-                risk_level: plan.risk_level,
-                des_id: normalize_des_id(None),
-                des_id_required: input_mapping_requires_des_id(&tool.input_mapping),
-                status: plan.status,
-            };
-            match self.repository.create_mcp_tool(&input).await {
-                Ok(record) => {
-                    if let domain::McpToolExecutionTarget::McpProxy {
-                        upstream_connection_id,
-                        remote_tool_name,
-                        source_schema_hash,
-                    } = &tool.execution_target
-                    {
-                        let discovered_at = OffsetDateTime::now_utc();
-                        self.repository
-                            .upsert_mcp_upstream_tool_source(&UpsertMcpUpstreamToolSourceInput {
-                                id: Uuid::now_v7(),
-                                workspace_id: actor.current_workspace_id,
-                                upstream_connection_id: *upstream_connection_id,
-                                remote_tool_name: remote_tool_name.clone(),
-                                description: Some(tool.full_description.clone()),
-                                input_schema: tool.parameter_schema_snapshot.clone(),
-                                output_schema: tool.result_schema_snapshot.clone(),
-                                schema_hash: source_schema_hash.clone(),
-                                source_status: domain::McpUpstreamSourceStatus::NotImported,
-                                discovered_at,
-                            })
-                            .await?;
-                        self.repository
-                            .link_mcp_upstream_tool_source(
-                                actor.current_workspace_id,
-                                *upstream_connection_id,
-                                remote_tool_name,
-                                record.id,
-                            )
-                            .await?;
-                    }
-                    snapshot.tools.insert(tool.tool_id.clone(), record);
-                    tool_reports.push(if let Some(reason) = unavailable_reason {
-                        item_report(
-                            &tool.tool_id,
-                            domain::McpBundleItemEffect::Create,
-                            "unavailable",
-                            Some(reason),
-                        )
-                    } else {
-                        item_report(
-                            &tool.tool_id,
-                            domain::McpBundleItemEffect::Create,
-                            "imported",
-                            None,
-                        )
-                    });
-                }
-                Err(_) => tool_reports.push(item_report(
-                    &tool.tool_id,
-                    domain::McpBundleItemEffect::Failed,
-                    "failed",
-                    Some("tool_write_failed"),
-                )),
-            }
-        }
-
-        let mut instance_reports = Vec::with_capacity(command.package.instances.len());
-        for instance in &command.package.instances {
-            if let Some(existing) = snapshot.instances.get(&instance.instance_id) {
-                instance_reports.push(
-                    if bundle_instance_is_already_present(instance, existing, &snapshot) {
-                        item_report(
-                            &instance.instance_id,
-                            domain::McpBundleItemEffect::AlreadyPresent,
-                            "already_present",
-                            None,
-                        )
-                    } else {
-                        item_report(
-                            &instance.instance_id,
-                            domain::McpBundleItemEffect::Conflict,
-                            "skipped",
-                            Some("instance_id_conflict"),
-                        )
-                    },
-                );
-                continue;
-            }
-            let missing_binding_tool = instance
-                .bindings
-                .iter()
-                .any(|binding| !snapshot.tools.contains_key(&binding.tool_id));
-            if missing_binding_tool {
-                instance_reports.push(item_report(
-                    &instance.instance_id,
-                    domain::McpBundleItemEffect::Failed,
-                    "failed",
-                    Some("binding_tool_missing"),
-                ));
-                continue;
-            }
-
-            match self
-                .import_bundle_instance(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                    instance,
-                    &snapshot.tools,
-                )
-                .await
-            {
-                Ok(()) => instance_reports.push(item_report(
-                    &instance.instance_id,
-                    domain::McpBundleItemEffect::Create,
-                    "imported",
-                    None,
-                )),
-                Err(_) => instance_reports.push(item_report(
-                    &instance.instance_id,
-                    domain::McpBundleItemEffect::Failed,
-                    "failed",
-                    Some("instance_write_failed"),
-                )),
-            }
-        }
-
+        let connection_reports = preview_connection_reports(&command.package, &snapshot);
+        let tool_reports = preview_tool_reports(&command.package, &snapshot, &interfaces);
+        let instance_reports = preview_instance_reports(&command.package, &snapshot);
         let effect_summary =
             summarize_bundle_effects(&tool_reports, &instance_reports, &connection_reports);
-        let has_unresolved = effect_summary.conflicts > 0 || effect_summary.failed > 0;
-        let status = if effect_summary.changes == 0 && !has_unresolved {
+
+        if effect_summary.changes > 0 || effect_summary.failed > 0 {
+            self.repository
+                .replace_mcp_bundle_graph_atomically(&ReplaceMcpBundleGraphInput {
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: actor.current_workspace_id,
+                    connections: command.package.connections.clone(),
+                    tools,
+                    instances: command.package.instances.clone(),
+                })
+                .await?;
+        }
+
+        let status = if effect_summary.changes == 0 {
             "already_applied"
-        } else if has_unresolved || effect_summary.unavailable > 0 {
+        } else if effect_summary.unavailable > 0 {
             "completed_with_warnings"
         } else {
             "completed"
@@ -797,77 +597,6 @@ where
             instances: instance_reports,
             connections: connection_reports,
         })
-    }
-
-    async fn import_bundle_instance(
-        &self,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
-        bundle: &domain::McpBundleInstance,
-        tools: &BTreeMap<String, domain::McpToolRecord>,
-    ) -> Result<()> {
-        let instance_record_id = Uuid::now_v7();
-        let groups = bundle
-            .groups
-            .iter()
-            .map(|group| UpsertMcpGroupInput {
-                id: Uuid::now_v7(),
-                actor_user_id,
-                instance_record_id,
-                path: group.path.clone(),
-                display_name: group.display_name.clone(),
-                description_short: group.description_short.clone(),
-                enabled: group.enabled,
-                sort_order: group.sort_order,
-            })
-            .collect();
-        let bindings = bundle
-            .bindings
-            .iter()
-            .map(|binding| {
-                let tool = tools
-                    .get(&binding.tool_id)
-                    .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-                Ok(CreateMcpToolBindingInput {
-                    id: Uuid::now_v7(),
-                    actor_user_id,
-                    instance_record_id,
-                    tool_record_id: tool.id,
-                    group_path: binding.group_path.clone(),
-                    display_alias: binding.display_alias.clone(),
-                    visible: binding.visible,
-                    sort_order: binding.sort_order,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let policy = &bundle.discovery_policy;
-        self.repository
-            .create_mcp_instance_graph_atomically(&CreateMcpInstanceGraphInput {
-                instance: CreateMcpInstanceInput {
-                    id: instance_record_id,
-                    actor_user_id,
-                    workspace_id,
-                    instance_id: bundle.instance_id.clone(),
-                    name: bundle.name.clone(),
-                    description_short: bundle.description_short.clone(),
-                    status: bundle.status,
-                    default_entry_path: bundle.default_entry_path.clone(),
-                },
-                groups,
-                bindings,
-                discovery_policy: UpdateMcpInstanceDiscoveryPolicyInput {
-                    actor_user_id,
-                    workspace_id,
-                    instance_record_id,
-                    list_default_limit: policy.list_default_limit,
-                    list_max_depth: policy.list_max_depth,
-                    list_regex_enabled: policy.list_regex_enabled,
-                    list_regex_max_length: policy.list_regex_max_length,
-                    list_return_fields: policy.list_return_fields.clone(),
-                },
-            })
-            .await?;
-        Ok(())
     }
 }
 
@@ -1045,6 +774,150 @@ fn bundle_instance_is_already_present(
     true
 }
 
+fn preview_connection_reports(
+    package: &domain::McpBundlePackage,
+    snapshot: &McpBundleWorkspaceSnapshot,
+) -> Vec<domain::McpBundleItemReport> {
+    package
+        .connections
+        .iter()
+        .map(
+            |connection| match snapshot.connections.get(&connection.connection_id) {
+                Some(existing) if bundle_connection_is_already_present(connection, existing) => {
+                    item_report(
+                        &connection.connection_id.to_string(),
+                        domain::McpBundleItemEffect::AlreadyPresent,
+                        "already_present",
+                        None,
+                    )
+                }
+                Some(_) => update_item_report(&connection.connection_id.to_string()),
+                None => item_report(
+                    &connection.connection_id.to_string(),
+                    domain::McpBundleItemEffect::Create,
+                    "unavailable",
+                    Some("credentials_missing"),
+                ),
+            },
+        )
+        .collect()
+}
+
+fn preview_tool_reports(
+    package: &domain::McpBundlePackage,
+    snapshot: &McpBundleWorkspaceSnapshot,
+    interfaces: &BTreeMap<String, domain::McpInterfaceCatalogEntry>,
+) -> Vec<domain::McpBundleItemReport> {
+    package
+        .tools
+        .iter()
+        .map(|tool| match snapshot.tools.get(&tool.tool_id) {
+            Some(existing) if bundle_tool_is_already_present(tool, existing, interfaces) => {
+                item_report(
+                    &tool.tool_id,
+                    domain::McpBundleItemEffect::AlreadyPresent,
+                    "already_present",
+                    None,
+                )
+            }
+            Some(_) => update_item_report(&tool.tool_id),
+            None => match bundle_tool_unavailable_reason(tool, interfaces, &snapshot.connections) {
+                Some(reason) => item_report(
+                    &tool.tool_id,
+                    domain::McpBundleItemEffect::Create,
+                    "unavailable",
+                    Some(reason),
+                ),
+                None => item_report(
+                    &tool.tool_id,
+                    domain::McpBundleItemEffect::Create,
+                    "imported",
+                    None,
+                ),
+            },
+        })
+        .collect()
+}
+
+fn preview_instance_reports(
+    package: &domain::McpBundlePackage,
+    snapshot: &McpBundleWorkspaceSnapshot,
+) -> Vec<domain::McpBundleItemReport> {
+    package
+        .instances
+        .iter()
+        .map(
+            |instance| match snapshot.instances.get(&instance.instance_id) {
+                Some(existing)
+                    if bundle_instance_is_already_present(instance, existing, snapshot) =>
+                {
+                    item_report(
+                        &instance.instance_id,
+                        domain::McpBundleItemEffect::AlreadyPresent,
+                        "already_present",
+                        None,
+                    )
+                }
+                Some(_) => update_item_report(&instance.instance_id),
+                None => item_report(
+                    &instance.instance_id,
+                    domain::McpBundleItemEffect::Create,
+                    "imported",
+                    None,
+                ),
+            },
+        )
+        .collect()
+}
+
+fn shared_tool_impacts(
+    package: &domain::McpBundlePackage,
+    snapshot: &McpBundleWorkspaceSnapshot,
+    interfaces: &BTreeMap<String, domain::McpInterfaceCatalogEntry>,
+) -> Vec<domain::McpBundleSharedToolImpact> {
+    let package_instance_ids = package
+        .instances
+        .iter()
+        .map(|instance| instance.instance_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let instance_ids_by_record = snapshot
+        .instances
+        .values()
+        .map(|instance| (instance.id, instance.instance_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let mut impacts = Vec::new();
+    for tool in &package.tools {
+        let Some(existing) = snapshot.tools.get(&tool.tool_id) else {
+            continue;
+        };
+        if bundle_tool_is_already_present(tool, existing, interfaces) {
+            continue;
+        }
+        let mut instance_ids = snapshot
+            .bindings
+            .iter()
+            .filter(|binding| binding.tool_record_id == existing.id)
+            .filter_map(|binding| {
+                instance_ids_by_record
+                    .get(&binding.instance_record_id)
+                    .copied()
+            })
+            .filter(|instance_id| !package_instance_ids.contains(instance_id))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        instance_ids.sort();
+        instance_ids.dedup();
+        if !instance_ids.is_empty() {
+            impacts.push(domain::McpBundleSharedToolImpact {
+                tool_id: tool.tool_id.clone(),
+                instance_ids,
+            });
+        }
+    }
+    impacts.sort_by(|left, right| left.tool_id.cmp(&right.tool_id));
+    impacts
+}
+
 fn summarize_bundle_effects(
     tools: &[domain::McpBundleItemReport],
     instances: &[domain::McpBundleItemReport],
@@ -1053,7 +926,9 @@ fn summarize_bundle_effects(
     let mut summary = domain::McpBundleEffectSummary::default();
     for item in tools.iter().chain(instances).chain(connections) {
         match item.effect {
-            domain::McpBundleItemEffect::Create => summary.changes += 1,
+            domain::McpBundleItemEffect::Create | domain::McpBundleItemEffect::Update => {
+                summary.changes += 1
+            }
             domain::McpBundleItemEffect::AlreadyPresent => summary.already_present += 1,
             domain::McpBundleItemEffect::Conflict => summary.conflicts += 1,
             domain::McpBundleItemEffect::Failed => summary.failed += 1,
@@ -1143,6 +1018,15 @@ fn item_report(
         effect,
         result: result.to_string(),
         reason: reason.map(str::to_string),
+    }
+}
+
+fn update_item_report(id: &str) -> domain::McpBundleItemReport {
+    domain::McpBundleItemReport {
+        id: id.to_string(),
+        effect: domain::McpBundleItemEffect::Update,
+        result: "updated".to_string(),
+        reason: None,
     }
 }
 

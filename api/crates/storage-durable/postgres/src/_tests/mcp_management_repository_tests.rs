@@ -1,4 +1,4 @@
-use control_plane::mcp_bundle::ExportMcpInstanceBundleCommand;
+use control_plane::mcp_bundle::{ExportMcpInstanceBundleCommand, ImportMcpBundleCommand};
 use control_plane::mcp_management::{
     CopyMcpInstanceCommand, CreateMcpInstanceCommand, CreateMcpToolBindingCommand,
     CreateMcpToolCommand, McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
@@ -442,7 +442,6 @@ async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_t
             bundle_id: "selected_instance".into(),
             bundle_version: "1.0.0".into(),
             locale: "zh_Hans".into(),
-            minimum_host_version: "0.2.0".into(),
             current_system_version: "0.2.6".into(),
         })
         .await
@@ -454,6 +453,160 @@ async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_t
     assert_eq!(bundle.instances[0].instance_id, "selected_instance");
     assert_eq!(bundle.tools[0].tool_id, proxy_dependencies[0].1);
     assert_eq!(bundle.connections[0].connection_id, proxy_dependencies[0].0);
+}
+
+#[tokio::test]
+async fn mcp_bundle_import_replaces_instance_atomically_and_preserves_credentials_and_other_instances(
+) {
+    // AC-005/006: same instance_id is replaced in one transaction without changing its UUID,
+    // client credential, or another instance that shares the updated tool.
+    let (store, _workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store);
+    let original = service
+        .create_instance(CreateMcpInstanceCommand {
+            actor_user_id: actor.id,
+            instance_id: "replace_me".into(),
+            name: "Old name".into(),
+            description_short: None,
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/".into(),
+        })
+        .await
+        .unwrap();
+    let other = service
+        .create_instance(CreateMcpInstanceCommand {
+            actor_user_id: actor.id,
+            instance_id: "keep_me".into(),
+            name: "Keep me".into(),
+            description_short: None,
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/".into(),
+        })
+        .await
+        .unwrap();
+    let tool = service
+        .create_tool(CreateMcpToolCommand {
+            actor_user_id: actor.id,
+            tool_id: "shared_runtime_profile".into(),
+            name: "Old tool".into(),
+            short_description: "Old tool".into(),
+            full_description: "Old tool".into(),
+            interface_entry: runtime_profile_interface(),
+            input_mapping: serde_json::json!({}),
+            output_mapping: serde_json::json!({}),
+            des_id: None,
+            status: domain::McpToolStatus::Enabled,
+        })
+        .await
+        .unwrap();
+    for instance_id in [&original.instance_id, &other.instance_id] {
+        service
+            .create_tool_binding(CreateMcpToolBindingCommand {
+                actor_user_id: actor.id,
+                instance_id: instance_id.clone(),
+                group_path: "/".into(),
+                tool_id: tool.tool_id.clone(),
+                display_alias: None,
+                visible: true,
+                sort_order: 1,
+            })
+            .await
+            .unwrap();
+    }
+    service
+        .save_client_credential(SaveMcpClientCredentialCommand {
+            actor_user_id: actor.id,
+            instance_id: original.instance_id.clone(),
+            api_key: "preserved-secret".into(),
+            master_key: "test-master-key".into(),
+        })
+        .await
+        .unwrap();
+    let mut package = service
+        .export_instance_bundle(ExportMcpInstanceBundleCommand {
+            actor_user_id: actor.id,
+            instance_id: original.instance_id.clone(),
+            organization: "taichuy".into(),
+            bundle_id: "replace_me".into(),
+            bundle_version: "1.0.0".into(),
+            locale: "zh_Hans".into(),
+            current_system_version: "0.3.1".into(),
+        })
+        .await
+        .unwrap();
+    package.instances[0].name = "New name".into();
+    package.tools[0].name = "New tool".into();
+    let preview = service
+        .preview_bundle(control_plane::mcp_bundle::PreviewMcpBundleCommand {
+            actor_user_id: actor.id,
+            package: package.clone(),
+            interface_catalog: vec![runtime_profile_interface()],
+            current_system_version: "0.3.1".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        preview.instances[0].effect,
+        domain::McpBundleItemEffect::Update
+    );
+    assert_eq!(preview.tools[0].effect, domain::McpBundleItemEffect::Update);
+    assert_eq!(preview.shared_tool_impacts[0].tool_id, tool.tool_id);
+    assert_eq!(
+        preview.shared_tool_impacts[0].instance_ids,
+        vec![other.instance_id.clone()]
+    );
+
+    service
+        .import_bundle(ImportMcpBundleCommand {
+            actor_user_id: actor.id,
+            package: package.clone(),
+            interface_catalog: vec![runtime_profile_interface()],
+            current_system_version: "0.3.1".into(),
+        })
+        .await
+        .unwrap();
+    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    let replaced = catalog
+        .instances
+        .iter()
+        .find(|instance| instance.instance_id == original.instance_id)
+        .unwrap();
+    assert_eq!(replaced.id, original.id);
+    assert_eq!(replaced.name, "New name");
+    assert!(catalog
+        .instances
+        .iter()
+        .any(|instance| instance.id == other.id && instance.name == "Keep me"));
+    assert_eq!(
+        service
+            .get_client_credential(actor.id, &original.instance_id, "test-master-key")
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("preserved-secret")
+    );
+
+    package.instances[0].name = "Must roll back".into();
+    package.instances[0].bindings[0].tool_id = "missing_tool".into();
+    assert!(service
+        .import_bundle(ImportMcpBundleCommand {
+            actor_user_id: actor.id,
+            package,
+            interface_catalog: vec![runtime_profile_interface()],
+            current_system_version: "0.3.1".into(),
+        })
+        .await
+        .is_err());
+    let after_failure = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert_eq!(
+        after_failure
+            .instances
+            .iter()
+            .find(|instance| instance.id == original.id)
+            .unwrap()
+            .name,
+        "New name"
+    );
 }
 
 #[tokio::test]

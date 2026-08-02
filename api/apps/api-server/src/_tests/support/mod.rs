@@ -49,9 +49,9 @@ use crate::{
         OfficialExtensionCatalogPageMetadata, OfficialExtensionCatalogSourcePort,
     },
     official_mcp_bundles::{
-        DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogEntry,
-        OfficialMcpBundleCatalogSnapshot, OfficialMcpBundleCatalogSource,
-        OfficialMcpBundleSourcePort,
+        DownloadedOfficialMcpBundle, McpBundleLibraryCatalog, McpBundleLibraryEntry,
+        OfficialMcpBundleCatalogEntry, OfficialMcpBundleCatalogSnapshot,
+        OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
     },
     provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{

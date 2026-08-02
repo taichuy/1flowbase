@@ -41,6 +41,7 @@ pub struct ApiConfig {
     pub cors_allowed_origins: Option<Vec<HeaderValue>>,
     pub api_node_id: String,
     pub provider_install_root: String,
+    pub mcp_template_library_root: String,
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
     pub allow_unverified_filesystem_dropins: bool,
@@ -144,6 +145,10 @@ impl ApiConfig {
             .get("API_PROVIDER_INSTALL_ROOT")
             .cloned()
             .unwrap_or_else(default_provider_install_root);
+        let mcp_template_library_root = map
+            .get("API_MCP_TEMPLATE_LIBRARY_ROOT")
+            .cloned()
+            .unwrap_or_else(default_mcp_template_library_root);
         let api_node_id = map
             .get("API_NODE_ID")
             .cloned()
@@ -300,6 +305,7 @@ impl ApiConfig {
             cors_allowed_origins,
             api_node_id,
             provider_install_root,
+            mcp_template_library_root,
             provider_secret_master_key,
             host_extension_dropin_root,
             allow_unverified_filesystem_dropins,
@@ -550,6 +556,17 @@ fn default_provider_install_root() -> String {
         .to_string()
 }
 
+fn default_mcp_template_library_root() -> String {
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    find_workspace_root(&current_dir)
+        .unwrap_or(current_dir)
+        .join("api")
+        .join("storage")
+        .join("extension-center")
+        .join("mcp")
+        .display()
+        .to_string()
+}
 fn default_official_plugin_trusted_public_keys_json() -> String {
     r#"[{"key_id":"official-key-2026-04","algorithm":"ed25519","public_key_pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAuk3oonNd85FNP8CBRKj8RVvpdbhreoJiCguEJXPSgwg=\n-----END PUBLIC KEY-----"}]"#.to_string()
 }
