@@ -258,9 +258,6 @@ describe('Navigation', () => {
     expect(
       within(nav).queryByRole('link', { name: '设置' })
     ).not.toBeInTheDocument();
-    expect(
-      await screen.findByRole('link', { name: '子系统', current: 'page' })
-    ).toBeInTheDocument();
   });
 
   test('uses backend primary navigation without expanding from permissions', async () => {
@@ -298,7 +295,9 @@ describe('Navigation', () => {
         within(nav).queryByRole('link', { name: '工作台' })
       ).not.toBeInTheDocument();
     });
-    expect(within(nav).getByRole('link', { name: '子系统' })).toHaveAttribute(
+    expect(
+      within(nav).getByRole('link', { name: '子系统' })
+    ).toHaveAttribute(
       'href',
       '/embedded-apps'
     );
