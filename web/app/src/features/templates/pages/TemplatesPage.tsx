@@ -12,7 +12,7 @@ export function TemplatesPage() {
       <div className="templates-page__title">
         <Typography.Title level={2}>{t('auto.templates')}</Typography.Title>
         <Typography.Paragraph type="secondary">
-          {t('auto.official_agent_flow_templates_description')}
+          {t('auto.installed_agent_flow_templates_description')}
         </Typography.Paragraph>
       </div>
       <AgentFlowTemplateLibrary />

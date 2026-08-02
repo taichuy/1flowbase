@@ -14,7 +14,7 @@
     "import_this_version": "Import this release",
     "go_to_agent_flow_extension_center": "Install Agent Flow templates in Extension Center",
     "installed_versions": "Local releases",
-    "official_agent_flow_templates_description": "Manage locally installed Agent Flow template releases. Importing always creates a new application.",
+    "installed_agent_flow_templates_description": "Manage locally installed Agent Flow template releases. Importing always creates a new application.",
     "retry": "Retry",
     "set_current": "Set as current",
     "template_id": "Template ID",

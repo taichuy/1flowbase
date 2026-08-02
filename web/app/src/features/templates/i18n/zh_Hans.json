@@ -14,7 +14,7 @@
     "import_this_version": "从此版本导入",
     "go_to_agent_flow_extension_center": "前往扩展中心安装 Agent Flow 模板",
     "installed_versions": "本地版本数",
-    "official_agent_flow_templates_description": "管理本地已安装的 Agent Flow 模板版本；导入始终创建一个新应用。",
+    "installed_agent_flow_templates_description": "管理本地已安装的 Agent Flow 模板版本；导入始终创建一个新应用。",
     "retry": "重试",
     "set_current": "设为当前",
     "template_id": "模板 ID",
