@@ -14,7 +14,7 @@ match_when:
   - 修复 Claude Code CountTokens 导致的 502 或会话中断
   - 为官方 Provider 增加 Tokenizer、估算器或网关门禁
 created_at: 2026-08-01 16
-updated_at: 2026-08-01 18
+updated_at: 2026-08-02 07
 decision_policy: verify_before_decision
 status: active
 source_of_truth: https://github.com/taichuy/1flowbase/issues/1556
@@ -45,6 +45,13 @@ Root agent 已完成主仓与官方 Provider 的隔离 assembly、本地集成�
 - 真实 Claude cycle30：`input_tokens=155`，initial 与同 session follow-up 均 PASS；DeepSeek 0.1.16→0.1.18 无 republish，cleanup PASS。
 - 最终根因不是 Gateway 或 Provider wire：旧验收 runner 使用 `enable + assign` 切换版本，只更新 `plugin_assignments`，没有迁移 `model_provider_instances.installation_id`。runner 已统一改用正式 `switch-version` 控制面。
 - 共享开发库已通过正式控制面依次切到 0.1.16、再回 0.1.18；assignment 与 Provider instance 最终一致，publication 不变。
+
+## 线上发布
+
+- 主仓 CountTokens assembly 已推送到 `origin/dev`，后续 `dev` 提交仍包含该集成点。
+- 官方插件源码已推送到 `origin/main`，线上 `provider-release` 与 `provider-ci` 均通过。
+- Anthropic 0.1.35、OpenAI 0.2.24、DeepSeek 0.1.18、Gemini 0.1.19、Aliyun Bailian 0.1.13、OpenAI Compatible 0.3.41 均已发布。
+- 每个版本包含 darwin/linux/windows × amd64/arm64 共 6 个签名 `.1flowbasepkg`；`official-registry.json` 与 runtime catalog 已由发布自动化回写。
 
 ## 截止与复核
 
