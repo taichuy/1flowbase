@@ -11,7 +11,7 @@ import {
   fetchSettingsConsoleNavigation,
   settingsConsoleNavigationQueryKey
 } from '../features/settings/api/console-navigation';
-import { APP_ROUTES, getSelectedRouteId } from '../routes/route-config';
+import { getSelectedRouteId } from '../routes/route-config';
 import {
   fetchFrontstagePageTree,
   frontstagePageTreeQueryKey,
@@ -29,13 +29,6 @@ interface ConsolePrimaryNavigationRoute {
   path: string;
   label_key: string;
 }
-
-const primaryRoutePathsById = new Map<string, string>(
-  APP_ROUTES.filter((route) => route.chromeSlot === 'primary').map((route) => [
-    route.id,
-    route.path
-  ])
-);
 
 function topbarPageRoutes(
   nodes: FrontstagePageTreeNode[]
@@ -115,8 +108,7 @@ function primaryRoutesFromConsoleNavigation(
     .sort((left, right) => left.order - right.order)
     .flatMap((item) => {
       const route = routesById.get(item.route_id);
-      // Only render backend-authorized routes that this frontend build can resolve.
-      if (!route || primaryRoutePathsById.get(route.route_id) !== route.path) {
+      if (!route) {
         return [];
       }
 
