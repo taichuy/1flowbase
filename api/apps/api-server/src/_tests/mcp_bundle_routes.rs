@@ -181,8 +181,9 @@ async fn mcp_bundle_export_defaults_use_the_backend_system_version() {
 }
 
 #[tokio::test]
-async fn mcp_bundle_library_routes_enforce_session_and_csrf() {
-    // AC-004 route contract: reads require the MCP settings scope; writes also require CSRF.
+async fn mcp_bundle_library_routes_require_session_and_reject_missing_csrf_as_unauthorized() {
+    // AC-004 route contract: reads require the MCP settings scope; a missing CSRF token is
+    // represented by the shared middleware as NotAuthenticated (401).
     let app = test_app().await;
     let anonymous = app
         .clone()
@@ -217,7 +218,7 @@ async fn mcp_bundle_library_routes_enforce_session_and_csrf() {
         )
         .await
         .unwrap();
-    assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
 }
 
 fn sha256(bytes: &[u8]) -> String {
