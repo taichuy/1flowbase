@@ -388,7 +388,7 @@ where
             .await?;
         let interfaces = bindable_interfaces(command.interface_catalog);
 
-        let tools = command
+        let tools: Vec<domain::McpBundleItemReport> = command
             .package
             .tools
             .iter()
@@ -452,7 +452,7 @@ where
                 }
             })
             .collect();
-        let instances = command
+        let instances: Vec<domain::McpBundleItemReport> = command
             .package
             .instances
             .iter()
@@ -497,7 +497,7 @@ where
                 }
             })
             .collect();
-        let connections = command
+        let connections: Vec<domain::McpBundleItemReport> = command
             .package
             .connections
             .iter()
