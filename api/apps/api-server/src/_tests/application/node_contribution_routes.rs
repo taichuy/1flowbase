@@ -412,6 +412,27 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         .iter()
         .any(|entry| entry["node_type"] == "workflow_end"));
 
+    let builtin_categories = ["io", "generation", "control", "data", "external"];
+    assert!(agent_flow_nodes
+        .iter()
+        .filter(|entry| entry["source_kind"] == "builtin")
+        .all(|entry| builtin_categories.contains(&entry["category"].as_str().unwrap())));
+    for (node_type, category) in [
+        ("llm", "generation"),
+        ("if_else", "control"),
+        ("sql", "data"),
+        ("http_request", "external"),
+        ("human_input", "io"),
+    ] {
+        assert_eq!(
+            agent_flow_nodes
+                .iter()
+                .find(|entry| entry["node_type"] == node_type)
+                .unwrap()["category"],
+            category
+        );
+    }
+
     let sql = agent_flow_nodes
         .iter()
         .find(|entry| entry["node_type"] == "sql")
