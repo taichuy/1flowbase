@@ -75,8 +75,10 @@ describe('ApplicationFormModal create intent', () => {
     );
 
     expect(await screen.findByText('新建应用')).toBeInTheDocument();
-    expect(screen.getByText('后端 Agent Flow 描述')).toBeInTheDocument();
-    expect(screen.getByText('后端 Workflow 描述')).toBeInTheDocument();
+    expect(
+      await screen.findByText('后端 Agent Flow 描述')
+    ).toBeInTheDocument();
+    expect(await screen.findByText('后端 Workflow 描述')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '名称' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '创建应用' })

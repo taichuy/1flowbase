@@ -400,8 +400,8 @@ describe('NodePickerPopover', () => {
     expect(listBlock).toContain(
       'padding-bottom: var(--agent-flow-node-picker-list-bottom-padding, 40px);'
     );
-    expect(listBlock).toContain(
-      'scroll-padding-bottom: var(--agent-flow-node-picker-list-bottom-padding, 40px);'
+    expect(listBlock).toMatch(
+      /scroll-padding-bottom:\s*var\(\s*--agent-flow-node-picker-list-bottom-padding,\s*40px\s*\);/
     );
   });
 

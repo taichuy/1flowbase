@@ -320,7 +320,7 @@ async fn application_routes_reject_manual_workflow_trigger_type() {
         .await
         .unwrap();
 
-    assert_eq!(create.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(create.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
