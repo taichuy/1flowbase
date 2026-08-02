@@ -88,14 +88,6 @@ pub struct ResolvedOfficialExtensionCatalogSourceConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedOfficialAgentFlowTemplateSourceConfig {
-    pub source_kind: String,
-    pub source_label: String,
-    pub index_url: String,
-    pub github_proxy_url: Option<String>,
-}
-
-#[derive(Debug, Clone)]
 pub struct ResolvedOfficialMcpBundleSourceConfig {
     pub source_kind: String,
     pub source_label: String,
