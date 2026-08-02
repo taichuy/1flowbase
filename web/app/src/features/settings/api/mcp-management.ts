@@ -25,6 +25,7 @@ import {
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
   fetchConsoleMcpTemplateLibrary,
+  refreshConsoleMcpTemplateLibrary,
   fetchConsoleMcpUpstreamConnections,
   importConsoleMcpBundle,
   importConsoleMcpTemplateLibraryBundle,
@@ -289,6 +290,10 @@ export function importSettingsOfficialMcpBundle(
 
 export function fetchSettingsMcpTemplateLibrary() {
   return fetchConsoleMcpTemplateLibrary();
+}
+
+export function refreshSettingsMcpTemplateLibrary() {
+  return refreshConsoleMcpTemplateLibrary();
 }
 
 export function syncSettingsMcpTemplateLibraryBundle(

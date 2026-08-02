@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -11,6 +12,8 @@ use reqwest::Client;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
 
 use crate::{
     config::ResolvedOfficialMcpBundleSourceConfig, official_plugin_registry::rewrite_github_raw_url,
@@ -138,6 +141,12 @@ pub trait OfficialMcpBundleSourcePort: Send + Sync {
     async fn library_catalog(&self) -> Result<McpBundleLibraryCatalog> {
         bail!("official MCP bundle library is unavailable")
     }
+    async fn refresh_catalog(&self) -> Result<McpBundleLibraryCatalog> {
+        self.library_catalog().await
+    }
+    async fn reconcile_local_installations(&self) -> Result<()> {
+        Ok(())
+    }
     async fn sync(
         &self,
         organization: &str,
@@ -198,6 +207,10 @@ pub struct ApiOfficialMcpBundleRegistry {
     catalog_url: String,
     github_proxy_url: Option<String>,
     root: PathBuf,
+    installation_repository: Arc<dyn ExtensionInstallationRepository>,
+    node_id: String,
+    actor_user_id: Uuid,
+    remote_catalog_cache: Arc<tokio::sync::RwLock<Option<McpCatalogDocument>>>,
     trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
     client: Client,
 }
@@ -206,6 +219,9 @@ impl ApiOfficialMcpBundleRegistry {
     pub fn new(
         source: ResolvedOfficialMcpBundleSourceConfig,
         root: PathBuf,
+        installation_repository: Arc<dyn ExtensionInstallationRepository>,
+        node_id: String,
+        actor_user_id: Uuid,
         trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
     ) -> Self {
         Self {
@@ -214,6 +230,10 @@ impl ApiOfficialMcpBundleRegistry {
             catalog_url: source.catalog_url,
             github_proxy_url: source.github_proxy_url,
             root,
+            installation_repository,
+            node_id,
+            actor_user_id,
+            remote_catalog_cache: Arc::new(tokio::sync::RwLock::new(None)),
             trusted_public_keys,
             client: Client::builder()
                 .connect_timeout(SOURCE_CONNECT_TIMEOUT)
@@ -288,6 +308,104 @@ impl ApiOfficialMcpBundleRegistry {
         Ok(document)
     }
 
+    fn installation_identity(
+        &self,
+        organization: &str,
+        bundle_id: &str,
+        bundle_version: &str,
+    ) -> domain::ExtensionInstallationIdentity {
+        domain::ExtensionInstallationIdentity {
+            category: domain::ExtensionCategory::Mcp,
+            organization: organization.to_string(),
+            artifact_id: bundle_id.to_string(),
+            version: bundle_version.to_string(),
+            node_id: self.node_id.clone(),
+        }
+    }
+
+    async fn indexed_records(&self) -> Result<Vec<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .installation_repository
+            .list_extension_installations_for_node(&self.node_id)
+            .await?
+            .into_iter()
+            .filter(|record| {
+                record.identity.category == domain::ExtensionCategory::Mcp
+                    && record.status == domain::ExtensionInstallationStatus::Installed
+            })
+            .collect())
+    }
+
+    async fn indexed_record(
+        &self,
+        organization: &str,
+        bundle_id: &str,
+        bundle_version: &str,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .installation_repository
+            .find_extension_installation(&self.installation_identity(
+                organization,
+                bundle_id,
+                bundle_version,
+            ))
+            .await?
+            .filter(|record| record.status == domain::ExtensionInstallationStatus::Installed))
+    }
+
+    async fn index_receipt(
+        &self,
+        receipt: &LocalMcpBundleReceipt,
+        is_current: bool,
+    ) -> Result<domain::ExtensionInstallationRecord> {
+        let identity = self.installation_identity(
+            &receipt.organization,
+            &receipt.bundle_id,
+            &receipt.bundle_version,
+        );
+        let existing = self
+            .installation_repository
+            .find_extension_installation(&identity)
+            .await?;
+        Ok(self
+            .installation_repository
+            .upsert_extension_installation(&UpsertExtensionInstallationInput {
+                installation_id: existing
+                    .as_ref()
+                    .map(|record| record.id)
+                    .unwrap_or_else(Uuid::now_v7),
+                identity,
+                source: "official_mcp_catalog".to_string(),
+                trust: "signed".to_string(),
+                local_path: bundle_path(
+                    &self.root,
+                    &receipt.organization,
+                    &receipt.bundle_id,
+                    &receipt.bundle_version,
+                )
+                .to_string_lossy()
+                .into_owned(),
+                checksum: receipt.checksum.clone(),
+                signature_status: domain::ExtensionSignatureStatus::Verified,
+                signature_algorithm: Some(receipt.algorithm.clone()),
+                signing_key_id: Some(receipt.key_id.clone()),
+                warnings: Vec::new(),
+                receipt: serde_json::to_value(receipt)?,
+                application_action: domain::ExtensionApplicationAction::ImportMcp,
+                status: domain::ExtensionInstallationStatus::Installed,
+                is_current,
+                installed_by: self.actor_user_id,
+            })
+            .await?)
+    }
+
+    fn receipt_from_record(
+        record: &domain::ExtensionInstallationRecord,
+    ) -> Result<LocalMcpBundleReceipt> {
+        serde_json::from_value(record.receipt.clone())
+            .context("MCP template installation receipt is invalid")
+    }
+
     async fn selected_remote(
         &self,
         organization: &str,
@@ -295,9 +413,9 @@ impl ApiOfficialMcpBundleRegistry {
         bundle_version: Option<&str>,
     ) -> Result<McpCatalogVersion> {
         validate_identity(organization, bundle_id)?;
-        let bundle = self
-            .remote_catalog()
-            .await?
+        let document = self.remote_catalog().await?;
+        *self.remote_catalog_cache.write().await = Some(document.clone());
+        let bundle = document
             .bundles
             .into_iter()
             .find(|item| item.organization == organization && item.bundle_id == bundle_id)
@@ -323,14 +441,19 @@ impl ApiOfficialMcpBundleRegistry {
         version: McpCatalogVersion,
         repair: bool,
     ) -> Result<LocalMcpBundleReceipt> {
-        let existing = read_receipt(&self.root, organization, bundle_id, &version.bundle_version)?;
-        if let Some(existing) = existing {
-            if existing.checksum != version.checksum {
+        let existing = self
+            .indexed_record(organization, bundle_id, &version.bundle_version)
+            .await?;
+        if let Some(existing_record) = existing.as_ref() {
+            let existing_receipt = Self::receipt_from_record(existing_record)?;
+            if existing_receipt.checksum != version.checksum {
                 bail!("same MCP bundle release has a different checksum");
             }
-            if !repair {
-                write_current(&self.root, organization, bundle_id, &version.bundle_version)?;
-                return Ok(existing);
+            if !repair && Path::new(&existing_record.local_path).is_file() {
+                self.installation_repository
+                    .select_current_extension_installation(&self.node_id, existing_record.id)
+                    .await?;
+                return Ok(existing_receipt);
             }
         } else if repair {
             bail!("local MCP bundle release not found for repair");
@@ -357,60 +480,150 @@ impl ApiOfficialMcpBundleRegistry {
             key_id: version.key_id,
             signature: version.signature,
         };
+        let release_directory = release_dir(
+            &self.root,
+            &receipt.organization,
+            &receipt.bundle_id,
+            &receipt.bundle_version,
+        );
+        let release_was_present = release_directory.is_dir();
         write_release(&self.root, &receipt, &bytes)?;
-        if !repair {
-            write_current(&self.root, organization, bundle_id, &receipt.bundle_version)?;
+        let is_current = if repair {
+            existing.as_ref().is_some_and(|record| record.is_current)
+        } else {
+            true
+        };
+        if let Err(error) = self.index_receipt(&receipt, is_current).await {
+            if !release_was_present {
+                let _ = fs::remove_dir_all(&release_directory);
+            }
+            return Err(error).context("failed to index synchronized MCP template");
         }
         Ok(receipt)
+    }
+
+    async fn project_library(
+        &self,
+        remote: Option<McpCatalogDocument>,
+        remote_error: Option<String>,
+    ) -> Result<McpBundleLibraryCatalog> {
+        let mut entries = BTreeMap::new();
+        for record in self.indexed_records().await? {
+            let receipt = Self::receipt_from_record(&record)?;
+            let key = (
+                record.identity.organization.clone(),
+                record.identity.artifact_id.clone(),
+            );
+            let entry = entries.entry(key).or_insert_with(|| McpBundleLibraryEntry {
+                organization: record.identity.organization.clone(),
+                bundle_id: record.identity.artifact_id.clone(),
+                source_path: None,
+                remote_versions: Vec::new(),
+                local_versions: Vec::new(),
+                current_bundle_version: None,
+            });
+            if record.is_current {
+                entry.current_bundle_version = Some(record.identity.version.clone());
+            }
+            entry.local_versions.push(receipt);
+        }
+        for entry in entries.values_mut() {
+            entry
+                .local_versions
+                .sort_by(|left, right| semver_cmp(&right.bundle_version, &left.bundle_version));
+        }
+        if let Some(document) = remote {
+            for bundle in document.bundles {
+                let entry = entries
+                    .entry((bundle.organization.clone(), bundle.bundle_id.clone()))
+                    .or_insert_with(|| McpBundleLibraryEntry {
+                        organization: bundle.organization.clone(),
+                        bundle_id: bundle.bundle_id.clone(),
+                        source_path: None,
+                        remote_versions: Vec::new(),
+                        local_versions: Vec::new(),
+                        current_bundle_version: None,
+                    });
+                entry.source_path = Some(bundle.source_path);
+                entry.remote_versions = bundle.versions;
+                entry
+                    .remote_versions
+                    .sort_by(|left, right| semver_cmp(&right.bundle_version, &left.bundle_version));
+            }
+        }
+        Ok(McpBundleLibraryCatalog {
+            source: self.source(),
+            remote_available: self.remote_catalog_cache.read().await.is_some(),
+            remote_error,
+            bundles: entries.into_values().collect(),
+        })
     }
 }
 
 #[async_trait]
 impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
     async fn library_catalog(&self) -> Result<McpBundleLibraryCatalog> {
-        let local = scan_local(&self.root)?;
-        let remote = self.remote_catalog().await;
-        let (remote_available, remote_error, remote_bundles) = match remote {
-            Ok(document) => (true, None, document.bundles),
-            Err(error) => (false, Some(error.to_string()), Vec::new()),
-        };
-        let mut entries = BTreeMap::new();
-        for (organization, bundle_id, versions, current) in local {
-            entries.insert(
-                (organization.clone(), bundle_id.clone()),
-                McpBundleLibraryEntry {
-                    organization,
-                    bundle_id,
-                    source_path: None,
-                    remote_versions: Vec::new(),
-                    local_versions: versions,
-                    current_bundle_version: current,
-                },
-            );
+        self.project_library(self.remote_catalog_cache.read().await.clone(), None)
+            .await
+    }
+
+    async fn refresh_catalog(&self) -> Result<McpBundleLibraryCatalog> {
+        match self.remote_catalog().await {
+            Ok(document) => {
+                *self.remote_catalog_cache.write().await = Some(document.clone());
+                self.project_library(Some(document), None).await
+            }
+            Err(error) => {
+                self.project_library(
+                    self.remote_catalog_cache.read().await.clone(),
+                    Some(error.to_string()),
+                )
+                .await
+            }
         }
-        for bundle in remote_bundles {
-            let entry = entries
-                .entry((bundle.organization.clone(), bundle.bundle_id.clone()))
-                .or_insert_with(|| McpBundleLibraryEntry {
-                    organization: bundle.organization.clone(),
-                    bundle_id: bundle.bundle_id.clone(),
-                    source_path: None,
-                    remote_versions: Vec::new(),
-                    local_versions: Vec::new(),
-                    current_bundle_version: None,
-                });
-            entry.source_path = Some(bundle.source_path);
-            entry.remote_versions = bundle.versions;
-            entry
-                .remote_versions
-                .sort_by(|left, right| semver_cmp(&right.bundle_version, &left.bundle_version));
+    }
+
+    async fn reconcile_local_installations(&self) -> Result<()> {
+        for (_, _, versions, current) in scan_local(&self.root)? {
+            let selected_current = current.as_deref().or_else(|| {
+                versions
+                    .first()
+                    .map(|receipt| receipt.bundle_version.as_str())
+            });
+            for receipt in
+                versions
+                    .iter()
+                    .filter(|receipt| Some(receipt.bundle_version.as_str()) != selected_current)
+                    .chain(versions.iter().filter(|receipt| {
+                        Some(receipt.bundle_version.as_str()) == selected_current
+                    }))
+            {
+                self.index_receipt(
+                    receipt,
+                    Some(receipt.bundle_version.as_str()) == selected_current,
+                )
+                .await?;
+            }
         }
-        Ok(McpBundleLibraryCatalog {
-            source: self.source(),
-            remote_available,
-            remote_error,
-            bundles: entries.into_values().collect(),
-        })
+        for record in self
+            .installation_repository
+            .list_extension_installations_for_node(&self.node_id)
+            .await?
+            .into_iter()
+            .filter(|record| record.identity.category == domain::ExtensionCategory::Mcp)
+        {
+            if record.status == domain::ExtensionInstallationStatus::Installed
+                && !Path::new(&record.local_path).is_file()
+            {
+                self.installation_repository
+                    .set_extension_installation_status(
+                        record.id,
+                        domain::ExtensionInstallationStatus::Missing,
+                    )
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     async fn sync(
@@ -433,18 +646,21 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
         bundle_version: Option<&str>,
     ) -> Result<Vec<u8>> {
         validate_identity(organization, bundle_id)?;
-        if local_versions(&self.root, organization, bundle_id)?.is_empty() {
-            self.sync(organization, bundle_id, bundle_version).await?;
-        }
-        let selected = match bundle_version {
-            Some(version) => version.to_string(),
-            None => read_current(&self.root, organization, bundle_id)?
-                .ok_or_else(|| anyhow!("local MCP bundle current release is missing"))?,
+        let record = match bundle_version {
+            Some(version) => {
+                self.indexed_record(organization, bundle_id, version)
+                    .await?
+            }
+            None => self.indexed_records().await?.into_iter().find(|record| {
+                record.identity.organization == organization
+                    && record.identity.artifact_id == bundle_id
+                    && record.is_current
+            }),
         };
-        let receipt = read_receipt(&self.root, organization, bundle_id, &selected)?
-            .ok_or_else(|| anyhow!("local MCP bundle receipt is missing"))?;
-        let bytes = fs::read(bundle_path(&self.root, organization, bundle_id, &selected))
-            .context("failed to read local MCP bundle artifact")?;
+        let record = record.ok_or_else(|| anyhow!("local MCP bundle release is not installed"))?;
+        let receipt = Self::receipt_from_record(&record)?;
+        let bytes =
+            fs::read(&record.local_path).context("failed to read local MCP bundle artifact")?;
         plugin_framework::verify_trusted_ed25519_artifact(
             &bytes,
             &receipt.checksum,
@@ -462,10 +678,15 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
         bundle_id: &str,
         bundle_version: &str,
     ) -> Result<LocalMcpBundleReceipt> {
-        let receipt = read_receipt(&self.root, organization, bundle_id, bundle_version)?
+        let record = self
+            .indexed_record(organization, bundle_id, bundle_version)
+            .await?
             .ok_or_else(|| anyhow!("local MCP bundle release not found"))?;
-        write_current(&self.root, organization, bundle_id, bundle_version)?;
-        Ok(receipt)
+        self.installation_repository
+            .select_current_extension_installation(&self.node_id, record.id)
+            .await?
+            .ok_or_else(|| anyhow!("local MCP bundle release not found"))?;
+        Self::receipt_from_record(&record)
     }
 
     async fn delete_local_version(
@@ -474,22 +695,27 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
         bundle_id: &str,
         bundle_version: &str,
     ) -> Result<()> {
+        let record = self
+            .indexed_record(organization, bundle_id, bundle_version)
+            .await?
+            .ok_or_else(|| anyhow!("local MCP bundle release not found"))?;
         let directory = release_dir(&self.root, organization, bundle_id, bundle_version);
-        if !directory.is_dir() {
-            bail!("local MCP bundle release not found");
-        }
-        fs::remove_dir_all(directory)?;
-        let remaining = local_versions(&self.root, organization, bundle_id)?;
-        if remaining.is_empty() {
-            fs::remove_dir_all(bundle_dir(&self.root, organization, bundle_id))?;
-        } else if read_current(&self.root, organization, bundle_id)?.as_deref()
-            == Some(bundle_version)
+        let tombstone = directory.with_extension(format!("deleting-{}", Uuid::now_v7()));
+        fs::rename(&directory, &tombstone)?;
+        if let Err(error) = self
+            .installation_repository
+            .remove_extension_installation(&self.node_id, record.id)
+            .await
         {
-            let highest = remaining
-                .iter()
-                .max_by(|left, right| semver_cmp(&left.bundle_version, &right.bundle_version))
-                .expect("non-empty MCP release list must have a highest version");
-            write_current(&self.root, organization, bundle_id, &highest.bundle_version)?;
+            let _ = fs::rename(&tombstone, &directory);
+            return Err(error).context("failed to remove MCP template index");
+        }
+        if let Err(error) = fs::remove_dir_all(&tombstone) {
+            tracing::warn!(
+                path = %tombstone.display(),
+                error = %error,
+                "deleted MCP template tombstone cleanup failed"
+            );
         }
         Ok(())
     }
@@ -693,16 +919,6 @@ fn write_release(root: &Path, receipt: &LocalMcpBundleReceipt, bytes: &[u8]) -> 
     atomic_write(
         &directory.join("receipt.json"),
         &serde_json::to_vec_pretty(receipt)?,
-    )
-}
-
-fn write_current(root: &Path, organization: &str, bundle_id: &str, version: &str) -> Result<()> {
-    if read_receipt(root, organization, bundle_id, version)?.is_none() {
-        bail!("local MCP bundle release not found");
-    }
-    atomic_write(
-        &bundle_dir(root, organization, bundle_id).join("current"),
-        version.as_bytes(),
     )
 }
 

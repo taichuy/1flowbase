@@ -523,12 +523,35 @@ pub async fn delete_local_extension_installation(
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryEntryResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let installation = extension_installation_service(&state)
-        .delete_local_installation(&state.api_node_id, installation_id)
+    let installation_service = extension_installation_service(&state);
+    let existing = installation_service
+        .find_local_installation_by_id(&state.api_node_id, installation_id)
         .await?
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_installation",
         ))?;
+    let installation = if existing.identity.category == domain::ExtensionCategory::Mcp {
+        state
+            .official_mcp_bundle_source
+            .delete_local_version(
+                &existing.identity.organization,
+                &existing.identity.artifact_id,
+                &existing.identity.version,
+            )
+            .await?;
+        domain::ExtensionInstallationRecord {
+            status: domain::ExtensionInstallationStatus::Missing,
+            is_current: false,
+            ..existing
+        }
+    } else {
+        installation_service
+            .delete_local_installation(&state.api_node_id, installation_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "extension_installation",
+            ))?
+    };
     Ok(Json(ApiSuccess::new(to_local_inventory_entry(
         installation,
     ))))
