@@ -492,6 +492,7 @@ export function ApplicationListPage() {
             <Button
               type="text"
               icon={<FileTextOutlined />}
+              aria-label={t('auto.create_from_application_template')}
               style={{ justifyContent: 'flex-start' }}
               onClick={() => setTemplatePickerOpen(true)}
             >

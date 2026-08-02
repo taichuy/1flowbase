@@ -508,16 +508,24 @@ describe('ApplicationListPage', () => {
     expect(
       within(drawer).getByRole('link', { name: '管理本地模板' })
     ).toHaveAttribute('href', '/templates');
-    fireEvent.click(within(drawer).getByRole('button', { name: '导入应用' }));
+    fireEvent.click(
+      await within(drawer).findByRole('button', { name: '导入应用' })
+    );
 
     await waitFor(() => {
       expect(
         applicationsApi.previewInstalledApplicationExtension
       ).toHaveBeenCalledWith('agent-flow-installation-1');
     });
-    const importDialog = await screen.findByRole('dialog');
+    const importTitle = (await screen.findAllByText('导入应用压缩包')).find(
+      (element) => element.closest('[role="dialog"]')
+    );
+    const importDialog = importTitle?.closest('[role="dialog"]') ?? null;
+    expect(importDialog).not.toBeNull();
     fireEvent.click(
-      within(importDialog).getByRole('button', { name: '导入应用' })
+      within(importDialog as HTMLElement).getByRole('button', {
+        name: '导入应用'
+      })
     );
     await waitFor(() => {
       expect(

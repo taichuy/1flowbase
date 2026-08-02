@@ -177,8 +177,12 @@ describe('installed Agent Flow template library', () => {
     const historyVersion = within(drawer).getByRole('listitem', {
       name: '2.0.0'
     });
-    expect(within(currentVersion).getByText('当前')).toBeInTheDocument();
-    expect(within(historyVersion).queryByText('当前')).not.toBeInTheDocument();
+    expect(
+      within(currentVersion).getByRole('button', { name: '当前' })
+    ).toBeDisabled();
+    expect(
+      within(historyVersion).getByRole('button', { name: '设为当前' })
+    ).toBeEnabled();
   });
 
   test('AC-006 selects and deletes versions by installation id', async () => {
@@ -208,11 +212,17 @@ describe('installed Agent Flow template library', () => {
     fireEvent.click(
       within(reopenedVersion2).getByRole('button', { name: '删除版本' })
     );
-    const confirmation = await screen.findByRole('dialog', {
-      name: '确认删除这个本地模板版本？此操作不会改变已创建的应用。'
-    });
+    const confirmationTitle = (
+      await screen.findAllByText(
+        '确认删除这个本地模板版本？此操作不会改变已创建的应用。'
+      )
+    ).find((element) => element.closest('[role="dialog"]'));
+    const confirmation = confirmationTitle?.closest('[role="dialog"]') ?? null;
+    expect(confirmation).not.toBeNull();
     fireEvent.click(
-      within(confirmation).getByRole('button', { name: '删除版本' })
+      within(confirmation as HTMLElement).getByRole('button', {
+        name: '删除版本'
+      })
     );
     await waitFor(() => {
       expect(templatesApi.deleteInstalledAgentFlowVersion).toHaveBeenCalledWith(
@@ -240,14 +250,18 @@ describe('installed Agent Flow template library', () => {
         applicationsApi.previewInstalledApplicationExtension
       ).toHaveBeenCalledWith('installation-version-2');
     });
-    const importDialog = await screen.findByRole('dialog', {
-      name: '导入应用压缩包'
-    });
+    const importTitle = (await screen.findAllByText('导入应用压缩包')).find(
+      (element) => element.closest('[role="dialog"]')
+    );
+    const importDialog = importTitle?.closest('[role="dialog"]') ?? null;
+    expect(importDialog).not.toBeNull();
     expect(
-      within(importDialog).getByDisplayValue('Fusion 1')
+      within(importDialog as HTMLElement).getByDisplayValue('Fusion 1')
     ).toBeInTheDocument();
     fireEvent.click(
-      within(importDialog).getByRole('button', { name: '导入应用' })
+      within(importDialog as HTMLElement).getByRole('button', {
+        name: '导入应用'
+      })
     );
     await waitFor(() => {
       expect(
