@@ -118,9 +118,24 @@ export type ConsoleMcpBundleVersionStatus =
   | 'exported_from_newer_system'
   | 'unknown_system_version';
 
+export type ConsoleMcpBundleItemEffect =
+  | 'create'
+  | 'already_present'
+  | 'conflict'
+  | 'failed';
+
+export interface ConsoleMcpBundleEffectSummary {
+  changes: number;
+  already_present: number;
+  conflicts: number;
+  unavailable: number;
+  failed: number;
+}
+
 export interface ConsoleMcpBundleItemReport {
   id: string;
-  result: 'imported' | 'unavailable' | 'skipped' | 'failed';
+  effect: ConsoleMcpBundleItemEffect;
+  result: 'imported' | 'already_present' | 'unavailable' | 'skipped' | 'failed';
   reason: string | null;
 }
 
@@ -128,13 +143,18 @@ export interface ConsoleMcpBundlePreview {
   manifest: ConsoleMcpBundleManifest;
   current_system_version: string;
   version_status: ConsoleMcpBundleVersionStatus;
+  effect_summary: ConsoleMcpBundleEffectSummary;
   tools: ConsoleMcpBundleItemReport[];
   instances: ConsoleMcpBundleItemReport[];
   connections: ConsoleMcpBundleItemReport[];
 }
 
 export interface ConsoleMcpBundleImportReport extends ConsoleMcpBundlePreview {
-  status: 'completed' | 'completed_with_warnings' | 'failed';
+  status:
+    | 'completed'
+    | 'completed_with_warnings'
+    | 'already_applied'
+    | 'failed';
 }
 
 export interface ExportConsoleMcpBundleBody {

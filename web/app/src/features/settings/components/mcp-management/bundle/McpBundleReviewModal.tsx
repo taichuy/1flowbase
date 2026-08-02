@@ -1,4 +1,14 @@
-import { Alert, Descriptions, List, Modal, Space, Table, Tag } from 'antd';
+import {
+  Alert,
+  Button,
+  Descriptions,
+  List,
+  Modal,
+  Space,
+  Spin,
+  Table,
+  Tag
+} from 'antd';
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import type {
@@ -56,18 +66,52 @@ function itemReason(reason: string | null) {
 
 function resultColor(result: string) {
   if (result === 'imported') return 'green';
+  if (result === 'already_present') return 'blue';
   if (result === 'unavailable' || result === 'failed') return 'red';
   return 'default';
 }
 
+function itemResult(result: string) {
+  switch (result) {
+    case 'imported':
+      return i18nText(
+        'settingsMcpManagement',
+        'auto.mcp_bundle_result_imported'
+      );
+    case 'already_present':
+      return i18nText(
+        'settingsMcpManagement',
+        'auto.mcp_bundle_already_present'
+      );
+    case 'unavailable':
+      return i18nText(
+        'settingsMcpManagement',
+        'auto.mcp_bundle_result_unavailable'
+      );
+    case 'skipped':
+      return i18nText(
+        'settingsMcpManagement',
+        'auto.mcp_bundle_result_skipped'
+      );
+    case 'failed':
+      return i18nText('settingsMcpManagement', 'auto.mcp_bundle_failed');
+    default:
+      return result;
+  }
+}
+
 export function McpBundleReviewModal({
+  open,
   review,
+  loading = false,
   importing,
   integrityWarnings = [],
   onCancel,
   onImport
 }: {
+  open?: boolean;
   review: McpBundleReview | null;
+  loading?: boolean;
   importing: boolean;
   integrityWarnings?: string[];
   onCancel: () => void;
@@ -76,6 +120,12 @@ export function McpBundleReviewModal({
   const warning = review ? versionWarning(review.version_status) : null;
   const importReport = review && 'status' in review ? review : null;
   const imported = Boolean(importReport);
+  const zeroChangeConflict = Boolean(
+    review &&
+    !importReport &&
+    review.effect_summary.changes === 0 &&
+    review.effect_summary.conflicts > 0
+  );
   const rows = review
     ? [
         ...review.tools.map((item) => ({ ...item, kind: 'Tool' })),
@@ -87,19 +137,32 @@ export function McpBundleReviewModal({
   return (
     <Modal
       width={760}
-      open={review !== null}
+      open={open ?? review !== null}
       title={i18nText('settingsMcpManagement', 'auto.mcp_bundle_import_title')}
       okText={
-        imported
-          ? i18nText('settings', 'auto.close')
-          : i18nText('settingsMcpManagement', 'auto.mcp_bundle_import_anyway')
+        loading
+          ? i18nText('settingsMcpManagement', 'auto.mcp_bundle_preview')
+          : imported
+            ? i18nText('settings', 'auto.close')
+            : zeroChangeConflict
+              ? i18nText(
+                  'settingsMcpManagement',
+                  'auto.mcp_bundle_no_changes_to_import'
+                )
+              : i18nText(
+                  'settingsMcpManagement',
+                  'auto.mcp_bundle_import_anyway'
+                )
       }
       cancelButtonProps={{ style: imported ? { display: 'none' } : undefined }}
+      okButtonProps={{ disabled: loading || zeroChangeConflict }}
       confirmLoading={importing}
       onCancel={onCancel}
       onOk={imported ? onCancel : onImport}
     >
-      {review ? (
+      {loading ? (
+        <Spin />
+      ) : review ? (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {integrityWarnings.length > 0 ? (
             <Alert
@@ -115,22 +178,51 @@ export function McpBundleReviewModal({
             />
           ) : null}
           {warning ? <Alert showIcon type="warning" message={warning} /> : null}
+          {zeroChangeConflict ? (
+            <Alert
+              showIcon
+              type="error"
+              message={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_zero_change_conflict'
+              )}
+              action={
+                <Button
+                  type="link"
+                  href="/settings/mcp-management?tab=instances"
+                >
+                  {i18nText(
+                    'settingsMcpManagement',
+                    'auto.go_to_mcp_management'
+                  )}
+                </Button>
+              }
+            />
+          ) : null}
           {imported ? (
             <Alert
               showIcon
               type={
-                importReport?.status === 'completed' ? 'success' : 'warning'
+                importReport?.status === 'completed' ||
+                importReport?.status === 'already_applied'
+                  ? 'success'
+                  : 'warning'
               }
               message={
-                importReport?.status === 'completed'
+                importReport?.status === 'already_applied'
                   ? i18nText(
                       'settingsMcpManagement',
-                      'auto.mcp_bundle_import_completed'
+                      'auto.mcp_bundle_already_applied'
                     )
-                  : i18nText(
-                      'settingsMcpManagement',
-                      'auto.mcp_bundle_import_completed_with_warnings'
-                    )
+                  : importReport?.status === 'completed'
+                    ? i18nText(
+                        'settingsMcpManagement',
+                        'auto.mcp_bundle_import_completed'
+                      )
+                    : i18nText(
+                        'settingsMcpManagement',
+                        'auto.mcp_bundle_import_completed_with_warnings'
+                      )
               }
             />
           ) : null}
@@ -165,6 +257,48 @@ export function McpBundleReviewModal({
               {review.current_system_version}
             </Descriptions.Item>
           </Descriptions>
+          <Descriptions size="small" column={3} bordered>
+            <Descriptions.Item
+              label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_changes'
+              )}
+            >
+              {review.effect_summary.changes}
+            </Descriptions.Item>
+            <Descriptions.Item
+              label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_already_present'
+              )}
+            >
+              {review.effect_summary.already_present}
+            </Descriptions.Item>
+            <Descriptions.Item
+              label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_conflicts'
+              )}
+            >
+              {review.effect_summary.conflicts}
+            </Descriptions.Item>
+            <Descriptions.Item
+              label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_unavailable'
+              )}
+            >
+              {review.effect_summary.unavailable}
+            </Descriptions.Item>
+            <Descriptions.Item
+              label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_failed'
+              )}
+            >
+              {review.effect_summary.failed}
+            </Descriptions.Item>
+          </Descriptions>
           <Table
             size="small"
             rowKey={(item) => `${item.kind}:${item.id}`}
@@ -192,7 +326,7 @@ export function McpBundleReviewModal({
                 ),
                 dataIndex: 'result',
                 render: (value: string) => (
-                  <Tag color={resultColor(value)}>{value}</Tag>
+                  <Tag color={resultColor(value)}>{itemResult(value)}</Tag>
                 )
               },
               {

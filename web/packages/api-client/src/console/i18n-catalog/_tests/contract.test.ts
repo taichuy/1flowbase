@@ -2,9 +2,14 @@ import { beforeEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
 
 import * as transport from '../../../transport';
 import {
+  activateI18nCatalogUpdate,
+  activateInstalledI18nCatalog,
   deleteCustomI18nCatalogKey,
+  getI18nCatalogState,
   getI18nCatalogEntry,
+  getI18nCatalogUpdateStatus,
   listI18nCatalogEntries,
+  previewInstalledI18nCatalog,
   restoreAllI18nCatalogOverrides,
   restoreI18nCatalogOverride,
   upsertCustomI18nCatalogTranslation,
@@ -105,6 +110,52 @@ describe('i18n catalog management client contract', () => {
       path: '/api/console/settings/i18n/restore-overrides',
       method: 'POST',
       body: { expected_revision: 10 }
+    });
+  });
+
+  test('AC-005 owns official and installed catalog activation routes', async () => {
+    await expect(getI18nCatalogState()).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/catalog'
+    });
+    await expect(getI18nCatalogUpdateStatus()).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/update-check'
+    });
+    await expect(
+      activateI18nCatalogUpdate({ expected_revision: 8 }, 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/activate',
+      method: 'POST',
+      body: { expected_revision: 8 },
+      csrfToken: 'csrf'
+    });
+    await expect(
+      previewInstalledI18nCatalog('installation-1')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/installed-extension/installation-1/preview'
+    });
+    await expect(
+      activateInstalledI18nCatalog(
+        'installation-1',
+        {
+          expected_revision: 8,
+          integrity_override: {
+            reason: 'user_confirmed',
+            acknowledged_warnings: ['checksum_mismatch']
+          }
+        },
+        'csrf'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/i18n/installed-extension/installation-1/activate',
+      method: 'POST',
+      body: {
+        expected_revision: 8,
+        integrity_override: {
+          reason: 'user_confirmed',
+          acknowledged_warnings: ['checksum_mismatch']
+        }
+      },
+      csrfToken: 'csrf'
     });
   });
 });

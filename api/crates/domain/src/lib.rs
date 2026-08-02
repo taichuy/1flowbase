@@ -99,8 +99,9 @@ pub use js_dependency::{
     ApplicationJsDependencySelection, JsDependencyPermissions, JsDependencyRegistryEntry,
 };
 pub use mcp_bundle::{
-    McpBundleFile, McpBundleFileKind, McpBundleGroup, McpBundleImportReport, McpBundleInstance,
-    McpBundleInstanceDiscoveryPolicy, McpBundleItemReport, McpBundleManifest, McpBundlePackage,
+    McpBundleEffectSummary, McpBundleFile, McpBundleFileKind, McpBundleGroup,
+    McpBundleImportReport, McpBundleInstance, McpBundleInstanceDiscoveryPolicy,
+    McpBundleItemEffect, McpBundleItemReport, McpBundleManifest, McpBundlePackage,
     McpBundlePreview, McpBundleTool, McpBundleToolBinding, McpBundleUpstreamConnection,
     McpBundleVersionStatus, MCP_BUNDLE_SCHEMA_VERSION,
 };

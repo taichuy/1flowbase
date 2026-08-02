@@ -1,7 +1,7 @@
 import { UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Modal, Space, Table, Typography, message } from 'antd';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { useAuthStore } from '../../../../../state/auth-store';
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -9,10 +9,6 @@ import {
   exportSettingsMcpBundle,
   fetchSettingsMcpBundleExportDefaults,
   fetchSettingsOfficialMcpBundles,
-  importSettingsMcpBundle,
-  importSettingsOfficialMcpBundle,
-  previewSettingsMcpBundle,
-  previewSettingsOfficialMcpBundle,
   settingsMcpCatalogQueryKey,
   settingsMcpBundleExportDefaultsQueryKey,
   settingsOfficialMcpBundlesQueryKey,
@@ -21,22 +17,18 @@ import {
 } from '../../../api/mcp-management';
 import { McpBundleExportModal } from './McpBundleExportModal';
 import {
-  McpBundleReviewModal,
-  type McpBundleReview
-} from './McpBundleReviewModal';
+  McpBundleImportFlow,
+  type McpBundleImportSource
+} from './McpBundleImportFlow';
 import { downloadMcpBundle } from './mcp-bundle-download';
 
 export function McpBundleActions({ canManage }: { canManage: boolean }) {
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedOfficial, setSelectedOfficial] =
-    useState<SettingsOfficialMcpBundleEntry | null>(null);
+  const [importSource, setImportSource] =
+    useState<McpBundleImportSource | null>(null);
   const [sourceOpen, setSourceOpen] = useState(false);
-  const [review, setReview] = useState<McpBundleReview | null>(null);
-  const [previewing, setPreviewing] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const officialBundles = useQuery({
@@ -49,69 +41,30 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
     queryFn: fetchSettingsMcpBundleExportDefaults,
     enabled: canManage
   });
+  const closeImportFlow = useCallback(() => setImportSource(null), []);
+  const refreshMcpCatalog = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: settingsMcpCatalogQueryKey
+    });
+  }, [queryClient]);
 
   if (!canManage) {
     return null;
   }
 
-  async function handleFile(file: File) {
-    setSelectedFile(file);
-    setSelectedOfficial(null);
+  function handleFile(file: File) {
+    setImportSource({ kind: 'upload', file });
     setSourceOpen(false);
-    setPreviewing(true);
-    try {
-      setReview(await previewSettingsMcpBundle(file, csrfToken));
-    } catch (error) {
-      setSelectedFile(null);
-      message.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPreviewing(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  async function handleOfficial(entry: SettingsOfficialMcpBundleEntry) {
-    setSelectedFile(null);
-    setSelectedOfficial(entry);
-    setPreviewing(true);
-    try {
-      setReview(
-        await previewSettingsOfficialMcpBundle(
-          { organization: entry.organization, bundle_id: entry.bundle_id },
-          csrfToken
-        )
-      );
-      setSourceOpen(false);
-    } catch (error) {
-      setSelectedOfficial(null);
-      message.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPreviewing(false);
-    }
-  }
-
-  async function handleImport() {
-    if (!selectedFile && !selectedOfficial) return;
-    setImporting(true);
-    try {
-      const report = selectedFile
-        ? await importSettingsMcpBundle(selectedFile, csrfToken)
-        : await importSettingsOfficialMcpBundle(
-            {
-              organization: selectedOfficial!.organization,
-              bundle_id: selectedOfficial!.bundle_id
-            },
-            csrfToken
-          );
-      setReview(report);
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setImporting(false);
-    }
+  function handleOfficial(entry: SettingsOfficialMcpBundleEntry) {
+    setImportSource({
+      kind: 'official',
+      organization: entry.organization,
+      bundleId: entry.bundle_id
+    });
+    setSourceOpen(false);
   }
 
   async function handleExport(values: ExportSettingsMcpBundleBody) {
@@ -147,11 +100,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         }}
       />
       <Space size="small">
-        <Button
-          icon={<UploadOutlined />}
-          loading={previewing}
-          onClick={() => setSourceOpen(true)}
-        >
+        <Button icon={<UploadOutlined />} onClick={() => setSourceOpen(true)}>
           {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import')}
         </Button>
         <Button icon={<UploadOutlined />} onClick={() => setExportOpen(true)}>
@@ -194,7 +143,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
           <Table
             size="small"
             rowKey={(entry) => `${entry.organization}/${entry.bundle_id}`}
-            loading={officialBundles.isLoading || previewing}
+            loading={officialBundles.isLoading}
             pagination={false}
             dataSource={officialBundles.data?.entries ?? []}
             columns={[
@@ -219,10 +168,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
                   'auto.mcp_bundle_action'
                 ),
                 render: (_, entry) => (
-                  <Button
-                    type="link"
-                    onClick={() => void handleOfficial(entry)}
-                  >
+                  <Button type="link" onClick={() => handleOfficial(entry)}>
                     {i18nText(
                       'settingsMcpManagement',
                       'auto.mcp_bundle_preview'
@@ -235,15 +181,11 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         </Space>
       </Modal>
 
-      <McpBundleReviewModal
-        review={review}
-        importing={importing}
-        onCancel={() => {
-          setReview(null);
-          setSelectedFile(null);
-          setSelectedOfficial(null);
-        }}
-        onImport={() => void handleImport()}
+      <McpBundleImportFlow
+        source={importSource}
+        csrfToken={csrfToken}
+        onClose={closeImportFlow}
+        onApplied={refreshMcpCatalog}
       />
 
       <McpBundleExportModal

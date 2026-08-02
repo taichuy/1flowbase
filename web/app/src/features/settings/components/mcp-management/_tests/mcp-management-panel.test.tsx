@@ -556,18 +556,39 @@ describe('McpManagementPanel', () => {
       },
       current_system_version: '0.2.6',
       version_status: 'exported_from_older_system',
+      effect_summary: {
+        changes: 4,
+        already_present: 0,
+        conflicts: 0,
+        unavailable: 2,
+        failed: 0
+      },
       tools: [
-        { id: 'runtime_profile', result: 'imported', reason: null },
+        {
+          id: 'runtime_profile',
+          effect: 'create',
+          result: 'imported',
+          reason: null
+        },
         {
           id: 'removed_tool',
+          effect: 'create',
           result: 'unavailable',
           reason: 'interface_missing'
         }
       ],
-      instances: [{ id: 'system', result: 'imported', reason: null }],
+      instances: [
+        {
+          id: 'system',
+          effect: 'create',
+          result: 'imported',
+          reason: null
+        }
+      ],
       connections: [
         {
           id: '019b5f8f-0000-7000-8000-000000000001',
+          effect: 'create',
           result: 'unavailable',
           reason: 'credentials_missing'
         }
@@ -594,18 +615,39 @@ describe('McpManagementPanel', () => {
       current_system_version: '0.2.6',
       version_status: 'exported_from_older_system',
       status: 'completed_with_warnings',
+      effect_summary: {
+        changes: 4,
+        already_present: 0,
+        conflicts: 0,
+        unavailable: 2,
+        failed: 0
+      },
       tools: [
-        { id: 'runtime_profile', result: 'imported', reason: null },
+        {
+          id: 'runtime_profile',
+          effect: 'create',
+          result: 'imported',
+          reason: null
+        },
         {
           id: 'removed_tool',
+          effect: 'create',
           result: 'unavailable',
           reason: 'interface_missing'
         }
       ],
-      instances: [{ id: 'system', result: 'imported', reason: null }],
+      instances: [
+        {
+          id: 'system',
+          effect: 'create',
+          result: 'imported',
+          reason: null
+        }
+      ],
       connections: [
         {
           id: '019b5f8f-0000-7000-8000-000000000001',
+          effect: 'create',
           result: 'unavailable',
           reason: 'credentials_missing'
         }

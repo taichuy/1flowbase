@@ -1,5 +1,5 @@
 import { ApiClientError } from '@1flowbase/api-client';
-import { PlusOutlined, UndoOutlined } from '@ant-design/icons';
+import { GlobalOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -13,7 +13,7 @@ import {
   Tag,
   message
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
@@ -38,6 +38,7 @@ import {
   type SettingsI18nCatalogOrigin
 } from '../../api/i18n-catalog';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
+import { I18nCatalogActivationFlow } from '../../components/i18n-catalog/I18nCatalogActivationFlow';
 import {
   I18nCatalogCreateDrawer,
   type CreateCustomTranslationValues
@@ -83,7 +84,12 @@ export function I18nCatalogPage() {
   const [deleteEntry, setDeleteEntry] =
     useState<SettingsI18nCatalogEntry | null>(null);
   const [restoreAllOpen, setRestoreAllOpen] = useState(false);
+  const [catalogActivationOpen, setCatalogActivationOpen] = useState(false);
   const [conflictVisible, setConflictVisible] = useState(false);
+  const closeCatalogActivation = useCallback(
+    () => setCatalogActivationOpen(false),
+    []
+  );
 
   const listRequest: SettingsI18nCatalogListRequest = useMemo(
     () => ({ ...filters, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE }),
@@ -317,6 +323,13 @@ export function I18nCatalogPage() {
               </Button>
               <Button
                 className="i18n-catalog-page__action"
+                icon={<GlobalOutlined />}
+                onClick={() => setCatalogActivationOpen(true)}
+              >
+                {t('auto.translation_catalog_version')}
+              </Button>
+              <Button
+                className="i18n-catalog-page__action"
                 icon={<UndoOutlined />}
                 onClick={() => setRestoreAllOpen(true)}
               >
@@ -432,6 +445,12 @@ export function I18nCatalogPage() {
       >
         {t('auto.translation_catalog_restore_all_confirmation')}
       </Modal>
+      <I18nCatalogActivationFlow
+        source={catalogActivationOpen ? { kind: 'official' } : null}
+        csrfToken={csrfToken ?? ''}
+        onClose={closeCatalogActivation}
+        onActivated={refreshCatalog}
+      />
     </SettingsSectionSurface>
   );
 }

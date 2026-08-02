@@ -41,6 +41,7 @@ import {
   type SettingsExtensionCenterCategory,
   type SettingsInstalledExtension
 } from '../../api/extensions';
+import { settingsI18nCatalogQueryKey } from '../../api/i18n-catalog';
 import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
 import {
   ExtensionApplicationFlow,
@@ -250,12 +251,13 @@ export function SettingsExtensionCenterSection({
     };
   }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, cursor, rows]);
 
-  const invalidateExtensionAndMcpState = useCallback(async () => {
+  const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
       }),
-      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
+      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsI18nCatalogQueryKey })
     ]);
   }, [queryClient]);
   const closeApplicationFlow = useCallback(
@@ -332,7 +334,7 @@ export function SettingsExtensionCenterSection({
       }
 
       message.success(t('auto.extension_operation_completed'));
-      await invalidateExtensionAndMcpState();
+      await invalidateExtensionApplicationState();
       if (
         result &&
         ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
@@ -588,6 +590,17 @@ export function SettingsExtensionCenterSection({
       <Flex vertical gap={16}>
         <Tabs
           activeKey={activeTab}
+          tabBarExtraContent={
+            activeTab === 'mcp' ? (
+              <Typography.Link href="/settings/mcp-management?tab=instances">
+                {t('auto.go_to_mcp_management')}
+              </Typography.Link>
+            ) : activeTab === 'i18n' ? (
+              <Typography.Link href="/settings/i18n">
+                {t('auto.go_to_i18n_management')}
+              </Typography.Link>
+            ) : null
+          }
           onChange={(key) => {
             void navigate({
               to: '/settings/extension-center/$category',
@@ -718,7 +731,7 @@ export function SettingsExtensionCenterSection({
         target={applicationTarget}
         csrfToken={csrfToken ?? ''}
         onClose={closeApplicationFlow}
-        onApplied={invalidateExtensionAndMcpState}
+        onApplied={invalidateExtensionApplicationState}
       />
     </SettingsSectionSurface>
   );

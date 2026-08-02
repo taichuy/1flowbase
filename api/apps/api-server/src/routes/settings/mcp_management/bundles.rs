@@ -319,16 +319,23 @@ async fn preview_official_bundle(
         Some(extension_installation_id) => {
             let required_conflict_resolution = mcp_preview_has_conflicts(&preview)
                 .then_some(McpBundleConflictResolution::KeepExisting);
+            let has_import_receipt = McpManagementService::new(state.store.clone())
+                .extension_bundle_is_imported(context.user.id, extension_installation_id)
+                .await?;
+            let workspace_application_status = if required_conflict_resolution.is_some() {
+                "confirmation_required"
+            } else if preview.effect_summary.changes > 0 {
+                "ready_to_import"
+            } else if has_import_receipt {
+                "imported"
+            } else {
+                "already_present"
+            };
             McpBundlePreviewSourceResponse::InstalledExtension(
                 InstalledMcpExtensionPreviewResponse {
                     extension_installation_id: extension_installation_id.to_string(),
                     artifact_installation_status: "installed".to_string(),
-                    workspace_application_status: if required_conflict_resolution.is_some() {
-                        "confirmation_required"
-                    } else {
-                        "ready_to_import"
-                    }
-                    .to_string(),
+                    workspace_application_status: workspace_application_status.to_string(),
                     required_conflict_resolution,
                     required_integrity_override: (!source.integrity_warnings.is_empty()).then(
                         || domain::ExtensionRiskChallenge {
@@ -433,21 +440,31 @@ async fn import_official_bundle(
             current_system_version: current_system_version(),
         })
         .await?;
+    let is_reconciled = report.effect_summary.conflicts == 0 && report.effect_summary.failed == 0;
     if let Some(extension_installation_id) = source.extension_installation_id {
-        service
-            .record_extension_bundle_import(
-                context.user.id,
-                extension_installation_id,
-                &report.status,
-            )
-            .await?;
+        if is_reconciled {
+            service
+                .record_extension_bundle_import(
+                    context.user.id,
+                    extension_installation_id,
+                    &report.status,
+                )
+                .await?;
+        }
     }
     let response = match source.extension_installation_id {
         Some(extension_installation_id) => {
+            let workspace_application_status = if is_reconciled {
+                "imported"
+            } else if report.effect_summary.changes > 0 {
+                "partially_imported"
+            } else {
+                "not_imported"
+            };
             McpBundleImportSourceResponse::InstalledExtension(InstalledMcpExtensionImportResponse {
                 extension_installation_id: extension_installation_id.to_string(),
                 artifact_installation_status: "installed".to_string(),
-                workspace_application_status: "imported".to_string(),
+                workspace_application_status: workspace_application_status.to_string(),
                 integrity_warnings: source.integrity_warnings,
                 import_report: report,
             })
@@ -509,16 +526,7 @@ async fn load_mcp_bundle_source(
 }
 
 fn mcp_preview_has_conflicts(preview: &domain::McpBundlePreview) -> bool {
-    preview
-        .tools
-        .iter()
-        .chain(preview.instances.iter())
-        .chain(preview.connections.iter())
-        .any(|item| {
-            item.reason
-                .as_deref()
-                .is_some_and(|reason| reason.ends_with("_conflict"))
-        })
+    preview.effect_summary.conflicts > 0
 }
 
 #[derive(Debug, Deserialize)]

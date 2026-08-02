@@ -2,13 +2,19 @@ import { apiFetch, getDefaultApiBaseUrl } from '../../transport';
 import { ApiClientError } from '../../errors';
 
 import type {
+  ActivateI18nCatalogRequest,
+  ActivateInstalledI18nCatalogRequest,
   DeleteCustomI18nCatalogKeyRequest,
   GetI18nCatalogEntryRequest,
   GetRuntimeI18nCatalogRequest,
   I18nCatalogEntryMutationResponse,
+  I18nCatalogActivation,
   I18nCatalogManagementEntry,
   I18nCatalogManagementPage,
   I18nCatalogRevisionResponse,
+  I18nCatalogState,
+  I18nCatalogUpdateStatus,
+  InstalledI18nCatalogPreview,
   ConditionalI18nCatalogResponse,
   ListI18nCatalogEntriesRequest,
   RestoreAllI18nCatalogOverridesRequest,
@@ -19,6 +25,67 @@ import type {
 
 const MANAGEMENT_BASE_PATH = '/api/console/settings/i18n';
 const RUNTIME_BASE_PATH = '/api/console/i18n';
+
+export function getI18nCatalogState(
+  baseUrl?: string
+): Promise<I18nCatalogState> {
+  return apiFetch<I18nCatalogState>({
+    path: `${MANAGEMENT_BASE_PATH}/catalog`,
+    baseUrl
+  });
+}
+
+export function getI18nCatalogUpdateStatus(
+  baseUrl?: string
+): Promise<I18nCatalogUpdateStatus> {
+  return apiFetch<I18nCatalogUpdateStatus>({
+    path: `${MANAGEMENT_BASE_PATH}/update-check`,
+    baseUrl
+  });
+}
+
+export function activateI18nCatalogUpdate(
+  request: ActivateI18nCatalogRequest,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<I18nCatalogActivation> {
+  return apiFetch<I18nCatalogActivation>({
+    path: `${MANAGEMENT_BASE_PATH}/activate`,
+    method: 'POST',
+    body: request,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function previewInstalledI18nCatalog(
+  extensionInstallationId: string,
+  baseUrl?: string
+): Promise<InstalledI18nCatalogPreview> {
+  return apiFetch<InstalledI18nCatalogPreview>({
+    path: `${MANAGEMENT_BASE_PATH}/installed-extension/${encodeURIComponent(
+      extensionInstallationId
+    )}/preview`,
+    baseUrl
+  });
+}
+
+export function activateInstalledI18nCatalog(
+  extensionInstallationId: string,
+  request: ActivateInstalledI18nCatalogRequest,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<I18nCatalogActivation> {
+  return apiFetch<I18nCatalogActivation>({
+    path: `${MANAGEMENT_BASE_PATH}/installed-extension/${encodeURIComponent(
+      extensionInstallationId
+    )}/activate`,
+    method: 'POST',
+    body: request,
+    csrfToken,
+    baseUrl
+  });
+}
 
 async function fetchConditionalCatalog<T>(
   path: string,
