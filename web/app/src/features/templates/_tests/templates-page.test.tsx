@@ -320,14 +320,14 @@ describe('Agent Flow template library', () => {
     });
     fireEvent.click(within(importDialog).getByRole('button', { name: '取消' }));
     fireEvent.click(
-      within(localRow).getByRole('button', { name: /修复本地版本/ })
+      within(localRow).getByRole('button', { name: '修复本地版本' })
     );
     await waitFor(() => {
       expect(
         templatesApi.repairOfficialAgentFlowTemplateRelease
       ).toHaveBeenCalledWith('fusion', 2, 'csrf-123');
     });
-    fireEvent.click(within(localRow).getByRole('button', { name: /删除版本/ }));
+    fireEvent.click(within(localRow).getByRole('button', { name: '删除版本' }));
     await screen.findByText(
       '确认删除这个本地模板版本？此操作不会改变已创建的应用。'
     );

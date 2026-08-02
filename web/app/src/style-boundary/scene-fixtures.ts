@@ -624,22 +624,6 @@ export function createStyleBoundaryOrchestrationState() {
   };
 }
 
-function createStyleBoundaryOfficialTemplatePackage() {
-  return {
-    schema_version: '1flowbase.application-template/v1',
-    application: {
-      application_type: 'agent_flow',
-      name: 'Boundary Template',
-      description: 'Style boundary AgentFlow template',
-      icon: 'RobotOutlined',
-      icon_type: 'iconfont',
-      icon_background: '#E6F7F2'
-    },
-    flow_document: createStyleBoundaryAgentFlowDocument(),
-    dependencies: []
-  };
-}
-
 export function seedStyleBoundaryTemplateFetch() {
   if (typeof globalThis.fetch !== 'function') {
     return;
@@ -665,41 +649,35 @@ export function seedStyleBoundaryTemplateFetch() {
     ) {
       return createStyleBoundaryJsonResponse({
         data: {
-          source: {
-            source_kind: 'official_registry',
-            source_label: i18nText('appShell', 'auto.official_source'),
-            index_url:
-              'https://github.com/taichuy/1flowbase-official-plugins/raw/main/agent-flow/catalog/v1/index.json'
-          },
-          page: {
-            page: 1,
-            page_size: 100,
-            next_cursor: null
-          },
-          entries: [
+          remote_available: true,
+          remote_error: null,
+          templates: [
             {
-              workflow_id: 'boundary-template',
-              schema_version: '1flowbase.application-template/v1',
-              application:
-                createStyleBoundaryOfficialTemplatePackage().application,
-              template_url:
-                'https://example.com/agent-flow/workflows/boundary-template/template.json',
-              template_sha256: 'sha256:boundary-template',
-              updated_at: '2026-06-16T00:00:00.000Z'
+              template_id: 'boundary-template',
+              source_path: null,
+              current_release_version: null,
+              local_versions: [],
+              remote_versions: [
+                {
+                  template_id: 'boundary-template',
+                  release_version: 1,
+                  exported_from_system_version: '0.3.1',
+                  exported_at: '2026-06-16T00:00:00.000Z',
+                  application: {
+                    name: 'Boundary Template',
+                    description: 'Style boundary AgentFlow template'
+                  },
+                  download_url:
+                    'https://example.com/agent-flow/boundary-template/1',
+                  checksum: 'sha256:boundary-template',
+                  algorithm: 'sha256',
+                  key_id: 'official-key',
+                  signature: 'boundary-signature'
+                }
+              ]
             }
           ]
         },
-        meta: null
-      });
-    }
-
-    if (
-      method.toUpperCase() === 'GET' &&
-      requestUrl.pathname ===
-        '/api/console/applications/orchestration/templates/official/boundary-template'
-    ) {
-      return createStyleBoundaryJsonResponse({
-        data: createStyleBoundaryOfficialTemplatePackage(),
         meta: null
       });
     }

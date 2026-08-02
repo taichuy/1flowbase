@@ -173,6 +173,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundaryTemplateFetch();
     return renderShellScene('/templates', <TemplatesPage />);
   },
+  'page.settings-extension-center-agent-flow': () => {
+    seedStyleBoundaryTemplateFetch();
+    return renderRouterScene('/settings/extension-center/agent-flow');
+  },
   'page.settings': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/model-providers');

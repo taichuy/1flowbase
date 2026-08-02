@@ -368,6 +368,7 @@ export function AgentFlowTemplateLibrary({
               <Button
                 type="link"
                 icon={<CloudDownloadOutlined />}
+                aria-label={t('auto.sync')}
                 loading={pendingKey === syncKey}
                 disabled={pendingKey !== null && pendingKey !== syncKey}
                 onClick={() => void syncTemplate(entry, undefined)}
@@ -378,6 +379,7 @@ export function AgentFlowTemplateLibrary({
             <Button
               type="link"
               icon={<EyeOutlined />}
+              aria-label={t('auto.view')}
               onClick={() => setSelected(entry)}
             >
               {t('auto.view')}
@@ -505,6 +507,7 @@ export function AgentFlowTemplateLibrary({
                 <Button
                   type="link"
                   icon={<ToolOutlined />}
+                  aria-label={t('auto.repair')}
                   loading={pendingKey === repairKey}
                   disabled={
                     disabled(repairKey) ||
@@ -527,6 +530,7 @@ export function AgentFlowTemplateLibrary({
                     type="link"
                     danger
                     icon={<DeleteOutlined />}
+                    aria-label={t('auto.delete')}
                     loading={pendingKey === deleteKey}
                     disabled={disabled(deleteKey)}
                   >
@@ -552,6 +556,7 @@ export function AgentFlowTemplateLibrary({
         </Typography.Text>
         <Button
           icon={<ReloadOutlined />}
+          aria-label={t('auto.refresh_catalog')}
           loading={catalogQuery.isFetching}
           onClick={() => void catalogQuery.refetch()}
         >
