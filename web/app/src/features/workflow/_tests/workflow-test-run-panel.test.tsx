@@ -56,6 +56,7 @@ function createTriggerContext(
     triggerType: 'schedule',
     mapping: null,
     schedule: null,
+    workflowStartFieldContract: undefined,
     ...overrides
   };
 }
@@ -209,7 +210,9 @@ describe('WorkflowTestRunPanel', () => {
     expect(screen.getByText('ticket-C-42')).toBeInTheDocument();
     expect(screen.getByText('已成功')).toBeInTheDocument();
     expect(screen.getByText('Trigger Delivery')).toBeInTheDocument();
-    expect(screen.getByText('定时触发测试（不进入真实调度队列）')).toBeInTheDocument();
+    expect(
+      screen.getByText('定时触发测试（不进入真实调度队列）')
+    ).toBeInTheDocument();
     expect(screen.getByText('run-1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '查看执行 Trace' }));

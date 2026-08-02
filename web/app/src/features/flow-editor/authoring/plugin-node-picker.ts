@@ -1,11 +1,21 @@
-import type { ConsoleNodeContributionEntry } from '@1flowbase/api-client';
+import type {
+  ConsoleApplicationNodeCatalogEntry,
+  ConsoleApplicationNodeFieldContract,
+  ConsolePluginNodeIdentity
+} from '@1flowbase/api-client';
 
-import type { BuiltinNodePickerOption } from './node-picker';
+import {
+  toBuiltinNodePickerOption,
+  type BuiltinNodePickerOption
+} from './node-picker';
 
 export interface PluginContributionPickerOption {
   kind: 'plugin_contribution';
   label: string;
-  contribution: ConsoleNodeContributionEntry;
+  description: string;
+  category: ConsoleApplicationNodeCatalogEntry['category'];
+  field_contract: ConsoleApplicationNodeFieldContract;
+  plugin: ConsolePluginNodeIdentity;
   disabled: boolean;
   disabledReason: string | null;
 }
@@ -14,32 +24,42 @@ export type NodePickerOption =
   | BuiltinNodePickerOption
   | PluginContributionPickerOption;
 
-const DEPENDENCY_STATUS_LABELS: Record<string, string> = {
-  missing_plugin: 'Plugin is not installed',
-  version_mismatch: 'Plugin version does not match',
-  disabled_plugin: 'Plugin is disabled'
-};
-
 export function toPluginContributionPickerOption(
-  contribution: ConsoleNodeContributionEntry
+  node: ConsoleApplicationNodeCatalogEntry
 ): PluginContributionPickerOption {
+  if (node.source_kind !== 'plugin' || !node.plugin) {
+    throw new Error(`Expected plugin catalog node: ${node.node_type}`);
+  }
+
+  const disabled =
+    node.runtime_status === 'unavailable' || node.dependency_status !== 'ready';
+
   return {
     kind: 'plugin_contribution',
-    label: contribution.title,
-    contribution,
-    disabled: contribution.dependency_status !== 'ready',
-    disabledReason:
-      contribution.dependency_status === 'ready'
-        ? null
-        : (DEPENDENCY_STATUS_LABELS[contribution.dependency_status] ??
-          'Plugin node is unavailable')
+    label: node.title,
+    description: node.description,
+    category: node.category,
+    field_contract: node.field_contract,
+    plugin: node.plugin,
+    disabled,
+    disabledReason: disabled ? node.runtime_status_description : null
   };
+}
+
+export function buildNodePickerOptions(
+  nodes: ConsoleApplicationNodeCatalogEntry[]
+): NodePickerOption[] {
+  return nodes.map((node) =>
+    node.source_kind === 'builtin'
+      ? toBuiltinNodePickerOption(node)
+      : toPluginContributionPickerOption(node)
+  );
 }
 
 export function getNodePickerOptionKey(option: NodePickerOption) {
   return option.kind === 'builtin'
     ? option.type
-    : `${option.contribution.plugin_id}:${option.contribution.contribution_code}`;
+    : `${option.plugin.plugin_id}:${option.plugin.contribution_code}`;
 }
 
 export function getNodePickerOptionNodeType(option: NodePickerOption) {
@@ -47,7 +67,5 @@ export function getNodePickerOptionNodeType(option: NodePickerOption) {
 }
 
 export function getNodePickerOptionDescription(option: NodePickerOption) {
-  return option.kind === 'builtin'
-    ? option.description
-    : (option.disabledReason ?? option.contribution.description ?? null);
+  return option.disabledReason ?? option.description;
 }

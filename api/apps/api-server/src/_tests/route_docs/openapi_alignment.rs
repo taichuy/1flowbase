@@ -108,6 +108,64 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
 }
 
 #[tokio::test]
+async fn openapi_self_describes_application_catalog_trigger_and_publication_contracts() {
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let openapi: Value = serde_json::from_slice(&body).unwrap();
+
+    // AC-001: closed enums and route summaries are available without reading frontend code.
+    assert_eq!(
+        openapi["components"]["schemas"]["ApplicationTypeDto"]["enum"],
+        json!(["agent_flow", "workflow"])
+    );
+    assert_eq!(
+        openapi["components"]["schemas"]["WorkflowTriggerTypeDto"]["enum"],
+        json!(["extension", "schedule"])
+    );
+    assert_eq!(
+        openapi["paths"]["/api/console/applications/catalog"]["get"]["summary"],
+        json!("Get Application type and Workflow trigger catalogs")
+    );
+
+    // AC-002/003: the unified catalog and its structured field contract are explicit schemas.
+    assert_eq!(
+        openapi["paths"]["/api/console/node-contributions"]["get"]["summary"],
+        json!("List the unified Application node catalog")
+    );
+    assert!(openapi["components"]["schemas"]
+        .as_object()
+        .unwrap()
+        .contains_key("ApplicationNodeFieldContractResponse"));
+    assert_eq!(
+        openapi["components"]["schemas"]["ApplicationNodeRuntimeStatusResponse"]["enum"],
+        json!(["ready", "unavailable"])
+    );
+
+    assert_eq!(
+        openapi["paths"]["/api/console/applications/{application_id}/workflow-schedule-trigger"]
+            ["put"]["summary"],
+        json!("Replace Workflow schedule configuration and enabled state")
+    );
+    assert!(
+        openapi["paths"]["/api/console/applications/{application_id}/api-publications"]["post"]
+            ["description"]
+            .as_str()
+            .is_some_and(
+                |description| description.contains("does not require an Application API Key")
+            )
+    );
+}
+
+#[tokio::test]
 async fn openapi_contains_auth_center_lifecycle_schemas() {
     let response = app()
         .oneshot(

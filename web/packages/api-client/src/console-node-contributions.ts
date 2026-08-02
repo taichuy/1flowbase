@@ -1,26 +1,49 @@
 import { apiFetch } from './transport';
 
-export interface ConsoleNodeContributionEntry {
+export type ConsoleApplicationNodeSourceKind = 'builtin' | 'plugin';
+export type ConsoleApplicationNodeRuntimeStatus = 'ready' | 'unavailable';
+export type ConsoleApplicationNodeDependencyStatus =
+  | 'not_applicable'
+  | 'ready'
+  | 'missing_plugin'
+  | 'version_mismatch'
+  | 'disabled_plugin';
+
+export interface ConsoleApplicationNodeContractField {
+  key: string;
+  description: string;
+  required: boolean;
+  value_types: string[];
+  allowed_values: string[];
+  applicability: string | null;
+}
+
+export interface ConsoleApplicationNodeFieldContract {
+  config_fields: ConsoleApplicationNodeContractField[];
+  input_fields: ConsoleApplicationNodeContractField[];
+  output_fields: ConsoleApplicationNodeContractField[];
+}
+
+export interface ConsolePluginNodeIdentity {
   installation_id: string;
   provider_code: string;
+  plugin_unique_identifier: string;
+  package_id: string;
   plugin_id: string;
   plugin_version: string;
   contribution_code: string;
   node_shell: string;
-  plugin_unique_identifier: string;
-  package_id: string;
-  contribution_checksum: string;
-  compiled_contribution_hash: string;
-  output_schema_snapshot: Record<string, unknown>;
   category: string;
   title: string;
   description: string;
-  dependency_status: string;
   schema_version: string;
   experimental: boolean;
   icon: string;
   schema_ui: Record<string, unknown>;
   output_schema: Record<string, unknown>;
+  contribution_checksum: string;
+  compiled_contribution_hash: string;
+  output_schema_snapshot: Record<string, unknown>;
   side_effect_policy: string;
   infra_contracts: string[];
   required_auth: string[];
@@ -29,19 +52,36 @@ export interface ConsoleNodeContributionEntry {
   dependency_plugin_version_range: string;
 }
 
-function buildNodeContributionsPath(applicationId: string) {
+export interface ConsoleApplicationNodeCatalogEntry {
+  source_kind: ConsoleApplicationNodeSourceKind;
+  node_type: string;
+  title: string;
+  description: string;
+  category: string;
+  runtime_status: ConsoleApplicationNodeRuntimeStatus;
+  runtime_status_description: string;
+  dependency_status: ConsoleApplicationNodeDependencyStatus;
+  field_contract: ConsoleApplicationNodeFieldContract;
+  plugin: ConsolePluginNodeIdentity | null;
+}
+
+export interface ConsoleApplicationNodeCatalog {
+  nodes: ConsoleApplicationNodeCatalogEntry[];
+}
+
+function buildApplicationNodeCatalogPath(applicationId: string) {
   const params = new URLSearchParams({
     application_id: applicationId
   });
   return `/api/console/node-contributions?${params.toString()}`;
 }
 
-export function listConsoleNodeContributions(
+export function getConsoleApplicationNodeCatalog(
   applicationId: string,
   baseUrl?: string
 ) {
-  return apiFetch<ConsoleNodeContributionEntry[]>({
-    path: buildNodeContributionsPath(applicationId),
+  return apiFetch<ConsoleApplicationNodeCatalog>({
+    path: buildApplicationNodeCatalogPath(applicationId),
     baseUrl
   });
 }

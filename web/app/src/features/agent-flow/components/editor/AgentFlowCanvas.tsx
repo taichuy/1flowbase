@@ -27,7 +27,6 @@ import { useNodeInteractions } from '../../hooks/interactions/use-node-interacti
 import { useSelectionInteractions } from '../../hooks/interactions/use-selection-interactions';
 import { toCanvasEdges } from '../../lib/adapters/to-canvas-edges';
 import { toCanvasNodes } from '../../lib/adapters/to-canvas-nodes';
-import { BUILTIN_NODE_PICKER_OPTIONS } from '../../lib/plugin-node-definitions';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   selectActiveContainerId,
@@ -51,6 +50,8 @@ interface AgentFlowCanvasProps {
     getter: (() => FlowAuthoringDocument['editor']['viewport']) | null
   ) => void;
 }
+
+const EMPTY_NODE_PICKER_OPTIONS: NodePickerOption[] = [];
 
 function ZoomToolbar({ onArrangeCanvas }: { onArrangeCanvas: () => void }) {
   const reactFlow = useReactFlow();
@@ -180,7 +181,7 @@ function PendingLocateNodeEffect() {
 
 function AgentFlowCanvasInner({
   issueCountByNodeId,
-  nodePickerOptions = BUILTIN_NODE_PICKER_OPTIONS,
+  nodePickerOptions = EMPTY_NODE_PICKER_OPTIONS,
   onRunNode,
   onViewportSnapshotChange,
   onViewportGetterReady

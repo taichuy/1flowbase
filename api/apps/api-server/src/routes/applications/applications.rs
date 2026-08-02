@@ -26,6 +26,7 @@ use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::application_api::{WorkflowExtensionHttpMethodBody, WorkflowExtensionResponseModeBody};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -34,10 +35,71 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationTypeDto {
+    /// Conversational Agent Flow exposed through native runs and AI Gateway-compatible APIs.
+    AgentFlow,
+    /// Workflow invoked by an extension endpoint or schedule trigger.
+    Workflow,
+}
+
+impl From<domain::ApplicationType> for ApplicationTypeDto {
+    fn from(value: domain::ApplicationType) -> Self {
+        match value {
+            domain::ApplicationType::AgentFlow => Self::AgentFlow,
+            domain::ApplicationType::Workflow => Self::Workflow,
+        }
+    }
+}
+
+impl ApplicationTypeDto {
+    fn into_domain(self) -> domain::ApplicationType {
+        match self {
+            Self::AgentFlow => domain::ApplicationType::AgentFlow,
+            Self::Workflow => domain::ApplicationType::Workflow,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowTriggerTypeDto {
+    /// Normal HTTP interface published under /api/ex/{slug}.
+    Extension,
+    /// Cron schedule controlled by the Workflow schedule GET/PUT resource.
+    Schedule,
+}
+
+impl From<domain::WorkflowTriggerType> for WorkflowTriggerTypeDto {
+    fn from(value: domain::WorkflowTriggerType) -> Self {
+        match value {
+            domain::WorkflowTriggerType::Extension => Self::Extension,
+            domain::WorkflowTriggerType::Schedule => Self::Schedule,
+        }
+    }
+}
+
+impl WorkflowTriggerTypeDto {
+    fn into_domain(self) -> domain::WorkflowTriggerType {
+        match self {
+            Self::Extension => domain::WorkflowTriggerType::Extension,
+            Self::Schedule => domain::WorkflowTriggerType::Schedule,
+        }
+    }
+}
+
+/// Creates exactly one Agent Flow or Workflow Application.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApplicationBody {
-    pub application_type: String,
-    pub workflow_trigger_type: Option<String>,
+    /// Closed Application family. Agent Flow and Workflow have different boundary nodes and API
+    /// publication semantics.
+    pub application_type: ApplicationTypeDto,
+    /// Applies only to workflow. Defaults to extension when omitted; Agent Flow ignores no trigger
+    /// value and rejects trigger configuration.
+    pub workflow_trigger_type: Option<WorkflowTriggerTypeDto>,
+    /// Optional initial config for the selected Workflow trigger. Schedule creation is always
+    /// disabled until its schedule resource is enabled with PUT.
     pub workflow_trigger_config: Option<CreateWorkflowTriggerConfigBody>,
     pub name: String,
     pub description: String,
@@ -49,12 +111,18 @@ pub struct CreateApplicationBody {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateWorkflowTriggerConfigBody {
+    /// Required for schedule triggers; standard cron expression.
     pub cron: Option<String>,
+    /// Required for schedule triggers; IANA timezone name.
     pub timezone: Option<String>,
+    /// Optional schedule defaults keyed by Workflow Start input field key.
     pub input_payload: Option<serde_json::Value>,
+    /// Required for extension triggers; route template below /api/ex/ without leading slash.
     pub subpath: Option<String>,
-    pub http_method: Option<String>,
-    pub response_mode: Option<String>,
+    /// Extension HTTP method. Defaults to POST.
+    pub http_method: Option<WorkflowExtensionHttpMethodBody>,
+    /// Extension response mode: sync or async. Defaults to sync.
+    pub response_mode: Option<WorkflowExtensionResponseModeBody>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -141,20 +209,32 @@ pub struct ApplicationTagCatalogResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationTypeOptionResponse {
-    pub value: String,
+    pub value: ApplicationTypeDto,
     pub label: String,
+    /// Stable boundary and invocation semantics for this Application family.
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkflowTriggerTypeOptionResponse {
+    pub value: WorkflowTriggerTypeDto,
+    pub label: String,
+    /// Stable trigger behavior. Request form is an extension input source, never a trigger.
+    pub description: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationCatalogResponse {
     pub types: Vec<ApplicationTypeOptionResponse>,
+    /// Closed Workflow trigger set: extension and schedule only.
+    pub workflow_triggers: Vec<WorkflowTriggerTypeOptionResponse>,
     pub tags: Vec<ApplicationTagCatalogResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationSummaryResponse {
     pub id: String,
-    pub application_type: String,
+    pub application_type: ApplicationTypeDto,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -260,8 +340,8 @@ pub struct ApplicationSectionsResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApplicationDetailResponse {
     pub id: String,
-    pub application_type: String,
-    pub workflow_trigger_type: Option<String>,
+    pub application_type: ApplicationTypeDto,
+    pub workflow_trigger_type: Option<WorkflowTriggerTypeDto>,
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
@@ -406,12 +486,34 @@ async fn application_type_catalog(
     let workflow = crate::app_state::resolve_request_text(state, locale, "Workflow").await?;
     Ok(vec![
         ApplicationTypeOptionResponse {
-            value: "agent_flow".to_string(),
+            value: ApplicationTypeDto::AgentFlow,
             label: agent_flow,
+            description: "Conversational Agent Flow for native runs and OpenAI/Anthropic AI Gateway-compatible APIs. It uses Application API Keys and does not use Workflow extension or schedule triggers.".to_string(),
         },
         ApplicationTypeOptionResponse {
-            value: "workflow".to_string(),
+            value: ApplicationTypeDto::Workflow,
             label: workflow,
+            description: "Event-driven Workflow published as an extension HTTP interface or executed by a schedule trigger. It does not expose the Agent Flow Application API Key surface.".to_string(),
+        },
+    ])
+}
+
+async fn workflow_trigger_type_catalog(
+    state: &ApiState,
+    locale: &domain::CatalogLocale,
+) -> Result<Vec<WorkflowTriggerTypeOptionResponse>, ApiError> {
+    let extension = crate::app_state::resolve_request_text(state, locale, "Extension").await?;
+    let schedule = crate::app_state::resolve_request_text(state, locale, "Schedule").await?;
+    Ok(vec![
+        WorkflowTriggerTypeOptionResponse {
+            value: WorkflowTriggerTypeDto::Extension,
+            label: extension,
+            description: "Publishes a normal HTTP interface at /api/ex/{slug}. Workflow Start maps path, query, body, and form input sources; invocation does not require an Application API Key.".to_string(),
+        },
+        WorkflowTriggerTypeOptionResponse {
+            value: WorkflowTriggerTypeDto::Schedule,
+            label: schedule,
+            description: "Runs from a cron expression and IANA timezone. A schedule created with the Application is disabled by default; PUT changes both configuration and enabled state.".to_string(),
         },
     ])
 }
@@ -419,7 +521,7 @@ async fn application_type_catalog(
 fn to_application_summary(application: domain::ApplicationRecord) -> ApplicationSummaryResponse {
     ApplicationSummaryResponse {
         id: application.id.to_string(),
-        application_type: application.application_type.as_str().to_string(),
+        application_type: application.application_type.into(),
         name: application.name,
         description: application.description,
         icon: application.icon,
@@ -524,10 +626,10 @@ fn api_credentials_status(value: &str) -> ApplicationApiCredentialsStatusRespons
 fn to_application_detail(application: domain::ApplicationRecord) -> ApplicationDetailResponse {
     ApplicationDetailResponse {
         id: application.id.to_string(),
-        application_type: application.application_type.as_str().to_string(),
+        application_type: application.application_type.into(),
         workflow_trigger_type: application
             .workflow_trigger_type
-            .map(|value| value.as_str().to_string()),
+            .map(WorkflowTriggerTypeDto::from),
         name: application.name,
         description: application.description,
         icon: application.icon,
@@ -541,14 +643,6 @@ fn to_application_detail(application: domain::ApplicationRecord) -> ApplicationD
             .map(to_application_tag)
             .collect(),
         sections: to_sections_response(application.sections),
-    }
-}
-
-fn parse_application_type(value: &str) -> Result<domain::ApplicationType, ApiError> {
-    match value {
-        "agent_flow" => Ok(domain::ApplicationType::AgentFlow),
-        "workflow" => Ok(domain::ApplicationType::Workflow),
-        _ => Err(ControlPlaneError::InvalidInput("application_type").into()),
     }
 }
 
@@ -581,8 +675,27 @@ fn parse_create_workflow_trigger_config(
                 .subpath
                 .filter(|value| !value.trim().is_empty())
                 .ok_or(ControlPlaneError::InvalidInput("subpath"))?;
-            let http_method = config.http_method.unwrap_or_else(|| "POST".to_string());
-            let response_mode = config.response_mode.unwrap_or_else(|| "sync".to_string());
+            let http_method = match config
+                .http_method
+                .unwrap_or(WorkflowExtensionHttpMethodBody::Post)
+            {
+                WorkflowExtensionHttpMethodBody::Get => "GET",
+                WorkflowExtensionHttpMethodBody::Post => "POST",
+                WorkflowExtensionHttpMethodBody::Put => "PUT",
+                WorkflowExtensionHttpMethodBody::Patch => "PATCH",
+                WorkflowExtensionHttpMethodBody::Delete => "DELETE",
+                WorkflowExtensionHttpMethodBody::Head => "HEAD",
+                WorkflowExtensionHttpMethodBody::Options => "OPTIONS",
+            }
+            .to_string();
+            let response_mode = match config
+                .response_mode
+                .unwrap_or(WorkflowExtensionResponseModeBody::Sync)
+            {
+                WorkflowExtensionResponseModeBody::Sync => "sync",
+                WorkflowExtensionResponseModeBody::Async => "async",
+            }
+            .to_string();
             Ok(Some(CreateWorkflowTriggerConfig::Extension {
                 subpath,
                 http_method,
@@ -595,16 +708,18 @@ fn parse_create_workflow_trigger_config(
 
 fn parse_workflow_trigger_type(
     application_type: domain::ApplicationType,
-    value: Option<&str>,
+    value: Option<WorkflowTriggerTypeDto>,
 ) -> Result<Option<domain::WorkflowTriggerType>, ApiError> {
     match application_type {
-        domain::ApplicationType::AgentFlow => Ok(None),
-        domain::ApplicationType::Workflow => {
-            let raw = value.unwrap_or("extension");
-            domain::WorkflowTriggerType::parse(raw)
-                .map(Some)
-                .ok_or_else(|| ControlPlaneError::InvalidInput("workflow_trigger_type").into())
+        domain::ApplicationType::AgentFlow if value.is_none() => Ok(None),
+        domain::ApplicationType::AgentFlow => {
+            Err(ControlPlaneError::InvalidInput("workflow_trigger_type").into())
         }
+        domain::ApplicationType::Workflow => Ok(Some(
+            value
+                .unwrap_or(WorkflowTriggerTypeDto::Extension)
+                .into_domain(),
+        )),
     }
 }
 
@@ -637,6 +752,8 @@ pub async fn list_applications(
 #[utoipa::path(
     get,
     path = "/api/console/applications/catalog",
+    summary = "Get Application type and Workflow trigger catalogs",
+    description = "Returns the closed Agent Flow/Workflow type set, the closed extension/schedule Workflow trigger set, stable semantic descriptions, and Application tags.",
     responses(
         (status = 200, body = ApplicationCatalogResponse),
         (status = 401, body = crate::error_response::ErrorBody),
@@ -655,6 +772,7 @@ pub async fn get_application_catalog(
 
     Ok(Json(ApiSuccess::new(ApplicationCatalogResponse {
         types: application_type_catalog(&state, &locale).await?,
+        workflow_triggers: workflow_trigger_type_catalog(&state, &locale).await?,
         tags: tags
             .into_iter()
             .map(to_application_tag_catalog_entry)
@@ -665,6 +783,8 @@ pub async fn get_application_catalog(
 #[utoipa::path(
     post,
     path = "/api/console/applications",
+    summary = "Create an Application",
+    description = "Creates one Agent Flow or Workflow. Workflow triggers are extension or schedule only; an initial schedule configuration is persisted disabled.",
     request_body = CreateApplicationBody,
     responses(
         (status = 201, body = ApplicationDetailResponse),
@@ -681,9 +801,9 @@ pub async fn create_application(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let application_type = parse_application_type(&body.application_type)?;
+    let application_type = body.application_type.into_domain();
     let workflow_trigger_type =
-        parse_workflow_trigger_type(application_type, body.workflow_trigger_type.as_deref())?;
+        parse_workflow_trigger_type(application_type, body.workflow_trigger_type)?;
     let created = ApplicationService::new(state.store.clone())
         .create_application(CreateApplicationCommand {
             actor_user_id: context.user.id,

@@ -37,7 +37,8 @@ import {
   createApplication,
   deleteApplication,
   exportApplicationArchive,
-  fetchApplicationCatalog
+  fetchApplicationCatalog,
+  type ApplicationCatalog
 } from '../../../applications/api/applications';
 import {
   fetchApplicationApiMapping,
@@ -588,7 +589,11 @@ export function ApplicationManagementPanel() {
     columns,
     storageKey: 'settings.application_management'
   });
-  const catalog = catalogQuery.data ?? { types: [], tags: [] };
+  const catalog: ApplicationCatalog = catalogQuery.data ?? {
+    types: [],
+    workflow_triggers: [],
+    tags: []
+  };
 
   return (
     <SettingsSectionSurface
@@ -608,7 +613,7 @@ export function ApplicationManagementPanel() {
                 'auto.application_management_type'
               )}
             </span>
-            <Select
+            <Select<SettingsApplicationManagementItem['application_type']>
               allowClear
               aria-label={i18nText(
                 'settingsApplicationManagement',

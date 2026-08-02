@@ -130,16 +130,16 @@ const orchestrationApi = vi.hoisted(() => ({
 vi.mock('../../features/agent-flow/api/orchestration', () => orchestrationApi);
 
 const nodeContributionsApi = vi.hoisted(() => ({
-  nodeContributionsQueryKey: (applicationId: string) => [
+  applicationNodeCatalogQueryKey: (applicationId: string) => [
     'applications',
     applicationId,
     'node-contributions'
   ],
-  fetchNodeContributions: vi.fn()
+  fetchApplicationNodeCatalog: vi.fn()
 }));
 
 vi.mock(
-  '../../features/agent-flow/api/node-contributions',
+  '../../features/agent-flow/api/application-node-catalog',
   () => nodeContributionsApi
 );
 
@@ -346,10 +346,12 @@ describe('application shell routing', () => {
       },
       versions: [],
       autosave_interval_seconds: 30,
-      user_protection_limit: 10,
+      user_protection_limit: 10
     });
-    nodeContributionsApi.fetchNodeContributions.mockReset();
-    nodeContributionsApi.fetchNodeContributions.mockResolvedValue([]);
+    nodeContributionsApi.fetchApplicationNodeCatalog.mockReset();
+    nodeContributionsApi.fetchApplicationNodeCatalog.mockResolvedValue({
+      nodes: []
+    });
     vi.spyOn(runtimeApi, 'fetchDebugVariableSnapshot').mockResolvedValue({
       variable_cache: {}
     });
@@ -382,7 +384,7 @@ describe('application shell routing', () => {
       },
       versions: [],
       autosave_interval_seconds: 30,
-      user_protection_limit: 10,
+      user_protection_limit: 10
     });
   });
 

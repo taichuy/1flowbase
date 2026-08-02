@@ -48,15 +48,21 @@ describe('AgentFlowEditorAssembly', () => {
               user_protection_limit: 10,
               versions: []
             }}
-            nodeContributions={[]}
+            nodeCatalog={{ nodes: [] }}
           />
         </App>
       </QueryClientProvider>
     );
 
-    expect(screen.getByTestId('agent-flow-editor-assembly')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('agent-flow-editor-assembly')
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '预览' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '会话变量' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '系统变量' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '会话变量' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '系统变量' })
+    ).toBeInTheDocument();
   });
 });

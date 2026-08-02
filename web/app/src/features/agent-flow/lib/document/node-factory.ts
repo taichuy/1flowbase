@@ -56,7 +56,8 @@ function isSameNodeAliasFamily(
 
   return (
     existingNode.type === 'plugin_node' &&
-    existingNode.plugin_unique_identifier === nextNode.plugin_unique_identifier &&
+    existingNode.plugin_unique_identifier ===
+      nextNode.plugin_unique_identifier &&
     existingNode.contribution_code === nextNode.contribution_code
   );
 }
@@ -81,25 +82,25 @@ export function createNodeDocument(
   y = 0
 ): FlowNodeDocument {
   if (isNodePickerOption(nodeTypeOrOption)) {
-    if (nodeTypeOrOption.kind === 'plugin_contribution') {
-      if (nodeTypeOrOption.disabled) {
-        throw new Error(
-          `Plugin contribution is unavailable: ${nodeTypeOrOption.disabledReason ?? nodeTypeOrOption.label}`
-        );
-      }
+    if (nodeTypeOrOption.disabled) {
+      throw new Error(
+        `Catalog node is unavailable: ${nodeTypeOrOption.disabledReason ?? nodeTypeOrOption.label}`
+      );
+    }
 
+    if (nodeTypeOrOption.kind === 'plugin_contribution') {
       return {
         id,
         type: 'plugin_node',
         alias: nodeTypeOrOption.label,
-        description: nodeTypeOrOption.contribution.description,
+        description: nodeTypeOrOption.plugin.description,
         containerId: null,
         position: { x, y },
         configVersion: 1,
         config: {},
         bindings: {},
-        outputs: createPluginNodeOutputs(nodeTypeOrOption.contribution),
-        ...toPluginContributionRef(nodeTypeOrOption.contribution)
+        outputs: createPluginNodeOutputs(nodeTypeOrOption.plugin),
+        ...toPluginContributionRef(nodeTypeOrOption.plugin)
       };
     }
 
@@ -117,7 +118,9 @@ export function createNodeDocument(
     return contractNode;
   }
 
-  throw new Error(`Missing runtime contract for node type: ${nodeTypeOrOption}`);
+  throw new Error(
+    `Missing runtime contract for node type: ${nodeTypeOrOption}`
+  );
 }
 
 export function createNodeDocumentWithCountedAlias(
@@ -148,7 +151,7 @@ export function createNextNodeId(
   const prefixSeed =
     isNodePickerOption(nodeTypeOrOption) &&
     nodeTypeOrOption.kind === 'plugin_contribution'
-      ? nodeTypeOrOption.contribution.contribution_code
+      ? nodeTypeOrOption.plugin.contribution_code
       : nodeType;
   const prefix = `node-${prefixSeed.replaceAll('_', '-')}`;
   let nextIndex = 1;

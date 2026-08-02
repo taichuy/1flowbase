@@ -124,8 +124,12 @@ pub struct ApplicationApiMappingBody {
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowExtensionApiBody {
+    /// Route template below /api/ex/ without a leading slash. Workflow Start path-source keys must
+    /// match every {placeholder} exactly.
     pub slug: String,
+    /// HTTP method accepted by the published extension interface.
     pub method: WorkflowExtensionHttpMethodBody,
+    /// sync waits for a result up to Workflow Start sync_timeout_ms; async returns an accepted run.
     pub response_mode: WorkflowExtensionResponseModeBody,
 }
 
@@ -174,7 +178,10 @@ impl ApplicationApiDocsQuery {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PublishApplicationApiBody {
+    /// Agent Flow request/output mapping or Workflow extension publication mapping.
     pub mapping: ApplicationApiMappingBody,
+    /// Enables invocation for the new active publication. Workflow extension invocation uses the
+    /// normal /api/ex/{slug} interface and never requires an Application API Key.
     pub api_enabled: bool,
 }
 
@@ -185,9 +192,13 @@ pub struct PatchApplicationApiStatusBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct WorkflowScheduleTriggerBody {
+    /// Desired scheduler state. This PUT resource changes configuration and enabled state together.
     pub enabled: bool,
+    /// Standard cron expression.
     pub cron: String,
+    /// IANA timezone used to evaluate cron.
     pub timezone: String,
+    /// Defaults keyed by Workflow Start input field key. HTTP source is irrelevant for schedules.
     pub input_payload: Value,
 }
 
@@ -196,6 +207,8 @@ pub struct WorkflowScheduleTriggerResponse {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub application_id: Uuid,
+    /// False for schedule configuration created with a new Application until explicitly enabled by
+    /// PUT /workflow-schedule-trigger.
     pub enabled: bool,
     pub cron: String,
     pub timezone: String,
@@ -247,9 +260,12 @@ pub struct ApplicationPublicationResponse {
     pub active: bool,
     pub api_enabled: bool,
     pub mapping_snapshot: ApplicationApiMappingBody,
+    /// For Workflow extension publications, the Agent-readable normal HTTP operation under
+    /// /api/ex/{slug}; absent for Agent Flow and schedule-triggered Workflow publications.
     #[schema(inline)]
     pub operation: Option<PublishedWorkflowOperationResponse>,
     pub dependency_snapshot: Vec<ApplicationPublicationJsDependencySnapshotResponse>,
+    /// /api/ex/{slug} for extension publications; /api/agent/v1/runs for Agent Flow.
     pub public_url: String,
     pub created_by: Uuid,
     pub created_at: String,
@@ -259,6 +275,7 @@ pub struct ApplicationPublicationResponse {
 pub struct PublishedWorkflowOperationResponse {
     pub interface_id: String,
     pub method: WorkflowExtensionHttpMethodBody,
+    /// Relative route template appended to the normal /api/ex/ interface prefix.
     pub route_template: String,
     pub response_mode: WorkflowExtensionResponseModeBody,
     #[schema(value_type = Object)]
@@ -809,6 +826,8 @@ pub async fn replace_application_api_mapping(
 #[utoipa::path(
     get,
     path = "/api/console/applications/{application_id}/api-publication",
+    summary = "Get the active Application publication",
+    description = "Returns the active publication and its invocation contract. Workflow extension publications expose a normal /api/ex/{slug} interface without an Application API Key.",
     params(("application_id" = Uuid, Path, description = "Application id")),
     responses(
         (status = 200, body = ApplicationPublicationResponse),
@@ -837,6 +856,8 @@ pub async fn get_application_api_publication(
 #[utoipa::path(
     post,
     path = "/api/console/applications/{application_id}/api-publications",
+    summary = "Publish the active Application version",
+    description = "Publishes the current flow version. Agent Flow uses the native run/API Gateway surface; an extension-triggered Workflow publishes a normal /api/ex/{slug} interface that does not require an Application API Key.",
     params(("application_id" = Uuid, Path, description = "Application id")),
     request_body = PublishApplicationApiBody,
     responses(
@@ -939,6 +960,8 @@ pub async fn patch_application_api_status(
 #[utoipa::path(
     get,
     path = "/api/console/applications/{application_id}/workflow-schedule-trigger",
+    summary = "Get Workflow schedule configuration and enabled state",
+    description = "Returns the schedule resource for a schedule-triggered Workflow. A schedule created during Application creation starts disabled.",
     params(("application_id" = Uuid, Path, description = "Application id")),
     responses(
         (status = 200, body = Option<WorkflowScheduleTriggerResponse>),
@@ -968,6 +991,8 @@ pub async fn get_workflow_schedule_trigger(
 #[utoipa::path(
     put,
     path = "/api/console/applications/{application_id}/workflow-schedule-trigger",
+    summary = "Replace Workflow schedule configuration and enabled state",
+    description = "Atomically replaces cron, timezone, Workflow Start input defaults, and the desired enabled state for a schedule-triggered Workflow.",
     params(("application_id" = Uuid, Path, description = "Application id")),
     request_body = WorkflowScheduleTriggerBody,
     responses(
