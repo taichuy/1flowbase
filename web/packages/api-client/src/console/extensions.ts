@@ -234,9 +234,14 @@ interface ConsoleExtensionRiskChallengeErrorBody {
 
 const BASE = '/api/console/settings/extension-center';
 
-export function listConsoleInstalledExtensions(cursor?: string, limit = 20) {
+export function listConsoleInstalledExtensions(
+  cursor?: string,
+  limit = 20,
+  category?: ConsoleExtensionCategory
+) {
   const query = new URLSearchParams({ limit: String(limit) });
   if (cursor) query.set('cursor', cursor);
+  if (category) query.set('category', category);
   return apiFetch<ConsoleInstalledExtensionPage>({
     path: `${BASE}/installed?${query.toString()}`
   });

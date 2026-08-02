@@ -25,9 +25,9 @@ describe('extension center client contract', () => {
 
   test('D4-AC-001 keeps installed inventory local and paginated', async () => {
     await expect(
-      listConsoleInstalledExtensions('cursor-1', 20)
+      listConsoleInstalledExtensions('cursor-1', 20, 'agent-flow')
     ).resolves.toMatchObject({
-      path: '/api/console/settings/extension-center/installed?limit=20&cursor=cursor-1'
+      path: '/api/console/settings/extension-center/installed?limit=20&cursor=cursor-1&category=agent-flow'
     });
   });
 
