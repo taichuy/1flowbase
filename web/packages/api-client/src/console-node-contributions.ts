@@ -1,12 +1,6 @@
 import { apiFetch } from './transport';
 
 export type ConsoleApplicationNodeSourceKind = 'builtin' | 'plugin';
-export type ConsoleApplicationNodeCategory =
-  | 'io'
-  | 'generation'
-  | 'control'
-  | 'data'
-  | 'external';
 export type ConsoleApplicationNodeRuntimeStatus = 'ready' | 'unavailable';
 export type ConsoleApplicationNodeDependencyStatus =
   | 'not_applicable'
@@ -63,7 +57,7 @@ export interface ConsoleApplicationNodeCatalogEntry {
   node_type: string;
   title: string;
   description: string;
-  category: ConsoleApplicationNodeCategory;
+  category: string;
   runtime_status: ConsoleApplicationNodeRuntimeStatus;
   runtime_status_description: string;
   dependency_status: ConsoleApplicationNodeDependencyStatus;
@@ -75,19 +69,19 @@ export interface ConsoleApplicationNodeCatalog {
   nodes: ConsoleApplicationNodeCatalogEntry[];
 }
 
-function buildNodeContributionsPath(applicationId: string) {
+function buildApplicationNodeCatalogPath(applicationId: string) {
   const params = new URLSearchParams({
     application_id: applicationId
   });
   return `/api/console/node-contributions?${params.toString()}`;
 }
 
-export function listConsoleNodeContributions(
+export function getConsoleApplicationNodeCatalog(
   applicationId: string,
   baseUrl?: string
 ) {
   return apiFetch<ConsoleApplicationNodeCatalog>({
-    path: buildNodeContributionsPath(applicationId),
+    path: buildApplicationNodeCatalogPath(applicationId),
     baseUrl
   });
 }

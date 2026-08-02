@@ -12,7 +12,7 @@ import {
 import {
   applicationNodeCatalogQueryKey,
   fetchApplicationNodeCatalog
-} from '../api/node-contributions';
+} from '../api/application-node-catalog';
 import {
   fetchOrchestrationState,
   orchestrationQueryKey

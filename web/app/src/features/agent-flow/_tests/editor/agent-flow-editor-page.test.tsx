@@ -37,7 +37,7 @@ vi.mock(
 );
 
 import * as orchestrationApi from '../../api/orchestration';
-import * as nodeContributionsApi from '../../api/node-contributions';
+import * as nodeContributionsApi from '../../api/application-node-catalog';
 import * as runtimeApi from '../../api/runtime';
 import * as applicationsApi from '../../../applications/api/applications';
 import * as publicApi from '../../../applications/api/public-api';

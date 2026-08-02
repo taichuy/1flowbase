@@ -24,7 +24,7 @@ import {
 import {
   applicationNodeCatalogQueryKey,
   fetchApplicationNodeCatalog
-} from '../../agent-flow/api/node-contributions';
+} from '../../agent-flow/api/application-node-catalog';
 import {
   fetchOrchestrationState,
   orchestrationQueryKey

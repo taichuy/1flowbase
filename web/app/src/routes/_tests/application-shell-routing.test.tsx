@@ -139,7 +139,7 @@ const nodeContributionsApi = vi.hoisted(() => ({
 }));
 
 vi.mock(
-  '../../features/agent-flow/api/node-contributions',
+  '../../features/agent-flow/api/application-node-catalog',
   () => nodeContributionsApi
 );
 

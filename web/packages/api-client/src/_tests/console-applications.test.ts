@@ -6,7 +6,7 @@ import {
   type ConsoleApplicationCatalog
 } from '../console/applications';
 import {
-  listConsoleNodeContributions,
+  getConsoleApplicationNodeCatalog,
   type ConsoleApplicationNodeCatalog
 } from '../console-node-contributions';
 import * as transport from '../transport';
@@ -95,7 +95,7 @@ describe('console application management client', () => {
       allowed_values: ['text', 'paragraph', 'select']
     });
     await expect(
-      listConsoleNodeContributions('application-1')
+      getConsoleApplicationNodeCatalog('application-1')
     ).resolves.toMatchObject({
       path: '/api/console/node-contributions?application_id=application-1'
     });
