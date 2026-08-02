@@ -9,6 +9,7 @@ import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPa
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
 import { AgentFlowTemplateLibrary } from '../features/templates/components/AgentFlowTemplateLibrary';
+import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,
@@ -179,6 +180,13 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     return renderShellScene(
       '/settings/extension-center/agent-flow',
       <AgentFlowTemplateLibrary variant="compact" />
+    );
+  },
+  'page.settings-extension-center-mcp': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderShellScene(
+      '/settings/extension-center/mcp',
+      <McpTemplateLibrary variant="compact" />
     );
   },
   'page.settings': () => {

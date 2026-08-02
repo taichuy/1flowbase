@@ -3,14 +3,15 @@ import { useEffect, useState } from 'react';
 
 import {
   applySettingsInstalledMcpExtension,
-  getSettingsInstalledMcpExtensionConflict,
   getSettingsInstalledMcpExtensionIntegrityChallenge,
   previewSettingsInstalledMcpExtension
 } from '../../../api/extensions';
 import {
   importSettingsMcpBundle,
+  importSettingsMcpTemplateLibraryBundle,
   importSettingsOfficialMcpBundle,
   previewSettingsMcpBundle,
+  previewSettingsMcpTemplateLibraryBundle,
   previewSettingsOfficialMcpBundle
 } from '../../../api/mcp-management';
 import {
@@ -21,6 +22,12 @@ import {
 export type McpBundleImportSource =
   | { kind: 'upload'; file: File }
   | { kind: 'official'; organization: string; bundleId: string }
+  | {
+      kind: 'library';
+      organization: string;
+      bundleId: string;
+      bundleVersion?: string;
+    }
   | { kind: 'installed_extension'; installationId: string };
 
 function confirmedWarnings(warnings: Array<{ code: string }>) {
@@ -54,6 +61,11 @@ export function McpBundleImportFlow({
   const officialBundleId = source?.kind === 'official' ? source.bundleId : null;
   const installationId =
     source?.kind === 'installed_extension' ? source.installationId : null;
+  const libraryOrganization =
+    source?.kind === 'library' ? source.organization : null;
+  const libraryBundleId = source?.kind === 'library' ? source.bundleId : null;
+  const libraryBundleVersion =
+    source?.kind === 'library' ? source.bundleVersion : undefined;
 
   useEffect(() => {
     setReview(null);
@@ -79,6 +91,14 @@ export function McpBundleImportFlow({
           csrfToken
         );
       }
+      if (sourceKind === 'library') {
+        return previewSettingsMcpTemplateLibraryBundle(
+          libraryOrganization!,
+          libraryBundleId!,
+          libraryBundleVersion ? { bundle_version: libraryBundleVersion } : {},
+          csrfToken
+        );
+      }
 
       const result = await previewSettingsInstalledMcpExtension(
         installationId!,
@@ -89,9 +109,6 @@ export function McpBundleImportFlow({
           result.integrity_warnings.map((warning) => warning.message)
         );
         setInstalledOptions({
-          ...(result.required_conflict_resolution
-            ? { conflict_resolution: result.required_conflict_resolution }
-            : {}),
           ...(result.required_integrity_override
             ? {
                 integrity_override: confirmedWarnings(
@@ -124,6 +141,9 @@ export function McpBundleImportFlow({
   }, [
     csrfToken,
     installationId,
+    libraryBundleId,
+    libraryBundleVersion,
+    libraryOrganization,
     officialBundleId,
     officialOrganization,
     onClose,
@@ -133,12 +153,6 @@ export function McpBundleImportFlow({
 
   async function importBundle() {
     if (!source || !review || !csrfToken) return;
-    if (
-      review.effect_summary.changes === 0 &&
-      review.effect_summary.conflicts > 0
-    ) {
-      return;
-    }
 
     setBusy(true);
     try {
@@ -153,13 +167,22 @@ export function McpBundleImportFlow({
                 },
                 csrfToken
               )
-            : (
-                await applySettingsInstalledMcpExtension(
-                  source.installationId,
-                  csrfToken,
-                  installedOptions
+            : source.kind === 'library'
+              ? await importSettingsMcpTemplateLibraryBundle(
+                  source.organization,
+                  source.bundleId,
+                  source.bundleVersion
+                    ? { bundle_version: source.bundleVersion }
+                    : {},
+                  csrfToken
                 )
-              ).import_report;
+              : (
+                  await applySettingsInstalledMcpExtension(
+                    source.installationId,
+                    csrfToken,
+                    installedOptions
+                  )
+                ).import_report;
       setReview(report);
       await onApplied();
     } catch (error) {
@@ -168,7 +191,6 @@ export function McpBundleImportFlow({
         return;
       }
       const challenge =
-        getSettingsInstalledMcpExtensionConflict(error) ??
         getSettingsInstalledMcpExtensionIntegrityChallenge(error);
       if (!challenge) {
         message.error(error instanceof Error ? error.message : String(error));
@@ -180,9 +202,6 @@ export function McpBundleImportFlow({
       );
       setInstalledOptions((current) => ({
         ...current,
-        ...('required_conflict_resolution' in challenge
-          ? { conflict_resolution: challenge.required_conflict_resolution }
-          : {}),
         ...('required_integrity_override' in challenge
           ? {
               integrity_override: confirmedWarnings(

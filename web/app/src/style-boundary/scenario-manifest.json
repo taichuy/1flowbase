@@ -694,6 +694,35 @@
     ]
   },
   {
+    "id": "page.settings-extension-center-mcp",
+    "kind": "page",
+    "title": "Settings MCP Template Library",
+    "impactFiles": [
+      "web/app/src/styles/tokens.css",
+      "web/app/src/styles/globals.css",
+      "web/packages/ui/src/index.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/mcp-template-library.css",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpBundleReviewModal.tsx",
+      "web/app/src/features/settings/api/mcp-management.ts",
+      "web/packages/api-client/src/console-mcp-management.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "mcp-template-library",
+        "selector": ".mcp-template-library",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "page.settings",
     "kind": "page",
     "title": "Settings Page",
@@ -1243,6 +1272,9 @@
       "web/app/src/features/settings/components/mcp-management/McpToolsTab.tsx",
       "web/app/src/features/settings/components/mcp-management/McpInstanceDiscoveryPolicyModal.tsx",
       "web/app/src/features/settings/components/mcp-management/McpToolDebugPanel.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpBundleActions.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/mcp-template-library.css",
       "web/app/src/features/settings/components/mcp-management/mcp-management-panel.css",
       "web/app/src/features/settings/components/mcp-management/mcp-management-view-model.ts",
       "web/app/src/features/settings/api/mcp-management.ts",
@@ -1259,6 +1291,16 @@
           {
             "property": "min-height",
             "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "mcp-template-library-management-consumer",
+        "selector": ".mcp-template-library",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
           }
         ]
       }

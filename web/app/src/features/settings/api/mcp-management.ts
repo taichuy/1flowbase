@@ -6,6 +6,7 @@ import {
   createConsoleMcpUpstreamConnection,
   deleteConsoleMcpClientCredential,
   deleteConsoleMcpGroup,
+  deleteConsoleMcpTemplateLibraryRelease,
   deleteConsoleMcpInstance,
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
@@ -23,16 +24,22 @@ import {
   fetchConsoleMcpClientCredential,
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
+  fetchConsoleMcpTemplateLibrary,
   fetchConsoleMcpUpstreamConnections,
   importConsoleMcpBundle,
+  importConsoleMcpTemplateLibraryBundle,
   importConsoleOfficialMcpBundle,
   importConsoleMcpUpstreamTools,
   moveConsoleMcpGroup,
   previewConsoleMcpBundle,
+  previewConsoleMcpTemplateLibraryBundle,
   previewConsoleOfficialMcpBundle,
   refreshConsoleMcpToolDescription,
+  repairConsoleMcpTemplateLibraryRelease,
   saveConsoleMcpClientCredential,
   saveConsoleMcpUpstreamConnectionCredentials,
+  setConsoleMcpTemplateLibraryCurrentVersion,
+  syncConsoleMcpTemplateLibraryBundle,
   testConsoleMcpUpstreamConnection,
   testConsoleMcpUpstreamConnectionDraft,
   updateConsoleMcpInstance,
@@ -46,6 +53,7 @@ import {
   type ConsoleMcpInterfaceCapability,
   type ConsoleMcpBundleExportDefaults,
   type ConsoleOfficialMcpBundleBody,
+  type ConsoleMcpTemplateLibraryVersionBody,
   type ConsoleMcpToolDebugExecuteResponse,
   type ExecuteConsoleMcpProxyToolDebugBody,
   type ExecuteConsoleMcpToolDebugBody,
@@ -68,7 +76,10 @@ export type {
   ExportConsoleMcpBundleBody as ExportSettingsMcpBundleBody,
   ConsoleOfficialMcpBundleCatalog as SettingsOfficialMcpBundleCatalog,
   CopyConsoleMcpInstanceBody as CopySettingsMcpInstanceBody,
-  ConsoleOfficialMcpBundleEntry as SettingsOfficialMcpBundleEntry
+  ConsoleOfficialMcpBundleEntry as SettingsOfficialMcpBundleEntry,
+  ConsoleMcpTemplateLibrary as SettingsMcpTemplateLibrary,
+  ConsoleMcpTemplateLibraryBundle as SettingsMcpTemplateLibraryBundle,
+  ConsoleMcpTemplateLibraryVersion as SettingsMcpTemplateLibraryVersion
 } from '@1flowbase/api-client';
 
 export type SettingsMcpCatalog = ConsoleMcpCatalog;
@@ -100,6 +111,12 @@ export const settingsMcpBundleExportDefaultsQueryKey = [
   'settings',
   'mcp-management',
   'bundle-export-defaults'
+] as const;
+
+export const settingsMcpTemplateLibraryQueryKey = [
+  'settings',
+  'mcp-management',
+  'template-library'
 ] as const;
 
 export const settingsMcpUpstreamConnectionsQueryKey = [
@@ -268,6 +285,94 @@ export function importSettingsOfficialMcpBundle(
   csrfToken: string
 ) {
   return importConsoleOfficialMcpBundle(body, csrfToken);
+}
+
+export function fetchSettingsMcpTemplateLibrary() {
+  return fetchConsoleMcpTemplateLibrary();
+}
+
+export function syncSettingsMcpTemplateLibraryBundle(
+  organization: string,
+  bundleId: string,
+  body: ConsoleMcpTemplateLibraryVersionBody,
+  csrfToken: string
+) {
+  return syncConsoleMcpTemplateLibraryBundle(
+    organization,
+    bundleId,
+    body,
+    csrfToken
+  );
+}
+
+export function previewSettingsMcpTemplateLibraryBundle(
+  organization: string,
+  bundleId: string,
+  body: ConsoleMcpTemplateLibraryVersionBody,
+  csrfToken: string
+) {
+  return previewConsoleMcpTemplateLibraryBundle(
+    organization,
+    bundleId,
+    body,
+    csrfToken
+  );
+}
+
+export function importSettingsMcpTemplateLibraryBundle(
+  organization: string,
+  bundleId: string,
+  body: ConsoleMcpTemplateLibraryVersionBody,
+  csrfToken: string
+) {
+  return importConsoleMcpTemplateLibraryBundle(
+    organization,
+    bundleId,
+    body,
+    csrfToken
+  );
+}
+
+export function setSettingsMcpTemplateLibraryCurrentVersion(
+  organization: string,
+  bundleId: string,
+  bundleVersion: string,
+  csrfToken: string
+) {
+  return setConsoleMcpTemplateLibraryCurrentVersion(
+    organization,
+    bundleId,
+    bundleVersion,
+    csrfToken
+  );
+}
+
+export function deleteSettingsMcpTemplateLibraryRelease(
+  organization: string,
+  bundleId: string,
+  bundleVersion: string,
+  csrfToken: string
+) {
+  return deleteConsoleMcpTemplateLibraryRelease(
+    organization,
+    bundleId,
+    bundleVersion,
+    csrfToken
+  );
+}
+
+export function repairSettingsMcpTemplateLibraryRelease(
+  organization: string,
+  bundleId: string,
+  bundleVersion: string,
+  csrfToken: string
+) {
+  return repairConsoleMcpTemplateLibraryRelease(
+    organization,
+    bundleId,
+    bundleVersion,
+    csrfToken
+  );
 }
 
 export function createSettingsMcpInstance(

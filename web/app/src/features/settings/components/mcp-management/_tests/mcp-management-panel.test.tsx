@@ -21,6 +21,11 @@ const mcpManagementApi = vi.hoisted(() => ({
     'mcp-management',
     'bundle-export-defaults'
   ],
+  settingsMcpTemplateLibraryQueryKey: [
+    'settings',
+    'mcp-management',
+    'template-library'
+  ],
   settingsMcpUpstreamConnectionsQueryKey: [
     'settings',
     'mcp-management',
@@ -36,6 +41,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   deleteSettingsMcpInstance: vi.fn(),
   deleteSettingsMcpTool: vi.fn(),
   deleteSettingsMcpToolBinding: vi.fn(),
+  deleteSettingsMcpTemplateLibraryRelease: vi.fn(),
   deleteSettingsMcpUpstreamConnection: vi.fn(),
   deleteSettingsMcpUpstreamConnectionCredentials: vi.fn(),
   discoverSettingsMcpUpstreamConnection: vi.fn(),
@@ -43,12 +49,18 @@ const mcpManagementApi = vi.hoisted(() => ({
   executeSettingsMcpToolDebug: vi.fn(),
   moveSettingsMcpGroup: vi.fn(),
   previewSettingsMcpBundle: vi.fn(),
+  previewSettingsMcpTemplateLibraryBundle: vi.fn(),
   importSettingsMcpBundle: vi.fn(),
+  importSettingsMcpTemplateLibraryBundle: vi.fn(),
   importSettingsOfficialMcpBundle: vi.fn(),
   exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   fetchSettingsMcpBundleExportDefaults: vi.fn(),
+  fetchSettingsMcpTemplateLibrary: vi.fn(async () => ({
+    remote_available: true,
+    bundles: []
+  })),
   fetchSettingsMcpClientCredential: vi.fn(
     async (): Promise<{ saved: boolean; api_key?: string }> => ({
       saved: false
@@ -59,8 +71,11 @@ const mcpManagementApi = vi.hoisted(() => ({
   importSettingsMcpUpstreamTools: vi.fn(),
   previewSettingsOfficialMcpBundle: vi.fn(),
   refreshSettingsMcpToolDescription: vi.fn(),
+  repairSettingsMcpTemplateLibraryRelease: vi.fn(),
   saveSettingsMcpClientCredential: vi.fn(async () => ({ saved: true })),
   saveSettingsMcpUpstreamConnectionCredentials: vi.fn(),
+  setSettingsMcpTemplateLibraryCurrentVersion: vi.fn(),
+  syncSettingsMcpTemplateLibraryBundle: vi.fn(),
   testSettingsMcpUpstreamConnection: vi.fn(),
   updateSettingsMcpInstance: vi.fn(),
   updateSettingsMcpInstanceDiscoveryPolicy: vi.fn(),
@@ -539,7 +554,6 @@ describe('McpManagementPanel', () => {
       saved: false
     });
     mcpManagementApi.fetchSettingsMcpBundleExportDefaults.mockResolvedValue({
-      minimum_host_version: '0.3.0',
       current_system_version: '0.3.0'
     });
     mcpManagementApi.saveSettingsMcpClientCredential.mockResolvedValue({
@@ -619,7 +633,8 @@ describe('McpManagementPanel', () => {
           result: 'unavailable',
           reason: 'credentials_missing'
         }
-      ]
+      ],
+      shared_tool_impacts: []
     });
     mcpManagementApi.importSettingsMcpBundle.mockResolvedValue({
       manifest: {
@@ -678,38 +693,40 @@ describe('McpManagementPanel', () => {
           result: 'unavailable',
           reason: 'credentials_missing'
         }
-      ]
+      ],
+      shared_tool_impacts: []
     });
-    mcpManagementApi.fetchSettingsOfficialMcpBundles.mockResolvedValue({
-      source: {
-        source_kind: 'default',
-        source_label: '1flowbase official',
-        catalog_url: 'https://example.test/mcp/catalog.json'
-      },
-      entries: [
+    mcpManagementApi.fetchSettingsMcpTemplateLibrary.mockResolvedValue({
+      remote_available: true,
+      bundles: [
         {
           organization: 'taichuy',
           bundle_id: '1flowbase_zh_hans',
-          latest_version: '1.0.0',
-          locale: 'zh_Hans',
-          minimum_host_version: '0.2.6',
-          exported_from_system_version: '0.2.5',
-          release_tag: 'mcp-taichuy-1flowbase_zh_hans-v1.0.0',
-          download_url: 'https://example.test/bundle.zip',
-          artifact_sha256: null
+          current_bundle_version: '1.0.0',
+          remote_versions: [],
+          local_versions: [
+            {
+              bundle_version: '1.0.0',
+              locale: 'zh_Hans',
+              minimum_host_version: '0.2.6',
+              exported_from_system_version: '0.2.5',
+              checksum: 'bundle-sha256',
+              signature_status: 'verified',
+              downloaded_at: '2026-08-02T10:00:00Z'
+            }
+          ]
         }
       ]
     });
-    mcpManagementApi.previewSettingsOfficialMcpBundle.mockImplementation(
+    mcpManagementApi.previewSettingsMcpTemplateLibraryBundle.mockImplementation(
       async () => mcpManagementApi.previewSettingsMcpBundle()
     );
-    mcpManagementApi.importSettingsOfficialMcpBundle.mockImplementation(
+    mcpManagementApi.importSettingsMcpTemplateLibraryBundle.mockImplementation(
       async () => mcpManagementApi.importSettingsMcpBundle()
     );
   });
 
-  test('uses backend bundle defaults and exports the edited minimum host version', async () => {
-    // AC-001 and AC-002: backend default, user-controlled compatibility floor.
+  test('shows the backend system version and exports without a client-selected host floor', async () => {
     mcpManagementApi.exportSettingsMcpBundle.mockResolvedValue({
       blob: new Blob(['bundle'], { type: 'application/zip' }),
       filename: 'mcp-bundle.zip'
@@ -729,17 +746,15 @@ describe('McpManagementPanel', () => {
     const dialog = await screen.findByRole('dialog', {
       name: '导出 MCP 配置包'
     });
-    const minimumHostVersion = within(dialog).getByLabelText(
-      'minimum_host_version'
-    );
-    await waitFor(() => expect(minimumHostVersion).toHaveValue('0.3.0'));
-
-    fireEvent.change(minimumHostVersion, { target: { value: '0.2.8' } });
+    expect(within(dialog).queryByLabelText('minimum_host_version')).toBeNull();
+    expect(within(dialog).getByText(/0.3.0/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /导\s*出/u }));
 
     await waitFor(() => {
       expect(mcpManagementApi.exportSettingsMcpBundle).toHaveBeenCalledWith(
-        expect.objectContaining({ minimum_host_version: '0.2.8' }),
+        expect.not.objectContaining({
+          minimum_host_version: expect.anything()
+        }),
         expect.any(String)
       );
     });
@@ -766,7 +781,7 @@ describe('McpManagementPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('缺少凭据')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '仍然导入' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
     await waitFor(() => {
       expect(mcpManagementApi.importSettingsMcpBundle).toHaveBeenCalledWith(
         file,
@@ -776,7 +791,7 @@ describe('McpManagementPanel', () => {
     expect(await screen.findByText('导入完成，但存在警告')).toBeInTheDocument();
   });
 
-  test('previews and imports an official MCP bundle through the backend', async () => {
+  test('reuses the local template library and import flow in MCP Management', async () => {
     renderPanel();
 
     expect(screen.getByRole('button', { name: /导出$/ })).toBeInTheDocument();
@@ -784,27 +799,35 @@ describe('McpManagementPanel', () => {
     const sourceDialog = await screen.findByRole('dialog', {
       name: '选择配置包来源'
     });
-    expect(within(sourceDialog).getByText('官方配置包')).toBeInTheDocument();
     expect(
       await within(sourceDialog).findByText('taichuy/1flowbase_zh_hans')
     ).toBeInTheDocument();
 
-    fireEvent.click(within(sourceDialog).getByRole('button', { name: '预检' }));
+    const bundleRow = within(sourceDialog).getByRole('row', {
+      name: /taichuy\/1flowbase_zh_hans/
+    });
+    fireEvent.click(within(bundleRow).getByRole('button', { name: '导入' }));
     await waitFor(() => {
       expect(
-        mcpManagementApi.previewSettingsOfficialMcpBundle
+        mcpManagementApi.previewSettingsMcpTemplateLibraryBundle
       ).toHaveBeenCalledWith(
-        { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+        'taichuy',
+        '1flowbase_zh_hans',
+        {},
         expect.any(String)
       );
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: '仍然导入' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: '确认导入并覆盖' })
+    );
     await waitFor(() => {
       expect(
-        mcpManagementApi.importSettingsOfficialMcpBundle
+        mcpManagementApi.importSettingsMcpTemplateLibraryBundle
       ).toHaveBeenCalledWith(
-        { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+        'taichuy',
+        '1flowbase_zh_hans',
+        {},
         expect.any(String)
       );
     });
