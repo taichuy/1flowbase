@@ -130,6 +130,17 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
         .sync("taichuy", "zh_hans", Some("1.2.0"))
         .await
         .unwrap();
+    library
+        .switch_current("taichuy", "zh_hans", "1.2.0")
+        .await
+        .unwrap();
+    std::fs::write(root.join("@taichuy/zh_hans/current"), b"1.10.0").unwrap();
+    library.reconcile_local_installations().await.unwrap();
+    assert_eq!(
+        installation_repository.current_version(),
+        Some("1.2.0".to_string()),
+        "startup reconciliation must preserve the database current selection even when a legacy current file disagrees"
+    );
     std::fs::remove_file(root.join("@taichuy/zh_hans/releases/1.10.0/receipt.json")).unwrap();
     let with_history = library.library_catalog().await.unwrap();
     assert_eq!(
@@ -250,6 +261,15 @@ impl TestExtensionInstallationRepository {
 
     fn fail_next_upsert(&self) {
         self.fail_next_upsert.store(true, Ordering::SeqCst);
+    }
+
+    fn current_version(&self) -> Option<String> {
+        self.records
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|record| record.is_current)
+            .map(|record| record.identity.version.clone())
     }
 }
 

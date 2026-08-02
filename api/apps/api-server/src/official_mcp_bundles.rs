@@ -597,11 +597,32 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
     }
 
     async fn reconcile_local_installations(&self) -> Result<()> {
-        for (_, _, versions, current) in scan_local(&self.root)? {
-            let selected_current = current.as_deref().or_else(|| {
-                versions
-                    .first()
-                    .map(|receipt| receipt.bundle_version.as_str())
+        let existing_currents = self
+            .installation_repository
+            .list_extension_installations_for_node(&self.node_id)
+            .await?
+            .into_iter()
+            .filter(|record| {
+                record.identity.category == domain::ExtensionCategory::Mcp
+                    && record.status == domain::ExtensionInstallationStatus::Installed
+                    && record.is_current
+            })
+            .map(|record| {
+                (
+                    (record.identity.organization, record.identity.artifact_id),
+                    record.identity.version,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for (organization, bundle_id, versions, current) in scan_local(&self.root)? {
+            let database_current =
+                existing_currents.get(&(organization.clone(), bundle_id.clone()));
+            let selected_current = database_current.map(String::as_str).or_else(|| {
+                current.as_deref().or_else(|| {
+                    versions
+                        .first()
+                        .map(|receipt| receipt.bundle_version.as_str())
+                })
             });
             for receipt in
                 versions
