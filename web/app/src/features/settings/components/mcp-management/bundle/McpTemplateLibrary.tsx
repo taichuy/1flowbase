@@ -118,6 +118,12 @@ export function McpTemplateLibrary({
       queryKey: settingsMcpTemplateLibraryQueryKey
     });
   }, [queryClient]);
+  const closeImportFlow = useCallback(() => setImportSource(null), []);
+  const refreshMcpCatalog = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: settingsMcpCatalogQueryKey
+    });
+  }, [queryClient]);
 
   const start = (key: string) =>
     setPending((current) => new Set(current).add(key));
@@ -538,12 +544,8 @@ export function McpTemplateLibrary({
       <McpBundleImportFlow
         source={importSource}
         csrfToken={csrfToken}
-        onClose={() => setImportSource(null)}
-        onApplied={async () => {
-          await queryClient.invalidateQueries({
-            queryKey: settingsMcpCatalogQueryKey
-          });
-        }}
+        onClose={closeImportFlow}
+        onApplied={refreshMcpCatalog}
       />
     </div>
   );

@@ -567,7 +567,7 @@ describe('SettingsExtensionCenterSection', () => {
     view.unmount();
   });
 
-  test('Root-AC-004 keeps generic install available for the five non-Agent-Flow catalog categories', async () => {
+  test('Root-AC-004 keeps generic install for four catalog categories while MCP uses its library', async () => {
     extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
       async (category: string) => ({
         category,
@@ -597,7 +597,6 @@ describe('SettingsExtensionCenterSection', () => {
       'capability-plugins',
       'host-extensions',
       'i18n',
-      'mcp',
       'runtime-extensions'
     ] as const) {
       view.rerender(<SettingsExtensionCenterSection category={category} />);
@@ -608,6 +607,13 @@ describe('SettingsExtensionCenterSection', () => {
         within(row).getByRole('button', { name: '安装' })
       ).toBeInTheDocument();
     }
+
+    view.rerender(<SettingsExtensionCenterSection category="mcp" />);
+    expect(screen.getByTestId('mcp-template-library')).toHaveAttribute(
+      'data-variant',
+      'compact'
+    );
+    expect(screen.queryByText('mcp Extension')).not.toBeInTheDocument();
   });
 
   test('AC-001 loads only the generic catalog row being installed and disables the other row', async () => {

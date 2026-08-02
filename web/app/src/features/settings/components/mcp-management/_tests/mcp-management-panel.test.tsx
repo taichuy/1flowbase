@@ -57,10 +57,7 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
   fetchSettingsMcpBundleExportDefaults: vi.fn(),
-  fetchSettingsMcpTemplateLibrary: vi.fn(async () => ({
-    remote_available: true,
-    bundles: []
-  })),
+  fetchSettingsMcpTemplateLibrary: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(
     async (): Promise<{ saved: boolean; api_key?: string }> => ({
       saved: false
@@ -747,7 +744,7 @@ describe('McpManagementPanel', () => {
       name: '导出 MCP 配置包'
     });
     expect(within(dialog).queryByLabelText('minimum_host_version')).toBeNull();
-    expect(within(dialog).getByText(/0.3.0/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/0.3.0/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /导\s*出/u }));
 
     await waitFor(() => {

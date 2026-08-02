@@ -121,8 +121,8 @@ describe('McpTemplateLibrary', () => {
 
     const syncButtons = await screen.findAllByRole('button', { name: '同步' });
     fireEvent.click(syncButtons[0]);
-    await waitFor(() => expect(syncButtons[0]).toBeDisabled());
-    expect(syncButtons[1]).not.toBeDisabled();
+    await waitFor(() => expect(syncButtons[0]).toHaveClass('ant-btn-loading'));
+    expect(syncButtons[1]).not.toHaveClass('ant-btn-loading');
     fireEvent.click(syncButtons[1]);
     expect(api.syncSettingsMcpTemplateLibraryBundle).toHaveBeenCalledTimes(2);
     finishFirst();

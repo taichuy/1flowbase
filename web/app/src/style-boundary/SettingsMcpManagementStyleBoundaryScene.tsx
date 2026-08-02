@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   Outlet,
   RouterProvider,
@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-router';
 
 import { McpManagementPanel } from '../features/settings/components/mcp-management/McpManagementPanel';
+import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
 import {
   styleBoundaryMcpCatalog,
   styleBoundaryMcpInterfaceCapabilities
@@ -23,39 +24,20 @@ export function SettingsMcpManagementStyleBoundaryScene() {
       getParentRoute: () => rootRoute,
       path: '/',
       component: () => (
-        <McpManagementPanel
-          canManage
-          catalog={styleBoundaryMcpCatalog}
-          interfaceCapabilities={styleBoundaryMcpInterfaceCapabilities}
-        />
+        <>
+          <McpManagementPanel
+            canManage
+            catalog={styleBoundaryMcpCatalog}
+            interfaceCapabilities={styleBoundaryMcpInterfaceCapabilities}
+          />
+          <McpTemplateLibrary variant="compact" />
+        </>
       )
     });
 
     return createRouter({
       routeTree: rootRoute.addChildren([pageRoute])
     });
-  }, []);
-
-  useEffect(() => {
-    let attempts = 0;
-    const timer = window.setInterval(() => {
-      const importButton = [
-        ...document.querySelectorAll<HTMLButtonElement>('button')
-      ].find((button) =>
-        /^(导入|Import)$/.test(button.textContent?.trim() ?? '')
-      );
-
-      attempts += 1;
-      if (importButton) {
-        importButton.click();
-        window.clearInterval(timer);
-      }
-      if (attempts >= 60) {
-        window.clearInterval(timer);
-      }
-    }, 100);
-
-    return () => window.clearInterval(timer);
   }, []);
 
   return <RouterProvider router={router} />;
