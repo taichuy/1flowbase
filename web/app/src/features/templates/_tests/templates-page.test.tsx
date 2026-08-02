@@ -38,12 +38,12 @@ const family = {
   catalog_id: 'agent-flow:taichuy/fusion',
   organization: 'taichuy',
   artifact_id: 'fusion',
-  version: '2.0.0',
+  version: '1.0.0',
   node_id: 'node-1',
   source: 'official',
   trust: 'official',
   warnings: [],
-  local_path: '/extensions/fusion/2.0.0',
+  local_path: '/extensions/fusion/1.0.0',
   checksum: 'sha256:current',
   signature_status: 'valid',
   signature_algorithm: 'ed25519',
@@ -57,35 +57,35 @@ const family = {
   updated_at: '2026-08-02T00:00:00Z',
   installed_versions: [
     {
-      id: 'installation-current',
+      id: 'installation-version-2',
       version: '2.0.0',
       source: 'official',
       trust: 'official',
       warnings: [],
       local_path: '/extensions/fusion/2.0.0',
+      checksum: 'sha256:version-2',
+      signature_status: 'valid',
+      signature_algorithm: 'ed25519',
+      signing_key_id: 'official',
+      status: 'installed',
+      is_current: false,
+      installed_by: 'user-1',
+      created_at: '2026-08-02T00:00:00Z',
+      updated_at: '2026-08-02T00:00:00Z'
+    },
+    {
+      id: 'installation-current',
+      version: '1.0.0',
+      source: 'official',
+      trust: 'official',
+      warnings: [],
+      local_path: '/extensions/fusion/1.0.0',
       checksum: 'sha256:current',
       signature_status: 'valid',
       signature_algorithm: 'ed25519',
       signing_key_id: 'official',
       status: 'installed',
       is_current: true,
-      installed_by: 'user-1',
-      created_at: '2026-08-02T00:00:00Z',
-      updated_at: '2026-08-02T00:00:00Z'
-    },
-    {
-      id: 'installation-history',
-      version: '1.0.0',
-      source: 'upload',
-      trust: 'unknown',
-      warnings: [],
-      local_path: '/extensions/fusion/1.0.0',
-      checksum: 'sha256:history',
-      signature_status: 'missing',
-      signature_algorithm: null,
-      signing_key_id: null,
-      status: 'installed',
-      is_current: false,
       installed_by: 'user-1',
       created_at: '2026-08-01T00:00:00Z',
       updated_at: '2026-08-01T00:00:00Z'
@@ -142,7 +142,7 @@ describe('installed Agent Flow template library', () => {
     templatesApi.selectInstalledAgentFlowVersion.mockResolvedValue(family);
     templatesApi.deleteInstalledAgentFlowVersion.mockResolvedValue(family);
     applicationsApi.previewInstalledApplicationExtension.mockResolvedValue({
-      extension_installation_id: 'installation-history',
+      extension_installation_id: 'installation-version-2',
       application_status: 'not_applied',
       integrity_warnings: [],
       required_integrity_override: null,
@@ -168,11 +168,17 @@ describe('installed Agent Flow template library', () => {
   test('AC-006 renders DB installed families, explicit current, and version history', async () => {
     renderPage();
     const row = await screen.findByRole('row', { name: /fusion/ });
-    expect(within(row).getByText('2.0.0')).toBeInTheDocument();
+    expect(within(row).getByText('1.0.0')).toBeInTheDocument();
     fireEvent.click(within(row).getByRole('button', { name: '查看' }));
     const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByText('1.0.0')).toBeInTheDocument();
-    expect(within(drawer).getByText('当前')).toBeInTheDocument();
+    const currentVersion = within(drawer).getByRole('listitem', {
+      name: '1.0.0 当前'
+    });
+    const historyVersion = within(drawer).getByRole('listitem', {
+      name: '2.0.0'
+    });
+    expect(within(currentVersion).getByText('当前')).toBeInTheDocument();
+    expect(within(historyVersion).queryByText('当前')).not.toBeInTheDocument();
   });
 
   test('AC-006 selects and deletes versions by installation id', async () => {
@@ -180,37 +186,37 @@ describe('installed Agent Flow template library', () => {
     const row = await screen.findByRole('row', { name: /fusion/ });
     fireEvent.click(within(row).getByRole('button', { name: '查看' }));
     const drawer = await screen.findByRole('dialog');
-    const history = within(drawer).getByText('1.0.0').closest('.ant-list-item');
-    fireEvent.click(
-      within(history as HTMLElement).getByRole('button', { name: '设为当前' })
-    );
+    const version2 = within(drawer).getByRole('listitem', {
+      name: '2.0.0'
+    });
+    fireEvent.click(within(version2).getByRole('button', { name: '设为当前' }));
     await waitFor(() => {
       expect(templatesApi.selectInstalledAgentFlowVersion).toHaveBeenCalledWith(
-        'installation-history',
+        'installation-version-2',
         'csrf-123'
       );
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     fireEvent.click(within(row).getByRole('button', { name: '查看' }));
     const reopened = await screen.findByRole('dialog');
-    const current = within(reopened)
-      .getByText('2.0.0')
-      .closest('.ant-list-item');
+    const reopenedVersion2 = within(reopened).getByRole('listitem', {
+      name: '2.0.0'
+    });
     fireEvent.click(
-      within(current as HTMLElement).getByRole('button', { name: '删除版本' })
+      within(reopenedVersion2).getByRole('button', { name: '删除版本' })
     );
-    const confirmation = await screen.findByText(
-      '确认删除这个本地模板版本？此操作不会改变已创建的应用。'
-    );
+    const confirmation = await screen.findByRole('dialog', {
+      name: '确认删除这个本地模板版本？此操作不会改变已创建的应用。'
+    });
     fireEvent.click(
-      within(confirmation.closest('.ant-modal') as HTMLElement).getByRole(
-        'button',
-        { name: '删除版本' }
-      )
+      within(confirmation).getByRole('button', { name: '删除版本' })
     );
     await waitFor(() => {
       expect(templatesApi.deleteInstalledAgentFlowVersion).toHaveBeenCalledWith(
-        'installation-current',
+        'installation-version-2',
         'csrf-123'
       );
     });
@@ -221,29 +227,33 @@ describe('installed Agent Flow template library', () => {
     const row = await screen.findByRole('row', { name: /fusion/ });
     fireEvent.click(within(row).getByRole('button', { name: '查看' }));
     const drawer = await screen.findByRole('dialog');
-    const history = within(drawer).getByText('1.0.0').closest('.ant-list-item');
+    const version2 = within(drawer).getByRole('listitem', {
+      name: '2.0.0'
+    });
     fireEvent.click(
-      within(history as HTMLElement).getByRole('button', {
+      within(version2).getByRole('button', {
         name: '从此版本导入'
       })
     );
     await waitFor(() => {
       expect(
         applicationsApi.previewInstalledApplicationExtension
-      ).toHaveBeenCalledWith('installation-history');
+      ).toHaveBeenCalledWith('installation-version-2');
     });
-    const importDialog = await screen.findByText('Fusion 1');
+    const importDialog = await screen.findByRole('dialog', {
+      name: '导入应用压缩包'
+    });
+    expect(
+      within(importDialog).getByDisplayValue('Fusion 1')
+    ).toBeInTheDocument();
     fireEvent.click(
-      within(importDialog.closest('.ant-modal') as HTMLElement).getByRole(
-        'button',
-        { name: '导入应用' }
-      )
+      within(importDialog).getByRole('button', { name: '导入应用' })
     );
     await waitFor(() => {
       expect(
         applicationsApi.importInstalledApplicationExtension
       ).toHaveBeenCalledWith(
-        'installation-history',
+        'installation-version-2',
         { name: 'Fusion 1', description: 'Historical template' },
         'csrf-123'
       );

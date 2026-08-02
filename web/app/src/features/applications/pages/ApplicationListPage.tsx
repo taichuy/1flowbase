@@ -32,7 +32,7 @@ import {
 } from '@ant-design/icons';
 import type { TFunction } from 'i18next';
 import type { ChangeEvent, ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -295,6 +295,18 @@ export function ApplicationListPage() {
     me?.permissions.includes('application.delete.own')
   );
   const normalizedKeyword = keyword.trim().toLowerCase();
+  const closeInstalledTemplateImport = useCallback(
+    () => setInstalledTemplateId(null),
+    []
+  );
+  const finishInstalledTemplateImport = useCallback(
+    async (applicationId: string) => {
+      await queryClient.invalidateQueries({ queryKey: applicationsQueryKey });
+      messageApi.success(t('auto.template_imported'));
+      window.location.assign(`/applications/${applicationId}/orchestration`);
+    },
+    [messageApi, queryClient, t]
+  );
 
   if (applicationsQuery.isPending || applicationCatalogQuery.isPending) {
     return <LoadingState />;
@@ -377,7 +389,6 @@ export function ApplicationListPage() {
       input
     });
   };
-
   return (
     <div
       style={{
@@ -795,16 +806,8 @@ export function ApplicationListPage() {
       <InstalledAgentFlowImportFlow
         installationId={installedTemplateId}
         csrfToken={csrfToken ?? ''}
-        onClose={() => setInstalledTemplateId(null)}
-        onImported={async (applicationId) => {
-          await queryClient.invalidateQueries({
-            queryKey: applicationsQueryKey
-          });
-          messageApi.success(t('auto.template_imported'));
-          window.location.assign(
-            `/applications/${applicationId}/orchestration`
-          );
-        }}
+        onClose={closeInstalledTemplateImport}
+        onImported={finishInstalledTemplateImport}
       />
     </div>
   );

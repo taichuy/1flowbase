@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -50,6 +50,18 @@ export function AgentFlowTemplateLibrary() {
   const canCreate =
     actor?.effective_display_role === 'root' ||
     Boolean(me?.permissions.includes('application.create.all'));
+  const closeInstalledTemplateImport = useCallback(
+    () => setImportInstallationId(null),
+    []
+  );
+  const finishInstalledTemplateImport = useCallback(
+    async (applicationId: string) => {
+      await queryClient.invalidateQueries({ queryKey: applicationsQueryKey });
+      messageApi.success(t('auto.template_imported'));
+      window.location.assign(`/applications/${applicationId}/orchestration`);
+    },
+    [messageApi, queryClient, t]
+  );
 
   const installedQuery = useQuery({
     queryKey: installedAgentFlowTemplatesQueryKey,
@@ -206,6 +218,9 @@ export function AgentFlowTemplateLibrary() {
               dataSource={selectedFamily.installed_versions}
               renderItem={(version) => (
                 <List.Item
+                  aria-label={`${version.version}${
+                    version.is_current ? ` ${t('auto.current')}` : ''
+                  }`}
                   actions={[
                     <Button
                       key="import"
@@ -269,16 +284,8 @@ export function AgentFlowTemplateLibrary() {
       <InstalledAgentFlowImportFlow
         installationId={importInstallationId}
         csrfToken={csrfToken}
-        onClose={() => setImportInstallationId(null)}
-        onImported={async (applicationId) => {
-          await queryClient.invalidateQueries({
-            queryKey: applicationsQueryKey
-          });
-          messageApi.success(t('auto.template_imported'));
-          window.location.assign(
-            `/applications/${applicationId}/orchestration`
-          );
-        }}
+        onClose={closeInstalledTemplateImport}
+        onImported={finishInstalledTemplateImport}
       />
     </div>
   );

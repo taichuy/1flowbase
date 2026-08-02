@@ -89,8 +89,28 @@ describe('ApplicationListPage', () => {
     authenticate();
     applicationsApi.fetchApplicationCatalog.mockResolvedValue({
       types: [
-        { value: 'agent_flow', label: 'AgentFlow' },
-        { value: 'workflow', label: '工作流' }
+        {
+          value: 'agent_flow',
+          label: 'AgentFlow',
+          description: 'Agent Flow 应用'
+        },
+        {
+          value: 'workflow',
+          label: '工作流',
+          description: '工作流应用'
+        }
+      ],
+      workflow_triggers: [
+        {
+          value: 'extension',
+          label: '扩展触发',
+          description: '由扩展 HTTP 入口触发'
+        },
+        {
+          value: 'schedule',
+          label: '定时触发',
+          description: '按计划触发'
+        }
       ],
       tags: [{ id: 'tag-1', name: '客服', application_count: 1 }]
     });
