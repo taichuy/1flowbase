@@ -1179,6 +1179,18 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
         json!(env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
+    let manifest_paths = manifest["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["path"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    let mut lexicographic_paths = manifest_paths.clone();
+    lexicographic_paths.sort();
+    assert_eq!(
+        manifest_paths, lexicographic_paths,
+        "manifest files must use deterministic lexicographic path order"
+    );
 
     let tool_path = manifest["files"]
         .as_array()

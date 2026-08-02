@@ -976,6 +976,7 @@ fn build_bundle_archive(
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_connection"))?;
         files.push((path, content, domain::McpBundleFileKind::Connection));
     }
+    files.sort_by(|left, right| left.0.cmp(&right.0));
     package.manifest.files = files
         .iter()
         .map(|(path, content, kind)| domain::McpBundleFile {
