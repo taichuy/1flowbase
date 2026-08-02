@@ -164,6 +164,13 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.mcp-management",
         &[
+            "mcp.bundle_library.current.switch",
+            "mcp.bundle_library.import",
+            "mcp.bundle_library.list",
+            "mcp.bundle_library.preview",
+            "mcp.bundle_library.releases.delete",
+            "mcp.bundle_library.releases.repair",
+            "mcp.bundle_library.sync",
             "mcp.bundles.export",
             "mcp.bundles.import",
             "mcp.bundles.official.list",

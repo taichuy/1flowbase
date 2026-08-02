@@ -1144,37 +1144,37 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             (
                 "GET",
                 "/api/console/mcp/bundles/library",
-                "authenticated"
+                "mcp.bundle_library.list"
             ),
             (
                 "POST",
                 "/api/console/mcp/bundles/library/:organization/:bundle_id/sync",
-                "authenticated"
+                "mcp.bundle_library.sync"
             ),
             (
                 "POST",
                 "/api/console/mcp/bundles/library/:organization/:bundle_id/preview",
-                "authenticated"
+                "mcp.bundle_library.preview"
             ),
             (
                 "POST",
                 "/api/console/mcp/bundles/library/:organization/:bundle_id/import",
-                "authenticated"
+                "mcp.bundle_library.import"
             ),
             (
                 "POST",
                 "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
-                "authenticated"
+                "mcp.bundle_library.current.switch"
             ),
             (
                 "DELETE",
                 "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
-                "authenticated"
+                "mcp.bundle_library.releases.delete"
             ),
             (
                 "POST",
                 "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
-                "authenticated"
+                "mcp.bundle_library.releases.repair"
             ),
             (
                 "POST",

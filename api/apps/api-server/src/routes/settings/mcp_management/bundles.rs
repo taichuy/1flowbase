@@ -43,36 +43,57 @@ const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 256;
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
         .route(
             "/mcp/bundles/library",
-            console_get(list_bundle_library, Authenticated),
+            console_get(
+                list_bundle_library,
+                ConsoleOperation("mcp.bundle_library.list".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/library/:organization/:bundle_id/sync",
-            console_post(sync_library_bundle, Authenticated),
+            console_post(
+                sync_library_bundle,
+                ConsoleOperation("mcp.bundle_library.sync".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/library/:organization/:bundle_id/preview",
-            console_post(preview_library_bundle, Authenticated),
+            console_post(
+                preview_library_bundle,
+                ConsoleOperation("mcp.bundle_library.preview".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/library/:organization/:bundle_id/import",
-            console_post(import_library_bundle, Authenticated),
+            console_post(
+                import_library_bundle,
+                ConsoleOperation("mcp.bundle_library.import".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
-            console_post(switch_library_bundle, Authenticated),
+            console_post(
+                switch_library_bundle,
+                ConsoleOperation("mcp.bundle_library.current.switch".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
-            console_delete(delete_library_bundle_release, Authenticated),
+            console_delete(
+                delete_library_bundle_release,
+                ConsoleOperation("mcp.bundle_library.releases.delete".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
-            console_post(repair_library_bundle_release, Authenticated),
+            console_post(
+                repair_library_bundle_release,
+                ConsoleOperation("mcp.bundle_library.releases.repair".to_string()),
+            ),
         )
         .route(
             "/mcp/bundles/official",
