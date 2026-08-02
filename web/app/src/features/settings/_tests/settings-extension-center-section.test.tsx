@@ -213,6 +213,14 @@ function renderSection(
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 describe('SettingsExtensionCenterSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -412,6 +420,57 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
+  test('AC-002 keeps the installed target row loading for the complete update request', async () => {
+    const secondInstalledEntry = {
+      ...installedEntry,
+      id: 'extension-installation-2',
+      catalog_id: 'runtime-extensions:taichuy/anthropic',
+      artifact_id: 'anthropic',
+      installed_versions: []
+    };
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValue({
+      limit: 20,
+      total_entries: 2,
+      next_cursor: null,
+      entries: [installedEntry, secondInstalledEntry]
+    });
+    const updateResult = {
+      installation: installedEntry,
+      local_artifact_was_present: true,
+      node_plugin_installation_id: 'plugin-installation-1',
+      application_action: 'configure_model_provider' as const,
+      application_status: 'available' as const
+    };
+    const pendingUpdate = deferred<typeof updateResult>();
+    extensionsApi.installSettingsExtension.mockReturnValue(
+      pendingUpdate.promise
+    );
+
+    renderSection();
+    const targetRow = await screen.findByRole('row', { name: /openai/ });
+    const otherRow = await screen.findByRole('row', { name: /anthropic/ });
+    const targetButton = within(targetRow).getByRole('button', {
+      name: '更新'
+    });
+    const otherButton = within(otherRow).getByRole('button', {
+      name: '更新'
+    });
+    fireEvent.click(targetButton);
+
+    await waitFor(() => {
+      expect(extensionsApi.installSettingsExtension).toHaveBeenCalled();
+      expect(targetButton).toHaveClass('ant-btn-loading');
+      expect(otherButton).toBeDisabled();
+      expect(otherButton).not.toHaveClass('ant-btn-loading');
+    });
+
+    pendingUpdate.resolve(updateResult);
+    await waitFor(() => {
+      expect(targetButton).not.toHaveClass('ant-btn-loading');
+      expect(otherButton).not.toBeDisabled();
+    });
+  });
+
   test('Root-AC-006 lists a structured risk challenge and retries with its exact codes', async () => {
     const riskError = new Error('confirmation required');
     const challenge = {
@@ -440,6 +499,11 @@ describe('SettingsExtensionCenterSection', () => {
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(1));
+    expect(
+      within(
+        screen.getByRole('row', { name: /OpenAI Provider/ })
+      ).getByRole('button', { name: /更新$/ })
+    ).toHaveClass('ant-btn-loading');
     const riskConfirmation = vi.mocked(Modal.confirm).mock.calls.at(-1)?.[0];
     render(riskConfirmation?.content as ReactNode);
     expect(
@@ -460,6 +524,13 @@ describe('SettingsExtensionCenterSection', () => {
         },
         true
       );
+    });
+    await waitFor(() => {
+      expect(
+        within(
+          screen.getByRole('row', { name: /OpenAI Provider/ })
+        ).getByRole('button', { name: /更新$/ })
+      ).not.toHaveClass('ant-btn-loading');
     });
   });
 
@@ -526,6 +597,84 @@ describe('SettingsExtensionCenterSection', () => {
         within(row).getByRole('button', { name: '安装' })
       ).toBeInTheDocument();
     }
+  });
+
+  test('AC-001 loads only the catalog row being installed and disables the other row', async () => {
+    const fusionEntry = {
+      ...catalogEntry,
+      id: 'agent-flow:taichuy/fusion',
+      category: 'agent-flow' as const,
+      artifact: 'fusion',
+      name: 'Fusion',
+      current_version: null,
+      installation_status: 'not_installed'
+    };
+    const deepseekEntry = {
+      ...fusionEntry,
+      id: 'agent-flow:taichuy/deepseek-v4',
+      artifact: 'deepseek-v4',
+      name: 'Deepseek V4'
+    };
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'agent-flow',
+      catalog_page: 'start',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:agent',
+      catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 2,
+      entries: [fusionEntry, deepseekEntry]
+    });
+    const installResult = {
+      installation: { ...installedEntry, id: 'agent-installation-1' },
+      local_artifact_was_present: false,
+      node_plugin_installation_id: null,
+      application_action: 'none' as const,
+      application_status: 'not_required' as const
+    };
+    const pendingInstall = deferred<typeof installResult>();
+    extensionsApi.installSettingsExtension.mockReturnValue(
+      pendingInstall.promise
+    );
+
+    renderSection('agent-flow');
+    const targetRow = await screen.findByRole('row', { name: /Fusion/ });
+    await screen.findByRole('row', { name: /Deepseek V4/ });
+    const targetButton = within(targetRow).getByRole('button', {
+      name: '安装'
+    });
+    fireEvent.click(targetButton);
+
+    await waitFor(() => {
+      const currentTargetButton = within(
+        screen.getByRole('row', { name: /Fusion/ })
+      ).getByRole('button', { name: /安装$/ });
+      const currentOtherButton = within(
+        screen.getByRole('row', { name: /Deepseek V4/ })
+      ).getByRole('button', { name: '安装' });
+      expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
+        fusionEntry,
+        'csrf-123',
+        {},
+        false
+      );
+      expect(currentTargetButton).toHaveClass('ant-btn-loading');
+      expect(currentOtherButton).toBeDisabled();
+      expect(currentOtherButton).not.toHaveClass('ant-btn-loading');
+    });
+
+    pendingInstall.resolve(installResult);
+    await waitFor(() => {
+      const currentTargetButton = within(
+        screen.getByRole('row', { name: /Fusion/ })
+      ).getByRole('button', { name: '安装' });
+      const currentOtherButton = within(
+        screen.getByRole('row', { name: /Deepseek V4/ })
+      ).getByRole('button', { name: '安装' });
+      expect(currentTargetButton).not.toHaveClass('ant-btn-loading');
+      expect(currentOtherButton).not.toBeDisabled();
+    });
   });
 
   test('D5-AC-006 restores cursor from route search and writes pagination to navigation', async () => {

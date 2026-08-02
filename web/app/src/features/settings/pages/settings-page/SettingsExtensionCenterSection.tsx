@@ -138,7 +138,7 @@ export function SettingsExtensionCenterSection({
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {}
   );
-  const [resolvingUpdateKey, setResolvingUpdateKey] = useState<string | null>(
+  const [activeOperationKey, setActiveOperationKey] = useState<string | null>(
     null
   );
   const [applicationTarget, setApplicationTarget] =
@@ -304,6 +304,7 @@ export function SettingsExtensionCenterSection({
           ),
           okText: t('auto.confirm'),
           cancelText: t('auto.cancel'),
+          onCancel: () => setActiveOperationKey(null),
           onOk: () =>
             operationMutation.mutateAsync({
               operation,
@@ -333,26 +334,34 @@ export function SettingsExtensionCenterSection({
         return;
       }
 
-      message.success(t('auto.extension_operation_completed'));
-      await invalidateExtensionApplicationState();
-      if (
-        result &&
-        ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
-          result.application_action
-        )
-      ) {
-        setApplicationTarget({
-          installationId: result.installation.id,
-          action: result.application_action
-        });
+      try {
+        message.success(t('auto.extension_operation_completed'));
+        await invalidateExtensionApplicationState();
+        if (
+          result &&
+          ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
+            result.application_action
+          )
+        ) {
+          setApplicationTarget({
+            installationId: result.installation.id,
+            action: result.application_action
+          });
+        }
+      } finally {
+        setActiveOperationKey(null);
       }
     },
-    onError: () => message.error(t('auto.extension_operation_failed'))
+    onError: () => {
+      setActiveOperationKey(null);
+      message.error(t('auto.extension_operation_failed'));
+    }
   });
   const runOperation = operationMutation.mutateAsync;
 
   const submitOperation = useCallback(
     (operation: ExtensionOperation) => {
+      setActiveOperationKey(operation.entry.id);
       void runOperation({ operation });
     },
     [runOperation]
@@ -361,7 +370,7 @@ export function SettingsExtensionCenterSection({
   const resolveInstalledUpdate = useCallback(
     async (row: SettingsInstalledExtension) => {
       const key = extensionKey(row);
-      setResolvingUpdateKey(key);
+      setActiveOperationKey(key);
       try {
         const entry = await fetchSettingsExtensionCatalogEntry(
           row.category,
@@ -373,9 +382,8 @@ export function SettingsExtensionCenterSection({
           ...current,
           [key]: 'unknown_error'
         }));
+        setActiveOperationKey(null);
         message.error(t('auto.extension_operation_failed'));
-      } finally {
-        setResolvingUpdateKey(null);
       }
     },
     [submitOperation, t]
@@ -477,7 +485,11 @@ export function SettingsExtensionCenterSection({
                   >
                     <Button
                       type="link"
-                      loading={resolvingUpdateKey === key}
+                      loading={activeOperationKey === key}
+                      disabled={
+                        activeOperationKey !== null &&
+                        activeOperationKey !== key
+                      }
                       onClick={() => void resolveInstalledUpdate(row)}
                     >
                       {t('auto.update')}
@@ -531,7 +543,10 @@ export function SettingsExtensionCenterSection({
               >
                 <Button
                   type="link"
-                  loading={operationMutation.isPending}
+                  loading={activeOperationKey === key}
+                  disabled={
+                    activeOperationKey !== null && activeOperationKey !== key
+                  }
                   onClick={() =>
                     submitOperation({
                       kind: 'catalog',
@@ -559,9 +574,8 @@ export function SettingsExtensionCenterSection({
       }
     ],
     [
-      operationMutation.isPending,
+      activeOperationKey,
       resolveInstalledUpdate,
-      resolvingUpdateKey,
       submitOperation,
       t,
       updateStates
