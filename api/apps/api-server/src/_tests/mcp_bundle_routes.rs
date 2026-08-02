@@ -196,15 +196,21 @@ async fn mcp_bundle_library_routes_enforce_session_and_csrf() {
         .unwrap();
     assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
 
-    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let (set_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let cookie = set_cookie
+        .split(';')
+        .next()
+        .expect("sign-in must return a session cookie")
+        .to_string();
     let catalog = get_json(&app, "/api/console/mcp/bundles/library", &cookie).await;
     assert_eq!(catalog["data"]["remote_available"], true);
     let missing_csrf = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/api/console/mcp/bundles/library/taichuy/test_bundle/sync")
-                .header("cookie", cookie)
+                .header("cookie", &cookie)
                 .header("content-type", "application/json")
                 .body(Body::from("{}"))
                 .unwrap(),
