@@ -652,38 +652,80 @@ export function seedStyleBoundaryTemplateFetch() {
     if (
       method.toUpperCase() === 'GET' &&
       requestUrl.pathname ===
-        '/api/console/applications/orchestration/templates/official-catalog'
+        '/api/console/settings/extension-center/installed' &&
+      requestUrl.searchParams.get('category') === 'agent-flow'
     ) {
       return createStyleBoundaryJsonResponse({
         data: {
-          remote_available: true,
-          remote_error: null,
-          templates: [
+          limit: 50,
+          total_entries: 1,
+          next_cursor: null,
+          entries: [
             {
-              template_id: 'boundary-template',
-              source_path: null,
-              current_release_version: null,
-              local_versions: [],
-              remote_versions: [
+              id: 'boundary-template-v1',
+              category: 'agent-flow',
+              catalog_id: 'agent-flow:openai/boundary-template',
+              organization: 'openai',
+              artifact_id: 'boundary-template',
+              version: '1.0.0',
+              node_id: 'node-1',
+              source: 'official',
+              trust: 'official',
+              warnings: [],
+              local_path: '/extensions/boundary-template/1.0.0',
+              checksum: 'sha256:boundary-template',
+              signature_status: 'valid',
+              signature_algorithm: 'ed25519',
+              signing_key_id: 'official-key',
+              status: 'installed',
+              is_current: true,
+              application_action: 'import_agent_flow',
+              application_status: 'not_applied',
+              installed_by: 'user-1',
+              created_at: '2026-06-16T00:00:00.000Z',
+              updated_at: '2026-06-16T00:00:00.000Z',
+              installed_versions: [
                 {
-                  template_id: 'boundary-template',
-                  release_version: 1,
-                  exported_from_system_version: '0.3.1',
-                  exported_at: '2026-06-16T00:00:00.000Z',
-                  application: {
-                    name: 'Boundary Template',
-                    description: 'Style boundary AgentFlow template'
-                  },
-                  download_url:
-                    'https://example.com/agent-flow/boundary-template/1',
+                  id: 'boundary-template-v1',
+                  version: '1.0.0',
+                  source: 'official',
+                  trust: 'official',
+                  warnings: [],
+                  local_path: '/extensions/boundary-template/1.0.0',
                   checksum: 'sha256:boundary-template',
-                  algorithm: 'sha256',
-                  key_id: 'official-key',
-                  signature: 'boundary-signature'
+                  signature_status: 'valid',
+                  signature_algorithm: 'ed25519',
+                  signing_key_id: 'official-key',
+                  status: 'installed',
+                  is_current: true,
+                  installed_by: 'user-1',
+                  created_at: '2026-06-16T00:00:00.000Z',
+                  updated_at: '2026-06-16T00:00:00.000Z'
                 }
               ]
             }
           ]
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname ===
+        '/api/console/settings/extension-center/catalog/agent-flow'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          category: 'agent-flow',
+          catalog_page: 'boundary-agent-flow',
+          catalog_page_number: 1,
+          catalog_page_checksum: 'sha256:boundary-agent-flow',
+          catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+          limit: 20,
+          next_cursor: null,
+          total_entries: 0,
+          entries: []
         },
         meta: null
       });

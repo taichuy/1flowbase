@@ -1,18 +1,28 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applicationsApi = vi.hoisted(() => ({
   applicationsQueryKey: ['applications'],
   applicationCatalogQueryKey: ['applications', 'catalog'],
+  installedAgentFlowsQueryKey: ['applications', 'installed-agent-flows'],
   fetchApplications: vi.fn(),
   fetchApplicationCatalog: vi.fn(),
   fetchApplicationDetail: vi.fn(),
+  fetchInstalledAgentFlows: vi.fn(),
   createApplication: vi.fn(),
   createApplicationTag: vi.fn(),
   deleteApplication: vi.fn(),
   exportApplicationArchive: vi.fn(),
   importApplicationArchive: vi.fn(),
   previewApplicationArchive: vi.fn(),
+  previewInstalledApplicationExtension: vi.fn(),
+  importInstalledApplicationExtension: vi.fn(),
   updateApplication: vi.fn()
 }));
 
@@ -110,6 +120,12 @@ describe('ApplicationListPage', () => {
         tags: []
       }
     ]);
+    applicationsApi.fetchInstalledAgentFlows.mockResolvedValue({
+      limit: 50,
+      total_entries: 0,
+      next_cursor: null,
+      entries: []
+    });
     applicationsApi.fetchApplicationDetail.mockResolvedValue({
       id: 'app-1',
       application_type: 'agent_flow',
@@ -159,8 +175,12 @@ describe('ApplicationListPage', () => {
       application_count: 0
     });
     applicationsApi.deleteApplication.mockResolvedValue(undefined);
-    applicationsApi.exportApplicationArchive.mockReturnValue(new Promise(() => undefined));
-    applicationsApi.importApplicationArchive.mockReturnValue(new Promise(() => undefined));
+    applicationsApi.exportApplicationArchive.mockReturnValue(
+      new Promise(() => undefined)
+    );
+    applicationsApi.importApplicationArchive.mockReturnValue(
+      new Promise(() => undefined)
+    );
     applicationsApi.previewApplicationArchive.mockResolvedValue({
       schema_version: '1flowbase.application-template/v1',
       application: {
@@ -189,6 +209,28 @@ describe('ApplicationListPage', () => {
         }
       }
     });
+    applicationsApi.previewInstalledApplicationExtension.mockResolvedValue({
+      extension_installation_id: 'agent-flow-installation-1',
+      application_status: 'not_applied',
+      integrity_warnings: [],
+      required_integrity_override: null,
+      preview: {
+        application: {
+          application_type: 'agent_flow',
+          name: '本地客服模板',
+          description: '本地模板描述',
+          icon: null,
+          icon_type: null,
+          icon_background: null
+        },
+        dependencies: [],
+        unresolved_nodes: [],
+        flow_document: {}
+      }
+    });
+    applicationsApi.importInstalledApplicationExtension.mockReturnValue(
+      new Promise(() => undefined)
+    );
     applicationsApi.updateApplication.mockResolvedValue(undefined);
   });
 
@@ -199,7 +241,9 @@ describe('ApplicationListPage', () => {
   test('renders backend-driven type tabs and filters the list', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
     expect(screen.getByText('AgentFlow')).toBeInTheDocument();
     expect(screen.getByText('工作流')).toBeInTheDocument();
 
@@ -217,10 +261,14 @@ describe('ApplicationListPage', () => {
   test('creates a new tag from the card dialog and saves it back to the application', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '管理标签-客服助手' }));
 
-    const dialog = await screen.findByRole('dialog', undefined, { timeout: 10_000 });
+    const dialog = await screen.findByRole('dialog', undefined, {
+      timeout: 10_000
+    });
     expect(within(dialog).getByText('管理应用标签')).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('新标签名称'), {
       target: { value: '内部' }
@@ -259,11 +307,17 @@ describe('ApplicationListPage', () => {
   test('edits application name and description from the card action', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole('button', { name: '更多操作-客服助手' }));
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: '更多操作-客服助手' })
+    );
     fireEvent.click(await screen.findByText('编辑信息'));
 
-    const dialog = await screen.findByRole('dialog', undefined, { timeout: 10_000 });
+    const dialog = await screen.findByRole('dialog', undefined, {
+      timeout: 10_000
+    });
     expect(within(dialog).getByText('编辑应用信息')).toBeInTheDocument();
     const nameInput = await within(dialog).findByLabelText(
       '名称',
@@ -297,21 +351,30 @@ describe('ApplicationListPage', () => {
   test('opens the application from the card link instead of a dedicated button', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
 
-    expect(screen.queryByRole('button', { name: '进入应用' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '进入应用-客服助手' })).toHaveAttribute(
-      'href',
-      '/applications/app-1/orchestration'
-    );
-    expect(screen.getByRole('button', { name: '更多操作-客服助手' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '进入应用' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: '进入应用-客服助手' })
+    ).toHaveAttribute('href', '/applications/app-1/orchestration');
+    expect(
+      screen.getByRole('button', { name: '更多操作-客服助手' })
+    ).toBeInTheDocument();
   }, 15_000);
 
   test('copies application metadata from the card action', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole('button', { name: '更多操作-客服助手' }));
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: '更多操作-客服助手' })
+    );
 
     fireEvent.click(screen.getByText('复制'));
 
@@ -336,8 +399,12 @@ describe('ApplicationListPage', () => {
   test('exports an AgentFlow template from the card action', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole('button', { name: '更多操作-客服助手' }));
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: '更多操作-客服助手' })
+    );
     fireEvent.click(screen.getByText('导出应用'));
 
     await waitFor(
@@ -353,7 +420,9 @@ describe('ApplicationListPage', () => {
   test('previews and imports a selected application ZIP archive', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
     const input = screen.getByLabelText('导入应用压缩包') as HTMLInputElement;
     const file = new File(['archive'], 'support-application.zip', {
       type: 'application/zip'
@@ -370,7 +439,9 @@ describe('ApplicationListPage', () => {
       { timeout: 10_000 }
     );
 
-    const dialog = await screen.findByRole('dialog', undefined, { timeout: 10_000 });
+    const dialog = await screen.findByRole('dialog', undefined, {
+      timeout: 10_000
+    });
     expect(within(dialog).getByText('导入应用压缩包')).toBeInTheDocument();
     expect(within(dialog).getByText('应用依赖已就绪')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
@@ -390,20 +461,92 @@ describe('ApplicationListPage', () => {
     );
   }, 15_000);
 
+  test('AC-007 selects a local installed Agent Flow and reuses preview/import without remote discovery', async () => {
+    applicationsApi.fetchInstalledAgentFlows.mockResolvedValue({
+      limit: 50,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [
+        {
+          id: 'agent-flow-installation-1',
+          category: 'agent-flow',
+          catalog_id: 'agent-flow:taichuy/support',
+          organization: 'taichuy',
+          artifact_id: 'support',
+          version: '1.0.0',
+          status: 'installed',
+          application_action: 'import_agent_flow'
+        }
+      ]
+    });
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '从应用模板创建' })
+    );
+    const drawer = await screen.findByRole('dialog');
+    expect(
+      within(drawer).getByRole('link', { name: '管理本地模板' })
+    ).toHaveAttribute('href', '/templates');
+    fireEvent.click(within(drawer).getByRole('button', { name: '导入应用' }));
+
+    await waitFor(() => {
+      expect(
+        applicationsApi.previewInstalledApplicationExtension
+      ).toHaveBeenCalledWith('agent-flow-installation-1');
+    });
+    const importDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(importDialog).getByRole('button', { name: '导入应用' })
+    );
+    await waitFor(() => {
+      expect(
+        applicationsApi.importInstalledApplicationExtension
+      ).toHaveBeenCalledWith(
+        'agent-flow-installation-1',
+        { name: '本地客服模板', description: '本地模板描述' },
+        'csrf-123'
+      );
+    });
+  }, 15_000);
+
+  test('AC-007 empty local template picker links to the Agent Flow extension center', async () => {
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: '从应用模板创建' })
+    );
+    expect(
+      await screen.findByRole('link', {
+        name: '前往扩展中心安装 Agent Flow 模板'
+      })
+    ).toHaveAttribute('href', '/settings/extension-center/agent-flow');
+  }, 15_000);
+
   test('confirms and deletes an application from the card action', async () => {
     renderPage();
 
-    expect(await screen.findByText('客服助手', {}, { timeout: 10_000 })).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole('button', { name: '更多操作-客服助手' }));
+    expect(
+      await screen.findByText('客服助手', {}, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(
+      screen.getByRole('button', { name: '更多操作-客服助手' })
+    );
     fireEvent.click(await screen.findByText('删除'));
 
-    const dialog = await screen.findByRole('dialog', undefined, { timeout: 10_000 });
-    expect(within(dialog).getByText(/相关的编排、草稿、运行记录和标签绑定/)).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', undefined, {
+      timeout: 10_000
+    });
+    expect(
+      within(dialog).getByText(/相关的编排、草稿、运行记录和标签绑定/)
+    ).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
 
     await waitFor(
       () => {
-        expect(applicationsApi.deleteApplication).toHaveBeenCalledWith('app-1', 'csrf-123');
+        expect(applicationsApi.deleteApplication).toHaveBeenCalledWith(
+          'app-1',
+          'csrf-123'
+        );
       },
       { timeout: 10_000 }
     );

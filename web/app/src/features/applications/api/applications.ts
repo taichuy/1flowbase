@@ -10,6 +10,7 @@ import {
   importConsoleInstalledApplicationExtension,
   listConsoleApplicationEnvironmentVariables,
   listConsoleApplications,
+  listConsoleInstalledExtensions,
   previewConsoleApplicationArchive,
   previewConsoleInstalledApplicationExtension,
   replaceConsoleApplicationEnvironmentVariables,
@@ -24,6 +25,7 @@ import {
   type ConsoleApplicationEnvironmentVariable,
   type ConsoleApplicationSummary,
   type ConsoleApplicationTagCatalogEntry,
+  type ConsoleInstalledExtension,
   type CreateConsoleApplicationInput,
   type UpdateConsoleApplicationInput
 } from '@1flowbase/api-client';
@@ -47,6 +49,7 @@ export type ImportAgentFlowTemplateInput = ImportConsoleAgentFlowTemplateInput;
 export type ImportAgentFlowTemplateResponse =
   ImportConsoleAgentFlowTemplateResponse;
 export type UpdateApplicationInput = UpdateConsoleApplicationInput;
+export type InstalledAgentFlow = ConsoleInstalledExtension;
 export interface CreateApplicationTagInput {
   name: string;
 }
@@ -58,6 +61,14 @@ export const applicationDetailQueryKey = (applicationId: string) =>
 export const applicationEnvironmentVariablesQueryKey = (
   applicationId: string
 ) => ['applications', applicationId, 'environment-variables'] as const;
+export const installedAgentFlowsQueryKey = [
+  'applications',
+  'installed-agent-flows'
+] as const;
+
+export function fetchInstalledAgentFlows() {
+  return listConsoleInstalledExtensions(undefined, 50, 'agent-flow');
+}
 
 export function getApplicationsApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'

@@ -111,6 +111,10 @@
       "web/app/src/app-shell/account-menu-items.tsx",
       "web/app/src/features/home/pages/HomePage.tsx",
       "web/app/src/features/applications/pages/ApplicationListPage.tsx",
+      "web/app/src/features/applications/components/InstalledAgentFlowPickerDrawer.tsx",
+      "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
+      "web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx",
+      "web/app/src/features/applications/api/applications.ts",
       "web/app/src/features/applications/components/ApplicationCardGrid.tsx",
       "web/app/src/shared/schema-ui/v1/contracts/overlay-shell-schema.ts",
       "web/app/src/shared/schema-ui/v1/overlay-shell/SchemaModalPanel.tsx",
@@ -626,6 +630,9 @@
       "web/app/src/features/templates/components/AgentFlowTemplateLibrary.tsx",
       "web/app/src/features/templates/components/agent-flow-template-library.css",
       "web/app/src/features/templates/api/templates.ts",
+      "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
+      "web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx",
+      "web/packages/api-client/src/console/extensions.ts",
       "web/packages/api-client/src/console/application-orchestration.ts",
       "web/app/src/app/router.tsx"
     ],
@@ -645,7 +652,7 @@
   {
     "id": "page.settings-extension-center-agent-flow",
     "kind": "page",
-    "title": "Settings Agent Flow Template Library",
+    "title": "Settings Agent Flow Extension Catalog",
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
@@ -664,26 +671,14 @@
       "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
       "web/app/src/features/settings/components/settings-section-surface.css",
-      "web/app/src/features/templates/components/AgentFlowTemplateLibrary.tsx",
-      "web/app/src/features/templates/components/agent-flow-template-library.css",
-      "web/app/src/features/templates/api/templates.ts",
-      "web/packages/api-client/src/console/application-orchestration.ts",
+      "web/app/src/features/settings/api/extensions.ts",
+      "web/packages/api-client/src/console/extensions.ts",
       "web/app/src/app/router.tsx"
     ],
     "boundaryNodes": [
       {
         "id": "shell-header",
         "selector": ".app-shell-header",
-        "propertyAssertions": [
-          {
-            "property": "display",
-            "expected": "flex"
-          }
-        ]
-      },
-      {
-        "id": "agent-flow-template-library",
-        "selector": ".agent-flow-template-library",
         "propertyAssertions": [
           {
             "property": "display",

@@ -8,7 +8,6 @@ import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/A
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
-import { AgentFlowTemplateLibrary } from '../features/templates/components/AgentFlowTemplateLibrary';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,
@@ -176,10 +175,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   },
   'page.settings-extension-center-agent-flow': () => {
     seedStyleBoundaryTemplateFetch();
-    return renderShellScene(
-      '/settings/extension-center/agent-flow',
-      <AgentFlowTemplateLibrary variant="compact" />
-    );
+    return renderRouterScene('/settings/extension-center/agent-flow');
   },
   'page.settings': () => {
     seedStyleBoundarySettingsFetch();

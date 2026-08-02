@@ -21,7 +21,6 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
-import { AgentFlowTemplateLibrary } from '../../../templates/components/AgentFlowTemplateLibrary';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -124,49 +123,10 @@ function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
 }
 
-function AgentFlowExtensionCenterSection() {
-  const { t } = useTranslation('settings');
-  const navigate = useNavigate();
-
-  return (
-    <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16}>
-        <Tabs
-          activeKey="agent-flow"
-          tabBarExtraContent={
-            <Typography.Link href="/templates">
-              {t('auto.go_to_agent_flow_templates')}
-            </Typography.Link>
-          }
-          onChange={(key) => {
-            void navigate({
-              to: '/settings/extension-center/$category',
-              params: { category: key },
-              search: { cursor: undefined }
-            });
-          }}
-          items={[
-            { key: 'installed', label: t('auto.installed_extensions') },
-            ...CATEGORIES.map((category) => ({
-              key: category,
-              label: category
-            }))
-          ]}
-        />
-        <AgentFlowTemplateLibrary variant="compact" />
-      </Flex>
-    </SettingsSectionSurface>
-  );
-}
-
 export function SettingsExtensionCenterSection(props: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
 }) {
-  if (props.category === 'agent-flow') {
-    return <AgentFlowExtensionCenterSection />;
-  }
-
   return <GenericExtensionCenterSection {...props} />;
 }
 
@@ -238,7 +198,7 @@ function GenericExtensionCenterSection({
     ]
   );
 
-  useEffect(() => {
+  const checkVisibleUpdates = useCallback(async () => {
     if (!csrfToken || rows.length === 0) return;
 
     const checkableRows = rows.filter(
@@ -252,13 +212,13 @@ function GenericExtensionCenterSection({
     }
     if (groups.size === 0) return;
 
-    const checking = Object.fromEntries(
-      checkableRows.map((row) => [extensionKey(row), 'checking' as const])
-    );
-    setUpdateStates((current) => ({ ...current, ...checking }));
-
-    let cancelled = false;
-    void Promise.all(
+    setUpdateStates((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        checkableRows.map((row) => [extensionKey(row), 'checking' as const])
+      )
+    }));
+    const results = await Promise.all(
       [...groups.entries()].map(async ([category, entries]) => {
         try {
           const result = await checkSettingsExtensionUpdates(
@@ -289,19 +249,12 @@ function GenericExtensionCenterSection({
           );
         }
       })
-    ).then((results) => {
-      if (!cancelled) {
-        setUpdateStates((current) => ({
-          ...current,
-          ...Object.fromEntries(results.flat())
-        }));
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, cursor, rows]);
+    );
+    setUpdateStates((current) => ({
+      ...current,
+      ...Object.fromEntries(results.flat())
+    }));
+  }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, rows]);
 
   const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([
@@ -522,7 +475,9 @@ function GenericExtensionCenterSection({
                       ? t('auto.update_available')
                       : updateState === 'current'
                         ? t('auto.currently_latest_version')
-                        : t('auto.update_check_failed')
+                        : updateState === 'unknown_error'
+                          ? t('auto.update_check_failed')
+                          : t('auto.check_updates')
                   }
                 >
                   <Badge
@@ -532,15 +487,18 @@ function GenericExtensionCenterSection({
                         ? '#ffba00'
                         : updateState === 'current'
                           ? 'transparent'
-                          : '#fb565b'
+                          : updateState === 'unknown_error'
+                            ? '#fb565b'
+                            : 'transparent'
                     }
                   >
                     <Button
                       type="link"
                       loading={activeOperationKey === key}
                       disabled={
-                        activeOperationKey !== null &&
-                        activeOperationKey !== key
+                        updateState !== 'update_available' ||
+                        (activeOperationKey !== null &&
+                          activeOperationKey !== key)
                       }
                       onClick={() => void resolveInstalledUpdate(row)}
                     >
@@ -665,6 +623,10 @@ function GenericExtensionCenterSection({
               <Typography.Link href="/settings/i18n">
                 {t('auto.go_to_language_management')}
               </Typography.Link>
+            ) : activeTab === 'agent-flow' ? (
+              <Typography.Link href="/templates">
+                {t('auto.go_to_agent_flow_templates')}
+              </Typography.Link>
             ) : null
           }
           onChange={(key) => {
@@ -691,6 +653,15 @@ function GenericExtensionCenterSection({
           loading={tableLoading}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
+              <Button
+                disabled={rows.length === 0}
+                loading={Object.values(updateStates).some(
+                  (state) => state === 'checking'
+                )}
+                onClick={() => void checkVisibleUpdates()}
+              >
+                {t('auto.check_updates')}
+              </Button>
               <DataTableColumnSettings
                 columns={columns}
                 configuration={tableConfiguration}

@@ -11,12 +11,15 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const extensionsApi = vi.hoisted(() => ({
-  settingsInstalledExtensionsQueryKey: vi.fn((cursor?: string) => [
-    'settings',
-    'extension-center',
-    'installed',
-    cursor ?? 'start'
-  ]),
+  settingsInstalledExtensionsQueryKey: vi.fn(
+    (cursor?: string, category?: string) => [
+      'settings',
+      'extension-center',
+      'installed',
+      category ?? 'all',
+      cursor ?? 'start'
+    ]
+  ),
   settingsExtensionCatalogQueryKey: vi.fn(
     (category: string, cursor?: string) => [
       'settings',
@@ -67,11 +70,6 @@ vi.mock('../api/extensions', () => extensionsApi);
 vi.mock('../api/i18n-catalog', () => i18nCatalogApi);
 vi.mock('../../applications/api/applications', () => applicationsApi);
 vi.mock('../api/mcp-management', () => mcpManagementApi);
-vi.mock('../../templates/components/AgentFlowTemplateLibrary', () => ({
-  AgentFlowTemplateLibrary: ({ variant }: { variant?: string }) => (
-    <div data-testid="agent-flow-template-library" data-variant={variant} />
-  )
-}));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => routerApi.navigate
 }));
@@ -97,6 +95,7 @@ const installedEntry = {
   signature_algorithm: 'ed25519',
   signing_key_id: 'official-key',
   status: 'installed',
+  is_current: true,
   application_action: 'configure_model_provider' as const,
   application_status: 'available' as const,
   installed_by: 'user-1',
@@ -115,6 +114,7 @@ const installedEntry = {
       signature_algorithm: 'ed25519',
       signing_key_id: 'official-key',
       status: 'installed',
+      is_current: true,
       installed_by: 'user-1',
       created_at: '2026-08-01T10:00:00Z',
       updated_at: '2026-08-01T10:00:00Z'
@@ -131,6 +131,7 @@ const installedEntry = {
       signature_algorithm: null,
       signing_key_id: null,
       status: 'installed',
+      is_current: false,
       installed_by: 'user-1',
       created_at: '2026-07-01T10:00:00Z',
       updated_at: '2026-07-01T10:00:00Z'
@@ -300,7 +301,7 @@ describe('SettingsExtensionCenterSection', () => {
     vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
 
-  test('Root-AC-002/003 renders seven tabs, loads installed inventory first, and checks only visible pages', async () => {
+  test('AC-005 loads installed inventory without a remote update check and checks only after the explicit action', async () => {
     renderSection();
 
     expect(await screen.findByText('openai')).toBeInTheDocument();
@@ -316,6 +317,8 @@ describe('SettingsExtensionCenterSection', () => {
       screen.getByRole('button', { name: '配置供应商' })
     ).toBeInTheDocument();
     expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
+    expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
         {
@@ -388,18 +391,42 @@ describe('SettingsExtensionCenterSection', () => {
     ).toBeInTheDocument();
   });
 
-  test('D4-AC-014 routes Agent Flow to the shared local template library instead of the generic catalog', async () => {
+  test('AC-005 routes Agent Flow through the generic catalog and links to local template management', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'agent-flow',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:agent-flow',
+      catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [
+        {
+          ...catalogEntry,
+          category: 'agent-flow',
+          id: 'agent-flow:taichuy/fusion',
+          name: 'Fusion',
+          current_version: null,
+          installation_status: 'not_installed'
+        }
+      ]
+    });
     renderSection('agent-flow');
+    const row = await screen.findByRole('row', { name: /Fusion/ });
+    expect(within(row).getByRole('button', { name: '安装' })).toBeEnabled();
     expect(
-      await screen.findByTestId('agent-flow-template-library')
-    ).toHaveAttribute('data-variant', 'compact');
-    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
-    expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
+      screen.getByRole('link', { name: '前往 Agent Flow 模板管理' })
+    ).toHaveAttribute('href', '/templates');
   });
 
   test('Root-AC-004 resolves and performs an installed-row update instead of switching tabs', async () => {
     renderSection();
     const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await waitFor(() =>
+      expect(within(row).getByRole('button', { name: '更新' })).toBeEnabled()
+    );
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     await waitFor(() => {
@@ -445,6 +472,24 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.installSettingsExtension.mockReturnValue(
       pendingUpdate.promise
     );
+    extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: null,
+      items: [
+        {
+          catalog_id: installedEntry.catalog_id,
+          current_version: '1.0.0',
+          latest_version: '1.1.0',
+          status: 'update_available'
+        },
+        {
+          catalog_id: secondInstalledEntry.catalog_id,
+          current_version: '1.0.0',
+          latest_version: '1.1.0',
+          status: 'update_available'
+        }
+      ]
+    });
 
     renderSection();
     const targetRow = await screen.findByRole('row', { name: /openai/ });
@@ -454,6 +499,11 @@ describe('SettingsExtensionCenterSection', () => {
     });
     const otherButton = within(otherRow).getByRole('button', {
       name: '更新'
+    });
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    await waitFor(() => {
+      expect(targetButton).toBeEnabled();
+      expect(otherButton).toBeEnabled();
     });
     fireEvent.click(targetButton);
 
@@ -543,6 +593,7 @@ describe('SettingsExtensionCenterSection', () => {
     const view = renderSection();
 
     const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
     await waitFor(() => {
       expect(
         within(row).getByRole('button', { name: '更新' }).closest('span')
@@ -694,12 +745,26 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('D6-AC-001 exposes Agent Flow management and never enters generic install/application flows', async () => {
+  test('AC-005 exposes Agent Flow management from its generic catalog', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'agent-flow',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:agent-flow',
+      catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 0,
+      entries: []
+    });
     renderSection('agent-flow');
     expect(
       await screen.findByRole('link', { name: '前往 Agent Flow 模板管理' })
     ).toHaveAttribute('href', '/templates');
-    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
+    expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+      'agent-flow',
+      undefined
+    );
     expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
     expect(
       applicationsApi.previewInstalledApplicationExtension

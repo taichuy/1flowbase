@@ -891,6 +891,7 @@
     "installation": "安装状态",
     "trust": "可信度",
     "update_available": "检测到可用更新",
+    "check_updates": "检查更新",
     "update_check_failed": "无法确定更新状态",
     "install": "安装",
     "installed_extensions": "已安装扩展",

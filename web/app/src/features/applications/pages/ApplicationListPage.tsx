@@ -56,6 +56,8 @@ import {
 import { ApplicationFormModal } from '../components/ApplicationFormModal';
 import { ApplicationTagManagerModal } from '../components/ApplicationTagManagerModal';
 import { ApplicationTemplateImportModal } from '../components/ApplicationTemplateImportModal';
+import { InstalledAgentFlowImportFlow } from '../components/InstalledAgentFlowImportFlow';
+import { InstalledAgentFlowPickerDrawer } from '../components/InstalledAgentFlowPickerDrawer';
 import { downloadApplicationArchive } from '../lib/template-download';
 
 type ApplicationTypeFilter = 'all' | Application['application_type'];
@@ -128,6 +130,10 @@ export function ApplicationListPage() {
   const [typeFilter, setTypeFilter] = useState<ApplicationTypeFilter>('all');
   const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [installedTemplateId, setInstalledTemplateId] = useState<string | null>(
+    null
+  );
   const [myCreated, setMyCreated] = useState(false);
   const [editingApplicationId, setEditingApplicationId] = useState<
     string | null
@@ -476,7 +482,7 @@ export function ApplicationListPage() {
               type="text"
               icon={<FileTextOutlined />}
               style={{ justifyContent: 'flex-start' }}
-              disabled
+              onClick={() => setTemplatePickerOpen(true)}
             >
               {t('auto.create_from_application_template')}
             </Button>
@@ -777,6 +783,28 @@ export function ApplicationListPage() {
           setImportPreview(null);
         }}
         onImport={() => importTemplateMutation.mutate()}
+      />
+      <InstalledAgentFlowPickerDrawer
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onSelect={(installationId) => {
+          setTemplatePickerOpen(false);
+          setInstalledTemplateId(installationId);
+        }}
+      />
+      <InstalledAgentFlowImportFlow
+        installationId={installedTemplateId}
+        csrfToken={csrfToken ?? ''}
+        onClose={() => setInstalledTemplateId(null)}
+        onImported={async (applicationId) => {
+          await queryClient.invalidateQueries({
+            queryKey: applicationsQueryKey
+          });
+          messageApi.success(t('auto.template_imported'));
+          window.location.assign(
+            `/applications/${applicationId}/orchestration`
+          );
+        }}
       />
     </div>
   );

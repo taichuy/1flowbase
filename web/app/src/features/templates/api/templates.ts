@@ -1,128 +1,31 @@
 import {
-  deleteConsoleOfficialAgentFlowTemplateRelease,
-  getDefaultApiBaseUrl,
-  importConsoleOfficialAgentFlowTemplate,
-  listConsoleOfficialAgentFlowTemplateCatalog,
-  previewConsoleOfficialAgentFlowTemplate,
-  repairConsoleOfficialAgentFlowTemplateRelease,
-  switchConsoleOfficialAgentFlowTemplateCurrent,
-  syncConsoleOfficialAgentFlowTemplate,
-  type ApiBaseUrlLocation,
-  type ConsoleAgentFlowTemplateLibraryEntry,
-  type ConsoleAgentFlowTemplateLocalVersion,
-  type ConsoleAgentFlowTemplatePreview,
-  type ConsoleOfficialAgentFlowTemplateCatalog,
-  type ImportConsoleAgentFlowTemplateResponse
+  deleteConsoleInstalledExtension,
+  listConsoleInstalledExtensions,
+  selectConsoleInstalledExtension,
+  type ConsoleInstalledExtension
 } from '@1flowbase/api-client';
 
-export type OfficialAgentFlowTemplateCatalog =
-  ConsoleOfficialAgentFlowTemplateCatalog;
-export type AgentFlowTemplateLibraryEntry =
-  ConsoleAgentFlowTemplateLibraryEntry;
-export type AgentFlowTemplateLocalVersion =
-  ConsoleAgentFlowTemplateLocalVersion;
-export type AgentFlowTemplatePreview = ConsoleAgentFlowTemplatePreview;
-export type ImportAgentFlowTemplateResponse =
-  ImportConsoleAgentFlowTemplateResponse;
+export type InstalledAgentFlowFamily = ConsoleInstalledExtension;
 
-export const officialAgentFlowTemplateCatalogQueryKey = [
+export const installedAgentFlowTemplatesQueryKey = [
   'templates',
-  'official-agent-flow',
-  'catalog'
+  'installed-agent-flow'
 ] as const;
 
-export function getTemplatesApiBaseUrl(
-  locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
-    ? window.location
-    : undefined
-): string {
-  return (
-    import.meta.env.VITE_API_BASE_URL ?? getDefaultApiBaseUrl(locationLike)
-  );
+export function fetchInstalledAgentFlowTemplates() {
+  return listConsoleInstalledExtensions(undefined, 50, 'agent-flow');
 }
 
-export function fetchOfficialAgentFlowTemplateCatalog() {
-  return listConsoleOfficialAgentFlowTemplateCatalog(getTemplatesApiBaseUrl());
-}
-
-export function previewOfficialAgentFlowTemplate(
-  templateId: string,
-  releaseVersion: number | undefined,
+export function selectInstalledAgentFlowVersion(
+  installationId: string,
   csrfToken: string
 ) {
-  return previewConsoleOfficialAgentFlowTemplate(
-    templateId,
-    releaseVersion === undefined ? {} : { release_version: releaseVersion },
-    csrfToken,
-    getTemplatesApiBaseUrl()
-  );
+  return selectConsoleInstalledExtension(installationId, csrfToken);
 }
 
-export function importOfficialAgentFlowTemplate(
-  templateId: string,
-  input: {
-    release_version?: number;
-    name?: string;
-    description?: string;
-  },
+export function deleteInstalledAgentFlowVersion(
+  installationId: string,
   csrfToken: string
 ) {
-  return importConsoleOfficialAgentFlowTemplate(
-    templateId,
-    input,
-    csrfToken,
-    getTemplatesApiBaseUrl()
-  );
-}
-
-export function syncOfficialAgentFlowTemplate(
-  templateId: string,
-  releaseVersion: number | undefined,
-  csrfToken: string
-) {
-  return syncConsoleOfficialAgentFlowTemplate(
-    templateId,
-    releaseVersion === undefined ? {} : { release_version: releaseVersion },
-    csrfToken,
-    getTemplatesApiBaseUrl()
-  );
-}
-
-export function switchOfficialAgentFlowTemplateCurrent(
-  templateId: string,
-  releaseVersion: number,
-  csrfToken: string
-) {
-  return switchConsoleOfficialAgentFlowTemplateCurrent(
-    templateId,
-    releaseVersion,
-    csrfToken,
-    getTemplatesApiBaseUrl()
-  );
-}
-
-export function deleteOfficialAgentFlowTemplateRelease(
-  templateId: string,
-  releaseVersion: number,
-  csrfToken: string
-) {
-  return deleteConsoleOfficialAgentFlowTemplateRelease(
-    templateId,
-    releaseVersion,
-    csrfToken,
-    getTemplatesApiBaseUrl()
-  );
-}
-
-export function repairOfficialAgentFlowTemplateRelease(
-  templateId: string,
-  releaseVersion: number,
-  csrfToken: string
-) {
-  return repairConsoleOfficialAgentFlowTemplateRelease(
-    templateId,
-    releaseVersion,
-    csrfToken,
-    getTemplatesApiBaseUrl()
-  );
+  return deleteConsoleInstalledExtension(installationId, csrfToken);
 }
