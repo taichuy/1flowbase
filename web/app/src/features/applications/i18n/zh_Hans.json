@@ -19,6 +19,7 @@
     "total_tokens": "总 tokens",
     "input_tokens": "输入 tokens",
     "output_tokens": "输出 tokens",
+    "count_tokens": "CountTokens",
     "input_cache_hit_tokens": "命中缓存 tokens",
     "input_cache_hit_rate": "缓存命中率",
     "high_token_runs_top_ten": "高 Token 运行 Top 10",

@@ -440,6 +440,7 @@ pub(super) fn map_application_run_log_summary(
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
             },
+            count_tokens_input_tokens: None,
             total_tokens: row.get("total_tokens"),
             input_tokens: row.get("input_tokens"),
             output_tokens: row.get("output_tokens"),

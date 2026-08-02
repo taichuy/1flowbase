@@ -1,4 +1,40 @@
 impl PgControlPlaneStore {
+    async fn list_application_run_count_tokens_results(
+        &self,
+        flow_run_ids: &[Uuid],
+    ) -> Result<Vec<control_plane::ports::ApplicationRunCountTokensResult>> {
+        if flow_run_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query(
+            r#"
+            select id, output_payload
+            from flow_runs
+            where id = any($1)
+              and output_payload ->> 'semantic_terminal' = 'count_tokens'
+            "#,
+        )
+        .bind(flow_run_ids)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let flow_run_id: Uuid = row.get("id");
+                let output_payload: serde_json::Value = row.get("output_payload");
+                let input_tokens =
+                    control_plane::orchestration_runtime::count_tokens_input_tokens_from_output_payload(
+                        &output_payload,
+                    )?
+                    .ok_or_else(|| anyhow!("CountTokens terminal did not contain a typed result"))?;
+                Ok(control_plane::ports::ApplicationRunCountTokensResult {
+                    flow_run_id,
+                    input_tokens,
+                })
+            })
+            .collect()
+    }
+
     async fn upsert_application_run_log_summary_for_flow_run(
         &self,
         flow_run: &domain::FlowRunRecord,
@@ -559,11 +595,23 @@ impl PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunLogSummaryPage {
-            items: rows
+        let mut items = rows
                 .into_iter()
                 .map(map_application_run_log_summary)
-                .collect::<Result<Vec<_>>>()?,
+                .collect::<Result<Vec<_>>>()?;
+        let flow_run_ids = items.iter().map(|item| item.run.id).collect::<Vec<_>>();
+        let count_tokens_results = self
+            .list_application_run_count_tokens_results(&flow_run_ids)
+            .await?
+            .into_iter()
+            .map(|result| (result.flow_run_id, result.input_tokens))
+            .collect::<std::collections::HashMap<_, _>>();
+        for item in &mut items {
+            item.count_tokens_input_tokens = count_tokens_results.get(&item.run.id).copied();
+        }
+
+        Ok(control_plane::ports::ApplicationRunLogSummaryPage {
+            items,
             total,
             page,
             page_size,

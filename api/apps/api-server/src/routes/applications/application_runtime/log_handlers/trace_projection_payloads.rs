@@ -118,6 +118,7 @@ pub(super) fn to_trace_projection_statistics_response(
     statistics: ApplicationRunTraceProjectionStatistics,
 ) -> application_logs::ApplicationRunStatisticsResponse {
     application_logs::ApplicationRunStatisticsResponse {
+        count_tokens_input_tokens: None,
         total_tokens: statistics.total_tokens,
         input_tokens: statistics.input_tokens,
         output_tokens: statistics.output_tokens,

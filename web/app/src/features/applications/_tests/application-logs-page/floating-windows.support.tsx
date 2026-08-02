@@ -93,6 +93,7 @@ export function sampleRunDetail(): ApplicationRunDetail {
       updated_at: '2026-04-17T09:00:01Z'
     },
     statistics: {
+      count_tokens_input_tokens: null,
       total_tokens: 50,
       input_tokens: 40,
       output_tokens: 10,

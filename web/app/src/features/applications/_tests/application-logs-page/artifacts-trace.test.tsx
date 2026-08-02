@@ -421,6 +421,7 @@ describe('ApplicationLogsPage - artifacts trace overview', () => {
       ]
     };
     priorRunDetail.statistics = {
+      count_tokens_input_tokens: null,
       total_tokens: 4213,
       input_tokens: 3414,
       output_tokens: 799,
@@ -435,6 +436,7 @@ describe('ApplicationLogsPage - artifacts trace overview', () => {
     currentRunDetail.flow_run.title = '回来后 recap';
     currentRunDetail.node_runs[0]!.flow_run_id = 'run-2';
     currentRunDetail.statistics = {
+      count_tokens_input_tokens: null,
       total_tokens: 3843,
       input_tokens: 3353,
       output_tokens: 490,

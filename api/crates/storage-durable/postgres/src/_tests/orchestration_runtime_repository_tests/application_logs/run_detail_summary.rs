@@ -65,6 +65,98 @@ async fn application_run_log_list_uses_summary_projection_without_raw_payload() 
 }
 
 #[tokio::test]
+async fn application_run_log_list_projects_count_tokens_result_without_usage() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-08-02 08:00:00 UTC);
+    let count_tokens_run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let generate_run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at + Duration::seconds(1),
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+        &store,
+        &UpdateFlowRunInput {
+            flow_run_id: count_tokens_run.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({
+                "semantic_terminal": "count_tokens",
+                "result": {
+                    "operation": "count_tokens",
+                    "input_tokens": 6_956,
+                    "method": "provider_estimate",
+                    "coverage": "partial",
+                    "unknown_block_count": 1
+                }
+            }),
+            error_payload: None,
+            finished_at: Some(started_at + Duration::seconds(2)),
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+        &store,
+        &UpdateFlowRunInput {
+            flow_run_id: generate_run.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({ "answer": "generated answer" }),
+            error_payload: None,
+            finished_at: Some(started_at + Duration::seconds(3)),
+        },
+    )
+    .await
+    .unwrap();
+
+    let logs =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_logs_page(
+            &store,
+            seeded.application_id,
+            ListApplicationRunsPageInput {
+                page: 1,
+                page_size: 20,
+                created_after: None,
+                sort_by: Some("created_at".to_string()),
+                sort_order: Some("asc".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+
+    let count_tokens = logs
+        .items
+        .iter()
+        .find(|item| item.run.id == count_tokens_run.id)
+        .unwrap();
+    let generate = logs
+        .items
+        .iter()
+        .find(|item| item.run.id == generate_run.id)
+        .unwrap();
+    assert_eq!(count_tokens.count_tokens_input_tokens, Some(6_956));
+    assert_eq!(generate.count_tokens_input_tokens, None);
+    assert_eq!(count_tokens.input_tokens, None);
+    assert_eq!(count_tokens.output_tokens, None);
+}
+
+#[tokio::test]
 async fn application_run_detail_returns_raw_payload_only_for_matching_application_scope() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();

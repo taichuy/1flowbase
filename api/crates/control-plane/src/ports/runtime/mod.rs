@@ -1105,6 +1105,13 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (application_id, input);
         anyhow::bail!("list_application_run_logs_page not implemented")
     }
+    async fn list_application_run_count_tokens_results(
+        &self,
+        flow_run_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<ApplicationRunCountTokensResult>> {
+        let _ = flow_run_ids;
+        anyhow::bail!("list_application_run_count_tokens_results not implemented")
+    }
     async fn get_application_run_monitoring_report(
         &self,
         application_id: Uuid,
@@ -1264,6 +1271,12 @@ pub struct ApplicationRunLogSummaryPage {
     pub total: i64,
     pub page: i64,
     pub page_size: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunCountTokensResult {
+    pub flow_run_id: Uuid,
+    pub input_tokens: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

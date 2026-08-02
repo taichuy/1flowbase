@@ -175,6 +175,7 @@ fn application_run_statistics(
     }
 
     application_logs::ApplicationRunStatisticsResponse {
+        count_tokens_input_tokens: None,
         total_tokens,
         input_tokens,
         output_tokens,

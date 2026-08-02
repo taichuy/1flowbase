@@ -78,6 +78,7 @@ export type ApplicationRunSummary = {
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  count_tokens_input_tokens: number | null;
   input_cache_hit_tokens: number | null;
   input_cache_hit_rate: number | null;
   unique_node_count: number;
@@ -1100,6 +1101,10 @@ function toApplicationRunSummary(
     total_tokens: optionalNumberField(record, 'total_tokens'),
     input_tokens: optionalNumberField(record, 'input_tokens'),
     output_tokens: optionalNumberField(record, 'output_tokens'),
+    count_tokens_input_tokens: optionalNumberField(
+      record,
+      'count_tokens_input_tokens'
+    ),
     input_cache_hit_tokens: optionalNumberField(
       record,
       'input_cache_hit_tokens'

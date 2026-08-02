@@ -19,6 +19,7 @@
     "total_tokens": "total tokens",
     "input_tokens": "Input tokens",
     "output_tokens": "Output tokens",
+    "count_tokens": "CountTokens",
     "input_cache_hit_tokens": "Cache-hit tokens",
     "input_cache_hit_rate": "Cache hit rate",
     "high_token_runs_top_ten": "High Token Run Top 10",

@@ -170,6 +170,13 @@ describe('ApplicationLogsPage - table field settings', () => {
         {
           id: 'run-1',
           run_mode: 'published_api_run' as const,
+          execution_stage: 'published' as const,
+          invocation_source: 'agent_flow_api' as const,
+          principal: {
+            kind: 'application_api_key' as const,
+            id: 'api-key-1',
+            display_name: 'Local Claude Code'
+          },
           status: 'succeeded',
           target_node_id: 'node-llm',
           title: '公开 API 退款总结',
@@ -179,6 +186,7 @@ describe('ApplicationLogsPage - table field settings', () => {
           total_tokens: 128,
           input_tokens: 100,
           output_tokens: 28,
+          count_tokens_input_tokens: 6_956,
           input_cache_hit_tokens: 64,
           input_cache_hit_rate: 0.9832,
           started_at: '2026-04-17T09:00:00Z',
@@ -252,6 +260,9 @@ describe('ApplicationLogsPage - table field settings', () => {
       screen.getByRole('columnheader', { name: '输出 tokens' })
     ).toBeInTheDocument();
     expect(
+      screen.getByRole('columnheader', { name: 'CountTokens' })
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole('columnheader', { name: '命中缓存 tokens' })
     ).toBeInTheDocument();
     expect(
@@ -259,6 +270,7 @@ describe('ApplicationLogsPage - table field settings', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('28')).toBeInTheDocument();
+    expect(screen.getByText('6,956')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
     expect(screen.getByText('98.32%')).toBeInTheDocument();
   });

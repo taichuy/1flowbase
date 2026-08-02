@@ -187,6 +187,13 @@ export function getApplicationRunsTableColumns(
     render: (_value, run) => formatRunStatisticNumber(run.output_tokens)
   },
   {
+    key: 'count_tokens_input_tokens',
+    title: t('auto.count_tokens'),
+    width: 140,
+    render: (_value, run) =>
+      formatRunStatisticNumber(run.count_tokens_input_tokens)
+  },
+  {
     key: 'input_cache_hit_tokens',
     title: t('auto.input_cache_hit_tokens'),
     width: 150,

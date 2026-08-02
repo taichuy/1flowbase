@@ -20,14 +20,15 @@ use control_plane::{
         AppendBillingSessionInput, AppendCapabilityInvocationInput, AppendContextProjectionInput,
         AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
         AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput,
-        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunTraceChildrenCursor,
-        ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
-        CallbackResumeContext, CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
-        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
-        CompleteFlowRunInput, CompleteNodeRunInput, CreateCallbackTaskInput, CreateCheckpointInput,
-        CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
-        CreateRuntimeDebugArtifactInput, DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
+        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunCountTokensResult,
+        ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
+        AttachCompiledPlanToFlowRunInput, CallbackResumeContext, CallbackResumeWaitingNode,
+        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
+        CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
+        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
+        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
+        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
         FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
@@ -575,6 +576,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: control_plane::ports::ListApplicationRunsPageInput,
     ) -> Result<control_plane::ports::ApplicationRunLogSummaryPage> {
         PgControlPlaneStore::list_application_run_logs_page(self, application_id, input).await
+    }
+
+    async fn list_application_run_count_tokens_results(
+        &self,
+        flow_run_ids: &[Uuid],
+    ) -> Result<Vec<ApplicationRunCountTokensResult>> {
+        PgControlPlaneStore::list_application_run_count_tokens_results(self, flow_run_ids).await
     }
 
     async fn get_application_run_monitoring_report(

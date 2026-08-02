@@ -589,6 +589,7 @@ describe('applications runtime api', () => {
           total_tokens: 120,
           input_tokens: 90,
           output_tokens: 30,
+          count_tokens_input_tokens: 6_956,
           input_cache_hit_tokens: 45,
           unique_node_count: 3,
           tool_callback_count: 1,
@@ -615,6 +616,7 @@ describe('applications runtime api', () => {
           total_tokens: 120,
           input_tokens: 90,
           output_tokens: 30,
+          count_tokens_input_tokens: 6_956,
           input_cache_hit_tokens: 45
         }
       ],

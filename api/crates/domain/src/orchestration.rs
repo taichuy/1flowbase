@@ -458,6 +458,7 @@ pub struct ApplicationRunSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApplicationRunLogSummary {
     pub run: ApplicationRunSummary,
+    pub count_tokens_input_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,

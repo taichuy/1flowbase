@@ -1276,6 +1276,7 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"te
                 actor: { kind: 'user', id: 'user-1', display_name: 'root' },
                 correlation: {},
                 statistics: {
+                  count_tokens_input_tokens: null,
                   total_tokens: 50,
                   input_tokens: 40,
                   output_tokens: 10,
@@ -1313,6 +1314,7 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"te
           compatibility_mode: null,
           subject: { kind: 'agent_flow' },
           statistics: {
+            count_tokens_input_tokens: null,
             total_tokens: 50,
             input_tokens: 40,
             output_tokens: 10,

@@ -81,6 +81,7 @@ export interface ConsoleApplicationRunSummary {
 }
 
 export interface ConsoleApplicationRunStatistics {
+  count_tokens_input_tokens: number | null;
   total_tokens: number | null;
   input_tokens: number | null;
   output_tokens: number | null;

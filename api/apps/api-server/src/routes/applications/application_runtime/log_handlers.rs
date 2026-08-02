@@ -73,6 +73,7 @@ pub async fn list_application_runs(
 
     for log_summary in runs_page.items {
         let statistics = application_logs::ApplicationRunStatisticsResponse {
+            count_tokens_input_tokens: log_summary.count_tokens_input_tokens,
             total_tokens: log_summary.total_tokens,
             input_tokens: log_summary.input_tokens,
             output_tokens: log_summary.output_tokens,

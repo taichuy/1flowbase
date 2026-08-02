@@ -25,7 +25,10 @@ use crate::{
     response::ApiSuccess,
 };
 use control_plane::resource_crud::parse_resource_filter_expr;
-use control_plane::{audit::audit_log, ports::AuthRepository};
+use control_plane::{
+    audit::audit_log,
+    ports::{AuthRepository, OrchestrationRuntimeRepository},
+};
 
 fn map_runtime_error(error: anyhow::Error) -> ApiError {
     if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
@@ -212,6 +215,57 @@ fn runtime_list_response(model_code: &str, items: Vec<Value>, total: i64) -> Run
             .collect(),
         total,
     }
+}
+
+fn apply_application_run_count_tokens_results(
+    records: &mut [Value],
+    results: &[control_plane::ports::ApplicationRunCountTokensResult],
+) {
+    let results = results
+        .iter()
+        .map(|result| (result.flow_run_id, result.input_tokens))
+        .collect::<std::collections::HashMap<_, _>>();
+    for record in records {
+        let flow_run_id = record
+            .get("flow_run_id")
+            .or_else(|| record.get("id"))
+            .and_then(Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok());
+        if let Some(object) = record.as_object_mut() {
+            object.insert(
+                "count_tokens_input_tokens".to_string(),
+                flow_run_id
+                    .and_then(|flow_run_id| results.get(&flow_run_id).copied())
+                    .map_or(Value::Null, Value::from),
+            );
+        }
+    }
+}
+
+async fn enrich_application_run_count_tokens_results(
+    state: &ApiState,
+    model_code: &str,
+    records: &mut [Value],
+) -> Result<(), ApiError> {
+    if model_code != "application_run_log_summaries" {
+        return Ok(());
+    }
+    let flow_run_ids = records
+        .iter()
+        .filter_map(|record| {
+            record
+                .get("flow_run_id")
+                .or_else(|| record.get("id"))
+                .and_then(Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+        })
+        .collect::<Vec<_>>();
+    let results = state
+        .store
+        .list_application_run_count_tokens_results(&flow_run_ids)
+        .await?;
+    apply_application_run_count_tokens_results(records, &results);
+    Ok(())
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -704,11 +758,10 @@ pub async fn list_records(
     };
     if let Some(cache_key) = &cache_key {
         if let Some(response) = cached_runtime_list_response(&state, cache_key).await {
-            return Ok(Json(ApiSuccess::new(runtime_list_response(
-                &model_code,
-                response.items,
-                response.total,
-            ))));
+            let mut response = runtime_list_response(&model_code, response.items, response.total);
+            enrich_application_run_count_tokens_results(&state, &model_code, &mut response.items)
+                .await?;
+            return Ok(Json(ApiSuccess::new(response)));
         }
     }
     let filter = parse_filter(query.filter.as_deref())?;
@@ -744,7 +797,8 @@ pub async fn list_records(
         }
     };
 
-    let response = runtime_list_response(&model_code, result.items, result.total);
+    let mut response = runtime_list_response(&model_code, result.items, result.total);
+    enrich_application_run_count_tokens_results(&state, &model_code, &mut response.items).await?;
     if let Some(cache_key) = &cache_key {
         cache_runtime_list_response(&state, cache_key, &response).await;
     }
@@ -784,10 +838,14 @@ pub async fn get_record(
     };
     if let Some(cache_key) = &cache_key {
         if let Some(record) = cached_runtime_record(&state, cache_key).await {
-            return Ok(Json(ApiSuccess::new(runtime_record_response(
+            let mut record = runtime_record_response(&model_code, record);
+            enrich_application_run_count_tokens_results(
+                &state,
                 &model_code,
-                record,
-            ))));
+                std::slice::from_mut(&mut record),
+            )
+            .await?;
+            return Ok(Json(ApiSuccess::new(record)));
         }
     }
     let record = state
@@ -815,7 +873,13 @@ pub async fn get_record(
             return Err(map_runtime_error(error));
         }
     };
-    let record = runtime_record_response(&model_code, record);
+    let mut record = runtime_record_response(&model_code, record);
+    enrich_application_run_count_tokens_results(
+        &state,
+        &model_code,
+        std::slice::from_mut(&mut record),
+    )
+    .await?;
     if let Some(cache_key) = &cache_key {
         cache_runtime_record(&state, cache_key, &record).await;
     }
@@ -856,6 +920,27 @@ mod tests {
         );
 
         assert_eq!(record["input_cache_hit_rate"], Value::Null);
+    }
+
+    #[test]
+    fn application_run_records_receive_nullable_count_tokens_results() {
+        let count_tokens_run_id = Uuid::now_v7();
+        let generate_run_id = Uuid::now_v7();
+        let mut records = vec![
+            json!({ "flow_run_id": count_tokens_run_id }),
+            json!({ "flow_run_id": generate_run_id }),
+        ];
+
+        apply_application_run_count_tokens_results(
+            &mut records,
+            &[control_plane::ports::ApplicationRunCountTokensResult {
+                flow_run_id: count_tokens_run_id,
+                input_tokens: 6_956,
+            }],
+        );
+
+        assert_eq!(records[0]["count_tokens_input_tokens"], json!(6_956));
+        assert_eq!(records[1]["count_tokens_input_tokens"], Value::Null);
     }
 
     #[test]
