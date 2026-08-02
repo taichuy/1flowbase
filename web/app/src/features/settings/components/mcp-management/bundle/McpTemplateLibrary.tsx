@@ -302,6 +302,10 @@ export function McpTemplateLibrary({
             <Button
               type="link"
               icon={<DownloadOutlined />}
+              aria-label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_bundle_import'
+              )}
               loading={pending.has(operationKey(bundle, 'prepare'))}
               onClick={() => void prepareImport(bundle)}
             >
@@ -311,6 +315,10 @@ export function McpTemplateLibrary({
               <Button
                 type="link"
                 icon={<CloudDownloadOutlined />}
+                aria-label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.mcp_template_sync'
+                )}
                 loading={pending.has(syncKey)}
                 onClick={() => void syncBundle(bundle)}
               >
@@ -320,6 +328,10 @@ export function McpTemplateLibrary({
             <Button
               type="link"
               icon={<EyeOutlined />}
+              aria-label={i18nText(
+                'settingsMcpManagement',
+                'auto.mcp_template_view'
+              )}
               onClick={() => setSelectedKey(bundleKey(bundle))}
             >
               {i18nText('settingsMcpManagement', 'auto.mcp_template_view')}
@@ -389,6 +401,10 @@ export function McpTemplateLibrary({
             {!row.local && row.remote ? (
               <Button
                 type="link"
+                aria-label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.mcp_template_sync'
+                )}
                 loading={pending.has(syncKey)}
                 onClick={() => void syncBundle(selected, row.bundle_version)}
               >
@@ -399,6 +415,10 @@ export function McpTemplateLibrary({
               <>
                 <Button
                   type="link"
+                  aria-label={i18nText(
+                    'settingsMcpManagement',
+                    'auto.mcp_template_import_version'
+                  )}
                   loading={pending.has(
                     operationKey(selected, 'prepare', row.bundle_version)
                   )}
@@ -428,6 +448,10 @@ export function McpTemplateLibrary({
                 <Button
                   type="link"
                   icon={<ToolOutlined />}
+                  aria-label={i18nText(
+                    'settingsMcpManagement',
+                    'auto.mcp_template_repair'
+                  )}
                   loading={pending.has(repairKey)}
                   disabled={!row.remote}
                   onClick={() => void repair(selected, row.bundle_version)}
@@ -448,6 +472,10 @@ export function McpTemplateLibrary({
                     type="link"
                     danger
                     icon={<DeleteOutlined />}
+                    aria-label={i18nText(
+                      'settingsMcpManagement',
+                      'auto.mcp_template_delete'
+                    )}
                     loading={pending.has(deleteKey)}
                   >
                     {i18nText(
@@ -478,6 +506,10 @@ export function McpTemplateLibrary({
         </Typography.Text>
         <Button
           icon={<ReloadOutlined />}
+          aria-label={i18nText(
+            'settingsMcpManagement',
+            'auto.mcp_template_refresh'
+          )}
           loading={libraryQuery.isFetching}
           onClick={() => void libraryQuery.refetch()}
         >
