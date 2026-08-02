@@ -345,7 +345,8 @@ async fn root_1545_bf1_exact_local_version_returns_without_catalog_network() {
 
 #[tokio::test]
 async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_routes() {
-    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let (state, _database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let _schema_guard = Arc::clone(&state);
     let actor = AuthRepository::find_user_for_password_login(
         &state.store,
         domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
