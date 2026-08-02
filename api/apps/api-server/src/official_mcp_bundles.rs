@@ -13,15 +13,29 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    config::ResolvedOfficialMcpBundleSourceConfig,
-    official_agent_flow_templates::rewrite_github_release_url,
-    official_plugin_registry::rewrite_github_raw_url,
+    config::ResolvedOfficialMcpBundleSourceConfig, official_plugin_registry::rewrite_github_raw_url,
 };
 
 pub const MCP_CATALOG_SCHEMA_VERSION: &str = "1flowbase.mcp-catalog/v2";
 const SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
+
+fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
+    let Some(github_proxy_url) = github_proxy_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return url.to_string();
+    };
+    let github_proxy_url = github_proxy_url.trim_end_matches('/');
+    let github_release_prefix = "https://github.com/";
+    let proxied_release_prefix = format!("{github_proxy_url}/{github_release_prefix}");
+    if url.starts_with(&proxied_release_prefix) || !url.starts_with(github_release_prefix) {
+        return url.to_string();
+    }
+    format!("{github_proxy_url}/{url}")
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OfficialMcpBundleCatalogSource {
