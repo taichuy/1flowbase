@@ -115,17 +115,7 @@ const BUILTIN_CONSOLE_ROUTES: &[ConsoleRouteSpec] = &[
         permission_codes: &[],
         requirement: ConsolePermissionRequirement::Authenticated,
     },
-    ConsoleRouteSpec {
-        route_id: "embedded-apps",
-        surface_key: "embedded-apps",
-        path: "/embedded-apps",
-        label_key: "auto.subsystem",
-        navigation_slot: ConsoleNavigationSlot::Primary,
-        parent_item_id: None,
-        order: 300,
-        permission_codes: &["embedded_app.view.all"],
-        requirement: ConsolePermissionRequirement::AnyPermission,
-    },
+    // Keep embedded apps hidden because the roadmap is distant and may change.
     ConsoleRouteSpec {
         route_id: "templates",
         surface_key: "templates",
