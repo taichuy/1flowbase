@@ -85,6 +85,7 @@ async fn agent_flow_library_syncs_signed_releases_and_manages_current_history() 
     library.repair("support-flow", 1).await.unwrap();
 
     server.abort();
+    let _ = server.await;
     assert_eq!(
         library
             .resolve_artifact("support-flow", None)

@@ -766,7 +766,8 @@ async fn ac_001_failed_batch_export_does_not_partially_increment_release_version
                 .body(Body::from(
                     json!({
                         "application_type": "agent_flow",
-                        "name": "Atomic archive batch"
+                        "name": "Atomic archive batch",
+                        "description": "batch rollback fixture"
                     })
                     .to_string(),
                 ))
@@ -774,6 +775,7 @@ async fn ac_001_failed_batch_export_does_not_partially_increment_release_version
         )
         .await
         .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
     let created: Value =
         serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
     let application_id = created["data"]["id"].as_str().unwrap();
@@ -834,13 +836,18 @@ async fn agent_flow_library_import_creates_a_new_application_without_overwriting
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"application_type": "agent_flow", "name": "Existing application"})
-                        .to_string(),
+                    json!({
+                        "application_type": "agent_flow",
+                        "name": "Existing application",
+                        "description": "must remain unchanged after template import"
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
     let existing: Value =
         serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
     let existing_id = existing["data"]["id"].as_str().unwrap();
