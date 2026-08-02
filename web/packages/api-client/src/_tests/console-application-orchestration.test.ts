@@ -19,7 +19,7 @@ describe('console application orchestration official template client', () => {
     async (input) => input as never
   );
 
-  test('exports selected applications through the ZIP archive route', async () => {
+  test('exports selected applications through the cardinality-aware archive route', async () => {
     await expect(
       exportConsoleApplicationArchive(
         { application_ids: ['app-1', 'app-2'] },

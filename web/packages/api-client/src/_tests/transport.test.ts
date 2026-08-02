@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { apiFetch, getDefaultApiBaseUrl } from '../transport';
+import { apiFetch, apiFetchBlob, getDefaultApiBaseUrl } from '../transport';
 
 describe('apiFetch', () => {
   afterEach(() => {
@@ -117,6 +117,31 @@ describe('apiFetch', () => {
         headers: {}
       })
     );
+  });
+
+  test('AC-003 apiFetchBlob decodes an RFC 5987 UTF-8 download filename', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(new Blob(['{}'], { type: 'application/json' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'content-disposition':
+            'attachment; filename="DeepSeek-V4-.1flowbase-application.json"; filename*=UTF-8\'\'DeepSeek-V4-%E6%B5%8B%E8%AF%95.1flowbase-application.json'
+        }
+      })
+    );
+
+    const response = await apiFetchBlob({
+      path: '/api/console/applications/archive/export',
+      method: 'POST',
+      body: { application_ids: ['application-1'] },
+      baseUrl: 'http://127.0.0.1:7800'
+    });
+
+    expect(response.filename).toBe(
+      'DeepSeek-V4-测试.1flowbase-application.json'
+    );
+    expect(response.contentType).toBe('application/json; charset=utf-8');
   });
 });
 

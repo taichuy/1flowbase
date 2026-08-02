@@ -22,7 +22,7 @@ fn application_archive_multipart(boundary: &str, archive: &[u8], name: Option<&s
     let mut body = Vec::new();
     body.extend_from_slice(
         format!(
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"application.zip\"\r\nContent-Type: application/zip\r\n\r\n"
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"application.1flowbase-application.json\"\r\nContent-Type: application/json\r\n\r\n"
         )
         .as_bytes(),
     );
@@ -446,7 +446,9 @@ async fn ac_002_ac_004_exports_selected_agent_flow_and_workflow_as_zip_archive()
         .unwrap()
         .to_str()
         .unwrap()
-        .contains("applications-"));
+        .contains(
+            "filename=\"applications-2-items.zip\"; filename*=UTF-8''applications-2-items.zip"
+        ));
 
     let archive_bytes = to_bytes(export.into_body(), usize::MAX).await.unwrap();
     let mut archive = ZipArchive::new(Cursor::new(archive_bytes)).unwrap();
@@ -485,7 +487,7 @@ async fn ac_002_ac_004_exports_selected_agent_flow_and_workflow_as_zip_archive()
 }
 
 #[tokio::test]
-async fn ac_005_single_application_zip_previews_and_imports_as_draft() {
+async fn application_export_ac_001_single_application_json_previews_and_imports_as_draft() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let create = app
@@ -500,7 +502,7 @@ async fn ac_005_single_application_zip_previews_and_imports_as_draft() {
                 .body(Body::from(
                     json!({
                         "application_type": "agent_flow",
-                        "name": "Portable Agent",
+                        "name": "DeepSeek V4 测试",
                         "description": "archive import fixture"
                     })
                     .to_string(),
@@ -530,7 +532,33 @@ async fn ac_005_single_application_zip_previews_and_imports_as_draft() {
         .await
         .unwrap();
     assert_eq!(export.status(), StatusCode::OK);
+    assert_eq!(
+        export.headers().get("content-type").unwrap(),
+        "application/json; charset=utf-8"
+    );
+    let disposition = export
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(disposition.contains("filename=\"DeepSeek-V4-.1flowbase-application.json\""));
+    assert!(disposition
+        .contains("filename*=UTF-8''DeepSeek-V4-%E6%B5%8B%E8%AF%95.1flowbase-application.json"));
     let archive = to_bytes(export.into_body(), usize::MAX).await.unwrap();
+    let exported_package: Value = serde_json::from_slice(&archive).unwrap();
+    assert_eq!(
+        exported_package["schema_version"],
+        json!("1flowbase.application-archive/v1")
+    );
+    assert_eq!(
+        exported_package["applications"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        exported_package["applications"][0]["application"]["name"],
+        json!("DeepSeek V4 测试")
+    );
 
     let preview_boundary = "preview-application-archive";
     let preview = app
@@ -558,7 +586,7 @@ async fn ac_005_single_application_zip_previews_and_imports_as_draft() {
         serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(
         preview_body["data"]["application"]["name"],
-        json!("Portable Agent")
+        json!("DeepSeek V4 测试")
     );
 
     let import_boundary = "import-application-archive";
@@ -594,6 +622,54 @@ async fn ac_005_single_application_zip_previews_and_imports_as_draft() {
     assert_eq!(
         imported_body["data"]["application"]["application_type"],
         json!("agent_flow")
+    );
+
+    let exported_entry = &exported_package["applications"][0];
+    let legacy_template = json!({
+        "schema_version": "1flowbase.application-template/v1",
+        "application": {
+            "application_type": exported_entry["application"]["application_type"],
+            "name": exported_entry["application"]["name"],
+            "description": exported_entry["application"]["description"],
+            "icon": exported_entry["application"]["icon"],
+            "icon_type": exported_entry["application"]["icon_type"],
+            "icon_background": exported_entry["application"]["icon_background"]
+        },
+        "flow_document": exported_entry["flow_document"],
+        "dependencies": exported_entry["dependencies"]
+    });
+    let legacy_template = serde_json::to_vec_pretty(&legacy_template).unwrap();
+    let legacy_boundary = "import-legacy-application-template";
+    let legacy_import = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/applications/archive/import")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={legacy_boundary}"),
+                )
+                .body(Body::from(application_archive_multipart(
+                    legacy_boundary,
+                    &legacy_template,
+                    Some("Imported Legacy Agent"),
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_import.status(), StatusCode::CREATED);
+    let legacy_import_body: Value = serde_json::from_slice(
+        &to_bytes(legacy_import.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        legacy_import_body["data"]["application"]["name"],
+        json!("Imported Legacy Agent")
     );
 }
 
@@ -743,7 +819,7 @@ async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_work
 }
 
 #[tokio::test]
-async fn ac_004_workflow_schedule_zip_import_preserves_disabled_trigger_config() {
+async fn ac_004_workflow_schedule_json_import_preserves_disabled_trigger_config() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let create = app
@@ -850,7 +926,7 @@ async fn ac_004_workflow_schedule_zip_import_preserves_disabled_trigger_config()
 }
 
 #[tokio::test]
-async fn ac_004_workflow_extension_zip_round_trip_preserves_registration_config() {
+async fn ac_004_workflow_extension_json_round_trip_preserves_registration_config() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let create = app

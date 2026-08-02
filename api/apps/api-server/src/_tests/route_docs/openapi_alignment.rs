@@ -305,6 +305,14 @@ async fn openapi_documents_callable_media_protocols() {
             ["content"]["application/zip"]["schema"]["format"],
         "binary"
     );
+    for content_type in ["application/json", "application/zip"] {
+        assert_eq!(
+            paths["/api/console/applications/archive/export"]["post"]["responses"]["200"]
+                ["content"][content_type]["schema"]["format"],
+            "binary",
+            "application archive export must document {content_type}"
+        );
+    }
     assert_eq!(
         paths["/api/console/files/{file_table_id}/records/{record_id}/content"]["get"]["responses"]
             ["200"]["content"]["application/octet-stream"]["schema"]["format"],

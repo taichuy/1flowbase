@@ -396,6 +396,15 @@ fn parse_application_archive(bytes: &[u8]) -> Result<ApplicationArchivePackage, 
         return Ok(package);
     }
 
+    if let Ok(package) = serde_json::from_slice::<ApplicationArchivePackage>(bytes) {
+        if package.schema_version != APPLICATION_ARCHIVE_SCHEMA_VERSION {
+            return Err(
+                ControlPlaneError::InvalidInput("application_archive_schema_version").into(),
+            );
+        }
+        return Ok(package);
+    }
+
     let template: AgentFlowTemplatePackage = serde_json::from_slice(bytes)
         .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))?;
     Ok(ApplicationArchivePackage {
@@ -704,11 +713,36 @@ fn build_application_archive_zip(package: &ApplicationArchivePackage) -> Result<
     Ok(archive.finish()?.into_inner())
 }
 
-fn application_archive_filename(package: &ApplicationArchivePackage) -> String {
-    match package.applications.as_slice() {
-        [application] => format!("{}.zip", safe_archive_name(&application.application.name)),
-        applications => format!("applications-{}-items.zip", applications.len()),
+fn encode_content_disposition_filename(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[(byte >> 4) as usize]));
+            encoded.push(char::from(HEX[(byte & 0x0f) as usize]));
+        }
     }
+    encoded
+}
+
+fn application_archive_content_disposition(filename: &str) -> Result<HeaderValue, ApiError> {
+    let mut ascii_fallback = filename
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+        .collect::<String>();
+    if ascii_fallback.starts_with('.') {
+        ascii_fallback.insert_str(0, "application");
+    }
+    HeaderValue::from_str(&format!(
+        "attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{}",
+        encode_content_disposition_filename(filename)
+    ))
+    .map_err(|_| ControlPlaneError::InvalidInput("application_archive_filename").into())
 }
 
 #[utoipa::path(
@@ -716,7 +750,10 @@ fn application_archive_filename(package: &ApplicationArchivePackage) -> String {
     path = "/api/console/applications/archive/export",
     request_body = ExportApplicationArchiveBody,
     responses(
-        (status = 200, description = "Application template archive", body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/zip"),
+        (status = 200, description = "Single application JSON document or multiple application ZIP archive", content(
+            (inline(crate::openapi::OpenApiBinaryBody) = "application/json"),
+            (inline(crate::openapi::OpenApiBinaryBody) = "application/zip")
+        )),
         (status = 400, body = crate::error_response::ErrorBody),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody),
@@ -735,19 +772,31 @@ pub async fn export_application_archive(
             application_ids: body.application_ids,
         })
         .await?;
-    let filename = application_archive_filename(&package);
-    let archive = tokio::task::spawn_blocking(move || build_application_archive_zip(&package))
-        .await
-        .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
-    let mut response = Response::new(Body::from(archive));
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/zip"),
-    );
+    let (content_type, filename, document) = match package.applications.as_slice() {
+        [application] => (
+            "application/json; charset=utf-8",
+            format!(
+                "{}.1flowbase-application.json",
+                safe_archive_name(&application.application.name)
+            ),
+            serde_json::to_vec_pretty(&package)?,
+        ),
+        applications => {
+            let filename = format!("applications-{}-items.zip", applications.len());
+            let archive =
+                tokio::task::spawn_blocking(move || build_application_archive_zip(&package))
+                    .await
+                    .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
+            ("application/zip", filename, archive)
+        }
+    };
+    let mut response = Response::new(Body::from(document));
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
-            .map_err(|_| ControlPlaneError::InvalidInput("application_archive_filename"))?,
+        application_archive_content_disposition(&filename)?,
     );
     Ok(response)
 }
