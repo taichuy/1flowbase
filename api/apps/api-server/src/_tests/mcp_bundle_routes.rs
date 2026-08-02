@@ -1179,17 +1179,32 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
         json!(env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
-    let manifest_paths = manifest["files"]
-        .as_array()
-        .unwrap()
+    let manifest_files = manifest["files"].as_array().unwrap();
+    let kind_rank = |kind: &str| match kind {
+        "tool" => 0,
+        "instance" => 1,
+        "connection" => 2,
+        _ => panic!("unexpected MCP bundle file kind"),
+    };
+    let manifest_order = manifest_files
         .iter()
-        .map(|entry| entry["path"].as_str().unwrap().to_string())
+        .map(|entry| {
+            (
+                kind_rank(entry["kind"].as_str().unwrap()),
+                entry["path"].as_str().unwrap().to_string(),
+            )
+        })
         .collect::<Vec<_>>();
-    let mut lexicographic_paths = manifest_paths.clone();
-    lexicographic_paths.sort();
+    let mut expected_order = manifest_order.clone();
+    expected_order.sort();
+    assert_eq!(manifest_order, expected_order);
     assert_eq!(
-        manifest_paths, lexicographic_paths,
-        "manifest files must use deterministic lexicographic path order"
+        manifest_files
+            .iter()
+            .map(|entry| entry["kind"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["tool", "instance"],
+        "manifest files must group tools, instances, then connections"
     );
 
     let tool_path = manifest["files"]

@@ -976,7 +976,11 @@ fn build_bundle_archive(
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_connection"))?;
         files.push((path, content, domain::McpBundleFileKind::Connection));
     }
-    files.sort_by(|left, right| left.0.cmp(&right.0));
+    files.sort_by(|left, right| {
+        bundle_file_kind_rank(left.2)
+            .cmp(&bundle_file_kind_rank(right.2))
+            .then_with(|| left.0.cmp(&right.0))
+    });
     package.manifest.files = files
         .iter()
         .map(|(path, content, kind)| domain::McpBundleFile {
@@ -1009,6 +1013,14 @@ fn build_bundle_archive(
         .finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))
+}
+
+fn bundle_file_kind_rank(kind: domain::McpBundleFileKind) -> u8 {
+    match kind {
+        domain::McpBundleFileKind::Tool => 0,
+        domain::McpBundleFileKind::Instance => 1,
+        domain::McpBundleFileKind::Connection => 2,
+    }
 }
 
 fn bundle_file_path(directory: &str, stable_id: &str) -> String {
