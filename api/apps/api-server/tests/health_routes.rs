@@ -4,7 +4,6 @@ use api_server::{
     app_with_state_and_config,
     config::{ApiConfig, ApiEnvironment},
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::AgentFlowTemplateLibraryPort,
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
@@ -44,9 +43,6 @@ impl PluginRunnerSystemPort for UnreachablePluginRunnerSystemClient {
 
 #[derive(Clone, Default)]
 struct NoopOfficialPluginSource;
-
-#[derive(Clone, Default)]
-struct NoopOfficialAgentFlowTemplateSource;
 
 #[derive(Clone, Default)]
 struct NoopOfficialMcpBundleSource;
@@ -98,9 +94,6 @@ impl OfficialPluginSourcePort for NoopOfficialPluginSource {
         Vec::new()
     }
 }
-
-#[async_trait]
-impl AgentFlowTemplateLibraryPort for NoopOfficialAgentFlowTemplateSource {}
 
 fn default_test_config() -> ApiConfig {
     let database_url = std::env::var("API_DATABASE_URL")
@@ -221,9 +214,6 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             ),
             plugin_runner_system: std::sync::Arc::new(UnreachablePluginRunnerSystemClient),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
-            official_agent_flow_template_source: std::sync::Arc::new(
-                NoopOfficialAgentFlowTemplateSource,
-            ),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
             official_extension_catalog_source: std::sync::Arc::new(
                 api_server::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(

@@ -621,7 +621,6 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
         api_runtime_profile: base_state.api_runtime_profile.clone(),
         plugin_runner_system: base_state.plugin_runner_system.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),
-        official_agent_flow_template_source: base_state.official_agent_flow_template_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
         official_extension_catalog_source: base_state.official_extension_catalog_source.clone(),
         official_i18n_catalog_update_service: base_state
@@ -726,7 +725,6 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         api_runtime_profile: base_state.api_runtime_profile.clone(),
         plugin_runner_system: base_state.plugin_runner_system.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),
-        official_agent_flow_template_source: base_state.official_agent_flow_template_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
         official_extension_catalog_source: base_state.official_extension_catalog_source.clone(),
         official_i18n_catalog_update_service: base_state

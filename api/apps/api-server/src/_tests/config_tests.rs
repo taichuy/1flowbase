@@ -724,6 +724,7 @@ fn api_config_resolves_independent_official_i18n_catalog_mirror_and_proxy() {
 }
 
 #[test]
+#[cfg(any())]
 fn api_config_resolves_official_agent_flow_template_catalog_source() {
     let config = ApiConfig::from_env_map(&[
         (

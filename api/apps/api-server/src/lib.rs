@@ -332,8 +332,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let api_docs = Arc::new(
         openapi_docs::build_default_api_docs_registry_with_cookie_name(&config.cookie_name)?,
     );
-    let resolved_official_agent_flow_template_source =
-        config.resolve_official_agent_flow_template_source();
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
     let official_extension_catalog_source = Arc::new(
@@ -348,13 +346,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
                 "allow_unsigned".to_string()
             },
             trusted_public_keys.clone(),
-        ),
-    );
-    let official_agent_flow_template_source = Arc::new(
-        official_agent_flow_templates::ApiAgentFlowTemplateLibrary::new(
-            resolved_official_agent_flow_template_source,
-            std::path::PathBuf::from(&config.agent_flow_template_library_root),
-            trusted_public_keys,
         ),
     );
     let official_mcp_bundle_source =
@@ -494,7 +485,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             config.plugin_runner_internal_base_url.clone(),
         )),
         official_plugin_source,
-        official_agent_flow_template_source,
         official_mcp_bundle_source,
         official_extension_catalog_source,
         official_i18n_catalog_update_service,

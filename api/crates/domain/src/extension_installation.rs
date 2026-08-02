@@ -247,6 +247,7 @@ pub struct ExtensionInstallationRecord {
     pub receipt: serde_json::Value,
     pub application_action: ExtensionApplicationAction,
     pub status: ExtensionInstallationStatus,
+    pub is_current: bool,
     pub installed_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,

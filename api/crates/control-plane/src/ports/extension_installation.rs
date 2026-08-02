@@ -16,6 +16,7 @@ pub struct UpsertExtensionInstallationInput {
     pub receipt: serde_json::Value,
     pub application_action: domain::ExtensionApplicationAction,
     pub status: domain::ExtensionInstallationStatus,
+    pub is_current: bool,
     pub installed_by: Uuid,
 }
 
@@ -31,6 +32,12 @@ pub trait ExtensionInstallationRepository: Send + Sync {
         identity: &domain::ExtensionInstallationIdentity,
     ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>>;
 
+    async fn find_extension_installation_by_id(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>>;
+
     async fn list_extension_installations_for_node(
         &self,
         node_id: &str,
@@ -41,4 +48,16 @@ pub trait ExtensionInstallationRepository: Send + Sync {
         installation_id: Uuid,
         status: domain::ExtensionInstallationStatus,
     ) -> anyhow::Result<()>;
+
+    async fn select_current_extension_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>>;
+
+    async fn remove_extension_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>>;
 }

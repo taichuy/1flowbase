@@ -3,8 +3,8 @@ use super::applications::{
     sample_runtime_profile, set_user_preferred_locale,
 };
 use super::plugins::{
-    InMemoryOfficialAgentFlowTemplateSource, InMemoryOfficialExtensionCatalogSource,
-    InMemoryOfficialMcpBundleSource, InMemoryOfficialPluginSource,
+    InMemoryOfficialExtensionCatalogSource, InMemoryOfficialMcpBundleSource,
+    InMemoryOfficialPluginSource,
 };
 use super::*;
 use axum::response::Response;
@@ -233,7 +233,6 @@ async fn test_state_with_runtime_profile_state(
                 vec![
                     std::path::PathBuf::from(&config.business_file_local_root),
                     std::path::PathBuf::from(&config.provider_install_root),
-                    std::path::PathBuf::from(&config.agent_flow_template_library_root),
                 ],
             ))),
             store: store.clone(),
@@ -254,7 +253,6 @@ async fn test_state_with_runtime_profile_state(
             api_runtime_profile,
             plugin_runner_system,
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
-            official_agent_flow_template_source: Arc::new(InMemoryOfficialAgentFlowTemplateSource),
             official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
             official_extension_catalog_source: Arc::new(InMemoryOfficialExtensionCatalogSource),
             official_i18n_catalog_update_service:

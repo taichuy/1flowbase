@@ -72,6 +72,7 @@ fn input(actor_user_id: Uuid) -> UpsertExtensionInstallationInput {
         receipt: serde_json::json!({"kind": "install"}),
         application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
         status: domain::ExtensionInstallationStatus::Installed,
+        is_current: true,
         installed_by: actor_user_id,
     }
 }
@@ -138,4 +139,47 @@ async fn root_1545_extension_repository_upserts_stable_identity_and_keeps_source
             .unwrap()
             .unwrap();
     assert_eq!(missing.status, domain::ExtensionInstallationStatus::Missing);
+}
+
+#[tokio::test]
+async fn ac_002_repository_install_select_and_remove_maintain_one_explicit_current_version() {
+    let (store, actor) = seed_store().await;
+    let mut older = input(actor.id);
+    older.identity.version = "1.1.0".into();
+    let older = ExtensionInstallationRepository::upsert_extension_installation(&store, &older)
+        .await
+        .unwrap();
+    let mut newer = input(actor.id);
+    newer.identity.version = "1.2.0".into();
+    let newer = ExtensionInstallationRepository::upsert_extension_installation(&store, &newer)
+        .await
+        .unwrap();
+
+    assert!(newer.is_current);
+    assert!(
+        !ExtensionInstallationRepository::find_extension_installation(&store, &older.identity)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_current
+    );
+
+    let selected = ExtensionInstallationRepository::select_current_extension_installation(
+        &store, "node-a", older.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(selected.is_current);
+
+    ExtensionInstallationRepository::remove_extension_installation(&store, "node-a", older.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let remaining =
+        ExtensionInstallationRepository::find_extension_installation(&store, &newer.identity)
+            .await
+            .unwrap()
+            .unwrap();
+    assert!(remaining.is_current);
 }

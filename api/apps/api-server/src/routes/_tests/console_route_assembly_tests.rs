@@ -430,41 +430,6 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "authenticated",
             ),
             (
-                "GET",
-                "/api/console/applications/orchestration/templates/official-catalog",
-                "authenticated",
-            ),
-            (
-                "POST",
-                "/api/console/applications/orchestration/templates/official/:template_id/sync",
-                "authenticated",
-            ),
-            (
-                "POST",
-                "/api/console/applications/orchestration/templates/official/:template_id/preview",
-                "authenticated",
-            ),
-            (
-                "POST",
-                "/api/console/applications/orchestration/templates/official/:template_id/import",
-                "applications.orchestration.template.import",
-            ),
-            (
-                "POST",
-                "/api/console/applications/orchestration/templates/official/:template_id/current/:release_version",
-                "authenticated",
-            ),
-            (
-                "DELETE",
-                "/api/console/applications/orchestration/templates/official/:template_id/releases/:release_version",
-                "authenticated",
-            ),
-            (
-                "POST",
-                "/api/console/applications/orchestration/templates/official/:template_id/releases/:release_version/repair",
-                "authenticated",
-            ),
-            (
                 "POST",
                 "/api/console/applications/:id/orchestration/versions/:version_id/restore",
                 "applications.orchestration.version.restore",
@@ -1383,6 +1348,16 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
                 "GET",
                 "/api/console/settings/extension-center/installed",
                 "extension_center.installed.view"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/select",
+                "extension_center.installed.select"
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/extension-center/installed/:installation_id",
+                "extension_center.installed.delete"
             ),
             (
                 "GET",

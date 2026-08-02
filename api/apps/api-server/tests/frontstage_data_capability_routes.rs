@@ -5,7 +5,6 @@ use api_server::{
     app_with_state_and_config,
     config::ApiConfig,
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::AgentFlowTemplateLibraryPort,
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
@@ -85,12 +84,6 @@ impl OfficialPluginSourcePort for NoopPluginSource {
         Vec::new()
     }
 }
-
-#[derive(Clone, Default)]
-struct NoopAgentFlowSource;
-
-#[async_trait]
-impl AgentFlowTemplateLibraryPort for NoopAgentFlowSource {}
 
 #[derive(Clone, Default)]
 struct NoopMcpSource;
@@ -227,7 +220,6 @@ async fn fixture() -> Fixture {
         ),
         plugin_runner_system: Arc::new(UnreachablePluginRunner),
         official_plugin_source: Arc::new(NoopPluginSource),
-        official_agent_flow_template_source: Arc::new(NoopAgentFlowSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
         official_extension_catalog_source: Arc::new(
             api_server::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(

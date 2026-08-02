@@ -35,6 +35,17 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
     ) -> anyhow::Result<domain::ExtensionInstallationRecord> {
         let now = OffsetDateTime::now_utc();
         let mut records = self.records.lock().unwrap();
+        if input.is_current {
+            for record in records.values_mut() {
+                if record.identity.category == input.identity.category
+                    && record.identity.organization == input.identity.organization
+                    && record.identity.artifact_id == input.identity.artifact_id
+                    && record.identity.node_id == input.identity.node_id
+                {
+                    record.is_current = false;
+                }
+            }
+        }
         let created_at = records
             .get(&input.identity)
             .map(|record| record.created_at)
@@ -53,6 +64,7 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
             receipt: input.receipt.clone(),
             application_action: input.application_action,
             status: input.status,
+            is_current: input.is_current,
             installed_by: input.installed_by,
             created_at,
             updated_at: now,
@@ -66,6 +78,20 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
         identity: &domain::ExtensionInstallationIdentity,
     ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
         Ok(self.records.lock().unwrap().get(identity).cloned())
+    }
+
+    async fn find_extension_installation_by_id(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .records
+            .lock()
+            .unwrap()
+            .values()
+            .find(|record| record.identity.node_id == node_id && record.id == installation_id)
+            .cloned())
     }
 
     async fn list_extension_installations_for_node(
@@ -97,6 +123,53 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
             record.status = status;
         }
         Ok(())
+    }
+
+    async fn select_current_extension_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        let mut records = self.records.lock().unwrap();
+        let Some(target) = records
+            .values()
+            .find(|record| record.identity.node_id == node_id && record.id == installation_id)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        for record in records.values_mut() {
+            if record.identity.category == target.identity.category
+                && record.identity.organization == target.identity.organization
+                && record.identity.artifact_id == target.identity.artifact_id
+                && record.identity.node_id == node_id
+            {
+                record.is_current = record.id == installation_id;
+            }
+        }
+        Ok(records
+            .values()
+            .find(|record| record.id == installation_id)
+            .cloned())
+    }
+
+    async fn remove_extension_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        let mut records = self.records.lock().unwrap();
+        let identity = records
+            .values()
+            .find(|record| record.identity.node_id == node_id && record.id == installation_id)
+            .map(|record| record.identity.clone());
+        let Some(identity) = identity else {
+            return Ok(None);
+        };
+        let record = records.get_mut(&identity).unwrap();
+        record.status = domain::ExtensionInstallationStatus::Missing;
+        record.is_current = false;
+        Ok(Some(record.clone()))
     }
 }
 
@@ -332,12 +405,29 @@ async fn root_1545_ac4_local_artifact_wins_and_duplicate_install_is_idempotent()
     );
 
     tokio::fs::remove_file(&second.local_path).await.unwrap();
-    assert!(service
-        .list_installed_for_node("node-a")
-        .await
-        .unwrap()
-        .is_empty());
+    let inventory = service.list_installed_for_node("node-a").await.unwrap();
+    assert_eq!(inventory.len(), 1, "ordinary inventory is DB-only");
+    assert_eq!(
+        inventory[0].status,
+        domain::ExtensionInstallationStatus::Installed
+    );
     assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 1);
+    assert_eq!(
+        service.list_installed_for_node("node-a").await.unwrap()[0].status,
+        domain::ExtensionInstallationStatus::Missing
+    );
+    tokio::fs::write(&second.local_path, b"corrupted")
+        .await
+        .unwrap();
+    assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 1);
+    tokio::fs::write(&second.local_path, b"local-debug")
+        .await
+        .unwrap();
+    assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 0);
+    assert_eq!(
+        service.list_installed_for_node("node-a").await.unwrap()[0].status,
+        domain::ExtensionInstallationStatus::Installed
+    );
     let _ = tokio::fs::remove_dir_all(root).await;
 }
 
@@ -417,8 +507,10 @@ async fn root_1545_ac4_rejects_path_traversal_before_writing() {
 #[test]
 fn root_1545_d4_ac_13_groups_installed_versions_by_stable_family_identity() {
     let now = OffsetDateTime::now_utc();
+    let mut explicit_current = installed_record("anthropic", "0.1.18", now);
+    explicit_current.is_current = true;
     let families = group_installed_extension_families([
-        installed_record("anthropic", "0.1.18", now),
+        explicit_current,
         installed_record("deepseek", "0.1.15", now),
         installed_record("anthropic", "0.1.23", now - time::Duration::DAY),
     ]);
@@ -428,14 +520,14 @@ fn root_1545_d4_ac_13_groups_installed_versions_by_stable_family_identity() {
         families[0].catalog_id(),
         "runtime-extensions:taichuy/anthropic"
     );
-    assert_eq!(families[0].current.identity.version, "0.1.23");
+    assert_eq!(families[0].current.identity.version, "0.1.18");
     assert_eq!(
         families[0]
             .installed_versions
             .iter()
             .map(|record| record.identity.version.as_str())
             .collect::<Vec<_>>(),
-        vec!["0.1.23", "0.1.18"]
+        vec!["0.1.18", "0.1.23"]
     );
     assert_eq!(
         families[1].catalog_id(),
@@ -468,6 +560,7 @@ fn installed_record(
         receipt: serde_json::json!({}),
         application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
         status: domain::ExtensionInstallationStatus::Installed,
+        is_current: false,
         installed_by: Uuid::now_v7(),
         created_at: updated_at,
         updated_at,

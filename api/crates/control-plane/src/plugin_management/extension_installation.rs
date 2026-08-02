@@ -97,7 +97,12 @@ pub fn group_installed_extension_families(
     grouped
         .into_values()
         .filter_map(|mut installed_versions| {
-            installed_versions.sort_by(compare_installed_extension_versions);
+            installed_versions.sort_by(|left, right| {
+                right
+                    .is_current
+                    .cmp(&left.is_current)
+                    .then_with(|| compare_installed_extension_versions(left, right))
+            });
             let current = installed_versions.first()?.clone();
             Some(InstalledExtensionFamily {
                 current,
@@ -249,6 +254,7 @@ where
                 }),
                 application_action,
                 status: domain::ExtensionInstallationStatus::Installed,
+                is_current: true,
                 installed_by: installation.created_by,
             })
             .await?;
@@ -365,6 +371,7 @@ where
                 receipt: serde_json::to_value(receipt)?,
                 application_action: command.application_action,
                 status: domain::ExtensionInstallationStatus::Installed,
+                is_current: true,
                 installed_by: command.actor_user_id,
             })
             .await?;
@@ -379,22 +386,9 @@ where
         &self,
         node_id: &str,
     ) -> Result<Vec<domain::ExtensionInstallationRecord>> {
-        let records = self
-            .repository
+        self.repository
             .list_extension_installations_for_node(node_id)
-            .await?;
-        let mut installed = Vec::with_capacity(records.len());
-        for mut record in records {
-            match local_artifact_is_present(&record.local_path).await {
-                Ok(true) => {
-                    record.status = domain::ExtensionInstallationStatus::Installed;
-                    installed.push(record);
-                }
-                Ok(false) => {}
-                Err(error) => return Err(error).context("failed to inspect extension artifact"),
-            }
-        }
-        Ok(installed)
+            .await
     }
 
     pub async fn list_installed_families_for_node(
@@ -432,11 +426,78 @@ where
         node_id: &str,
         installation_id: Uuid,
     ) -> Result<Option<domain::ExtensionInstallationRecord>> {
-        Ok(self
-            .list_installed_for_node(node_id)
+        let Some(record) = self
+            .repository
+            .find_extension_installation_by_id(node_id, installation_id)
             .await?
-            .into_iter()
-            .find(|record| record.id == installation_id))
+        else {
+            return Ok(None);
+        };
+        match local_artifact_is_present(&record.local_path).await {
+            Ok(true) => Ok(Some(record)),
+            Ok(false) => {
+                self.repository
+                    .set_extension_installation_status(
+                        installation_id,
+                        domain::ExtensionInstallationStatus::Missing,
+                    )
+                    .await?;
+                Ok(None)
+            }
+            Err(error) => Err(error).context("failed to inspect extension artifact"),
+        }
+    }
+
+    pub async fn select_current_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        let Some(record) = self
+            .repository
+            .find_extension_installation_by_id(node_id, installation_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        match local_artifact_is_present(&record.local_path).await {
+            Ok(true) => {}
+            Ok(false) => {
+                self.repository
+                    .set_extension_installation_status(
+                        installation_id,
+                        domain::ExtensionInstallationStatus::Missing,
+                    )
+                    .await?;
+                return Ok(None);
+            }
+            Err(error) => return Err(error).context("failed to inspect extension artifact"),
+        }
+        self.repository
+            .select_current_extension_installation(node_id, installation_id)
+            .await
+    }
+
+    pub async fn delete_local_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::ExtensionInstallationRecord>> {
+        let Some(record) = self
+            .repository
+            .find_extension_installation_by_id(node_id, installation_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        match fs::remove_file(&record.local_path).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("failed to delete extension artifact"),
+        }
+        self.repository
+            .remove_extension_installation(node_id, installation_id)
+            .await
     }
 
     pub async fn reconcile_node_inventory(&self, node_id: &str) -> Result<usize> {
@@ -446,7 +507,7 @@ where
             .await?;
         let mut missing = 0usize;
         for record in records {
-            match local_artifact_is_present(&record.local_path).await {
+            match local_artifact_matches_record(&record).await {
                 Ok(true) => {
                     if record.status != domain::ExtensionInstallationStatus::Installed {
                         self.repository
@@ -523,6 +584,7 @@ pub(super) fn extension_projection_for_plugin_installation(
         }),
         application_action: application_action_for_manifest(manifest),
         status: domain::ExtensionInstallationStatus::Installed,
+        is_current: true,
         installed_by: installation.actor_user_id,
     })
 }
@@ -562,6 +624,24 @@ async fn local_artifact_is_present(path: &str) -> std::io::Result<bool> {
     let path = PathBuf::from(path);
     match fs::metadata(&path).await {
         Ok(metadata) if metadata.is_file() => Ok(true),
+        Ok(metadata) if metadata.is_dir() => {
+            Ok(fs::metadata(path.join("manifest.yaml")).await.is_ok())
+        }
+        Ok(_) => Ok(false),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+async fn local_artifact_matches_record(
+    record: &domain::ExtensionInstallationRecord,
+) -> std::io::Result<bool> {
+    let path = PathBuf::from(&record.local_path);
+    match fs::metadata(&path).await {
+        Ok(metadata) if metadata.is_file() => {
+            let bytes = fs::read(path).await?;
+            Ok(record.checksum == "unknown" || sha256_checksum(&bytes) == record.checksum)
+        }
         Ok(metadata) if metadata.is_dir() => {
             Ok(fs::metadata(path.join("manifest.yaml")).await.is_ok())
         }

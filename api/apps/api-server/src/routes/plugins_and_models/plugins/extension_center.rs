@@ -33,7 +33,9 @@ use crate::{
     },
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{
+        console_delete, console_get, console_post, ConsoleRouteAssembly,
+    },
 };
 
 use super::{
@@ -75,6 +77,7 @@ pub struct LocalExtensionInstalledVersionResponse {
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
     pub status: String,
+    pub is_current: bool,
     pub installed_by: String,
     pub created_at: String,
     pub updated_at: String,
@@ -98,6 +101,7 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
     pub status: String,
+    pub is_current: bool,
     pub application_action: String,
     pub application_status: String,
     pub installed_by: String,
@@ -244,6 +248,20 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/extension-center/installed/:installation_id/select",
+            console_post(
+                select_local_extension_installation,
+                ConsoleOperation("extension_center.installed.select".to_string()),
+            ),
+        )
+        .route(
+            "/settings/extension-center/installed/:installation_id",
+            console_delete(
+                delete_local_extension_installation,
+                ConsoleOperation("extension_center.installed.delete".to_string()),
+            ),
+        )
+        .route(
             "/settings/extension-center/catalog/:category",
             console_get(
                 list_extension_catalog_gateway,
@@ -330,6 +348,7 @@ fn to_installed_version(
         signature_algorithm: entry.signature_algorithm.clone(),
         signing_key_id: entry.signing_key_id.clone(),
         status: entry.status.as_str().to_string(),
+        is_current: entry.is_current,
         installed_by: entry.installed_by.to_string(),
         created_at: format_time(entry.created_at),
         updated_at: format_time(entry.updated_at),
@@ -357,6 +376,7 @@ fn to_local_inventory_family(
         signature_algorithm: entry.signature_algorithm,
         signing_key_id: entry.signing_key_id,
         status: entry.status.as_str().to_string(),
+        is_current: entry.is_current,
         application_action: entry.application_action.as_str().to_string(),
         application_status: default_application_status(entry.application_action).to_string(),
         installed_by: entry.installed_by.to_string(),
@@ -460,6 +480,58 @@ pub async fn list_local_extension_inventory(
         next_cursor,
         entries,
     })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/extension-center/installed/{installation_id}/select",
+    operation_id = "extension_center_select_installed_version",
+    summary = "Select an installed extension version",
+    description = "Selects one locally installed version as the database current version for its extension family.",
+    responses((status = 200, body = LocalExtensionInventoryEntryResponse), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn select_local_extension_installation(
+    State(state): State<Arc<ApiState>>,
+    Path(installation_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<LocalExtensionInventoryEntryResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let installation = extension_installation_service(&state)
+        .select_current_installation(&state.api_node_id, installation_id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "extension_installation",
+        ))?;
+    Ok(Json(ApiSuccess::new(to_local_inventory_entry(
+        installation,
+    ))))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/settings/extension-center/installed/{installation_id}",
+    operation_id = "extension_center_delete_installed_version",
+    summary = "Delete an installed extension version",
+    description = "Deletes one local artifact, marks its installation missing, and transactionally selects a remaining installed version when necessary.",
+    responses((status = 200, body = LocalExtensionInventoryEntryResponse), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn delete_local_extension_installation(
+    State(state): State<Arc<ApiState>>,
+    Path(installation_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<LocalExtensionInventoryEntryResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let installation = extension_installation_service(&state)
+        .delete_local_installation(&state.api_node_id, installation_id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "extension_installation",
+        ))?;
+    Ok(Json(ApiSuccess::new(to_local_inventory_entry(
+        installation,
+    ))))
 }
 
 #[derive(Debug, Clone)]

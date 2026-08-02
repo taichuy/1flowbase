@@ -21,6 +21,7 @@ pub struct StoredExtensionInstallationRow {
     pub receipt: serde_json::Value,
     pub application_action: String,
     pub status: String,
+    pub is_current: bool,
     pub installed_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -63,6 +64,7 @@ pub fn to_extension_installation_record(
             })?,
         status: domain::ExtensionInstallationStatus::parse(&row.status)
             .ok_or_else(|| anyhow!("unknown extension installation status: {}", row.status))?,
+        is_current: row.is_current,
         installed_by: row.installed_by,
         created_at: row.created_at,
         updated_at: row.updated_at,

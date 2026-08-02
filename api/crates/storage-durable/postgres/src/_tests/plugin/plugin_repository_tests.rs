@@ -733,6 +733,7 @@ fn installation_commit_input(
             receipt: json!({"kind": "fixture"}),
             application_action: domain::ExtensionApplicationAction::None,
             status: domain::ExtensionInstallationStatus::Installed,
+            is_current: true,
             installed_by: actor_user_id,
         },
         artifact_instance: UpsertPluginArtifactInstanceInput {

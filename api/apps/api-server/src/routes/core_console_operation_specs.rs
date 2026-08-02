@@ -185,6 +185,14 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("i18n_catalog.update.activate", "system.i18n-catalog"),
     settings("i18n_catalog.update.check", "system.i18n-catalog"),
     settings("extension_center.installed.view", "system.extension-center"),
+    settings(
+        "extension_center.installed.select",
+        "system.extension-center",
+    ),
+    settings(
+        "extension_center.installed.delete",
+        "system.extension-center",
+    ),
     settings("extension_center.catalog.view", "system.extension-center"),
     settings("extension_center.catalog.detail", "system.extension-center"),
     settings("extension_center.update_check", "system.extension-center"),

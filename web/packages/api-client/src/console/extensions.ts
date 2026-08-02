@@ -44,6 +44,7 @@ export interface ConsoleInstalledExtensionVersion {
   signature_algorithm: string | null;
   signing_key_id: string | null;
   status: string;
+  is_current: boolean;
   installed_by: string;
   created_at: string;
   updated_at: string;
@@ -77,6 +78,7 @@ export interface ConsoleInstalledExtension {
   signature_algorithm: string | null;
   signing_key_id: string | null;
   status: string;
+  is_current: boolean;
   application_action: ConsoleExtensionApplicationAction;
   application_status: ConsoleExtensionApplicationStatus;
   installed_by: string;
@@ -237,6 +239,28 @@ export function listConsoleInstalledExtensions(cursor?: string, limit = 20) {
   if (cursor) query.set('cursor', cursor);
   return apiFetch<ConsoleInstalledExtensionPage>({
     path: `${BASE}/installed?${query.toString()}`
+  });
+}
+
+export function selectConsoleInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleInstalledExtension>({
+    path: `${BASE}/installed/${encodeURIComponent(installationId)}/select`,
+    method: 'POST',
+    csrfToken
+  });
+}
+
+export function deleteConsoleInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleInstalledExtension>({
+    path: `${BASE}/installed/${encodeURIComponent(installationId)}`,
+    method: 'DELETE',
+    csrfToken
   });
 }
 

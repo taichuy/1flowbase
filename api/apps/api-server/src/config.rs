@@ -41,7 +41,6 @@ pub struct ApiConfig {
     pub cors_allowed_origins: Option<Vec<HeaderValue>>,
     pub api_node_id: String,
     pub provider_install_root: String,
-    pub agent_flow_template_library_root: String,
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
     pub allow_unverified_filesystem_dropins: bool,
@@ -54,8 +53,6 @@ pub struct ApiConfig {
     pub official_plugin_trusted_public_keys_json: String,
     pub official_extension_catalog_sources:
         BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
-    pub official_agent_flow_template_default_index_url: String,
-    pub official_agent_flow_template_mirror_index_url: Option<String>,
     pub official_mcp_bundle_default_catalog_url: String,
     pub official_mcp_bundle_mirror_catalog_url: Option<String>,
     pub official_i18n_catalog_repository: String,
@@ -147,10 +144,6 @@ impl ApiConfig {
             .get("API_PROVIDER_INSTALL_ROOT")
             .cloned()
             .unwrap_or_else(default_provider_install_root);
-        let agent_flow_template_library_root = map
-            .get("API_AGENT_FLOW_TEMPLATE_LIBRARY_ROOT")
-            .cloned()
-            .unwrap_or_else(default_agent_flow_template_library_root);
         let api_node_id = map
             .get("API_NODE_ID")
             .cloned()
@@ -215,19 +208,6 @@ impl ApiConfig {
             &official_plugin_repository,
             official_plugin_github_proxy_url.clone(),
         );
-        let official_agent_flow_template_default_index_url = map
-            .get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_DEFAULT_INDEX_URL")
-            .cloned()
-            .or_else(|| map.get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_INDEX_URL").cloned())
-            .unwrap_or_else(|| {
-                format!(
-                    "https://raw.githubusercontent.com/{official_plugin_repository}/main/agent-flow/releases/v1/catalog.json"
-                )
-            });
-        let official_agent_flow_template_mirror_index_url = map
-            .get("API_OFFICIAL_AGENT_FLOW_TEMPLATE_MIRROR_INDEX_URL")
-            .cloned()
-            .filter(|value| !value.trim().is_empty());
         let official_mcp_bundle_default_catalog_url = map
             .get("API_OFFICIAL_MCP_BUNDLE_DEFAULT_CATALOG_URL")
             .cloned()
@@ -320,7 +300,6 @@ impl ApiConfig {
             cors_allowed_origins,
             api_node_id,
             provider_install_root,
-            agent_flow_template_library_root,
             provider_secret_master_key,
             host_extension_dropin_root,
             allow_unverified_filesystem_dropins,
@@ -332,8 +311,6 @@ impl ApiConfig {
             official_plugin_signature_required,
             official_plugin_trusted_public_keys_json,
             official_extension_catalog_sources,
-            official_agent_flow_template_default_index_url,
-            official_agent_flow_template_mirror_index_url,
             official_mcp_bundle_default_catalog_url,
             official_mcp_bundle_mirror_catalog_url,
             official_i18n_catalog_repository,
@@ -386,30 +363,6 @@ impl ApiConfig {
             "signature_required".to_string()
         } else {
             "allow_unsigned".to_string()
-        }
-    }
-
-    pub fn resolve_official_agent_flow_template_source(
-        &self,
-    ) -> ResolvedOfficialAgentFlowTemplateSourceConfig {
-        if let Some(mirror_url) = self
-            .official_agent_flow_template_mirror_index_url
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-        {
-            return ResolvedOfficialAgentFlowTemplateSourceConfig {
-                source_kind: "mirror_registry".into(),
-                source_label: "Mirror source".into(),
-                index_url: mirror_url,
-                github_proxy_url: self.official_plugin_github_proxy_url.clone(),
-            };
-        }
-
-        ResolvedOfficialAgentFlowTemplateSourceConfig {
-            source_kind: "official_registry".into(),
-            source_label: "Official source".into(),
-            index_url: self.official_agent_flow_template_default_index_url.clone(),
-            github_proxy_url: self.official_plugin_github_proxy_url.clone(),
         }
     }
 
@@ -593,18 +546,6 @@ fn default_provider_install_root() -> String {
         .unwrap_or(current_dir)
         .join("api")
         .join("plugins")
-        .display()
-        .to_string()
-}
-
-fn default_agent_flow_template_library_root() -> String {
-    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    find_workspace_root(&current_dir)
-        .unwrap_or(current_dir)
-        .join("api")
-        .join("storage")
-        .join("extension-center")
-        .join("agent-flow")
         .display()
         .to_string()
 }
