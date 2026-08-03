@@ -160,8 +160,19 @@ fn build_interface_arguments(
     let input_mapping: McpInputMapping = serde_json::from_value(input_mapping.clone())
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("input_mapping"))?;
     let mut arguments = TargetArguments::default();
+    let mut next_parameter_target = BTreeMap::<String, usize>::new();
 
     for mapping in input_mapping.mappings {
+        // The persisted mapping identifies a parameter by name, so repeated names consume the
+        // canonical OpenAPI location order independently of which optional values are present.
+        let target_index = {
+            let next_index = next_parameter_target
+                .entry(mapping.interface_param.clone())
+                .or_default();
+            let current_index = *next_index;
+            *next_index = (*next_index).saturating_add(1);
+            current_index
+        };
         let mcp_value = match get_path_value(mcp_arguments, &mapping.mcp_param) {
             Some(value) => value.clone(),
             _ if mapping.required => {
@@ -172,15 +183,16 @@ fn build_interface_arguments(
             }
             _ => continue,
         };
-        let descriptor = interface_entry
-            .parameter_descriptors
-            .iter()
-            .find(|descriptor| descriptor.name == mapping.interface_param)
+        let targets = parameter_targets(interface_entry, &mapping.interface_param)?;
+        let target = targets
+            .get(target_index)
+            .or_else(|| targets.first())
+            .copied()
             .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
                 "input_mapping",
             ))?;
 
-        match parameter_target(interface_entry, descriptor) {
+        match target {
             InterfaceParameterTarget::Path => {
                 arguments
                     .path
@@ -268,14 +280,65 @@ fn parameter_target(
     }
 }
 
+fn parameter_targets(
+    interface_entry: &domain::McpInterfaceCatalogEntry,
+    parameter_name: &str,
+) -> anyhow::Result<Vec<InterfaceParameterTarget>> {
+    let mut targets = Vec::new();
+    if parameter_schema_has_location_field(
+        &interface_entry.parameter_schema,
+        "path",
+        parameter_name,
+    ) {
+        targets.push(InterfaceParameterTarget::Path);
+    }
+    if parameter_schema_has_location_field(
+        &interface_entry.parameter_schema,
+        "query",
+        parameter_name,
+    ) {
+        targets.push(InterfaceParameterTarget::Query);
+    }
+    if parameter_schema_has_location_field(
+        &interface_entry.parameter_schema,
+        "body",
+        parameter_name,
+    ) {
+        targets.push(InterfaceParameterTarget::Body);
+    }
+    if !targets.is_empty() {
+        return Ok(targets);
+    }
+
+    interface_entry
+        .parameter_descriptors
+        .iter()
+        .find(|descriptor| descriptor.name == parameter_name)
+        .map(|descriptor| vec![parameter_target(interface_entry, descriptor)])
+        .ok_or_else(|| {
+            control_plane::errors::ControlPlaneError::InvalidInput("input_mapping").into()
+        })
+}
+
 fn parameter_schema_has_location_field(schema: &Value, location: &str, field: &str) -> bool {
-    schema
+    let Some(mut cursor) = schema
         .get("properties")
         .and_then(Value::as_object)
         .and_then(|properties| properties.get(location))
-        .and_then(|location_schema| location_schema.get("properties"))
-        .and_then(Value::as_object)
-        .is_some_and(|properties| properties.contains_key(field))
+    else {
+        return false;
+    };
+    for segment in field.split('.').filter(|segment| !segment.is_empty()) {
+        let Some(next) = cursor
+            .get("properties")
+            .and_then(Value::as_object)
+            .and_then(|properties| properties.get(segment))
+        else {
+            return false;
+        };
+        cursor = next;
+    }
+    true
 }
 
 fn map_tool_result(output_mapping: &Value, interface_response: &Value) -> Value {
