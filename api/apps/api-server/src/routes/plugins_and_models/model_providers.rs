@@ -23,10 +23,8 @@ use plugin_framework::{
     },
     provider_package::ProviderConfigField,
 };
-use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
-use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{

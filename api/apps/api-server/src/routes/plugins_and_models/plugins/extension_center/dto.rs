@@ -1,4 +1,7 @@
-use super::*;
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+
+use super::{PluginCompatibilityOverrideBody, PluginRiskOverrideBody};
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
 pub struct LocalExtensionInventoryQuery {

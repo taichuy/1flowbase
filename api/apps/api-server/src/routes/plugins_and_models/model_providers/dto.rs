@@ -1,4 +1,8 @@
-use super::*;
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
+
+use crate::routes::system::LocaleMetaResponse;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ConfiguredModelBody {
