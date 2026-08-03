@@ -601,7 +601,7 @@ async fn mcp_get_projects_input_mapping_into_agent_schema() {
 }
 
 #[tokio::test]
-async fn mcp_call_executes_the_interface_catalog_with_boolean_json_schemas() {
+async fn mcp_call_routes_large_interface_catalog_with_boolean_schemas_to_continuation() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_mcp_instance(&app, &cookie, &csrf).await;
@@ -684,7 +684,13 @@ async fn mcp_call_executes_the_interface_catalog_with_boolean_json_schemas() {
     .await;
 
     assert_eq!(payload["result"]["isError"], json!(false), "{payload}");
-    assert!(payload["result"]["structuredContent"].is_array());
+    let compact = &payload["result"]["structuredContent"];
+    assert_eq!(compact["outcome"], json!("succeeded"), "{payload}");
+    assert_eq!(
+        compact["detail"]["status"],
+        json!("continuation_available"),
+        "{payload}"
+    );
 }
 
 #[tokio::test]
@@ -786,7 +792,7 @@ async fn mcp_call_rejects_stale_or_missing_required_des_id() {
 }
 
 #[tokio::test]
-async fn mcp_call_get_catalog_preserves_discovery_policy_field_array() {
+async fn mcp_call_get_catalog_preserves_discovery_policy_fields_via_continuation() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_mcp_instance(&app, &cookie, &csrf).await;
@@ -818,11 +824,46 @@ async fn mcp_call_get_catalog_preserves_discovery_policy_field_array() {
 
     assert!(payload["error"].is_null(), "{payload}");
     assert_eq!(payload["result"]["isError"], json!(false));
-    let policies = payload["result"]["structuredContent"]["discovery_policies"]
-        .as_array()
-        .expect("catalog should return discovery policies");
-    assert_eq!(policies.len(), 1, "{payload}");
-    assert!(policies[0]["list_return_fields"].is_array(), "{payload}");
+    let result_ref = payload["result"]["structuredContent"]["detail"]["result_ref"]
+        .as_str()
+        .expect("large catalog should provide a continuation reference");
+    let mut cursor = None;
+    let mut found_list_return_field = false;
+    for id in 21..53 {
+        let continuation = call_mcp(
+            &app,
+            &token,
+            json!({
+                "jsonrpc":"2.0",
+                "id":id,
+                "method":"tools/call",
+                "params":{
+                    "name":"mcp.result",
+                    "arguments":{
+                        "result_ref":result_ref,
+                        "cursor":cursor
+                    }
+                }
+            }),
+        )
+        .await;
+        let page = &continuation["result"]["structuredContent"];
+        assert_eq!(page["detail_status"], json!("available"), "{page}");
+        found_list_return_field |= page["entries"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|entry| {
+                entry["path"].as_str().is_some_and(|path| {
+                    path.starts_with("/discovery_policies/0/list_return_fields/")
+                }) && entry["value"].is_string()
+            });
+        cursor = page["next_cursor"].as_str().map(str::to_owned);
+        if found_list_return_field || cursor.is_none() {
+            break;
+        }
+    }
+    assert!(found_list_return_field, "{payload}");
 }
 
 #[tokio::test]
