@@ -313,6 +313,11 @@ async fn model_provider_service_list_instances_does_not_read_global_install_path
             true,
         )
         .await;
+    repository
+        .artifact_instances
+        .write()
+        .await
+        .remove(&("test-node".to_string(), installation_id));
     let instance = repository
         .create_instance(&CreateModelProviderInstanceInput {
             instance_id: Uuid::now_v7(),

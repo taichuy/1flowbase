@@ -144,7 +144,8 @@ async fn ac_007_data_source_simple_console_operations_do_not_fall_back_to_legacy
         policy_repository.clone(),
         StubDataSourceRuntime::ready(),
         "test-master-key",
-    );
+    )
+    .with_node_artifact_context("test-node", env!("CARGO_MANIFEST_DIR"));
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -187,7 +188,8 @@ async fn ac_007_data_source_simple_console_operations_do_not_fall_back_to_legacy
         InMemoryDataSourceRepository::with_actor(legacy_actor),
         StubDataSourceRuntime::ready(),
         "test-master-key",
-    );
+    )
+    .with_node_artifact_context("test-node", env!("CARGO_MANIFEST_DIR"));
     let legacy_error = legacy_service
         .create_instance(CreateDataSourceInstanceCommand {
             actor_user_id: user_id(),

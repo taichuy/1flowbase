@@ -651,16 +651,9 @@ async fn safe_external_system_scope_system_all_grant_does_not_require_risk_confi
     let actor_user_id = Uuid::now_v7();
     let actor_workspace_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
-    let grant_id = Uuid::now_v7();
     let repository =
         ScopedModelDefinitionRepository::new(actor_in_workspace(actor_user_id, actor_workspace_id))
-            .with_model(safe_external_system_model(model_id))
-            .with_grant(scope_grant(
-                grant_id,
-                model_id,
-                DataModelScopeKind::System,
-                SYSTEM_SCOPE_ID,
-            ));
+            .with_model(safe_external_system_model(model_id));
     let service = ModelDefinitionService::new(repository);
 
     let created = service
@@ -684,7 +677,7 @@ async fn safe_external_system_scope_system_all_grant_does_not_require_risk_confi
         .update_scope_grant(UpdateScopeDataModelGrantCommand {
             actor_user_id,
             data_model_id: model_id,
-            grant_id,
+            grant_id: created.id,
             enabled: Some(true),
             permission_profile: Some("system_all".into()),
             confirm_unsafe_external_source_system_all: false,
