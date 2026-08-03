@@ -20,7 +20,7 @@ function writeFixtureManifest(root) {
   const manifestPath = path.join(root, 'manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify({
     schema_version: '1flowbase.local-ai-gateway-acceptance/v1',
-    database: { container: 'docker-db-1', image: 'postgres:16-alpine', host: '127.0.0.1', port: 35432 },
+    database: { container: 'docker-db-1', image: 'postgres:18-alpine', host: '127.0.0.1', port: 35432 },
     artifacts: {
       fixture: {
         path: artifact,
@@ -36,7 +36,7 @@ test('AC-027/028: the local manifest fixes the existing container, port, paths, 
   try {
     const manifest = loadManifest(writeFixtureManifest(root));
     assert.equal(manifest.database.container, 'docker-db-1');
-    assert.equal(manifest.database.image, 'postgres:16-alpine');
+    assert.equal(manifest.database.image, 'postgres:18-alpine');
     assert.equal(manifest.database.host, '127.0.0.1');
     assert.equal(manifest.database.port, 35432);
     assert.deepEqual(verifyChecksums(manifest).map((entry) => entry.name), ['fixture']);

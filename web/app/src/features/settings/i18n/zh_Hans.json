@@ -729,7 +729,6 @@
     "read_only": "只读",
     "repair": "修复",
     "current_node_version": "当前节点版本：{{value1}}",
-    "checked_at": "检查时间：{{value1}}",
     "current_node_error": "当前节点错误：{{value1}}",
     "export": "导出",
     "mcp_management": "MCP 管理",

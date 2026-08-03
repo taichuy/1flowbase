@@ -10,7 +10,6 @@ import {
   Typography
 } from 'antd';
 
-import { formatDateTime } from '../../../../shared/i18n/format';
 import { ScrollableSurface } from '../../../../shared/ui/scrollable-surface/ScrollableSurface';
 import type { SettingsPluginFamilyEntry } from '../../api/plugins';
 import type { SettingsModelProviderCatalogEntry } from '../../api/model-providers';
@@ -45,16 +44,6 @@ function sortInstalledVersions(
   return Array.from(versions).sort((left, right) =>
     compareVersions(left.plugin_version, right.plugin_version)
   );
-}
-
-function formatCheckedAt(value: string) {
-  const timestamp = new Date(value);
-
-  if (Number.isNaN(timestamp.getTime())) {
-    return value;
-  }
-
-  return formatDateTime(timestamp);
 }
 
 export function ModelProviderCatalogPanel({
@@ -288,16 +277,6 @@ export function ModelProviderCatalogPanel({
                       })}
                     </Typography.Text>
                   ) : null}
-                  <Typography.Text
-                    type="secondary"
-                    className="model-provider-panel__version-detail"
-                  >
-                    {i18nText('settings', 'auto.checked_at', {
-                      value1: formatCheckedAt(
-                        entry.current_local_artifact.checked_at
-                      )
-                    })}
-                  </Typography.Text>
                   {entry.current_local_artifact.last_error ? (
                     <Typography.Text
                       type="danger"

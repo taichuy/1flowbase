@@ -11,6 +11,7 @@ const {
 const LOCAL_POSTGRES_HOSTS = new Set(['127.0.0.1', 'localhost']);
 const TEST_SCHEMA_NAME_PATTERN = /^test_[0-9a-f]{32}$/u;
 const BACKUP_DIRECTORY_PATTERN = /^postgres\.(?:empty|backup)-(.+)$/u;
+const TEST_SCHEMA_DROP_BATCH_SIZE = 1;
 
 function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
@@ -421,7 +422,14 @@ function runTestSchemaMaintenance({
     return 0;
   }
 
-  removeTestSchemas({ repoRoot, database, schemaNames: plan.dropSchemas, runMiddlewareComposeCommand });
+  for (let index = 0; index < plan.dropSchemas.length; index += TEST_SCHEMA_DROP_BATCH_SIZE) {
+    removeTestSchemas({
+      repoRoot,
+      database,
+      schemaNames: plan.dropSchemas.slice(index, index + TEST_SCHEMA_DROP_BATCH_SIZE),
+      runMiddlewareComposeCommand,
+    });
+  }
   logTestSchemaPlan({ action: 'dropped', plan, writeStdout });
   return 0;
 }

@@ -9,6 +9,8 @@ docker compose -f .\docker-compose.middleware.yaml up -d
 
 当前默认本地中间件只包含 PostgreSQL。Redis 不作为默认依赖；后续通过 Redis HostExtension / infra plugin 接入。RustFS 不作为默认依赖；对象存储由后台文件存储配置选择，默认使用本地存储。
 
+内置数据库默认使用 PostgreSQL 18。PostgreSQL 18 官方镜像把持久化根目录改为 `/var/lib/postgresql`，实际数据位于版本化子目录。若挂载目录根部存在 PostgreSQL 17 或更早版本的 `PG_VERSION`，容器会拒绝初始化，避免旧数据被忽略后静默启动为空库。主版本升级必须先保留原目录，并通过 `pg_dump` / `pg_restore` 或 `pg_upgrade` 显式迁移；不能只修改镜像 tag。
+
 默认映射端口：
 
 - PostgreSQL: `35432`

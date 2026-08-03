@@ -729,7 +729,6 @@
     "read_only": "read only",
     "repair": "Repair",
     "current_node_version": "Current node version: {{value1}}",
-    "checked_at": "Checked at: {{value1}}",
     "current_node_error": "Current node error: {{value1}}",
     "export": "Export",
     "mcp_management": "MCP management",

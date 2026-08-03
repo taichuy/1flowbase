@@ -525,6 +525,9 @@ describe('ModelProvidersPage - catalog and family version', () => {
     expect(
       within(catalogRow).queryByText(/^当前节点版本：/)
     ).not.toBeInTheDocument();
+    expect(
+      within(catalogRow).queryByText(/^检查时间：/)
+    ).not.toBeInTheDocument();
     fireEvent.click(updateButton);
     const confirmDialog = await screen.findByRole('dialog');
     fireEvent.click(
