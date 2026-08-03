@@ -120,7 +120,7 @@ const vditorMock = vi.hoisted(() => ({
   })
 }));
 
-vi.mock('../../../api/mcp-management', () => mcpManagementApi);
+vi.mock('../../../../api/mcp-management', () => mcpManagementApi);
 vi.mock('@tanstack/react-router', async () => {
   const React = await import('react');
 
