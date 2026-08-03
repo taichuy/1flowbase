@@ -20,9 +20,7 @@ use control_plane::plugin_management::{
     SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
-use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
-use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
@@ -44,6 +42,8 @@ use super::{
     base_service, enforce_plugin_upload_limit, format_time, PluginCompatibilityOverrideBody,
     PluginRiskOverrideBody, MAX_PLUGIN_UPLOAD_BYTES,
 };
+
+mod dto;
 
 pub use dto::*;
 

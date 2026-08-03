@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
-use super::{
+use super::mappers::{
     execution_target_kind, execution_target_remote_tool_name, execution_target_source_schema_hash,
-    execution_target_upstream_connection_id,
+    execution_target_upstream_connection_id, map_mcp_instance_insert_error,
 };
 
 pub(super) async fn replace_mcp_bundle_graph_atomically(
