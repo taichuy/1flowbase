@@ -224,12 +224,25 @@ struct LoadedMcpBundleSource {
     integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct McpBundleLibraryVersionBody {
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
+pub(crate) struct McpBundleLibraryVersionBody {
     bundle_version: Option<String>,
 }
 
-async fn list_bundle_library(
+#[utoipa::path(
+    get,
+    path = "/api/console/mcp/bundles/library",
+    operation_id = "list_mcp_bundle_library",
+    summary = "List MCP bundle library",
+    description = "Lists remote and locally synchronized MCP bundle releases available to the current workspace.",
+    params(McpBundleLibraryQuery),
+    responses(
+        (status = 200, body = crate::official_mcp_bundles::McpBundleLibraryCatalog),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub(crate) async fn list_bundle_library(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(query): Query<McpBundleLibraryQuery>,
@@ -238,7 +251,7 @@ async fn list_bundle_library(
     McpManagementService::new(state.store.clone())
         .authorize_bundle_management(context.user.id)
         .await?;
-    let catalog = if query.refresh_remote {
+    let catalog = if query.refresh_remote.unwrap_or(false) {
         state.official_mcp_bundle_source.refresh_catalog().await?
     } else {
         state.official_mcp_bundle_source.library_catalog().await?
@@ -246,13 +259,29 @@ async fn list_bundle_library(
     Ok(Json(ApiSuccess::new(catalog)))
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct McpBundleLibraryQuery {
-    #[serde(default)]
-    refresh_remote: bool,
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+pub(crate) struct McpBundleLibraryQuery {
+    refresh_remote: Option<bool>,
 }
 
-async fn sync_library_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/library/{organization}/{bundle_id}/sync",
+    operation_id = "sync_mcp_bundle_library_release",
+    summary = "Synchronize an MCP bundle release",
+    description = "Downloads and verifies one MCP bundle release into the local bundle library.",
+    params(
+        ("organization" = String, Path, description = "Bundle publisher organization"),
+        ("bundle_id" = String, Path, description = "Stable bundle identifier")
+    ),
+    request_body = McpBundleLibraryVersionBody,
+    responses(
+        (status = 200, body = crate::official_mcp_bundles::LocalMcpBundleReceipt),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub(crate) async fn sync_library_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((organization, bundle_id)): Path<(String, String)>,
@@ -270,7 +299,24 @@ async fn sync_library_bundle(
     Ok(Json(ApiSuccess::new(receipt)))
 }
 
-async fn preview_library_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/library/{organization}/{bundle_id}/preview",
+    operation_id = "preview_mcp_bundle_library_release",
+    summary = "Preview an MCP bundle release",
+    description = "Previews the changes produced by importing one locally synchronized MCP bundle release.",
+    params(
+        ("organization" = String, Path, description = "Bundle publisher organization"),
+        ("bundle_id" = String, Path, description = "Stable bundle identifier")
+    ),
+    request_body = McpBundleLibraryVersionBody,
+    responses(
+        (status = 200, body = domain::McpBundlePreview),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub(crate) async fn preview_library_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((organization, bundle_id)): Path<(String, String)>,
@@ -299,7 +345,24 @@ async fn preview_library_bundle(
     Ok(Json(ApiSuccess::new(preview)))
 }
 
-async fn import_library_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/library/{organization}/{bundle_id}/import",
+    operation_id = "import_mcp_bundle_library_release",
+    summary = "Import an MCP bundle release",
+    description = "Imports one locally synchronized MCP bundle release into the current workspace.",
+    params(
+        ("organization" = String, Path, description = "Bundle publisher organization"),
+        ("bundle_id" = String, Path, description = "Stable bundle identifier")
+    ),
+    request_body = McpBundleLibraryVersionBody,
+    responses(
+        (status = 200, body = domain::McpBundleImportReport),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub(crate) async fn import_library_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((organization, bundle_id)): Path<(String, String)>,

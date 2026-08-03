@@ -27,6 +27,8 @@ use crate::_tests::support::{
     test_app_with_runtime_profile_error, test_config,
 };
 
+mod openapi_contract;
+
 #[derive(Clone)]
 struct FailingLegacyMcpCatalogSource;
 
