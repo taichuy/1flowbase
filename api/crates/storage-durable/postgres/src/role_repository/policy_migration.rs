@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn normalized_migration_source(
+fn normalized_migration_source(
     source: &RoleConsolePolicyMigrationSource,
 ) -> Result<RoleConsolePolicyMigrationSource> {
     let permission_resources = source
@@ -30,7 +30,7 @@ pub(super) fn normalized_migration_source(
     })
 }
 
-pub(super) async fn migration_grant_inventories(
+async fn migration_grant_inventories(
     pool: &sqlx::PgPool,
     source: &RoleConsolePolicyMigrationSource,
 ) -> Result<Vec<RoleConsolePolicyMigrationGrantInventory>> {
@@ -70,7 +70,7 @@ pub(super) async fn migration_grant_inventories(
         .collect())
 }
 
-pub(super) async fn role_console_policy_migration_source_snapshot(
+async fn role_console_policy_migration_source_snapshot(
     tx: &mut Transaction<'_, Postgres>,
     source: &RoleConsolePolicyMigrationSource,
     role_ids: &[Uuid],
@@ -115,7 +115,7 @@ pub(super) async fn role_console_policy_migration_source_snapshot(
     .await?)
 }
 
-pub(super) async fn role_console_policy_migration_actor_bindings(
+async fn role_console_policy_migration_actor_bindings(
     tx: &mut Transaction<'_, Postgres>,
     role_ids: &[Uuid],
 ) -> Result<Vec<ConsolePolicyMigrationActorRoleBinding>> {
@@ -141,7 +141,7 @@ pub(super) async fn role_console_policy_migration_actor_bindings(
         .collect())
 }
 
-pub(super) fn actor_bindings_from_previews(
+fn actor_bindings_from_previews(
     actor_previews: &[ConsolePolicyMigrationActorPreview],
 ) -> Result<Vec<ConsolePolicyMigrationActorRoleBinding>> {
     let bindings = actor_previews

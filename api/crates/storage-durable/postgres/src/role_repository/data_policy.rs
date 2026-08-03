@@ -10,7 +10,7 @@ pub(super) fn optional_data_policy_scope_from_db(
     value.map(|scope| domain::RoleDataPolicyScope::from_db(&scope))
 }
 
-pub(super) fn default_role_data_policy() -> RoleDataPolicyDefaultsInput {
+fn default_role_data_policy() -> RoleDataPolicyDefaultsInput {
     RoleDataPolicyDefaultsInput {
         can_view: false,
         can_create: false,

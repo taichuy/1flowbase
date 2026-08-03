@@ -37,8 +37,7 @@ mod role_store;
 
 use console_policy::replace_role_console_policy_rows;
 use data_policy::{
-    data_policy_scope_from_db, default_role_data_policy, insert_default_role_data_policy,
-    optional_data_policy_scope_from_db,
+    data_policy_scope_from_db, insert_default_role_data_policy, optional_data_policy_scope_from_db,
 };
 
 pub(crate) use console_policy::role_console_policy_by_id;
