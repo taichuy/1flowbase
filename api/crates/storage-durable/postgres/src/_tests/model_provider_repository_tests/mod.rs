@@ -223,31 +223,50 @@ async fn seed_store_before_main_instance_aggregation() -> (
         .await
         .unwrap();
     let installation_id = Uuid::now_v7();
-    control_plane::ports::PluginRepository::upsert_installation(
-        &store,
-        &UpsertPluginInstallationInput {
-            installation_id,
-            category: domain::ExtensionCategory::RuntimeExtensions,
-            organization: "test".to_string(),
-            provider_code: "fixture_provider".into(),
-            plugin_id: "fixture_provider@0.1.0".into(),
-            plugin_version: "0.1.0".into(),
-            contract_version: "1flowbase.provider/v1".into(),
-            protocol: "openai_compatible".into(),
-            display_name: "Fixture Provider".into(),
-            source_kind: "uploaded".into(),
-            trust_level: "unverified".into(),
-            verification_status: PluginVerificationStatus::Valid,
-            desired_state: PluginDesiredState::ActiveRequested,
-            expected_checksum: Some("abc123".into()),
-            signature_status: domain::ExtensionSignatureStatus::Missing,
-            signature_algorithm: None,
-            signing_key_id: None,
-            metadata_json: json!({}),
-            is_system_reserved: false,
-            actor_user_id: actor.id,
-        },
+    sqlx::query(
+        r#"
+        insert into plugin_installations (
+            id,
+            scope_id,
+            provider_code,
+            plugin_id,
+            plugin_version,
+            contract_version,
+            protocol,
+            display_name,
+            source_kind,
+            trust_level,
+            verification_status,
+            desired_state,
+            installed_path,
+            checksum,
+            signature_status,
+            metadata_json,
+            created_by
+        ) values (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9,
+            $10, $11, $12, $13, $14, $15, $16, $17
+        )
+        "#,
     )
+    .bind(installation_id)
+    .bind(domain::SYSTEM_SCOPE_ID)
+    .bind("fixture_provider")
+    .bind("fixture_provider@0.1.0")
+    .bind("0.1.0")
+    .bind("1flowbase.provider/v1")
+    .bind("openai_compatible")
+    .bind("Fixture Provider")
+    .bind("uploaded")
+    .bind("unverified")
+    .bind("valid")
+    .bind("active_requested")
+    .bind("/tmp/fixture-provider")
+    .bind("abc123")
+    .bind("missing")
+    .bind(json!({}))
+    .bind(actor.id)
+    .execute(store.pool())
     .await
     .unwrap();
 
