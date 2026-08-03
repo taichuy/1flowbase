@@ -861,6 +861,6 @@ test("quality gate action isolates middleware postgres per gate scope", () => {
   );
   assert.match(
     middlewareCompose,
-    /\$\{POSTGRES_DATA_DIR:-\.\/volumes\/postgres\}:\/var\/lib\/postgresql\/data/u,
+    /\$\{POSTGRES_DATA_DIR:-\.\/volumes\/postgres\}:\/var\/lib\/postgresql/u,
   );
 });
