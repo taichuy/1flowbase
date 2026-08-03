@@ -324,19 +324,19 @@ const consoleNavigationApi = vi.hoisted(() => ({
   fetchSettingsConsoleNavigation: vi.fn()
 }));
 
-vi.mock('../api/members', () => membersApi);
-vi.mock('../api/roles', () => rolesApi);
-vi.mock('../api/permissions', () => permissionsApi);
-vi.mock('../api/api-docs', () => docsApi);
-vi.mock('../api/personal-access-tokens', () => personalAccessTokensApi);
-vi.mock('../api/auth-center', () => authCenterApi);
-vi.mock('../api/model-providers', () => modelProvidersApi);
-vi.mock('../api/plugins', () => pluginsApi);
-vi.mock('../api/system-runtime', () => systemRuntimeApi);
-vi.mock('../api/file-management', () => fileManagementApi);
-vi.mock('../api/host-infrastructure', () => hostInfrastructureApi);
-vi.mock('../api/data-models', () => dataModelsApi);
-vi.mock('../api/console-navigation', () => consoleNavigationApi);
+vi.mock('../../api/members', () => membersApi);
+vi.mock('../../api/roles', () => rolesApi);
+vi.mock('../../api/permissions', () => permissionsApi);
+vi.mock('../../api/api-docs', () => docsApi);
+vi.mock('../../api/personal-access-tokens', () => personalAccessTokensApi);
+vi.mock('../../api/auth-center', () => authCenterApi);
+vi.mock('../../api/model-providers', () => modelProvidersApi);
+vi.mock('../../api/plugins', () => pluginsApi);
+vi.mock('../../api/system-runtime', () => systemRuntimeApi);
+vi.mock('../../api/file-management', () => fileManagementApi);
+vi.mock('../../api/host-infrastructure', () => hostInfrastructureApi);
+vi.mock('../../api/data-models', () => dataModelsApi);
+vi.mock('../../api/console-navigation', () => consoleNavigationApi);
 vi.mock('echarts/core', () => ({
   init: echartsMock.init,
   use: vi.fn()
@@ -386,13 +386,13 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   };
 });
 
-import { AppProviders } from '../../../app/AppProviders';
-import { AppRouterProvider } from '../../../app/router';
-import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
+import { AppProviders } from '../../../../app/AppProviders';
+import { AppRouterProvider } from '../../../../app/router';
+import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   settingsSectionDefinitions,
   type SettingsSectionKey
-} from '../lib/settings-sections';
+} from '../../lib/settings-sections';
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
@@ -911,93 +911,84 @@ describe('SettingsPage', () => {
     dataModelsApi.fetchSettingsDataModelRecordPreview.mockResolvedValue(null);
   });
 
-  test('uses backend settings registry order instead of permissions for /settings redirects', async () => {
+  test('renders API key for signed-in users without management permissions', async () => {
     authenticateWithPermissions([]);
-    const view = renderApp('/settings');
 
-    await waitFor(
-      () => {
-        expect(window.location.pathname).toBe('/settings/docs');
-      },
-      { timeout: 5000 }
-    );
-    await waitFor(() => {
-      expect(docsApi.fetchSettingsApiDocsCatalog).toHaveBeenCalled();
-    });
-    view.unmount();
-
-    resetAuthStore();
-    docsApi.fetchSettingsApiDocsCatalog.mockClear();
-    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      settingsConsoleNavigation(['data-models', 'members'])
-    );
-    authenticateWithPermissions([
-      'settings_feature.access.system.docs',
-      'user.view.all'
-    ]);
-    renderApp('/settings');
-
-    await waitFor(
-      () => {
-        expect(window.location.pathname).toBe('/settings/data-models');
-      },
-      { timeout: 5000 }
-    );
-    expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
-  }, 10000);
-
-  test('redirects a missing requested settings section to the first backend registry section', async () => {
-    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
-      settingsConsoleNavigation(['data-models', 'members'])
-    );
-    authenticateWithPermissions([
-      'settings_feature.access.system.docs',
-      'user.view.all'
-    ]);
-
-    renderApp('/settings/docs');
-
-    await waitFor(
-      () => {
-        expect(window.location.pathname).toBe('/settings/data-models');
-      },
-      { timeout: 5000 }
-    );
-    expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
-  }, 10000);
-
-  test('shows registry error instead of falling back to local settings sections', async () => {
-    consoleNavigationApi.fetchSettingsConsoleNavigation.mockRejectedValue(
-      new Error('registry unavailable')
-    );
-    authenticateWithPermissions(['settings_feature.access.system.docs']);
-
-    renderApp('/settings/docs');
+    renderApp('/settings/api-key-authentication');
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/docs');
+      expect(window.location.pathname).toBe('/settings/api-key-authentication');
     });
-    expect(await screen.findByText('设置导航加载失败')).toBeInTheDocument();
-    expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
-  }, 10000);
-
-  test('shows registry loading instead of an empty settings state while navigation is pending', async () => {
-    consoleNavigationApi.fetchSettingsConsoleNavigation.mockReturnValue(
-      new Promise(() => undefined)
-    );
-    authenticateWithPermissions(['settings_feature.access.system.docs']);
-
-    renderApp('/settings/docs');
-
-    expect(await screen.findByText('加载中...')).toBeInTheDocument();
     expect(
-      screen.queryByText('当前账号暂无可访问内容')
-    ).not.toBeInTheDocument();
-    expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
+      await screen.findByRole('button', { name: /添加/ })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /添加/ })).toBeInTheDocument();
+    expect(
+      personalAccessTokensApi.fetchSettingsPersonalAccessTokens
+    ).toHaveBeenCalled();
   });
 
-  test('renders /settings/members when user.view.all is present', async () => {
-    authenticateWithPermissions(['user.view.all']);
+  test('allows root safe member edits while keeping destructive actions locked', async () => {
+    authenticateWithPermissions(['user.view.all', 'user.manage.all'], 'root');
+    rolesApi.fetchSettingsRoles.mockResolvedValue([
+      {
+        code: 'operator',
+        name: 'Operator',
+        introduction: 'operator role',
+        scope_kind: 'workspace',
+        is_builtin: false,
+        is_editable: true,
+        auto_grant_new_permissions: false,
+        is_default_member_role: false,
+        permission_codes: []
+      }
+    ]);
+    membersApi.updateSettingsMember.mockResolvedValue({
+      id: 'user-1',
+      account: 'root',
+      email: 'root-next@example.com',
+      phone: '13900000000',
+      name: 'Root Next',
+      nickname: 'Captain Root',
+      introduction: 'updated root profile',
+      default_display_role: 'root',
+      email_login_enabled: true,
+      phone_login_enabled: false,
+      status: 'active',
+      role_codes: ['root']
+    });
+    membersApi.replaceSettingsMemberRoles.mockResolvedValue(undefined);
+    membersApi.changeCurrentUserPassword.mockResolvedValue(undefined);
+    membersApi.fetchSettingsMembers.mockResolvedValue([
+      {
+        id: 'user-1',
+        account: 'root',
+        email: 'root@example.com',
+        phone: null,
+        name: 'Root',
+        nickname: 'Root',
+        introduction: '',
+        default_display_role: 'root',
+        email_login_enabled: true,
+        phone_login_enabled: false,
+        status: 'active',
+        role_codes: ['root']
+      },
+      {
+        id: 'manager-1',
+        account: 'manager-1',
+        email: 'manager-1@example.com',
+        phone: null,
+        name: 'Manager 1',
+        nickname: 'Manager 1',
+        introduction: '',
+        default_display_role: 'member',
+        email_login_enabled: true,
+        phone_login_enabled: false,
+        status: 'active',
+        role_codes: ['member']
+      }
+    ]);
 
     renderApp('/settings/members');
 
@@ -1005,441 +996,383 @@ describe('SettingsPage', () => {
       expect(window.location.pathname).toBe('/settings/members');
     });
     await waitFor(() => {
-      expect(screen.getByTestId('section-page-layout')).toHaveClass(
-        'section-page-layout--wide',
-        'section-page-layout--viewport'
-      );
+      expect(membersApi.fetchSettingsMembers).toHaveBeenCalled();
+    });
+
+    await screen.findByText('root@example.com', {}, { timeout: 10_000 });
+    await screen.findByText('manager-1@example.com', {}, { timeout: 10_000 });
+    const rows = screen.getAllByRole('row');
+    const rootRow = rows.find((row) =>
+      within(row).queryByText('root@example.com')
+    );
+    const managerRow = rows.find((row) =>
+      within(row).queryByText('manager-1@example.com')
+    );
+
+    if (!rootRow || !managerRow) {
+      throw new Error('Expected root and regular member rows to be rendered.');
+    }
+
+    expect(
+      within(rootRow).getByRole('button', { name: /编辑$/ })
+    ).toBeEnabled();
+    expect(
+      within(rootRow).getByRole('button', { name: /停用$/ })
+    ).toBeDisabled();
+    expect(
+      within(rootRow).getByRole('button', { name: /重置密码$/ })
+    ).toBeEnabled();
+    expect(
+      within(managerRow).getByRole('button', { name: /停用$/ })
+    ).toBeEnabled();
+    expect(
+      within(managerRow).getByRole('button', { name: /重置密码$/ })
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('columnheader', { name: '角色' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(rootRow).getByRole('button', { name: /编辑$/ }));
+    const profileDialog = await screen.findByRole('dialog', {
+      name: /编辑用户资料/
+    });
+    fireEvent.change(within(profileDialog).getByLabelText('姓名'), {
+      target: { value: 'Root Next' }
+    });
+    fireEvent.change(within(profileDialog).getByLabelText('昵称'), {
+      target: { value: 'Captain Root' }
+    });
+    fireEvent.change(within(profileDialog).getByLabelText('邮箱'), {
+      target: { value: 'root-next@example.com' }
+    });
+    fireEvent.change(within(profileDialog).getByLabelText('手机号'), {
+      target: { value: '13900000000' }
+    });
+    fireEvent.change(within(profileDialog).getByLabelText('个人介绍'), {
+      target: { value: 'updated root profile' }
     });
     expect(
-      await screen.findByText(
-        '重置密码会将目标账号密码重置为默认临时密码，并要求用户登录后立即修改。'
-      )
+      within(profileDialog).getByRole('combobox', { name: '角色' })
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: '新建用户' })
-    ).not.toBeInTheDocument();
-  });
-
-  test('renders auth center actions and opens configuration drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
-    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
-      supported_auth_types: ['password-local'],
-      authenticators: [
+    fireEvent.click(
+      within(profileDialog).getByRole('button', { name: /保\s*存/ })
+    );
+    await waitFor(() => {
+      expect(membersApi.updateSettingsMember).toHaveBeenCalledWith(
+        'user-1',
         {
-          id: 'auth-oidc-main',
-          auth_type: 'oidc',
-          title: 'OIDC',
-          enabled: false,
-          is_builtin: false,
-          sort_order: 10,
-          config_schema: [
-            ...authenticatorConfigSchema(),
-            {
-              key: 'issuer_url',
-              label: 'issuer_url',
-              type: 'string'
-            },
-            {
-              key: 'allow_signup',
-              label: 'allow_signup',
-              type: 'boolean'
-            }
-          ],
-          config_values: {
-            description: 'Primary OIDC',
-            extension_config: {
-              issuer_url: 'https://idp.example.com',
-              allow_signup: true
-            }
-          }
-        }
-      ]
-    });
-
-    renderApp('/settings/auth-center');
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/auth-center');
-    });
-    expect(
-      screen.queryByRole('heading', { name: '认证中心' })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText('password-local')).not.toBeInTheDocument();
-    expect(screen.queryByText('auth-oidc-main')).not.toBeInTheDocument();
-    expect(await screen.findByText('OIDC')).toBeInTheDocument();
-    expect(
-      screen.getAllByRole('columnheader').map((header) => header.textContent)
-    ).toEqual(['序号', '名称', '分类', '说明', '启用', '操作']);
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('oidc')).toBeInTheDocument();
-    expect(screen.getByText('Primary OIDC')).toBeInTheDocument();
-    expect(screen.queryByText('10')).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('columnheader', { name: '排序值' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('columnheader', { name: '操作' })
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('switch'));
-    await waitFor(() => {
-      expect(
-        authCenterApi.enableSettingsAuthCenterAuthenticator
-      ).toHaveBeenCalledWith('auth-oidc-main', 'csrf-123');
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).queryByText('类型')).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Authenticator title')).toHaveValue(
-      'OIDC'
-    );
-    expect(within(dialog).getByLabelText('Description')).toHaveValue(
-      'Primary OIDC'
-    );
-    expect(
-      within(dialog).getByRole('switch', { name: 'Enabled' })
-    ).not.toBeChecked();
-  });
-
-  test('initializes auth center config form from authenticator fields', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
-    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
-      supported_auth_types: ['password-local'],
-      authenticators: [
-        {
-          id: 'auth-password-local',
-          auth_type: 'password-local',
-          title: 'Password',
-          enabled: true,
-          is_builtin: true,
-          sort_order: 0,
-          config_schema: authenticatorConfigSchema(),
-          config_values: {
-            description: 'Local password authentication',
-            extension_config: {}
-          }
-        }
-      ]
-    });
-
-    renderApp('/settings/auth-center');
-
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
-
-    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Authenticator title')).toHaveValue(
-      'Password'
-    );
-    expect(within(dialog).getByLabelText('Description')).toHaveValue(
-      'Local password authentication'
-    );
-    expect(
-      within(dialog).getByRole('switch', { name: 'Enabled' })
-    ).toBeChecked();
-    const resizeHandle = within(dialog).getByRole('separator', {
-      name: '调整认证器配置抽屉宽度'
-    });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-    fireEvent.mouseDown(resizeHandle, { clientX: 500 });
-    expect(document.body).toHaveClass('resizable-drawer--resizing');
-    fireEvent.mouseMove(document, { clientX: 460 });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-    fireEvent.mouseUp(document);
-    await waitFor(() => {
-      expect(resizeHandle).toHaveAttribute('aria-valuenow', '560');
-    });
-    expect(document.body).not.toHaveClass('resizable-drawer--resizing');
-    fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '600');
-    fireEvent.keyDown(resizeHandle, { key: 'Home' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '480');
-    fireEvent.keyDown(resizeHandle, { key: 'End' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '960');
-    const footer = within(dialog)
-      .getByRole('button', { name: /保\s*存/ })
-
-      .closest('.ant-drawer-footer');
-    expect(footer).not.toBeNull();
-
-    expect(footer?.querySelector('.ant-flex-justify-start')).not.toBeNull();
-    const footerButtons = within(footer as HTMLElement).getAllByRole('button');
-    expect(footerButtons.map((button) => button.textContent)).toEqual([
-      '保 存',
-      '取 消'
-    ]);
-  });
-
-  test('submits auth center config, refreshes the list, and closes the drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
-    authCenterApi.fetchSettingsAuthCenterOverview
-      .mockResolvedValueOnce({
-        default_authenticator_id: 'auth-oidc-main',
-        supported_auth_types: ['password-local'],
-        authenticators: [
-          {
-            id: 'auth-oidc-main',
-            auth_type: 'oidc',
-            title: 'OIDC',
-            enabled: false,
-            is_builtin: false,
-            sort_order: 10,
-            config_schema: authenticatorConfigSchema(),
-            config_values: {
-              title: 'OIDC',
-              enabled: false,
-              description: 'Old description',
-              extension_config: {
-                issuer_url: 'https://idp.example.com'
-              }
-            }
-          }
-        ]
-      })
-      .mockResolvedValueOnce({
-        default_authenticator_id: 'auth-oidc-main',
-        supported_auth_types: ['password-local'],
-        authenticators: [
-          {
-            id: 'auth-oidc-main',
-            auth_type: 'oidc',
-            title: 'OIDC Login',
-            enabled: true,
-            is_builtin: false,
-            sort_order: 10,
-            config_schema: authenticatorConfigSchema(),
-            config_values: {
-              title: 'OIDC Login',
-              enabled: true,
-              description: 'Primary OIDC login',
-              extension_config: {
-                issuer_url: 'https://idp.example.com'
-              }
-            }
-          }
-        ]
-      });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
-      {
-        id: 'auth-oidc-main',
-        auth_type: 'oidc',
-        title: 'OIDC Login',
-        enabled: true,
-        is_builtin: false,
-        sort_order: 10,
-        config_schema: authenticatorConfigSchema(),
-        config_values: {
-          title: 'OIDC Login',
-          enabled: true,
-          description: 'Primary OIDC login',
-          extension_config: {
-            issuer_url: 'https://idp.example.com'
-          }
-        }
-      }
-    );
-
-    renderApp('/settings/auth-center');
-
-    const editButton = await screen.findByRole('button', { name: '编辑' });
-    fireEvent.click(editButton);
-    const dialog = await screen.findByRole('dialog', { name: 'OIDC 配置' });
-
-    expect(within(dialog).queryByLabelText('标识')).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('Authenticator title'), {
-      target: { value: 'OIDC Login' }
-    });
-    fireEvent.change(within(dialog).getByLabelText('Description'), {
-      target: { value: 'Primary OIDC login' }
-    });
-    fireEvent.click(within(dialog).getByRole('switch', { name: 'Enabled' }));
-    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
-
-    await waitFor(() => {
-      expect(
-        authCenterApi.updateSettingsAuthCenterAuthenticatorConfig
-      ).toHaveBeenCalledWith(
-        'auth-oidc-main',
-        {
-          title: 'OIDC Login',
-          enabled: true,
-          description: 'Primary OIDC login',
-          self_registration_enabled: false,
-          extension_config: {}
+          name: 'Root Next',
+          nickname: 'Captain Root',
+          email: 'root-next@example.com',
+          phone: '13900000000',
+          introduction: 'updated root profile'
         },
         'csrf-123'
       );
     });
-    expect(screen.getByText('OIDC Login')).toBeInTheDocument();
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: 'OIDC Login 配置' })
+        screen.queryByRole('dialog', { name: /编辑用户资料/ })
       ).not.toBeInTheDocument();
     });
+
+    fireEvent.click(within(rootRow).getByRole('button', { name: /重置密码$/ }));
+    const passwordDialog = await screen.findByRole('dialog', {
+      name: /重置密码/
+    });
+    fireEvent.change(within(passwordDialog).getByLabelText('当前密码'), {
+      target: { value: 'change-me' }
+    });
+    fireEvent.change(within(passwordDialog).getByLabelText('新密码'), {
+      target: { value: 'next-pass' }
+    });
+    fireEvent.change(within(passwordDialog).getByLabelText('确认新密码'), {
+      target: { value: 'next-pass' }
+    });
+    fireEvent.click(
+      within(passwordDialog).getByRole('button', { name: '确认重置' })
+    );
+    await waitFor(() => {
+      expect(membersApi.changeCurrentUserPassword).toHaveBeenCalledWith(
+        {
+          old_password: 'change-me',
+          new_password: 'next-pass'
+        },
+        'csrf-123'
+      );
+    });
+  }, 20_000);
+
+  test('redirects /settings/docs to API key when docs is hidden', async () => {
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      settingsConsoleNavigation(['api-key-authentication'])
+    );
+    authenticateWithPermissions(['user.view.all']);
+
+    renderApp('/settings/docs');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/api-key-authentication');
+    });
+    expect(screen.getByTestId('section-page-layout')).toHaveClass(
+      'section-page-layout--viewport'
+    );
+    expect(
+      await screen.findByRole('button', { name: /添加/ })
+    ).toBeInTheDocument();
   });
 
-  test('shows auth center config errors in the drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
-    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
-      supported_auth_types: ['password-local'],
-      authenticators: [
-        {
-          id: 'auth-oidc-main',
-          auth_type: 'oidc',
-          title: 'OIDC',
-          enabled: true,
-          is_builtin: false,
-          sort_order: 10,
-          config_schema: authenticatorConfigSchema(),
-          config_values: {
-            title: 'OIDC',
-            enabled: true,
-            description: 'Old description'
-          }
-        }
-      ]
+  test('shows 数据源 when state_model.view.all is present', async () => {
+    authenticateWithPermissions(['state_model.view.all']);
+
+    renderApp('/settings/data-models');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/data-models');
     });
-    authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockRejectedValue(
-      new Error('permission denied')
+    expect(await screen.findByRole('link', { name: '数据源' })).toHaveAttribute(
+      'href',
+      '/settings/data-models'
+    );
+    expect(dataModelsApi.fetchSettingsDataSources).toHaveBeenCalled();
+    expect(
+      await screen.findByText('主数据源', {}, { timeout: 10000 })
+    ).toBeInTheDocument();
+  });
+
+  test('shows 系统运行 when its SettingsFeature is present', async () => {
+    authenticateWithPermissions([
+      'settings_feature.access.system.system-runtime'
+    ]);
+
+    renderApp('/settings/system-runtime');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/system-runtime');
+    });
+    expect(await screen.findByText('运行概览')).toBeInTheDocument();
+    expect(screen.getByText('资源监控')).toBeInTheDocument();
+    expect(screen.getByText('同机部署')).toBeInTheDocument();
+    expect(screen.queryByText('zh_Hans')).not.toBeInTheDocument();
+    expect(screen.getByText('相关进程内存')).toBeInTheDocument();
+    expect(screen.getAllByText('API Server').length).toBeGreaterThan(0);
+    expect(screen.getByText('Plugin Runner')).toBeInTheDocument();
+    expect(
+      systemRuntimeApi.fetchSettingsSystemRuntimeProfile
+    ).toHaveBeenCalled();
+  });
+
+  test('shows 基础设施 and 内存观察 when plugin_config.view.all is present', async () => {
+    authenticateWithPermissions(['plugin_config.view.all']);
+
+    renderApp('/settings/host-infrastructure');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/host-infrastructure');
+    });
+    expect(
+      await screen.findByRole('link', { name: '内存观察' }, { timeout: 10000 })
+    ).toHaveAttribute('href', '/settings/memory-observation');
+    expect(
+      await screen.findByText(
+        '安装、配置和启用会保存为待应用变更，重启 api-server 一次后生效。'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: '内存观察' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('renders memory observation as a settings section route', async () => {
+    authenticateWithPermissions(['plugin_config.view.all']);
+    hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryOverview.mockResolvedValue(
+      {
+        can_manage: true,
+        contracts: [
+          {
+            contract_code: 'session-store',
+            label: 'Sessions',
+            provider_code: 'local',
+            capabilities: {
+              list_entries: true,
+              list_tree: true,
+              search_entries: true,
+              reveal_value: true
+            },
+            supported: true
+          }
+        ]
+      }
+    );
+    hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryStats.mockResolvedValue(
+      {
+        contract_code: 'session-store',
+        label: 'Sessions',
+        provider_code: 'local',
+        capabilities: {
+          list_entries: true,
+          list_tree: true,
+          search_entries: true,
+          reveal_value: true
+        },
+        supported: true,
+        inspection_path: [],
+        entry_count: 1,
+        sensitive_entry_count: 1,
+        total_value_size_bytes: 317
+      }
+    );
+    hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryStatsOverview.mockResolvedValue(
+      {
+        inspection_path: [],
+        entry_count: 1,
+        sensitive_entry_count: 1,
+        total_value_size_bytes: 317,
+        contracts: [
+          {
+            contract_code: 'session-store',
+            label: 'Sessions',
+            provider_code: 'local',
+            capabilities: {
+              list_entries: true,
+              list_tree: true,
+              search_entries: true,
+              reveal_value: true
+            },
+            supported: true,
+            inspection_path: [],
+            entry_count: 1,
+            sensitive_entry_count: 1,
+            total_value_size_bytes: 317
+          }
+        ]
+      }
+    );
+    hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryTree.mockResolvedValue(
+      {
+        contract_code: 'session-store',
+        label: 'Sessions',
+        provider_code: 'local',
+        capabilities: {
+          list_entries: true,
+          list_tree: true,
+          search_entries: true,
+          reveal_value: true
+        },
+        supported: true,
+        inspection_path: [],
+        nodes: [
+          {
+            node_ref: 'root-session-node',
+            label: '00000000-0000-0000-0000-000000000001',
+            inspection_path: ['00000000-0000-0000-0000-000000000001'],
+            depth: 1,
+            has_children: false
+          }
+        ],
+        next_cursor: null,
+        limit: 50,
+        byte_limit: 65536,
+        emitted_bytes: 0,
+        truncated_by_byte_limit: false
+      }
+    );
+    hostInfrastructureApi.fetchSettingsHostInfrastructureMemoryEntries.mockResolvedValue(
+      {
+        contract_code: 'session-store',
+        label: 'Sessions',
+        provider_code: 'local',
+        capabilities: {
+          list_entries: true,
+          list_tree: true,
+          search_entries: true,
+          reveal_value: true
+        },
+        supported: true,
+        inspection_path: ['00000000-0000-0000-0000-000000000001'],
+        entries: [
+          {
+            contract_code: 'session-store',
+            group_code: '00000000-0000-0000-0000-000000000001',
+            entry_ref: 'session:1',
+            key: 'session:1',
+            inspection_path: [
+              '00000000-0000-0000-0000-000000000001',
+              'session:1'
+            ],
+            entry_kind: 'session',
+            status: 'active',
+            owner: 'user-1',
+            value_size_bytes: 317,
+            metadata_size_bytes: 2,
+            ttl_seconds: 600,
+            created_at_unix: 1_700_000_000,
+            expires_at_unix: 1_700_000_600,
+            sensitive: true,
+            metadata: {}
+          }
+        ],
+        next_cursor: null,
+        limit: 50,
+        byte_limit: 65536,
+        emitted_bytes: 128,
+        truncated_by_byte_limit: false
+      }
     );
 
-    renderApp('/settings/auth-center');
+    renderApp('/settings/memory-observation');
 
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
-    const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
-    fireEvent.change(within(dialog).getByLabelText('Authenticator title'), {
-      target: { value: 'OIDC Login' }
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/memory-observation');
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
-
     expect(
-      await within(dialog).findByText('permission denied')
+      await screen.findByRole('link', { name: '内存观察' }, { timeout: 10000 })
+    ).toHaveAttribute('href', '/settings/memory-observation');
+    expect(
+      await screen.findByRole('tab', { name: 'Sessions' }, { timeout: 10000 })
     ).toBeInTheDocument();
-  });
-
-  test('shows auth center manage permission error in the drawer', async () => {
-    authenticateWithPermissions(['user.view.all']);
-    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
-      supported_auth_types: ['password-local'],
-      authenticators: [
-        {
-          id: 'auth-oidc-main',
-          auth_type: 'oidc',
-          title: 'OIDC',
-          enabled: true,
-          is_builtin: false,
-          sort_order: 10,
-          config_schema: authenticatorConfigSchema(),
-          config_values: {
-            title: 'OIDC',
-            enabled: true,
-            description: 'Old description'
-          }
-        }
-      ]
-    });
-
-    renderApp('/settings/auth-center');
-
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
-    const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
-
     expect(
-      within(dialog).getByText('需要认证器管理权限。')
-    ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Authenticator title')).toBeDisabled();
-    expect(
-      within(dialog).getByRole('switch', { name: 'Enabled' })
-    ).toBeDisabled();
-    expect(
-      within(dialog).getByRole('button', { name: /保\s*存/ })
-    ).toBeDisabled();
-  });
-
-  test('shows auth center csrf error in the drawer', async () => {
-    authenticateWithPermissions(['user.view.all', 'user.manage.all']);
-    useAuthStore.setState({ csrfToken: null });
-    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-oidc-main',
-      supported_auth_types: ['password-local'],
-      authenticators: [
-        {
-          id: 'auth-oidc-main',
-          auth_type: 'oidc',
-          title: 'OIDC',
-          enabled: true,
-          is_builtin: false,
-          sort_order: 10,
-          config_schema: authenticatorConfigSchema(),
-          config_values: {
-            title: 'OIDC',
-            enabled: true,
-            description: 'Old description'
-          }
-        }
-      ]
-    });
-
-    renderApp('/settings/auth-center');
-
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
-    const dialog = await screen.findByRole('dialog', { name: /OIDC.*配置/ });
-
-    expect(
-      within(dialog).getByText('缺少安全校验令牌，请刷新页面后重试。')
-    ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Authenticator title')).toBeDisabled();
-    expect(
-      within(dialog).getByRole('switch', { name: 'Enabled' })
-    ).toBeDisabled();
-    expect(
-      within(dialog).getByRole('button', { name: /保\s*存/ })
-    ).toBeDisabled();
-  });
-
-  test('opens auth center configuration drawer when extension config fields are absent', async () => {
-    authenticateWithPermissions(['user.view.all']);
-    authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue({
-      default_authenticator_id: 'auth-password-local',
-      supported_auth_types: ['password-local'],
-      authenticators: [
-        {
-          id: 'auth-password-local',
-          auth_type: 'password-local',
-          title: 'Password',
-          enabled: true,
-          is_builtin: true,
-          sort_order: 0,
-          config_schema: authenticatorConfigSchema(),
-          config_values: {
-            title: 'Password',
-            enabled: true,
-            description: null,
-            extension_config: {}
-          }
-        }
-      ]
-    });
-
-    renderApp('/settings/auth-center');
-
-    const editButton = await screen.findByRole('button', { name: '编辑' });
-    fireEvent.click(editButton);
-
-    expect(
-      await screen.findByRole('dialog', { name: 'Password 配置' })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Authenticator title')).toBeDisabled();
-    expect(screen.getByLabelText('Authenticator title')).toHaveValue(
-      'Password'
+      await screen.findByRole('tab', { name: '统计' }, { timeout: 10000 })
+    ).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Sessions' }));
+    fireEvent.click(
+      await screen.findByText('00000000-0000-0000-0000-000000000001')
     );
-    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeChecked();
+    expect(await screen.findByText('session:1')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'Provider 配置' })
+    ).not.toBeInTheDocument();
+  }, 10000);
+
+  test('shows 文件管理 when file_table.view.own is present', async () => {
+    authenticateWithPermissions(['file_table.view.own']);
+
+    renderApp('/settings/files');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/files');
+    });
+    expect(
+      await screen.findByRole('tab', { name: '文件表' })
+    ).toBeInTheDocument();
+  });
+
+  test('uses API key as the baseline settings section', async () => {
+    consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+      settingsConsoleNavigation(['api-key-authentication'])
+    );
+    authenticateWithPermissions([]);
+
+    renderApp('/settings');
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/settings/api-key-authentication');
+    });
+    expect(
+      await screen.findByRole('button', { name: /添加/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('navigation', { name: 'Section navigation' })
+    ).toBeInTheDocument();
   });
 });
