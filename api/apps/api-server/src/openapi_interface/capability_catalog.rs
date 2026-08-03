@@ -13,14 +13,15 @@ use super::{catalog_entry_from_operation, OpenApiInterfaceCatalogEntry};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenApiCapabilitySource {
     StaticApiDocs,
-    RuntimeDataModelCrud,
+    BuiltinDataModelCrud,
+    WorkspaceDataModelCrud,
 }
 
 impl OpenApiCapabilitySource {
     pub fn adapter_id(self) -> &'static str {
         match self {
             Self::StaticApiDocs => "console_openapi",
-            Self::RuntimeDataModelCrud => "runtime_data_model",
+            Self::BuiltinDataModelCrud | Self::WorkspaceDataModelCrud => "runtime_data_model",
         }
     }
 }
@@ -176,8 +177,11 @@ async fn openapi_capability_catalog_summaries(
         .await?
         .into_iter()
         .filter(|entry| {
-            entry.source == OpenApiCapabilitySource::RuntimeDataModelCrud
-                || static_operation_is_bindable(&entry.interface.path)
+            matches!(
+                entry.source,
+                OpenApiCapabilitySource::BuiltinDataModelCrud
+                    | OpenApiCapabilitySource::WorkspaceDataModelCrud
+            ) || static_operation_is_bindable(&entry.interface.path)
         })
         .map(|entry| OpenApiCapabilityCatalogSummary {
             interface_id: entry.interface.operation_id,
@@ -263,10 +267,15 @@ pub async fn build_openapi_capability_catalog(
         let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {
             continue;
         };
+        let source = if domain::builtin_contract_for_model(model).is_some() {
+            OpenApiCapabilitySource::BuiltinDataModelCrud
+        } else {
+            OpenApiCapabilitySource::WorkspaceDataModelCrud
+        };
         entries.push(OpenApiCapabilityCatalogEntry {
             risk_level: operation_risk_level(&interface.method),
             interface,
-            source: OpenApiCapabilitySource::RuntimeDataModelCrud,
+            source,
             bindable: true,
             disabled_reason: None,
         });

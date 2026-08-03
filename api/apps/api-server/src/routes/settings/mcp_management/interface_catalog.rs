@@ -1,4 +1,5 @@
 use super::*;
+use crate::openapi_interface::OpenApiCapabilitySource;
 
 pub(super) async fn mcp_interface_catalog_entries(
     state: &ApiState,
@@ -53,9 +54,19 @@ pub(super) async fn mcp_interface_catalog_entries(
 pub(super) fn mcp_interface_entry_from_capability(
     entry: OpenApiCapabilityCatalogEntry,
 ) -> domain::McpInterfaceCatalogEntry {
+    let source = match entry.source {
+        OpenApiCapabilitySource::StaticApiDocs => domain::McpInterfaceCatalogSource::StaticApi,
+        OpenApiCapabilitySource::BuiltinDataModelCrud => {
+            domain::McpInterfaceCatalogSource::BuiltinDataModelCrud
+        }
+        OpenApiCapabilitySource::WorkspaceDataModelCrud => {
+            domain::McpInterfaceCatalogSource::WorkspaceDataModelCrud
+        }
+    };
     let interface = entry.interface;
     domain::McpInterfaceCatalogEntry {
         interface_id: interface.operation_id,
+        source,
         method: interface.method.clone(),
         path: interface.path.clone(),
         name: interface.name,
@@ -138,6 +149,7 @@ pub(super) fn mcp_interface_entry_from_operation(
 
     Some(domain::McpInterfaceCatalogEntry {
         interface_id: interface.operation_id,
+        source: domain::McpInterfaceCatalogSource::PublishedWorkflow,
         method: interface.method,
         path: interface.path,
         name: interface.name,

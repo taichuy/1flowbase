@@ -14,6 +14,7 @@ mod frontend_component_catalog_service_tests;
 mod host_extensions;
 mod host_infrastructure;
 mod i18n_catalog;
+mod mcp_bundle_tests;
 mod member;
 mod model_definition;
 mod model_definition_service_tests;

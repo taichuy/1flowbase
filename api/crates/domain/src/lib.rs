@@ -108,10 +108,11 @@ pub use mcp_bundle::{
 pub use mcp_management::{
     McpCallToolResult, McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage,
     McpFieldMapping, McpGroupRecord, McpInstanceDiscoveryPolicyRecord, McpInstanceRecord,
-    McpInstanceStatus, McpInterfaceCatalogEntry, McpListItemKind, McpListItemSummary, McpRiskLevel,
-    McpToolAvailabilityStatus, McpToolBindingRecord, McpToolExecutionTarget, McpToolRecord,
-    McpToolStatus, McpUpstreamAuthType, McpUpstreamConnectionRecord, McpUpstreamConnectionStatus,
-    McpUpstreamSourceStatus, McpUpstreamToolSourceRecord, McpUpstreamTransport,
+    McpInstanceStatus, McpInterfaceCatalogEntry, McpInterfaceCatalogSource, McpListItemKind,
+    McpListItemSummary, McpRiskLevel, McpToolAvailabilityStatus, McpToolBindingRecord,
+    McpToolExecutionTarget, McpToolRecord, McpToolStatus, McpUpstreamAuthType,
+    McpUpstreamConnectionRecord, McpUpstreamConnectionStatus, McpUpstreamSourceStatus,
+    McpUpstreamToolSourceRecord, McpUpstreamTransport,
 };
 pub use model_provider::{
     LocalPluginInstallationRecord, ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord,

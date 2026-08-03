@@ -45,6 +45,25 @@ pub struct ExportMcpInstanceBundleCommand {
     pub bundle_version: String,
     pub locale: String,
     pub current_system_version: String,
+    pub kind: McpInstanceBundleExportKind,
+}
+
+pub enum McpInstanceBundleExportKind {
+    Portable,
+    OfficialBuiltin {
+        interface_catalog: Vec<domain::McpInterfaceCatalogEntry>,
+    },
+}
+
+pub struct McpInstanceBundleExportResult {
+    pub package: domain::McpBundlePackage,
+    pub official_report: Option<McpOfficialBuiltinExportReport>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct McpOfficialBuiltinExportReport {
+    pub excluded_tool_count: usize,
+    pub exclusion_reasons: Vec<String>,
 }
 
 struct McpBundleExportRequest {
@@ -56,9 +75,17 @@ struct McpBundleExportRequest {
     current_system_version: String,
 }
 
+struct McpBundleExportAssembly {
+    package: domain::McpBundlePackage,
+    official_report: Option<McpOfficialBuiltinExportReport>,
+}
+
 enum McpBundleExportScope {
     Workspace,
-    Instance(String),
+    Instance {
+        instance_id: String,
+        kind: McpInstanceBundleExportKind,
+    },
 }
 
 struct McpBundleWorkspaceSnapshot {
@@ -119,43 +146,53 @@ where
         &self,
         command: ExportMcpBundleCommand,
     ) -> Result<domain::McpBundlePackage> {
-        self.export_bundle_for_scope(
-            McpBundleExportRequest {
-                actor_user_id: command.actor_user_id,
-                organization: command.organization,
-                bundle_id: command.bundle_id,
-                bundle_version: command.bundle_version,
-                locale: command.locale,
-                current_system_version: command.current_system_version,
-            },
-            McpBundleExportScope::Workspace,
-        )
-        .await
+        Ok(self
+            .export_bundle_for_scope(
+                McpBundleExportRequest {
+                    actor_user_id: command.actor_user_id,
+                    organization: command.organization,
+                    bundle_id: command.bundle_id,
+                    bundle_version: command.bundle_version,
+                    locale: command.locale,
+                    current_system_version: command.current_system_version,
+                },
+                McpBundleExportScope::Workspace,
+            )
+            .await?
+            .package)
     }
 
     pub async fn export_instance_bundle(
         &self,
         command: ExportMcpInstanceBundleCommand,
-    ) -> Result<domain::McpBundlePackage> {
-        self.export_bundle_for_scope(
-            McpBundleExportRequest {
-                actor_user_id: command.actor_user_id,
-                organization: command.organization,
-                bundle_id: command.bundle_id,
-                bundle_version: command.bundle_version,
-                locale: command.locale,
-                current_system_version: command.current_system_version,
-            },
-            McpBundleExportScope::Instance(command.instance_id),
-        )
-        .await
+    ) -> Result<McpInstanceBundleExportResult> {
+        let assembly = self
+            .export_bundle_for_scope(
+                McpBundleExportRequest {
+                    actor_user_id: command.actor_user_id,
+                    organization: command.organization,
+                    bundle_id: command.bundle_id,
+                    bundle_version: command.bundle_version,
+                    locale: command.locale,
+                    current_system_version: command.current_system_version,
+                },
+                McpBundleExportScope::Instance {
+                    instance_id: command.instance_id,
+                    kind: command.kind,
+                },
+            )
+            .await?;
+        Ok(McpInstanceBundleExportResult {
+            package: assembly.package,
+            official_report: assembly.official_report,
+        })
     }
 
     async fn export_bundle_for_scope(
         &self,
         request: McpBundleExportRequest,
         scope: McpBundleExportScope,
-    ) -> Result<domain::McpBundlePackage> {
+    ) -> Result<McpBundleExportAssembly> {
         validate_identifier(&request.organization, "organization")?;
         validate_identifier(&request.bundle_id, "bundle_id")?;
         Version::parse(&request.bundle_version)
@@ -172,7 +209,7 @@ where
                     .list_mcp_instances(actor.current_workspace_id)
                     .await?
             }
-            McpBundleExportScope::Instance(instance_id) => vec![self
+            McpBundleExportScope::Instance { instance_id, .. } => vec![self
                 .repository
                 .get_mcp_instance(actor.current_workspace_id, instance_id)
                 .await?
@@ -186,7 +223,7 @@ where
             .repository
             .list_mcp_groups(&instance_record_ids)
             .await?;
-        let bindings = self
+        let mut bindings = self
             .repository
             .list_mcp_tool_bindings(&instance_record_ids)
             .await?;
@@ -198,12 +235,24 @@ where
             .repository
             .list_mcp_tools(actor.current_workspace_id)
             .await?;
-        if matches!(&scope, McpBundleExportScope::Instance(_)) {
+        if matches!(&scope, McpBundleExportScope::Instance { .. }) {
             let referenced_tool_ids = bindings
                 .iter()
                 .map(|binding| binding.tool_record_id)
                 .collect::<BTreeSet<_>>();
             tools.retain(|tool| referenced_tool_ids.contains(&tool.id));
+        }
+        let mut official_report = None;
+        if let McpBundleExportScope::Instance {
+            kind: McpInstanceBundleExportKind::OfficialBuiltin { interface_catalog },
+            ..
+        } = &scope
+        {
+            official_report = Some(retain_official_builtin_tools(
+                &mut tools,
+                &mut bindings,
+                interface_catalog,
+            )?);
         }
         let referenced_connection_ids = tools
             .iter()
@@ -219,7 +268,7 @@ where
             .repository
             .list_mcp_upstream_connections(actor.current_workspace_id)
             .await?;
-        if matches!(&scope, McpBundleExportScope::Instance(_)) {
+        if matches!(&scope, McpBundleExportScope::Instance { .. }) {
             connections.retain(|connection| referenced_connection_ids.contains(&connection.id));
         }
 
@@ -286,7 +335,7 @@ where
         let exported_at = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|_| ControlPlaneError::InvalidInput("exported_at"))?;
-        Ok(domain::McpBundlePackage {
+        let package = domain::McpBundlePackage {
             manifest: domain::McpBundleManifest {
                 schema_version: domain::MCP_BUNDLE_SCHEMA_VERSION.into(),
                 organization: request.organization,
@@ -312,6 +361,10 @@ where
                     status: connection.status,
                 })
                 .collect(),
+        };
+        Ok(McpBundleExportAssembly {
+            package,
+            official_report,
         })
     }
 
@@ -598,6 +651,74 @@ where
             connections: connection_reports,
         })
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum OfficialBuiltinInterfaceDisposition {
+    Include,
+    Exclude(&'static str),
+}
+
+pub(crate) fn official_builtin_interface_disposition(
+    interface_id: &str,
+    sources: &BTreeMap<String, domain::McpInterfaceCatalogSource>,
+) -> Result<OfficialBuiltinInterfaceDisposition> {
+    let source = sources
+        .get(interface_id)
+        .ok_or(ControlPlaneError::Conflict(
+            "mcp_official_export_interface_source",
+        ))?;
+    Ok(match source {
+        domain::McpInterfaceCatalogSource::StaticApi
+        | domain::McpInterfaceCatalogSource::BuiltinDataModelCrud => {
+            OfficialBuiltinInterfaceDisposition::Include
+        }
+        domain::McpInterfaceCatalogSource::PublishedWorkflow => {
+            OfficialBuiltinInterfaceDisposition::Exclude("published_workflow")
+        }
+        domain::McpInterfaceCatalogSource::WorkspaceDataModelCrud => {
+            OfficialBuiltinInterfaceDisposition::Exclude("workspace_data_model_crud")
+        }
+    })
+}
+
+pub(crate) fn retain_official_builtin_tools(
+    tools: &mut Vec<domain::McpToolRecord>,
+    bindings: &mut Vec<domain::McpToolBindingRecord>,
+    interface_catalog: &[domain::McpInterfaceCatalogEntry],
+) -> Result<McpOfficialBuiltinExportReport> {
+    let sources = interface_catalog
+        .iter()
+        .map(|entry| (entry.interface_id.clone(), entry.source))
+        .collect::<BTreeMap<_, _>>();
+    let mut retained_tool_record_ids = BTreeSet::new();
+    let mut excluded_tool_count = 0;
+    let mut exclusion_reasons = BTreeSet::new();
+    for tool in tools.iter() {
+        let exportable = match &tool.execution_target {
+            domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+                match official_builtin_interface_disposition(interface_id, &sources)? {
+                    OfficialBuiltinInterfaceDisposition::Include => true,
+                    OfficialBuiltinInterfaceDisposition::Exclude(reason) => {
+                        exclusion_reasons.insert(reason.to_string());
+                        false
+                    }
+                }
+            }
+            domain::McpToolExecutionTarget::McpProxy { .. } => true,
+        };
+        if exportable {
+            retained_tool_record_ids.insert(tool.id);
+        } else {
+            excluded_tool_count += 1;
+        }
+    }
+    tools.retain(|tool| retained_tool_record_ids.contains(&tool.id));
+    bindings.retain(|binding| retained_tool_record_ids.contains(&binding.tool_record_id));
+    Ok(McpOfficialBuiltinExportReport {
+        excluded_tool_count,
+        exclusion_reasons: exclusion_reasons.into_iter().collect(),
+    })
 }
 
 pub fn compare_system_versions(source: &str, current: &str) -> domain::McpBundleVersionStatus {
@@ -1027,26 +1148,5 @@ fn update_item_report(id: &str) -> domain::McpBundleItemReport {
         effect: domain::McpBundleItemEffect::Update,
         result: "updated".to_string(),
         reason: None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::compare_system_versions;
-
-    #[test]
-    fn compares_export_source_and_current_system_versions() {
-        assert_eq!(
-            compare_system_versions("0.2.5", "0.2.6"),
-            domain::McpBundleVersionStatus::ExportedFromOlderSystem
-        );
-        assert_eq!(
-            compare_system_versions("0.3.0", "0.2.6"),
-            domain::McpBundleVersionStatus::ExportedFromNewerSystem
-        );
-        assert_eq!(
-            compare_system_versions("latest", "0.2.6"),
-            domain::McpBundleVersionStatus::UnknownSystemVersion
-        );
     }
 }

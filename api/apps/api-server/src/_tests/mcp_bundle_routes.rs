@@ -1343,7 +1343,8 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
             "organization": "taichuy",
             "bundle_id": "selected_instance",
             "bundle_version": "1.0.0",
-            "locale": "zh_Hans"
+            "locale": "zh_Hans",
+            "export_profile": "official_builtin"
         }),
     )
     .await;
@@ -1353,6 +1354,8 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
         .to_str()
         .unwrap()
         .contains("selected_instance"));
+    assert_eq!(export.headers()["x-1flowbase-mcp-excluded-tool-count"], "0");
+    assert_eq!(export.headers()["x-1flowbase-mcp-exclusion-reasons"], "");
     let bytes = to_bytes(export.into_body(), usize::MAX).await.unwrap();
     let bundle_bytes = bytes.to_vec();
     let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1386,6 +1389,25 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
     )
     .await;
     assert_eq!(preview.status(), StatusCode::OK);
+
+    let portable_export = post_json(
+        &app,
+        "/api/console/mcp/instances/selected_instance/bundles/export",
+        &cookie,
+        &csrf,
+        json!({
+            "organization": "taichuy",
+            "bundle_id": "selected_instance",
+            "bundle_version": "1.0.1",
+            "locale": "zh_Hans"
+        }),
+    )
+    .await;
+    assert_eq!(portable_export.status(), StatusCode::OK);
+    assert!(portable_export
+        .headers()
+        .get("x-1flowbase-mcp-excluded-tool-count")
+        .is_none());
 }
 
 #[tokio::test]

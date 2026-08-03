@@ -123,7 +123,15 @@ test('AC-002 exports with a temporary owner session, validates, atomically repla
     fetchImpl: async (url, request) => {
       assert.match(url, /system%2Fexample\/bundles\/export$/);
       requestBody = JSON.parse(request.body);
-      return { ok: true, status: 200, arrayBuffer: async () => archive };
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          'x-1flowbase-mcp-excluded-tool-count': '2',
+          'x-1flowbase-mcp-exclusion-reasons': 'published_workflow,workspace_data_model_crud',
+        }),
+        arrayBuffer: async () => archive,
+      };
     },
     validateSource: async (bundleRoot) => {
       assert.equal(path.basename(path.dirname(bundleRoot)), '@taichuy');
@@ -133,8 +141,11 @@ test('AC-002 exports with a temporary owner session, validates, atomically repla
   });
   assert.deepEqual(requestBody, {
     organization: 'taichuy', bundle_id: 'example', bundle_version: '1.2.4', locale: 'zh_Hans',
+    export_profile: 'official_builtin',
   });
   assert.equal(result.exported_from_system_version, '0.3.1');
+  assert.equal(result.excluded_tool_count, 2);
+  assert.deepEqual(result.exclusion_reasons, ['published_workflow', 'workspace_data_model_crud']);
   assert.equal(credentialsRepoRoot, path.resolve(__dirname, '../../../..'));
   assert.equal(disposed, 1);
   assert.equal(fs.existsSync(path.join(target, 'tools', 'stale.json')), false);

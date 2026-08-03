@@ -15,7 +15,7 @@ use control_plane::{
     errors::ControlPlaneError,
     mcp_bundle::{
         ExportMcpBundleCommand, ExportMcpInstanceBundleCommand, ImportMcpBundleCommand,
-        PreviewMcpBundleCommand,
+        McpInstanceBundleExportKind, PreviewMcpBundleCommand,
     },
     mcp_management::McpManagementService,
     plugin_management::ExtensionInstallationService,
@@ -763,6 +763,23 @@ struct ExportMcpBundleBody {
     locale: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExportMcpInstanceBundleBody {
+    organization: String,
+    bundle_id: String,
+    bundle_version: String,
+    locale: String,
+    export_profile: Option<McpInstanceBundleExportProfile>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum McpInstanceBundleExportProfile {
+    Portable,
+    OfficialBuiltin,
+}
+
 #[derive(Debug, Serialize)]
 struct McpBundleExportDefaults {
     minimum_host_version: String,
@@ -808,12 +825,26 @@ async fn export_instance_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(instance_id): Path<String>,
-    Json(body): Json<ExportMcpBundleBody>,
+    Json(body): Json<ExportMcpInstanceBundleBody>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let filename = format!("mcp-instance-{}.zip", safe_filename_segment(&instance_id));
-    let package = McpManagementService::new(state.store.clone())
+    let kind = match body.export_profile {
+        None | Some(McpInstanceBundleExportProfile::Portable) => {
+            McpInstanceBundleExportKind::Portable
+        }
+        Some(McpInstanceBundleExportProfile::OfficialBuiltin) => {
+            McpInstanceBundleExportKind::OfficialBuiltin {
+                interface_catalog: super::mcp_interface_catalog_entries(
+                    state.as_ref(),
+                    context.user.id,
+                )
+                .await?,
+            }
+        }
+    };
+    let exported = McpManagementService::new(state.store.clone())
         .export_instance_bundle(ExportMcpInstanceBundleCommand {
             actor_user_id: context.user.id,
             instance_id,
@@ -822,9 +853,23 @@ async fn export_instance_bundle(
             bundle_version: body.bundle_version,
             locale: body.locale,
             current_system_version: current_system_version(),
+            kind,
         })
         .await?;
-    bundle_archive_response(package, &filename).await
+    let mut response = bundle_archive_response(exported.package, &filename).await?;
+    if let Some(report) = exported.official_report {
+        response.headers_mut().insert(
+            "x-1flowbase-mcp-excluded-tool-count",
+            HeaderValue::from_str(&report.excluded_tool_count.to_string())
+                .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_export_report"))?,
+        );
+        response.headers_mut().insert(
+            "x-1flowbase-mcp-exclusion-reasons",
+            HeaderValue::from_str(&report.exclusion_reasons.join(","))
+                .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_export_report"))?,
+        );
+    }
+    Ok(response)
 }
 
 async fn bundle_archive_response(
