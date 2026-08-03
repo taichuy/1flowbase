@@ -58,7 +58,7 @@ pub(crate) async fn deliver_oversized_result(
     detail: Value,
 ) -> Value {
     let result_ref = Uuid::now_v7();
-    let summary = compact_summary(&detail);
+    let summary = compact_summary(operation.operation_id_ref(), &detail);
     let cache_status = cache_detail(state, actor.current_workspace_id, result_ref, &detail).await;
 
     let receipt = if operation.is_write() {
@@ -272,7 +272,23 @@ fn cache_key(workspace_id: Uuid, result_ref: Uuid) -> String {
     format!("{CACHE_KEY_PREFIX}:{workspace_id}:{result_ref}")
 }
 
-fn compact_summary(value: &Value) -> Value {
+fn compact_summary(operation_id: &str, value: &Value) -> Value {
+    if operation_id == "import_mcp_bundle_library_release" {
+        if let (Some(manifest), Some(effect_summary)) =
+            (value.get("manifest"), value.get("effect_summary"))
+        {
+            return json!({
+                "bundle": {
+                    "organization": manifest.get("organization"),
+                    "bundle_id": manifest.get("bundle_id"),
+                    "bundle_version": manifest.get("bundle_version"),
+                    "locale": manifest.get("locale")
+                },
+                "status": value.get("status"),
+                "effect_summary": effect_summary
+            });
+        }
+    }
     match value {
         Value::Null => json!({ "value_type": "null" }),
         Value::Bool(_) => json!({ "value_type": "boolean" }),

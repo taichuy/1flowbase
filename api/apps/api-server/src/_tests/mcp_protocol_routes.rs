@@ -885,7 +885,9 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
         invalid_arguments["error"]["data"],
         json!({
             "category":"invalid_tool_arguments",
-            "field":"request_schema"
+            "field":"request_schema",
+            "outcome":"not_started",
+            "retry_original":false
         })
     );
 
@@ -915,7 +917,9 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
         target_failure["error"]["data"],
         json!({
             "category":"target_interface",
-            "http_status":404
+            "http_status":404,
+            "outcome":"failed",
+            "retry_original":false
         })
     );
     let serialized = target_failure.to_string();
@@ -1251,4 +1255,142 @@ async fn root_1569_ac_010_large_or_base64_like_detail_is_never_cached_or_inlined
         );
         assert!(delivered.to_string().len() < 4_000);
     }
+}
+
+#[tokio::test]
+async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_durable_receipt() {
+    use crate::routes::mcp_protocol::result_delivery::{
+        deliver_oversized_result, exceeds_inline_limit, read_continuation, CompletedOperation,
+        DEFAULT_INLINE_CHARS,
+    };
+
+    let (state, _) = test_api_state_with_database_url().await;
+    let actor_user_id: uuid::Uuid =
+        sqlx::query_scalar("select id from users where account = 'root'")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+    let actor = domain::ActorContext::root(actor_user_id, state.bootstrap_workspace_id, "root");
+    let item_reports = (0..300)
+        .map(|index| {
+            json!({
+                "id": format!("bundle_tool_{index}"),
+                "effect": "already_present",
+                "result": "already_present",
+                "reason": null
+            })
+        })
+        .collect::<Vec<_>>();
+    let report = json!({
+        "manifest": {
+            "schema_version": "1flowbase.mcp.bundle/v2",
+            "organization": "1flowbase",
+            "bundle_id": "1flowbase_zh_hans",
+            "bundle_version": "1.2.3",
+            "locale": "zh_Hans",
+            "minimum_host_version": "0.1.0",
+            "exported_from_system_version": "0.1.0",
+            "exported_at": "2026-08-03T00:00:00Z",
+            "files": []
+        },
+        "current_system_version": "0.1.0",
+        "version_status": "same_system_version",
+        "status": "applied",
+        "effect_summary": {
+            "changes": 7,
+            "already_present": 3,
+            "conflicts": 0,
+            "unavailable": 0,
+            "failed": 0
+        },
+        "tools": item_reports,
+        "instances": [],
+        "connections": []
+    });
+    assert!(exceeds_inline_limit(&report, DEFAULT_INLINE_CHARS));
+    let mut already_applied_report = report.clone();
+    already_applied_report["status"] = json!("already_applied");
+    already_applied_report["effect_summary"] = json!({
+        "changes": 0,
+        "already_present": 310,
+        "conflicts": 0,
+        "unavailable": 0,
+        "failed": 0
+    });
+
+    let delivered = deliver_oversized_result(
+        state.as_ref(),
+        &actor,
+        CompletedOperation::Write {
+            operation_id: "import_mcp_bundle_library_release",
+        },
+        report,
+    )
+    .await;
+    let compact = &delivered["structuredContent"];
+    assert_eq!(compact["outcome"], json!("succeeded"));
+    assert_eq!(
+        compact["operation_id"],
+        json!("import_mcp_bundle_library_release")
+    );
+    assert_eq!(
+        compact["summary"]["bundle"],
+        json!({
+            "organization":"1flowbase",
+            "bundle_id":"1flowbase_zh_hans",
+            "bundle_version":"1.2.3",
+            "locale":"zh_Hans"
+        })
+    );
+    assert_eq!(compact["summary"]["status"], json!("applied"));
+    assert_eq!(compact["summary"]["effect_summary"]["changes"], json!(7));
+    assert_eq!(compact["retry_original"], json!(false));
+    let receipt_id = uuid::Uuid::parse_str(compact["receipt_id"].as_str().unwrap()).unwrap();
+
+    state
+        .infrastructure
+        .cache_store()
+        .delete(&format!(
+            "mcp-result:{}:{}",
+            state.bootstrap_workspace_id, receipt_id
+        ))
+        .await
+        .unwrap();
+    let expired =
+        read_continuation(state.as_ref(), &actor, receipt_id, 0, DEFAULT_INLINE_CHARS).await;
+    assert_eq!(
+        expired["structuredContent"]["detail_status"],
+        json!("detail_unavailable")
+    );
+    assert_eq!(
+        expired["structuredContent"]["receipt"]["summary"]["bundle"]["bundle_id"],
+        json!("1flowbase_zh_hans")
+    );
+    assert_eq!(
+        expired["structuredContent"]["receipt"]["outcome"],
+        json!("succeeded")
+    );
+    assert_eq!(expired["structuredContent"]["retry_original"], json!(false));
+
+    let already_applied = deliver_oversized_result(
+        state.as_ref(),
+        &actor,
+        CompletedOperation::Write {
+            operation_id: "import_mcp_bundle_library_release",
+        },
+        already_applied_report,
+    )
+    .await;
+    assert_eq!(
+        already_applied["structuredContent"]["summary"]["status"],
+        json!("already_applied")
+    );
+    assert_eq!(
+        already_applied["structuredContent"]["summary"]["effect_summary"]["changes"],
+        json!(0)
+    );
+    assert_eq!(
+        already_applied["structuredContent"]["retry_original"],
+        json!(false)
+    );
 }

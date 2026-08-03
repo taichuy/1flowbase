@@ -291,7 +291,9 @@ async fn handle_mcp_request(
                                         "Tool execution failed",
                                         json!({
                                             "category": "target_interface",
-                                            "http_status": status.as_u16()
+                                            "http_status": status.as_u16(),
+                                            "outcome": "failed",
+                                            "retry_original": false
                                         }),
                                     ));
                                 }
@@ -608,8 +610,21 @@ fn interface_api_error_response(
             }
             _ => (-32603, "interface_dispatch", None),
         };
-    let mut data =
-        serde_json::Map::from_iter([("category".to_string(), Value::String(category.to_string()))]);
+    let mut data = serde_json::Map::from_iter([
+        ("category".to_string(), Value::String(category.to_string())),
+        (
+            "outcome".to_string(),
+            Value::String(
+                if category == "interface_dispatch" {
+                    "unknown"
+                } else {
+                    "not_started"
+                }
+                .to_string(),
+            ),
+        ),
+        ("retry_original".to_string(), Value::Bool(false)),
+    ]);
     if let Some(field) = field {
         data.insert("field".to_string(), Value::String(field.to_string()));
     }
@@ -672,5 +687,17 @@ mod issue_1246_tests {
             response.0.error.unwrap()["data"]["category"],
             json!("response_size_limit")
         );
+    }
+
+    #[test]
+    fn root_1569_ac_007_dispatch_unknown_is_distinct_from_target_failure() {
+        let (_, response) = interface_api_error_response(
+            Some(json!("bundle-import")),
+            &anyhow::anyhow!("dispatch connection closed"),
+        );
+        let data = &response.0.error.unwrap()["data"];
+        assert_eq!(data["category"], json!("interface_dispatch"));
+        assert_eq!(data["outcome"], json!("unknown"));
+        assert_eq!(data["retry_original"], json!(false));
     }
 }
