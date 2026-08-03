@@ -1353,6 +1353,7 @@ use config::{build_provider_runtime_config, load_provider_package};
 
 mod media;
 use media::adapt_or_ensure_model_supports_content_blocks;
+#[cfg(test)]
 pub(super) use media::textualize_media_content_blocks_for_text_model;
 
 pub(super) async fn freeze_failover_queue_routes<R>(

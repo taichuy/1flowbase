@@ -24,7 +24,7 @@ where
     .await
 }
 
-pub(super) async fn execute_llm_node_provider_round<I>(
+pub(crate) async fn execute_llm_node_provider_round<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,

@@ -42,7 +42,7 @@ fn content_blocks_have_media(content_blocks: &Value) -> bool {
     })
 }
 
-pub(super) fn textualize_media_content_blocks_for_text_model(input: &mut ProviderInvocationInput) {
+pub(crate) fn textualize_media_content_blocks_for_text_model(input: &mut ProviderInvocationInput) {
     let routed_media_tools = routed_media_tool_context(input);
     for message in &mut input.messages {
         let Some(content_blocks) = message.content_blocks.take() else {
