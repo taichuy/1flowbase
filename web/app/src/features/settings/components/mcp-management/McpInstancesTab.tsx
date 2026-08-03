@@ -1,23 +1,15 @@
 import {
-  CopyOutlined,
   DeleteOutlined,
-  UploadOutlined,
   EditOutlined,
   FileOutlined,
   FolderOpenOutlined,
   FolderOutlined,
-  LinkOutlined,
-  MoreOutlined,
   PlusOutlined,
-  ReloadOutlined,
-  SaveOutlined,
-  SearchOutlined,
-  SettingOutlined
+  SaveOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
-  Dropdown,
   Flex,
   Form,
   Input,
@@ -26,14 +18,12 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Tooltip,
   Tree,
   Typography,
   message
 } from 'antd';
-import type { TreeProps } from 'antd';
 import {
   useCallback,
   useMemo,
@@ -43,14 +33,28 @@ import {
   type SetStateAction
 } from 'react';
 import { McpClientConfigurationModal } from './McpClientConfigurationModal';
-import type { ColumnsType } from 'antd/es/table';
+import { McpInstanceTable } from './McpInstancesTab/McpInstanceTable';
+import {
+  McpCopyInstanceModal,
+  McpDiscardDirectoryChangesModal,
+  McpInstanceEditorModal
+} from './McpInstancesTab/McpInstanceModals';
+import {
+  applyMcpDirectoryTreeDrop,
+  buildMcpDirectoryEditorTreeData,
+  type McpDirectoryTreeDropInfo
+} from './McpInstancesTab/directory-tree';
+import {
+  countMcpInstanceDirectoryItems,
+  formatMcpDirectoryPath,
+  formatMcpGroupEditorPath
+} from './McpInstancesTab/catalog-view';
 import type {
   ConsoleMcpCatalog,
   ConsoleMcpInstance,
   ConsoleMcpToolBinding,
   SaveConsoleMcpInstanceBody
 } from '@1flowbase/api-client';
-
 import {
   createSettingsMcpInstance,
   copySettingsMcpInstance,
@@ -74,7 +78,6 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import {
   buildMcpDirectoryTreeData,
-  buildRandomToolIdSeed,
   nextMcpDirectoryExpandedKeys,
   type McpDirectoryTreeNode,
   normalizeMcpDirectoryPath
@@ -85,7 +88,6 @@ import {
   mcpInstancesReducer,
   type McpDirectoryEditorMode
 } from './mcp-management-state';
-import { statusColor } from './mcp-management-utils';
 import { McpBundleExportModal } from './bundle/McpBundleExportModal';
 import { downloadMcpBundle } from './bundle/mcp-bundle-download';
 
@@ -106,27 +108,6 @@ type BindingFormValues = {
   visible: boolean;
   sort_order: number;
 };
-type McpDirectoryTreeDropInfo = Parameters<
-  NonNullable<TreeProps<McpDirectoryTreeNode>['onDrop']>
->[0];
-
-function findDirectoryNodeByPath(
-  node: McpDirectoryTreeNode,
-  path: string
-): McpDirectoryTreeNode | null {
-  if (
-    node.node_type === 'group' &&
-    normalizeMcpDirectoryPath(node.path) === path
-  ) {
-    return node;
-  }
-  for (const child of node.children ?? []) {
-    const found = findDirectoryNodeByPath(child, path);
-    if (found) return found;
-  }
-  return null;
-}
-
 function useCsrfToken() {
   return useAuthStore((state) => state.csrfToken ?? '');
 }
@@ -416,26 +397,10 @@ export function McpInstancesTab({
     }
   }
 
-  const groupCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const group of catalog.groups) {
-      counts.set(
-        group.instance_record_id,
-        (counts.get(group.instance_record_id) ?? 0) + 1
-      );
-    }
-    return counts;
-  }, [catalog.groups]);
-  const toolCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const binding of catalog.bindings) {
-      counts.set(
-        binding.instance_record_id,
-        (counts.get(binding.instance_record_id) ?? 0) + 1
-      );
-    }
-    return counts;
-  }, [catalog.bindings]);
+  const { groupCounts, toolCounts } = useMemo(
+    () => countMcpInstanceDirectoryItems(catalog),
+    [catalog]
+  );
   const selectedInstance = useMemo(
     () =>
       catalog.instances.find(
@@ -480,316 +445,57 @@ export function McpInstancesTab({
       new Map(selectedInstanceBindings.map((binding) => [binding.id, binding])),
     [selectedInstanceBindings]
   );
-  const treeData = useMemo(() => {
-    if (!selectedInstance) return [];
-    const nodes = buildMcpDirectoryTreeData({
-      instance: {
-        id: selectedInstance.id,
-        instance_id: selectedInstance.instance_id,
-        name: selectedInstance.name,
-        default_entry_path: selectedInstance.default_entry_path
-      },
-      groups: selectedInstanceGroups,
-      bindings: selectedInstanceBindings,
-      tools: catalog.tools
-    });
-
-    if (nodes.length === 0) return [];
-    const rootNode = nodes[0];
-    if (!rootNode.children) rootNode.children = [];
-
-    // Check if in new group creation state
-    const isEditingGroup =
-      directoryEditorMode === 'group' && directoryEditorIntent === 'edit';
-    if (
-      directoryEditorMode === 'group' &&
-      directoryDraftActive &&
-      !isEditingGroup
-    ) {
-      const pathText = watchedPath?.trim() || '';
-      const draftGroupPath = normalizeMcpDirectoryPath(pathText || '/');
-      const draftPathAlreadyExists = groupByPath.has(draftGroupPath);
-      const displayPath =
-        pathText || i18nText('settingsMcpManagement', 'auto.unnamed');
-      const displayName = watchedDisplayName?.trim();
-      const title = displayName || displayPath;
-
-      // Find the parent group node matching parentGroupPath
-      const targetParentPath = normalizeMcpDirectoryPath(
-        parentGroupPath || '/'
-      );
-      let targetParentNode = rootNode;
-      if (targetParentPath !== '/') {
-        targetParentNode =
-          findDirectoryNodeByPath(rootNode, targetParentPath) || rootNode;
-      }
-
-      if (!draftPathAlreadyExists) {
-        if (!targetParentNode.children) targetParentNode.children = [];
-        targetParentNode.children.push({
-          key: 'group:__draft__',
-          title: title,
-          display_name: displayName || undefined,
-          description_short: watchedGroupDescriptionShort?.trim() || undefined,
-          node_type: 'group',
-          path: pathText || '/'
-        });
-      }
-    }
-
-    // Check if in new binding creation state
-    const isEditingBinding =
-      directoryEditorMode === 'binding' && directoryEditorIntent === 'edit';
-    if (
-      directoryEditorMode === 'binding' &&
-      directoryDraftActive &&
-      !isEditingBinding
-    ) {
-      const targetPath = normalizeMcpDirectoryPath(
-        watchedGroupPath || selectedInstance.default_entry_path
-      );
-      let targetNode: McpDirectoryTreeNode | null = null;
-      if (targetPath === normalizeMcpDirectoryPath(rootNode.path)) {
-        targetNode = rootNode;
-      } else {
-        targetNode = findDirectoryNodeByPath(rootNode, targetPath);
-      }
-
-      if (targetNode) {
-        if (!targetNode.children) targetNode.children = [];
-        const selectedTool = catalog.tools.find(
-          (tool) => tool.tool_id === watchedToolId
-        );
-
-        targetNode.children.push({
-          key: 'binding:__draft__',
-          title:
-            watchedToolId ||
-            i18nText('settingsMcpManagement', 'auto.unnamed_tool'),
-          tool_short_description: selectedTool?.short_description,
-          node_type: 'binding',
-          path: targetPath
-        });
-      }
-    }
-
-    return nodes;
-  }, [
-    selectedInstance,
-    selectedInstanceGroups,
-    selectedInstanceBindings,
-    catalog.tools,
-    groupByPath,
-    directoryEditorMode,
-    watchedPath,
-    watchedDisplayName,
-    watchedGroupDescriptionShort,
-    watchedGroupPath,
-    watchedToolId,
-    parentGroupPath,
-    directoryEditorIntent,
-    directoryDraftActive
-  ]);
+  const treeData = useMemo(
+    () =>
+      buildMcpDirectoryEditorTreeData({
+        selectedInstance,
+        selectedInstanceGroups,
+        selectedInstanceBindings,
+        tools: catalog.tools,
+        groupByPath,
+        directoryEditorMode,
+        watchedPath,
+        watchedDisplayName,
+        watchedGroupDescriptionShort,
+        watchedGroupPath,
+        watchedToolId,
+        parentGroupPath,
+        directoryEditorIntent,
+        directoryDraftActive
+      }),
+    [
+      selectedInstance,
+      selectedInstanceGroups,
+      selectedInstanceBindings,
+      catalog.tools,
+      groupByPath,
+      directoryEditorMode,
+      watchedPath,
+      watchedDisplayName,
+      watchedGroupDescriptionShort,
+      watchedGroupPath,
+      watchedToolId,
+      parentGroupPath,
+      directoryEditorIntent,
+      directoryDraftActive
+    ]
+  );
 
   const handleTreeDrop = (info: McpDirectoryTreeDropInfo) => {
-    const dragKey = String(info.dragNode.key);
-    const dropKey = String(info.node.key);
-    const dropPosition = info.dropPosition;
-    const dropToGap = info.dropToGap;
-
-    if (dragKey.includes('__draft__') || dropKey.includes('__draft__')) {
-      return;
-    }
-
-    const [dragType, ...dragParts] = dragKey.split(':');
-    const [dropType, ...dropParts] = dropKey.split(':');
-
-    // 1. Dragging a Binding (Tool)
-    if (dragType === 'binding') {
-      const bindingId = dragParts.join(':');
-      const draggedBinding = bindingById.get(bindingId);
-      if (!draggedBinding) return;
-
-      // Case 1A: Dropped ON a group (dropToGap is false)
-      if (dropType === 'group' && !dropToGap) {
-        const groupPath = dropParts.join(':');
-        const siblings = selectedInstanceBindings
-          .filter((b) => normalizeMcpDirectoryPath(b.group_path) === groupPath)
-          .sort((a, b) => a.sort_order - b.sort_order);
-
-        const newSortOrder =
-          siblings.length > 0
-            ? siblings[siblings.length - 1].sort_order + 10
-            : 0;
-
-        saveBindingMutation.mutate(
-          {
-            instance_id: selectedInstance.instance_id,
-            group_path: groupPath,
-            tool_id: draggedBinding.tool_id,
-            visible: draggedBinding.visible,
-            sort_order: newSortOrder
-          },
-          {
-            onSuccess: () => {
-              setSelectedDirectoryKey(`binding:${bindingId}`);
-            }
-          }
-        );
-        return;
-      }
-
-      // Case 1B: Dropped in the gap of another binding (dropToGap is true)
-      if (dropType === 'binding' && dropToGap) {
-        const targetBindingId = dropParts.join(':');
-        const targetBinding = bindingById.get(targetBindingId);
-        if (!targetBinding) return;
-
-        const groupPath = normalizeMcpDirectoryPath(targetBinding.group_path);
-
-        const siblings = selectedInstanceBindings
-          .filter(
-            (b) =>
-              normalizeMcpDirectoryPath(b.group_path) === groupPath &&
-              b.id !== bindingId
-          )
-          .sort((a, b) => a.sort_order - b.sort_order);
-
-        const dropPos = info.node.pos.split('-');
-        const relativeDropPos =
-          dropPosition - Number(dropPos[dropPos.length - 1]);
-        const targetIndex = siblings.findIndex((b) => b.id === targetBindingId);
-
-        let insertIndex = targetIndex;
-        if (relativeDropPos === 1) {
-          insertIndex = targetIndex + 1;
-        }
-
-        let newSortOrder = 0;
-        if (siblings.length === 0) {
-          newSortOrder = 0;
-        } else if (insertIndex <= 0) {
-          newSortOrder = siblings[0].sort_order - 10;
-        } else if (insertIndex >= siblings.length) {
-          newSortOrder = siblings[siblings.length - 1].sort_order + 10;
-        } else {
-          newSortOrder = Math.round(
-            (siblings[insertIndex - 1].sort_order +
-              siblings[insertIndex].sort_order) /
-              2
-          );
-        }
-
-        saveBindingMutation.mutate(
-          {
-            instance_id: selectedInstance.instance_id,
-            group_path: groupPath,
-            tool_id: draggedBinding.tool_id,
-            visible: draggedBinding.visible,
-            sort_order: newSortOrder
-          },
-          {
-            onSuccess: () => {
-              setSelectedDirectoryKey(`binding:${bindingId}`);
-            }
-          }
-        );
-        return;
-      }
-    }
-
-    // 2. Dragging a Group
-    if (dragType === 'group') {
-      const groupPath = dragParts.join(':');
-      const draggedGroup = groupByPath.get(groupPath);
-      if (!draggedGroup) return;
-
-      const parentPathOf = (path: string) => {
-        const segments = normalizeMcpDirectoryPath(path)
-          .split('/')
-          .filter(Boolean);
-        return segments.length <= 1
-          ? '/'
-          : `/${segments.slice(0, -1).join('/')}`;
-      };
-      const moveGroup = (targetParentPath: string, sortOrder: number) => {
-        if (
-          targetParentPath === groupPath ||
-          targetParentPath.startsWith(`${groupPath}/`)
-        ) {
-          return;
-        }
-        moveGroupMutation.mutate(
-          {
-            instanceId: selectedInstance.instance_id,
-            sourcePath: groupPath,
-            targetParentPath,
-            sortOrder
-          },
-          {
-            onSuccess: (group) => {
-              setSelectedDirectoryKey(`group:${group.path}`);
-            }
-          }
-        );
-      };
-
-      if (!dropToGap && (dropType === 'group' || dropType === 'instance')) {
-        const targetParentPath =
-          dropType === 'group' ? dropParts.join(':') : '/';
-        const siblings = selectedInstanceGroups
-          .filter(
-            (group) =>
-              group.path !== groupPath &&
-              parentPathOf(group.path) === targetParentPath
-          )
-          .sort((left, right) => left.sort_order - right.sort_order);
-        const sortOrder =
-          siblings.length > 0
-            ? siblings[siblings.length - 1].sort_order + 10
-            : 0;
-        moveGroup(targetParentPath, sortOrder);
-        return;
-      }
-
-      if (dropType === 'group' && dropToGap) {
-        const targetGroupPath = dropParts.join(':');
-        const targetGroup = groupByPath.get(targetGroupPath);
-        if (!targetGroup) return;
-        const targetParentPath = parentPathOf(targetGroupPath);
-        const siblings = selectedInstanceGroups
-          .filter(
-            (group) =>
-              group.path !== groupPath &&
-              parentPathOf(group.path) === targetParentPath
-          )
-          .sort((left, right) => left.sort_order - right.sort_order);
-        const dropPos = info.node.pos.split('-');
-        const relativeDropPos =
-          dropPosition - Number(dropPos[dropPos.length - 1]);
-        const targetIndex = siblings.findIndex(
-          (group) => group.path === targetGroupPath
-        );
-        if (targetIndex < 0) return;
-        const insertIndex =
-          relativeDropPos === 1 ? targetIndex + 1 : targetIndex;
-        let sortOrder = 0;
-        if (siblings.length === 0) {
-          sortOrder = 0;
-        } else if (insertIndex <= 0) {
-          sortOrder = siblings[0].sort_order - 10;
-        } else if (insertIndex >= siblings.length) {
-          sortOrder = siblings[siblings.length - 1].sort_order + 10;
-        } else {
-          sortOrder = Math.round(
-            (siblings[insertIndex - 1].sort_order +
-              siblings[insertIndex].sort_order) /
-              2
-          );
-        }
-        moveGroup(targetParentPath, sortOrder);
-      }
-    }
+    if (!selectedInstance) return;
+    applyMcpDirectoryTreeDrop({
+      info,
+      selectedInstance,
+      selectedInstanceBindings,
+      selectedInstanceGroups,
+      bindingById,
+      groupByPath,
+      onSaveBinding: (values, options) =>
+        saveBindingMutation.mutate(values, options),
+      onMoveGroup: (values, options) =>
+        moveGroupMutation.mutate(values, options),
+      onSelectKey: setSelectedDirectoryKey
+    });
   };
 
   function applyDirectoryPathToForms(path: string) {
@@ -858,270 +564,22 @@ export function McpInstancesTab({
     bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
   }
 
-  const instanceColumns: ColumnsType<ConsoleMcpInstance> = [
-    {
-      title: 'instance_id',
-      dataIndex: 'instance_id'
-    },
-    {
-      title: i18nText('settings', 'auto.instance_name'),
-      dataIndex: 'name',
-      render: (name: ConsoleMcpInstance['name']) => (
-        <Typography.Text strong>{name}</Typography.Text>
-      )
-    },
-    {
-      title: i18nText('settingsMcpManagement', 'auto.instance_description'),
-      dataIndex: 'description_short',
-      render: (description: ConsoleMcpInstance['description_short']) => (
-        <Typography.Text type={description ? undefined : 'secondary'}>
-          {description || '-'}
-        </Typography.Text>
-      )
-    },
-    {
-      title: i18nText('settings', 'auto.status'),
-      dataIndex: 'status',
-      render: (status: string) => (
-        <Tag color={statusColor(status)}>{status}</Tag>
-      )
-    },
-    {
-      title: i18nText('settings', 'auto.directory_summary'),
-      render: (_, record) => (
-        <Typography.Text>
-          {groupCounts.get(record.id) ?? 0} / {toolCounts.get(record.id) ?? 0}
-        </Typography.Text>
-      )
-    },
-    {
-      title: i18nText('settings', 'auto.operation'),
-      render: (_, record) => (
-        <Space>
-          <Button
-            aria-label={i18nText('settings', 'auto.edit')}
-            icon={<EditOutlined />}
-            size="small"
-            disabled={!canManage}
-            onClick={() => {
-              setEditingInstance(record);
-              instanceForm.setFieldsValue({
-                instance_id: record.instance_id,
-                name: record.name,
-                description_short: record.description_short,
-                status: record.status,
-                default_entry_path: record.default_entry_path
-              });
-              setInstanceModalOpen(true);
-            }}
-          />
-          <Tooltip title={i18nText('settings', 'auto.directory_editor')}>
-            <Button
-              aria-label={i18nText('settings', 'auto.directory_editor')}
-              icon={<SettingOutlined />}
-              size="small"
-              disabled={!canManage}
-              onClick={() => {
-                setRequestedInstanceId(record.instance_id);
-                setEditingBinding(null);
-                groupForm.resetFields();
-                bindingForm.resetFields();
-                groupForm.setFieldsValue({
-                  instance_id: record.instance_id,
-                  path: normalizeMcpDirectoryPath(record.default_entry_path),
-                  display_name: '',
-                  description_short: null,
-                  enabled: true,
-                  sort_order: 0
-                });
-                groupSavedValuesRef.current = groupForm.getFieldsValue(true);
-                bindingForm.setFieldsValue({
-                  instance_id: record.instance_id,
-                  group_path: normalizeMcpDirectoryPath(
-                    record.default_entry_path
-                  ),
-                  visible: true,
-                  sort_order: 0
-                });
-                bindingSavedValuesRef.current =
-                  bindingForm.getFieldsValue(true);
-                setDirectoryEditorMode('group');
-                setDirectoryEditorIntent('create');
-                setDirectoryDraftActive(false);
-                setSelectedDirectoryKey(
-                  `instance:${record.instance_id}:${normalizeMcpDirectoryPath(record.default_entry_path)}`
-                );
-                setExpandedDirectoryKeys([]);
-                setDirectoryModalOpen(true);
-              }}
-            />
-          </Tooltip>
-          <Tooltip
-            title={i18nText('settingsMcpManagement', 'auto.connect_client')}
-          >
-            <Button
-              aria-label={i18nText(
-                'settingsMcpManagement',
-                'auto.connect_client'
-              )}
-              icon={<LinkOutlined />}
-              size="small"
-              onClick={() => setClientConfigurationInstance(record)}
-            />
-          </Tooltip>
-          <Tooltip
-            title={i18nText('settingsMcpManagement', 'auto.more_actions')}
-          >
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items: [
-                  {
-                    key: 'discovery_policy',
-                    icon: <SearchOutlined />,
-                    label: i18nText(
-                      'settingsMcpManagement',
-                      'auto.discovery_policy'
-                    ),
-                    disabled: !canManage
-                  },
-                  {
-                    key: 'copy',
-                    icon: <CopyOutlined />,
-                    label: i18nText(
-                      'settingsMcpManagement',
-                      'auto.copy_instance'
-                    ),
-                    disabled: !canManage
-                  },
-                  {
-                    key: 'export',
-                    icon: <UploadOutlined />,
-                    label: i18nText(
-                      'settingsMcpManagement',
-                      'auto.mcp_instance_export'
-                    ),
-                    disabled: !canManage
-                  },
-                  { type: 'divider' },
-                  {
-                    key: 'delete',
-                    icon: <DeleteOutlined />,
-                    label: i18nText('settings', 'auto.delete'),
-                    danger: true,
-                    disabled: !canManage
-                  }
-                ],
-                onClick: ({ key }) => {
-                  if (key === 'discovery_policy') {
-                    setDiscoveryPolicyInstance(record);
-                    return;
-                  }
-                  if (key === 'export') {
-                    setBundleExportInstance(record);
-                    return;
-                  }
-                  if (key === 'copy') {
-                    copyInstanceForm.resetFields();
-                    setCopyingInstance(record);
-                    return;
-                  }
-                  if (key === 'delete') {
-                    Modal.confirm({
-                      title: i18nText(
-                        'settings',
-                        'auto.mcp_hard_delete_confirm'
-                      ),
-                      okButtonProps: { danger: true },
-                      onOk: () =>
-                        deleteInstanceMutation.mutateAsync(record.instance_id)
-                    });
-                  }
-                }
-              }}
-            >
-              <Button
-                aria-label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.more_actions'
-                )}
-                icon={<MoreOutlined />}
-                size="small"
-              />
-            </Dropdown>
-          </Tooltip>
-        </Space>
-      )
-    }
-  ];
+  const getFullReadablePath = () =>
+    formatMcpGroupEditorPath({
+      instanceName: selectedInstance?.name || 'mcp',
+      selectedDirectoryKey,
+      currentPath: groupForm.getFieldValue('path'),
+      parentPath: parentGroupPath,
+      draftDisplayName: watchedDisplayName,
+      groups: groupByPath
+    });
 
-  const getFullReadablePath = () => {
-    const instanceName = selectedInstance?.name || 'mcp';
-
-    const isEditingGroup =
-      selectedDirectoryKey && selectedDirectoryKey.startsWith('group:');
-
-    if (isEditingGroup) {
-      const currentPath = groupForm.getFieldValue('path') || '/';
-      if (currentPath === '/') return `${instanceName} /`;
-
-      const segments = currentPath.split('/').filter(Boolean);
-      const pathParts: string[] = [instanceName];
-      let currentAcc = '';
-
-      for (const segment of segments) {
-        currentAcc += `/${segment}`;
-        const g = groupByPath.get(currentAcc);
-        const name = g?.display_name || segment;
-        pathParts.push(name);
-      }
-
-      return pathParts.join(' / ');
-    } else {
-      const parent = parentGroupPath || '/';
-      const pathParts: string[] = [instanceName];
-
-      if (parent !== '/') {
-        const segments = parent.split('/').filter(Boolean);
-        let currentAcc = '';
-        for (const segment of segments) {
-          currentAcc += `/${segment}`;
-          const g = groupByPath.get(currentAcc);
-          const name = g?.display_name || segment;
-          pathParts.push(name);
-        }
-      }
-
-      const childName =
-        watchedDisplayName?.trim() ||
-        i18nText('settingsMcpManagement', 'auto.unnamed');
-      pathParts.push(childName);
-
-      return pathParts.join(' / ');
-    }
-  };
-
-  const getReadablePathFor = (rawPath: string | null | undefined) => {
-    const instanceName = selectedInstance?.name || 'mcp';
-    const pathVal = normalizeMcpDirectoryPath(rawPath || '/');
-    if (pathVal === '/') return `${instanceName} /`;
-
-    const segments = pathVal.split('/').filter(Boolean);
-    const pathParts: string[] = [instanceName];
-    let currentAcc = '';
-
-    for (const segment of segments) {
-      currentAcc += `/${segment}`;
-      const g = groupByPath.get(currentAcc);
-      const name =
-        g?.display_name?.trim() ||
-        segment ||
-        i18nText('settingsMcpManagement', 'auto.unnamed');
-      pathParts.push(name);
-    }
-
-    return pathParts.join(' / ');
-  };
+  const getReadablePathFor = (rawPath: string | null | undefined) =>
+    formatMcpDirectoryPath(
+      selectedInstance?.name || 'mcp',
+      rawPath,
+      groupByPath
+    );
 
   const discardDirectorySession = () => {
     setDirectoryModalOpen(false);
@@ -1260,31 +718,73 @@ export function McpInstancesTab({
 
   return (
     <Space direction="vertical" size="middle" className="mcp-management__stack">
-      <Flex justify="flex-end" align="center">
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          disabled={!canManage}
-          onClick={() => {
-            setEditingInstance(null);
-            instanceForm.setFieldsValue({
-              instance_id: '',
-              name: '',
-              description_short: null,
-              status: 'draft',
-              default_entry_path: '/'
-            });
-            setInstanceModalOpen(true);
-          }}
-        >
-          {i18nText('settings', 'auto.new')}
-        </Button>
-      </Flex>
-      <Table
-        rowKey="id"
-        columns={instanceColumns}
-        dataSource={catalog.instances}
-        pagination={false}
+      <McpInstanceTable
+        onCreate={() => {
+          setEditingInstance(null);
+          instanceForm.setFieldsValue({
+            instance_id: '',
+            name: '',
+            description_short: null,
+            status: 'draft',
+            default_entry_path: '/'
+          });
+          setInstanceModalOpen(true);
+        }}
+        canManage={canManage}
+        instances={catalog.instances}
+        groupCounts={groupCounts}
+        toolCounts={toolCounts}
+        onEdit={(record) => {
+          setEditingInstance(record);
+          instanceForm.setFieldsValue({
+            instance_id: record.instance_id,
+            name: record.name,
+            description_short: record.description_short,
+            status: record.status,
+            default_entry_path: record.default_entry_path
+          });
+          setInstanceModalOpen(true);
+        }}
+        onOpenDirectory={(record) => {
+          setRequestedInstanceId(record.instance_id);
+          setEditingBinding(null);
+          groupForm.resetFields();
+          bindingForm.resetFields();
+          groupForm.setFieldsValue({
+            instance_id: record.instance_id,
+            path: normalizeMcpDirectoryPath(record.default_entry_path),
+            display_name: '',
+            description_short: null,
+            enabled: true,
+            sort_order: 0
+          });
+          groupSavedValuesRef.current = groupForm.getFieldsValue(true);
+          bindingForm.setFieldsValue({
+            instance_id: record.instance_id,
+            group_path: normalizeMcpDirectoryPath(record.default_entry_path),
+            visible: true,
+            sort_order: 0
+          });
+          bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
+          setDirectoryEditorMode('group');
+          setDirectoryEditorIntent('create');
+          setDirectoryDraftActive(false);
+          setSelectedDirectoryKey(
+            `instance:${record.instance_id}:${normalizeMcpDirectoryPath(record.default_entry_path)}`
+          );
+          setExpandedDirectoryKeys([]);
+          setDirectoryModalOpen(true);
+        }}
+        onConnect={setClientConfigurationInstance}
+        onEditDiscoveryPolicy={setDiscoveryPolicyInstance}
+        onCopy={(record) => {
+          copyInstanceForm.resetFields();
+          setCopyingInstance(record);
+        }}
+        onExport={setBundleExportInstance}
+        onDelete={(record) =>
+          deleteInstanceMutation.mutateAsync(record.instance_id)
+        }
       />
       {discoveryPolicyInstance && selectedDiscoveryPolicy ? (
         <McpInstanceDiscoveryPolicyModal
@@ -1299,44 +799,21 @@ export function McpInstancesTab({
         instance={clientConfigurationInstance}
         onClose={() => setClientConfigurationInstance(null)}
       />
-      <Modal
-        open={Boolean(copyingInstance)}
-        title={i18nText('settingsMcpManagement', 'auto.copy_instance_title')}
-        okText={i18nText('settingsMcpManagement', 'auto.copy_instance_action')}
-        confirmLoading={copyInstanceMutation.isPending}
-        onCancel={() => {
+      <McpCopyInstanceModal
+        source={copyingInstance}
+        form={copyInstanceForm}
+        saving={copyInstanceMutation.isPending}
+        onClose={() => {
           setCopyingInstance(null);
           copyInstanceForm.resetFields();
         }}
-        onOk={() => copyInstanceForm.submit()}
-      >
-        <Form<CopyInstanceFormValues>
-          form={copyInstanceForm}
-          layout="vertical"
-          onFinish={(values) => {
-            if (!copyingInstance) return;
-            copyInstanceMutation.mutate({
-              sourceInstanceId: copyingInstance.instance_id,
-              values
-            });
-          }}
-        >
-          <Form.Item
-            name="instance_id"
-            label="instance_id"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="name"
-            label={i18nText('settings', 'auto.instance_name')}
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-        </Form>
-      </Modal>
+        onSave={(source, values) =>
+          copyInstanceMutation.mutate({
+            sourceInstanceId: source.instance_id,
+            values
+          })
+        }
+      />
       <McpBundleExportModal
         open={Boolean(bundleExportInstance)}
         title={i18nText(
@@ -1996,102 +1473,27 @@ export function McpInstancesTab({
           </div>
         </FixedHeightModal>
       ) : null}
-      <Modal
+      <McpDiscardDirectoryChangesModal
         open={discardDirectoryChangesOpen}
-        title={i18nText(
-          'settingsMcpManagement',
-          'auto.discard_unsaved_changes_title'
-        )}
-        okText={i18nText(
-          'settingsMcpManagement',
-          'auto.discard_unsaved_changes'
-        )}
-        cancelText={i18nText('settingsMcpManagement', 'auto.continue_editing')}
-        okButtonProps={{ danger: true }}
-        onCancel={() => {
+        onContinueEditing={() => {
           pendingDirectorySessionChangeRef.current = null;
           setDiscardDirectoryChangesOpen(false);
         }}
-        onOk={() => {
+        onDiscard={() => {
           const changeSession = pendingDirectorySessionChangeRef.current;
           pendingDirectorySessionChangeRef.current = null;
           setDiscardDirectoryChangesOpen(false);
           changeSession?.();
         }}
-      >
-        <Typography.Text>
-          {i18nText(
-            'settingsMcpManagement',
-            'auto.discard_unsaved_changes_description'
-          )}
-        </Typography.Text>
-      </Modal>
-      <Modal
+      />
+      <McpInstanceEditorModal
         open={instanceModalOpen}
-        title={
-          editingInstance
-            ? i18nText('settings', 'auto.edit')
-            : i18nText('settings', 'auto.new')
-        }
-        onCancel={() => setInstanceModalOpen(false)}
-        onOk={() => instanceForm.submit()}
-        confirmLoading={saveInstanceMutation.isPending}
-      >
-        <Form
-          form={instanceForm}
-          layout="vertical"
-          onFinish={(values) => saveInstanceMutation.mutate(values)}
-        >
-          <Form.Item
-            name="instance_id"
-            label="instance_id"
-            rules={[{ required: true }]}
-          >
-            <Input
-              disabled={Boolean(editingInstance)}
-              addonAfter={
-                editingInstance ? undefined : (
-                  <Tooltip title="随机生成 instance_id">
-                    <Button
-                      type="text"
-                      htmlType="button"
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      aria-label="随机生成 instance_id"
-                      onClick={() => {
-                        instanceForm.setFieldValue(
-                          'instance_id',
-                          buildRandomToolIdSeed()
-                        );
-                      }}
-                    />
-                  </Tooltip>
-                )
-              }
-            />
-          </Form.Item>
-          <Form.Item name="name" label="name" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="description_short" label="description_short">
-            <Input />
-          </Form.Item>
-          <Form.Item name="status" label="status" rules={[{ required: true }]}>
-            <Select
-              options={['draft', 'enabled', 'disabled', 'archived'].map(
-                (value) => ({ label: value, value })
-              )}
-            />
-          </Form.Item>
-          <Form.Item
-            name="default_entry_path"
-            label="default_entry_path"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-        </Form>
-      </Modal>
+        instance={editingInstance}
+        form={instanceForm}
+        saving={saveInstanceMutation.isPending}
+        onClose={() => setInstanceModalOpen(false)}
+        onSave={(values) => saveInstanceMutation.mutate(values)}
+      />
     </Space>
   );
 }
