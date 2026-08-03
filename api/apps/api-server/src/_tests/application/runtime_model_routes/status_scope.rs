@@ -400,8 +400,8 @@ async fn runtime_model_routes_use_default_scope_id_for_workspace_model_crud() {
     .fetch_one(pool.pool())
     .await
     .unwrap();
-    assert_eq!(metadata_scope_kind, "system");
-    assert_eq!(metadata_scope_id, domain::SYSTEM_SCOPE_ID);
+    assert_eq!(metadata_scope_kind, "workspace");
+    assert_eq!(metadata_scope_id, domain::DEFAULT_SCOPE_ID);
 
     let grant_scope_id: uuid::Uuid = sqlx::query_scalar(
         r#"

@@ -68,8 +68,8 @@
           "method": "DELETE",
           "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version"
         },
-        "summary": "Delete MCP bundle library releases",
-        "description": "Delete MCP bundle library releases in the system backend.",
+        "summary": "Delete MCP bundle library release",
+        "description": "Delete MCP bundle library release in the system backend.",
         "authorization_operation_id": "mcp.bundle_library.releases.delete"
       },
       {
@@ -198,8 +198,8 @@
           "method": "DELETE",
           "path": "/api/console/settings/extension-center/installed/:installation_id"
         },
-        "summary": "Delete extension center installed",
-        "description": "Delete extension center installed in the system backend.",
+        "summary": "Delete an installed extension version",
+        "description": "Delete an installed extension version in the system backend.",
         "authorization_operation_id": "extension_center.installed.delete"
       },
       {
@@ -2148,8 +2148,8 @@
           "method": "POST",
           "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version"
         },
-        "summary": "MCP bundle library current switch",
-        "description": "MCP bundle library current switch in the system backend.",
+        "summary": "Switch MCP bundle library release",
+        "description": "Switch MCP bundle library release in the system backend.",
         "authorization_operation_id": "mcp.bundle_library.current.switch"
       },
       {
@@ -2158,8 +2158,8 @@
           "method": "POST",
           "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/import"
         },
-        "summary": "Import MCP bundle library",
-        "description": "Import MCP bundle library in the system backend.",
+        "summary": "Import MCP bundle library release",
+        "description": "Import MCP bundle library release in the system backend.",
         "authorization_operation_id": "mcp.bundle_library.import"
       },
       {
@@ -2168,8 +2168,8 @@
           "method": "POST",
           "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/preview"
         },
-        "summary": "Preview MCP bundle library",
-        "description": "Preview MCP bundle library in the system backend.",
+        "summary": "Preview MCP bundle library release",
+        "description": "Preview MCP bundle library release in the system backend.",
         "authorization_operation_id": "mcp.bundle_library.preview"
       },
       {
@@ -2178,8 +2178,8 @@
           "method": "POST",
           "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair"
         },
-        "summary": "MCP bundle library releases repair",
-        "description": "MCP bundle library releases repair in the system backend.",
+        "summary": "Repair MCP bundle library release",
+        "description": "Repair MCP bundle library release in the system backend.",
         "authorization_operation_id": "mcp.bundle_library.releases.repair"
       },
       {
@@ -2188,8 +2188,8 @@
           "method": "POST",
           "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/sync"
         },
-        "summary": "MCP bundle library sync",
-        "description": "MCP bundle library sync in the system backend.",
+        "summary": "Sync MCP bundle library release",
+        "description": "Sync MCP bundle library release in the system backend.",
         "authorization_operation_id": "mcp.bundle_library.sync"
       },
       {
@@ -2648,8 +2648,8 @@
           "method": "POST",
           "path": "/api/console/settings/extension-center/installed/:installation_id/select"
         },
-        "summary": "Extension center installed select",
-        "description": "Extension center installed select in the system backend.",
+        "summary": "Select an installed extension version",
+        "description": "Select an installed extension version in the system backend.",
         "authorization_operation_id": "extension_center.installed.select"
       },
       {

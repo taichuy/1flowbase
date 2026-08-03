@@ -44,7 +44,7 @@
       "mcp.bundle_library.releases.delete",
       "DELETE",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
-      "Delete MCP bundle library releases"
+      "Delete MCP bundle library release"
     ],
     [
       "mcp.instances.delete",
@@ -116,7 +116,7 @@
       "extension_center.installed.delete",
       "DELETE",
       "/api/console/settings/extension-center/installed/:installation_id",
-      "Delete extension center installed"
+      "Delete an installed extension version"
     ],
     [
       "file_storages.delete",
@@ -1070,31 +1070,31 @@
       "mcp.bundle_library.current.switch",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
-      "MCP bundle library current switch"
+      "Switch MCP bundle library release"
     ],
     [
       "mcp.bundle_library.import",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/import",
-      "Import MCP bundle library"
+      "Import MCP bundle library release"
     ],
     [
       "mcp.bundle_library.preview",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/preview",
-      "Preview MCP bundle library"
+      "Preview MCP bundle library release"
     ],
     [
       "mcp.bundle_library.releases.repair",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
-      "MCP bundle library releases repair"
+      "Repair MCP bundle library release"
     ],
     [
       "mcp.bundle_library.sync",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/sync",
-      "MCP bundle library sync"
+      "Sync MCP bundle library release"
     ],
     [
       "preview_official_mcp_bundle",
@@ -1352,7 +1352,7 @@
       "extension_center.installed.select",
       "POST",
       "/api/console/settings/extension-center/installed/:installation_id/select",
-      "Extension center installed select"
+      "Select an installed extension version"
     ],
     [
       "extension_center.update",
