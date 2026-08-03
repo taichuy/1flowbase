@@ -830,6 +830,10 @@ async fn mcp_call_get_catalog_preserves_discovery_policy_fields_via_continuation
     let mut cursor = None;
     let mut found_list_return_field = false;
     for id in 21..53 {
+        let mut continuation_arguments = json!({"result_ref": result_ref});
+        if let Some(cursor) = cursor.as_deref() {
+            continuation_arguments["cursor"] = json!(cursor);
+        }
         let continuation = call_mcp(
             &app,
             &token,
@@ -839,10 +843,7 @@ async fn mcp_call_get_catalog_preserves_discovery_policy_fields_via_continuation
                 "method":"tools/call",
                 "params":{
                     "name":"mcp.result",
-                    "arguments":{
-                        "result_ref":result_ref,
-                        "cursor":cursor
-                    }
+                    "arguments":continuation_arguments
                 }
             }),
         )
