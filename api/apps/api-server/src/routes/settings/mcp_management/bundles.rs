@@ -260,6 +260,7 @@ pub(crate) async fn list_bundle_library(
 }
 
 #[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(crate) struct McpBundleLibraryQuery {
     refresh_remote: Option<bool>,
 }
