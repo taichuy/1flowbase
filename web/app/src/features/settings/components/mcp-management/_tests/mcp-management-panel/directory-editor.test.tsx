@@ -178,11 +178,14 @@ vi.mock('@monaco-editor/react', () => ({
   )
 }));
 
-import { AppProviders } from '../../../../../app/AppProviders';
-import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
-import { McpManagementPanel } from '../McpManagementPanel';
-import { McpToolDebugPanel } from '../McpToolDebugPanel';
-import { MarkdownIrEditor } from '../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
+import { AppProviders } from '../../../../../../app/AppProviders';
+import {
+  resetAuthStore,
+  useAuthStore
+} from '../../../../../../state/auth-store';
+import { McpManagementPanel } from '../../McpManagementPanel';
+import { McpToolDebugPanel } from '../../McpToolDebugPanel';
+import { MarkdownIrEditor } from '../../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -723,401 +726,169 @@ describe('McpManagementPanel', () => {
     );
   });
 
-  test('shows the backend system version and exports without a client-selected host floor', async () => {
-    mcpManagementApi.exportSettingsMcpBundle.mockResolvedValue({
-      blob: new Blob(['bundle'], { type: 'application/zip' }),
-      filename: 'mcp-bundle.zip'
-    });
-    Object.defineProperty(window.URL, 'createObjectURL', {
-      configurable: true,
-      value: vi.fn(() => 'blob:mcp-bundle')
-    });
-    Object.defineProperty(window.URL, 'revokeObjectURL', {
-      configurable: true,
-      value: vi.fn()
-    });
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    renderPanel();
-
-    fireEvent.click(screen.getByRole('button', { name: /导出$/ }));
-    const dialog = await screen.findByRole('dialog', {
-      name: '导出 MCP 配置包'
-    });
-    expect(within(dialog).queryByLabelText('minimum_host_version')).toBeNull();
-    expect(await within(dialog).findByText(/0.3.0/)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: /导\s*出/u }));
-
-    await waitFor(() => {
-      expect(mcpManagementApi.exportSettingsMcpBundle).toHaveBeenCalledWith(
-        expect.not.objectContaining({
-          minimum_host_version: expect.anything()
-        }),
-        expect.any(String)
-      );
-    });
-  });
-
-  test('previews an MCP bundle, warns for older source and imports the remaining items', async () => {
-    // AC-005, AC-007, AC-009 and AC-010.
-    renderPanel();
-
-    const file = new File(['bundle'], 'taichuy-bundle.zip', {
-      type: 'application/zip'
-    });
-    fireEvent.change(screen.getByLabelText('选择 MCP 配置包'), {
-      target: { files: [file] }
-    });
-
-    expect(
-      await screen.findByText('配置包来自较低版本的 1flowbase')
-    ).toBeInTheDocument();
-    expect(screen.getByText('removed_tool')).toBeInTheDocument();
-    expect(screen.getByText('接口不存在')).toBeInTheDocument();
-    expect(
-      screen.getByText('019b5f8f-0000-7000-8000-000000000001')
-    ).toBeInTheDocument();
-    expect(screen.getByText('缺少凭据')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '确认导入并覆盖' }));
-    await waitFor(() => {
-      expect(mcpManagementApi.importSettingsMcpBundle).toHaveBeenCalledWith(
-        file,
-        expect.any(String)
-      );
-    });
-    expect(await screen.findByText('导入完成，但存在警告')).toBeInTheDocument();
-  });
-
-  test('reuses the local template library and import flow in MCP Management', async () => {
-    renderPanel();
-
-    expect(screen.getByRole('button', { name: /导出$/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /导入$/ }));
-    const sourceDialog = await screen.findByRole('dialog', {
-      name: '选择配置包来源'
-    });
-    expect(
-      await within(sourceDialog).findByText('taichuy/1flowbase_zh_hans')
-    ).toBeInTheDocument();
-
-    const bundleRow = within(sourceDialog).getByRole('row', {
-      name: /taichuy\/1flowbase_zh_hans/
-    });
-    fireEvent.click(within(bundleRow).getByRole('button', { name: '导入' }));
-    await waitFor(() => {
-      expect(
-        mcpManagementApi.previewSettingsMcpTemplateLibraryBundle
-      ).toHaveBeenCalledWith(
-        'taichuy',
-        '1flowbase_zh_hans',
-        {},
-        expect.any(String)
-      );
-    });
-
-    fireEvent.click(
-      await screen.findByRole('button', { name: '确认导入并覆盖' })
-    );
-    await waitFor(() => {
-      expect(
-        mcpManagementApi.importSettingsMcpTemplateLibraryBundle
-      ).toHaveBeenCalledWith(
-        'taichuy',
-        '1flowbase_zh_hans',
-        {},
-        expect.any(String)
-      );
-    });
-  });
-
-  test('keeps mount paths in binding management instead of the tool table', () => {
-    renderPanelWithMountedTool();
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
-
-    expect(
-      within(toolsPanel).queryByPlaceholderText('group_path')
-    ).not.toBeInTheDocument();
-    expect(
-      within(toolsPanel).queryByRole('columnheader', { name: 'group_path' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(toolsPanel).queryByText('/ops/customer')
-    ).not.toBeInTheDocument();
-    expect(
-      within(toolsPanel).getByRole('columnheader', { name: 'Tool 名称' })
-    ).toBeInTheDocument();
-    expect(
-      within(toolsPanel).getByRole('columnheader', { name: 'tool_id' })
-    ).toBeInTheDocument();
-    expect(within(toolsPanel).getByText('Search customer')).toBeInTheDocument();
-    expect(within(toolsPanel).getByText('search_customer')).toBeInTheDocument();
-    expect(
-      within(toolsPanel).getByRole('columnheader', { name: 'operation' })
-    ).toBeInTheDocument();
-    expect(
-      within(toolsPanel).getByRole('columnheader', { name: 'Tool 类型' })
-    ).toBeInTheDocument();
-    expect(
-      within(toolsPanel).getByRole('columnheader', { name: '执行来源' })
-    ).toBeInTheDocument();
-    expect(
-      within(toolsPanel).getByText('POST /api/console/apps')
-    ).toBeInTheDocument();
-    expect(within(toolsPanel).getByText('create_app')).toBeInTheDocument();
+  test('confirms before closing an editor with unsaved changes', async () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-
-    expect(
-      within(instancesPanel).queryByLabelText('挂载路径')
-    ).not.toBeInTheDocument();
-    expect(
-      within(instancesPanel).queryByRole('columnheader', { name: '挂载路径' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(instancesPanel).queryByText('/ops/customer')
-    ).not.toBeInTheDocument();
-
     fireEvent.click(
       within(instancesPanel).getByRole('button', { name: '目录编辑' })
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const modalShell = dialog.closest('.ant-modal');
-    const modalScrollBody = screen.getByTestId(
-      'fixed-height-modal-scroll-body'
+    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
+      target: { value: 'Unsaved group' }
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('显示名称')).toHaveValue(
+        'Unsaved group'
+      );
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '关闭目录编辑' })
     );
 
-    expect(modalShell).toHaveStyle({ width: '840px' });
-    expect(modalScrollBody).toHaveClass('mcp-management__directory-modal');
+    expect(screen.getByText('放弃未保存的更改？')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '放弃更改' })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+    expect(
+      screen.getByRole('dialog', { name: '目录编辑' })
+    ).toBeInTheDocument();
+  });
+
+  test('shows explicit group and Tool creation actions without editor tabs', () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
+    expect(
+      dialog.querySelector('.mcp-management__directory-editor-status')
+    ).toHaveTextContent('未保存');
+
     expect(
       within(dialog).getByRole('button', { name: '新建分组' })
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', { name: '挂载 Tool' })
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('路径')).toBeInTheDocument();
     expect(
-      within(dialog).queryByRole('combobox', { name: '路径' })
-    ).not.toBeInTheDocument();
-    expect(within(dialog).getByLabelText('挂载路径')).not.toBeVisible();
-    expect(within(dialog).getByRole('tree')).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
-
-    expect(
-      within(dialog).getByRole('heading', { name: '新建 Tool 挂载' })
-    ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('路径')).not.toBeVisible();
-    expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('columnheader', { name: '挂载路径' })
+      within(dialog).queryByRole('tab', { name: '分组' })
     ).not.toBeInTheDocument();
     expect(
-      within(dialog).queryByRole('columnheader', { name: 'display_alias' })
+      within(dialog).queryByRole('tab', { name: 'Tool 挂载' })
     ).not.toBeInTheDocument();
-    expect(
-      within(dialog).getAllByLabelText('编辑 Tool 挂载').length
-    ).toBeGreaterThan(0);
   });
 
-  test('shows instance name and instance_id in separate columns with matching action icons', () => {
+  test('does not preview a duplicate draft group when the path already exists', () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const tree = within(dialog).getByRole('tree');
+    expandTreeRootIfCollapsed(tree);
+
+    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
+      target: { value: 'ops' }
+    });
+
+    expect(within(tree).getAllByText('ops')).toHaveLength(1);
+  });
+
+  test('hides directory sort order fields because ordering is handled by tree drag', () => {
     renderPanelWithMountedTool();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
 
-    expect(
-      within(instancesPanel)
-        .getAllByRole('columnheader')
-        .slice(0, 2)
-        .map((header) => header.textContent)
-    ).toEqual(['instance_id', '实例名称']);
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
 
-    const directoryEditorButton = within(instancesPanel).getByRole('button', {
-      name: '目录编辑'
-    });
-    const editButton = within(instancesPanel).getByRole('button', {
-      name: '编辑'
-    });
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
 
     expect(
-      editButton.compareDocumentPosition(directoryEditorButton) &
+      within(dialog).queryByLabelText('sort_order')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+
+    expect(
+      within(dialog).queryByLabelText('sort_order')
+    ).not.toBeInTheDocument();
+  });
+
+  test('places directory cancel and save actions in the modal footer for both editor tabs', () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const modalScrollBody = screen.getByTestId(
+      'fixed-height-modal-scroll-body'
+    );
+
+    const cancelButton = within(dialog).getByRole('button', {
+      name: '关闭目录编辑'
+    });
+    const saveButton = within(dialog).getByRole('button', { name: /保存/ });
+
+    expect(cancelButton).toBeInTheDocument();
+    expect(saveButton).toBeInTheDocument();
+    expect(
+      cancelButton.compareDocumentPosition(saveButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-
     expect(
-      directoryEditorButton.querySelector('.anticon-setting')
-    ).toBeInTheDocument();
-    expect(editButton.querySelector('.anticon-edit')).toBeInTheDocument();
-  });
-
-  test('keeps three primary instance actions and moves the rest into more actions', async () => {
-    mcpManagementApi.exportSettingsMcpInstanceBundle.mockResolvedValue({
-      blob: new Blob(['bundle'], { type: 'application/zip' }),
-      filename: 'mcp-instance-ops_mcp.zip'
-    });
-    Object.defineProperty(window.URL, 'createObjectURL', {
-      configurable: true,
-      value: vi.fn(() => 'blob:mcp-instance')
-    });
-    Object.defineProperty(window.URL, 'revokeObjectURL', {
-      configurable: true,
-      value: vi.fn()
-    });
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    renderPanelWithMountedTool();
-
-    const instancesPanel = screen.getByRole('tabpanel', {
-      name: 'MCP 实例'
-    });
-    expect(
-      within(instancesPanel).getByRole('button', { name: '编辑' })
-    ).toBeInTheDocument();
-    expect(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    ).toBeInTheDocument();
-    expect(
-      within(instancesPanel).getByRole('button', { name: '连接客户端' })
-    ).toBeInTheDocument();
-    expect(
-      within(instancesPanel).queryByRole('button', { name: '目录发现配置' })
+      within(modalScrollBody).queryByRole('button', { name: /取\s*消/ })
     ).not.toBeInTheDocument();
     expect(
-      within(instancesPanel).queryByRole('button', { name: '导出此实例' })
+      within(modalScrollBody).queryByRole('button', { name: /保存/ })
     ).not.toBeInTheDocument();
-
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '更多操作' })
-    );
-    const menu = await screen.findByRole('menu');
-    expect(
-      within(menu).getByRole('menuitem', { name: /目录发现配置$/ })
-    ).toBeInTheDocument();
-    expect(
-      within(menu).getByRole('menuitem', { name: /复制实例$/ })
-    ).toBeInTheDocument();
-    expect(
-      within(menu).getByRole('menuitem', { name: /删除$/ })
-    ).toBeInTheDocument();
-    fireEvent.click(
-      within(menu).getByRole('menuitem', { name: /导出此实例$/ })
-    );
-    const dialog = await screen.findByRole('dialog', {
-      name: '导出 MCP 实例配置包'
-    });
-    expect(within(dialog).getByLabelText('bundle_id')).toHaveValue('ops_mcp');
-
-    fireEvent.click(within(dialog).getByRole('button', { name: '导出此实例' }));
-    await waitFor(() => {
-      expect(
-        mcpManagementApi.exportSettingsMcpInstanceBundle
-      ).toHaveBeenCalledWith(
-        'ops_mcp',
-        expect.objectContaining({ bundle_id: 'ops_mcp' }),
-        expect.any(String)
-      );
-    });
-  });
-
-  test('copies an instance after requiring a new id and name', async () => {
-    mcpManagementApi.copySettingsMcpInstance.mockResolvedValue({
-      id: 'instance-copy-id',
-      instance_id: 'ops_mcp_copy',
-      name: 'Ops MCP Copy',
-      description_short: 'Mounted instance',
-      status: 'draft',
-      default_entry_path: '/ops'
-    });
-    renderPanelWithMountedTool();
-
-    const instancesPanel = screen.getByRole('tabpanel', {
-      name: 'MCP 实例'
-    });
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '更多操作' })
-    );
-    const menu = await screen.findByRole('menu');
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /复制实例$/ }));
-    const copyDialog = await screen.findByRole('dialog', {
-      name: '复制 MCP 实例'
-    });
-    fireEvent.change(within(copyDialog).getByLabelText('instance_id'), {
-      target: { value: 'ops_mcp_copy' }
-    });
-    fireEvent.change(within(copyDialog).getByLabelText('实例名称'), {
-      target: { value: 'Ops MCP Copy' }
-    });
-    fireEvent.click(
-      within(copyDialog).getByRole('button', { name: /复\s*制/ })
-    );
-    await waitFor(() => {
-      expect(mcpManagementApi.copySettingsMcpInstance).toHaveBeenCalledWith(
-        'ops_mcp',
-        { instance_id: 'ops_mcp_copy', name: 'Ops MCP Copy' },
-        expect.any(String)
-      );
-    });
-  });
-
-  test('hides the edit binding selector when there are no existing tool bindings', () => {
-    renderPanelWithMountedTool({ includeBinding: false });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
-
-    expect(within(dialog).queryAllByLabelText('编辑 Tool 挂载')).toHaveLength(
-      0
-    );
-    expect(within(dialog).getByLabelText('挂载路径')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('tool_id')).toBeInTheDocument();
-  });
-
-  test('localizes directory editor field labels while keeping tool_id raw', () => {
-    renderPanelWithMountedTool({ includeBinding: false });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-
-    expect(within(dialog).getByLabelText('路径')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('显示名称')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('简短描述')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('启用')).toBeInTheDocument();
-    expect(
-      within(dialog).queryByLabelText('display_name')
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByLabelText('description_short')
-    ).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('enabled')).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
-    expect(within(dialog).getByLabelText('tool_id')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('可见')).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('显示别名')).not.toBeInTheDocument();
+    const bindingCancelButton = within(dialog).getByRole('button', {
+      name: '关闭目录编辑'
+    });
+    const bindingSaveButton = within(dialog).getByRole('button', {
+      name: /保存/
+    });
+
+    expect(bindingCancelButton).toBeInTheDocument();
+    expect(bindingSaveButton).toBeInTheDocument();
     expect(
-      within(dialog).queryByLabelText('display_alias')
+      bindingCancelButton.compareDocumentPosition(bindingSaveButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      within(modalScrollBody).queryByRole('button', { name: /取\s*消/ })
     ).not.toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('visible')).not.toBeInTheDocument();
+    expect(
+      within(modalScrollBody).queryByRole('button', { name: /保存/ })
+    ).not.toBeInTheDocument();
   });
 
-  test('does not expose or preserve display alias when saving a tool binding', async () => {
+  test('renders draft group nodes with the display name and short description in the tree', async () => {
     renderPanelWithMountedTool({ includeBinding: false });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -1130,96 +901,33 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
     const rootLabel = within(dialog).getByText('Ops MCP /');
-    fireEvent.click(rootLabel);
-    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
-
-    expect(within(dialog).queryByLabelText('显示别名')).not.toBeInTheDocument();
-
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'tool_id' })
-    );
-    await selectAntdOption('Search customer');
-    fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
-
-    await waitFor(() => {
-      expect(
-        mcpManagementApi.createSettingsMcpToolBinding
-      ).toHaveBeenCalledWith(
-        'ops_mcp',
-        expect.objectContaining({
-          tool_id: 'search_customer',
-          display_alias: null
-        }),
-        expect.any(String)
-      );
-    });
-    expect(
-      screen.getByRole('dialog', { name: '目录编辑' })
-    ).toBeInTheDocument();
-  });
-
-  test('keeps the directory editor open and selects the saved group', async () => {
-    renderPanelWithMountedTool({ includeBinding: false });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
+    expect(rootNode).toBeInstanceOf(HTMLElement);
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'Customer Ops' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
+    fireEvent.change(within(dialog).getByLabelText('简短描述'), {
+      target: { value: 'Tools for customer operations' }
+    });
 
     await waitFor(() => {
-      expect(mcpManagementApi.upsertSettingsMcpGroup).toHaveBeenCalledWith(
-        'ops_mcp',
-        expect.objectContaining({
-          display_name: 'Customer Ops'
-        }),
-        expect.any(String)
+      expect(within(dialog).getByRole('tree')).toHaveTextContent(
+        'Customer Ops'
       );
     });
-    expect(
-      screen.getByRole('dialog', { name: '目录编辑' })
-    ).toBeInTheDocument();
+    const currentTree = within(dialog).getByRole('tree');
+    expect(currentTree).toHaveTextContent('Tools for customer operations');
+    expect(currentTree).not.toHaveTextContent('Customer Ops /customer_ops');
   });
 
-  test('exposes explicit creation actions beside the directory tree', () => {
-    renderPanelWithMountedTool({ includeBinding: false });
+  test('hides the directory tree drag handle while keeping nodes draggable', () => {
+    renderPanelWithMountedTool();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
 
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    expect(
-      within(dialog).getByRole('button', { name: '新建分组' })
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole('button', { name: '挂载 Tool' })
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole('button', { name: '新增' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(dialog).getByRole('heading', { name: '新建分组' })
-    ).toBeInTheDocument();
-  });
-
-  test('starts the directory tree fully collapsed', () => {
-    renderPanelWithMountedTool({ includeGroup: true });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
     fireEvent.click(
       within(instancesPanel).getByRole('button', { name: '目录编辑' })
     );
@@ -1227,15 +935,45 @@ describe('McpManagementPanel', () => {
     const tree = within(
       screen.getByRole('dialog', { name: '目录编辑' })
     ).getByRole('tree');
-    expect(within(tree).getAllByRole('treeitem')[0]).toHaveAttribute(
-      'aria-expanded',
-      'false'
-    );
-    expect(within(tree).queryByText('ops')).not.toBeInTheDocument();
+
+    expect(
+      tree.querySelector('.ant-tree-draggable-icon')
+    ).not.toBeInTheDocument();
   });
 
-  test('starts a child path from the selected group', () => {
-    renderPanelWithMountedTool({ includeGroup: true });
+  test('renders draft binding nodes with the tool id and short description in the tree', async () => {
+    renderPanelWithMountedTool({ includeBinding: false });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'tool_id' })
+    );
+    await selectAntdOption('Search customer');
+
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).toHaveTextContent(
+        'search_customer'
+      );
+    });
+    const currentTree = within(dialog).getByRole('tree');
+    expect(currentTree).toHaveTextContent('Find matching customers');
+    expect(currentTree).not.toHaveTextContent(
+      'Search customer search_customer'
+    );
+  });
+
+  test('replaces an unsaved Tool draft when starting a group creation session', async () => {
+    renderPanelWithMountedTool({ includeBinding: false });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
@@ -1244,19 +982,22 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
-    fireEvent.click(within(dialog).getByText('ops'));
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
+    });
+
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
 
-    expect(within(dialog).getByText(/新增至父目录/)).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops/');
-    expect(within(dialog).getByText('目标目录： /ops')).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole('button', { name: '取消子分组新建' })
-    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('tree')).not.toHaveTextContent(
+      '未命名 Tool'
+    );
+    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('');
   });
 
-  test('mounts a Tool under the selected group without losing tree selection', async () => {
+  test('moves the single Tool draft when adding under another group', async () => {
     renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -1268,158 +1009,453 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
     expandTreeRootIfCollapsed(tree);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+
+    const rootLabel = within(dialog).getByText('Ops MCP /');
+    fireEvent.click(rootLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
+    });
 
     const groupLabel = within(dialog).getByText('ops');
     fireEvent.click(groupLabel);
+    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+
     await waitFor(() => {
       expect(
-        within(dialog)
-          .getByText('ops')
-          .closest('.ant-tree-node-content-wrapper')
-      ).toHaveClass('ant-tree-node-selected');
+        within(within(dialog).getByRole('tree')).getAllByText('未命名 Tool')
+      ).toHaveLength(1);
+      expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
     });
+  });
+
+  test('does not carry a draft group path into the binding mount path', () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.change(within(dialog).getByLabelText('路径'), {
+      target: { value: '/ops/customer' }
+    });
+
+    expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops/customer');
 
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
+    expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/');
+  });
+
+  test('falls back to interface id when a stale tool response misses operation', () => {
+    renderPanelWithMountedTool({ operation: '' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
+
     expect(
-      within(dialog).getByRole('heading', { name: '新建 Tool 挂载' })
+      within(toolsPanel).getAllByText('create_app').length
+    ).toBeGreaterThan(0);
+  });
+
+  test('generates a random instance_id from the instance modal action', async () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.123456789);
+
+    try {
+      renderPanel();
+
+      fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+      fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+      const dialog = await screen.findByRole('dialog');
+      const instanceIdField = within(dialog).getByLabelText('instance_id');
+
+      expect(instanceIdField).toHaveValue('');
+
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: '随机生成 instance_id' })
+      );
+
+      expect(instanceIdField).toHaveValue('04fzzzxj');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  test('shows step navigation actions only when the adjacent step exists', async () => {
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
+
+    const dialog = await screen.findByRole('dialog');
+
+    expect(
+      within(dialog).queryByRole('button', { name: /上一步/ })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /下一步/ })
     ).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /下一步/ }));
     expect(
-      within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
-    ).toHaveClass('ant-tree-node-selected');
-  });
+      within(dialog).getByRole('button', { name: /上一步/ })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: /下一步/ })
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('operation')).toBeInTheDocument();
 
-  test('edits a group directly without changing the selected directory', () => {
-    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+    clickSegmentedOption(dialog, 'debug');
+    expect(
+      within(dialog).getByRole('button', { name: /上一步/ })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: /下一步/ })
+    ).not.toBeInTheDocument();
+  }, 30000);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
+  test('places the status selector before description fields in the basic step', async () => {
+    renderPanel();
 
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const tree = within(dialog).getByRole('tree');
-    expandTreeRootIfCollapsed(tree);
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    fireEvent.click(screen.getByRole('button', { name: /新增/ }));
 
-    const rootLabel = within(dialog).getByText('Ops MCP /');
-    const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
-    const groupLabel = within(dialog).getByText('ops');
-    const groupNode = groupLabel.closest('.ant-tree-node-content-wrapper');
-    expect(rootNode).toHaveClass('ant-tree-node-selected');
-    expect(groupNode).not.toHaveClass('ant-tree-node-selected');
-
-    fireEvent.mouseEnter(groupNode as HTMLElement);
-    fireEvent.click(
-      within(groupNode as HTMLElement).getByRole('button', { name: '编辑' })
-    );
-
-    expect(rootNode).toHaveClass('ant-tree-node-selected');
-    expect(groupNode).not.toHaveClass('ant-tree-node-selected');
-    const status = dialog.querySelector(
-      '.mcp-management__directory-editor-status'
-    );
-    expect(status).toBeInstanceOf(HTMLElement);
-    expect(status).toHaveTextContent('已保存');
-    expect(status).toHaveTextContent('分组');
-    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops');
-  });
-
-  test('shows unsaved after editing and returns to saved after saving', async () => {
-    mcpManagementApi.upsertSettingsMcpGroup.mockResolvedValue(undefined);
-    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const tree = within(dialog).getByRole('tree');
-    expandTreeRootIfCollapsed(tree);
-    fireEvent.click(within(dialog).getByText('ops'));
-
-    const status = dialog.querySelector(
-      '.mcp-management__directory-editor-status'
-    );
-    expect(status).toHaveTextContent('已保存');
-
-    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'Updated ops' }
+    const dialog = await screen.findByRole('dialog');
+    const desIdField = within(dialog).getByLabelText('des_id');
+    const statusField = within(dialog).getByRole('combobox', {
+      name: 'status'
     });
-    expect(status).toHaveTextContent('未保存');
+    const shortDescriptionField =
+      within(dialog).getByLabelText('short_description');
+    const fullDescriptionField =
+      within(dialog).getByLabelText('full_description');
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存分组' }));
-    await waitFor(() => expect(status).toHaveTextContent('已保存'));
+    expect(
+      desIdField.compareDocumentPosition(statusField) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      statusField.compareDocumentPosition(shortDescriptionField) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      statusField.compareDocumentPosition(fullDescriptionField) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '关闭目录编辑' })
+  test('opens the requested tab from the URL search param', () => {
+    window.history.replaceState({}, '', '/settings/mcp-management?tab=tools');
+
+    renderPanel();
+
+    expect(screen.getByRole('tab', { name: 'Tool 配置' })).toHaveAttribute(
+      'aria-selected',
+      'true'
     );
+  });
+
+  test('AC-001 restores the third-party MCP tab from the URL', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings/mcp-management?tab=third-party'
+    );
+
+    renderPanel();
+
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: '第三方MCP' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  test('AC-002 AC-009 AC-010 AC-011 AC-014 edits the local MCP proxy contract without HTTP mapping fields', async () => {
+    mcpManagementApi.executeSettingsMcpProxyToolDebug.mockResolvedValue({
+      local_arguments: { request: { query: 'status' } },
+      remote_arguments: { query: { text: 'status' } },
+      upstream_result: { structuredContent: { document: { title: 'Status' } } },
+      mapped_result: { structuredContent: { result: { title: 'Status' } } }
+    });
+    renderPanelWithMountedTool({ includeBinding: false, proxy: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    expect(
+      screen.getByRole('columnheader', { name: 'Tool 类型' })
+    ).toBeInTheDocument();
+    const typeFilter = screen.getByRole('combobox', { name: 'Tool 类型' });
+    fireEvent.mouseDown(typeFilter);
+    await selectAntdOption('接口封装');
+    expect(
+      screen.queryByRole('row', { name: /Search customer/ })
+    ).not.toBeInTheDocument();
+    fireEvent.mouseDown(typeFilter);
+    await selectAntdOption('MCP 代理');
+    const toolRow = screen.getByRole('row', { name: /Search customer/ });
+    expect(within(toolRow).getByText('MCP 代理')).toBeInTheDocument();
+    fireEvent.click(within(toolRow).getAllByRole('button')[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    clickSegmentedOption(dialog, 'interface');
+    expect(within(dialog).getByText('019b-connection')).toBeInTheDocument();
+    expect(within(dialog).getByText('search_documents')).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('combobox', { name: 'operation' })
+    ).not.toBeInTheDocument();
+    fireEvent.mouseDown(
+      within(dialog).getByRole('combobox', { name: 'risk_level' })
+    );
+    await selectAntdOption('medium');
+
+    clickSegmentedOption(dialog, 'input_mapping');
+    expect(within(dialog).getByText('parameter_schema')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(
+      await within(dialog).findByLabelText('JSON Schema 内容', undefined, {
+        timeout: 10000
+      }),
+      {
+        target: {
+          value: JSON.stringify({
+            type: 'object',
+            properties: { local_query: { type: 'string' } },
+            required: ['local_query']
+          })
+        }
+      }
+    );
+    expect(within(dialog).getByLabelText('local_path 1')).toHaveValue(
+      'request.query'
+    );
+    expect(within(dialog).getByLabelText('remote_path 1')).toHaveValue(
+      'query.text'
+    );
+    expect(within(dialog).queryByText('URL')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('JSON 请求体')).not.toBeInTheDocument();
+
+    clickSegmentedOption(dialog, 'output_mapping');
+    expect(within(dialog).getByText('result_schema')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(await within(dialog).findByLabelText('JSON Schema 内容'), {
+      target: {
+        value: JSON.stringify({
+          type: 'object',
+          properties: { local_title: { type: 'string' } }
+        })
+      }
+    });
+
+    clickSegmentedOption(dialog, 'debug');
+    fireEvent.change(within(dialog).getByLabelText('request.query'), {
+      target: { value: 'status' }
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '运行代理调试' })
+    );
+
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '目录编辑' })
-      ).not.toBeInTheDocument();
-    });
-    expect(screen.queryByText('放弃未保存的更改？')).not.toBeInTheDocument();
-  });
-
-  test('selects a group node and opens that group for editing', () => {
-    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const tree = within(dialog).getByRole('tree');
-    expandTreeRootIfCollapsed(tree);
-    fireEvent.click(within(dialog).getByText('ops'));
-
-    expect(
-      within(dialog).getByText('ops').closest('.ant-tree-node-content-wrapper')
-    ).toHaveClass('ant-tree-node-selected');
-    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops');
-    expect(
-      within(dialog).getByRole('button', { name: '保存分组' })
-    ).toBeInTheDocument();
-  });
-
-  test('closes the directory editor after an empty Tool mount validation failure', async () => {
-    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
-    const visibleSwitch = within(dialog).getByRole('switch', { name: '可见' });
-    fireEvent.click(visibleSwitch);
-    fireEvent.click(visibleSwitch);
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '保存 Tool 挂载' })
-    );
-    await waitFor(() => {
-      expect(within(dialog).getByLabelText('tool_id')).toHaveAttribute(
-        'aria-invalid',
-        'true'
+        mcpManagementApi.executeSettingsMcpProxyToolDebug
+      ).toHaveBeenCalledWith(
+        'search_customer',
+        { arguments: { request: { query: 'status' } } },
+        expect.any(String)
       );
     });
+    expect(
+      await within(dialog).findByText('远端 arguments')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('第三方原始结果')).toBeInTheDocument();
+    expect(within(dialog).getByText('本地映射结果')).toBeInTheDocument();
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '关闭目录编辑' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    await waitFor(() => {
+      expect(mcpManagementApi.updateSettingsMcpTool).toHaveBeenCalledWith(
+        'search_customer',
+        expect.objectContaining({
+          execution_target: {
+            kind: 'mcp_proxy',
+            upstream_connection_id: '019b-connection',
+            remote_tool_name: 'search_documents',
+            source_schema_hash: 'sha256:source'
+          },
+          input_mapping: {
+            mappings: [
+              {
+                local_path: 'request.query',
+                remote_path: 'query.text',
+                required: true
+              }
+            ]
+          },
+          parameter_schema: {
+            type: 'object',
+            properties: { local_query: { type: 'string' } },
+            required: ['local_query']
+          },
+          result_schema: {
+            type: 'object',
+            properties: { local_title: { type: 'string' } }
+          },
+          risk_level: 'medium'
+        }),
+        expect.any(String)
+      );
+    });
+  }, 30_000);
+
+  test('falls back from the removed meta tab to instances', async () => {
+    window.history.replaceState({}, '', '/settings/mcp-management?tab=meta');
+    renderPanel();
+
+    await waitFor(() => {
+      expect(window.location.search).toBe('?tab=instances');
+    });
+    expect(
+      screen.queryByRole('tab', { name: 'MCP 配置' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'MCP 实例' })).toHaveAttribute(
+      'aria-selected',
+      'true'
     );
+  });
+
+  test('edits only the selected instance discovery policy', async () => {
+    mcpManagementApi.updateSettingsMcpInstanceDiscoveryPolicy.mockResolvedValue(
+      {}
+    );
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '更多操作' })
+    );
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /目录发现配置$/ })
+    );
+
+    const dialog = screen.getByRole('dialog', {
+      name: '目录发现配置 · Ops MCP'
+    });
+    expect(
+      within(dialog).getByTestId('fixed-height-modal-scroll-body')
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('ops_mcp')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('默认返回数量')).toHaveValue('20');
+    expect(within(dialog).getByLabelText('最大目录深度')).toHaveValue('3');
+    expect(within(dialog).getByLabelText('允许正则路径查询')).not.toBeChecked();
+    expect(within(dialog).getByLabelText('正则表达式最大长度')).toHaveValue(
+      '120'
+    );
+    expect(
+      within(dialog).getByRole('tab', { name: 'Schema 字段' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('tab', { name: 'JSON 解析' })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /添加返回字段/ })
+    );
+    fireEvent.change(within(dialog).getByLabelText('列表返回字段 1'), {
+      target: { value: 'id' }
+    });
+    expect(
+      within(dialog).queryByText('包含参数映射摘要')
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('描述版本校验')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('参数错误格式')).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText('默认返回数量'), {
+      target: { value: '30' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('最大目录深度'), {
+      target: { value: '4' }
+    });
+    fireEvent.click(within(dialog).getByLabelText('允许正则路径查询'));
+    fireEvent.change(within(dialog).getByLabelText('正则表达式最大长度'), {
+      target: { value: '160' }
+    });
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    fireEvent.change(
+      await within(dialog).findByLabelText('列表返回字段 JSON'),
+      {
+        target: { value: '["id","name"]' }
+      }
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('dialog', { name: '目录编辑' })
-      ).not.toBeInTheDocument();
+        mcpManagementApi.updateSettingsMcpInstanceDiscoveryPolicy
+      ).toHaveBeenCalledWith(
+        'ops_mcp',
+        {
+          list_default_limit: 30,
+          list_max_depth: 4,
+          list_regex_enabled: true,
+          list_regex_max_length: 160,
+          list_return_fields: ['id', 'name']
+        },
+        expect.any(String)
+      );
     });
+  });
+
+  test('AC-001 AC-002 fills a temporary API key into the common MCP JSON tab', async () => {
+    renderPanelWithMountedTool();
+
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+
+    expect(await screen.findByText('MCP 客户端配置')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      `${window.location.origin}/api/mcp/ops_mcp`
+    );
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'test-secret-key' }
+    });
+
+    const configuration = JSON.stringify(
+      {
+        type: 'http',
+        url: `${window.location.origin}/api/mcp/ops_mcp`,
+        headers: { Authorization: 'Bearer test-secret-key' }
+      },
+      null,
+      2
+    );
+    expect(
+      JSON.parse(screen.getByLabelText('完整 JSON 配置 JSON').textContent ?? '')
+    ).toEqual(JSON.parse(configuration));
+    expect(
+      screen.getByRole('button', { name: '复制完整 JSON 配置' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '放大查看完整 JSON 配置' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: '完整 JSON 配置' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('生成 API Key').closest('a')).toHaveAttribute(
+      'href',
+      '/settings/api-key-authentication'
+    );
+    expect(
+      within(screen.getByRole('dialog'))
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent)
+    ).toEqual(['通用', 'Codex', 'Claude Code', 'OpenCode']);
+
+    fireEvent.click(screen.getByRole('button', { name: '关 闭' }));
+    fireEvent.click(screen.getByRole('button', { name: '连接客户端' }));
+    expect(await screen.findByLabelText('API Key')).toHaveValue('');
   });
 });
