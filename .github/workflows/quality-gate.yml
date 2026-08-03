@@ -125,12 +125,10 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
         if: ${{ startsWith(inputs.scope, 'repo-backend-test-api-server-') || startsWith(inputs.scope, 'repo-backend-test-storage-postgres-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || inputs.scope == 'coverage-backend-api-server' }}
-      - name: Resolve release-seeded Rust cache tag
-        id: release_seed_tag
+      - name: Resolve release-seeded Rust cache architecture
+        id: release_seed_arch
         if: ${{ inputs.scope == 'repo' || inputs.scope == 'backend' || startsWith(inputs.scope, 'backend-consistency') || inputs.scope == 'state-protocols' || inputs.scope == 'repo-backend' || startsWith(inputs.scope, 'repo-backend-') || inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-') }}
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           case "${RUNNER_ARCH:-X64}" in
@@ -138,30 +136,23 @@ jobs:
             *) cache_arch=amd64 ;;
           esac
           echo "cache_arch=$cache_arch" >> "$GITHUB_OUTPUT"
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' 2>/dev/null || true)"
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          if [ -n "$tag" ]; then
-            echo "Resolved release-seeded Rust cache tag: $tag"
-          else
-            echo "No published release tag found; skipping release-seeded Rust cache restore."
-          fi
       - name: Restore release-seeded api-server Rust cache
         id: release_seed_api
-        if: ${{ steps.release_seed_tag.outputs.release_tag != '' }}
         uses: actions/cache/restore@v5
         with:
           path: |
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-registry
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-git
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/target
-          key: rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-registry
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-git
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/target
+          key: rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-
       - name: Import release-seeded api-server Rust cache
         if: ${{ steps.release_seed_api.outputs.cache-hit != '' }}
         shell: bash
         env:
-          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_tag.outputs.cache_arch }}
+          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_arch.outputs.cache_arch }}
           CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-single-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}/${{ inputs.scope }}/target
         run: |
           set -euo pipefail
@@ -178,11 +169,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tmp/quality-gate-cache/rust-single-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}/${{ inputs.scope }}/target
-          key: rust-quality-gate-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-quality-gate-v2-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-
-            rust-quality-gate-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-
+            rust-quality-gate-v2-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-v2-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}-${{ runner.os }}-${{ inputs.scope }}-
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-single-${{ (inputs.scope == 'coverage' || inputs.scope == 'coverage-backend' || startsWith(inputs.scope, 'coverage-backend-')) && 'coverage' || 'backend' }}/${{ inputs.scope }}/target
@@ -357,12 +347,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@nextest
         if: ${{ startsWith(matrix.scope, 'repo-backend-test-api-server-') || startsWith(matrix.scope, 'repo-backend-test-storage-postgres-') }}
-      - name: Resolve release-seeded Rust cache tag
-        id: release_seed_tag
+      - name: Resolve release-seeded Rust cache architecture
+        id: release_seed_arch
         if: ${{ matrix.scope != 'repo-backend-static' && matrix.scope != 'repo-backend-fmt' }}
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           case "${RUNNER_ARCH:-X64}" in
@@ -370,30 +358,23 @@ jobs:
             *) cache_arch=amd64 ;;
           esac
           echo "cache_arch=$cache_arch" >> "$GITHUB_OUTPUT"
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' 2>/dev/null || true)"
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          if [ -n "$tag" ]; then
-            echo "Resolved release-seeded Rust cache tag: $tag"
-          else
-            echo "No published release tag found; skipping release-seeded Rust cache restore."
-          fi
       - name: Restore release-seeded api-server Rust cache
         id: release_seed_api
-        if: ${{ steps.release_seed_tag.outputs.release_tag != '' }}
         uses: actions/cache/restore@v5
         with:
           path: |
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-registry
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-git
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/target
-          key: rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-registry
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-git
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/target
+          key: rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-
       - name: Import release-seeded api-server Rust cache
         if: ${{ steps.release_seed_api.outputs.cache-hit != '' }}
         shell: bash
         env:
-          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_tag.outputs.cache_arch }}
+          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_arch.outputs.cache_arch }}
           CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-backend/${{ matrix.scope }}/target
         run: |
           set -euo pipefail
@@ -410,11 +391,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tmp/quality-gate-cache/rust-backend/${{ matrix.scope }}/target
-          key: rust-quality-gate-backend-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-quality-gate-backend-v2-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-backend-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-backend-${{ runner.os }}-${{ matrix.scope }}-
-            rust-quality-gate-backend-${{ runner.os }}-
+            rust-quality-gate-backend-v2-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-backend-v2-${{ runner.os }}-${{ matrix.scope }}-
+            rust-quality-gate-backend-v2-${{ runner.os }}-
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-backend/${{ matrix.scope }}/target
@@ -450,11 +431,9 @@ jobs:
       - name: Resolve quality gate target SHA
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
-      - name: Resolve release-seeded Rust cache tag
-        id: release_seed_tag
+      - name: Resolve release-seeded Rust cache architecture
+        id: release_seed_arch
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           case "${RUNNER_ARCH:-X64}" in
@@ -462,30 +441,23 @@ jobs:
             *) cache_arch=amd64 ;;
           esac
           echo "cache_arch=$cache_arch" >> "$GITHUB_OUTPUT"
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' 2>/dev/null || true)"
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          if [ -n "$tag" ]; then
-            echo "Resolved release-seeded Rust cache tag: $tag"
-          else
-            echo "No published release tag found; skipping release-seeded Rust cache restore."
-          fi
       - name: Restore release-seeded api-server Rust cache
         id: release_seed_api
-        if: ${{ steps.release_seed_tag.outputs.release_tag != '' }}
         uses: actions/cache/restore@v5
         with:
           path: |
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-registry
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-git
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/target
-          key: rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-registry
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-git
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/target
+          key: rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-
       - name: Import release-seeded api-server Rust cache
         if: ${{ steps.release_seed_api.outputs.cache-hit != '' }}
         shell: bash
         env:
-          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_tag.outputs.cache_arch }}
+          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_arch.outputs.cache_arch }}
           CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-backend-consistency/${{ matrix.group }}/target
         run: |
           set -euo pipefail
@@ -501,11 +473,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tmp/quality-gate-cache/rust-backend-consistency/${{ matrix.group }}/target
-          key: rust-quality-gate-backend-consistency-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-quality-gate-backend-consistency-v2-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-backend-consistency-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-backend-consistency-${{ runner.os }}-${{ matrix.group }}-
-            rust-quality-gate-backend-consistency-${{ runner.os }}-
+            rust-quality-gate-backend-consistency-v2-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-backend-consistency-v2-${{ runner.os }}-${{ matrix.group }}-
+            rust-quality-gate-backend-consistency-v2-${{ runner.os }}-
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-backend-consistency/${{ matrix.group }}/target
@@ -578,11 +550,9 @@ jobs:
         run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Resolve release-seeded Rust cache tag
-        id: release_seed_tag
+      - name: Resolve release-seeded Rust cache architecture
+        id: release_seed_arch
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           case "${RUNNER_ARCH:-X64}" in
@@ -590,30 +560,23 @@ jobs:
             *) cache_arch=amd64 ;;
           esac
           echo "cache_arch=$cache_arch" >> "$GITHUB_OUTPUT"
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' 2>/dev/null || true)"
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          if [ -n "$tag" ]; then
-            echo "Resolved release-seeded Rust cache tag: $tag"
-          else
-            echo "No published release tag found; skipping release-seeded Rust cache restore."
-          fi
       - name: Restore release-seeded api-server Rust cache
         id: release_seed_api
-        if: ${{ steps.release_seed_tag.outputs.release_tag != '' }}
         uses: actions/cache/restore@v5
         with:
           path: |
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-registry
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/cargo-git
-            tmp/container-cache/api-server/${{ steps.release_seed_tag.outputs.cache_arch }}/target
-          key: rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-registry
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/cargo-git
+            tmp/container-cache/api-server/${{ steps.release_seed_arch.outputs.cache_arch }}/target
+          key: rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-release-seeded-api-server-${{ runner.os }}-${{ steps.release_seed_tag.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ steps.release_seed_tag.outputs.release_tag }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ steps.release_seed_arch.outputs.cache_arch }}-rust-1-slim-bookworm-release-
       - name: Import release-seeded api-server Rust cache
         if: ${{ steps.release_seed_api.outputs.cache-hit != '' }}
         shell: bash
         env:
-          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_tag.outputs.cache_arch }}
+          RUST_RELEASE_SEEDED_CACHE_ARCH: ${{ steps.release_seed_arch.outputs.cache_arch }}
           CARGO_TARGET_DIR: tmp/quality-gate-cache/rust-coverage/${{ matrix.scope }}/target
         run: |
           set -euo pipefail
@@ -629,11 +592,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tmp/quality-gate-cache/rust-coverage/${{ matrix.scope }}/target
-          key: rust-quality-gate-coverage-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-quality-gate-coverage-v2-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-coverage-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-coverage-${{ runner.os }}-${{ matrix.scope }}-
-            rust-quality-gate-coverage-${{ runner.os }}-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-${{ matrix.scope }}-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-${{ matrix.scope }}-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/${{ matrix.scope }}/target
@@ -677,10 +640,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
-          key: rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
       - uses: ./.github/actions/quality-gate
         env:
           CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
@@ -719,10 +682,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
-          key: rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-coverage-${{ runner.os }}-api-server-shadow-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
+            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
       - uses: actions/download-artifact@v6
         with:
           pattern: coverage-shadow-api-server-profraw-*
