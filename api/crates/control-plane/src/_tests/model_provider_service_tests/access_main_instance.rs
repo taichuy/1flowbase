@@ -16,7 +16,7 @@ async fn model_provider_service_enforces_permissions_and_audits_delete_conflict(
             true,
         )
         .await;
-    let manager_service = ModelProviderService::new(
+    let manager_service = model_provider_service(
         manager_repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",
@@ -61,7 +61,7 @@ async fn model_provider_service_enforces_permissions_and_audits_delete_conflict(
         workspace_id,
         &["state_model.view.all"],
     ));
-    let viewer_service = ModelProviderService::new(
+    let viewer_service = model_provider_service(
         viewer_repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",
@@ -111,7 +111,7 @@ async fn model_provider_service_rejects_validating_disabled_instance() {
             true,
         )
         .await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",
@@ -199,7 +199,7 @@ async fn model_provider_service_get_main_instance_defaults_to_auto_include_true_
             true,
         )
         .await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         MemoryProviderRuntime::default(),
         "test-master-key",
@@ -230,7 +230,7 @@ async fn model_provider_service_get_main_instance_defaults_to_auto_include_true_
             true,
         )
         .await;
-    let no_permission_service = ModelProviderService::new(
+    let no_permission_service = model_provider_service(
         no_permission_repository.clone(),
         MemoryProviderRuntime::default(),
         "test-master-key",
@@ -264,7 +264,7 @@ async fn model_provider_service_updates_provider_main_instance_settings_without_
             true,
         )
         .await;
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
@@ -353,7 +353,7 @@ async fn model_provider_service_rejects_excluded_instance_outside_the_ordered_gr
             true,
         )
         .await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         MemoryProviderRuntime::default(),
         "test-master-key",

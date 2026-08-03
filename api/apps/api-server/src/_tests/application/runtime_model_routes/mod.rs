@@ -1,4 +1,7 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app, test_app_with_database_url};
+use crate::_tests::support::{
+    login_and_capture_cookie, test_api_state_with_database_url, test_app,
+    test_app_with_database_url, test_config,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -658,10 +661,10 @@ async fn create_model_with_status(
     assert_eq!(response.status(), StatusCode::CREATED);
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["data"]["scope_kind"], json!("system"));
+    assert_eq!(payload["data"]["scope_kind"], json!("workspace"));
     assert_eq!(
         payload["data"]["scope_id"],
-        json!(domain::SYSTEM_SCOPE_ID.to_string())
+        json!(domain::DEFAULT_SCOPE_ID.to_string())
     );
     payload["data"]["id"].as_str().unwrap().to_string()
 }

@@ -4,7 +4,7 @@ use super::*;
 async fn create_instance_extracts_secret_like_config_values_to_reference_boundary() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
     let plaintext_token = "plain-token-from-config";
 
     let created = service
@@ -47,7 +47,7 @@ async fn create_instance_extracts_secret_like_config_values_to_reference_boundar
 async fn create_instance_extracts_generic_secret_bearing_value_shapes() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
     let header_plaintext = "bearer-from-header-value";
     let credential_plaintext = "credential-value-secret";
 
@@ -112,7 +112,7 @@ async fn create_instance_extracts_generic_secret_bearing_value_shapes() {
 async fn rotate_secret_preserves_config_marker_values_when_payload_is_partial() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -168,7 +168,7 @@ async fn rotate_secret_preserves_config_marker_values_when_payload_is_partial() 
 #[tokio::test]
 async fn rotate_secret_rejects_unknown_public_and_empty_fields() {
     let repository = InMemoryDataSourceRepository::default();
-    let service = DataSourceService::new(
+    let service = data_source_service(
         repository,
         StubDataSourceRuntime::ready(),
         "test-master-key",
@@ -209,7 +209,7 @@ async fn rotate_secret_rejects_unknown_public_and_empty_fields() {
 async fn rotate_secret_updates_version_and_audit_without_cleartext() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
     let rotated_plaintext = "rotated-secret-value";
 
     let created = service
@@ -257,7 +257,7 @@ async fn rotate_secret_updates_version_and_audit_without_cleartext() {
 async fn sequential_secret_rotation_increments_versions_without_read_write_race_entrypoint() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {

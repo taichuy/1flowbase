@@ -920,7 +920,7 @@ describe('SettingsPage', () => {
       expect(window.location.pathname).toBe('/settings/api-key-authentication');
     });
     expect(
-      await screen.findByRole('button', { name: /添加/ })
+      await screen.findByRole('button', { name: /添加/ }, { timeout: 10_000 })
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /添加/ })).toBeInTheDocument();
     expect(

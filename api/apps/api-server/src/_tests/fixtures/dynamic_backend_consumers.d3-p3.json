@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 278,
-  "count": 556,
+  "projected_interface_count": 280,
+  "count": 560,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -111,6 +111,12 @@
       "DELETE",
       "/api/console/settings/data-models/model-definitions/:id/fields/:field_id",
       "Delete model fields"
+    ],
+    [
+      "extension_center.installed.delete",
+      "DELETE",
+      "/api/console/settings/extension-center/installed/:installation_id",
+      "Delete an installed extension version"
     ],
     [
       "file_storages.delete",
@@ -1341,6 +1347,12 @@
       "POST",
       "/api/console/settings/extension-center/install-upload",
       "Upload extension center install"
+    ],
+    [
+      "extension_center.installed.select",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/select",
+      "Select an installed extension version"
     ],
     [
       "extension_center.update",

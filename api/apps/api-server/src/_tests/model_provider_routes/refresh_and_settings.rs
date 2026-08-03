@@ -63,7 +63,14 @@ async fn model_provider_options_schema_accepts_real_dynamic_json_leaves_ac_001()
         .expect("model-provider options interface catalog entry");
     let response_validator = jsonschema::validator_for(&interface.response_schema)
         .expect("generated model-provider options response schema");
-    assert!(response_validator.validate(&payload["data"]).is_ok());
+    let validation_errors = response_validator
+        .iter_errors(&payload["data"])
+        .map(|error| format!("{error:?}"))
+        .collect::<Vec<_>>();
+    assert!(
+        validation_errors.is_empty(),
+        "model-provider options must match generated OpenAPI response schema: {validation_errors:#?}"
+    );
 
     let fields = payload["data"]["providers"][0]["parameter_form"]["fields"]
         .as_array()

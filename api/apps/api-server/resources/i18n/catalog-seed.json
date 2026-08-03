@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.3",
+    "catalog_version": "2.0.4",
     "files": [
       {
         "keys": [
@@ -140,6 +140,8 @@
           "Data sources secret rotate in the system backend.",
           "Data sources validate",
           "Data sources validate in the system backend.",
+          "Delete an installed extension version",
+          "Delete an installed extension version in the system backend.",
           "Delete applications",
           "Delete applications in the system backend.",
           "Delete auth center authenticators",
@@ -474,6 +476,8 @@
           "Save MCP client credential in the system backend.",
           "Search host infrastructure memory entries",
           "Search host infrastructure memory entries in the system backend.",
+          "Select an installed extension version",
+          "Select an installed extension version in the system backend.",
           "Settings feature access system applications",
           "Settings feature access system applications in the system backend.",
           "Settings feature access system data models",
@@ -627,7 +631,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:c6d21e4dec240ea3e3ac051bdfb0bdfb23c66858a63396a9975f4dc8c743b976"
+        "sha256": "sha256:0c6a5f0d4f0f4d57cd71859baa6ac9b294c9505246fd2fab5442d5471ecf2205"
       },
       {
         "keys": [
@@ -705,6 +709,8 @@
           "Data sources secret rotate in the system backend.",
           "Data sources validate",
           "Data sources validate in the system backend.",
+          "Delete an installed extension version",
+          "Delete an installed extension version in the system backend.",
           "Delete applications",
           "Delete applications in the system backend.",
           "Delete auth center authenticators",
@@ -1039,6 +1045,8 @@
           "Save MCP client credential in the system backend.",
           "Search host infrastructure memory entries",
           "Search host infrastructure memory entries in the system backend.",
+          "Select an installed extension version",
+          "Select an installed extension version in the system backend.",
           "Settings feature access system applications",
           "Settings feature access system applications in the system backend.",
           "Settings feature access system data models",
@@ -1192,7 +1200,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:f5c87379587e245fde64fac841c9e42a458f1a183b17d735a7ae41163055859f"
+        "sha256": "sha256:7e79a403ecaa865aa7a8e8e73ee06713825de61fd993de41fb96ef6dd97f5985"
       },
       {
         "keys": [
@@ -1521,13 +1529,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-08-01T18:00:00.000Z",
+    "generated_at": "2026-08-03T13:53:16.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:96e8c23199e7471d36fe1292901582e858e091c82694cb626551632e4bd064dd",
+    "semantic_sha256": "sha256:35cc2cb5e49e7e2d93bc329481d9dd4b174566a2f1ad13ffdd8e0ca43a5fd076",
     "source_locale": "en_US"
   },
   "messages": [
@@ -2341,6 +2349,20 @@
       "translations": {
         "en_US": "Delete an application",
         "zh_Hans": "删除应用"
+      }
+    },
+    {
+      "key": "Delete an installed extension version",
+      "translations": {
+        "en_US": "Delete an installed extension version",
+        "zh_Hans": "删除已安装的扩展版本"
+      }
+    },
+    {
+      "key": "Delete an installed extension version in the system backend.",
+      "translations": {
+        "en_US": "Delete an installed extension version in the system backend.",
+        "zh_Hans": "删除已安装的扩展版本（系统后端）"
       }
     },
     {
@@ -5092,6 +5114,20 @@
       "translations": {
         "en_US": "Search host infrastructure memory entries in the system backend.",
         "zh_Hans": "搜索宿主基础设施内存条目（系统后端）"
+      }
+    },
+    {
+      "key": "Select an installed extension version",
+      "translations": {
+        "en_US": "Select an installed extension version",
+        "zh_Hans": "选择已安装的扩展版本"
+      }
+    },
+    {
+      "key": "Select an installed extension version in the system backend.",
+      "translations": {
+        "en_US": "Select an installed extension version in the system backend.",
+        "zh_Hans": "选择已安装的扩展版本（系统后端）"
       }
     },
     {

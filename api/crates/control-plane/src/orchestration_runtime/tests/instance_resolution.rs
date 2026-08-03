@@ -281,7 +281,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
 }
 
 #[tokio::test]
-async fn orchestration_runtime_resolve_llm_instance_rejects_unavailable_installation() {
+async fn orchestration_runtime_resolve_llm_route_rejects_unavailable_installation() {
     let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
     let (provider_instance_id, _) = repository.seed_included_provider_instances();
     let installation_id =
@@ -314,13 +314,15 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unavailable_installa
         provider_continuation: None,
     };
 
-    let error = invoker
-        .resolve_llm_instance(&compiled_llm_runtime(
-            provider_instance_id.to_string(),
-            "fixture_provider",
-        ))
-        .await
-        .expect_err("unavailable installation should fail");
+    let result = orchestration_runtime::execution_engine::ProviderInvoker::resolve_llm_route(
+        &invoker,
+        &compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider"),
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("unavailable installation should fail"),
+        Err(error) => error,
+    };
 
     assert_control_plane_error(
         error,

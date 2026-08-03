@@ -186,7 +186,8 @@ async fn runtime_model_routes_create_fetch_update_delete_and_filter_records() {
 
 #[tokio::test]
 async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_writes() {
-    let (app, database_url) = test_app_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let model_id = create_model_with_status(&app, &cookie, &csrf, "cache_orders", None).await;
     create_text_field(&app, &cookie, &csrf, &model_id, "title").await;
@@ -240,6 +241,19 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
         .await
         .unwrap();
     assert_eq!(first_get.status(), StatusCode::OK);
+
+    let cache_entries = state
+        .infrastructure
+        .cache_store()
+        .list_cache_entries("runtime-records")
+        .await
+        .unwrap();
+    assert!(cache_entries
+        .iter()
+        .any(|entry| entry.key.starts_with("runtime-records:list:v1:")));
+    assert!(cache_entries
+        .iter()
+        .any(|entry| entry.key.starts_with("runtime-records:get:v1:")));
 
     update_runtime_record_title_directly(&database_url, &model_id, &record_id, "db-bypass-title")
         .await;
