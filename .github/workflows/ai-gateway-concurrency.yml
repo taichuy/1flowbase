@@ -82,6 +82,7 @@ jobs:
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ai-gateway-protocol-conformance
+          save-if: ${{ github.ref_name == github.event.repository.default_branch }}
           workspaces: |
             api -> target
             tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/aliyun_bailian -> target
