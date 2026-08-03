@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.2",
+    "catalog_version": "2.0.3",
     "files": [
       {
         "keys": [
@@ -152,6 +152,8 @@
           "Delete file tables in the system backend.",
           "Delete i18n catalog custom keys",
           "Delete i18n catalog custom keys in the system backend.",
+          "Delete MCP bundle library release",
+          "Delete MCP bundle library release in the system backend.",
           "Delete MCP client credential",
           "Delete MCP client credential in the system backend.",
           "Delete MCP groups",
@@ -300,6 +302,8 @@
           "I18n catalog update activate in the system backend.",
           "Import applications orchestration template",
           "Import applications orchestration template in the system backend.",
+          "Import MCP bundle library release",
+          "Import MCP bundle library release in the system backend.",
           "Import MCP upstream tools",
           "Import MCP upstream tools in the system backend.",
           "Import official MCP bundle",
@@ -348,6 +352,8 @@
           "List host infrastructure memory tree in the system backend.",
           "List i18n catalog entries",
           "List i18n catalog entries in the system backend.",
+          "List MCP bundle library",
+          "List MCP bundle library in the system backend.",
           "List MCP bundles official",
           "List MCP bundles official in the system backend.",
           "List MCP interface capabilities",
@@ -402,6 +408,8 @@
           "Plugins install official in the system backend.",
           "Preview data sources",
           "Preview data sources in the system backend.",
+          "Preview MCP bundle library release",
+          "Preview MCP bundle library release in the system backend.",
           "Preview official MCP bundle",
           "Preview official MCP bundle in the system backend.",
           "Preview uploaded MCP bundle",
@@ -418,6 +426,8 @@
           "Refresh plugins artifact in the system backend.",
           "Refresh plugins catalog projection",
           "Refresh plugins catalog projection in the system backend.",
+          "Repair MCP bundle library release",
+          "Repair MCP bundle library release in the system backend.",
           "Replace application API mapping",
           "Replace application API mapping in the system backend.",
           "Replace application environment variables",
@@ -476,6 +486,10 @@
           "Start node debug preview in the system backend.",
           "Subscribe flow debug run stream",
           "Subscribe flow debug run stream in the system backend.",
+          "Switch MCP bundle library release",
+          "Switch MCP bundle library release in the system backend.",
+          "Sync MCP bundle library release",
+          "Sync MCP bundle library release in the system backend.",
           "Test connection",
           "Test connection in the system backend.",
           "Test draft connection",
@@ -613,7 +627,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:721382d72fd4792d9a0222f2a963e51405459aec40d0cf522610feec2d4204a9"
+        "sha256": "sha256:c6d21e4dec240ea3e3ac051bdfb0bdfb23c66858a63396a9975f4dc8c743b976"
       },
       {
         "keys": [
@@ -703,6 +717,8 @@
           "Delete file tables in the system backend.",
           "Delete i18n catalog custom keys",
           "Delete i18n catalog custom keys in the system backend.",
+          "Delete MCP bundle library release",
+          "Delete MCP bundle library release in the system backend.",
           "Delete MCP client credential",
           "Delete MCP client credential in the system backend.",
           "Delete MCP groups",
@@ -851,6 +867,8 @@
           "I18n catalog update activate in the system backend.",
           "Import applications orchestration template",
           "Import applications orchestration template in the system backend.",
+          "Import MCP bundle library release",
+          "Import MCP bundle library release in the system backend.",
           "Import MCP upstream tools",
           "Import MCP upstream tools in the system backend.",
           "Import official MCP bundle",
@@ -899,6 +917,8 @@
           "List host infrastructure memory tree in the system backend.",
           "List i18n catalog entries",
           "List i18n catalog entries in the system backend.",
+          "List MCP bundle library",
+          "List MCP bundle library in the system backend.",
           "List MCP bundles official",
           "List MCP bundles official in the system backend.",
           "List MCP interface capabilities",
@@ -953,6 +973,8 @@
           "Plugins install official in the system backend.",
           "Preview data sources",
           "Preview data sources in the system backend.",
+          "Preview MCP bundle library release",
+          "Preview MCP bundle library release in the system backend.",
           "Preview official MCP bundle",
           "Preview official MCP bundle in the system backend.",
           "Preview uploaded MCP bundle",
@@ -969,6 +991,8 @@
           "Refresh plugins artifact in the system backend.",
           "Refresh plugins catalog projection",
           "Refresh plugins catalog projection in the system backend.",
+          "Repair MCP bundle library release",
+          "Repair MCP bundle library release in the system backend.",
           "Replace application API mapping",
           "Replace application API mapping in the system backend.",
           "Replace application environment variables",
@@ -1027,6 +1051,10 @@
           "Start node debug preview in the system backend.",
           "Subscribe flow debug run stream",
           "Subscribe flow debug run stream in the system backend.",
+          "Switch MCP bundle library release",
+          "Switch MCP bundle library release in the system backend.",
+          "Sync MCP bundle library release",
+          "Sync MCP bundle library release in the system backend.",
           "Test connection",
           "Test connection in the system backend.",
           "Test draft connection",
@@ -1164,7 +1192,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:7050262625b2730449765f71d45cba02b8570b80b6feae8cccd5a96457d363e7"
+        "sha256": "sha256:f5c87379587e245fde64fac841c9e42a458f1a183b17d735a7ae41163055859f"
       },
       {
         "keys": [
@@ -1499,7 +1527,7 @@
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:70664ff0f6094dfc54df3d05fe4f0c5e2a4980b3e038043f4abc5be42577b44d",
+    "semantic_sha256": "sha256:96e8c23199e7471d36fe1292901582e858e091c82694cb626551632e4bd064dd",
     "source_locale": "en_US"
   },
   "messages": [
@@ -2397,6 +2425,20 @@
       "translations": {
         "en_US": "Delete i18n catalog custom keys in the system backend.",
         "zh_Hans": "删除多语言目录自定义键（系统后端）"
+      }
+    },
+    {
+      "key": "Delete MCP bundle library release",
+      "translations": {
+        "en_US": "Delete MCP bundle library release",
+        "zh_Hans": "删除 MCP 配置包本地版本"
+      }
+    },
+    {
+      "key": "Delete MCP bundle library release in the system backend.",
+      "translations": {
+        "en_US": "Delete MCP bundle library release in the system backend.",
+        "zh_Hans": "删除 MCP 配置包本地版本（系统后端）"
       }
     },
     {
@@ -3541,6 +3583,20 @@
       }
     },
     {
+      "key": "Import MCP bundle library release",
+      "translations": {
+        "en_US": "Import MCP bundle library release",
+        "zh_Hans": "导入 MCP 配置包本地版本"
+      }
+    },
+    {
+      "key": "Import MCP bundle library release in the system backend.",
+      "translations": {
+        "en_US": "Import MCP bundle library release in the system backend.",
+        "zh_Hans": "导入 MCP 配置包本地版本（系统后端）"
+      }
+    },
+    {
       "key": "Import MCP upstream tools",
       "translations": {
         "en_US": "Import MCP upstream tools",
@@ -3902,6 +3958,20 @@
       "translations": {
         "en_US": "List i18n catalog entries in the system backend.",
         "zh_Hans": "列出多语言目录条目（系统后端）"
+      }
+    },
+    {
+      "key": "List MCP bundle library",
+      "translations": {
+        "en_US": "List MCP bundle library",
+        "zh_Hans": "列出 MCP 配置包本地库"
+      }
+    },
+    {
+      "key": "List MCP bundle library in the system backend.",
+      "translations": {
+        "en_US": "List MCP bundle library in the system backend.",
+        "zh_Hans": "列出 MCP 配置包本地库（系统后端）"
       }
     },
     {
@@ -4444,6 +4514,20 @@
       }
     },
     {
+      "key": "Preview MCP bundle library release",
+      "translations": {
+        "en_US": "Preview MCP bundle library release",
+        "zh_Hans": "预览 MCP 配置包本地版本"
+      }
+    },
+    {
+      "key": "Preview MCP bundle library release in the system backend.",
+      "translations": {
+        "en_US": "Preview MCP bundle library release in the system backend.",
+        "zh_Hans": "预览 MCP 配置包本地版本（系统后端）"
+      }
+    },
+    {
       "key": "Preview official MCP bundle",
       "translations": {
         "en_US": "Preview official MCP bundle",
@@ -4609,6 +4693,20 @@
       "translations": {
         "en_US": "Registered plugin catalog and lifecycle operations",
         "zh_Hans": "已注册的插件目录与生命周期操作"
+      }
+    },
+    {
+      "key": "Repair MCP bundle library release",
+      "translations": {
+        "en_US": "Repair MCP bundle library release",
+        "zh_Hans": "修复 MCP 配置包本地版本"
+      }
+    },
+    {
+      "key": "Repair MCP bundle library release in the system backend.",
+      "translations": {
+        "en_US": "Repair MCP bundle library release in the system backend.",
+        "zh_Hans": "修复 MCP 配置包本地版本（系统后端）"
       }
     },
     {
@@ -5113,6 +5211,34 @@
       "translations": {
         "en_US": "Subscribe flow debug run stream in the system backend.",
         "zh_Hans": "订阅流程调试运行流（系统后端）"
+      }
+    },
+    {
+      "key": "Switch MCP bundle library release",
+      "translations": {
+        "en_US": "Switch MCP bundle library release",
+        "zh_Hans": "切换 MCP 配置包本地版本"
+      }
+    },
+    {
+      "key": "Switch MCP bundle library release in the system backend.",
+      "translations": {
+        "en_US": "Switch MCP bundle library release in the system backend.",
+        "zh_Hans": "切换 MCP 配置包本地版本（系统后端）"
+      }
+    },
+    {
+      "key": "Sync MCP bundle library release",
+      "translations": {
+        "en_US": "Sync MCP bundle library release",
+        "zh_Hans": "同步 MCP 配置包本地版本"
+      }
+    },
+    {
+      "key": "Sync MCP bundle library release in the system backend.",
+      "translations": {
+        "en_US": "Sync MCP bundle library release in the system backend.",
+        "zh_Hans": "同步 MCP 配置包本地版本（系统后端）"
       }
     },
     {

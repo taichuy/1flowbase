@@ -352,7 +352,7 @@ where
     async fn ready_installation(
         &self,
         installation_id: Uuid,
-    ) -> Result<domain::PluginInstallationRecord> {
+    ) -> Result<domain::LocalPluginInstallationRecord> {
         ready_model_provider_installation(
             &self.repository,
             self.node_artifact_context(),
@@ -370,6 +370,7 @@ where
             &self.repository,
             actor_user_id,
             locales,
+            self.node_artifact_context(),
             self.use_case.clone(),
         )
         .await
@@ -423,20 +424,13 @@ where
             if !artifact.artifact_status.is_ready() {
                 return Ok(Vec::new());
             }
-            let Some(installed_path) = artifact.installed_path.as_deref() else {
+            let Some(installed_path) = artifact.local_path.as_deref() else {
                 return Ok(Vec::new());
             };
             return Ok(load_provider_package(installed_path)?.provider.form_schema);
         }
 
-        let installation = self
-            .repository
-            .get_installation(installation_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        Ok(load_provider_package(&installation.installed_path)?
-            .provider
-            .form_schema)
+        Err(ControlPlaneError::Conflict("plugin_node_context_required").into())
     }
 
     pub async fn get_main_instance(
@@ -473,8 +467,19 @@ where
             .get_installation(assignment.installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        let node_id = self
+            .node_id
+            .as_deref()
+            .ok_or(ControlPlaneError::Conflict("plugin_node_context_required"))?;
+        let artifact = self
+            .repository
+            .get_artifact_instance(node_id, installation.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_artifact_instance"))?;
         Ok(ModelProviderIconSource {
-            installed_path: installation.installed_path,
+            installed_path: artifact
+                .local_path
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
             metadata_json: installation.metadata_json,
         })
     }
@@ -499,7 +504,11 @@ where
             return Err(ControlPlaneError::Conflict("plugin_installation_disabled").into());
         }
 
-        let package = load_provider_package(&installation.installed_path)?;
+        let package = load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        )?;
         let (public_config, secret_config) =
             split_provider_config(&package.provider.form_schema, &command.config_json)?;
         validate_required_fields(
@@ -606,7 +615,11 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
         let installation = self.ready_installation(existing.installation_id).await?;
-        let package = load_provider_package(&installation.installed_path)?;
+        let package = load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        )?;
 
         let (patch_public_config, patch_secret_config) =
             split_provider_config(&package.provider.form_schema, &command.config_json)?;
@@ -777,10 +790,14 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
         let installation = self.ready_installation(instance.installation_id).await?;
-        if installation.availability_status != domain::PluginAvailabilityStatus::Available {
+        if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
-        let package = load_provider_package(&installation.installed_path)?;
+        let package = load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        )?;
         let provider_config = self
             .build_provider_runtime_config(&package, &instance)
             .await?;
@@ -943,14 +960,18 @@ where
                         .await?
                         .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
                     let installation = self.ready_installation(instance.installation_id).await?;
-                    if installation.availability_status
+                    if installation.availability_status()
                         != domain::PluginAvailabilityStatus::Available
                     {
                         return Err(
                             ControlPlaneError::Conflict("plugin_installation_unavailable").into(),
                         );
                     }
-                    let package = load_provider_package(&installation.installed_path)?;
+                    let package = load_provider_package(
+                        installation
+                            .local_path()
+                            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+                    )?;
                     let (patch_public_config, patch_secret_config) =
                         split_provider_config(&package.provider.form_schema, &command.config_json)?;
                     let current_secret_json = self
@@ -991,14 +1012,18 @@ where
                     if matches!(
                         installation.desired_state,
                         domain::PluginDesiredState::Disabled
-                    ) || installation.availability_status
+                    ) || installation.availability_status()
                         != domain::PluginAvailabilityStatus::Available
                     {
                         return Err(
                             ControlPlaneError::Conflict("plugin_installation_unavailable").into(),
                         );
                     }
-                    let package = load_provider_package(&installation.installed_path)?;
+                    let package = load_provider_package(
+                        installation
+                            .local_path()
+                            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+                    )?;
                     let (public_config, secret_config) =
                         split_provider_config(&package.provider.form_schema, &command.config_json)?;
                     validate_required_fields(
@@ -1011,7 +1036,7 @@ where
                         installation.clone(),
                         package,
                         provider_config,
-                        installation.provider_code,
+                        installation.provider_code.clone(),
                         None,
                     )
                 }
@@ -1242,7 +1267,7 @@ where
 
     async fn ensure_runtime_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> Result<()> {
         match self.runtime.ensure_loaded(installation).await {
             Ok(()) => {

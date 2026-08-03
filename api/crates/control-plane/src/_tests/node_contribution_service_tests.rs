@@ -6,7 +6,7 @@ use control_plane::{
     errors::ControlPlaneError,
     frontend_block_catalog::{FrontendBlockCatalogService, ListFrontendBlockCatalogQuery},
     js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery},
-    node_contribution::{ListNodeContributionsQuery, NodeContributionService},
+    node_contribution::{ApplicationNodeCatalogService, ListApplicationNodesQuery},
     ports::{
         AuthRepository, FrontendBlockCatalogRepository, JsDependencyRepository,
         NodeContributionRepository, ReplaceInstallationFrontendBlocksInput,
@@ -177,6 +177,7 @@ impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
 
     async fn list_workspace_frontend_blocks(
         &self,
+        _node_id: &str,
         _workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
         Ok(Vec::new())
@@ -239,7 +240,7 @@ fn sample_entry(
 }
 
 #[tokio::test]
-async fn node_contribution_service_lists_workspace_entries() {
+async fn application_node_catalog_service_combines_type_boundaries_and_workspace_entries() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryNodeContributionRepository::new(
         actor_with_permissions(workspace_id, &[]),
@@ -249,18 +250,34 @@ async fn node_contribution_service_lists_workspace_entries() {
         )],
     )
     .with_console_operation("other.node-contributions", "node_contributions.view");
-    let service = NodeContributionService::new(repository);
+    let service = ApplicationNodeCatalogService::new(repository);
 
     let view = service
-        .list_node_contributions(ListNodeContributionsQuery {
+        .list_application_nodes(ListApplicationNodesQuery {
             actor_user_id: Uuid::now_v7(),
+            application_type: domain::ApplicationType::AgentFlow,
         })
         .await
         .unwrap();
 
-    assert_eq!(view.entries.len(), 1);
-    assert_eq!(view.entries[0].contribution_code, "openai_prompt");
-    assert_eq!(view.entries[0].dependency_status.as_str(), "ready");
+    assert!(view.nodes.iter().any(|node| node.node_type == "start"));
+    assert!(view.nodes.iter().any(|node| node.node_type == "answer"));
+    assert!(!view
+        .nodes
+        .iter()
+        .any(|node| node.node_type == "workflow_start"));
+    let plugin = view
+        .nodes
+        .iter()
+        .find(|node| {
+            node.source_kind == control_plane::node_contribution::ApplicationNodeSourceKind::Plugin
+        })
+        .unwrap();
+    assert_eq!(
+        plugin.plugin.as_ref().unwrap().contribution_code,
+        "openai_prompt"
+    );
+    assert_eq!(plugin.dependency_status.as_str(), "ready");
 }
 
 #[tokio::test]
@@ -273,11 +290,12 @@ async fn node_contribution_service_defaults_to_deny_without_console_operation() 
             NodeContributionDependencyStatus::Ready,
         )],
     );
-    let service = NodeContributionService::new(repository);
+    let service = ApplicationNodeCatalogService::new(repository);
 
     let error = service
-        .list_node_contributions(ListNodeContributionsQuery {
+        .list_application_nodes(ListApplicationNodesQuery {
             actor_user_id: Uuid::now_v7(),
+            application_type: domain::ApplicationType::Workflow,
         })
         .await
         .unwrap_err();
@@ -300,14 +318,19 @@ async fn ac_1281_node_contributions_policy_only_allows_without_legacy_grant() {
     )
     .with_console_operation("other.node-contributions", "node_contributions.view");
 
-    let view = NodeContributionService::new(repository)
-        .list_node_contributions(ListNodeContributionsQuery {
+    let view = ApplicationNodeCatalogService::new(repository)
+        .list_application_nodes(ListApplicationNodesQuery {
             actor_user_id: Uuid::now_v7(),
+            application_type: domain::ApplicationType::AgentFlow,
         })
         .await
         .expect("the exact console operation must authorize the catalog owner");
 
-    assert_eq!(view.entries[0].contribution_code, "policy_only");
+    assert!(view.nodes.iter().any(|node| {
+        node.plugin
+            .as_ref()
+            .is_some_and(|plugin| plugin.contribution_code == "policy_only")
+    }));
 }
 
 #[tokio::test]
@@ -321,9 +344,10 @@ async fn ac_1281_node_contributions_legacy_only_does_not_authorize() {
         )],
     );
 
-    let error = NodeContributionService::new(repository)
-        .list_node_contributions(ListNodeContributionsQuery {
+    let error = ApplicationNodeCatalogService::new(repository)
+        .list_application_nodes(ListApplicationNodesQuery {
             actor_user_id: Uuid::now_v7(),
+            application_type: domain::ApplicationType::AgentFlow,
         })
         .await
         .expect_err("legacy plugin_config grants must not authorize the compiled operation");
@@ -343,7 +367,7 @@ async fn ac_1281_frontend_blocks_policy_only_allows_without_legacy_grant() {
     )
     .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
 
-    FrontendBlockCatalogService::new(repository)
+    FrontendBlockCatalogService::new(repository, "test-node")
         .list_frontend_blocks(ListFrontendBlockCatalogQuery {
             actor_user_id: Uuid::now_v7(),
         })
@@ -359,7 +383,7 @@ async fn ac_1281_frontend_blocks_legacy_only_does_not_authorize() {
         Vec::new(),
     );
 
-    assert!(FrontendBlockCatalogService::new(repository)
+    assert!(FrontendBlockCatalogService::new(repository, "test-node")
         .list_frontend_blocks(ListFrontendBlockCatalogQuery {
             actor_user_id: Uuid::now_v7(),
         })

@@ -16,7 +16,6 @@ pub mod host_infrastructure;
 pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
-pub mod official_agent_flow_templates;
 pub mod official_extension_catalog;
 pub mod official_i18n_catalog_seed;
 pub mod official_i18n_catalog_source;
@@ -42,11 +41,7 @@ use argon2::{
     Argon2,
 };
 use axum::{middleware as axum_middleware, routing::get, Json, Router};
-use control_plane::{
-    bootstrap::{BootstrapConfig, BootstrapService},
-    plugin_management::ExtensionInstallationService,
-    ports::PluginRepository,
-};
+use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use rand_core::OsRng;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -69,6 +64,7 @@ use crate::{
         linked_host_console_route_sources, resolve_linked_host_extension_console_contribution,
     },
     host_infrastructure::build_local_host_infrastructure_from_host_extensions,
+    official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{HostApiRuntimeProfileCollector, HttpPluginRunnerSystemClient},
 };
@@ -326,16 +322,14 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
                 store.clone(),
                 api_provider_runtime.clone(),
                 config.provider_secret_master_key.clone(),
+                config.api_node_id.clone(),
             )),
         ),
     );
     let api_docs = Arc::new(
         openapi_docs::build_default_api_docs_registry_with_cookie_name(&config.cookie_name)?,
     );
-    let resolved_official_agent_flow_template_source =
-        config.resolve_official_agent_flow_template_source();
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
-    let official_agent_flow_template_cache = infrastructure.cache_store();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
     let official_extension_catalog_source = Arc::new(
         official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config),
@@ -348,19 +342,27 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             } else {
                 "allow_unsigned".to_string()
             },
-            trusted_public_keys,
-        ),
-    );
-    let official_agent_flow_template_source = Arc::new(
-        official_agent_flow_templates::ApiOfficialAgentFlowTemplateRegistry::new(
-            resolved_official_agent_flow_template_source,
-            official_agent_flow_template_cache,
+            trusted_public_keys.clone(),
         ),
     );
     let official_mcp_bundle_source =
         Arc::new(official_mcp_bundles::ApiOfficialMcpBundleRegistry::new(
             resolved_official_mcp_bundle_source,
+            std::path::PathBuf::from(&config.mcp_template_library_root),
+            Arc::new(store.clone()),
+            config.api_node_id.clone(),
+            bootstrap_result.root_user_id,
+            trusted_public_keys,
         ));
+    if let Err(error) = official_mcp_bundle_source
+        .reconcile_local_installations()
+        .await
+    {
+        tracing::warn!(
+            error = %error,
+            "MCP template installation reconciliation unavailable; core startup continues"
+        );
+    }
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
@@ -371,45 +373,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     )
     .with_node_id(config.api_node_id.clone())
     .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
-    plugin_management
-        .rebuild_inventory_from_local_receipts(bootstrap_result.root_user_id)
-        .await?;
-    match store.list_installations().await {
-        Ok(installations) => {
-            let extension_installations = ExtensionInstallationService::new(
-                store.clone(),
-                config.provider_install_root.clone(),
-            );
-            match extension_installations
-                .adopt_plugin_installations(&config.api_node_id, &installations)
-                .await
-            {
-                Ok(report) => {
-                    tracing::info!(
-                        adopted = report.adopted,
-                        already_present = report.already_present,
-                        warnings = report.warnings.len(),
-                        "reconciled legacy plugin installations into extension inventory"
-                    );
-                    for warning in report.warnings {
-                        tracing::warn!(
-                            plugin_installation_id = %warning.plugin_installation_id,
-                            error = %warning.message,
-                            "legacy plugin installation adoption warning; core startup continues"
-                        );
-                    }
-                }
-                Err(error) => tracing::warn!(
-                    error = %error,
-                    "legacy plugin installation adoption unavailable; core startup continues"
-                ),
-            }
-        }
-        Err(error) => tracing::warn!(
-            error = %error,
-            "legacy plugin installation inventory unavailable; core startup continues"
-        ),
-    }
     match extension_bootstrap::load_locked_extension_bootstrap(&api_workspace_root()?) {
         Ok(entries) => {
             for result in plugin_management
@@ -494,7 +457,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             config.plugin_runner_internal_base_url.clone(),
         )),
         official_plugin_source,
-        official_agent_flow_template_source,
         official_mcp_bundle_source,
         official_extension_catalog_source,
         official_i18n_catalog_update_service,

@@ -94,7 +94,7 @@ impl ApiProviderRuntime {
 
     pub async fn get_balance(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<ProviderBalanceResult> {
         <Self as ProviderRuntimePort>::get_balance(self, installation, provider_config).await
@@ -106,6 +106,7 @@ pub struct ApiDataSourceRuntimeRecordBackend {
     repository: MainDurableStore,
     runtime: ApiProviderRuntime,
     secret_master_key: String,
+    node_id: String,
 }
 
 impl ApiDataSourceRuntimeRecordBackend {
@@ -113,11 +114,13 @@ impl ApiDataSourceRuntimeRecordBackend {
         repository: MainDurableStore,
         runtime: ApiProviderRuntime,
         secret_master_key: impl Into<String>,
+        node_id: impl Into<String>,
     ) -> Self {
         Self {
             repository,
             runtime,
             secret_master_key: secret_master_key.into(),
+            node_id: node_id.into(),
         }
     }
 
@@ -137,8 +140,12 @@ impl ApiDataSourceRuntimeRecordBackend {
             return Err(ControlPlaneError::Conflict("data_source_instance_not_ready").into());
         }
 
-        let installation =
-            reconcile_installation_snapshot(&self.repository, instance.installation_id).await?;
+        let installation = reconcile_installation_snapshot(
+            &self.repository,
+            &self.node_id,
+            instance.installation_id,
+        )
+        .await?;
         let assigned = PluginRepository::list_assignments(&self.repository, workspace_id)
             .await?
             .into_iter()
@@ -147,7 +154,7 @@ impl ApiDataSourceRuntimeRecordBackend {
             return Err(ControlPlaneError::Conflict("plugin_assignment_required").into());
         }
         if installation.desired_state == domain::PluginDesiredState::Disabled
-            || installation.availability_status != domain::PluginAvailabilityStatus::Available
+            || installation.availability_status() != domain::PluginAvailabilityStatus::Available
         {
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
@@ -178,7 +185,7 @@ impl ApiDataSourceRuntimeRecordBackend {
 }
 
 struct DataSourceRuntimeTarget {
-    installation: domain::PluginInstallationRecord,
+    installation: domain::LocalPluginInstallationRecord,
     connection: DataSourceConfigInput,
     secret_values: HashSet<String>,
 }
@@ -187,14 +194,14 @@ struct DataSourceRuntimeTarget {
 impl ProviderRuntimePort for ApiProviderRuntime {
     async fn ensure_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         self.ensure_provider_loaded(installation).await
     }
 
     async fn validate_provider(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<Value> {
         self.ensure_provider_loaded(installation).await?;
@@ -211,7 +218,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn list_models(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<Vec<ProviderModelDescriptor>> {
         self.ensure_provider_loaded(installation).await?;
@@ -228,7 +235,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn get_balance(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<ProviderBalanceResult> {
         self.ensure_provider_loaded(installation).await?;
@@ -245,7 +252,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn count_tokens(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> anyhow::Result<ProviderCountTokensResult> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -283,7 +290,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn compact(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderCompactResult> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -306,7 +313,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn invoke_stream(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
@@ -347,7 +354,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn invoke_stream_with_live_events(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
         live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
@@ -397,13 +404,13 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 }
 
 fn trace_provider_operation_boundary(
-    installation: &domain::PluginInstallationRecord,
+    installation: &domain::LocalPluginInstallationRecord,
     operation: &'static str,
     phase: &'static str,
     status: &'static str,
 ) {
     let package_sha256 = installation
-        .checksum
+        .expected_checksum
         .as_deref()
         .unwrap_or("")
         .trim_start_matches("sha256:");
@@ -422,13 +429,13 @@ fn trace_provider_operation_boundary(
 impl DataSourceRuntimePort for ApiProviderRuntime {
     async fn ensure_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let mut host = self.services.data_source_host.write().await;
         match host.reload(&installation.plugin_id) {
             Ok(_) => Ok(()),
             Err(_) => host
-                .load(&installation.installed_path)
+                .load(required_local_path(installation)?)
                 .map(|_| ())
                 .map_err(|error| map_framework_error(error, "data_source_runtime")),
         }
@@ -436,7 +443,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 
     async fn validate_config(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         config_json: Value,
         secret_json: Value,
     ) -> anyhow::Result<Value> {
@@ -460,7 +467,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 
     async fn test_connection(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         config_json: Value,
         secret_json: Value,
     ) -> anyhow::Result<Value> {
@@ -484,7 +491,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 
     async fn discover_catalog(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         config_json: Value,
         secret_json: Value,
     ) -> anyhow::Result<Value> {
@@ -508,7 +515,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 
     async fn describe_resource(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceDescribeResourceInput,
     ) -> anyhow::Result<DataSourceResourceDescriptor> {
         self.ensure_data_source_loaded(installation).await?;
@@ -529,7 +536,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 
     async fn preview_read(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourcePreviewReadInput,
     ) -> anyhow::Result<DataSourcePreviewReadOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -545,7 +552,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 
     async fn execute_sql(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceExecuteSqlInput,
     ) -> anyhow::Result<NativeSqlExecutionOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -562,7 +569,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
 impl DataSourceCrudRuntimePort for ApiProviderRuntime {
     async fn list_records(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceListRecordsInput,
     ) -> anyhow::Result<DataSourceListRecordsOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -578,7 +585,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
 
     async fn get_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceGetRecordInput,
     ) -> anyhow::Result<DataSourceGetRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -594,7 +601,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
 
     async fn create_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceCreateRecordInput,
     ) -> anyhow::Result<DataSourceCreateRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -610,7 +617,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
 
     async fn update_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceUpdateRecordInput,
     ) -> anyhow::Result<DataSourceUpdateRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -626,7 +633,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
 
     async fn delete_record(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
         input: DataSourceDeleteRecordInput,
     ) -> anyhow::Result<DataSourceDeleteRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
@@ -878,7 +885,7 @@ impl ApiProviderRuntime {
 
     async fn ensure_provider_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let ensure_loaded_started = std::time::Instant::now();
         let mut host = self.services.provider_host.write().await;
@@ -886,7 +893,7 @@ impl ApiProviderRuntime {
         let result = host
             .load_if_needed(
                 &installation.plugin_id,
-                &installation.installed_path,
+                required_local_path(installation)?,
                 Some(source_identity.as_str()),
             )
             .map_err(map_provider_framework_error);
@@ -900,37 +907,49 @@ impl ApiProviderRuntime {
 
     async fn ensure_capability_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let mut host = self.services.capability_host.write().await;
-        host.load(&installation.installed_path)
+        host.load(required_local_path(installation)?)
             .map(|_| ())
             .map_err(|error| map_framework_error(error, "capability_runtime"))
     }
 
     async fn ensure_data_source_loaded(
         &self,
-        installation: &domain::PluginInstallationRecord,
+        installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let mut host = self.services.data_source_host.write().await;
         match host.reload(&installation.plugin_id) {
             Ok(_) => Ok(()),
             Err(_) => host
-                .load(&installation.installed_path)
+                .load(required_local_path(installation)?)
                 .map(|_| ())
                 .map_err(|error| map_framework_error(error, "data_source_runtime")),
         }
     }
 }
 
-fn provider_source_identity(installation: &domain::PluginInstallationRecord) -> String {
+fn provider_source_identity(installation: &domain::LocalPluginInstallationRecord) -> String {
     format!(
         "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
         installation.id,
-        installation.checksum.as_deref().unwrap_or(""),
-        installation.manifest_fingerprint.as_deref().unwrap_or(""),
+        installation.expected_checksum.as_deref().unwrap_or(""),
+        installation
+            .artifact
+            .manifest_fingerprint
+            .as_deref()
+            .unwrap_or(""),
         installation.updated_at.unix_timestamp_nanos()
     )
+}
+
+fn required_local_path(
+    installation: &domain::LocalPluginInstallationRecord,
+) -> anyhow::Result<&str> {
+    installation
+        .local_path()
+        .ok_or_else(|| ControlPlaneError::Conflict("plugin_artifact_path_missing").into())
 }
 
 fn map_provider_framework_error(error: PluginFrameworkError) -> anyhow::Error {

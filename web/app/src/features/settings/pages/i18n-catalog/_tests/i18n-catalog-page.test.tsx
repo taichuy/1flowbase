@@ -24,6 +24,11 @@ const catalogApi = vi.hoisted(() => ({
   ]),
   fetchSettingsI18nCatalogEntries: vi.fn(),
   fetchSettingsI18nCatalogEntry: vi.fn(),
+  fetchSettingsI18nCatalogState: vi.fn(),
+  fetchSettingsI18nCatalogUpdateStatus: vi.fn(),
+  activateSettingsI18nCatalogUpdate: vi.fn(),
+  previewSettingsInstalledI18nCatalog: vi.fn(),
+  activateSettingsInstalledI18nCatalog: vi.fn(),
   saveSettingsI18nCatalogOverride: vi.fn(),
   saveSettingsCustomI18nCatalogTranslation: vi.fn(),
   restoreSettingsI18nCatalogOverride: vi.fn(),
@@ -96,6 +101,23 @@ describe('I18nCatalogPage batch fixtures', () => {
     catalogApi.fetchSettingsI18nCatalogEntry.mockImplementation(
       catalogServer.getEntry
     );
+    catalogApi.fetchSettingsI18nCatalogState.mockResolvedValue({
+      active_catalog_version: '2.0.0',
+      revision: 8,
+      source: 'official',
+      source_locale: 'en_US',
+      locales: ['en_US', 'zh_Hans']
+    });
+    catalogApi.fetchSettingsI18nCatalogUpdateStatus.mockResolvedValue({
+      status: 'update_available',
+      active_catalog_version: '2.0.0',
+      latest_catalog_version: '2.0.1'
+    });
+    catalogApi.activateSettingsI18nCatalogUpdate.mockResolvedValue({
+      status: 'activated',
+      catalog_version: '2.0.1',
+      revision: 9
+    });
     catalogApi.saveSettingsI18nCatalogOverride.mockImplementation(
       catalogServer.saveOverride
     );
@@ -170,6 +192,26 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(
       screen.queryByTestId('i18n-catalog-mobile-list')
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-005 owns the catalog version preview and activation flow', async () => {
+    renderPage();
+    await findLoadedDesktopEntry('系统设置');
+
+    fireEvent.click(screen.getByRole('button', { name: '目录版本' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: '激活多语言目录'
+    });
+    expect(await within(dialog).findByText('2.0.0')).toBeInTheDocument();
+    expect(await within(dialog).findByText('2.0.1')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /激\s*活/ }));
+
+    await waitFor(() =>
+      expect(catalogApi.activateSettingsI18nCatalogUpdate).toHaveBeenCalledWith(
+        { expected_revision: 8 },
+        'csrf-123'
+      )
+    );
   });
 
   test('AC-008 opens all source layers and saves with the selected entry revision', async () => {

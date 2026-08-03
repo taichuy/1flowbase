@@ -411,11 +411,11 @@ async fn plugin_routes_install_upload_persists_host_extension_as_pending_restart
         "pending_restart"
     );
     assert_eq!(
-        payload["data"]["installation"]["runtime_status"],
+        payload["data"]["installation"]["local_artifact"]["runtime_status"],
         "inactive"
     );
     assert_eq!(
-        payload["data"]["installation"]["availability_status"],
+        payload["data"]["installation"]["local_artifact"]["availability_status"],
         "pending_restart"
     );
     assert_eq!(

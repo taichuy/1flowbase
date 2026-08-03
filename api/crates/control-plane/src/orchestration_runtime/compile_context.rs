@@ -578,7 +578,7 @@ where
     Ok(!matches!(
         installation.desired_state,
         domain::PluginDesiredState::Disabled
-    ) && installation.availability_status == domain::PluginAvailabilityStatus::Available)
+    ))
 }
 
 fn missing_provider_field(message: &str) -> &'static str {

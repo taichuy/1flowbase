@@ -1,31 +1,32 @@
 use anyhow::Result;
-use control_plane::ports::CommitPluginInstallationProjectionInput;
+use control_plane::ports::CommitPluginInstallationInput;
 use uuid::Uuid;
 
 use crate::{plugin_repository::map_installation, repositories::PgControlPlaneStore};
 
-pub(crate) async fn commit_plugin_installation_projection(
+pub(crate) async fn commit_plugin_installation(
     store: &PgControlPlaneStore,
-    input: &CommitPluginInstallationProjectionInput,
+    input: &CommitPluginInstallationInput,
 ) -> Result<domain::PluginInstallationRecord> {
     let mut tx = store.pool().begin().await?;
     let installation = &input.installation;
     let row = sqlx::query(
         r#"
-            insert into plugin_installations (
-                id, scope_id, provider_code, plugin_id, plugin_version, contract_version,
-                protocol, display_name, source_kind, trust_level, verification_status,
-                desired_state, artifact_status, runtime_status, availability_status,
-                package_path, installed_path, checksum, manifest_fingerprint, signature_status,
-                signature_algorithm, signing_key_id, last_load_error, metadata_json,
-                created_by, updated_by
+            insert into extension_installations (
+                id, scope_id, category, organization, artifact_id, artifact_version,
+                plugin_id, contract_version, protocol, display_name, source_kind, trust_level,
+                verification_status, desired_state, expected_checksum, signature_status,
+                signature_algorithm, signing_key_id, application_action, metadata_json,
+                is_system_reserved, created_by, updated_by
             ) values (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
             )
-            on conflict (plugin_id) do update
-            set provider_code = excluded.provider_code,
-                plugin_version = excluded.plugin_version,
+            on conflict (plugin_id) where plugin_id is not null do update
+            set category = excluded.category,
+                organization = excluded.organization,
+                artifact_id = excluded.artifact_id,
+                artifact_version = excluded.artifact_version,
                 contract_version = excluded.contract_version,
                 protocol = excluded.protocol,
                 display_name = excluded.display_name,
@@ -33,32 +34,29 @@ pub(crate) async fn commit_plugin_installation_projection(
                 trust_level = excluded.trust_level,
                 verification_status = excluded.verification_status,
                 desired_state = excluded.desired_state,
-                artifact_status = excluded.artifact_status,
-                runtime_status = excluded.runtime_status,
-                availability_status = excluded.availability_status,
-                package_path = excluded.package_path,
-                installed_path = excluded.installed_path,
-                checksum = excluded.checksum,
-                manifest_fingerprint = excluded.manifest_fingerprint,
+                expected_checksum = excluded.expected_checksum,
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,
                 signing_key_id = excluded.signing_key_id,
-                last_load_error = excluded.last_load_error,
+                application_action = excluded.application_action,
                 metadata_json = excluded.metadata_json,
+                is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
                 updated_at = now()
-            returning id, provider_code, plugin_id, plugin_version, contract_version, protocol,
+            returning id, scope_id, category, organization, artifact_id as provider_code,
+                plugin_id, artifact_version as plugin_version, contract_version, protocol,
                 display_name, source_kind, trust_level, verification_status, desired_state,
-                artifact_status, runtime_status, availability_status, package_path, installed_path,
-                checksum, manifest_fingerprint, signature_status, signature_algorithm,
-                signing_key_id, last_load_error, metadata_json, created_by, created_at, updated_at
+                expected_checksum, signature_status, signature_algorithm, signing_key_id,
+                metadata_json, is_system_reserved, created_by, updated_by, created_at, updated_at
             "#,
     )
     .bind(installation.installation_id)
     .bind(domain::SYSTEM_SCOPE_ID)
+    .bind(installation.category.as_str())
+    .bind(&installation.organization)
     .bind(&installation.provider_code)
-    .bind(&installation.plugin_id)
     .bind(&installation.plugin_version)
+    .bind(&installation.plugin_id)
     .bind(&installation.contract_version)
     .bind(&installation.protocol)
     .bind(&installation.display_name)
@@ -66,18 +64,25 @@ pub(crate) async fn commit_plugin_installation_projection(
     .bind(&installation.trust_level)
     .bind(installation.verification_status.as_str())
     .bind(installation.desired_state.as_str())
-    .bind(installation.artifact_status.as_str())
-    .bind(installation.runtime_status.as_str())
-    .bind(installation.availability_status.as_str())
-    .bind(&installation.package_path)
-    .bind(&installation.installed_path)
-    .bind(&installation.checksum)
-    .bind(&installation.manifest_fingerprint)
-    .bind(&installation.signature_status)
+    .bind(installation.expected_checksum.as_deref())
+    .bind(installation.signature_status.as_str())
     .bind(&installation.signature_algorithm)
     .bind(&installation.signing_key_id)
-    .bind(&installation.last_load_error)
+    .bind(
+        if installation.category == domain::ExtensionCategory::RuntimeExtensions
+            && installation
+                .metadata_json
+                .get("plugin_type")
+                .and_then(serde_json::Value::as_str)
+                == Some("model_provider")
+        {
+            "configure_model_provider"
+        } else {
+            "none"
+        },
+    )
     .bind(&installation.metadata_json)
+    .bind(installation.is_system_reserved)
     .bind(installation.actor_user_id)
     .bind(installation.actor_user_id)
     .fetch_one(&mut *tx)
@@ -88,63 +93,38 @@ pub(crate) async fn commit_plugin_installation_projection(
     let artifact = &input.artifact_instance;
     sqlx::query(
         r#"
-            insert into plugin_artifact_instances (
-                node_id, installation_id, local_version, local_checksum, installed_path,
-                artifact_status, runtime_status, checked_at, last_error
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            insert into extension_artifact_instances (
+                node_id, installation_id, local_version, local_checksum, local_path,
+                package_path, manifest_fingerprint, artifact_status, runtime_status,
+                availability_status, checked_at, last_error, is_current
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             on conflict (node_id, installation_id) do update
             set local_version = excluded.local_version,
                 local_checksum = excluded.local_checksum,
-                installed_path = excluded.installed_path,
+                local_path = excluded.local_path,
+                package_path = excluded.package_path,
+                manifest_fingerprint = excluded.manifest_fingerprint,
                 artifact_status = excluded.artifact_status,
                 runtime_status = excluded.runtime_status,
+                availability_status = excluded.availability_status,
                 checked_at = excluded.checked_at,
-                last_error = excluded.last_error
+                last_error = excluded.last_error,
+                is_current = excluded.is_current
             "#,
     )
     .bind(&artifact.node_id)
     .bind(installation_id)
     .bind(&artifact.local_version)
     .bind(&artifact.local_checksum)
-    .bind(&artifact.installed_path)
+    .bind(&artifact.local_path)
+    .bind(&artifact.package_path)
+    .bind(&artifact.manifest_fingerprint)
     .bind(artifact.artifact_status.as_str())
     .bind(artifact.runtime_status.as_str())
+    .bind(artifact.availability_status.as_str())
     .bind(artifact.checked_at)
     .bind(&artifact.last_error)
-    .execute(&mut *tx)
-    .await?;
-
-    let extension = &input.extension_installation;
-    sqlx::query(
-        r#"
-            insert into extension_installations (
-                id, category, organization, artifact_id, artifact_version, node_id,
-                source, trust, local_path, checksum, signature_status, signature_algorithm,
-                signing_key_id, warnings, receipt, status, installed_by
-            ) values (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
-            )
-            on conflict (category, organization, artifact_id, artifact_version, node_id)
-            do nothing
-        "#,
-    )
-    .bind(extension.installation_id)
-    .bind(extension.identity.category.as_str())
-    .bind(&extension.identity.organization)
-    .bind(&extension.identity.artifact_id)
-    .bind(&extension.identity.version)
-    .bind(&extension.identity.node_id)
-    .bind(&extension.source)
-    .bind(&extension.trust)
-    .bind(&extension.local_path)
-    .bind(&extension.checksum)
-    .bind(extension.signature_status.as_str())
-    .bind(&extension.signature_algorithm)
-    .bind(&extension.signing_key_id)
-    .bind(serde_json::to_value(&extension.warnings)?)
-    .bind(&extension.receipt)
-    .bind(extension.status.as_str())
-    .bind(extension.installed_by)
+    .bind(artifact.is_current)
     .execute(&mut *tx)
     .await?;
 

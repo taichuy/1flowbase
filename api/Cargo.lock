@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "access-control"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "domain",
  "serde",
@@ -63,7 +63,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "api-server"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "access-control",
  "anyhow",
@@ -91,6 +91,7 @@ dependencies = [
  "reqwest 0.12.28",
  "runtime-core",
  "runtime-profile",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -882,7 +883,7 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "control-plane"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "access-control",
  "anyhow",
@@ -1167,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2362,7 +2363,7 @@ dependencies = [
 
 [[package]]
 name = "observability"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "domain",
  "serde",
@@ -2391,7 +2392,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "orchestration-runtime"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2566,7 +2567,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plugin-framework"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "access-control",
  "base64",
@@ -2585,7 +2586,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-runner"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "axum",
  "libc",
@@ -2620,7 +2621,7 @@ checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
 name = "postgres-test-support"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "sqlx",
  "tokio",
@@ -2672,7 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "publish-gateway"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "domain",
  "serde",
@@ -3080,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3095,7 +3096,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-profile"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "plugin-framework",
@@ -3763,7 +3764,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "storage-durable"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "storage-postgres",
@@ -3771,7 +3772,7 @@ dependencies = [
 
 [[package]]
 name = "storage-ephemeral"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3786,7 +3787,7 @@ dependencies = [
 
 [[package]]
 name = "storage-object"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3801,7 +3802,7 @@ dependencies = [
 
 [[package]]
 name = "storage-postgres"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "access-control",
  "anyhow",

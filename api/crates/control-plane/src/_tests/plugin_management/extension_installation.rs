@@ -23,7 +23,12 @@ use crate::{
 #[derive(Clone, Default)]
 struct MemoryExtensionInstallationRepository {
     records: Arc<
-        Mutex<HashMap<domain::ExtensionInstallationIdentity, domain::ExtensionInstallationRecord>>,
+        Mutex<
+            HashMap<
+                (String, domain::ExtensionInstallationIdentity),
+                domain::ExtensionInstallationRecord,
+            >,
+        >,
     >,
 }
 
@@ -35,37 +40,75 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
     ) -> anyhow::Result<domain::ExtensionInstallationRecord> {
         let now = OffsetDateTime::now_utc();
         let mut records = self.records.lock().unwrap();
+        if input.is_current {
+            for record in records.values_mut() {
+                if record.identity.category == input.identity.category
+                    && record.identity.organization == input.identity.organization
+                    && record.identity.artifact_id == input.identity.artifact_id
+                    && record.node_id == input.node_id
+                {
+                    record.is_current = false;
+                }
+            }
+        }
         let created_at = records
-            .get(&input.identity)
+            .get(&(input.node_id.clone(), input.identity.clone()))
             .map(|record| record.created_at)
             .unwrap_or(now);
         let record = domain::ExtensionInstallationRecord {
             id: input.installation_id,
             identity: input.identity.clone(),
-            source: input.source.clone(),
-            trust: input.trust.clone(),
-            local_path: input.local_path.clone(),
-            checksum: input.checksum.clone(),
+            source_kind: input.source_kind.clone(),
+            trust_level: input.trust_level.clone(),
+            expected_checksum: input.expected_checksum.clone(),
             signature_status: input.signature_status,
             signature_algorithm: input.signature_algorithm.clone(),
             signing_key_id: input.signing_key_id.clone(),
             warnings: input.warnings.clone(),
             receipt: input.receipt.clone(),
             application_action: input.application_action,
+            is_system_reserved: false,
+            node_id: input.node_id.clone(),
+            local_path: Some(input.local_path.clone()),
+            local_checksum: Some(input.local_checksum.clone()),
             status: input.status,
-            installed_by: input.installed_by,
+            is_current: input.is_current,
+            created_by: input.created_by,
             created_at,
             updated_at: now,
         };
-        records.insert(input.identity.clone(), record.clone());
+        records.insert(
+            (input.node_id.clone(), input.identity.clone()),
+            record.clone(),
+        );
         Ok(record)
     }
 
     async fn find_extension_installation(
         &self,
+        node_id: &str,
         identity: &domain::ExtensionInstallationIdentity,
     ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
-        Ok(self.records.lock().unwrap().get(identity).cloned())
+        Ok(self
+            .records
+            .lock()
+            .unwrap()
+            .get(&(node_id.to_string(), identity.clone()))
+            .cloned())
+    }
+
+    async fn find_extension_installation_by_id(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        Ok(self
+            .records
+            .lock()
+            .unwrap()
+            .values()
+            .find(|record| record.node_id == node_id && record.id == installation_id)
+            .cloned())
     }
 
     async fn list_extension_installations_for_node(
@@ -77,13 +120,14 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
             .lock()
             .unwrap()
             .values()
-            .filter(|record| record.identity.node_id == node_id)
+            .filter(|record| record.node_id == node_id)
             .cloned()
             .collect())
     }
 
     async fn set_extension_installation_status(
         &self,
+        node_id: &str,
         installation_id: Uuid,
         status: domain::ExtensionInstallationStatus,
     ) -> anyhow::Result<()> {
@@ -92,11 +136,79 @@ impl ExtensionInstallationRepository for MemoryExtensionInstallationRepository {
             .lock()
             .unwrap()
             .values_mut()
-            .find(|record| record.id == installation_id)
+            .find(|record| record.node_id == node_id && record.id == installation_id)
         {
             record.status = status;
         }
         Ok(())
+    }
+
+    async fn select_current_extension_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        let mut records = self.records.lock().unwrap();
+        let Some(target) = records
+            .values()
+            .find(|record| record.node_id == node_id && record.id == installation_id)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        for record in records.values_mut() {
+            if record.identity.category == target.identity.category
+                && record.identity.organization == target.identity.organization
+                && record.identity.artifact_id == target.identity.artifact_id
+                && record.node_id == node_id
+            {
+                record.is_current = record.id == installation_id;
+            }
+        }
+        Ok(records
+            .values()
+            .find(|record| record.id == installation_id)
+            .cloned())
+    }
+
+    async fn remove_extension_installation(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        let mut records = self.records.lock().unwrap();
+        let identity = records
+            .values()
+            .find(|record| record.node_id == node_id && record.id == installation_id)
+            .map(|record| (record.node_id.clone(), record.identity.clone()));
+        let Some(key) = identity else {
+            return Ok(None);
+        };
+        let record = records.get_mut(&key).unwrap();
+        record.status = domain::ExtensionInstallationStatus::Missing;
+        record.is_current = false;
+        Ok(Some(record.clone()))
+    }
+
+    async fn extension_deletion_decision(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionDeletionDecision>> {
+        Ok(self
+            .records
+            .lock()
+            .unwrap()
+            .values()
+            .find(|record| record.node_id == node_id && record.id == installation_id)
+            .map(|record| domain::ExtensionDeletionDecision {
+                deletable: !record.is_current && !record.is_system_reserved,
+                reasons: if record.is_current {
+                    vec!["current_version".to_string()]
+                } else {
+                    Vec::new()
+                },
+            }))
     }
 }
 
@@ -134,131 +246,6 @@ fn command(
     }
 }
 
-fn legacy_provider_installation(
-    installed_path: &std::path::Path,
-) -> domain::PluginInstallationRecord {
-    let now = OffsetDateTime::now_utc();
-    domain::PluginInstallationRecord {
-        id: Uuid::now_v7(),
-        provider_code: "openai".into(),
-        plugin_id: "openai@1.0.0".into(),
-        plugin_version: "1.0.0".into(),
-        contract_version: "1flowbase.provider/v2".into(),
-        protocol: "stdio_json".into(),
-        display_name: "OpenAI".into(),
-        source_kind: "official_registry".into(),
-        trust_level: "verified_official".into(),
-        verification_status: domain::PluginVerificationStatus::Valid,
-        desired_state: domain::PluginDesiredState::ActiveRequested,
-        artifact_status: domain::PluginArtifactStatus::Ready,
-        runtime_status: domain::PluginRuntimeStatus::Active,
-        availability_status: domain::PluginAvailabilityStatus::Available,
-        package_path: None,
-        installed_path: installed_path.display().to_string(),
-        checksum: Some(checksum(b"legacy-provider")),
-        manifest_fingerprint: Some(checksum(b"legacy-manifest")),
-        signature_status: Some("verified".into()),
-        signature_algorithm: Some("ed25519".into()),
-        signing_key_id: Some("official-key-2026-04".into()),
-        last_load_error: None,
-        metadata_json: serde_json::json!({ "plugin_type": "model_provider" }),
-        created_by: Uuid::now_v7(),
-        created_at: now,
-        updated_at: now,
-    }
-}
-
-const LEGACY_PROVIDER_MANIFEST: &str = r#"manifest_version: 1
-plugin_id: openai
-version: 1.0.0
-vendor: taichuy
-display_name: OpenAI
-description: OpenAI model provider
-source_kind: official_registry
-trust_level: verified_official
-consumption_kind: runtime_extension
-execution_mode: process_per_call
-slot_codes:
-  - model_provider
-binding_targets:
-  - workspace
-selection_mode: assignment_then_select
-minimum_host_version: 0.3.1
-contract_version: 1flowbase.provider/v2
-schema_version: 1flowbase.plugin.manifest/v1
-permissions:
-  network: outbound_only
-  secrets: provider_instance_only
-  storage: none
-  mcp: none
-  subprocess: deny
-runtime:
-  protocol: stdio_json
-  entry: bin/openai-provider
-  capabilities: []
-node_contributions: []
-"#;
-
-#[tokio::test]
-async fn root_1545_remediation_adopts_legacy_provider_in_place_idempotently() {
-    let root = test_root("legacy-adoption");
-    let legacy_path = root.join("installed/openai/1.0.0");
-    tokio::fs::create_dir_all(&legacy_path).await.unwrap();
-    tokio::fs::write(legacy_path.join("manifest.yaml"), LEGACY_PROVIDER_MANIFEST)
-        .await
-        .unwrap();
-    tokio::fs::write(
-        legacy_path.join(".1flowbase-artifact.json"),
-        br#"{"plugin_id":"openai@1.0.0","version":"1.0.0"}"#,
-    )
-    .await
-    .unwrap();
-    let manifest_before = tokio::fs::read(legacy_path.join("manifest.yaml"))
-        .await
-        .unwrap();
-    let installation = legacy_provider_installation(&legacy_path);
-    let repository = MemoryExtensionInstallationRepository::default();
-    let service = ExtensionInstallationService::new(repository.clone(), &root);
-
-    let first = service
-        .adopt_plugin_installations("node-a", std::slice::from_ref(&installation))
-        .await
-        .unwrap();
-    let second = service
-        .adopt_plugin_installations("node-a", std::slice::from_ref(&installation))
-        .await
-        .unwrap();
-
-    assert_eq!(first.adopted, 1);
-    assert_eq!(first.already_present, 0);
-    assert!(first.warnings.is_empty());
-    assert_eq!(second.adopted, 0);
-    assert_eq!(second.already_present, 1);
-    assert!(second.warnings.is_empty());
-    let records = service.list_installed_for_node("node-a").await.unwrap();
-    assert_eq!(records.len(), 1);
-    assert_eq!(records[0].identity.category.as_str(), "runtime-extensions");
-    assert_eq!(records[0].identity.organization, "taichuy");
-    assert_eq!(records[0].identity.artifact_id, "openai");
-    assert_eq!(records[0].identity.version, "1.0.0");
-    assert_eq!(records[0].local_path, installation.installed_path);
-    assert_eq!(records[0].source, "official_registry");
-    assert_eq!(records[0].trust, "official");
-    assert_eq!(
-        records[0].receipt["plugin_installation_id"],
-        installation.id.to_string()
-    );
-    assert_eq!(
-        tokio::fs::read(legacy_path.join("manifest.yaml"))
-            .await
-            .unwrap(),
-        manifest_before
-    );
-    assert!(!root.join("installed/runtime-extensions").exists());
-
-    let _ = tokio::fs::remove_dir_all(root).await;
-}
-
 #[tokio::test]
 async fn root_1545_ac3_all_six_categories_install_into_canonical_local_truth() {
     let root = test_root("six-categories");
@@ -284,9 +271,10 @@ async fn root_1545_ac3_all_six_categories_install_into_canonical_local_truth() {
         let ExtensionArtifactInstallOutcome::Installed { installation, .. } = outcome else {
             panic!("verified fixture should install without a warning challenge");
         };
-        assert!(PathBuf::from(&installation.local_path).is_file());
-        assert!(installation.local_path.contains(category.as_str()));
-        assert!(installation.local_path.contains("@taichuy"));
+        let local_path = installation.local_path.as_deref().unwrap();
+        assert!(PathBuf::from(local_path).is_file());
+        assert!(local_path.contains(category.as_str()));
+        assert!(local_path.contains("@taichuy"));
     }
 
     assert_eq!(
@@ -326,18 +314,35 @@ async fn root_1545_ac4_local_artifact_wins_and_duplicate_install_is_idempotent()
     };
     assert!(local_artifact_was_present);
     assert_eq!(first.id, second.id);
-    assert_eq!(
-        tokio::fs::read(&second.local_path).await.unwrap(),
-        b"local-debug"
-    );
+    let second_path = second.local_path.as_deref().unwrap();
+    assert_eq!(tokio::fs::read(second_path).await.unwrap(), b"local-debug");
 
-    tokio::fs::remove_file(&second.local_path).await.unwrap();
+    tokio::fs::remove_file(second_path).await.unwrap();
+    let inventory = service.list_installed_for_node("node-a").await.unwrap();
+    assert_eq!(inventory.len(), 1, "ordinary inventory is DB-only");
+    assert_eq!(
+        inventory[0].status,
+        domain::ExtensionInstallationStatus::Installed
+    );
+    assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 1);
     assert!(service
         .list_installed_for_node("node-a")
         .await
         .unwrap()
         .is_empty());
+    tokio::fs::write(second_path, b"corrupted").await.unwrap();
     assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 1);
+    assert!(service
+        .list_installed_for_node("node-a")
+        .await
+        .unwrap()
+        .is_empty());
+    tokio::fs::write(second_path, b"local-debug").await.unwrap();
+    assert_eq!(service.reconcile_node_inventory("node-a").await.unwrap(), 0);
+    assert_eq!(
+        service.list_installed_for_node("node-a").await.unwrap()[0].status,
+        domain::ExtensionInstallationStatus::Installed
+    );
     let _ = tokio::fs::remove_dir_all(root).await;
 }
 
@@ -417,8 +422,10 @@ async fn root_1545_ac4_rejects_path_traversal_before_writing() {
 #[test]
 fn root_1545_d4_ac_13_groups_installed_versions_by_stable_family_identity() {
     let now = OffsetDateTime::now_utc();
+    let mut explicit_current = installed_record("anthropic", "0.1.18", now);
+    explicit_current.is_current = true;
     let families = group_installed_extension_families([
-        installed_record("anthropic", "0.1.18", now),
+        explicit_current,
         installed_record("deepseek", "0.1.15", now),
         installed_record("anthropic", "0.1.23", now - time::Duration::DAY),
     ]);
@@ -428,19 +435,37 @@ fn root_1545_d4_ac_13_groups_installed_versions_by_stable_family_identity() {
         families[0].catalog_id(),
         "runtime-extensions:taichuy/anthropic"
     );
-    assert_eq!(families[0].current.identity.version, "0.1.23");
+    assert_eq!(families[0].current.identity.version, "0.1.18");
     assert_eq!(
         families[0]
             .installed_versions
             .iter()
             .map(|record| record.identity.version.as_str())
             .collect::<Vec<_>>(),
-        vec!["0.1.23", "0.1.18"]
+        vec!["0.1.18", "0.1.23"]
     );
     assert_eq!(
         families[1].catalog_id(),
         "runtime-extensions:taichuy/deepseek"
     );
+}
+
+#[test]
+fn ac_001_installed_families_exclude_missing_history_and_all_missing_families() {
+    let now = OffsetDateTime::now_utc();
+    let installed = installed_record("anthropic", "1.0.0", now);
+    let mut missing_newer = installed_record("anthropic", "2.0.0", now);
+    missing_newer.status = domain::ExtensionInstallationStatus::Missing;
+    missing_newer.is_current = true;
+    let mut all_missing = installed_record("deepseek", "1.0.0", now);
+    all_missing.status = domain::ExtensionInstallationStatus::Missing;
+
+    let families = group_installed_extension_families([installed, missing_newer, all_missing]);
+
+    assert_eq!(families.len(), 1);
+    assert_eq!(families[0].current.identity.artifact_id, "anthropic");
+    assert_eq!(families[0].current.identity.version, "1.0.0");
+    assert_eq!(families[0].installed_versions.len(), 1);
 }
 
 fn installed_record(
@@ -455,20 +480,23 @@ fn installed_record(
             organization: "taichuy".to_string(),
             artifact_id: artifact_id.to_string(),
             version: version.to_string(),
-            node_id: "node-a".to_string(),
         },
-        source: "official_registry".to_string(),
-        trust: "official".to_string(),
-        local_path: format!("/tmp/{artifact_id}/{version}"),
-        checksum: "sha256:fixture".to_string(),
+        source_kind: "official_registry".to_string(),
+        trust_level: "official".to_string(),
+        expected_checksum: Some("sha256:fixture".to_string()),
         signature_status: domain::ExtensionSignatureStatus::Verified,
         signature_algorithm: Some("ed25519".to_string()),
         signing_key_id: Some("official-key".to_string()),
         warnings: Vec::new(),
         receipt: serde_json::json!({}),
         application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
+        is_system_reserved: false,
+        node_id: "node-a".to_string(),
+        local_path: Some(format!("/tmp/{artifact_id}/{version}")),
+        local_checksum: Some("sha256:fixture".to_string()),
         status: domain::ExtensionInstallationStatus::Installed,
-        installed_by: Uuid::now_v7(),
+        is_current: false,
+        created_by: Uuid::now_v7(),
         created_at: updated_at,
         updated_at,
     }

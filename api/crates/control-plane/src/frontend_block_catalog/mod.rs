@@ -72,14 +72,18 @@ pub struct FrontendComponentModuleAsset {
 
 pub struct FrontendComponentCatalogService<R> {
     repository: R,
+    node_id: String,
 }
 
 impl<R> FrontendComponentCatalogService<R>
 where
     R: FrontendBlockCatalogRepository,
 {
-    pub fn new(repository: R) -> Self {
-        Self { repository }
+    pub fn new(repository: R, node_id: impl Into<String>) -> Self {
+        Self {
+            repository,
+            node_id: node_id.into(),
+        }
     }
 
     pub async fn list_component_capabilities(
@@ -144,7 +148,7 @@ where
     async fn load_entries(&self, workspace_id: Uuid) -> Result<Vec<FrontendComponentCapability>> {
         let blocks = self
             .repository
-            .list_workspace_frontend_blocks(workspace_id)
+            .list_workspace_frontend_blocks(&self.node_id, workspace_id)
             .await?;
         let mut entries = Vec::new();
         for block in blocks {
@@ -184,7 +188,7 @@ where
     ) -> Result<Option<FrontendComponentModuleAsset>> {
         let blocks = self
             .repository
-            .list_workspace_frontend_blocks(query.workspace_id)
+            .list_workspace_frontend_blocks(&self.node_id, query.workspace_id)
             .await?
             .into_iter();
         let registered = blocks
@@ -204,7 +208,17 @@ where
         let Some(installation) = self.repository.get_installation(installation_id).await? else {
             return Ok(None);
         };
-        let root = PathBuf::from(installation.installed_path);
+        let Some(artifact) = self
+            .repository
+            .get_artifact_instance(&self.node_id, installation.id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let Some(local_path) = artifact.local_path else {
+            return Ok(None);
+        };
+        let root = PathBuf::from(local_path);
         let registered = plugin_framework::FrontendModuleAssetManifest {
             path: asset.path,
             role: match asset.role {
@@ -261,14 +275,18 @@ pub struct FrontendBlockCatalogView {
 
 pub struct FrontendBlockCatalogService<R> {
     repository: R,
+    node_id: String,
 }
 
 impl<R> FrontendBlockCatalogService<R>
 where
     R: AuthRepository + FrontendBlockCatalogRepository + RoleConsolePolicyReader,
 {
-    pub fn new(repository: R) -> Self {
-        Self { repository }
+    pub fn new(repository: R, node_id: impl Into<String>) -> Self {
+        Self {
+            repository,
+            node_id: node_id.into(),
+        }
     }
 
     pub async fn list_frontend_blocks(
@@ -297,7 +315,7 @@ where
         Ok(FrontendBlockCatalogView {
             entries: self
                 .repository
-                .list_workspace_frontend_blocks(actor.current_workspace_id)
+                .list_workspace_frontend_blocks(&self.node_id, actor.current_workspace_id)
                 .await?,
         })
     }

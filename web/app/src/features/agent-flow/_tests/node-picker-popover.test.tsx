@@ -7,92 +7,96 @@ import { describe, expect, test, vi } from 'vitest';
 import { NodePickerPopover } from '../components/node-picker/NodePickerPopover';
 import { calculateNodePickerMaxHeight } from '../components/node-picker/node-picker-layout';
 import {
-  BUILTIN_NODE_PICKER_OPTIONS,
+  buildNodePickerOptions,
   type NodePickerOption
 } from '../lib/plugin-node-definitions';
+import '../../workflow/register';
 import {
-  WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS,
-  buildWorkflowNodePickerOptions
-} from '../../workflow/lib/picker-options';
+  createBuiltinCatalogNode,
+  createNodeFieldContract,
+  createPluginCatalogNode,
+  createPluginNodeIdentity
+} from './fixtures/application-node-catalog';
 
-const pluginOptions: NodePickerOption[] = [
+const agentBuiltinOptions = buildNodePickerOptions([
+  createBuiltinCatalogNode('start', {
+    title: 'Start',
+    category: 'io'
+  }),
+  createBuiltinCatalogNode('llm', {
+    title: 'LLM',
+    description: 'Server LLM description',
+    category: 'generation',
+    field_contract: createNodeFieldContract({
+      input_fields: [
+        {
+          key: 'bindings.prompt_messages',
+          description: 'Prompt messages',
+          required: true,
+          value_types: ['prompt_messages'],
+          allowed_values: [],
+          applicability: null
+        }
+      ]
+    })
+  }),
+  createBuiltinCatalogNode('if_else', {
+    title: 'If / Else',
+    category: 'control'
+  }),
+  createBuiltinCatalogNode('variable_assigner', {
+    title: 'Variable Assigner',
+    category: 'data'
+  }),
+  createBuiltinCatalogNode('http_request', {
+    title: 'HTTP Request',
+    category: 'external'
+  })
+]);
+
+const workflowBuiltinOptions = buildNodePickerOptions([
+  createBuiltinCatalogNode('workflow_start', {
+    title: 'Workflow Start',
+    category: 'io'
+  }),
+  createBuiltinCatalogNode('workflow_end', {
+    title: 'Workflow End',
+    category: 'io'
+  }),
+  createBuiltinCatalogNode('llm', {
+    title: 'LLM',
+    category: 'generation'
+  }),
+  createBuiltinCatalogNode('code', {
+    title: 'Code',
+    category: 'data'
+  })
+]);
+
+const readyPluginNode = createPluginCatalogNode();
+const unavailablePluginNode = createPluginCatalogNode(
+  createPluginNodeIdentity({
+    installation_id: 'installation-2',
+    provider_code: 'sql_pack',
+    plugin_unique_identifier: 'sql_pack',
+    package_id: 'sql_pack@0.1.0',
+    plugin_id: 'sql_pack@0.1.0',
+    contribution_code: 'sql_exporter',
+    title: 'SQL Exporter',
+    description: 'Export rows to sql'
+  }),
   {
-    kind: 'plugin_contribution',
-    label: 'OpenAI Prompt',
-    disabled: false,
-    disabledReason: null,
-    contribution: {
-      installation_id: 'installation-1',
-      provider_code: 'prompt_pack',
-      plugin_id: 'prompt_pack@0.1.0',
-      plugin_version: '0.1.0',
-      contribution_code: 'openai_prompt',
-      node_shell: 'action',
-      plugin_unique_identifier: 'prompt_pack',
-      package_id: 'prompt_pack@0.1.0',
-      contribution_checksum: 'sha256:openai-prompt',
-      compiled_contribution_hash: 'sha256:compiled-openai-prompt',
-      category: 'generation',
-      title: 'OpenAI Prompt',
-      description: 'Generate prompt output',
-      dependency_status: 'ready',
-      schema_version: '1flowbase.node-contribution/v2',
-      output_schema_snapshot: {
-        outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
-      },
-      experimental: false,
-      icon: 'sparkles',
-      schema_ui: {},
-      output_schema: {
-        outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
-      },
-      side_effect_policy: 'external_read',
-      infra_contracts: [],
-      required_auth: [],
-      visibility: 'public',
-      dependency_installation_kind: 'model_provider',
-      dependency_plugin_version_range: '^0.1.0'
-    }
-  },
-  {
-    kind: 'plugin_contribution',
-    label: 'SQL Exporter',
-    disabled: true,
-    disabledReason: '缺少依赖插件',
-    contribution: {
-      installation_id: 'installation-2',
-      provider_code: 'sql_pack',
-      plugin_id: 'sql_pack@0.1.0',
-      plugin_version: '0.1.0',
-      contribution_code: 'sql_exporter',
-      node_shell: 'action',
-      plugin_unique_identifier: 'sql_pack',
-      package_id: 'sql_pack@0.1.0',
-      contribution_checksum: 'sha256:sql-exporter',
-      compiled_contribution_hash: 'sha256:compiled-sql-exporter',
-      category: 'export',
-      title: 'SQL Exporter',
-      description: 'Export rows to sql',
-      dependency_status: 'missing_plugin',
-      schema_version: '1flowbase.node-contribution/v2',
-      output_schema_snapshot: {
-        outputs: [{ key: 'result', title: 'Result', valueType: 'json' }]
-      },
-      experimental: false,
-      icon: 'database',
-      schema_ui: {},
-      output_schema: {
-        outputs: [{ key: 'result', title: 'Result', valueType: 'json' }]
-      },
-      side_effect_policy: 'external_read',
-      infra_contracts: [],
-      required_auth: [],
-      visibility: 'public',
-      dependency_installation_kind: 'model_provider',
-      dependency_plugin_version_range: '^0.1.0'
-    }
+    title: 'SQL Exporter',
+    description: 'Export rows to sql',
+    runtime_status: 'unavailable',
+    runtime_status_description: '缺少依赖插件',
+    dependency_status: 'missing_plugin'
   }
-];
+);
+const pluginOptions: NodePickerOption[] = buildNodePickerOptions([
+  readyPluginNode,
+  unavailablePluginNode
+]);
 
 describe('NodePickerPopover', () => {
   test('groups built-in nodes by workflow purpose', () => {
@@ -100,6 +104,7 @@ describe('NodePickerPopover', () => {
       <NodePickerPopover
         ariaLabel="在 LLM 后新增节点"
         open
+        options={agentBuiltinOptions}
         onOpenChange={vi.fn()}
         onPickNode={vi.fn()}
       />
@@ -112,7 +117,7 @@ describe('NodePickerPopover', () => {
     expect(screen.getByText('外部能力')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /LLM/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: /变量赋值/i })
+      screen.getByRole('menuitem', { name: /Variable Assigner/i })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: /Parameter Extractor/i })
@@ -133,6 +138,7 @@ describe('NodePickerPopover', () => {
       <NodePickerPopover
         ariaLabel="在 LLM 后新增节点"
         open
+        options={agentBuiltinOptions}
         onOpenChange={vi.fn()}
         onPickNode={vi.fn()}
       />
@@ -152,12 +158,59 @@ describe('NodePickerPopover', () => {
     expect(screen.queryByText('模型与生成')).not.toBeInTheDocument();
   });
 
+  test('searches server field keys and renders the server description', () => {
+    render(
+      <NodePickerPopover
+        ariaLabel="在 LLM 后新增节点"
+        open
+        options={agentBuiltinOptions}
+        onOpenChange={vi.fn()}
+        onPickNode={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索节点' }), {
+      target: { value: 'bindings.prompt_messages' }
+    });
+
+    expect(screen.getByRole('menuitem', { name: 'LLM' })).toBeInTheDocument();
+    expect(screen.getByText('Server LLM description')).toBeInTheDocument();
+  });
+
+  test('shows unavailable built-ins disabled with the server reason', () => {
+    const options = buildNodePickerOptions([
+      createBuiltinCatalogNode('knowledge_retrieval', {
+        title: 'Knowledge Retrieval',
+        category: 'generation',
+        runtime_status: 'unavailable',
+        runtime_status_description: 'Runtime does not execute this node.'
+      })
+    ]);
+
+    render(
+      <NodePickerPopover
+        ariaLabel="在 LLM 后新增节点"
+        open
+        options={options}
+        onOpenChange={vi.fn()}
+        onPickNode={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Knowledge Retrieval' })
+    ).toBeDisabled();
+    expect(
+      screen.getByText('Runtime does not execute this node.')
+    ).toBeInTheDocument();
+  });
+
   test('renders workflow picker options with general execution nodes', () => {
     render(
       <NodePickerPopover
         ariaLabel="在 Workflow 后新增节点"
         open
-        options={WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS}
+        options={workflowBuiltinOptions}
         onOpenChange={vi.fn()}
         onPickNode={vi.fn()}
       />
@@ -169,7 +222,9 @@ describe('NodePickerPopover', () => {
     expect(
       screen.getByRole('menuitem', { name: /Workflow End/i })
     ).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /^LLM$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: /^LLM$/i })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('menuitem', { name: /^Code$/i })
     ).toBeInTheDocument();
@@ -181,23 +236,41 @@ describe('NodePickerPopover', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('appends plugin contributions after workflow builtin options', () => {
-    const [first] = pluginOptions;
+  test('preserves unified catalog order and nested plugin identity', () => {
+    const options = buildNodePickerOptions([
+      createBuiltinCatalogNode('workflow_start', {
+        title: 'Workflow Start',
+        category: 'io'
+      }),
+      readyPluginNode
+    ]);
 
-    if (first.kind !== 'plugin_contribution') {
-      throw new Error('fixture must be a plugin contribution');
-    }
-
-    const options = buildWorkflowNodePickerOptions([first.contribution]);
-
-    expect(
-      options.slice(0, WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS.length)
-    ).toEqual(WORKFLOW_BUILTIN_NODE_PICKER_OPTIONS);
+    expect(options[0]).toMatchObject({
+      kind: 'builtin',
+      type: 'workflow_start'
+    });
     expect(options.at(-1)).toMatchObject({
       kind: 'plugin_contribution',
       label: 'OpenAI Prompt',
-      disabled: false
+      disabled: false,
+      plugin: {
+        contribution_code: 'openai_prompt'
+      }
     });
+  });
+
+  test('keeps the default picker empty without server catalog options', () => {
+    render(
+      <NodePickerPopover
+        ariaLabel="在 LLM 后新增节点"
+        open
+        onOpenChange={vi.fn()}
+        onPickNode={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('暂无内置节点')).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
   });
 
   test('keeps category tabs and search above the scrollable node list', () => {
@@ -205,7 +278,7 @@ describe('NodePickerPopover', () => {
       <NodePickerPopover
         ariaLabel="在 LLM 后新增节点"
         open
-        options={[...BUILTIN_NODE_PICKER_OPTIONS, ...pluginOptions]}
+        options={[...agentBuiltinOptions, ...pluginOptions]}
         onOpenChange={vi.fn()}
         onPickNode={vi.fn()}
       />
@@ -309,6 +382,7 @@ describe('NodePickerPopover', () => {
     expect(
       screen.getByRole('menuitem', { name: /SQL Exporter/i })
     ).toBeDisabled();
+    expect(screen.getByText('缺少依赖插件')).toBeInTheDocument();
   });
 
   test('keeps final picker items clear of the clipped popup edge', () => {
@@ -326,8 +400,8 @@ describe('NodePickerPopover', () => {
     expect(listBlock).toContain(
       'padding-bottom: var(--agent-flow-node-picker-list-bottom-padding, 40px);'
     );
-    expect(listBlock).toContain(
-      'scroll-padding-bottom: var(--agent-flow-node-picker-list-bottom-padding, 40px);'
+    expect(listBlock).toMatch(
+      /scroll-padding-bottom:\s*var\(\s*--agent-flow-node-picker-list-bottom-padding,\s*40px\s*\);/
     );
   });
 

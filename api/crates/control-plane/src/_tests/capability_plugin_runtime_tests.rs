@@ -7,7 +7,9 @@ use control_plane::capability_plugin_runtime::{
     ValidateCapabilityConfigInput,
 };
 use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
+    ExtensionCategory, ExtensionSignatureStatus, LocalPluginInstallationRecord,
+    PluginArtifactInstanceRecord, PluginArtifactInstanceStatus, PluginAvailabilityStatus,
+    PluginDesiredState, PluginRuntimeStatus,
 };
 use domain::{PluginInstallationRecord, PluginVerificationStatus};
 use serde_json::{json, Value};
@@ -59,6 +61,9 @@ async fn capability_runtime_port_returns_execute_payload() {
     let installation_id = Uuid::now_v7();
     let installation = PluginInstallationRecord {
         id: installation_id,
+        scope_id: domain::SYSTEM_SCOPE_ID,
+        category: ExtensionCategory::CapabilityPlugins,
+        organization: "1flowbase".to_string(),
         provider_code: "fixture_provider".to_string(),
         plugin_id: "fixture_capability@0.1.0".to_string(),
         plugin_version: "0.1.0".to_string(),
@@ -69,26 +74,39 @@ async fn capability_runtime_port_returns_execute_payload() {
         trust_level: "unverified".to_string(),
         verification_status: PluginVerificationStatus::Valid,
         desired_state: PluginDesiredState::ActiveRequested,
-        artifact_status: PluginArtifactStatus::Ready,
-        runtime_status: PluginRuntimeStatus::Inactive,
-        availability_status: PluginAvailabilityStatus::InstallIncomplete,
-        package_path: None,
-        installed_path: "/tmp/fixture-capability".to_string(),
-        checksum: None,
-        manifest_fingerprint: None,
-        signature_status: None,
+        expected_checksum: None,
+        signature_status: ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
-        last_load_error: None,
         metadata_json: json!({}),
+        is_system_reserved: false,
         created_by: Uuid::now_v7(),
+        updated_by: None,
         created_at: OffsetDateTime::now_utc(),
         updated_at: OffsetDateTime::now_utc(),
+    };
+    let local_installation = LocalPluginInstallationRecord {
+        installation: installation.clone(),
+        artifact: PluginArtifactInstanceRecord {
+            node_id: "test-node".to_string(),
+            installation_id,
+            local_version: Some("0.1.0".to_string()),
+            local_checksum: None,
+            local_path: Some("/tmp/fixture-capability".to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: PluginAvailabilityStatus::InstallIncomplete,
+            checked_at: OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
+        },
     };
 
     let result = runtime
         .execute_node(ExecuteCapabilityNodeInput {
-            installation: installation.clone(),
+            installation: local_installation,
             contribution_code: "openai_prompt".into(),
             config_payload: json!({ "prompt": "hello" }),
             input_payload: json!({ "query": "hi" }),

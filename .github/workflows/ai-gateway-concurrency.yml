@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 90
     services:
       postgres:
-        image: postgres:16.9
+        image: postgres:18.4
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: 1flowbase

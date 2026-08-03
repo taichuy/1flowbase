@@ -1,4 +1,7 @@
-export { FlowEditorKernel, type FlowEditorKernelSlots } from './components/FlowEditorKernel';
+export {
+  FlowEditorKernel,
+  type FlowEditorKernelSlots
+} from './components/FlowEditorKernel';
 export { createFlowEditorStore, type FlowEditorState } from './store';
 export { FlowEditorStoreProvider } from './store/FlowEditorStoreProvider';
 export { useFlowEditorStore, type FlowEditorStore } from './store/provider';
@@ -13,11 +16,11 @@ export type {
   NodeDefinitionMeta
 } from './authoring/node-definition-types';
 export {
-  buildBuiltinNodePickerOptions,
-  SHARED_EXECUTION_NODE_PICKER_TYPES,
+  toBuiltinNodePickerOption,
   type BuiltinNodePickerOption
 } from './authoring/node-picker';
 export {
+  buildNodePickerOptions,
   getNodePickerOptionDescription,
   getNodePickerOptionKey,
   getNodePickerOptionNodeType,

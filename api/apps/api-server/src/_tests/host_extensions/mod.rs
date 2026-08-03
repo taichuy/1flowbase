@@ -4,5 +4,5 @@ mod host_extension_loader_tests;
 mod host_extensions_builtin_tests;
 mod host_route_registry_tests;
 mod host_worker_registry_tests;
-mod official_agent_flow_template_registry_tests;
+mod official_mcp_bundle_library_tests;
 mod official_plugin_registry_tests;

@@ -24,5 +24,6 @@ mod plugin;
 mod protocol_context_migration_tests;
 mod runtime_record_repository_tests;
 mod runtime_registry_health_tests;
+mod unified_extension_installation_migration_tests;
 mod workspace_access_tests;
 mod workspace_scope_tests;

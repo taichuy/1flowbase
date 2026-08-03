@@ -815,7 +815,7 @@ fn resolve_artifact_descriptor(
         serde_json::from_value(entry.download_locator.clone())
             .context("failed to decode official extension download locator")?;
     match locator.kind.as_str() {
-        "repository_file" | "release_asset" => {
+        "repository_file" | "release_asset" | "https" => {
             let url = locator.locator.ok_or_else(|| {
                 anyhow!("official extension download locator has no artifact URL")
             })?;

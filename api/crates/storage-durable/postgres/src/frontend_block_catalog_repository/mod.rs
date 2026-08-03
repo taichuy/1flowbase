@@ -113,6 +113,7 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
 
     async fn list_workspace_frontend_blocks(
         &self,
+        node_id: &str,
         workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
         let rows = sqlx::query(
@@ -136,19 +137,23 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                 reg.permission_secrets,
                 reg.ui_capabilities
             from frontend_block_catalog reg
-            inner join plugin_installations installation
+            inner join extension_installations installation
                 on installation.id = reg.installation_id
+            inner join extension_artifact_instances artifact
+                on artifact.installation_id = installation.id
+               and artifact.node_id = $1
             left join plugin_assignments pa
-                on pa.workspace_id = $1
+                on pa.workspace_id = $2
                and pa.installation_id = reg.installation_id
             where (installation.source_kind = 'builtin'
                or pa.installation_id is not null)
               and installation.verification_status = 'valid'
-              and installation.artifact_status = 'ready'
-              and installation.availability_status = 'available'
+              and artifact.artifact_status = 'ready'
+              and artifact.availability_status = 'available'
             order by reg.title asc, reg.contribution_code asc
             "#,
         )
+        .bind(node_id)
         .bind(workspace_id)
         .fetch_all(self.pool())
         .await?;

@@ -7,8 +7,8 @@ use std::{
 
 use control_plane::ports::ProviderRuntimePort;
 use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
-    PluginRuntimeStatus, PluginVerificationStatus,
+    PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord, PluginRuntimeStatus,
+    PluginVerificationStatus,
 };
 use plugin_framework::{
     error::PluginFrameworkError,
@@ -383,10 +383,13 @@ async fn wait_for_provider_active_streams(provider_host: &Arc<RwLock<ProviderHos
     panic!("expected {count} active provider stream(s)");
 }
 
-fn fixture_installation(package: &TempProviderPackage) -> PluginInstallationRecord {
+fn fixture_installation(package: &TempProviderPackage) -> domain::LocalPluginInstallationRecord {
     let now = OffsetDateTime::now_utc();
-    PluginInstallationRecord {
+    let installation = PluginInstallationRecord {
         id: Uuid::now_v7(),
+        scope_id: domain::SYSTEM_SCOPE_ID,
+        category: domain::ExtensionCategory::RuntimeExtensions,
+        organization: "test".to_string(),
         provider_code: "fixture_provider".to_string(),
         plugin_id: "fixture_provider@0.1.0".to_string(),
         plugin_version: "0.1.0".to_string(),
@@ -397,28 +400,43 @@ fn fixture_installation(package: &TempProviderPackage) -> PluginInstallationReco
         trust_level: "checksum_only".to_string(),
         verification_status: PluginVerificationStatus::Valid,
         desired_state: PluginDesiredState::ActiveRequested,
-        artifact_status: PluginArtifactStatus::Ready,
-        runtime_status: PluginRuntimeStatus::Active,
-        availability_status: PluginAvailabilityStatus::Available,
-        package_path: None,
-        installed_path: package.path().display().to_string(),
-        checksum: None,
-        manifest_fingerprint: None,
-        signature_status: None,
+        expected_checksum: None,
+        signature_status: domain::ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
-        last_load_error: None,
         metadata_json: json!({}),
+        is_system_reserved: false,
         created_by: Uuid::now_v7(),
+        updated_by: None,
         created_at: now,
         updated_at: now,
+    };
+    domain::LocalPluginInstallationRecord {
+        artifact: domain::PluginArtifactInstanceRecord {
+            node_id: "test-node".to_string(),
+            installation_id: installation.id,
+            local_version: Some("0.1.0".to_string()),
+            local_checksum: None,
+            local_path: Some(package.path().display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Active,
+            availability_status: PluginAvailabilityStatus::Available,
+            checked_at: now,
+            last_error: None,
+            is_current: false,
+        },
+        installation,
     }
 }
 
-fn compact_fixture_installation(package: &TempProviderPackage) -> PluginInstallationRecord {
+fn compact_fixture_installation(
+    package: &TempProviderPackage,
+) -> domain::LocalPluginInstallationRecord {
     let mut installation = fixture_installation(package);
-    installation.contract_version = "1flowbase.provider/v2".to_string();
-    installation.protocol = "openai_responses".to_string();
+    installation.installation.contract_version = "1flowbase.provider/v2".to_string();
+    installation.installation.protocol = "openai_responses".to_string();
     installation
 }
 

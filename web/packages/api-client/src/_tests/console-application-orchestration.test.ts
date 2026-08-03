@@ -1,17 +1,16 @@
 import { describe, expect, test, vi } from 'vitest';
+import * as apiClient from '../index';
 import * as transport from '../transport';
 
 import {
-  downloadConsoleOfficialAgentFlowTemplate,
   exportConsoleApplicationArchive,
   importConsoleApplicationArchive,
   importConsoleInstalledApplicationExtension,
-  listConsoleOfficialAgentFlowTemplateCatalog,
   previewConsoleApplicationArchive,
   previewConsoleInstalledApplicationExtension
 } from '../console/application-orchestration';
 
-describe('console application orchestration official template client', () => {
+describe('console application orchestration client', () => {
   vi.spyOn(transport, 'apiFetch').mockImplementation(
     async (input) => input as never
   );
@@ -67,16 +66,18 @@ describe('console application orchestration official template client', () => {
     });
   });
 
-  test('points official template catalog at the paged backend route', async () => {
-    await expect(
-      listConsoleOfficialAgentFlowTemplateCatalog(
-        { cursor: '2' },
-        'https://api.flowbase.test'
-      )
-    ).resolves.toMatchObject({
-      path: '/api/console/applications/orchestration/templates/official-catalog?cursor=2',
-      baseUrl: 'https://api.flowbase.test'
-    });
+  test('does not export removed official Agent Flow route clients', () => {
+    for (const exportName of [
+      'listConsoleOfficialAgentFlowTemplateCatalog',
+      'syncConsoleOfficialAgentFlowTemplate',
+      'previewConsoleOfficialAgentFlowTemplate',
+      'importConsoleOfficialAgentFlowTemplate',
+      'switchConsoleOfficialAgentFlowTemplateCurrent',
+      'deleteConsoleOfficialAgentFlowTemplateRelease',
+      'repairConsoleOfficialAgentFlowTemplateRelease'
+    ]) {
+      expect(apiClient).not.toHaveProperty(exportName);
+    }
   });
 
   test('previews and imports the exact installed Agent Flow extension', async () => {
@@ -113,18 +114,6 @@ describe('console application orchestration official template client', () => {
         }
       },
       csrfToken: 'csrf-123',
-      baseUrl: 'https://api.flowbase.test'
-    });
-  });
-
-  test('downloads official templates through the backend route', async () => {
-    await expect(
-      downloadConsoleOfficialAgentFlowTemplate(
-        'customer/support bot',
-        'https://api.flowbase.test'
-      )
-    ).resolves.toMatchObject({
-      path: '/api/console/applications/orchestration/templates/official/customer%2Fsupport%20bot',
       baseUrl: 'https://api.flowbase.test'
     });
   });

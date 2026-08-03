@@ -1,11 +1,9 @@
 use control_plane::ports::{
     CreatePluginAssignmentInput, FrontendBlockCatalogRegistryInput, FrontendBlockCatalogRepository,
-    PluginRepository, ReplaceInstallationFrontendBlocksInput, UpsertPluginInstallationInput,
+    PluginRepository, ReplaceInstallationFrontendBlocksInput, UpsertPluginArtifactInstanceInput,
+    UpsertPluginInstallationInput,
 };
-use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
-    PluginVerificationStatus,
-};
+use domain::{PluginDesiredState, PluginVerificationStatus};
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -149,6 +147,8 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_frontend_blocks".into(),
             plugin_id: "fixture_frontend_blocks@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -159,19 +159,33 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: "/tmp/plugins/fixture_frontend_blocks/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    PluginRepository::upsert_artifact_instance(
+        &store,
+        &UpsertPluginArtifactInstanceInput {
+            node_id: "test-node".into(),
+            installation_id: installation.id,
+            local_version: Some(installation.plugin_version.clone()),
+            local_checksum: None,
+            local_path: Some("/tmp/fixture-frontend-blocks".into()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: domain::PluginRuntimeStatus::Active,
+            availability_status: domain::PluginAvailabilityStatus::Available,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: true,
         },
     )
     .await
@@ -224,25 +238,32 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     .unwrap();
 
     assert!(
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
-            .await
-            .unwrap()
-            .is_empty()
+        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+            &store,
+            "test-node",
+            workspace.id
+        )
+        .await
+        .unwrap()
+        .is_empty()
     );
 
-    sqlx::query("update plugin_installations set source_kind = 'builtin' where id = $1")
+    sqlx::query("update extension_installations set source_kind = 'builtin' where id = $1")
         .bind(installation.id)
         .execute(store.pool())
         .await
         .unwrap();
-    let builtin_entries =
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
-            .await
-            .unwrap();
+    let builtin_entries = FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+        &store,
+        "test-node",
+        workspace.id,
+    )
+    .await
+    .unwrap();
     assert_eq!(builtin_entries.len(), 1);
     assert_eq!(builtin_entries[0].contribution_code, "hero_banner");
 
-    sqlx::query("update plugin_installations set source_kind = 'uploaded' where id = $1")
+    sqlx::query("update extension_installations set source_kind = 'uploaded' where id = $1")
         .bind(installation.id)
         .execute(store.pool())
         .await
@@ -260,10 +281,13 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     .await
     .unwrap();
 
-    let entries =
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
-            .await
-            .unwrap();
+    let entries = FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+        &store,
+        "test-node",
+        workspace.id,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].contribution_code, "hero_banner");
@@ -348,16 +372,20 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     .await;
     assert!(unsupported_language.is_err());
 
-    sqlx::query("update plugin_installations set verification_status = 'invalid' where id = $1")
+    sqlx::query("update extension_installations set verification_status = 'invalid' where id = $1")
         .bind(installation.id)
         .execute(store.pool())
         .await
         .unwrap();
     assert!(
-        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(&store, workspace.id)
-            .await
-            .unwrap()
-            .is_empty(),
+        FrontendBlockCatalogRepository::list_workspace_frontend_blocks(
+            &store,
+            "test-node",
+            workspace.id
+        )
+        .await
+        .unwrap()
+        .is_empty(),
         "D2-AC-004: unverified installations must not publish registered module assets"
     );
 }

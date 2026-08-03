@@ -21,6 +21,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { McpTemplateLibrary } from '../../components/mcp-management/bundle/McpTemplateLibrary';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -29,6 +30,7 @@ import {
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
   checkSettingsExtensionUpdates,
+  deleteSettingsInstalledExtension,
   fetchSettingsExtensionCatalog,
   fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
@@ -41,6 +43,7 @@ import {
   type SettingsExtensionCenterCategory,
   type SettingsInstalledExtension
 } from '../../api/extensions';
+import { settingsI18nCatalogQueryKey } from '../../api/i18n-catalog';
 import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
 import {
   ExtensionApplicationFlow,
@@ -91,7 +94,7 @@ function extensionHostRequirement(row: ExtensionRow) {
 }
 
 function extensionSource(row: ExtensionRow) {
-  return isInstalledRow(row) ? row.source : row.catalog_source;
+  return isInstalledRow(row) ? row.source_kind : row.catalog_source;
 }
 
 function extensionDescription(row: ExtensionRow) {
@@ -122,7 +125,53 @@ function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
 }
 
-export function SettingsExtensionCenterSection({
+function McpExtensionCenterSection() {
+  const { t } = useTranslation('settings');
+  const navigate = useNavigate();
+
+  return (
+    <SettingsSectionSurface heightMode="fill">
+      <Flex vertical gap={16}>
+        <Tabs
+          activeKey="mcp"
+          tabBarExtraContent={
+            <Typography.Link href="/settings/mcp-management?tab=instances">
+              {t('auto.go_to_mcp_management')}
+            </Typography.Link>
+          }
+          onChange={(key) => {
+            void navigate({
+              to: '/settings/extension-center/$category',
+              params: { category: key },
+              search: { cursor: undefined }
+            });
+          }}
+          items={[
+            { key: 'installed', label: t('auto.installed_extensions') },
+            ...CATEGORIES.map((category) => ({
+              key: category,
+              label: category
+            }))
+          ]}
+        />
+        <McpTemplateLibrary variant="compact" />
+      </Flex>
+    </SettingsSectionSurface>
+  );
+}
+
+export function SettingsExtensionCenterSection(props: {
+  category: SettingsExtensionCenterCategory;
+  cursor?: string;
+}) {
+  if (props.category === 'mcp') {
+    return <McpExtensionCenterSection />;
+  }
+
+  return <GenericExtensionCenterSection {...props} />;
+}
+
+function GenericExtensionCenterSection({
   category: activeTab,
   cursor
 }: {
@@ -137,7 +186,7 @@ export function SettingsExtensionCenterSection({
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {}
   );
-  const [resolvingUpdateKey, setResolvingUpdateKey] = useState<string | null>(
+  const [activeOperationKey, setActiveOperationKey] = useState<string | null>(
     null
   );
   const [applicationTarget, setApplicationTarget] =
@@ -182,10 +231,15 @@ export function SettingsExtensionCenterSection({
         : catalogQuery.data?.category === activeTab
           ? catalogQuery.data.entries
           : [],
-    [activeTab, catalogQuery.data?.entries, installedQuery.data?.entries]
+    [
+      activeTab,
+      catalogQuery.data?.category,
+      catalogQuery.data?.entries,
+      installedQuery.data?.entries
+    ]
   );
 
-  useEffect(() => {
+  const checkVisibleUpdates = useCallback(async () => {
     if (!csrfToken || rows.length === 0) return;
 
     const checkableRows = rows.filter(
@@ -199,13 +253,13 @@ export function SettingsExtensionCenterSection({
     }
     if (groups.size === 0) return;
 
-    const checking = Object.fromEntries(
-      checkableRows.map((row) => [extensionKey(row), 'checking' as const])
-    );
-    setUpdateStates((current) => ({ ...current, ...checking }));
-
-    let cancelled = false;
-    void Promise.all(
+    setUpdateStates((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        checkableRows.map((row) => [extensionKey(row), 'checking' as const])
+      )
+    }));
+    const results = await Promise.all(
       [...groups.entries()].map(async ([category, entries]) => {
         try {
           const result = await checkSettingsExtensionUpdates(
@@ -236,26 +290,20 @@ export function SettingsExtensionCenterSection({
           );
         }
       })
-    ).then((results) => {
-      if (!cancelled) {
-        setUpdateStates((current) => ({
-          ...current,
-          ...Object.fromEntries(results.flat())
-        }));
-      }
-    });
+    );
+    setUpdateStates((current) => ({
+      ...current,
+      ...Object.fromEntries(results.flat())
+    }));
+  }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, rows]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, cursor, rows]);
-
-  const invalidateExtensionAndMcpState = useCallback(async () => {
+  const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: ['settings', 'extension-center']
       }),
-      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
+      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsI18nCatalogQueryKey })
     ]);
   }, [queryClient]);
   const closeApplicationFlow = useCallback(
@@ -302,6 +350,7 @@ export function SettingsExtensionCenterSection({
           ),
           okText: t('auto.confirm'),
           cancelText: t('auto.cancel'),
+          onCancel: () => setActiveOperationKey(null),
           onOk: () =>
             operationMutation.mutateAsync({
               operation,
@@ -331,19 +380,38 @@ export function SettingsExtensionCenterSection({
         return;
       }
 
-      message.success(t('auto.extension_operation_completed'));
-      await invalidateExtensionAndMcpState();
-      if (
-        result &&
-        ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
-          result.application_action
-        )
-      ) {
-        setApplicationTarget({
-          installationId: result.installation.id,
-          action: result.application_action
-        });
+      try {
+        message.success(t('auto.extension_operation_completed'));
+        await invalidateExtensionApplicationState();
+        if (
+          result &&
+          ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
+            result.application_action
+          )
+        ) {
+          setApplicationTarget({
+            installationId: result.installation.id,
+            action: result.application_action
+          });
+        }
+      } finally {
+        setActiveOperationKey(null);
       }
+    },
+    onError: () => {
+      setActiveOperationKey(null);
+      message.error(t('auto.extension_operation_failed'));
+    }
+  });
+  const deleteVersionMutation = useMutation({
+    mutationFn: async (installationId: string) => {
+      if (!csrfToken) throw new Error('csrf token required');
+      return deleteSettingsInstalledExtension(installationId, csrfToken);
+    },
+    onSuccess: async () => {
+      setSelected(null);
+      message.success(t('auto.extension_operation_completed'));
+      await invalidateExtensionApplicationState();
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
@@ -351,6 +419,7 @@ export function SettingsExtensionCenterSection({
 
   const submitOperation = useCallback(
     (operation: ExtensionOperation) => {
+      setActiveOperationKey(operation.entry.id);
       void runOperation({ operation });
     },
     [runOperation]
@@ -359,7 +428,7 @@ export function SettingsExtensionCenterSection({
   const resolveInstalledUpdate = useCallback(
     async (row: SettingsInstalledExtension) => {
       const key = extensionKey(row);
-      setResolvingUpdateKey(key);
+      setActiveOperationKey(key);
       try {
         const entry = await fetchSettingsExtensionCatalogEntry(
           row.category,
@@ -371,9 +440,8 @@ export function SettingsExtensionCenterSection({
           ...current,
           [key]: 'unknown_error'
         }));
+        setActiveOperationKey(null);
         message.error(t('auto.extension_operation_failed'));
-      } finally {
-        setResolvingUpdateKey(null);
       }
     },
     [submitOperation, t]
@@ -438,9 +506,10 @@ export function SettingsExtensionCenterSection({
       },
       {
         title: t('auto.trust'),
-        dataIndex: 'trust',
         key: 'trust',
-        width: 120
+        width: 120,
+        render: (_, row) =>
+          isInstalledRow(row) ? row.trust_level : row.trust
       },
       {
         title: t('auto.operation'),
@@ -460,7 +529,9 @@ export function SettingsExtensionCenterSection({
                       ? t('auto.update_available')
                       : updateState === 'current'
                         ? t('auto.currently_latest_version')
-                        : t('auto.update_check_failed')
+                        : updateState === 'unknown_error'
+                          ? t('auto.update_check_failed')
+                          : t('auto.check_updates')
                   }
                 >
                   <Badge
@@ -470,15 +541,22 @@ export function SettingsExtensionCenterSection({
                         ? '#ffba00'
                         : updateState === 'current'
                           ? 'transparent'
-                          : '#fb565b'
+                          : updateState === 'unknown_error'
+                            ? '#fb565b'
+                            : 'transparent'
                     }
                   >
                     <Button
                       type="link"
-                      loading={resolvingUpdateKey === key}
+                      loading={activeOperationKey === key}
+                      disabled={
+                        updateState !== 'update_available' ||
+                        (activeOperationKey !== null &&
+                          activeOperationKey !== key)
+                      }
                       onClick={() => void resolveInstalledUpdate(row)}
                     >
-                      {t('auto.update')}
+                      {t('auto.sync_latest')}
                     </Button>
                   </Badge>
                 </Tooltip>
@@ -529,7 +607,10 @@ export function SettingsExtensionCenterSection({
               >
                 <Button
                   type="link"
-                  loading={operationMutation.isPending}
+                  loading={activeOperationKey === key}
+                  disabled={
+                    activeOperationKey !== null && activeOperationKey !== key
+                  }
                   onClick={() =>
                     submitOperation({
                       kind: 'catalog',
@@ -557,9 +638,8 @@ export function SettingsExtensionCenterSection({
       }
     ],
     [
-      operationMutation.isPending,
+      activeOperationKey,
       resolveInstalledUpdate,
-      resolvingUpdateKey,
       submitOperation,
       t,
       updateStates
@@ -588,6 +668,21 @@ export function SettingsExtensionCenterSection({
       <Flex vertical gap={16}>
         <Tabs
           activeKey={activeTab}
+          tabBarExtraContent={
+            activeTab === 'mcp' ? (
+              <Typography.Link href="/settings/mcp-management?tab=instances">
+                {t('auto.go_to_mcp_management')}
+              </Typography.Link>
+            ) : activeTab === 'i18n' ? (
+              <Typography.Link href="/settings/i18n">
+                {t('auto.go_to_language_management')}
+              </Typography.Link>
+            ) : activeTab === 'agent-flow' ? (
+              <Typography.Link href="/templates">
+                {t('auto.go_to_agent_flow_templates')}
+              </Typography.Link>
+            ) : null
+          }
           onChange={(key) => {
             void navigate({
               to: '/settings/extension-center/$category',
@@ -612,6 +707,15 @@ export function SettingsExtensionCenterSection({
           loading={tableLoading}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
+              <Button
+                disabled={rows.length === 0}
+                loading={Object.values(updateStates).some(
+                  (state) => state === 'checking'
+                )}
+                onClick={() => void checkVisibleUpdates()}
+              >
+                {t('auto.check_updates')}
+              </Button>
               <DataTableColumnSettings
                 columns={columns}
                 configuration={tableConfiguration}
@@ -669,7 +773,7 @@ export function SettingsExtensionCenterSection({
                 {extensionSource(selected)}
               </Descriptions.Item>
               <Descriptions.Item label={t('auto.trust')}>
-                {selected.trust}
+                {isInstalledRow(selected) ? selected.trust_level : selected.trust}
               </Descriptions.Item>
             </Descriptions>
             {isInstalledRow(selected) ? (
@@ -682,28 +786,66 @@ export function SettingsExtensionCenterSection({
                 }
                 dataSource={selected.installed_versions}
                 renderItem={(installedVersion) => (
-                  <List.Item>
+                  <List.Item
+                    actions={[
+                      <Tooltip
+                        key="delete"
+                        title={
+                          installedVersion.deletable
+                            ? undefined
+                            : installedVersion.delete_reasons.join(', ')
+                        }
+                      >
+                        <Button
+                          type="link"
+                          danger
+                          disabled={!installedVersion.deletable}
+                          loading={
+                            deleteVersionMutation.isPending &&
+                            deleteVersionMutation.variables === installedVersion.id
+                          }
+                          onClick={() =>
+                            Modal.confirm({
+                              title: t('auto.confirm_delete'),
+                              content: installedVersion.version,
+                              okText: t('auto.delete'),
+                              cancelText: t('auto.cancel'),
+                              okButtonProps: { danger: true },
+                              onOk: () =>
+                                deleteVersionMutation.mutateAsync(
+                                  installedVersion.id
+                                )
+                            })
+                          }
+                        >
+                          {t('auto.delete')}
+                        </Button>
+                      </Tooltip>
+                    ]}
+                  >
                     <Descriptions column={1} size="small">
                       <Descriptions.Item label={t('auto.current_version')}>
                         {installedVersion.version}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.source')}>
-                        {installedVersion.source}
+                        {installedVersion.source_kind}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.trust')}>
-                        {installedVersion.trust}
+                        {installedVersion.trust_level}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.signature_status')}>
                         {installedVersion.signature_status}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.checksum')}>
                         <Typography.Text copyable ellipsis>
-                          {installedVersion.checksum}
+                          {installedVersion.local_checksum ??
+                            installedVersion.expected_checksum ??
+                            '—'}
                         </Typography.Text>
                       </Descriptions.Item>
                       <Descriptions.Item label={t('auto.local_path')}>
                         <Typography.Text copyable ellipsis>
-                          {installedVersion.local_path}
+                          {installedVersion.local_path ?? '—'}
                         </Typography.Text>
                       </Descriptions.Item>
                     </Descriptions>
@@ -718,7 +860,7 @@ export function SettingsExtensionCenterSection({
         target={applicationTarget}
         csrfToken={csrfToken ?? ''}
         onClose={closeApplicationFlow}
-        onApplied={invalidateExtensionAndMcpState}
+        onApplied={invalidateExtensionApplicationState}
       />
     </SettingsSectionSurface>
   );

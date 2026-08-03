@@ -140,8 +140,28 @@ describe('ApplicationManagementPanel', () => {
     );
     applicationsApi.fetchApplicationCatalog.mockResolvedValue({
       types: [
-        { value: 'agent_flow', label: 'AgentFlow' },
-        { value: 'workflow', label: 'Workflow' }
+        {
+          value: 'agent_flow',
+          label: 'AgentFlow',
+          description: 'Build a conversational Agent Flow.'
+        },
+        {
+          value: 'workflow',
+          label: 'Workflow',
+          description: 'Build an extension or scheduled Workflow.'
+        }
+      ],
+      workflow_triggers: [
+        {
+          value: 'extension',
+          label: '扩展接口触发',
+          description: 'Expose the Workflow through /api/ex/.'
+        },
+        {
+          value: 'schedule',
+          label: '定时触发',
+          description: 'Run the Workflow from a disabled-by-default schedule.'
+        }
       ],
       tags: [{ id: 'tag-report', name: '报表', application_count: 1 }]
     });

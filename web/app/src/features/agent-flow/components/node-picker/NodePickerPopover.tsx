@@ -4,7 +4,6 @@ import type { ReactElement, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 import {
-  BUILTIN_NODE_PICKER_OPTIONS,
   getNodePickerOptionDescription,
   getNodePickerOptionKey,
   type NodePickerOption
@@ -25,28 +24,40 @@ interface NodePickerGroup {
 const BUILTIN_NODE_PICKER_GROUPS: NodePickerGroup[] = [
   {
     key: 'io',
-    title: i18nText("agentFlow", "auto.start_stop_output"),
-    description: i18nText("agentFlow", "auto.define_input_entry_final_response"),
+    title: i18nText('agentFlow', 'auto.start_stop_output'),
+    description: i18nText('agentFlow', 'auto.define_input_entry_final_response')
   },
   {
     key: 'generation',
-    title: i18nText("agentFlow", "auto.model_and_generation"),
-    description: i18nText("agentFlow", "auto.invoke_models_retrieve_knowledge_organize_generated_content"),
+    title: i18nText('agentFlow', 'auto.model_and_generation'),
+    description: i18nText(
+      'agentFlow',
+      'auto.invoke_models_retrieve_knowledge_organize_generated_content'
+    )
   },
   {
     key: 'control',
-    title: i18nText("agentFlow", "auto.process_control"),
-    description: i18nText("agentFlow", "auto.branching_sorting_looping_batch_processing"),
+    title: i18nText('agentFlow', 'auto.process_control'),
+    description: i18nText(
+      'agentFlow',
+      'auto.branching_sorting_looping_batch_processing'
+    )
   },
   {
     key: 'data',
-    title: i18nText("agentFlow", "auto.data_processing"),
-    description: i18nText("agentFlow", "auto.read_write_structured_data_maintain_process_variables"),
+    title: i18nText('agentFlow', 'auto.data_processing'),
+    description: i18nText(
+      'agentFlow',
+      'auto.read_write_structured_data_maintain_process_variables'
+    )
   },
   {
     key: 'external',
-    title: i18nText("agentFlow", "auto.external_capabilities"),
-    description: i18nText("agentFlow", "auto.call_interfaces_tools_out_system_capabilities"),
+    title: i18nText('agentFlow', 'auto.external_capabilities'),
+    description: i18nText(
+      'agentFlow',
+      'auto.call_interfaces_tools_out_system_capabilities'
+    )
   }
 ];
 
@@ -67,7 +78,7 @@ export function NodePickerPopover({
   open,
   onOpenChange,
   onPickNode,
-  options = BUILTIN_NODE_PICKER_OPTIONS,
+  options = [],
   buttonClassName,
   buttonContent = '+',
   children,
@@ -75,32 +86,39 @@ export function NodePickerPopover({
 }: NodePickerPopoverProps) {
   const [searchValue, setSearchValue] = useState('');
   const [activeTab, setActiveTab] = useState<NodePickerTab>(() =>
-    options.some((option) => option.kind === 'builtin') ? 'builtin' : 'plugin'
+    options.some((option) => option.kind === 'plugin_contribution') &&
+    !options.some((option) => option.kind === 'builtin')
+      ? 'plugin'
+      : 'builtin'
   );
   const normalizedSearchValue = searchValue.trim().toLowerCase();
   const builtinOptions = options.filter(
     (option): option is BuiltinNodePickerOption => option.kind === 'builtin'
   );
   const pluginOptions = options.filter(
-    (option): option is Extract<NodePickerOption, { kind: 'plugin_contribution' }> =>
+    (
+      option
+    ): option is Extract<NodePickerOption, { kind: 'plugin_contribution' }> =>
       option.kind === 'plugin_contribution'
   );
   const groupedBuiltinOptions = useMemo(
     () =>
       BUILTIN_NODE_PICKER_GROUPS.map((group) => {
-        const groupSearchText = `${group.title} ${group.description}`.toLowerCase();
+        const groupSearchText =
+          `${group.title} ${group.description}`.toLowerCase();
         const groupMatchesSearch =
           normalizedSearchValue.length > 0 &&
           groupSearchText.includes(normalizedSearchValue);
         const groupedOptions = builtinOptions
           .filter((option) => option.category === group.key)
-          .filter((option) =>
-            groupMatchesSearch ||
-            matchesNodePickerSearch(
-              option,
-              normalizedSearchValue,
-              getNodePickerOptionDescription(option)
-            )
+          .filter(
+            (option) =>
+              groupMatchesSearch ||
+              matchesNodePickerSearch(
+                option,
+                normalizedSearchValue,
+                getNodePickerOptionDescription(option)
+              )
           );
 
         return { ...group, options: groupedOptions };
@@ -128,7 +146,8 @@ export function NodePickerPopover({
   );
   const hasVisibleOptions =
     activeTab === 'builtin'
-      ? groupedBuiltinOptions.length > 0 || uncategorizedBuiltinOptions.length > 0
+      ? groupedBuiltinOptions.length > 0 ||
+        uncategorizedBuiltinOptions.length > 0
       : filteredPluginOptions.length > 0;
 
   function closePicker() {
@@ -151,7 +170,8 @@ export function NodePickerPopover({
       ?.getBoundingClientRect().bottom;
     const canvasRect = canvas.getBoundingClientRect();
     const triggerRect = triggerNode.getBoundingClientRect();
-    const anchorY = placement === 'bottom' ? triggerRect.bottom : triggerRect.top;
+    const anchorY =
+      placement === 'bottom' ? triggerRect.bottom : triggerRect.top;
     const maxHeight = calculateNodePickerMaxHeight({
       canvasBottom: canvasRect.bottom,
       anchorY,
@@ -188,7 +208,7 @@ export function NodePickerPopover({
         <div className="agent-flow-node-picker">
           <div className="agent-flow-node-picker__header">
             <div
-              aria-label={i18nText("agentFlow", "auto.node_source")}
+              aria-label={i18nText('agentFlow', 'auto.node_source')}
               className="agent-flow-node-picker__tabs"
               role="tablist"
             >
@@ -199,7 +219,8 @@ export function NodePickerPopover({
                 type="button"
                 onClick={() => setActiveTab('builtin')}
               >
-                {i18nText("agentFlow", "auto.built_in")}</button>
+                {i18nText('agentFlow', 'auto.built_in')}
+              </button>
               <button
                 aria-selected={activeTab === 'plugin'}
                 className={`agent-flow-node-picker__tab${activeTab === 'plugin' ? ' agent-flow-node-picker__tab--active' : ''}`}
@@ -207,13 +228,14 @@ export function NodePickerPopover({
                 type="button"
                 onClick={() => setActiveTab('plugin')}
               >
-                {i18nText("agentFlow", "auto.expand")}</button>
+                {i18nText('agentFlow', 'auto.expand')}
+              </button>
             </div>
             <div className="agent-flow-node-picker__search">
               <Input
                 allowClear
-                aria-label={i18nText("agentFlow", "auto.search_node")}
-                placeholder={i18nText("agentFlow", "auto.search_node")}
+                aria-label={i18nText('agentFlow', 'auto.search_node')}
+                placeholder={i18nText('agentFlow', 'auto.search_node')}
                 prefix={<SearchOutlined />}
                 size="small"
                 value={searchValue}
@@ -227,10 +249,7 @@ export function NodePickerPopover({
             {activeTab === 'builtin' ? (
               <>
                 {groupedBuiltinOptions.map((group) => (
-                  <NodePickerSection
-                    key={group.key}
-                    title={group.title}
-                  >
+                  <NodePickerSection key={group.key} title={group.title}>
                     {group.options.map((option) => (
                       <NodePickerOptionButton
                         key={getNodePickerOptionKey(option)}
@@ -245,7 +264,7 @@ export function NodePickerPopover({
                 ))}
                 {uncategorizedBuiltinOptions.length > 0 ? (
                   <NodePickerSection
-                    title={i18nText("agentFlow", "auto.other_nodes")}
+                    title={i18nText('agentFlow', 'auto.other_nodes')}
                   >
                     {uncategorizedBuiltinOptions.map((option) => (
                       <NodePickerOptionButton
@@ -264,7 +283,7 @@ export function NodePickerPopover({
               <>
                 {filteredPluginOptions.length > 0 ? (
                   <NodePickerSection
-                    title={i18nText("agentFlow", "auto.plugin_node_label")}
+                    title={i18nText('agentFlow', 'auto.plugin_node_label')}
                   >
                     {filteredPluginOptions.map((option) => (
                       <NodePickerOptionButton
@@ -287,10 +306,10 @@ export function NodePickerPopover({
             {!hasVisibleOptions ? (
               <div className="agent-flow-node-picker__empty">
                 {normalizedSearchValue.length > 0
-                  ? i18nText("agentFlow", "auto.no_matching_node")
+                  ? i18nText('agentFlow', 'auto.no_matching_node')
                   : activeTab === 'plugin'
-                    ? i18nText("agentFlow", "auto.expansion_node_yet")
-                    : i18nText("agentFlow", "auto.built_nodes_yet")}
+                    ? i18nText('agentFlow', 'auto.expansion_node_yet')
+                    : i18nText('agentFlow', 'auto.built_nodes_yet')}
               </div>
             ) : null}
           </div>
@@ -319,20 +338,13 @@ interface NodePickerSectionProps {
   children: ReactNode;
 }
 
-function NodePickerSection({
-  title,
-  children
-}: NodePickerSectionProps) {
+function NodePickerSection({ title, children }: NodePickerSectionProps) {
   return (
     <section className="agent-flow-node-picker__section">
       <div className="agent-flow-node-picker__section-head">
-        <div className="agent-flow-node-picker__section-label">
-          {title}
-        </div>
+        <div className="agent-flow-node-picker__section-label">{title}</div>
       </div>
-      <div className="agent-flow-node-picker__section-items">
-        {children}
-      </div>
+      <div className="agent-flow-node-picker__section-items">{children}</div>
     </section>
   );
 }
@@ -350,12 +362,13 @@ function NodePickerOptionButton({
     option.kind === 'builtin'
       ? getAgentFlowNodeTypeIcon(option.type)
       : getAgentFlowNodeTypeIcon('plugin_node');
+  const description = getNodePickerOptionDescription(option);
 
   return (
     <button
       aria-label={option.label}
       className="agent-flow-node-picker__item"
-      disabled={option.kind === 'plugin_contribution' && option.disabled}
+      disabled={option.disabled}
       role="menuitem"
       type="button"
       onClick={onPick}
@@ -365,6 +378,11 @@ function NodePickerOptionButton({
       </span>
       <span className="agent-flow-node-picker__text">
         <span className="agent-flow-node-picker__name">{option.label}</span>
+        {description ? (
+          <span className="agent-flow-node-picker__description">
+            {description}
+          </span>
+        ) : null}
       </span>
     </button>
   );
@@ -381,9 +399,15 @@ function matchesNodePickerSearch(
 
   const searchText = [
     option.label,
-    option.kind === 'builtin'
-      ? [option.type, option.category, ...option.inputKeys, ...option.outputKeys].join(' ')
-      : option.contribution.category,
+    option.kind === 'builtin' ? option.type : option.plugin.contribution_code,
+    option.category,
+    [
+      ...option.field_contract.config_fields,
+      ...option.field_contract.input_fields,
+      ...option.field_contract.output_fields
+    ]
+      .map((field) => field.key)
+      .join(' '),
     description
   ]
     .filter((value): value is string => Boolean(value))

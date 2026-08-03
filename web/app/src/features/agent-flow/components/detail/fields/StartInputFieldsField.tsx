@@ -8,6 +8,8 @@ import {
 import { Button, Empty, Typography } from 'antd';
 import { useRef, useState } from 'react';
 
+import type { ConsoleApplicationNodeContractField } from '@1flowbase/api-client';
+
 import type {
   FlowStartInputField,
   FlowStartInputSource
@@ -16,7 +18,9 @@ import type {
 import { JsonPreviewBlock } from '../../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { useStableListItemKeys } from '../../../hooks/interactions/use-stable-list-item-keys';
 import {
+  getStartInputValueType,
   normalizeStartInputField,
+  startInputTypeOptions,
   startSystemVariables
 } from '../../../lib/variables/start-node-variables';
 import { CollectionFieldHeader } from '../collection/CollectionFieldHeader';
@@ -41,15 +45,17 @@ export type StartInputContractKind =
 
 function createNextField(
   index: number,
-  sourceOptions: StartInputSourceOption[]
+  sourceOptions: StartInputSourceOption[],
+  inputTypes: typeof startInputTypeOptions
 ): FlowStartInputField {
   const key = `input_${index + 1}`;
+  const inputType = inputTypes[0]?.value ?? 'text';
 
   return {
     key,
     label: key,
-    inputType: 'text',
-    valueType: 'string',
+    inputType,
+    valueType: getStartInputValueType(inputType),
     required: false,
     source: sourceOptions[0]?.value
   };
@@ -147,12 +153,16 @@ export function StartInputFieldsField({
   title,
   value,
   sourceOptions = [],
+  inputTypeContract,
+  sourceContract,
   onChange
 }: {
   contractKind: StartInputContractKind;
   title: string;
   value: unknown;
   sourceOptions?: StartInputSourceOption[];
+  inputTypeContract?: ConsoleApplicationNodeContractField;
+  sourceContract?: ConsoleApplicationNodeContractField;
   onChange: (value: FlowStartInputField[]) => void;
 }) {
   const fields = normalizeList(value);
@@ -165,11 +175,21 @@ export function StartInputFieldsField({
   const draggingIndexRef = useRef<number | null>(null);
   const { itemKeys, insertItemKey, moveItemKey, removeItemKey } =
     useStableListItemKeys('start-input-field', fields.length);
+  const inputTypes =
+    contractKind === 'agent'
+      ? startInputTypeOptions
+      : startInputTypeOptions.filter((option) =>
+          inputTypeContract?.allowed_values.includes(option.value)
+        );
 
   function openAddPanel() {
+    if (inputTypes.length === 0) {
+      return;
+    }
+
     setEditing({
       index: null,
-      field: createNextField(fields.length, sourceOptions)
+      field: createNextField(fields.length, sourceOptions, inputTypes)
     });
   }
 
@@ -251,6 +271,9 @@ export function StartInputFieldsField({
     <StartInputFieldSettingsPanel
       mode={editing.index === null ? 'create' : 'edit'}
       field={editing.field}
+      inputTypeContract={inputTypeContract}
+      inputTypeOptions={inputTypes}
+      sourceContract={sourceContract}
       sourceOptions={sourceOptions}
       triggerRef={triggerRef}
       onChange={updateDraft}
@@ -269,6 +292,7 @@ export function StartInputFieldsField({
             icon={<PlusOutlined />}
             size="small"
             type="text"
+            disabled={inputTypes.length === 0}
             onClick={openAddPanel}
             ref={triggerRef}
           />

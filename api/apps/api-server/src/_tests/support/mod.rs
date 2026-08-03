@@ -41,11 +41,6 @@ use crate::{
     app_state::ApiState,
     config::ApiConfig,
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::{
-        OfficialAgentFlowTemplateCatalogEntry, OfficialAgentFlowTemplateCatalogPage,
-        OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateCatalogSource,
-        OfficialAgentFlowTemplateSourcePort,
-    },
     official_extension_catalog::{
         DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
         OfficialExtensionArtifactDescriptor, OfficialExtensionArtifactPlatform,
@@ -54,9 +49,9 @@ use crate::{
         OfficialExtensionCatalogPageMetadata, OfficialExtensionCatalogSourcePort,
     },
     official_mcp_bundles::{
-        DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogEntry,
-        OfficialMcpBundleCatalogSnapshot, OfficialMcpBundleCatalogSource,
-        OfficialMcpBundleSourcePort,
+        DownloadedOfficialMcpBundle, McpBundleLibraryCatalog, McpBundleLibraryEntry,
+        OfficialMcpBundleCatalogEntry, OfficialMcpBundleCatalogSnapshot,
+        OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
     },
     provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{

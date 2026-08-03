@@ -151,6 +151,8 @@ impl ApplicationPublicApiTestRepository {
             icon_background: None,
             created_by: actor_user_id,
             updated_at: OffsetDateTime::now_utc(),
+            release_version: 0,
+            release_digest: None,
             tags: Vec::new(),
             sections: domain::ApplicationSections {
                 orchestration: domain::ApplicationOrchestrationSection {

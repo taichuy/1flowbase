@@ -16,7 +16,7 @@ use control_plane::{
         group_installed_extension_families, ExtensionArtifactInstallOutcome,
         ExtensionInstallationService, InstallExtensionArtifactCommand,
     },
-    ports::AuthRepository,
+    ports::{AuthRepository, ExtensionInstallationRepository},
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -33,10 +33,11 @@ use crate::official_extension_catalog::{
 
 use super::upload::upload_challenge;
 use super::{
-    artifact_preflight_challenge, catalog_application_action, default_application_status,
-    extension_update_status, paginate_installed_families, project_catalog_entry,
-    project_installed_catalog_joins, requested_installation_identity, validate_preflight_overrides,
-    InstalledCatalogJoin, PreflightDecision, UploadedExtensionArtifact,
+    artifact_preflight_challenge, catalog_application_action, catalog_entry_for_requested_identity,
+    default_application_status, extension_update_status, paginate_installed_families,
+    project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
+    validate_preflight_overrides, InstalledCatalogJoin, PreflightDecision,
+    UploadedExtensionArtifact,
 };
 
 #[test]
@@ -117,8 +118,9 @@ fn root_1545_bf1_canonical_catalog_identity_rejects_category_mismatch_and_traver
 }
 
 #[test]
-fn root_1545_bf1_catalog_projection_keeps_newest_version_for_stable_identity() {
-    let newer = installation_record("1.2.0", OffsetDateTime::now_utc());
+fn ac_002_catalog_projection_uses_database_current_version_for_stable_identity() {
+    let mut newer = installation_record("1.2.0", OffsetDateTime::now_utc());
+    newer.is_current = true;
     let older = installation_record("1.1.0", OffsetDateTime::now_utc() - time::Duration::DAY);
     let installed = project_installed_catalog_joins(
         [newer, older],
@@ -129,12 +131,36 @@ fn root_1545_bf1_catalog_projection_keeps_newest_version_for_stable_identity() {
 }
 
 #[test]
+fn ac_001_catalog_join_excludes_missing_versions_and_all_missing_families() {
+    let now = OffsetDateTime::now_utc();
+    let installed = installation_record("1.0.0", now);
+    let mut missing_newer = installation_record("2.0.0", now);
+    missing_newer.status = domain::ExtensionInstallationStatus::Missing;
+    missing_newer.is_current = true;
+    let mut all_missing = installation_record("3.0.0", now);
+    all_missing.identity.artifact_id = "missing-only".to_string();
+    all_missing.status = domain::ExtensionInstallationStatus::Missing;
+
+    let joins = project_installed_catalog_joins(
+        [installed, missing_newer, all_missing],
+        super::ExtensionCatalogCategory::RuntimeExtensions,
+    );
+
+    assert_eq!(
+        joins["runtime-extensions:taichuy/openai"].current_version,
+        "1.0.0"
+    );
+    assert!(!joins.contains_key("runtime-extensions:taichuy/missing-only"));
+}
+
+#[test]
 fn root_1545_d4_ac_13_paginates_installed_families_instead_of_version_records() {
     let now = OffsetDateTime::now_utc();
     let mut anthropic_old = installation_record("0.1.18", now);
     anthropic_old.identity.artifact_id = "anthropic".to_string();
     let mut anthropic_current = installation_record("0.1.23", now);
     anthropic_current.identity.artifact_id = "anthropic".to_string();
+    anthropic_current.is_current = true;
     let mut deepseek = installation_record("0.1.15", now);
     deepseek.identity.artifact_id = "deepseek".to_string();
     let families = group_installed_extension_families([anthropic_old, deepseek, anthropic_current]);
@@ -166,6 +192,29 @@ fn root_1545_d4_ac_16_treats_catalog_latest_as_current_when_any_local_version_ma
     );
 }
 
+#[test]
+fn issue_1566_installed_provider_identity_resolves_unique_catalog_provider_code() {
+    let entry = runtime_entry();
+    let resolved = catalog_entry_for_requested_identity(
+        super::ExtensionCatalogCategory::RuntimeExtensions,
+        "runtime-extensions:1flowbase/openai",
+        std::slice::from_ref(&entry),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(resolved.id, "runtime-extensions:taichuy/openai");
+
+    let mut ambiguous = entry.clone();
+    ambiguous.id = "runtime-extensions:another/openai".to_string();
+    ambiguous.organization = "another".to_string();
+    assert!(catalog_entry_for_requested_identity(
+        super::ExtensionCatalogCategory::RuntimeExtensions,
+        "runtime-extensions:1flowbase/openai",
+        &[entry, ambiguous],
+    )
+    .is_err());
+}
+
 fn installation_record(
     version: &str,
     updated_at: OffsetDateTime,
@@ -177,20 +226,23 @@ fn installation_record(
             organization: "taichuy".to_string(),
             artifact_id: "openai".to_string(),
             version: version.to_string(),
-            node_id: "node-a".to_string(),
         },
-        source: "official".to_string(),
-        trust: "official".to_string(),
-        local_path: "/tmp/openai".to_string(),
-        checksum: "sha256:fixture".to_string(),
+        source_kind: "official_repository".to_string(),
+        trust_level: "verified_official".to_string(),
+        expected_checksum: Some("sha256:fixture".to_string()),
         signature_status: domain::ExtensionSignatureStatus::Verified,
         signature_algorithm: Some("ed25519".to_string()),
         signing_key_id: Some("official-key-2026-04".to_string()),
         warnings: Vec::new(),
         receipt: json!({}),
         application_action: domain::ExtensionApplicationAction::ConfigureModelProvider,
+        is_system_reserved: false,
+        node_id: "node-a".to_string(),
+        local_path: Some("/tmp/openai".to_string()),
+        local_checksum: Some("sha256:fixture".to_string()),
         status: domain::ExtensionInstallationStatus::Installed,
-        installed_by: Uuid::now_v7(),
+        is_current: false,
+        created_by: Uuid::now_v7(),
         created_at: updated_at,
         updated_at,
     }
@@ -315,6 +367,154 @@ async fn root_1545_bf1_exact_local_version_returns_without_catalog_network() {
         "i18n:taichuy/platform"
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_routes() {
+    let (state, _database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let _schema_guard = Arc::clone(&state);
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let install = |version: &str, bytes: &[u8]| InstallExtensionArtifactCommand {
+        actor_user_id: actor.id,
+        category: super::ExtensionCatalogCategory::AgentFlow,
+        organization: "taichuy".to_string(),
+        artifact_id: "fixture-flow".to_string(),
+        version: version.to_string(),
+        node_id: state.api_node_id.clone(),
+        artifact_bytes: bytes.to_vec(),
+        source: "official".to_string(),
+        trust: "official".to_string(),
+        expected_checksum: Some(format!("sha256:{:x}", Sha256::digest(bytes))),
+        signature_status: domain::ExtensionSignatureStatus::Verified,
+        signature_algorithm: Some("ed25519".to_string()),
+        signing_key_id: Some("official-key-2026-04".to_string()),
+        declared_warnings: Vec::new(),
+        risk_override: None,
+        confirmation_receipt: None,
+        application_action: domain::ExtensionApplicationAction::ImportAgentFlow,
+    };
+    let service =
+        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root);
+    let ExtensionArtifactInstallOutcome::Installed {
+        installation: older,
+        ..
+    } = service
+        .install_from_bytes(install("1.0.0", b"agent-flow-v1"))
+        .await
+        .unwrap()
+    else {
+        panic!("signed Agent Flow fixture should install");
+    };
+    let ExtensionArtifactInstallOutcome::Installed {
+        installation: newer,
+        ..
+    } = service
+        .install_from_bytes(install("2.0.0", b"agent-flow-v2"))
+        .await
+        .unwrap()
+    else {
+        panic!("signed Agent Flow update should install");
+    };
+    let store = state.store.clone();
+    let state_api_node_id = state.api_node_id.clone();
+    let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
+    let (cookie, csrf) =
+        crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let selected = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{}/select",
+                    older.id
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(selected.status(), StatusCode::OK);
+
+    let blocked_delete = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{}",
+                    older.id
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked_delete.status(), StatusCode::CONFLICT);
+
+    let selected_newer = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{}/select",
+                    newer.id
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(selected_newer.status(), StatusCode::OK);
+
+    let deleted = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{}",
+                    older.id
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::OK);
+    let removed = ExtensionInstallationRepository::find_extension_installation(
+        &store,
+        &state_api_node_id,
+        &older.identity,
+    )
+    .await
+    .unwrap();
+    assert!(removed.is_none());
+    let remaining = ExtensionInstallationRepository::find_extension_installation(
+        &store,
+        &state_api_node_id,
+        &newer.identity,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(remaining.is_current);
 }
 
 #[test]

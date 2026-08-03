@@ -19,6 +19,7 @@ import { StartInputFieldsField } from '../components/detail/fields/StartInputFie
 import { AgentFlowEditorStoreProvider } from '../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../store/editor/provider';
 import { selectWorkingDocument } from '../store/editor/selectors';
+import { createWorkflowStartFieldContract } from './fixtures/application-node-catalog';
 
 vi.mock('copy-to-clipboard', () => ({
   default: vi.fn(() => true)
@@ -390,19 +391,26 @@ describe('start input fields', () => {
     ]);
   });
 
-  test('AC-1237 shows parameter source only when source options are provided', async () => {
+  test('AC-004 uses Workflow Start types, sources, and descriptions from the server field contract', async () => {
     const onWorkflowChange = vi.fn();
+    const fieldContract = createWorkflowStartFieldContract();
+    const inputTypeContract = fieldContract.config_fields.find(
+      (field) => field.key === 'config.input_fields[].inputType'
+    );
+    const sourceContract = fieldContract.config_fields.find(
+      (field) => field.key === 'config.input_fields[].source'
+    );
     const { rerender } = renderWithProviders(
       <StartInputFieldsField
         contractKind="workflow_http"
+        inputTypeContract={inputTypeContract}
+        sourceContract={sourceContract}
         title="输入字段"
         value={[]}
-        sourceOptions={[
-          { value: 'path', label: 'path' },
-          { value: 'query', label: 'query' },
-          { value: 'body', label: 'body' },
-          { value: 'form', label: 'form' }
-        ]}
+        sourceOptions={(sourceContract?.allowed_values ?? []).map((value) => ({
+          value: value as 'path' | 'query' | 'body' | 'form',
+          label: value
+        }))}
         onChange={onWorkflowChange}
       />
     );
@@ -411,6 +419,14 @@ describe('start input fields', () => {
 
     expect(
       await screen.findByRole('combobox', { name: '输入字段参数来源' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Authoring control type from the server contract.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Extension request location from the server contract. Required for extension publication; ignored for schedules.'
+      )
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '保存输入字段' }));
     expect(onWorkflowChange).toHaveBeenCalledWith([

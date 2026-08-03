@@ -2,11 +2,12 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::errors::ControlPlaneError;
 use control_plane::ports::{
-    ApplicationManagementPage, ApplicationManagementQuery, ApplicationManagementRecord,
-    ApplicationManagementRepository, ApplicationManagementSortDirection,
-    ApplicationManagementSortField, ApplicationRepository, ApplicationVisibility, AuthRepository,
-    CreateApplicationInput, CreateApplicationTagInput, CreateWorkflowTriggerConfig,
-    DeleteApplicationInput, ReplaceApplicationEnvironmentVariablesInput, UpdateApplicationInput,
+    ApplicationArchiveRelease, ApplicationArchiveReleaseDigest, ApplicationManagementPage,
+    ApplicationManagementQuery, ApplicationManagementRecord, ApplicationManagementRepository,
+    ApplicationManagementSortDirection, ApplicationManagementSortField, ApplicationRepository,
+    ApplicationVisibility, AuthRepository, CreateApplicationInput, CreateApplicationTagInput,
+    CreateWorkflowTriggerConfig, DeleteApplicationInput,
+    ReplaceApplicationEnvironmentVariablesInput, UpdateApplicationInput,
 };
 use serde_json::Value;
 use sqlx::{Postgres, QueryBuilder, Row};
@@ -33,6 +34,8 @@ fn map_application_record(row: sqlx::postgres::PgRow) -> Result<domain::Applicat
         icon_background: row.get("icon_background"),
         created_by: row.get("created_by"),
         updated_at: row.get("updated_at"),
+        release_version: row.get("release_version"),
+        release_digest: row.get("release_digest"),
         current_flow_id: row.get("current_flow_id"),
         current_draft_id: row.get("current_draft_id"),
         api_enabled: row.get("api_enabled"),
@@ -68,6 +71,8 @@ async fn find_application(
             a.icon_background,
             a.created_by,
             a.updated_at,
+            a.release_version,
+            a.release_digest,
             f.id as current_flow_id,
             fd.id as current_draft_id,
             a.api_enabled,
@@ -121,6 +126,69 @@ async fn find_application(
 
 #[async_trait]
 impl ApplicationRepository for PgControlPlaneStore {
+    async fn settle_application_archive_releases(
+        &self,
+        workspace_id: Uuid,
+        digests: &[ApplicationArchiveReleaseDigest],
+    ) -> Result<Vec<ApplicationArchiveRelease>> {
+        let mut tx = self.pool().begin().await?;
+        let mut ordered = digests.to_vec();
+        ordered.sort_by_key(|digest| digest.application_id);
+        let mut releases = Vec::with_capacity(ordered.len());
+
+        for digest in ordered {
+            let row = sqlx::query(
+                r#"
+                select release_version, release_digest
+                from applications
+                where workspace_id = $1 and id = $2
+                for update
+                "#,
+            )
+            .bind(workspace_id)
+            .bind(digest.application_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("application"))?;
+            let current_version: i64 = row.get("release_version");
+            let current_digest: Option<String> = row.get("release_digest");
+            let release_version = if current_digest.as_deref() == Some(&digest.release_digest) {
+                current_version
+            } else {
+                current_version + 1
+            };
+
+            if current_digest.as_deref() != Some(&digest.release_digest) {
+                sqlx::query(
+                    r#"
+                    update applications
+                    set release_version = $3, release_digest = $4
+                    where workspace_id = $1 and id = $2
+                    "#,
+                )
+                .bind(workspace_id)
+                .bind(digest.application_id)
+                .bind(release_version)
+                .bind(&digest.release_digest)
+                .execute(&mut *tx)
+                .await?;
+            }
+            releases.push(ApplicationArchiveRelease {
+                application_id: digest.application_id,
+                release_version,
+                release_digest: digest.release_digest,
+            });
+        }
+        tx.commit().await?;
+        releases.sort_by_key(|release| {
+            digests
+                .iter()
+                .position(|digest| digest.application_id == release.application_id)
+                .unwrap_or(usize::MAX)
+        });
+        Ok(releases)
+    }
+
     async fn record_application_extension_source(
         &self,
         workspace_id: Uuid,
@@ -227,6 +295,8 @@ impl ApplicationRepository for PgControlPlaneStore {
                 a.icon_background,
                 a.created_by,
                 a.updated_at,
+                a.release_version,
+                a.release_digest,
                 null::uuid as current_flow_id,
                 null::uuid as current_draft_id,
                 a.api_enabled,
@@ -308,6 +378,8 @@ impl ApplicationRepository for PgControlPlaneStore {
                 icon_background,
                 created_by,
                 updated_at,
+                release_version,
+                release_digest,
                 null::uuid as current_flow_id,
                 null::uuid as current_draft_id,
                 api_enabled,
@@ -541,6 +613,8 @@ impl ApplicationRepository for PgControlPlaneStore {
                 a.icon_background,
                 a.created_by,
                 a.updated_at,
+                a.release_version,
+                a.release_digest,
                 null::uuid as current_flow_id,
                 null::uuid as current_draft_id,
                 a.api_enabled,

@@ -25,6 +25,19 @@ pub struct SeededWaitingCallbackRun {
 }
 
 impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemoryProviderRuntime> {
+    fn with_test_runtime(
+        repository: InMemoryOrchestrationRuntimeRepository,
+        runtime: InMemoryProviderRuntime,
+    ) -> Self {
+        Self::new(
+            repository,
+            runtime,
+            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
+            "test-master-key",
+        )
+        .with_node_artifact_context("local:test", std::env::temp_dir())
+    }
+
     pub fn reset_application_run_detail_read_count(&self) {
         self.repository.reset_application_run_detail_read_count();
     }
@@ -38,12 +51,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
-            repository,
-            InMemoryProviderRuntime::default(),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
-        )
+        Self::with_test_runtime(repository, InMemoryProviderRuntime::default())
     }
 
     pub fn for_tests_with_application_console_policies(
@@ -55,23 +63,13 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
                 permissions,
                 console_policies,
             );
-        Self::new(
-            repository,
-            InMemoryProviderRuntime::default(),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
-        )
+        Self::with_test_runtime(repository, InMemoryProviderRuntime::default())
     }
 
     pub fn for_tests_as_root_in_workspace(workspace_id: Uuid) -> Self {
         let repository = InMemoryOrchestrationRuntimeRepository::with_permissions(Vec::new());
         repository.configure_root_actor(workspace_id);
-        Self::new(
-            repository,
-            InMemoryProviderRuntime::default(),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
-        )
+        Self::with_test_runtime(repository, InMemoryProviderRuntime::default())
     }
 
     pub fn for_tests_with_file_storage() -> Self {
@@ -88,6 +86,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             runtime_engine,
             "test-master-key",
         )
+        .with_node_artifact_context("local:test", std::env::temp_dir())
         .with_file_storage_registry(std::sync::Arc::new(
             storage_object::builtin_driver_registry(),
         ))
@@ -102,12 +101,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             InMemoryOrchestrationRuntimeRepository::with_permissions_without_data_model_scope_grant(
                 vec!["application.view.all", "application.create.all"],
             );
-        Self::new(
-            repository,
-            InMemoryProviderRuntime::default(),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
-        )
+        Self::with_test_runtime(repository, InMemoryProviderRuntime::default())
     }
 
     pub fn for_tests_with_provider_delay(invoke_delay: std::time::Duration) -> Self {
@@ -115,11 +109,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_invoke_delay(invoke_delay),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 
@@ -128,11 +120,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_provider_events(provider_events),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 
@@ -141,11 +131,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_provider_result(provider_result),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 
@@ -156,11 +144,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_provider_results(provider_results),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 
@@ -171,11 +157,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_provider_outputs(provider_outputs),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 
@@ -184,11 +168,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_live_events_then_error(live_events),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 
@@ -197,11 +179,9 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             "application.view.all",
             "application.create.all",
         ]);
-        Self::new(
+        Self::with_test_runtime(
             repository,
             InMemoryProviderRuntime::with_fail_before_token_models(models),
-            std::sync::Arc::new(runtime_core::runtime_engine::RuntimeEngine::for_tests()),
-            "test-master-key",
         )
     }
 

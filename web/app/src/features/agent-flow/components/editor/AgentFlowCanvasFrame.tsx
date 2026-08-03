@@ -110,7 +110,7 @@ export function AgentFlowCanvasFrame({
   applicationId,
   applicationName,
   initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
-  nodeContributions,
+  nodeCatalog,
   saveDraftOverride,
   restoreVersionOverride
 }: AgentFlowCanvasFrameProps) {
@@ -433,8 +433,8 @@ export function AgentFlowCanvasFrame({
     [issues]
   );
   const nodePickerOptions = useMemo(
-    () => buildNodePickerOptions(nodeContributions),
-    [nodeContributions]
+    () => buildNodePickerOptions(nodeCatalog.nodes),
+    [nodeCatalog.nodes]
   );
 
   useEffect(() => {

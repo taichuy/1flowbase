@@ -363,7 +363,7 @@ async fn model_provider_icon_routes_fall_back_to_manifest_icon_when_metadata_is_
     let installation_id = install_enable_assign_assets_icon(&app, &cookie, &csrf).await;
 
     sqlx::query(
-        "update plugin_installations
+        "update extension_installations
          set metadata_json = coalesce(metadata_json, '{}'::jsonb) - 'icon'
          where id = $1",
     )

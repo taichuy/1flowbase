@@ -29,8 +29,10 @@ import * as nodeSchemaAdapterApi from '../schema/node-schema-adapter';
 import * as nodeSchemaRegistry from '../schema/node-schema-registry';
 import { useAgentFlowEditorStore } from '../store/editor/provider';
 import { selectWorkingDocument } from '../store/editor/selectors';
+import { createWorkflowStartFieldContract } from './fixtures/application-node-catalog';
 
 const NODE_DETAIL_PANEL_TEST_TIMEOUT = 15_000;
+const workflowStartFieldContract = createWorkflowStartFieldContract();
 const primaryProviderOption = modelProviderOptionsProviders[0];
 const primaryProviderFirstGroup = primaryProviderOption.model_groups[0];
 const primaryProviderFirstModel = primaryProviderFirstGroup.model;
@@ -451,7 +453,8 @@ describe('NodeDetailPanel', () => {
               applicationId: 'app-workflow',
               triggerType: 'extension',
               mapping: null,
-              schedule: null
+              schedule: null,
+              workflowStartFieldContract
             }}
           />
         </AgentFlowEditorStoreProvider>
@@ -494,7 +497,8 @@ describe('NodeDetailPanel', () => {
               applicationId: 'app-workflow',
               triggerType: 'extension',
               mapping: null,
-              schedule: null
+              schedule: null,
+              workflowStartFieldContract
             }}
           />
         </AgentFlowEditorStoreProvider>
@@ -525,7 +529,8 @@ describe('NodeDetailPanel', () => {
               applicationId: 'app-workflow',
               triggerType: 'schedule',
               mapping: null,
-              schedule: null
+              schedule: null,
+              workflowStartFieldContract
             }}
           />
         </AgentFlowEditorStoreProvider>

@@ -87,7 +87,7 @@ function loadManifest(filePath = DEFAULT_MANIFEST) {
   requiredObject(manifest.artifacts, 'artifact inventory');
   if (
     manifest.database.container !== 'docker-db-1'
-    || manifest.database.image !== 'postgres:16-alpine'
+    || manifest.database.image !== 'postgres:18-alpine'
     || manifest.database.host !== '127.0.0.1'
     || manifest.database.port !== 35432
   ) {

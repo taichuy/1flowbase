@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -19,8 +20,9 @@ use crate::{
         AgentFlowTemplatePreview, AgentFlowTemplateResourceSnapshot, ImportAgentFlowTemplateResult,
     },
     ports::{
-        ApplicationApiMappingRepository, ApplicationRepository, CreateWorkflowTriggerConfig,
-        FlowRepository, ReplaceApplicationApiMappingInput, WorkflowScheduleTriggerRepository,
+        ApplicationApiMappingRepository, ApplicationArchiveReleaseDigest, ApplicationRepository,
+        CreateWorkflowTriggerConfig, FlowRepository, ReplaceApplicationApiMappingInput,
+        WorkflowScheduleTriggerRepository,
     },
 };
 
@@ -31,6 +33,8 @@ const MAX_APPLICATION_ARCHIVE_ENTRIES: usize = 100;
 pub struct ExportApplicationArchiveCommand {
     pub actor_user_id: Uuid,
     pub application_ids: Vec<Uuid>,
+    pub exported_from_system_version: String,
+    pub exported_at: String,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +62,14 @@ pub struct ApplicationArchivePackage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ApplicationArchiveEntry {
+    #[serde(default)]
+    pub template_id: String,
+    #[serde(default)]
+    pub release_version: i64,
+    #[serde(default)]
+    pub exported_from_system_version: String,
+    #[serde(default)]
+    pub exported_at: String,
     pub application: ApplicationArchiveApplication,
     pub flow_document: serde_json::Value,
     #[serde(default)]
@@ -154,8 +166,10 @@ where
             authorized_applications.push(application);
         }
 
+        let mut application_ids = Vec::with_capacity(authorized_applications.len());
         let mut applications = Vec::with_capacity(authorized_applications.len());
         for application in authorized_applications {
+            application_ids.push(application.id);
             let flow_state = self
                 .repository
                 .get_or_create_editor_state(
@@ -188,6 +202,10 @@ where
             };
 
             applications.push(ApplicationArchiveEntry {
+                template_id: application.id.hyphenated().to_string(),
+                release_version: 0,
+                exported_from_system_version: command.exported_from_system_version.clone(),
+                exported_at: command.exported_at.clone(),
                 application: ApplicationArchiveApplication {
                     application_type: application.application_type.as_str().to_string(),
                     workflow_trigger_type: application
@@ -205,10 +223,68 @@ where
             });
         }
 
+        let digests = application_ids
+            .iter()
+            .zip(&applications)
+            .map(|(application_id, entry)| {
+                Ok(ApplicationArchiveReleaseDigest {
+                    application_id: *application_id,
+                    release_digest: normalized_application_archive_digest(entry)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let releases = self
+            .repository
+            .settle_application_archive_releases(actor.current_workspace_id, &digests)
+            .await?;
+        for (entry, release) in applications.iter_mut().zip(releases) {
+            entry.release_version = release.release_version;
+        }
+
         Ok(ApplicationArchivePackage {
             schema_version: APPLICATION_ARCHIVE_SCHEMA_VERSION.to_string(),
             applications,
         })
+    }
+}
+
+pub(crate) fn normalized_application_archive_digest(
+    entry: &ApplicationArchiveEntry,
+) -> Result<String> {
+    #[derive(Serialize)]
+    struct NormalizedApplicationArchiveContent<'a> {
+        application: &'a ApplicationArchiveApplication,
+        flow_document: &'a serde_json::Value,
+        dependencies: &'a [AgentFlowTemplateDependency],
+        workflow_trigger_config: &'a Option<WorkflowTriggerTemplateConfig>,
+    }
+
+    let content = NormalizedApplicationArchiveContent {
+        application: &entry.application,
+        flow_document: &entry.flow_document,
+        dependencies: &entry.dependencies,
+        workflow_trigger_config: &entry.workflow_trigger_config,
+    };
+    let encoded = serde_json::to_vec(&canonicalize_archive_json(serde_json::to_value(content)?))?;
+    Ok(format!("{:x}", Sha256::digest(encoded)))
+}
+
+fn canonicalize_archive_json(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(object) => {
+            let mut entries = object.into_iter().collect::<Vec<_>>();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            serde_json::Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, canonicalize_archive_json(value)))
+                    .collect(),
+            )
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(canonicalize_archive_json).collect())
+        }
+        scalar => scalar,
     }
 }
 

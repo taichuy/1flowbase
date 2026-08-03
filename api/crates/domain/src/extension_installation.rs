@@ -98,7 +98,6 @@ pub struct ExtensionInstallationIdentity {
     pub organization: String,
     pub artifact_id: String,
     pub version: String,
-    pub node_id: String,
 }
 
 impl ExtensionInstallationIdentity {
@@ -236,18 +235,28 @@ pub struct ExtensionInstallationReceipt {
 pub struct ExtensionInstallationRecord {
     pub id: Uuid,
     pub identity: ExtensionInstallationIdentity,
-    pub source: String,
-    pub trust: String,
-    pub local_path: String,
-    pub checksum: String,
+    pub source_kind: String,
+    pub trust_level: String,
+    pub expected_checksum: Option<String>,
     pub signature_status: ExtensionSignatureStatus,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
     pub warnings: Vec<ExtensionIntegrityWarning>,
     pub receipt: serde_json::Value,
     pub application_action: ExtensionApplicationAction,
+    pub is_system_reserved: bool,
+    pub node_id: String,
+    pub local_path: Option<String>,
+    pub local_checksum: Option<String>,
     pub status: ExtensionInstallationStatus,
-    pub installed_by: Uuid,
+    pub is_current: bool,
+    pub created_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionDeletionDecision {
+    pub deletable: bool,
+    pub reasons: Vec<String>,
 }

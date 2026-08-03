@@ -17,7 +17,7 @@ function fixtureManifest() {
       codex: { repository: '/codex', revision: 'd'.repeat(40), identity: 'github:openai/codex' },
       opencode: { repository: '/opencode', revision: 'e'.repeat(40), identity: 'github:anomalyco/opencode' },
     },
-    database: { container: 'docker-db-1', image: 'postgres:16-alpine', host: '127.0.0.1', port: 35432 },
+    database: { container: 'docker-db-1', image: 'postgres:18-alpine', host: '127.0.0.1', port: 35432 },
     artifacts: {
       apiServer: { path: '/bin/api-server', sha256: '1'.repeat(64) },
       pluginRunner: { path: '/bin/plugin-runner', sha256: '2'.repeat(64) },

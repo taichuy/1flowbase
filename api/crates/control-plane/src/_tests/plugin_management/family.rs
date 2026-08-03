@@ -22,12 +22,14 @@ use crate::{
     ports::{
         CreatePluginAssignmentInput, DownloadedOfficialPluginPackage, ModelProviderRepository,
         OfficialPluginCatalogSnapshot, OfficialPluginCatalogSource, OfficialPluginSourceEntry,
-        OfficialPluginSourcePort, PluginRepository, UpsertPluginInstallationInput,
+        OfficialPluginSourcePort, PluginRepository, UpsertPluginArtifactInstanceInput,
+        UpsertPluginInstallationInput,
     },
 };
 use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
-    PluginTaskKind, PluginTaskStatus, PluginVerificationStatus,
+    ExtensionCategory, ExtensionSignatureStatus, PluginArtifactInstanceStatus,
+    PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginTaskKind,
+    PluginTaskStatus, PluginVerificationStatus,
 };
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 
@@ -518,7 +520,7 @@ async fn plugin_management_service_requires_override_when_upgrading_to_below_min
 }
 
 #[tokio::test]
-async fn plugin_management_service_deletes_provider_family_with_instances_and_artifacts() {
+async fn plugin_management_service_rejects_deleting_referenced_provider_family() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
         workspace_id,
@@ -574,53 +576,60 @@ async fn plugin_management_service_deletes_provider_family_with_instances_and_ar
         .await;
 
     let current_path = PathBuf::from(
-        &repository
-            .get_installation(current_installation)
+        repository
+            .get_artifact_instance(
+                &format!("local:{}", install_root.display()),
+                current_installation,
+            )
             .await
             .unwrap()
             .unwrap()
-            .installed_path,
+            .local_path
+            .unwrap(),
     );
     let old_path = PathBuf::from(
-        &repository
-            .get_installation(old_installation)
+        repository
+            .get_artifact_instance(
+                &format!("local:{}", install_root.display()),
+                old_installation,
+            )
             .await
             .unwrap()
             .unwrap()
-            .installed_path,
+            .local_path
+            .unwrap(),
     );
 
-    let task = service
+    let error = service
         .delete_family(DeletePluginFamilyCommand {
             actor_user_id: repository.actor.user_id,
             provider_code: "fixture_provider".into(),
         })
         .await
-        .unwrap();
+        .unwrap_err();
 
-    assert_eq!(task.task_kind, PluginTaskKind::Uninstall);
-    assert_eq!(task.status, PluginTaskStatus::Succeeded);
-    assert_eq!(task.detail_json["deleted_instance_count"], 2);
-    assert_eq!(task.detail_json["deleted_installation_count"], 2);
-    assert_eq!(repository.list_installations().await.unwrap().len(), 0);
+    assert!(matches!(
+        error.downcast_ref::<crate::errors::ControlPlaneError>(),
+        Some(crate::errors::ControlPlaneError::Conflict(
+            "plugin_family_referenced"
+        ))
+    ));
+    assert_eq!(repository.list_installations().await.unwrap().len(), 2);
     assert_eq!(
         repository
             .list_assignments(workspace_id)
             .await
             .unwrap()
             .len(),
-        0
+        1
     );
     assert_eq!(
         repository.list_instances(workspace_id).await.unwrap().len(),
-        0
+        2
     );
-    assert!(!current_path.exists());
-    assert!(!old_path.exists());
-    assert_eq!(
-        repository.audit_events().await,
-        vec!["plugin.family_deleted"]
-    );
+    assert!(current_path.exists());
+    assert!(old_path.exists());
+    assert!(repository.audit_events().await.is_empty());
 }
 
 #[tokio::test]
@@ -702,13 +711,18 @@ async fn plugin_management_service_installs_enables_assigns_and_lists_tasks() {
         install.installation.desired_state,
         PluginDesiredState::Disabled
     ));
-    assert!(PathBuf::from(&install.installation.installed_path).is_dir());
-    assert!(!std::path::Path::new(&install.installation.installed_path)
-        .join("demo")
-        .exists());
-    assert!(!std::path::Path::new(&install.installation.installed_path)
-        .join("scripts")
-        .exists());
+    let artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            install.installation.id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let installed_path = PathBuf::from(artifact.local_path.unwrap());
+    assert!(installed_path.is_dir());
+    assert!(!installed_path.join("demo").exists());
+    assert!(!installed_path.join("scripts").exists());
 
     let enable = service
         .enable_plugin(EnablePluginCommand {
@@ -947,9 +961,11 @@ config_schema: []
         Arc::new(MemoryOfficialPluginSource::default()),
         &install_root,
     );
-    let installation_id = repository
+    let installation = repository
         .upsert_installation(&UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: ExtensionCategory::RuntimeExtensions,
+            organization: "1flowbase".into(),
             provider_code: "http_source".into(),
             plugin_id: "http_source@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -960,23 +976,35 @@ config_schema: []
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::Disabled,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::Disabled,
-            package_path: None,
-            installed_path: installed_path.display().to_string(),
-            checksum: None,
-            manifest_fingerprint: Some(manifest_fingerprint),
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: serde_json::json!({}),
+            is_system_reserved: false,
             actor_user_id,
         })
         .await
-        .unwrap()
-        .id;
+        .unwrap();
+    repository
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: "test-node".into(),
+            installation_id: installation.id,
+            local_version: Some("0.1.0".into()),
+            local_checksum: None,
+            local_path: Some(installed_path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: Some(manifest_fingerprint),
+            artifact_status: PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: PluginAvailabilityStatus::Disabled,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
+        })
+        .await
+        .unwrap();
+    let installation_id = installation.id;
 
     (
         service,

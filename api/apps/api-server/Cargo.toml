@@ -1,6 +1,6 @@
 [package]
 name = "api-server"
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 license.workspace = true
 
@@ -21,6 +21,7 @@ regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+semver.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 tar.workspace = true

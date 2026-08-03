@@ -190,7 +190,11 @@ async fn publish_application(app: &Router, cookie: &str, csrf: &str, application
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    let status = response.status();
+    if status != StatusCode::CREATED {
+        let payload = response_json(response).await;
+        panic!("expected publication creation, got {status}: {payload}");
+    }
 }
 
 async fn setup_published_app(app: &Router, name: &str) -> String {

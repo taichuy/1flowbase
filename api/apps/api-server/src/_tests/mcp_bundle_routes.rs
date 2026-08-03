@@ -180,14 +180,99 @@ async fn mcp_bundle_export_defaults_use_the_backend_system_version() {
     );
 }
 
+#[tokio::test]
+async fn mcp_bundle_library_routes_require_session_and_reject_missing_csrf_as_unauthorized() {
+    // AC-004 route contract: reads require the MCP settings scope; a missing CSRF token is
+    // represented by the shared middleware as NotAuthenticated (401).
+    let app = test_app().await;
+    let anonymous = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/mcp/bundles/library")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+    let (set_cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let cookie = set_cookie
+        .split(';')
+        .next()
+        .expect("sign-in must return a session cookie")
+        .to_string();
+    let catalog = get_json(&app, "/api/console/mcp/bundles/library", &cookie).await;
+    assert_eq!(catalog["data"]["remote_available"], true);
+    let missing_csrf = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/bundles/library/taichuy/test_bundle/sync")
+                .header("cookie", &cookie)
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
+}
+
 fn sha256(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 fn bundle_zip(interface_id: &str, source_version: &str, duplicate_binding: bool) -> Vec<u8> {
+    bundle_zip_with_tool_name(
+        interface_id,
+        source_version,
+        duplicate_binding,
+        "Runtime profile",
+    )
+}
+
+fn bundle_zip_with_tool_name(
+    interface_id: &str,
+    source_version: &str,
+    duplicate_binding: bool,
+    tool_name: &str,
+) -> Vec<u8> {
+    bundle_zip_with_tool_name_and_binding(
+        interface_id,
+        source_version,
+        duplicate_binding,
+        tool_name,
+        "bundle_runtime_profile",
+    )
+}
+
+fn bundle_zip_with_binding_tool(
+    interface_id: &str,
+    source_version: &str,
+    binding_tool_id: &str,
+) -> Vec<u8> {
+    bundle_zip_with_tool_name_and_binding(
+        interface_id,
+        source_version,
+        false,
+        "Runtime profile",
+        binding_tool_id,
+    )
+}
+
+fn bundle_zip_with_tool_name_and_binding(
+    interface_id: &str,
+    source_version: &str,
+    duplicate_binding: bool,
+    tool_name: &str,
+    binding_tool_id: &str,
+) -> Vec<u8> {
     let tool = serde_json::to_vec_pretty(&json!({
         "tool_id": "bundle_runtime_profile",
-        "name": "Runtime profile",
+        "name": tool_name,
         "short_description": "Read runtime profile",
         "full_description": "Read runtime profile from the target host.",
         "interface_id": interface_id,
@@ -215,7 +300,7 @@ fn bundle_zip(interface_id: &str, source_version: &str, duplicate_binding: bool)
         }],
         "bindings": [{
             "group_path": "/system",
-            "tool_id": "bundle_runtime_profile",
+            "tool_id": binding_tool_id,
             "display_alias": null,
             "visible": true,
             "sort_order": 1
@@ -318,9 +403,15 @@ async fn app_with_installed_mcp_extension(
         panic!("verified MCP fixture must install without confirmation");
     };
     if let Some(bytes) = replacement_local_bytes {
-        tokio::fs::write(&installation.local_path, bytes)
-            .await
-            .unwrap();
+        tokio::fs::write(
+            installation
+                .local_path
+                .as_deref()
+                .expect("fixture local path"),
+            bytes,
+        )
+        .await
+        .unwrap();
     }
     Arc::get_mut(&mut state).unwrap().official_mcp_bundle_source =
         Arc::new(FailingLegacyMcpCatalogSource);
@@ -426,6 +517,36 @@ async fn mcp_bundle_preview_reports_older_source_and_missing_interface_without_w
 }
 
 #[tokio::test]
+async fn ac_001_mcp_bundle_preview_reports_a_missing_binding_tool_as_failed() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let bundle = bundle_zip_with_binding_tool("removed_interface", "0.2.6", "missing_bundle_tool");
+
+    let response = post_bundle(
+        &app,
+        "/api/console/mcp/bundles/preview-upload",
+        &cookie,
+        &csrf,
+        &bundle,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response_json(response).await;
+    assert_eq!(payload["data"]["effect_summary"]["changes"], 1);
+    assert_eq!(payload["data"]["effect_summary"]["failed"], 1);
+    assert_eq!(payload["data"]["instances"][0]["effect"], "failed");
+    assert_eq!(payload["data"]["instances"][0]["result"], "failed");
+    assert_eq!(
+        payload["data"]["instances"][0]["reason"],
+        "binding_tool_missing"
+    );
+
+    let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
+    assert!(catalog["data"]["tools"].as_array().unwrap().is_empty());
+    assert!(catalog["data"]["instances"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn mcp_bundle_import_keeps_missing_interface_disabled_and_continues_instance_binding() {
     // AC-008 through AC-011: Tool-first import is partial-success and idempotent by stable ids.
     let app = test_app().await;
@@ -480,11 +601,11 @@ async fn mcp_bundle_import_keeps_missing_interface_disabled_and_continues_instan
     let second_payload = response_json(second).await;
     assert_eq!(
         second_payload["data"]["tools"][0]["result"],
-        json!("skipped")
+        json!("already_present")
     );
     assert_eq!(
         second_payload["data"]["instances"][0]["result"],
-        json!("skipped")
+        json!("already_present")
     );
 }
 
@@ -503,13 +624,7 @@ async fn mcp_bundle_import_rolls_back_an_instance_when_assembly_fails() {
         &bundle,
     )
     .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let payload = response_json(response).await;
-    assert_eq!(payload["data"]["instances"][0]["result"], json!("failed"));
-    assert_eq!(
-        payload["data"]["instances"][0]["reason"],
-        json!("instance_write_failed")
-    );
+    assert!(response.status().is_server_error());
 
     let catalog_response = app
         .oneshot(
@@ -574,15 +689,230 @@ async fn delivery_1560_d5_ac_004_installed_mcp_artifact_previews_without_workspa
 }
 
 #[tokio::test]
-async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_retry_is_explainable()
-{
+async fn ac_001_002_installed_mcp_artifact_reconciles_matching_workspace_without_domain_writes() {
+    let bundle = bundle_zip("removed_interface", "0.2.6", false);
+    let (app, extension_installation_id) =
+        app_with_installed_mcp_extension(bundle.clone(), None).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let imported = post_bundle(
+        &app,
+        "/api/console/mcp/bundles/import-upload",
+        &cookie,
+        &csrf,
+        &bundle,
+    )
+    .await;
+    assert_eq!(imported.status(), StatusCode::OK);
+
+    let workspace_extra = post_json(
+        &app,
+        "/api/console/mcp/instances/bundle_system/groups",
+        &cookie,
+        &csrf,
+        json!({
+            "path": "/workspace-extra",
+            "display_name": "Workspace extra",
+            "description_short": null,
+            "enabled": true,
+            "sort_order": 99
+        }),
+    )
+    .await;
+    assert_eq!(workspace_extra.status(), StatusCode::OK);
+
+    let preview = post_json(
+        &app,
+        "/api/console/mcp/bundles/preview-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(preview.status(), StatusCode::OK);
+    let preview_payload = response_json(preview).await;
+    assert_eq!(
+        preview_payload["data"]["workspace_application_status"],
+        "already_present"
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["effect_summary"]["changes"],
+        0
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["effect_summary"]["already_present"],
+        2
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["effect_summary"]["conflicts"],
+        0
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["tools"][0]["effect"],
+        "already_present"
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["instances"][0]["effect"],
+        "already_present"
+    );
+
+    let reconcile = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(reconcile.status(), StatusCode::OK);
+    let reconcile_payload = response_json(reconcile).await;
+    assert_eq!(
+        reconcile_payload["data"]["workspace_application_status"],
+        "imported"
+    );
+    assert_eq!(
+        reconcile_payload["data"]["import_report"]["status"],
+        "already_applied"
+    );
+    assert_eq!(
+        reconcile_payload["data"]["import_report"]["effect_summary"]["changes"],
+        0
+    );
+
+    let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
+    assert_eq!(catalog["data"]["tools"].as_array().unwrap().len(), 1);
+    assert_eq!(catalog["data"]["instances"].as_array().unwrap().len(), 1);
+    let installed = get_json(
+        &app,
+        "/api/console/settings/extension-center/installed?category=mcp",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        installed["data"]["entries"][0]["application_status"],
+        "applied"
+    );
+}
+
+#[tokio::test]
+async fn installed_mcp_artifact_previews_and_applies_same_id_updates() {
+    let existing = bundle_zip("removed_interface", "0.2.6", false);
+    let installed_bundle = bundle_zip_with_tool_name(
+        "removed_interface",
+        "0.2.6",
+        false,
+        "Changed extension profile",
+    );
+    let (app, extension_installation_id) =
+        app_with_installed_mcp_extension(installed_bundle, None).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let imported = post_bundle(
+        &app,
+        "/api/console/mcp/bundles/import-upload",
+        &cookie,
+        &csrf,
+        &existing,
+    )
+    .await;
+    assert_eq!(imported.status(), StatusCode::OK);
+
+    let preview = post_json(
+        &app,
+        "/api/console/mcp/bundles/preview-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(preview.status(), StatusCode::OK);
+    let preview_payload = response_json(preview).await;
+    assert_eq!(
+        preview_payload["data"]["workspace_application_status"],
+        "ready_to_import"
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["effect_summary"]["changes"],
+        1
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["effect_summary"]["conflicts"],
+        0
+    );
+    assert_eq!(
+        preview_payload["data"]["preview"]["tools"][0]["effect"],
+        "update"
+    );
+
+    let attempted = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        json!({
+            "extension_installation_id": extension_installation_id
+        }),
+    )
+    .await;
+    assert_eq!(attempted.status(), StatusCode::OK);
+    let attempted_payload = response_json(attempted).await;
+    assert_eq!(
+        attempted_payload["data"]["workspace_application_status"],
+        "imported"
+    );
+    assert_eq!(
+        attempted_payload["data"]["import_report"]["effect_summary"]["changes"],
+        1
+    );
+
+    let installed = get_json(
+        &app,
+        "/api/console/settings/extension-center/installed?category=mcp",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        installed["data"]["entries"][0]["application_status"],
+        "applied"
+    );
+}
+
+#[tokio::test]
+async fn installed_mcp_artifact_rolls_back_when_a_binding_tool_is_missing() {
+    let bundle = bundle_zip_with_binding_tool("removed_interface", "0.2.6", "missing_bundle_tool");
+    let (app, extension_installation_id) = app_with_installed_mcp_extension(bundle, None).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let attempted = post_json(
+        &app,
+        "/api/console/mcp/bundles/import-official",
+        &cookie,
+        &csrf,
+        json!({"extension_installation_id": extension_installation_id}),
+    )
+    .await;
+    assert_eq!(attempted.status(), StatusCode::NOT_FOUND);
+
+    let installed = get_json(
+        &app,
+        "/api/console/settings/extension-center/installed?category=mcp",
+        &cookie,
+    )
+    .await;
+    assert_eq!(
+        installed["data"]["entries"][0]["application_status"],
+        "not_applied"
+    );
+}
+
+#[tokio::test]
+async fn delivery_1560_d5_ac_008_matching_retry_reconciles_without_conflict_confirmation() {
     let (app, extension_installation_id) =
         app_with_installed_mcp_extension(bundle_zip("removed_interface", "0.2.6", false), None)
             .await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let confirmed_body = json!({
-        "extension_installation_id": extension_installation_id,
-        "conflict_resolution": "keep_existing"
+        "extension_installation_id": extension_installation_id
     });
     let first = post_json(
         &app,
@@ -620,11 +950,11 @@ async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_re
     let preview_payload = response_json(preview).await;
     assert_eq!(
         preview_payload["data"]["workspace_application_status"],
-        "confirmation_required"
+        "imported"
     );
     assert_eq!(
-        preview_payload["data"]["required_conflict_resolution"],
-        "keep_existing"
+        preview_payload["data"]["preview"]["effect_summary"]["already_present"],
+        2
     );
 
     let unconfirmed = post_json(
@@ -635,19 +965,11 @@ async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_re
         json!({"extension_installation_id": extension_installation_id}),
     )
     .await;
-    assert_eq!(unconfirmed.status(), StatusCode::CONFLICT);
+    assert_eq!(unconfirmed.status(), StatusCode::OK);
     let unconfirmed_payload = response_json(unconfirmed).await;
     assert_eq!(
-        unconfirmed_payload["code"],
-        "mcp_bundle_conflict_confirmation_required"
-    );
-    assert_eq!(
-        unconfirmed_payload["workspace_application_status"],
-        "not_imported"
-    );
-    assert_eq!(
-        unconfirmed_payload["preview"]["tools"][0]["reason"],
-        "tool_id_conflict"
+        unconfirmed_payload["data"]["import_report"]["status"],
+        "already_applied"
     );
 
     let retry = post_json(
@@ -662,7 +984,7 @@ async fn delivery_1560_d5_ac_008_conflict_requires_confirmation_and_confirmed_re
     let retry_payload = response_json(retry).await;
     assert_eq!(
         retry_payload["data"]["import_report"]["tools"][0]["result"],
-        "skipped"
+        "already_present"
     );
     let catalog = get_json(&app, "/api/console/mcp/catalog", &cookie).await;
     assert_eq!(
@@ -822,7 +1144,7 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
     .await;
     assert_eq!(create_binding.status(), StatusCode::CREATED);
 
-    let export = post_json(
+    let rejected_client_version = post_json(
         &app,
         "/api/console/mcp/bundles/export",
         &cookie,
@@ -832,7 +1154,25 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
             "bundle_id": "portable_bundle",
             "bundle_version": "1.0.0",
             "locale": "zh_Hans",
-            "minimum_host_version": "0.2.0"
+            "minimum_host_version": "0.1.0"
+        }),
+    )
+    .await;
+    assert_eq!(
+        rejected_client_version.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    let export = post_json(
+        &app,
+        "/api/console/mcp/bundles/export",
+        &cookie,
+        &csrf,
+        json!({
+            "organization": "taichuy",
+            "bundle_id": "portable_bundle",
+            "bundle_version": "1.0.0",
+            "locale": "zh_Hans"
         }),
     )
     .await;
@@ -847,7 +1187,38 @@ async fn mcp_bundle_export_is_portable_zip_and_records_backend_system_version() 
         manifest["exported_from_system_version"],
         json!(env!("CARGO_PKG_VERSION"))
     );
+    assert_eq!(
+        manifest["minimum_host_version"],
+        json!(env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(manifest["bundle_version"], json!("1.0.0"));
+    let manifest_files = manifest["files"].as_array().unwrap();
+    let kind_rank = |kind: &str| match kind {
+        "tool" => 0,
+        "instance" => 1,
+        "connection" => 2,
+        _ => panic!("unexpected MCP bundle file kind"),
+    };
+    let manifest_order = manifest_files
+        .iter()
+        .map(|entry| {
+            (
+                kind_rank(entry["kind"].as_str().unwrap()),
+                entry["path"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut expected_order = manifest_order.clone();
+    expected_order.sort();
+    assert_eq!(manifest_order, expected_order);
+    assert_eq!(
+        manifest_files
+            .iter()
+            .map(|entry| entry["kind"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["tool", "instance"],
+        "manifest files must group tools, instances, then connections"
+    );
 
     let tool_path = manifest["files"]
         .as_array()
@@ -970,8 +1341,7 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
             "organization": "taichuy",
             "bundle_id": "selected_instance",
             "bundle_version": "1.0.0",
-            "locale": "zh_Hans",
-            "minimum_host_version": "0.2.0"
+            "locale": "zh_Hans"
         }),
     )
     .await;

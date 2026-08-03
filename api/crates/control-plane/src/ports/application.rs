@@ -145,6 +145,19 @@ pub struct ReplaceApplicationJsDependencySelectionInput {
     pub permissions: domain::JsDependencyPermissions,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationArchiveReleaseDigest {
+    pub application_id: Uuid,
+    pub release_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationArchiveRelease {
+    pub application_id: Uuid,
+    pub release_version: i64,
+    pub release_digest: String,
+}
+
 impl ReplaceApplicationJsDependencySelectionInput {
     pub fn from_catalog_entry(
         actor_user_id: Uuid,
@@ -174,6 +187,15 @@ impl ReplaceApplicationJsDependencySelectionInput {
 
 #[async_trait]
 pub trait ApplicationRepository: Send + Sync {
+    async fn settle_application_archive_releases(
+        &self,
+        workspace_id: Uuid,
+        digests: &[ApplicationArchiveReleaseDigest],
+    ) -> anyhow::Result<Vec<ApplicationArchiveRelease>> {
+        let _ = (workspace_id, digests);
+        anyhow::bail!("settle_application_archive_releases not implemented")
+    }
+
     async fn record_application_extension_source(
         &self,
         workspace_id: Uuid,

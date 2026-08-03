@@ -134,7 +134,7 @@ async fn plugin_routes_list_families_and_switch_local_version() {
 }
 
 #[tokio::test]
-async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts() {
+async fn plugin_routes_delete_family_rejects_current_and_referenced_installations() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let package_root_v1 =
@@ -168,7 +168,8 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
         .as_str()
         .unwrap()
         .to_string();
-    let install_v1_path = install_v1_payload["data"]["installation"]["installed_path"]
+    let install_v1_path = install_v1_payload["data"]["installation"]["local_artifact"]
+        ["local_path"]
         .as_str()
         .unwrap()
         .to_string();
@@ -193,7 +194,8 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
     let install_v2_payload: Value =
         serde_json::from_slice(&to_bytes(install_v2.into_body(), usize::MAX).await.unwrap())
             .unwrap();
-    let install_v2_path = install_v2_payload["data"]["installation"]["installed_path"]
+    let install_v2_path = install_v2_payload["data"]["installation"]["local_artifact"]
+        ["local_path"]
         .as_str()
         .unwrap()
         .to_string();
@@ -267,22 +269,7 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
         )
         .await
         .unwrap();
-    assert_eq!(delete_response.status(), StatusCode::OK);
-    let delete_payload: Value = serde_json::from_slice(
-        &to_bytes(delete_response.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(delete_payload["data"]["task_kind"], "uninstall");
-    assert_eq!(
-        delete_payload["data"]["detail_json"]["deleted_instance_count"],
-        1
-    );
-    assert_eq!(
-        delete_payload["data"]["detail_json"]["deleted_installation_count"],
-        2
-    );
+    assert_eq!(delete_response.status(), StatusCode::CONFLICT);
 
     let families_response = app
         .clone()
@@ -307,7 +294,7 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
             .as_array()
             .unwrap()
             .len(),
-        0
+        1
     );
 
     let instances_response = app
@@ -328,10 +315,10 @@ async fn plugin_routes_delete_family_removes_instances_and_installed_artifacts()
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(instances_payload["data"].as_array().unwrap().len(), 0);
+    assert_eq!(instances_payload["data"].as_array().unwrap().len(), 1);
 
-    assert!(!Path::new(&install_v1_path).exists());
-    assert!(!Path::new(&install_v2_path).exists());
+    assert!(Path::new(&install_v1_path).exists());
+    assert!(Path::new(&install_v2_path).exists());
 }
 
 #[tokio::test]

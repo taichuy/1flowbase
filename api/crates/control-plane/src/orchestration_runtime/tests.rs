@@ -72,8 +72,8 @@ async fn root_1534_resolved_provider_route_pins_the_installation_used_for_invoca
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -125,13 +125,16 @@ struct CapturingCompactRuntime {
 
 #[async_trait]
 impl ProviderRuntimePort for CapturingCompactRuntime {
-    async fn ensure_loaded(&self, _installation: &domain::PluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _installation: &domain::LocalPluginInstallationRecord,
+    ) -> Result<()> {
         Ok(())
     }
 
     async fn validate_provider(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Value> {
         Ok(json!({ "ok": true }))
@@ -139,7 +142,7 @@ impl ProviderRuntimePort for CapturingCompactRuntime {
 
     async fn list_models(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Vec<ProviderModelDescriptor>> {
         Ok(Vec::new())
@@ -147,7 +150,7 @@ impl ProviderRuntimePort for CapturingCompactRuntime {
 
     async fn compact(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> Result<ProviderCompactResult> {
         self.captured
@@ -163,7 +166,7 @@ impl ProviderRuntimePort for CapturingCompactRuntime {
 
     async fn invoke_stream(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _input: ProviderInvocationInput,
     ) -> Result<crate::ports::ProviderRuntimeInvocationOutput> {
         panic!("Compact adapter must not invoke Generate")
@@ -187,8 +190,8 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: Some(
@@ -252,13 +255,16 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
 
 #[async_trait]
 impl ProviderRuntimePort for CapturingCountTokensRuntime {
-    async fn ensure_loaded(&self, _installation: &domain::PluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _installation: &domain::LocalPluginInstallationRecord,
+    ) -> Result<()> {
         Ok(())
     }
 
     async fn validate_provider(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Value> {
         Ok(json!({ "ok": true }))
@@ -266,7 +272,7 @@ impl ProviderRuntimePort for CapturingCountTokensRuntime {
 
     async fn list_models(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _provider_config: Value,
     ) -> Result<Vec<ProviderModelDescriptor>> {
         Ok(Vec::new())
@@ -274,7 +280,7 @@ impl ProviderRuntimePort for CapturingCountTokensRuntime {
 
     async fn count_tokens(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> Result<ProviderCountTokensResult> {
         self.captured
@@ -290,7 +296,7 @@ impl ProviderRuntimePort for CapturingCountTokensRuntime {
 
     async fn invoke_stream(
         &self,
-        _installation: &domain::PluginInstallationRecord,
+        _installation: &domain::LocalPluginInstallationRecord,
         _input: ProviderInvocationInput,
     ) -> Result<crate::ports::ProviderRuntimeInvocationOutput> {
         panic!("CountTokens adapter must not invoke Generate")
@@ -314,8 +320,8 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -622,8 +628,8 @@ async fn orchestration_runtime_resolve_llm_instance_keeps_invalid_uuid_as_source
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -654,8 +660,8 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -697,8 +703,8 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -734,8 +740,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_provider_code_mismat
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -774,8 +780,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_instance_not_in_main
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -818,8 +824,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unassigned_installat
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -866,8 +872,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -914,8 +920,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unavailable_installa
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -953,8 +959,8 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -1005,8 +1011,8 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -1046,8 +1052,8 @@ async fn orchestration_runtime_textualizes_user_media_when_selected_model_is_not
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -1114,8 +1120,8 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,
@@ -1194,8 +1200,8 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: Some(
@@ -1267,8 +1273,8 @@ async fn native_provider_transport_affinity_rejects_a_different_selected_llm_bef
         flow_run_id: None,
         active_node_id: None,
         active_node_run_id: None,
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: Some(
@@ -1364,8 +1370,8 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
         flow_run_id: None,
         active_node_id: Some("node-llm".to_string()),
         active_node_run_id: Some(Uuid::now_v7()),
-        api_node_id: None,
-        provider_install_root: None,
+        api_node_id: Some("local:test".to_string()),
+        provider_install_root: Some(std::env::temp_dir()),
         flow_execution_context: None,
         answer_presentation: None,
         provider_transport_payload: None,

@@ -106,51 +106,24 @@ where
                 .update_desired_state(&UpdatePluginDesiredStateInput {
                     installation_id: command.installation_id,
                     desired_state: domain::PluginDesiredState::ActiveRequested,
-                    availability_status: derive_availability_status(
-                        domain::PluginDesiredState::ActiveRequested,
-                        domain::PluginArtifactStatus::Ready,
-                        local_installation.runtime_status,
-                    ),
+                    actor_user_id: command.actor_user_id,
                 })
                 .await?;
-            let mut runtime_installation = updated;
-            runtime_installation.installed_path = local_installation.installed_path.clone();
+            let runtime_installation = domain::LocalPluginInstallationRecord {
+                installation: updated,
+                artifact: local_installation.artifact,
+            };
             let loaded = match self.runtime.ensure_loaded(&runtime_installation).await {
                 Ok(()) => {
-                    let loaded = self
-                        .repository
-                        .update_runtime_snapshot(&UpdatePluginRuntimeSnapshotInput {
-                            installation_id: runtime_installation.id,
-                            runtime_status: domain::PluginRuntimeStatus::Active,
-                            availability_status: derive_availability_status(
-                                runtime_installation.desired_state,
-                                domain::PluginArtifactStatus::Ready,
-                                domain::PluginRuntimeStatus::Active,
-                            ),
-                            last_load_error: None,
-                        })
-                        .await?;
                     self.mark_current_node_runtime_status(
                         &runtime_installation,
                         domain::PluginRuntimeStatus::Active,
                         None,
                     )
                     .await?;
-                    loaded
+                    runtime_installation.installation.clone()
                 }
                 Err(error) => {
-                    self.repository
-                        .update_runtime_snapshot(&UpdatePluginRuntimeSnapshotInput {
-                            installation_id: runtime_installation.id,
-                            runtime_status: domain::PluginRuntimeStatus::LoadFailed,
-                            availability_status: derive_availability_status(
-                                runtime_installation.desired_state,
-                                domain::PluginArtifactStatus::Ready,
-                                domain::PluginRuntimeStatus::LoadFailed,
-                            ),
-                            last_load_error: Some(error.to_string()),
-                        })
-                        .await?;
                     self.mark_current_node_runtime_status(
                         &runtime_installation,
                         domain::PluginRuntimeStatus::LoadFailed,
@@ -353,7 +326,10 @@ where
     pub async fn delete_family(
         &self,
         command: DeletePluginFamilyCommand,
-    ) -> Result<domain::PluginTaskRecord> {
+    ) -> Result<domain::PluginTaskRecord>
+    where
+        R: ExtensionInstallationRepository,
+    {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
@@ -376,6 +352,16 @@ where
             .any(|installation| installation.source_kind == "builtin")
         {
             return Err(ControlPlaneError::Conflict("builtin_plugin_immutable").into());
+        }
+        for installation in &installations {
+            let decision = self
+                .repository
+                .extension_deletion_decision(&self.node_id, installation.id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+            if !decision.deletable {
+                return Err(ControlPlaneError::Conflict("plugin_family_referenced").into());
+            }
         }
 
         let current_installation_id = self
@@ -438,12 +424,19 @@ where
 
             let mut removed_paths = HashSet::<PathBuf>::new();
             for installation in &installations {
-                self.repository.delete_installation(installation.id).await?;
-
-                removed_paths.insert(PathBuf::from(&installation.installed_path));
-                if let Some(package_path) = &installation.package_path {
-                    removed_paths.insert(PathBuf::from(package_path));
+                if let Some(artifact) = self
+                    .repository
+                    .get_artifact_instance(&self.node_id, installation.id)
+                    .await?
+                {
+                    if let Some(local_path) = artifact.local_path {
+                        removed_paths.insert(PathBuf::from(local_path));
+                    }
+                    if let Some(package_path) = artifact.package_path {
+                        removed_paths.insert(PathBuf::from(package_path));
+                    }
                 }
+                self.repository.delete_installation(installation.id).await?;
             }
 
             for path in &removed_paths {
@@ -632,7 +625,11 @@ where
                 .await?;
             }
             let local_target = self.ready_current_node_installation(target.id).await?;
-            let package = load_provider_package(&local_target.installed_path)?;
+            let package = load_provider_package(
+                local_target
+                    .local_path()
+                    .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+            )?;
             refresh_provider_package_catalog_projection(&self.repository, &local_target, &package)
                 .await?;
             let migrated_instances = self

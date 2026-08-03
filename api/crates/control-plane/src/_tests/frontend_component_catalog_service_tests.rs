@@ -30,6 +30,7 @@ impl FrontendBlockCatalogRepository for MemoryFrontendComponentCatalog {
 
     async fn list_workspace_frontend_blocks(
         &self,
+        _node_id: &str,
         _workspace_id: Uuid,
     ) -> Result<Vec<FrontendBlockCatalogEntry>> {
         Ok(self.entries.clone())
@@ -98,9 +99,12 @@ fn sample_component(component_code: &str, export_name: &str) -> FrontendComponen
 #[tokio::test]
 async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
     let installation_id = Uuid::now_v7();
-    let service = FrontendComponentCatalogService::new(MemoryFrontendComponentCatalog {
-        entries: vec![sample_block(installation_id)],
-    });
+    let service = FrontendComponentCatalogService::new(
+        MemoryFrontendComponentCatalog {
+            entries: vec![sample_block(installation_id)],
+        },
+        "test-node",
+    );
 
     let page = service
         .list_component_capabilities(ListFrontendComponentCapabilitiesQuery {

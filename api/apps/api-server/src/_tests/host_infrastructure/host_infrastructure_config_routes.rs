@@ -9,8 +9,7 @@ use axum::{
 };
 use control_plane::ports::{AuthRepository, PluginRepository, UpsertPluginInstallationInput};
 use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus,
-    PluginVerificationStatus,
+    PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -119,6 +118,8 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         &state.store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::HostExtensions,
+            organization: "test".into(),
             provider_code: "redis-infra-host".into(),
             plugin_id: "redis-infra-host@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -129,19 +130,33 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::Disabled,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::Disabled,
-            package_path: None,
-            installed_path: install_root.display().to_string(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    PluginRepository::upsert_artifact_instance(
+        &state.store,
+        &control_plane::ports::UpsertPluginArtifactInstanceInput {
+            node_id: state.api_node_id.clone(),
+            installation_id: installation.id,
+            local_version: Some("0.1.0".into()),
+            local_checksum: None,
+            local_path: Some(install_root.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: PluginAvailabilityStatus::Disabled,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
         },
     )
     .await

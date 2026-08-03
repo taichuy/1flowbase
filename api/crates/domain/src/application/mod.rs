@@ -134,6 +134,8 @@ pub struct ApplicationRecord {
     pub icon_background: Option<String>,
     pub created_by: Uuid,
     pub updated_at: OffsetDateTime,
+    pub release_version: i64,
+    pub release_digest: Option<String>,
     pub tags: Vec<ApplicationTag>,
     pub sections: ApplicationSections,
 }

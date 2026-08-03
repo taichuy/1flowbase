@@ -15,6 +15,7 @@ import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type {
+  ConsoleApplicationType,
   ConsoleWorkflowExtensionHttpMethod,
   ConsoleWorkflowExtensionResponseMode,
   ConsoleWorkflowTriggerType
@@ -42,12 +43,6 @@ import {
   workflowScheduleTriggerQueryKey
 } from '../api/public-api';
 
-const WORKFLOW_TRIGGER_TYPE_OPTIONS: ConsoleWorkflowTriggerType[] = [
-  'extension',
-  'schedule'
-];
-const DEFAULT_WORKFLOW_TRIGGER_TYPE: ConsoleWorkflowTriggerType = 'extension';
-
 export type ApplicationFormIntent =
   | {
       kind: 'create';
@@ -60,7 +55,7 @@ export type ApplicationFormIntent =
     };
 
 interface ApplicationFormValues {
-  application_type: 'agent_flow' | 'workflow';
+  application_type: ConsoleApplicationType;
   trigger_type: ConsoleWorkflowTriggerType;
   extension_subpath: string;
   extension_http_method: Extract<
@@ -82,12 +77,6 @@ const applicationFormShell = {
   shellType: 'modal_panel',
   destroyOnHidden: true
 } as const;
-
-function workflowTriggerTypeLabelKey(type: ConsoleWorkflowTriggerType) {
-  return type === 'extension'
-    ? 'auto.workflow_trigger_type_extension'
-    : 'auto.workflow_trigger_type_schedule';
-}
 
 export function ApplicationFormModal({
   open,
@@ -118,6 +107,9 @@ export function ApplicationFormModal({
     enabled: open,
     retry: false
   });
+  const defaultApplicationType = catalogQuery.data?.types[0]?.value;
+  const defaultWorkflowTriggerType =
+    catalogQuery.data?.workflow_triggers[0]?.value;
   const application = detailQuery.data ?? null;
   const isExtension =
     isEdit && application?.workflow_trigger_type === 'extension';
@@ -148,9 +140,13 @@ export function ApplicationFormModal({
       return;
     }
     if (!isEdit) {
+      if (!defaultApplicationType || !defaultWorkflowTriggerType) {
+        return;
+      }
+
       form.setFieldsValue({
-        application_type: 'agent_flow',
-        trigger_type: DEFAULT_WORKFLOW_TRIGGER_TYPE,
+        application_type: defaultApplicationType,
+        trigger_type: defaultWorkflowTriggerType,
         extension_subpath: '',
         extension_http_method: 'POST',
         extension_response_mode: 'sync',
@@ -164,16 +160,23 @@ export function ApplicationFormModal({
       });
       return;
     }
-    if (!application) return;
+    if (!application || !defaultWorkflowTriggerType) return;
     form.setFieldsValue({
       application_type: application.application_type,
       trigger_type:
-        application.workflow_trigger_type ?? DEFAULT_WORKFLOW_TRIGGER_TYPE,
+        application.workflow_trigger_type ?? defaultWorkflowTriggerType,
       name: application.name,
       description: application.description,
       tag_ids: application.tags.map((tag) => tag.id)
     });
-  }, [application, form, isEdit, open]);
+  }, [
+    application,
+    defaultApplicationType,
+    defaultWorkflowTriggerType,
+    form,
+    isEdit,
+    open
+  ]);
 
   useEffect(() => {
     const extension = mappingQuery.data?.extension;
@@ -201,15 +204,23 @@ export function ApplicationFormModal({
   }, [form, scheduleQuery.data]);
 
   const watchedApplicationType =
-    Form.useWatch('application_type', form) ?? 'agent_flow';
+    Form.useWatch('application_type', form) ?? defaultApplicationType;
   const watchedTriggerType =
-    Form.useWatch('trigger_type', form) ?? DEFAULT_WORKFLOW_TRIGGER_TYPE;
+    Form.useWatch('trigger_type', form) ?? defaultWorkflowTriggerType;
   const showWorkflow = isEdit
     ? application?.application_type === 'workflow'
     : watchedApplicationType === 'workflow';
   const triggerType = isEdit
-    ? (application?.workflow_trigger_type ?? DEFAULT_WORKFLOW_TRIGGER_TYPE)
+    ? (application?.workflow_trigger_type ?? defaultWorkflowTriggerType)
     : watchedTriggerType;
+  const applicationTypeOption = catalogQuery.data?.types.find(
+    (option) =>
+      option.value ===
+      (isEdit ? application?.application_type : watchedApplicationType)
+  );
+  const workflowTriggerTypeOption = catalogQuery.data?.workflow_triggers.find(
+    (option) => option.value === triggerType
+  );
   const extension = mappingQuery.data?.extension ?? null;
   const extensionContract = useMemo(() => {
     const nodes = orchestrationQuery.data?.draft.document.graph.nodes ?? [];
@@ -301,9 +312,12 @@ export function ApplicationFormModal({
     }
   });
 
-  const loading = isEdit && detailQuery.isPending;
+  const loading = catalogQuery.isPending || (isEdit && detailQuery.isPending);
   const triggerLoadFailed =
-    mappingQuery.isError || scheduleQuery.isError || orchestrationQuery.isError;
+    catalogQuery.isError ||
+    mappingQuery.isError ||
+    scheduleQuery.isError ||
+    orchestrationQuery.isError;
 
   return (
     <SchemaModalPanel
@@ -345,23 +359,28 @@ export function ApplicationFormModal({
               <Input
                 id="readonly_application_type"
                 readOnly
-                value={
-                  application?.application_type === 'workflow'
-                    ? t('auto.application_type_workflow')
-                    : t('auto.application_type_agent_flow')
-                }
+                value={applicationTypeOption?.label ?? ''}
               />
+              {applicationTypeOption?.description ? (
+                <Typography.Text type="secondary">
+                  {applicationTypeOption.description}
+                </Typography.Text>
+              ) : null}
             </Form.Item>
           ) : (
             <Form.Item label={t('auto.type')} name="application_type">
               <Radio.Group>
                 <Space direction="vertical" size="small">
-                  <Radio value="agent_flow">
-                    {t('auto.application_type_agent_flow')}
-                  </Radio>
-                  <Radio value="workflow">
-                    {t('auto.application_type_workflow')}
-                  </Radio>
+                  {(catalogQuery.data?.types ?? []).map((option) => (
+                    <Radio key={option.value} value={option.value}>
+                      <Space direction="vertical" size={0}>
+                        <span>{option.label}</span>
+                        <Typography.Text type="secondary">
+                          {option.description}
+                        </Typography.Text>
+                      </Space>
+                    </Radio>
+                  ))}
                 </Space>
               </Radio.Group>
             </Form.Item>
@@ -376,19 +395,27 @@ export function ApplicationFormModal({
                 <Input
                   id="readonly_trigger_type"
                   readOnly
-                  value={workflowT(workflowTriggerTypeLabelKey(triggerType))}
+                  value={workflowTriggerTypeOption?.label ?? ''}
                 />
+                {workflowTriggerTypeOption?.description ? (
+                  <Typography.Text type="secondary">
+                    {workflowTriggerTypeOption.description}
+                  </Typography.Text>
+                ) : null}
               </Form.Item>
             ) : (
               <Form.Item
+                extra={workflowTriggerTypeOption?.description}
                 label={workflowT('auto.workflow_trigger_type')}
                 name="trigger_type"
               >
                 <Select<ConsoleWorkflowTriggerType>
-                  options={WORKFLOW_TRIGGER_TYPE_OPTIONS.map((type) => ({
-                    value: type,
-                    label: workflowT(workflowTriggerTypeLabelKey(type))
-                  }))}
+                  options={(catalogQuery.data?.workflow_triggers ?? []).map(
+                    (option) => ({
+                      value: option.value,
+                      label: option.label
+                    })
+                  )}
                 />
               </Form.Item>
             )
@@ -613,7 +640,12 @@ export function ApplicationFormModal({
               }))}
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={mutation.isPending}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            disabled={catalogQuery.isError}
+            loading={mutation.isPending}
+          >
             {isEdit ? t('auto.save_changes') : t('auto.create_application')}
           </Button>
         </Form>

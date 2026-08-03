@@ -9,8 +9,7 @@ use control_plane::ports::{
 };
 use domain::{
     ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource, ModelProviderDiscoveryMode,
-    ModelProviderInstanceStatus, PluginArtifactStatus, PluginAvailabilityStatus,
-    PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
+    ModelProviderInstanceStatus, PluginDesiredState, PluginVerificationStatus,
 };
 use serde_json::{json, Value};
 use storage_postgres::{run_migrations, PgControlPlaneStore};
@@ -127,6 +126,8 @@ async fn seed_store() -> (
         &store,
         &UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -137,18 +138,12 @@ async fn seed_store() -> (
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::InstallIncomplete,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.1.0".into(),
-            checksum: Some("abc123".into()),
-            manifest_fingerprint: None,
-            signature_status: Some("unsigned".into()),
+            expected_checksum: Some("abc123".into()),
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -232,6 +227,8 @@ async fn seed_store_before_main_instance_aggregation() -> (
         &store,
         &UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -242,18 +239,12 @@ async fn seed_store_before_main_instance_aggregation() -> (
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::InstallIncomplete,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.1.0".into(),
-            checksum: Some("abc123".into()),
-            manifest_fingerprint: None,
-            signature_status: Some("unsigned".into()),
+            expected_checksum: Some("abc123".into()),
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )

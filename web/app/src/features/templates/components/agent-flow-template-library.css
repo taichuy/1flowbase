@@ -1,0 +1,6 @@
+.agent-flow-template-library {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}

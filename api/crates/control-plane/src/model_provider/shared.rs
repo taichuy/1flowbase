@@ -10,7 +10,6 @@ use uuid::Uuid;
 
 use crate::{
     errors::ControlPlaneError,
-    plugin_lifecycle::reconcile_installation_snapshot,
     plugin_management::ready_current_node_plugin_installation,
     ports::{AuthRepository, PluginRepository},
 };
@@ -25,7 +24,7 @@ pub(super) async fn ready_model_provider_installation<R>(
     repository: &R,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
     installation_id: Uuid,
-) -> Result<domain::PluginInstallationRecord>
+) -> Result<domain::LocalPluginInstallationRecord>
 where
     R: PluginRepository,
 {
@@ -39,7 +38,7 @@ where
             )
             .await
         }
-        None => reconcile_installation_snapshot(repository, installation_id).await,
+        None => Err(ControlPlaneError::Conflict("plugin_node_context_required").into()),
     }
 }
 
@@ -47,14 +46,12 @@ pub(super) async fn model_provider_installation_from_current_snapshot<R>(
     repository: &R,
     node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
     installation: domain::PluginInstallationRecord,
-) -> Result<Option<domain::PluginInstallationRecord>>
+) -> Result<Option<domain::LocalPluginInstallationRecord>>
 where
     R: PluginRepository,
 {
     let Some(context) = node_artifact_context else {
-        return Ok(Some(
-            reconcile_installation_snapshot(repository, installation.id).await?,
-        ));
+        return Err(ControlPlaneError::Conflict("plugin_node_context_required").into());
     };
     let Some(artifact) = repository
         .get_artifact_instance(context.node_id, installation.id)
@@ -65,14 +62,13 @@ where
     if !artifact.artifact_status.is_ready() {
         return Ok(None);
     }
-    let Some(installed_path) = artifact.installed_path else {
+    if artifact.local_path.is_none() {
         return Ok(None);
-    };
-    let mut local_installation = installation;
-    local_installation.installed_path = installed_path;
-    local_installation.artifact_status = domain::PluginArtifactStatus::Ready;
-    local_installation.runtime_status = artifact.runtime_status;
-    Ok(Some(local_installation))
+    }
+    Ok(Some(domain::LocalPluginInstallationRecord {
+        installation,
+        artifact,
+    }))
 }
 
 pub(super) async fn load_actor_context_for_user<R>(

@@ -8,7 +8,6 @@ import {
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { ConsoleNodeContributionEntry } from '@1flowbase/api-client';
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 
 const schemaRuntimeSpies = vi.hoisted(() => ({
@@ -30,12 +29,15 @@ vi.mock('../../schema/node-schema-registry', async () => {
   };
 });
 
-vi.mock('../../../../shared/schema-ui/v1/overlay-shell/SchemaDrawerPanel', () => ({
-  SchemaDrawerPanel: schemaRuntimeSpies.SchemaDrawerPanel
-}));
+vi.mock(
+  '../../../../shared/schema-ui/v1/overlay-shell/SchemaDrawerPanel',
+  () => ({
+    SchemaDrawerPanel: schemaRuntimeSpies.SchemaDrawerPanel
+  })
+);
 
 import * as orchestrationApi from '../../api/orchestration';
-import * as nodeContributionsApi from '../../api/node-contributions';
+import * as nodeContributionsApi from '../../api/application-node-catalog';
 import * as runtimeApi from '../../api/runtime';
 import * as applicationsApi from '../../../applications/api/applications';
 import * as publicApi from '../../../applications/api/public-api';
@@ -45,6 +47,10 @@ import { NODE_DETAIL_DEFAULT_WIDTH } from '../../lib/detail-panel-width';
 import { AgentFlowEditorPage } from '../../pages/AgentFlowEditorPage';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { renderReactFlowScene } from '../../../../test/renderers/render-react-flow-scene';
+import {
+  createApplicationNodeCatalog,
+  createPluginCatalogNode
+} from '../fixtures/application-node-catalog';
 
 function createValidDocument() {
   const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
@@ -117,38 +123,9 @@ function createTemplatePackage() {
   };
 }
 
-const readyContribution: ConsoleNodeContributionEntry = {
-  installation_id: 'installation-1',
-  provider_code: 'prompt_pack',
-  plugin_id: 'prompt_pack@0.1.0',
-  plugin_version: '0.1.0',
-  contribution_code: 'openai_prompt',
-  node_shell: 'action',
-  plugin_unique_identifier: 'prompt_pack',
-  package_id: 'prompt_pack@0.1.0',
-  contribution_checksum: 'sha256:contribution',
-  compiled_contribution_hash: 'sha256:compiled',
-  category: 'generation',
-  title: 'OpenAI Prompt',
-  description: 'Generate prompt output',
-  dependency_status: 'ready',
-  schema_version: '1flowbase.node-contribution/v2',
-  output_schema_snapshot: {
-    outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
-  },
-  experimental: false,
-  icon: 'sparkles',
-  schema_ui: {},
-  output_schema: {
-    outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
-  },
-  side_effect_policy: 'external_read',
-  infra_contracts: [],
-  required_auth: [],
-  visibility: 'public',
-  dependency_installation_kind: 'model_provider',
-  dependency_plugin_version_range: '^0.1.0'
-};
+const readyNodeCatalog = createApplicationNodeCatalog([
+  createPluginCatalogNode()
+]);
 
 const apiMapping = {
   input: {
@@ -252,9 +229,10 @@ beforeEach(() => {
     created_by: 'user-1',
     created_at: '2026-05-20T09:00:00Z'
   });
-  vi.spyOn(nodeContributionsApi, 'fetchNodeContributions').mockResolvedValue(
-    []
-  );
+  vi.spyOn(
+    nodeContributionsApi,
+    'fetchApplicationNodeCatalog'
+  ).mockResolvedValue(createApplicationNodeCatalog([]));
   vi.spyOn(runtimeApi, 'buildNodeDebugPreviewInput').mockReturnValue({
     input_payload: {}
   });
@@ -921,9 +899,10 @@ describe('AgentFlowEditorShell', () => {
   });
 
   test('AC-001 keeps the thinking loading state while orchestration data loads', () => {
-    vi.spyOn(orchestrationApi, 'fetchOrchestrationState').mockImplementationOnce(
-      () => new Promise(() => undefined)
-    );
+    vi.spyOn(
+      orchestrationApi,
+      'fetchOrchestrationState'
+    ).mockImplementationOnce(() => new Promise(() => undefined));
 
     renderShell(
       <AgentFlowEditorPage
@@ -943,8 +922,8 @@ describe('AgentFlowEditorShell', () => {
       createInitialState()
     );
     vi.mocked(
-      nodeContributionsApi.fetchNodeContributions
-    ).mockResolvedValueOnce([readyContribution]);
+      nodeContributionsApi.fetchApplicationNodeCatalog
+    ).mockResolvedValueOnce(readyNodeCatalog);
 
     renderShell(
       <AgentFlowEditorPage
@@ -957,9 +936,9 @@ describe('AgentFlowEditorShell', () => {
       await screen.findByRole('button', { name: '历史版本' })
     ).toBeInTheDocument();
     expect(screen.queryByText('请使用桌面端编辑')).not.toBeInTheDocument();
-    expect(nodeContributionsApi.fetchNodeContributions).toHaveBeenCalledWith(
-      'app-1'
-    );
+    expect(
+      nodeContributionsApi.fetchApplicationNodeCatalog
+    ).toHaveBeenCalledWith('app-1');
   });
 
   test('renders provider-backed editor chrome on desktop', async () => {
@@ -967,8 +946,8 @@ describe('AgentFlowEditorShell', () => {
       createInitialState()
     );
     vi.mocked(
-      nodeContributionsApi.fetchNodeContributions
-    ).mockResolvedValueOnce([readyContribution]);
+      nodeContributionsApi.fetchApplicationNodeCatalog
+    ).mockResolvedValueOnce(readyNodeCatalog);
 
     renderShell(
       <AgentFlowEditorPage
@@ -987,9 +966,9 @@ describe('AgentFlowEditorShell', () => {
       await screen.findByRole('menuitem', { name: /OpenAI Prompt/i })
     ).toBeInTheDocument();
     expect(screen.queryByText('请使用桌面端编辑')).not.toBeInTheDocument();
-    expect(nodeContributionsApi.fetchNodeContributions).toHaveBeenCalledWith(
-      'app-1'
-    );
+    expect(
+      nodeContributionsApi.fetchApplicationNodeCatalog
+    ).toHaveBeenCalledWith('app-1');
   }, 20_000);
 
   test('renders node detail inside a docked overlay panel on orchestration page', async () => {

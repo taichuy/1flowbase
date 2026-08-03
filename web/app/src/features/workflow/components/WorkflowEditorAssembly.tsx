@@ -1,7 +1,7 @@
 import type {
   ConsoleApplicationEnvironmentVariable,
+  ConsoleApplicationNodeCatalog,
   ConsoleApplicationOrchestrationState,
-  ConsoleNodeContributionEntry,
   SaveConsoleApplicationDraftInput
 } from '@1flowbase/api-client';
 
@@ -16,7 +16,7 @@ interface WorkflowEditorAssemblyProps {
   initialState: ConsoleApplicationOrchestrationState;
   workflowTriggerContext: WorkflowTriggerContext;
   initialEnvironmentVariables?: ConsoleApplicationEnvironmentVariable[];
-  nodeContributions?: ConsoleNodeContributionEntry[];
+  nodeCatalog?: ConsoleApplicationNodeCatalog;
   saveDraftOverride?: (
     input: SaveConsoleApplicationDraftInput
   ) => Promise<ConsoleApplicationOrchestrationState>;
@@ -31,7 +31,7 @@ export function WorkflowEditorAssembly({
   initialState,
   workflowTriggerContext,
   initialEnvironmentVariables = [],
-  nodeContributions = [],
+  nodeCatalog = { nodes: [] },
   saveDraftOverride,
   restoreVersionOverride
 }: WorkflowEditorAssemblyProps) {
@@ -44,7 +44,7 @@ export function WorkflowEditorAssembly({
             applicationId={applicationId}
             applicationName={applicationName}
             initialEnvironmentVariables={initialEnvironmentVariables}
-            nodeContributions={nodeContributions}
+            nodeCatalog={nodeCatalog}
             triggerContext={workflowTriggerContext}
             saveDraftOverride={saveDraftOverride}
             restoreVersionOverride={restoreVersionOverride}

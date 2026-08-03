@@ -5,29 +5,15 @@ import {
   type FlowPluginContributionRef
 } from '@1flowbase/flow-schema';
 
-import type { AgentFlowNodeContributionEntry } from '../api/node-contributions';
+import type { ConsolePluginNodeIdentity } from '@1flowbase/api-client';
 import './node-definitions/contracts';
 import type {
   NodeDefinition,
   NodeDefinitionMeta
 } from './node-definitions/types';
 import { i18nText } from '../../../shared/i18n/text';
-import {
-  buildBuiltinNodePickerOptions,
-  SHARED_EXECUTION_NODE_PICKER_TYPES,
-  type BuiltinNodePickerOption
-} from '../../flow-editor/authoring/node-picker';
-import {
-  toPluginContributionPickerOption,
-  type NodePickerOption
-} from '../../flow-editor/authoring/plugin-node-picker';
-
 export {
-  buildBuiltinNodePickerOptions,
-  SHARED_EXECUTION_NODE_PICKER_TYPES as GENERAL_EXECUTION_NODE_PICKER_TYPES,
-  type BuiltinNodePickerOption
-} from '../../flow-editor/authoring/node-picker';
-export {
+  buildNodePickerOptions,
   getNodePickerOptionDescription,
   getNodePickerOptionKey,
   getNodePickerOptionNodeType,
@@ -36,19 +22,12 @@ export {
   type PluginContributionPickerOption
 } from '../../flow-editor/authoring/plugin-node-picker';
 
-export const BUILTIN_NODE_PICKER_OPTIONS: BuiltinNodePickerOption[] =
-  buildBuiltinNodePickerOptions([
-    'start',
-    'answer',
-    ...SHARED_EXECUTION_NODE_PICKER_TYPES
-  ]);
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function getContributionOutputSchemaSnapshot(
-  contribution: AgentFlowNodeContributionEntry
+  contribution: ConsolePluginNodeIdentity
 ): FlowPluginContributionOutputSchemaSnapshot {
   return isRecord(contribution.output_schema_snapshot)
     ? contribution.output_schema_snapshot
@@ -78,17 +57,8 @@ export const pluginNodeDefinitionMeta: NodeDefinitionMeta = {
   helpHref: null
 };
 
-export function buildNodePickerOptions(
-  contributions: AgentFlowNodeContributionEntry[]
-): NodePickerOption[] {
-  return [
-    ...BUILTIN_NODE_PICKER_OPTIONS,
-    ...contributions.map(toPluginContributionPickerOption)
-  ];
-}
-
 export function toPluginContributionRef(
-  contribution: AgentFlowNodeContributionEntry
+  contribution: ConsolePluginNodeIdentity
 ): FlowPluginContributionRef {
   return {
     plugin_id: contribution.plugin_id,
@@ -133,7 +103,7 @@ export function hasPluginContributionRef(
 }
 
 export function createPluginNodeOutputs(
-  contribution: AgentFlowNodeContributionEntry
+  contribution: ConsolePluginNodeIdentity
 ): FlowNodeDocument['outputs'] {
   const schemaOutputs =
     getContributionOutputSchemaSnapshot(contribution).outputs;

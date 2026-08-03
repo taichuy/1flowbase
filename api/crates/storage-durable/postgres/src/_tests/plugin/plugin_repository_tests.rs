@@ -5,9 +5,8 @@ use control_plane::ports::{
     UpsertPluginPackageCatalogProjectionInput,
 };
 use domain::{
-    PluginArtifactStatus, PluginAvailabilityStatus, PluginDesiredState,
-    PluginPackageCatalogProjectionStatus, PluginRuntimeStatus, PluginTaskKind, PluginTaskStatus,
-    PluginVerificationStatus,
+    PluginDesiredState, PluginPackageCatalogProjectionStatus, PluginRuntimeStatus, PluginTaskKind,
+    PluginTaskStatus, PluginVerificationStatus,
 };
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
@@ -79,6 +78,8 @@ async fn plugin_repository_persists_package_catalog_projection() {
         &store,
         &UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -89,18 +90,12 @@ async fn plugin_repository_persists_package_catalog_projection() {
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Active,
-            availability_status: PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -179,6 +174,8 @@ async fn plugin_repository_persists_installations_assignments_and_tasks() {
         &store,
         &UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -189,18 +186,12 @@ async fn plugin_repository_persists_installations_assignments_and_tasks() {
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::PendingRestart,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::PendingRestart,
-            package_path: Some("/tmp/plugin-packages/fixture_provider/0.1.0.1flowbasepkg".into()),
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.1.0".into(),
-            checksum: Some("abc123".into()),
-            manifest_fingerprint: Some("sha256:manifest".into()),
-            signature_status: Some("unsigned".into()),
+            expected_checksum: Some("abc123".into()),
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({ "help_url": "https://example.com/help" }),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -212,24 +203,7 @@ async fn plugin_repository_persists_installations_assignments_and_tasks() {
         installation.desired_state,
         PluginDesiredState::PendingRestart
     );
-    assert_eq!(installation.artifact_status, PluginArtifactStatus::Ready);
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
-    assert_eq!(
-        installation.availability_status,
-        PluginAvailabilityStatus::PendingRestart
-    );
-    assert_eq!(
-        installation.package_path.as_deref(),
-        Some("/tmp/plugin-packages/fixture_provider/0.1.0.1flowbasepkg")
-    );
-    assert_eq!(
-        installation.installed_path,
-        "/tmp/plugin-installed/fixture_provider/0.1.0"
-    );
-    assert_eq!(
-        installation.manifest_fingerprint.as_deref(),
-        Some("sha256:manifest")
-    );
+    assert_eq!(installation.expected_checksum.as_deref(), Some("abc123"));
 
     let assignment = PluginRepository::create_assignment(
         &store,
@@ -327,6 +301,8 @@ async fn js_dependency_repository_replaces_entries_and_lists_assigned_workspace_
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_js_dependency_pack".into(),
             plugin_id: "fixture_js_dependency_pack@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -337,18 +313,12 @@ async fn js_dependency_repository_replaces_entries_and_lists_assigned_workspace_
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::Available,
-            package_path: None,
-            installed_path: "/tmp/plugins/fixture_js_dependency_pack/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Verified,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -440,6 +410,8 @@ async fn plugin_repository_repoints_assignment_by_workspace_and_provider_code() 
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -450,18 +422,12 @@ async fn plugin_repository_repoints_assignment_by_workspace_and_provider_code() 
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::InstallIncomplete,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -471,6 +437,8 @@ async fn plugin_repository_repoints_assignment_by_workspace_and_provider_code() 
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.2.0".into(),
             plugin_version: "0.2.0".into(),
@@ -481,18 +449,12 @@ async fn plugin_repository_repoints_assignment_by_workspace_and_provider_code() 
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::InstallIncomplete,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.2.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -537,6 +499,8 @@ async fn plugin_repository_persists_trust_level_and_signature_metadata() {
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "openai_compatible".into(),
             plugin_id: "1flowbase.openai_compatible@0.2.0".into(),
             plugin_version: "0.2.0".into(),
@@ -547,18 +511,12 @@ async fn plugin_repository_persists_trust_level_and_signature_metadata() {
             trust_level: "verified_official".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::ActiveRequested,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::InstallIncomplete,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/openai_compatible/0.2.0".into(),
-            checksum: Some("sha256:abc123".into()),
-            manifest_fingerprint: None,
-            signature_status: Some("verified".into()),
+            expected_checksum: Some("sha256:abc123".into()),
+            signature_status: domain::ExtensionSignatureStatus::Verified,
             signature_algorithm: Some("ed25519".into()),
             signing_key_id: Some("official-key-2026-04".into()),
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -566,7 +524,10 @@ async fn plugin_repository_persists_trust_level_and_signature_metadata() {
     .unwrap();
 
     assert_eq!(installation.trust_level, "verified_official");
-    assert_eq!(installation.signature_status.as_deref(), Some("verified"));
+    assert_eq!(
+        installation.signature_status,
+        domain::ExtensionSignatureStatus::Verified
+    );
     assert_eq!(installation.signature_algorithm.as_deref(), Some("ed25519"));
     assert_eq!(
         installation.signing_key_id.as_deref(),
@@ -606,6 +567,8 @@ async fn plugin_repository_lists_only_pending_restart_host_extensions() {
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::HostExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_host_extension".into(),
             plugin_id: "fixture_host_extension@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -616,18 +579,12 @@ async fn plugin_repository_lists_only_pending_restart_host_extensions() {
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::PendingRestart,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::PendingRestart,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_host_extension/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -637,6 +594,8 @@ async fn plugin_repository_lists_only_pending_restart_host_extensions() {
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".to_string(),
             provider_code: "fixture_provider".into(),
             plugin_id: "fixture_provider@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -647,18 +606,12 @@ async fn plugin_repository_lists_only_pending_restart_host_extensions() {
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::PendingRestart,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::PendingRestart,
-            package_path: None,
-            installed_path: "/tmp/plugin-installed/fixture_provider/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            last_load_error: None,
             metadata_json: json!({}),
+            is_system_reserved: false,
             actor_user_id: actor.id,
         },
     )
@@ -678,17 +631,18 @@ fn installation_commit_input(
     actor_user_id: Uuid,
     title: &str,
     runtime: &str,
-) -> control_plane::ports::CommitPluginInstallationProjectionInput {
+) -> control_plane::ports::CommitPluginInstallationInput {
     use control_plane::ports::{
-        CommitPluginInstallationProjectionInput, FrontendBlockCatalogRegistryInput,
+        CommitPluginInstallationInput, FrontendBlockCatalogRegistryInput,
         ReplaceInstallationFrontendBlocksInput, ReplaceInstallationJsDependenciesInput,
-        ReplaceInstallationNodeContributionsInput, UpsertExtensionInstallationInput,
-        UpsertPluginArtifactInstanceInput,
+        ReplaceInstallationNodeContributionsInput, UpsertPluginArtifactInstanceInput,
     };
 
-    CommitPluginInstallationProjectionInput {
+    CommitPluginInstallationInput {
         installation: UpsertPluginInstallationInput {
             installation_id,
+            category: domain::ExtensionCategory::CapabilityPlugins,
+            organization: "test".to_string(),
             provider_code: "fixture_frontend_blocks".into(),
             plugin_id: "fixture_frontend_blocks@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -699,52 +653,28 @@ fn installation_commit_input(
             trust_level: "checksum_only".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state: PluginDesiredState::Disabled,
-            artifact_status: PluginArtifactStatus::Ready,
-            runtime_status: PluginRuntimeStatus::Inactive,
-            availability_status: PluginAvailabilityStatus::Disabled,
-            package_path: None,
-            installed_path: "/tmp/fixture_frontend_blocks/0.1.0".into(),
-            checksum: None,
-            manifest_fingerprint: Some("sha256:fixture".into()),
-            signature_status: None,
-            signature_algorithm: None,
-            signing_key_id: None,
-            last_load_error: None,
-            metadata_json: json!({"block_contributions": ["hero_banner"]}),
-            actor_user_id,
-        },
-        extension_installation: UpsertExtensionInstallationInput {
-            installation_id: Uuid::now_v7(),
-            identity: domain::ExtensionInstallationIdentity {
-                category: domain::ExtensionCategory::CapabilityPlugins,
-                organization: "taichuy".into(),
-                artifact_id: "fixture_frontend_blocks".into(),
-                version: "0.1.0".into(),
-                node_id: "test-node".into(),
-            },
-            source: "upload".into(),
-            trust: "unknown".into(),
-            local_path: "/tmp/fixture_frontend_blocks/0.1.0".into(),
-            checksum: "unknown".into(),
+            expected_checksum: None,
             signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            warnings: Vec::new(),
-            receipt: json!({"kind": "fixture"}),
-            application_action: domain::ExtensionApplicationAction::None,
-            status: domain::ExtensionInstallationStatus::Installed,
-            installed_by: actor_user_id,
+            metadata_json: json!({"block_contributions": ["hero_banner"]}),
+            is_system_reserved: false,
+            actor_user_id,
         },
         artifact_instance: UpsertPluginArtifactInstanceInput {
             node_id: "test-node".into(),
             installation_id,
             local_version: Some("0.1.0".into()),
             local_checksum: None,
-            installed_path: Some("/tmp/fixture_frontend_blocks/0.1.0".into()),
+            local_path: Some("/tmp/fixture_frontend_blocks/0.1.0".into()),
+            package_path: None,
+            manifest_fingerprint: None,
             artifact_status: domain::PluginArtifactInstanceStatus::Ready,
             runtime_status: PluginRuntimeStatus::Inactive,
+            availability_status: domain::PluginAvailabilityStatus::Disabled,
             checked_at: time::OffsetDateTime::now_utc(),
             last_error: None,
+            is_current: true,
         },
         package_catalog: None,
         node_contributions: ReplaceInstallationNodeContributionsInput {
@@ -795,7 +725,7 @@ async fn plugin_installation_commit_rolls_back_new_installation_when_frontend_ca
 ) {
     let (store, _workspace, actor) = seed_store().await;
     let installation_id = Uuid::now_v7();
-    let error = PluginRepository::commit_plugin_installation_projection(
+    let error = PluginRepository::commit_plugin_installation(
         &store,
         &installation_commit_input(installation_id, actor.id, "Invalid", "invalid"),
     )
@@ -816,14 +746,14 @@ async fn plugin_installation_commit_preserves_previous_installation_and_catalog_
 ) {
     let (store, _workspace, actor) = seed_store().await;
     let installation_id = Uuid::now_v7();
-    PluginRepository::commit_plugin_installation_projection(
+    PluginRepository::commit_plugin_installation(
         &store,
         &installation_commit_input(installation_id, actor.id, "Original", "native_react"),
     )
     .await
     .unwrap();
 
-    PluginRepository::commit_plugin_installation_projection(
+    PluginRepository::commit_plugin_installation(
         &store,
         &installation_commit_input(installation_id, actor.id, "Changed", "invalid"),
     )

@@ -39,6 +39,8 @@ fn test_application_record() -> domain::ApplicationRecord {
         icon_background: None,
         created_by: Uuid::now_v7(),
         updated_at: OffsetDateTime::UNIX_EPOCH,
+        release_version: 0,
+        release_digest: None,
         tags: Vec::new(),
         sections: domain::ApplicationSections {
             orchestration: domain::ApplicationOrchestrationSection {

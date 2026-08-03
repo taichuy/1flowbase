@@ -68,6 +68,7 @@ describe('style boundary registry', () => {
       'page.application-api',
       'page.embedded-apps',
       'page.templates',
+      'page.settings-extension-center-agent-flow',
       'page.settings',
       'page.settings-i18n.desktop',
       'page.settings-i18n.mobile',
@@ -85,6 +86,7 @@ describe('style boundary registry', () => {
       'page.frontstage',
       'page.application-detail',
       'page.application-api',
+      'page.settings-extension-center-agent-flow',
       'page.settings',
       'page.settings-i18n.desktop',
       'page.settings-i18n.mobile',
@@ -108,6 +110,7 @@ describe('style boundary registry', () => {
         'web/app/src/features/settings/components/settings-section-surface.css'
       ])
     ).toEqual([
+      'page.settings-extension-center-agent-flow',
       'page.settings',
       'page.settings-i18n.desktop',
       'page.settings-i18n.mobile',

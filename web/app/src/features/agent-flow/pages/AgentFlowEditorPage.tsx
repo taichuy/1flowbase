@@ -10,9 +10,9 @@ import {
   fetchApplicationEnvironmentVariables
 } from '../../applications/api/applications';
 import {
-  fetchNodeContributions,
-  nodeContributionsQueryKey
-} from '../api/node-contributions';
+  applicationNodeCatalogQueryKey,
+  fetchApplicationNodeCatalog
+} from '../api/application-node-catalog';
 import {
   fetchOrchestrationState,
   orchestrationQueryKey
@@ -33,9 +33,9 @@ export function AgentFlowEditorPage({
     queryKey: orchestrationQueryKey(applicationId),
     queryFn: () => fetchOrchestrationState(applicationId)
   });
-  const nodeContributionsQuery = useQuery({
-    queryKey: nodeContributionsQueryKey(applicationId),
-    queryFn: () => fetchNodeContributions(applicationId)
+  const nodeCatalogQuery = useQuery({
+    queryKey: applicationNodeCatalogQueryKey(applicationId),
+    queryFn: () => fetchApplicationNodeCatalog(applicationId)
   });
   const environmentVariablesQuery = useQuery({
     queryKey: applicationEnvironmentVariablesQueryKey(applicationId),
@@ -44,7 +44,7 @@ export function AgentFlowEditorPage({
 
   if (
     orchestrationQuery.isPending ||
-    nodeContributionsQuery.isPending ||
+    nodeCatalogQuery.isPending ||
     environmentVariablesQuery.isPending
   ) {
     return <LoadingState compact />;
@@ -52,13 +52,13 @@ export function AgentFlowEditorPage({
 
   if (
     orchestrationQuery.isError ||
-    nodeContributionsQuery.isError ||
+    nodeCatalogQuery.isError ||
     environmentVariablesQuery.isError
   ) {
     const error = orchestrationQuery.isError
       ? orchestrationQuery.error
-      : nodeContributionsQuery.isError
-        ? nodeContributionsQuery.error
+      : nodeCatalogQuery.isError
+        ? nodeCatalogQuery.error
         : environmentVariablesQuery.error;
 
     if (error instanceof ApiClientError && error.status === 403) {
@@ -83,15 +83,13 @@ export function AgentFlowEditorPage({
   }
 
   const state = orchestrationQuery.data;
-  const nodeContributions = nodeContributionsQuery.data;
-
   return (
     <AgentFlowEditorAssembly
       applicationId={applicationId}
       applicationName={applicationName}
       initialState={state}
       initialEnvironmentVariables={environmentVariablesQuery.data}
-      nodeContributions={nodeContributions}
+      nodeCatalog={nodeCatalogQuery.data}
       topSlot={topSlot}
     />
   );

@@ -12,7 +12,7 @@ use access_control::{
 };
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{Multipart, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::Response,
     Json, Router,
@@ -45,7 +45,7 @@ use orchestration_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -83,11 +83,6 @@ pub struct ApplicationArchiveUploadBody {
     pub file: String,
     pub name: Option<String>,
     pub description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogQuery {
-    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -157,15 +152,6 @@ pub struct AgentFlowTemplateDependencyResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct AgentFlowTemplatePackageResponse {
-    pub schema_version: String,
-    pub application: AgentFlowTemplateApplicationResponse,
-    #[schema(value_type = Object)]
-    pub flow_document: serde_json::Value,
-    pub dependencies: Vec<AgentFlowTemplateDependencyResponse>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct AgentFlowTemplateDependencyStatusResponse {
     pub dependency: AgentFlowTemplateDependencyResponse,
     pub status: String,
@@ -211,37 +197,6 @@ pub struct ImportAgentFlowTemplateResponse {
     pub application: AgentFlowTemplateImportedApplicationResponse,
     pub orchestration: OrchestrationStateResponse,
     pub preview: AgentFlowTemplatePreviewResponse,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogSourceResponse {
-    pub source_kind: String,
-    pub source_label: String,
-    pub index_url: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogPageResponse {
-    pub page: u32,
-    pub page_size: usize,
-    pub next_cursor: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogEntryResponse {
-    pub workflow_id: String,
-    pub schema_version: String,
-    pub application: AgentFlowTemplateApplicationResponse,
-    pub template_url: String,
-    pub template_sha256: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialAgentFlowTemplateCatalogResponse {
-    pub source: OfficialAgentFlowTemplateCatalogSourceResponse,
-    pub page: OfficialAgentFlowTemplateCatalogPageResponse,
-    pub entries: Vec<OfficialAgentFlowTemplateCatalogEntryResponse>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -295,14 +250,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/applications/archive/installed-extension/:installation_id/import",
             console_post(import_installed_application_extension, Authenticated),
-        )
-        .route(
-            "/applications/orchestration/templates/official-catalog",
-            console_get(list_official_agent_flow_template_catalog, Authenticated),
-        )
-        .route(
-            "/applications/orchestration/templates/official/:workflow_id",
-            console_get(download_official_agent_flow_template, Authenticated),
         )
         .route(
             "/applications/:id/orchestration/versions/:version_id/restore",
@@ -410,6 +357,10 @@ fn parse_application_archive(bytes: &[u8]) -> Result<ApplicationArchivePackage, 
     Ok(ApplicationArchivePackage {
         schema_version: APPLICATION_ARCHIVE_SCHEMA_VERSION.to_string(),
         applications: vec![ApplicationArchiveEntry {
+            template_id: String::new(),
+            release_version: 0,
+            exported_from_system_version: String::new(),
+            exported_at: String::new(),
             application: ApplicationArchiveApplication {
                 application_type: template.application.application_type,
                 workflow_trigger_type: None,
@@ -466,7 +417,13 @@ async fn installed_application_archive_entry(
     {
         return Err(ControlPlaneError::InvalidInput("agent_flow_extension_installation").into());
     }
-    let bytes = tokio::fs::read(&installation.local_path).await?;
+    let local_path = installation
+        .local_path
+        .as_deref()
+        .ok_or(ControlPlaneError::Conflict(
+            "extension_artifact_path_missing",
+        ))?;
+    let bytes = tokio::fs::read(local_path).await?;
     let warnings = installed_extension_integrity_warnings(&installation, &bytes);
     let package = tokio::task::spawn_blocking(move || parse_application_archive(&bytes))
         .await
@@ -766,10 +723,15 @@ pub async fn export_application_archive(
     Json(body): Json<ExportApplicationArchiveBody>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let exported_at = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|_| ControlPlaneError::InvalidInput("application_archive_exported_at"))?;
     let package = ApplicationArchiveService::new(state.store.clone())
         .export_archive(ExportApplicationArchiveCommand {
             actor_user_id: context.user.id,
             application_ids: body.application_ids,
+            exported_from_system_version: env!("CARGO_PKG_VERSION").to_string(),
+            exported_at,
         })
         .await?;
     let (content_type, filename, document) = match package.applications.as_slice() {
@@ -799,35 +761,6 @@ pub async fn export_application_archive(
         application_archive_content_disposition(&filename)?,
     );
     Ok(response)
-}
-
-fn to_official_agent_flow_template_catalog_response(
-    catalog: crate::official_agent_flow_templates::OfficialAgentFlowTemplateCatalogSnapshot,
-) -> OfficialAgentFlowTemplateCatalogResponse {
-    OfficialAgentFlowTemplateCatalogResponse {
-        source: OfficialAgentFlowTemplateCatalogSourceResponse {
-            source_kind: catalog.source.source_kind,
-            source_label: catalog.source.source_label,
-            index_url: catalog.source.index_url,
-        },
-        page: OfficialAgentFlowTemplateCatalogPageResponse {
-            page: catalog.page.page,
-            page_size: catalog.page.page_size,
-            next_cursor: catalog.page.next_cursor,
-        },
-        entries: catalog
-            .entries
-            .into_iter()
-            .map(|entry| OfficialAgentFlowTemplateCatalogEntryResponse {
-                workflow_id: entry.workflow_id,
-                schema_version: entry.schema_version,
-                application: to_template_application_response(entry.application),
-                template_url: entry.template_url,
-                template_sha256: entry.template_sha256,
-                updated_at: entry.updated_at,
-            })
-            .collect(),
-    }
 }
 
 fn collect_referenced_i18n_text_refs(document: &serde_json::Value) -> Vec<CompiledI18nTextRef> {
@@ -967,21 +900,6 @@ fn to_template_dependency_response(
         package_id: dependency.package_id,
         contribution_checksum: dependency.contribution_checksum,
         compiled_contribution_hash: dependency.compiled_contribution_hash,
-    }
-}
-
-fn to_template_package_response(
-    template: AgentFlowTemplatePackage,
-) -> AgentFlowTemplatePackageResponse {
-    AgentFlowTemplatePackageResponse {
-        schema_version: template.schema_version,
-        application: to_template_application_response(template.application),
-        flow_document: template.flow_document,
-        dependencies: template
-            .dependencies
-            .into_iter()
-            .map(to_template_dependency_response)
-            .collect(),
     }
 }
 
@@ -1129,67 +1047,6 @@ pub async fn save_draft(
     Ok(Json(ApiSuccess::new(
         to_response(&state, &locale, flow_state).await?,
     )))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/applications/orchestration/templates/official-catalog",
-    params(OfficialAgentFlowTemplateCatalogQuery),
-    responses(
-        (status = 200, body = OfficialAgentFlowTemplateCatalogResponse),
-        (status = 401, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn list_official_agent_flow_template_catalog(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Query(query): Query<OfficialAgentFlowTemplateCatalogQuery>,
-) -> Result<Json<ApiSuccess<OfficialAgentFlowTemplateCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let mut catalog = state
-        .official_agent_flow_template_source
-        .list_catalog_page(query.cursor)
-        .await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    catalog.source.source_label = crate::app_state::resolve_official_source_label(
-        &state,
-        &locale,
-        &catalog.source.source_kind,
-        catalog.source.source_label,
-    )
-    .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_official_agent_flow_template_catalog_response(catalog),
-    )))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/applications/orchestration/templates/official/{workflow_id}",
-    params(
-        ("workflow_id" = String, Path, description = "Official AgentFlow template workflow id")
-    ),
-    responses(
-        (status = 200, body = AgentFlowTemplatePackageResponse),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn download_official_agent_flow_template(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path(workflow_id): Path<String>,
-) -> Result<Json<ApiSuccess<AgentFlowTemplatePackageResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let template = state
-        .official_agent_flow_template_source
-        .download_template(&workflow_id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_template_package_response(
-        template,
-    ))))
 }
 
 #[utoipa::path(

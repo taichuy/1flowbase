@@ -139,6 +139,41 @@ test('runDevDatabaseMaintenance keeps test schemas during dry-run and drops only
   assert.deepEqual(droppedSchemas, [schemaNames[0]]);
 });
 
+test('AC-001: runDevDatabaseMaintenance drops large test schema plans in bounded transactions', () => {
+  const now = new Date('2026-06-15T12:00:00.000Z');
+  const schemaNames = Array.from({ length: 25 }, (_value, index) =>
+    schemaNameFromTimestamp(new Date(Date.UTC(2026, 4, index + 1)))
+  );
+  const droppedBatches = [];
+
+  const status = runDevDatabaseMaintenance({
+    now,
+    options: parseCliArgs([
+      'test-schemas',
+      '--database-url',
+      'postgres://postgres:pw@127.0.0.1:35432/1flowbase',
+      '--older-than',
+      '0d',
+      '--keep',
+      '0',
+      '--apply',
+    ]),
+    sourceEnv: { API_ENV: 'development' },
+    loadTestSchemaNames() {
+      return schemaNames;
+    },
+    removeTestSchemas({ schemaNames: batch }) {
+      droppedBatches.push(batch);
+    },
+    writeStdout() {},
+  });
+
+  assert.equal(status, 0);
+  assert.equal(droppedBatches.length, 25);
+  assert.equal(droppedBatches.every((batch) => batch.length === 1), true);
+  assert.deepEqual(droppedBatches.flat(), [...schemaNames].sort());
+});
+
 test('buildBackupPrunePlan keeps active postgres and recent backup directories', () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-db-maintenance-'));
   const volumesDir = path.join(repoRoot, 'docker', 'volumes');

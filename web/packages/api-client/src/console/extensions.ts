@@ -35,16 +35,20 @@ export interface ConsoleExtensionWarning {
 export interface ConsoleInstalledExtensionVersion {
   id: string;
   version: string;
-  source: string;
-  trust: string;
+  source_kind: string;
+  trust_level: string;
   warnings: ConsoleExtensionWarning[];
-  local_path: string;
-  checksum: string;
+  local_path: string | null;
+  expected_checksum: string | null;
+  local_checksum: string | null;
   signature_status: string;
   signature_algorithm: string | null;
   signing_key_id: string | null;
   status: string;
-  installed_by: string;
+  is_current: boolean;
+  deletable: boolean;
+  delete_reasons: string[];
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -68,18 +72,20 @@ export interface ConsoleInstalledExtension {
   artifact_id: string;
   version: string;
   node_id: string;
-  source: string;
-  trust: string;
+  source_kind: string;
+  trust_level: string;
   warnings: ConsoleExtensionWarning[];
-  local_path: string;
-  checksum: string;
+  local_path: string | null;
+  expected_checksum: string | null;
+  local_checksum: string | null;
   signature_status: string;
   signature_algorithm: string | null;
   signing_key_id: string | null;
   status: string;
+  is_current: boolean;
   application_action: ConsoleExtensionApplicationAction;
   application_status: ConsoleExtensionApplicationStatus;
-  installed_by: string;
+  created_by: string;
   created_at: string;
   updated_at: string;
   installed_versions: ConsoleInstalledExtensionVersion[];
@@ -160,22 +166,6 @@ export interface ConsoleExtensionInstallResponse {
   application_status: ConsoleExtensionApplicationStatus;
 }
 
-export interface ConsoleInstalledI18nExtensionPreview {
-  extension_installation_id: string;
-  application_status: 'not_applied' | 'applied';
-  active_catalog_version: string | null;
-  installed_catalog_version: string;
-  revision: number;
-  integrity_warnings: ConsoleExtensionWarning[];
-  required_integrity_override: ConsoleExtensionRiskChallenge | null;
-}
-
-export interface ConsoleInstalledI18nExtensionActivation {
-  status: 'current' | 'activated';
-  catalog_version: string;
-  revision: number;
-}
-
 export type ConsoleMcpExtensionConflictResolution = 'keep_existing';
 
 export interface ConsoleInstalledMcpExtensionApplyOptions {
@@ -186,7 +176,11 @@ export interface ConsoleInstalledMcpExtensionApplyOptions {
 export interface ConsoleInstalledMcpExtensionPreview {
   extension_installation_id: string;
   artifact_installation_status: 'installed';
-  workspace_application_status: 'ready_to_import' | 'confirmation_required';
+  workspace_application_status:
+    | 'imported'
+    | 'already_present'
+    | 'ready_to_import'
+    | 'confirmation_required';
   required_conflict_resolution: ConsoleMcpExtensionConflictResolution | null;
   integrity_warnings: ConsoleExtensionWarning[];
   required_integrity_override: ConsoleExtensionRiskChallenge | null;
@@ -196,7 +190,10 @@ export interface ConsoleInstalledMcpExtensionPreview {
 export interface ConsoleInstalledMcpExtensionImport {
   extension_installation_id: string;
   artifact_installation_status: 'installed';
-  workspace_application_status: 'imported';
+  workspace_application_status:
+    | 'imported'
+    | 'partially_imported'
+    | 'not_imported';
   integrity_warnings: ConsoleExtensionWarning[];
   import_report: ConsoleMcpBundleImportReport;
 }
@@ -241,11 +238,38 @@ interface ConsoleExtensionRiskChallengeErrorBody {
 
 const BASE = '/api/console/settings/extension-center';
 
-export function listConsoleInstalledExtensions(cursor?: string, limit = 20) {
+export function listConsoleInstalledExtensions(
+  cursor?: string,
+  limit = 20,
+  category?: ConsoleExtensionCategory
+) {
   const query = new URLSearchParams({ limit: String(limit) });
   if (cursor) query.set('cursor', cursor);
+  if (category) query.set('category', category);
   return apiFetch<ConsoleInstalledExtensionPage>({
     path: `${BASE}/installed?${query.toString()}`
+  });
+}
+
+export function selectConsoleInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleInstalledExtension>({
+    path: `${BASE}/installed/${encodeURIComponent(installationId)}/select`,
+    method: 'POST',
+    csrfToken
+  });
+}
+
+export function deleteConsoleInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleInstalledExtension>({
+    path: `${BASE}/installed/${encodeURIComponent(installationId)}`,
+    method: 'DELETE',
+    csrfToken
   });
 }
 
@@ -373,34 +397,6 @@ export function applyConsoleInstalledMcpExtension(
       extension_installation_id,
       ...options
     },
-    csrfToken
-  });
-}
-
-export function previewConsoleInstalledI18nExtension(
-  extensionInstallationId: string
-) {
-  return apiFetch<ConsoleInstalledI18nExtensionPreview>({
-    path: `/api/console/settings/i18n/installed-extension/${encodeURIComponent(
-      extensionInstallationId
-    )}/preview`
-  });
-}
-
-export function activateConsoleInstalledI18nExtension(
-  extensionInstallationId: string,
-  input: {
-    expected_revision: number;
-    integrity_override?: ConsoleExtensionRiskOverride;
-  },
-  csrfToken: string
-) {
-  return apiFetch<ConsoleInstalledI18nExtensionActivation>({
-    path: `/api/console/settings/i18n/installed-extension/${encodeURIComponent(
-      extensionInstallationId
-    )}/activate`,
-    method: 'POST',
-    body: input,
     csrfToken
   });
 }

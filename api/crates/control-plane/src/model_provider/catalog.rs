@@ -7,6 +7,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
+    errors::ControlPlaneError,
     i18n::{
         merge_i18n_catalog, plugin_namespace, trim_json_bundles, trim_provider_bundles,
         RequestedLocales,
@@ -44,6 +45,7 @@ pub(super) async fn list_catalog<R>(
     repository: &R,
     actor_user_id: Uuid,
     locales: RequestedLocales,
+    node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
     use_case: ModelProviderUseCase,
 ) -> Result<ModelProviderCatalogView>
 where
@@ -59,6 +61,15 @@ where
         .map(|assignment| assignment.installation_id)
         .collect::<HashSet<_>>();
     let installations = repository.list_installations().await?;
+    let node_id = node_artifact_context
+        .map(|context| context.node_id)
+        .ok_or(ControlPlaneError::Conflict("plugin_node_context_required"))?;
+    let artifacts = repository
+        .list_artifact_instances(node_id)
+        .await?
+        .into_iter()
+        .map(|artifact| (artifact.installation_id, artifact))
+        .collect::<HashMap<_, _>>();
     let projections = repository
         .list_plugin_package_catalog_projections()
         .await?
@@ -72,8 +83,13 @@ where
             installation.desired_state,
             domain::PluginDesiredState::Disabled
         ) || !assignments.contains(&installation.id)
-            || installation.availability_status != domain::PluginAvailabilityStatus::Available
         {
+            continue;
+        }
+        let Some(artifact) = artifacts.get(&installation.id) else {
+            continue;
+        };
+        if artifact.availability_status != domain::PluginAvailabilityStatus::Available {
             continue;
         }
         let namespace = plugin_namespace(&installation.provider_code);
@@ -100,7 +116,7 @@ where
             supports_model_fetch_without_credentials: projection
                 .supports_model_fetch_without_credentials,
             desired_state: installation.desired_state.as_str().to_string(),
-            availability_status: installation.availability_status.as_str().to_string(),
+            availability_status: artifact.availability_status.as_str().to_string(),
             form_schema: projection.form_schema,
             predefined_models: projection
                 .predefined_models
@@ -182,10 +198,14 @@ where
         let Some(installation) = installation_map.get(&installation_id) else {
             continue;
         };
-        if installation.availability_status != domain::PluginAvailabilityStatus::Available {
+        if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
             continue;
         }
-        let package = load_provider_package(&installation.installed_path)?;
+        let package = load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        )?;
         let namespace = plugin_namespace(&provider_code);
         merge_i18n_catalog(
             &mut i18n_catalog,

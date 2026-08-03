@@ -5,11 +5,12 @@ use crate::{
     host_infrastructure_config::{
         HostInfrastructureConfigService, SaveHostInfrastructureProviderConfigCommand,
     },
-    ports::{PluginRepository, UpsertPluginInstallationInput},
+    ports::{PluginRepository, UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput},
 };
 use domain::{
-    HostInfrastructureConfigStatus, PluginArtifactStatus, PluginAvailabilityStatus,
-    PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
+    ExtensionCategory, ExtensionSignatureStatus, HostInfrastructureConfigStatus,
+    PluginArtifactInstanceStatus, PluginAvailabilityStatus, PluginDesiredState,
+    PluginRuntimeStatus, PluginVerificationStatus,
 };
 use serde_json::json;
 use time::OffsetDateTime;
@@ -107,9 +108,11 @@ async fn seed_host_extension_installation(
     runtime_status: PluginRuntimeStatus,
 ) -> Uuid {
     let now = OffsetDateTime::now_utc();
-    repository
+    let installation = repository
         .upsert_installation(&UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
+            category: ExtensionCategory::HostExtensions,
+            organization: "1flowbase".into(),
             provider_code: "redis-infra-host".into(),
             plugin_id: "redis-infra-host@0.1.0".into(),
             plugin_version: "0.1.0".into(),
@@ -120,27 +123,39 @@ async fn seed_host_extension_installation(
             trust_level: "unverified".into(),
             verification_status: PluginVerificationStatus::Valid,
             desired_state,
-            artifact_status: PluginArtifactStatus::Ready,
+            expected_checksum: None,
+            signature_status: ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: json!({ "seeded_at": now.unix_timestamp() }),
+            is_system_reserved: false,
+            actor_user_id: repository.actor.user_id,
+        })
+        .await
+        .unwrap();
+    repository
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: "test-node".into(),
+            installation_id: installation.id,
+            local_version: Some("0.1.0".into()),
+            local_checksum: None,
+            local_path: Some(installed_path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: PluginArtifactInstanceStatus::Ready,
             runtime_status,
             availability_status: if matches!(desired_state, PluginDesiredState::Disabled) {
                 PluginAvailabilityStatus::Disabled
             } else {
                 PluginAvailabilityStatus::PendingRestart
             },
-            package_path: None,
-            installed_path: installed_path.display().to_string(),
-            checksum: None,
-            manifest_fingerprint: None,
-            signature_status: None,
-            signature_algorithm: None,
-            signing_key_id: None,
-            last_load_error: None,
-            metadata_json: json!({ "seeded_at": now.unix_timestamp() }),
-            actor_user_id: repository.actor.user_id,
+            checked_at: now,
+            last_error: None,
+            is_current: false,
         })
         .await
-        .unwrap()
-        .id
+        .unwrap();
+    installation.id
 }
 
 #[tokio::test]
@@ -159,7 +174,7 @@ async fn ac_007_ac_011_operation_qualified_provider_list_does_not_require_legacy
     )
     .await;
 
-    let service = HostInfrastructureConfigService::new(repository.clone());
+    let service = HostInfrastructureConfigService::new(repository.clone(), "test-node");
     let result = service.list_providers().await.unwrap();
 
     assert_eq!(result.providers.len(), 1);
@@ -195,7 +210,7 @@ async fn ac_007_ac_011_operation_qualified_provider_save_preserves_state_without
     )
     .await;
 
-    let service = HostInfrastructureConfigService::new(repository.clone());
+    let service = HostInfrastructureConfigService::new(repository.clone(), "test-node");
     let result = service
         .save_provider_config(SaveHostInfrastructureProviderConfigCommand {
             actor_user_id: repository.actor.user_id,
@@ -220,7 +235,12 @@ async fn ac_007_ac_011_operation_qualified_provider_save_preserves_state_without
         installation.desired_state,
         PluginDesiredState::PendingRestart
     );
-    assert_eq!(installation.runtime_status, PluginRuntimeStatus::Inactive);
+    let artifact = repository
+        .get_artifact_instance("test-node", installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(artifact.runtime_status, PluginRuntimeStatus::Inactive);
 
     let saved = repository
         .host_infrastructure_config(installation_id, "redis")
@@ -254,7 +274,7 @@ async fn save_provider_config_rejects_undeclared_contracts() {
     )
     .await;
 
-    let service = HostInfrastructureConfigService::new(repository.clone());
+    let service = HostInfrastructureConfigService::new(repository.clone(), "test-node");
     let error = service
         .save_provider_config(SaveHostInfrastructureProviderConfigCommand {
             actor_user_id: repository.actor.user_id,

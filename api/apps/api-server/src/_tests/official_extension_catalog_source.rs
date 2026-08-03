@@ -347,6 +347,52 @@ async fn delivery_1560_d5_ac_003_no_stale_timeout_returns_a_bounded_clear_failur
 }
 
 #[test]
+fn agent_flow_https_download_preserves_integrity_metadata_and_rewrites_github_proxy() {
+    let category = "agent-flow";
+    let source = ApiOfficialExtensionCatalogSource::new(BTreeMap::from([(
+        category.to_string(),
+        ResolvedOfficialExtensionCatalogSourceConfig {
+            source_kind: "configured_mirror".to_string(),
+            index_url: "https://example.test/index.json".to_string(),
+            official_index_url: "https://example.test/index.json".to_string(),
+            github_proxy_url: Some("https://proxy.example".to_string()),
+        },
+    )]));
+    let mut entry = serde_json::from_value::<
+        crate::official_extension_catalog::OfficialExtensionCatalogEntry,
+    >(catalog_entry(
+        "https://example.test",
+        category,
+        1,
+        "agent-flow:taichuy/fusion",
+        "fusion",
+    ))
+    .unwrap();
+    let expected_checksum = format!("sha256:{}", "a".repeat(64));
+    let expected_signature = json!({"algorithm": "ed25519", "key_id": "official-key"});
+    entry.download_locator = json!({
+        "kind": "https",
+        "locator": "https://github.com/taichuy/1flowbase-official-plugins/releases/download/agent-flow-taichuy-fusion-v2/template.json"
+    });
+    entry.checksum = Some(expected_checksum.clone());
+    entry.signature = Some(expected_signature.clone());
+
+    let descriptor = source.resolve_artifact(&entry).unwrap();
+
+    assert_eq!(descriptor.locator_kind, "https");
+    assert_eq!(
+        descriptor.locator,
+        "https://proxy.example/https://github.com/taichuy/1flowbase-official-plugins/releases/download/agent-flow-taichuy-fusion-v2/template.json"
+    );
+    assert_eq!(
+        descriptor.expected_checksum.as_deref(),
+        Some(expected_checksum.as_str())
+    );
+    assert_eq!(descriptor.signature.as_ref(), Some(&expected_signature));
+    assert!(descriptor.platform.is_none());
+}
+
+#[test]
 fn root_1545_ac_3_platform_download_selects_current_target_and_rewrites_github_proxy() {
     let category = "runtime-extensions";
     let source = ApiOfficialExtensionCatalogSource::new(BTreeMap::from([(

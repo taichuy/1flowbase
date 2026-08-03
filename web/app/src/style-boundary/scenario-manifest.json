@@ -111,6 +111,10 @@
       "web/app/src/app-shell/account-menu-items.tsx",
       "web/app/src/features/home/pages/HomePage.tsx",
       "web/app/src/features/applications/pages/ApplicationListPage.tsx",
+      "web/app/src/features/applications/components/InstalledAgentFlowPickerDrawer.tsx",
+      "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
+      "web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx",
+      "web/app/src/features/applications/api/applications.ts",
       "web/app/src/features/applications/components/ApplicationCardGrid.tsx",
       "web/app/src/shared/schema-ui/v1/contracts/overlay-shell-schema.ts",
       "web/app/src/shared/schema-ui/v1/overlay-shell/SchemaModalPanel.tsx",
@@ -623,7 +627,12 @@
       "web/app/src/app-shell/account-menu-items.tsx",
       "web/app/src/features/templates/pages/TemplatesPage.tsx",
       "web/app/src/features/templates/pages/templates-page.css",
+      "web/app/src/features/templates/components/AgentFlowTemplateLibrary.tsx",
+      "web/app/src/features/templates/components/agent-flow-template-library.css",
       "web/app/src/features/templates/api/templates.ts",
+      "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
+      "web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx",
+      "web/packages/api-client/src/console/extensions.ts",
       "web/packages/api-client/src/console/application-orchestration.ts",
       "web/app/src/app/router.tsx"
     ],
@@ -631,6 +640,74 @@
       {
         "id": "shell-header",
         "selector": ".app-shell-header",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-extension-center-agent-flow",
+    "kind": "page",
+    "title": "Settings Agent Flow Extension Catalog",
+    "impactFiles": [
+      "web/app/src/styles/tokens.css",
+      "web/app/src/styles/globals.css",
+      "web/app/src/app-shell/app-shell.css",
+      "web/packages/ui/src/index.tsx",
+      "web/app/src/app-shell/AppShellFrame.tsx",
+      "web/app/src/app-shell/Navigation.tsx",
+      "web/app/src/app-shell/AccountMenu.tsx",
+      "web/app/src/app-shell/account-menu-items.tsx",
+      "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
+      "web/app/src/shared/ui/section-page-layout/SectionSidebarNav.tsx",
+      "web/app/src/shared/ui/section-page-layout/section-page-layout.css",
+      "web/app/src/features/settings/pages/SettingsPage.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsRouteShell.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/features/settings/api/extensions.ts",
+      "web/packages/api-client/src/console/extensions.ts",
+      "web/app/src/app/router.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "shell-header",
+        "selector": ".app-shell-header",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-extension-center-mcp",
+    "kind": "page",
+    "title": "Settings MCP Template Library",
+    "impactFiles": [
+      "web/app/src/styles/tokens.css",
+      "web/app/src/styles/globals.css",
+      "web/packages/ui/src/index.tsx",
+      "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/mcp-template-library.css",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpBundleReviewModal.tsx",
+      "web/app/src/features/settings/api/mcp-management.ts",
+      "web/packages/api-client/src/console-mcp-management.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "mcp-template-library",
+        "selector": ".mcp-template-library",
         "propertyAssertions": [
           {
             "property": "display",
@@ -1190,6 +1267,9 @@
       "web/app/src/features/settings/components/mcp-management/McpToolsTab.tsx",
       "web/app/src/features/settings/components/mcp-management/McpInstanceDiscoveryPolicyModal.tsx",
       "web/app/src/features/settings/components/mcp-management/McpToolDebugPanel.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpBundleActions.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
+      "web/app/src/features/settings/components/mcp-management/bundle/mcp-template-library.css",
       "web/app/src/features/settings/components/mcp-management/mcp-management-panel.css",
       "web/app/src/features/settings/components/mcp-management/mcp-management-view-model.ts",
       "web/app/src/features/settings/api/mcp-management.ts",
@@ -1206,6 +1286,16 @@
           {
             "property": "min-height",
             "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "mcp-template-library-management-consumer",
+        "selector": ".mcp-template-library",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
           }
         ]
       }

@@ -4,9 +4,6 @@ use api_server::{
     app_with_state_and_config,
     config::{ApiConfig, ApiEnvironment},
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::{
-        OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateSourcePort,
-    },
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
@@ -46,9 +43,6 @@ impl PluginRunnerSystemPort for UnreachablePluginRunnerSystemClient {
 
 #[derive(Clone, Default)]
 struct NoopOfficialPluginSource;
-
-#[derive(Clone, Default)]
-struct NoopOfficialAgentFlowTemplateSource;
 
 #[derive(Clone, Default)]
 struct NoopOfficialMcpBundleSource;
@@ -98,23 +92,6 @@ impl OfficialPluginSourcePort for NoopOfficialPluginSource {
 
     fn trusted_public_keys(&self) -> Vec<plugin_framework::TrustedPublicKey> {
         Vec::new()
-    }
-}
-
-#[async_trait]
-impl OfficialAgentFlowTemplateSourcePort for NoopOfficialAgentFlowTemplateSource {
-    async fn list_catalog_page(
-        &self,
-        _cursor: Option<String>,
-    ) -> anyhow::Result<OfficialAgentFlowTemplateCatalogSnapshot> {
-        anyhow::bail!("official AgentFlow template source not configured for health route tests")
-    }
-
-    async fn download_template(
-        &self,
-        _workflow_id: &str,
-    ) -> anyhow::Result<control_plane::flow::AgentFlowTemplatePackage> {
-        anyhow::bail!("official AgentFlow template source not configured for health route tests")
     }
 }
 
@@ -194,6 +171,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
                 store.clone(),
                 api_provider_runtime,
                 config.provider_secret_master_key.clone(),
+                config.api_node_id.clone(),
             )),
         ),
     );
@@ -237,9 +215,6 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             ),
             plugin_runner_system: std::sync::Arc::new(UnreachablePluginRunnerSystemClient),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
-            official_agent_flow_template_source: std::sync::Arc::new(
-                NoopOfficialAgentFlowTemplateSource,
-            ),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
             official_extension_catalog_source: std::sync::Arc::new(
                 api_server::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(

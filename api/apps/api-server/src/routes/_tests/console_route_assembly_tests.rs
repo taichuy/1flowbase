@@ -430,16 +430,6 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "authenticated",
             ),
             (
-                "GET",
-                "/api/console/applications/orchestration/templates/official-catalog",
-                "authenticated",
-            ),
-            (
-                "GET",
-                "/api/console/applications/orchestration/templates/official/:workflow_id",
-                "authenticated",
-            ),
-            (
                 "POST",
                 "/api/console/applications/:id/orchestration/versions/:version_id/restore",
                 "applications.orchestration.version.restore",
@@ -1153,6 +1143,41 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             ),
             (
                 "GET",
+                "/api/console/mcp/bundles/library",
+                "mcp.bundle_library.list"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/library/:organization/:bundle_id/sync",
+                "mcp.bundle_library.sync"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/library/:organization/:bundle_id/preview",
+                "mcp.bundle_library.preview"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/library/:organization/:bundle_id/import",
+                "mcp.bundle_library.import"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
+                "mcp.bundle_library.current.switch"
+            ),
+            (
+                "DELETE",
+                "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
+                "mcp.bundle_library.releases.delete"
+            ),
+            (
+                "POST",
+                "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
+                "mcp.bundle_library.releases.repair"
+            ),
+            (
+                "GET",
                 "/api/console/mcp/upstream-connections",
                 "mcp.upstream_connections.view"
             ),
@@ -1358,6 +1383,16 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
                 "GET",
                 "/api/console/settings/extension-center/installed",
                 "extension_center.installed.view"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/select",
+                "extension_center.installed.select"
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/extension-center/installed/:installation_id",
+                "extension_center.installed.delete"
             ),
             (
                 "GET",

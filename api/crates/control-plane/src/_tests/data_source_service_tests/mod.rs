@@ -32,8 +32,7 @@ use crate::{
         UpdateDataSourceDefaultsInput, UpdateDataSourceInstanceConfigInput,
         UpdateDataSourceInstanceStatusInput, UpdateMainSourceDefaultsInput,
         UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput, UpdateModelFieldInput,
-        UpdatePluginArtifactSnapshotInput, UpdatePluginDesiredStateInput,
-        UpdatePluginRuntimeSnapshotInput, UpdatePluginTaskStatusInput, UpdateProfileInput,
+        UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput, UpdateProfileInput,
         UpdateScopeDataModelGrantInput, UpsertDataSourceCatalogCacheInput,
         UpsertDataSourceSecretInput, UpsertPluginArtifactInstanceInput,
         UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
@@ -43,8 +42,9 @@ use domain::{
     ActorContext, AuditLogRecord, AuthenticatorRecord, DataModelScopeKind,
     DataSourceCatalogCacheRecord, DataSourceCatalogRefreshStatus, DataSourceDefaults,
     DataSourceInstanceRecord, DataSourceInstanceStatus, DataSourcePreviewSessionRecord,
-    DataSourceSecretRecord, ModelDefinitionRecord, ModelFieldRecord, PermissionDefinition,
-    PluginArtifactInstanceRecord, PluginArtifactStatus, PluginAssignmentRecord,
+    DataSourceSecretRecord, ExtensionCategory, ExtensionSignatureStatus,
+    LocalPluginInstallationRecord, ModelDefinitionRecord, ModelFieldRecord, PermissionDefinition,
+    PluginArtifactInstanceRecord, PluginArtifactInstanceStatus, PluginAssignmentRecord,
     PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
     PluginPackageCatalogProjectionRecord, PluginRuntimeStatus, PluginTaskRecord,
     PluginVerificationStatus, ScopeContext, ScopeDataModelGrantRecord, UserRecord,
@@ -73,6 +73,9 @@ fn actor() -> ActorContext {
 fn seeded_installation() -> PluginInstallationRecord {
     PluginInstallationRecord {
         id: installation_id(),
+        scope_id: domain::SYSTEM_SCOPE_ID,
+        category: ExtensionCategory::RuntimeExtensions,
+        organization: "acme".to_string(),
         provider_code: "acme_hubspot_source".to_string(),
         plugin_id: "acme_hubspot_source@0.1.0".to_string(),
         plugin_version: "0.1.0".to_string(),
@@ -83,24 +86,37 @@ fn seeded_installation() -> PluginInstallationRecord {
         trust_level: "unverified".to_string(),
         verification_status: PluginVerificationStatus::Valid,
         desired_state: PluginDesiredState::ActiveRequested,
-        artifact_status: PluginArtifactStatus::Ready,
-        runtime_status: PluginRuntimeStatus::Active,
-        availability_status: PluginAvailabilityStatus::Available,
-        package_path: None,
-        installed_path: format!(
-            "{}/src/_tests/fixtures/acme_data_source",
-            env!("CARGO_MANIFEST_DIR")
-        ),
-        checksum: None,
-        manifest_fingerprint: None,
-        signature_status: None,
+        expected_checksum: None,
+        signature_status: ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
-        last_load_error: None,
         metadata_json: json!({}),
+        is_system_reserved: false,
         created_by: user_id(),
+        updated_by: None,
         created_at: OffsetDateTime::now_utc(),
         updated_at: OffsetDateTime::now_utc(),
+    }
+}
+
+fn seeded_artifact() -> PluginArtifactInstanceRecord {
+    PluginArtifactInstanceRecord {
+        node_id: "test-node".to_string(),
+        installation_id: installation_id(),
+        local_version: Some("0.1.0".to_string()),
+        local_checksum: None,
+        local_path: Some(format!(
+            "{}/src/_tests/fixtures/acme_data_source",
+            env!("CARGO_MANIFEST_DIR")
+        )),
+        package_path: None,
+        manifest_fingerprint: None,
+        artifact_status: PluginArtifactInstanceStatus::Ready,
+        runtime_status: PluginRuntimeStatus::Active,
+        availability_status: PluginAvailabilityStatus::Available,
+        checked_at: OffsetDateTime::now_utc(),
+        last_error: None,
+        is_current: true,
     }
 }
 
@@ -126,6 +142,7 @@ impl Default for InMemoryDataSourceRepository {
     fn default() -> Self {
         let actor = actor();
         let installation = seeded_installation();
+        let artifact = seeded_artifact();
         let assignment = PluginAssignmentRecord {
             id: Uuid::now_v7(),
             installation_id: installation.id,
@@ -141,7 +158,10 @@ impl Default for InMemoryDataSourceRepository {
                 installation.id,
                 installation,
             )]))),
-            artifact_instances: Arc::new(RwLock::new(HashMap::new())),
+            artifact_instances: Arc::new(RwLock::new(HashMap::from([(
+                (artifact.node_id.clone(), artifact.installation_id),
+                artifact,
+            )]))),
             assignments: Arc::new(RwLock::new(vec![assignment])),
             instances: Arc::new(RwLock::new(HashMap::new())),
             secrets: Arc::new(RwLock::new(HashMap::new())),
@@ -337,20 +357,6 @@ impl crate::ports::PluginRepository for InMemoryDataSourceRepository {
         anyhow::bail!("not implemented")
     }
 
-    async fn update_artifact_snapshot(
-        &self,
-        _input: &UpdatePluginArtifactSnapshotInput,
-    ) -> Result<PluginInstallationRecord> {
-        anyhow::bail!("not implemented")
-    }
-
-    async fn update_runtime_snapshot(
-        &self,
-        _input: &UpdatePluginRuntimeSnapshotInput,
-    ) -> Result<PluginInstallationRecord> {
-        anyhow::bail!("not implemented")
-    }
-
     async fn upsert_artifact_instance(
         &self,
         input: &UpsertPluginArtifactInstanceInput,
@@ -360,11 +366,15 @@ impl crate::ports::PluginRepository for InMemoryDataSourceRepository {
             installation_id: input.installation_id,
             local_version: input.local_version.clone(),
             local_checksum: input.local_checksum.clone(),
-            installed_path: input.installed_path.clone(),
+            local_path: input.local_path.clone(),
+            package_path: input.package_path.clone(),
+            manifest_fingerprint: input.manifest_fingerprint.clone(),
             artifact_status: input.artifact_status,
             runtime_status: input.runtime_status,
+            availability_status: input.availability_status,
             checked_at: input.checked_at,
             last_error: input.last_error.clone(),
+            is_current: input.is_current,
         };
         self.artifact_instances.write().await.insert(
             (record.node_id.clone(), record.installation_id),
@@ -1072,13 +1082,13 @@ impl StubDataSourceRuntime {
 
 #[async_trait]
 impl DataSourceRuntimePort for StubDataSourceRuntime {
-    async fn ensure_loaded(&self, _installation: &PluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(&self, _installation: &LocalPluginInstallationRecord) -> Result<()> {
         Ok(())
     }
 
     async fn validate_config(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _config_json: Value,
         secret_json: Value,
     ) -> Result<Value> {
@@ -1099,7 +1109,7 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
 
     async fn test_connection(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _config_json: Value,
         _secret_json: Value,
     ) -> Result<Value> {
@@ -1108,7 +1118,7 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
 
     async fn discover_catalog(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         _config_json: Value,
         secret_json: Value,
     ) -> Result<Value> {
@@ -1138,7 +1148,7 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
 
     async fn describe_resource(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourceDescribeResourceInput,
     ) -> Result<DataSourceResourceDescriptor> {
         let echoed_secret = input.connection.secret_json["client_secret"].clone();
@@ -1280,7 +1290,7 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
 
     async fn preview_read(
         &self,
-        _installation: &PluginInstallationRecord,
+        _installation: &LocalPluginInstallationRecord,
         input: DataSourcePreviewReadInput,
     ) -> Result<DataSourcePreviewReadOutput> {
         let echoed_secret = input.connection.secret_json["client_secret"].clone();

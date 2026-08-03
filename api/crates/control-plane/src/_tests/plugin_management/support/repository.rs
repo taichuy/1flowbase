@@ -105,6 +105,19 @@ impl MemoryPluginManagementRepository {
         self.artifact_snapshot_updates.read().await.len()
     }
 
+    pub(crate) async fn set_expected_checksum(
+        &self,
+        installation_id: Uuid,
+        expected_checksum: Option<String>,
+    ) {
+        self.installations
+            .write()
+            .await
+            .get_mut(&installation_id)
+            .expect("installation should exist")
+            .expected_checksum = expected_checksum;
+    }
+
     pub(crate) async fn remove_catalog_projection(&self, installation_id: Uuid) {
         self.catalog_projections
             .write()
@@ -207,6 +220,126 @@ impl RoleConsolePolicyReader for MemoryPluginManagementRepository {
 }
 
 #[async_trait]
+impl ExtensionInstallationRepository for MemoryPluginManagementRepository {
+    async fn upsert_extension_installation(
+        &self,
+        _input: &UpsertExtensionInstallationInput,
+    ) -> anyhow::Result<domain::ExtensionInstallationRecord> {
+        anyhow::bail!("extension inventory writes use the dedicated repository fixture")
+    }
+
+    async fn find_extension_installation(
+        &self,
+        _node_id: &str,
+        _identity: &domain::ExtensionInstallationIdentity,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        anyhow::bail!("extension inventory reads use the dedicated repository fixture")
+    }
+
+    async fn find_extension_installation_by_id(
+        &self,
+        _node_id: &str,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        anyhow::bail!("extension inventory reads use the dedicated repository fixture")
+    }
+
+    async fn list_extension_installations_for_node(
+        &self,
+        _node_id: &str,
+    ) -> anyhow::Result<Vec<domain::ExtensionInstallationRecord>> {
+        anyhow::bail!("extension inventory reads use the dedicated repository fixture")
+    }
+
+    async fn set_extension_installation_status(
+        &self,
+        _node_id: &str,
+        _installation_id: Uuid,
+        _status: domain::ExtensionInstallationStatus,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("extension inventory writes use the dedicated repository fixture")
+    }
+
+    async fn select_current_extension_installation(
+        &self,
+        _node_id: &str,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        anyhow::bail!("extension inventory writes use the dedicated repository fixture")
+    }
+
+    async fn extension_deletion_decision(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionDeletionDecision>> {
+        let Some(installation) = self
+            .installations
+            .read()
+            .await
+            .get(&installation_id)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        let mut reasons = Vec::new();
+        if installation.is_system_reserved {
+            reasons.push("system_reserved".to_string());
+        }
+        if self
+            .artifact_instances
+            .read()
+            .await
+            .get(&(node_id.to_string(), installation_id))
+            .is_some_and(|artifact| artifact.is_current)
+        {
+            reasons.push("current_version".to_string());
+        }
+        if self
+            .assignments
+            .read()
+            .await
+            .iter()
+            .any(|assignment| assignment.installation_id == installation_id)
+        {
+            reasons.push("workspace_assignment".to_string());
+        }
+        if self.tasks.read().await.values().any(|task| {
+            task.installation_id == Some(installation_id)
+                && matches!(
+                    task.status,
+                    PluginTaskStatus::Queued | PluginTaskStatus::Running
+                )
+        }) {
+            reasons.push("active_task".to_string());
+        }
+        if self
+            .instances
+            .read()
+            .await
+            .values()
+            .any(|instance| instance.installation_id == installation_id)
+        {
+            reasons.push("model_provider_instance".to_string());
+        }
+        reasons.sort();
+        reasons.dedup();
+        Ok(Some(domain::ExtensionDeletionDecision {
+            deletable: reasons.is_empty(),
+            reasons,
+        }))
+    }
+
+    async fn remove_extension_installation(
+        &self,
+        _node_id: &str,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
+        anyhow::bail!("extension inventory writes use the dedicated repository fixture")
+    }
+}
+
+#[async_trait]
 impl AuthRepository for MemoryPluginManagementRepository {
     async fn find_authenticator(&self, _id: Uuid) -> Result<Option<AuthenticatorRecord>> {
         Ok(None)
@@ -294,9 +427,9 @@ impl AuthRepository for MemoryPluginManagementRepository {
 
 #[async_trait]
 impl PluginRepository for MemoryPluginManagementRepository {
-    async fn commit_plugin_installation_projection(
+    async fn commit_plugin_installation(
         &self,
-        input: &CommitPluginInstallationProjectionInput,
+        input: &CommitPluginInstallationInput,
     ) -> Result<PluginInstallationRecord> {
         let installations = self.installations.read().await.clone();
         let plugin_ids = self.plugin_ids.read().await.clone();
@@ -362,6 +495,9 @@ impl PluginRepository for MemoryPluginManagementRepository {
             .unwrap_or(now);
         let record = PluginInstallationRecord {
             id,
+            scope_id: domain::SYSTEM_SCOPE_ID,
+            category: input.category,
+            organization: input.organization.clone(),
             provider_code: input.provider_code.clone(),
             plugin_id: input.plugin_id.clone(),
             plugin_version: input.plugin_version.clone(),
@@ -372,19 +508,14 @@ impl PluginRepository for MemoryPluginManagementRepository {
             trust_level: input.trust_level.clone(),
             verification_status: input.verification_status,
             desired_state: input.desired_state,
-            artifact_status: input.artifact_status,
-            runtime_status: input.runtime_status,
-            availability_status: input.availability_status,
-            package_path: input.package_path.clone(),
-            installed_path: input.installed_path.clone(),
-            checksum: input.checksum.clone(),
-            manifest_fingerprint: input.manifest_fingerprint.clone(),
-            signature_status: input.signature_status.clone(),
+            expected_checksum: input.expected_checksum.clone(),
+            signature_status: input.signature_status,
             signature_algorithm: input.signature_algorithm.clone(),
             signing_key_id: input.signing_key_id.clone(),
-            last_load_error: input.last_load_error.clone(),
             metadata_json: input.metadata_json.clone(),
+            is_system_reserved: input.is_system_reserved,
             created_by: input.actor_user_id,
+            updated_by: Some(input.actor_user_id),
             created_at,
             updated_at: now,
         };
@@ -515,44 +646,6 @@ impl PluginRepository for MemoryPluginManagementRepository {
             .get_mut(&input.installation_id)
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         installation.desired_state = input.desired_state;
-        installation.availability_status = input.availability_status;
-        installation.updated_at = OffsetDateTime::now_utc();
-        Ok(installation.clone())
-    }
-
-    async fn update_artifact_snapshot(
-        &self,
-        input: &UpdatePluginArtifactSnapshotInput,
-    ) -> Result<PluginInstallationRecord> {
-        self.artifact_snapshot_updates
-            .write()
-            .await
-            .push(input.installation_id);
-        let mut installations = self.installations.write().await;
-        let installation = installations
-            .get_mut(&input.installation_id)
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        installation.artifact_status = input.artifact_status;
-        installation.availability_status = input.availability_status;
-        installation.package_path = input.package_path.clone();
-        installation.installed_path = input.installed_path.clone();
-        installation.checksum = input.checksum.clone();
-        installation.manifest_fingerprint = input.manifest_fingerprint.clone();
-        installation.updated_at = OffsetDateTime::now_utc();
-        Ok(installation.clone())
-    }
-
-    async fn update_runtime_snapshot(
-        &self,
-        input: &UpdatePluginRuntimeSnapshotInput,
-    ) -> Result<PluginInstallationRecord> {
-        let mut installations = self.installations.write().await;
-        let installation = installations
-            .get_mut(&input.installation_id)
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        installation.runtime_status = input.runtime_status;
-        installation.availability_status = input.availability_status;
-        installation.last_load_error = input.last_load_error.clone();
         installation.updated_at = OffsetDateTime::now_utc();
         Ok(installation.clone())
     }
@@ -561,16 +654,24 @@ impl PluginRepository for MemoryPluginManagementRepository {
         &self,
         input: &UpsertPluginArtifactInstanceInput,
     ) -> Result<PluginArtifactInstanceRecord> {
+        self.artifact_snapshot_updates
+            .write()
+            .await
+            .push(input.installation_id);
         let record = PluginArtifactInstanceRecord {
             node_id: input.node_id.clone(),
             installation_id: input.installation_id,
             local_version: input.local_version.clone(),
             local_checksum: input.local_checksum.clone(),
-            installed_path: input.installed_path.clone(),
+            local_path: input.local_path.clone(),
+            package_path: input.package_path.clone(),
+            manifest_fingerprint: input.manifest_fingerprint.clone(),
             artifact_status: input.artifact_status,
             runtime_status: input.runtime_status,
+            availability_status: input.availability_status,
             checked_at: input.checked_at,
             last_error: input.last_error.clone(),
+            is_current: input.is_current,
         };
         self.artifact_instances.write().await.insert(
             (record.node_id.clone(), record.installation_id),
@@ -895,6 +996,7 @@ impl FrontendBlockCatalogRepository for MemoryPluginManagementRepository {
 
     async fn list_workspace_frontend_blocks(
         &self,
+        _node_id: &str,
         workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
         let rows = self.frontend_blocks.read().await.clone();

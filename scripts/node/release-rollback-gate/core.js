@@ -187,7 +187,7 @@ function buildComposeContent({ repositoryOwner, webPort }) {
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     shm_size: 512m
     command: ["postgres", "-c", "max_connections=100"]
     environment:
@@ -196,7 +196,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
-      - rollback-db-data:/var/lib/postgresql/data
+      - rollback-db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
       interval: 5s

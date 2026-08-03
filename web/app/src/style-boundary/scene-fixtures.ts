@@ -171,40 +171,56 @@ export const styleBoundaryMcpInterfaceCapabilities = [
   }
 ];
 
-export const styleBoundaryNodeContributions = [
-  {
-    installation_id: 'installation-1',
-    provider_code: 'prompt_pack',
-    plugin_id: 'prompt_pack@0.1.0',
-    plugin_version: '0.1.0',
-    contribution_code: 'openai_prompt',
-    node_shell: 'action',
-    plugin_unique_identifier: 'prompt_pack',
-    package_id: 'prompt_pack@0.1.0',
-    contribution_checksum: 'sha256:contribution',
-    compiled_contribution_hash: 'sha256:compiled',
-    category: 'generation',
-    title: 'OpenAI Prompt',
-    description: 'Generate prompt output',
-    dependency_status: 'ready',
-    schema_version: '1flowbase.node-contribution/v2',
-    output_schema_snapshot: {
-      outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
-    },
-    experimental: false,
-    icon: 'sparkles',
-    schema_ui: {},
-    output_schema: {
-      outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
-    },
-    side_effect_policy: 'external_read',
-    infra_contracts: [],
-    required_auth: [],
-    visibility: 'public',
-    dependency_installation_kind: 'model_provider',
-    dependency_plugin_version_range: '^0.1.0'
-  }
-];
+export const styleBoundaryNodeContributions = {
+  nodes: [
+    {
+      source_kind: 'plugin',
+      node_type: 'plugin_node',
+      title: 'OpenAI Prompt',
+      description: 'Generate prompt output',
+      category: 'generation',
+      runtime_status: 'ready',
+      runtime_status_description: 'Ready',
+      dependency_status: 'ready',
+      field_contract: {
+        config_fields: [],
+        input_fields: [],
+        output_fields: []
+      },
+      plugin: {
+        installation_id: 'installation-1',
+        provider_code: 'prompt_pack',
+        plugin_id: 'prompt_pack@0.1.0',
+        plugin_version: '0.1.0',
+        contribution_code: 'openai_prompt',
+        node_shell: 'action',
+        plugin_unique_identifier: 'prompt_pack',
+        package_id: 'prompt_pack@0.1.0',
+        contribution_checksum: 'sha256:contribution',
+        compiled_contribution_hash: 'sha256:compiled',
+        category: 'generation',
+        title: 'OpenAI Prompt',
+        description: 'Generate prompt output',
+        schema_version: '1flowbase.node-contribution/v2',
+        output_schema_snapshot: {
+          outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
+        },
+        experimental: false,
+        icon: 'sparkles',
+        schema_ui: {},
+        output_schema: {
+          outputs: [{ key: 'answer', title: 'Answer', valueType: 'string' }]
+        },
+        side_effect_policy: 'external_read',
+        infra_contracts: [],
+        required_auth: [],
+        visibility: 'public',
+        dependency_installation_kind: 'model_provider',
+        dependency_plugin_version_range: '^0.1.0'
+      }
+    }
+  ]
+};
 
 const styleBoundaryApplicationRunRecord = {
   id: 'run-1',
@@ -624,22 +640,6 @@ export function createStyleBoundaryOrchestrationState() {
   };
 }
 
-function createStyleBoundaryOfficialTemplatePackage() {
-  return {
-    schema_version: '1flowbase.application-template/v1',
-    application: {
-      application_type: 'agent_flow',
-      name: 'Boundary Template',
-      description: 'Style boundary AgentFlow template',
-      icon: 'RobotOutlined',
-      icon_type: 'iconfont',
-      icon_background: '#E6F7F2'
-    },
-    flow_document: createStyleBoundaryAgentFlowDocument(),
-    dependencies: []
-  };
-}
-
 export function seedStyleBoundaryTemplateFetch() {
   if (typeof globalThis.fetch !== 'function') {
     return;
@@ -660,32 +660,65 @@ export function seedStyleBoundaryTemplateFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
+    ) {
+      return createStyleBoundaryJsonResponse({ data: [], meta: null });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
       requestUrl.pathname ===
-        '/api/console/applications/orchestration/templates/official-catalog'
+        '/api/console/settings/extension-center/installed' &&
+      requestUrl.searchParams.get('category') === 'agent-flow'
     ) {
       return createStyleBoundaryJsonResponse({
         data: {
-          source: {
-            source_kind: 'official_registry',
-            source_label: i18nText('appShell', 'auto.official_source'),
-            index_url:
-              'https://github.com/taichuy/1flowbase-official-plugins/raw/main/agent-flow/catalog/v1/index.json'
-          },
-          page: {
-            page: 1,
-            page_size: 100,
-            next_cursor: null
-          },
+          limit: 50,
+          total_entries: 1,
+          next_cursor: null,
           entries: [
             {
-              workflow_id: 'boundary-template',
-              schema_version: '1flowbase.application-template/v1',
-              application:
-                createStyleBoundaryOfficialTemplatePackage().application,
-              template_url:
-                'https://example.com/agent-flow/workflows/boundary-template/template.json',
-              template_sha256: 'sha256:boundary-template',
-              updated_at: '2026-06-16T00:00:00.000Z'
+              id: 'boundary-template-v1',
+              category: 'agent-flow',
+              catalog_id: 'agent-flow:openai/boundary-template',
+              organization: 'openai',
+              artifact_id: 'boundary-template',
+              version: '1.0.0',
+              node_id: 'node-1',
+              source: 'official',
+              trust: 'official',
+              warnings: [],
+              local_path: '/extensions/boundary-template/1.0.0',
+              checksum: 'sha256:boundary-template',
+              signature_status: 'valid',
+              signature_algorithm: 'ed25519',
+              signing_key_id: 'official-key',
+              status: 'installed',
+              is_current: true,
+              application_action: 'import_agent_flow',
+              application_status: 'not_applied',
+              installed_by: 'user-1',
+              created_at: '2026-06-16T00:00:00.000Z',
+              updated_at: '2026-06-16T00:00:00.000Z',
+              installed_versions: [
+                {
+                  id: 'boundary-template-v1',
+                  version: '1.0.0',
+                  source: 'official',
+                  trust: 'official',
+                  warnings: [],
+                  local_path: '/extensions/boundary-template/1.0.0',
+                  checksum: 'sha256:boundary-template',
+                  signature_status: 'valid',
+                  signature_algorithm: 'ed25519',
+                  signing_key_id: 'official-key',
+                  status: 'installed',
+                  is_current: true,
+                  installed_by: 'user-1',
+                  created_at: '2026-06-16T00:00:00.000Z',
+                  updated_at: '2026-06-16T00:00:00.000Z'
+                }
+              ]
             }
           ]
         },
@@ -696,10 +729,20 @@ export function seedStyleBoundaryTemplateFetch() {
     if (
       method.toUpperCase() === 'GET' &&
       requestUrl.pathname ===
-        '/api/console/applications/orchestration/templates/official/boundary-template'
+        '/api/console/settings/extension-center/catalog/agent-flow'
     ) {
       return createStyleBoundaryJsonResponse({
-        data: createStyleBoundaryOfficialTemplatePackage(),
+        data: {
+          category: 'agent-flow',
+          catalog_page: 'boundary-agent-flow',
+          catalog_page_number: 1,
+          catalog_page_checksum: 'sha256:boundary-agent-flow',
+          catalog_page_locator: 'agent-flow/catalog/v1/pages/1.json',
+          limit: 20,
+          next_cursor: null,
+          total_entries: 0,
+          entries: []
+        },
         meta: null
       });
     }
@@ -971,8 +1014,28 @@ export function seedStyleBoundarySettingsFetch() {
       return createStyleBoundaryJsonResponse({
         data: {
           types: [
-            { value: 'agent_flow', label: 'AgentFlow' },
-            { value: 'workflow', label: 'Workflow' }
+            {
+              value: 'agent_flow',
+              label: 'AgentFlow',
+              description: 'Agent Flow application'
+            },
+            {
+              value: 'workflow',
+              label: 'Workflow',
+              description: 'Workflow application'
+            }
+          ],
+          workflow_triggers: [
+            {
+              value: 'extension',
+              label: 'Extension',
+              description: 'Triggered by an extension endpoint'
+            },
+            {
+              value: 'schedule',
+              label: 'Schedule',
+              description: 'Triggered on a schedule'
+            }
           ],
           tags: [
             {
@@ -1096,6 +1159,37 @@ export function seedStyleBoundarySettingsFetch() {
           headers: { 'content-type': 'application/json' }
         }
       );
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/bundles/library'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          remote_available: true,
+          bundles: [
+            {
+              organization: 'taichuy',
+              bundle_id: '1flowbase_zh_hans',
+              current_bundle_version: '1.1.1',
+              remote_versions: [],
+              local_versions: [
+                {
+                  bundle_version: '1.1.1',
+                  locale: 'zh_Hans',
+                  minimum_host_version: '0.3.2',
+                  exported_from_system_version: '0.3.2',
+                  checksum: 'style-boundary-mcp-bundle',
+                  signature_status: 'verified',
+                  downloaded_at: '2026-08-02T10:00:00Z'
+                }
+              ]
+            }
+          ]
+        },
+        meta: null
+      });
     }
 
     if (
@@ -1618,7 +1712,25 @@ export function seedStyleBoundaryApplicationFetch() {
       return new Response(
         JSON.stringify({
           data: {
-            types: [{ value: 'agent_flow', label: 'AgentFlow' }],
+            types: [
+              {
+                value: 'agent_flow',
+                label: 'AgentFlow',
+                description: 'Agent Flow application'
+              }
+            ],
+            workflow_triggers: [
+              {
+                value: 'extension',
+                label: 'Extension',
+                description: 'Triggered by an extension endpoint'
+              },
+              {
+                value: 'schedule',
+                label: 'Schedule',
+                description: 'Triggered on a schedule'
+              }
+            ],
             tags: []
           },
           meta: null

@@ -14,6 +14,7 @@ import {
   deleteConsoleMcpInstance,
   deleteConsoleMcpTool,
   deleteConsoleMcpToolBinding,
+  deleteConsoleMcpTemplateLibraryRelease,
   executeConsoleMcpToolDebug,
   exportConsoleMcpBundle,
   exportConsoleMcpInstanceBundle,
@@ -23,14 +24,21 @@ import {
   fetchConsoleMcpInstanceDiscoveryPolicy,
   fetchConsoleMcpInterfaceCapabilities,
   fetchConsoleMcpListItems,
+  fetchConsoleMcpTemplateLibrary,
   fetchConsoleOfficialMcpBundles,
   fetchConsoleMcpTool,
   moveConsoleMcpGroup,
   importConsoleMcpBundle,
+  importConsoleMcpTemplateLibraryBundle,
   importConsoleOfficialMcpBundle,
   previewConsoleMcpBundle,
+  previewConsoleMcpTemplateLibraryBundle,
   previewConsoleOfficialMcpBundle,
   refreshConsoleMcpToolDescription,
+  refreshConsoleMcpTemplateLibrary,
+  repairConsoleMcpTemplateLibraryRelease,
+  setConsoleMcpTemplateLibraryCurrentVersion,
+  syncConsoleMcpTemplateLibraryBundle,
   updateConsoleMcpInstance,
   updateConsoleMcpInstanceDiscoveryPolicy,
   updateConsoleMcpTool,
@@ -93,6 +101,11 @@ describe('console-mcp-management client', () => {
       expected: { path: '/api/console/mcp/bundles/official' }
     },
     {
+      name: 'MCP template library',
+      request: () => fetchConsoleMcpTemplateLibrary(),
+      expected: { path: '/api/console/mcp/bundles/library' }
+    },
+    {
       name: 'MCP bundle export defaults',
       request: () => fetchConsoleMcpBundleExportDefaults(),
       expected: { path: '/api/console/mcp/bundles/export-defaults' }
@@ -120,8 +133,7 @@ describe('console-mcp-management client', () => {
           organization: 'taichuy',
           bundle_id: '1flowbase_zh_hans',
           bundle_version: '1.0.0',
-          locale: 'zh_Hans',
-          minimum_host_version: '0.2.6'
+          locale: 'zh_Hans'
         },
         'csrf-123'
       )
@@ -140,8 +152,7 @@ describe('console-mcp-management client', () => {
           organization: 'taichuy',
           bundle_id: 'workspace_ops',
           bundle_version: '1.0.0',
-          locale: 'zh_Hans',
-          minimum_host_version: '0.2.6'
+          locale: 'zh_Hans'
         },
         'csrf-123'
       )
@@ -202,6 +213,109 @@ describe('console-mcp-management client', () => {
         path,
         method: 'POST',
         body: { organization: 'taichuy', bundle_id: '1flowbase_zh_hans' },
+        csrfToken: 'csrf-123'
+      });
+    }
+  );
+
+  test('refreshes the remote MCP catalog only through the explicit action', async () => {
+    await expect(refreshConsoleMcpTemplateLibrary()).resolves.toMatchObject({
+      path: '/api/console/mcp/bundles/library?refresh_remote=true'
+    });
+  });
+
+  test.each([
+    {
+      name: 'sync',
+      request: () =>
+        syncConsoleMcpTemplateLibraryBundle(
+          '@taichuy',
+          '1flowbase/zh',
+          { bundle_version: '1.1.1' },
+          'csrf-123'
+        ),
+      suffix: 'sync',
+      method: 'POST'
+    },
+    {
+      name: 'preview',
+      request: () =>
+        previewConsoleMcpTemplateLibraryBundle(
+          '@taichuy',
+          '1flowbase/zh',
+          { bundle_version: '1.1.1' },
+          'csrf-123'
+        ),
+      suffix: 'preview',
+      method: 'POST'
+    },
+    {
+      name: 'import',
+      request: () =>
+        importConsoleMcpTemplateLibraryBundle(
+          '@taichuy',
+          '1flowbase/zh',
+          { bundle_version: '1.1.1' },
+          'csrf-123'
+        ),
+      suffix: 'import',
+      method: 'POST'
+    }
+  ])(
+    'uses the local MCP library for $name',
+    async ({ request, suffix, method }) => {
+      await expect(request()).resolves.toMatchObject({
+        path: `/api/console/mcp/bundles/library/%40taichuy/1flowbase%2Fzh/${suffix}`,
+        method,
+        body: { bundle_version: '1.1.1' },
+        csrfToken: 'csrf-123'
+      });
+    }
+  );
+
+  test.each([
+    {
+      name: 'set current',
+      request: () =>
+        setConsoleMcpTemplateLibraryCurrentVersion(
+          'taichuy',
+          'bundle',
+          '1.1.1',
+          'csrf-123'
+        ),
+      suffix: 'current/1.1.1',
+      method: 'POST'
+    },
+    {
+      name: 'delete',
+      request: () =>
+        deleteConsoleMcpTemplateLibraryRelease(
+          'taichuy',
+          'bundle',
+          '1.1.1',
+          'csrf-123'
+        ),
+      suffix: 'releases/1.1.1',
+      method: 'DELETE'
+    },
+    {
+      name: 'repair',
+      request: () =>
+        repairConsoleMcpTemplateLibraryRelease(
+          'taichuy',
+          'bundle',
+          '1.1.1',
+          'csrf-123'
+        ),
+      suffix: 'releases/1.1.1/repair',
+      method: 'POST'
+    }
+  ])(
+    'mutates an MCP library release for $name',
+    async ({ request, suffix, method }) => {
+      await expect(request()).resolves.toMatchObject({
+        path: `/api/console/mcp/bundles/library/taichuy/bundle/${suffix}`,
+        method,
         csrfToken: 'csrf-123'
       });
     }

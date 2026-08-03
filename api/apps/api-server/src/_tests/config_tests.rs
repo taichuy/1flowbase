@@ -222,6 +222,24 @@ fn api_config_defaults_provider_install_root_to_api_workspace_plugins_directory(
         PathBuf::from(&config.host_extension_dropin_root),
         expected_root.join("host-extension").join("dropins")
     );
+    assert_eq!(
+        PathBuf::from(&config.mcp_template_library_root),
+        current_workspace_root().join("api/storage/extension-center/mcp")
+    );
+}
+
+#[test]
+fn api_config_accepts_fixed_mcp_template_library_root_override() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.push((
+        "API_MCP_TEMPLATE_LIBRARY_ROOT",
+        "/data/extension-center/mcp",
+    ));
+    let config = ApiConfig::from_env_map(&env).unwrap();
+    assert_eq!(
+        config.mcp_template_library_root,
+        "/data/extension-center/mcp"
+    );
 }
 
 #[test]
@@ -720,49 +738,5 @@ fn api_config_resolves_independent_official_i18n_catalog_mirror_and_proxy() {
     assert_ne!(
         config.official_i18n_catalog_github_proxy_url,
         config.official_plugin_github_proxy_url
-    );
-}
-
-#[test]
-fn api_config_resolves_official_agent_flow_template_catalog_source() {
-    let config = ApiConfig::from_env_map(&[
-        (
-            "API_DATABASE_URL",
-            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
-        ),
-        ("API_EPHEMERAL_BACKEND", "memory"),
-        (
-            "API_OFFICIAL_PLUGIN_REPOSITORY",
-            "taichuy/1flowbase-official-plugins",
-        ),
-        (
-            "API_OFFICIAL_AGENT_FLOW_TEMPLATE_MIRROR_INDEX_URL",
-            "https://mirror.example.com/agent-flow/catalog/v1/index.json",
-        ),
-        (
-            "API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL",
-            "https://gh-proxy.com/",
-        ),
-        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
-        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
-        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
-        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
-    ])
-    .unwrap();
-
-    assert_eq!(
-        config.official_agent_flow_template_default_index_url,
-        "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/agent-flow/catalog/v1/index.json"
-    );
-
-    let resolved = config.resolve_official_agent_flow_template_source();
-    assert_eq!(resolved.source_kind, "mirror_registry");
-    assert_eq!(
-        resolved.index_url,
-        "https://mirror.example.com/agent-flow/catalog/v1/index.json"
-    );
-    assert_eq!(
-        resolved.github_proxy_url.as_deref(),
-        Some("https://gh-proxy.com/")
     );
 }

@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import * as transport from '../../transport';
 import {
+  deleteConsoleInstalledExtension,
   checkConsoleExtensionUpdates,
   getConsoleExtensionCatalogEntry,
   getConsoleExtensionRiskChallenge,
   installConsoleExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
+  selectConsoleInstalledExtension,
   uploadConsoleExtension,
   type ConsoleInstalledExtensionPage
 } from '../extensions';
@@ -23,9 +25,9 @@ describe('extension center client contract', () => {
 
   test('D4-AC-001 keeps installed inventory local and paginated', async () => {
     await expect(
-      listConsoleInstalledExtensions('cursor-1', 20)
+      listConsoleInstalledExtensions('cursor-1', 20, 'agent-flow')
     ).resolves.toMatchObject({
-      path: '/api/console/settings/extension-center/installed?limit=20&cursor=cursor-1'
+      path: '/api/console/settings/extension-center/installed?limit=20&cursor=cursor-1&category=agent-flow'
     });
   });
 
@@ -43,32 +45,40 @@ describe('extension center client contract', () => {
           artifact_id: 'anthropic',
           version: '0.1.23',
           node_id: 'node-a',
-          source: 'upload',
-          trust: 'unknown',
+          source_kind: 'upload',
+          trust_level: 'unknown',
           warnings: [],
           local_path: '/api/plugins/anthropic/0.1.23',
-          checksum: 'sha256:current',
+          expected_checksum: 'sha256:current',
+          local_checksum: 'sha256:current',
           signature_status: 'missing',
           signature_algorithm: null,
           signing_key_id: null,
           status: 'installed',
-          installed_by: 'user-1',
+          is_current: true,
+          application_action: 'none',
+          application_status: 'not_required',
+          created_by: 'user-1',
           created_at: '2026-08-01T00:00:00Z',
           updated_at: '2026-08-01T00:00:00Z',
           installed_versions: [
             {
               id: 'installation-current',
               version: '0.1.23',
-              source: 'upload',
-              trust: 'unknown',
+              source_kind: 'upload',
+              trust_level: 'unknown',
               warnings: [],
               local_path: '/api/plugins/anthropic/0.1.23',
-              checksum: 'sha256:current',
+              expected_checksum: 'sha256:current',
+              local_checksum: 'sha256:current',
               signature_status: 'missing',
               signature_algorithm: null,
               signing_key_id: null,
               status: 'installed',
-              installed_by: 'user-1',
+              is_current: true,
+              deletable: false,
+              delete_reasons: ['current_version'],
+              created_by: 'user-1',
               created_at: '2026-08-01T00:00:00Z',
               updated_at: '2026-08-01T00:00:00Z'
             }
@@ -79,6 +89,23 @@ describe('extension center client contract', () => {
 
     expect(page.total_entries).toBe(1);
     expect(page.entries[0].installed_versions).toHaveLength(1);
+  });
+
+  test('AC-005 selects and deletes an exact installed version', async () => {
+    await expect(
+      selectConsoleInstalledExtension('installation old', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/extension-center/installed/installation%20old/select',
+      method: 'POST',
+      csrfToken: 'csrf'
+    });
+    await expect(
+      deleteConsoleInstalledExtension('installation old', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/extension-center/installed/installation%20old',
+      method: 'DELETE',
+      csrfToken: 'csrf'
+    });
   });
 
   test('D4-AC-002 addresses repository category catalog pages directly', async () => {

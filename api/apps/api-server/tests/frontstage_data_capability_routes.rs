@@ -5,9 +5,6 @@ use api_server::{
     app_with_state_and_config,
     config::ApiConfig,
     host_infrastructure::build_local_host_infrastructure,
-    official_agent_flow_templates::{
-        OfficialAgentFlowTemplateCatalogSnapshot, OfficialAgentFlowTemplateSourcePort,
-    },
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, OfficialMcpBundleCatalogSnapshot,
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
@@ -85,26 +82,6 @@ impl OfficialPluginSourcePort for NoopPluginSource {
 
     fn trusted_public_keys(&self) -> Vec<plugin_framework::TrustedPublicKey> {
         Vec::new()
-    }
-}
-
-#[derive(Clone, Default)]
-struct NoopAgentFlowSource;
-
-#[async_trait]
-impl OfficialAgentFlowTemplateSourcePort for NoopAgentFlowSource {
-    async fn list_catalog_page(
-        &self,
-        _cursor: Option<String>,
-    ) -> anyhow::Result<OfficialAgentFlowTemplateCatalogSnapshot> {
-        anyhow::bail!("agent flow source unavailable in frontstage callable tests")
-    }
-
-    async fn download_template(
-        &self,
-        _workflow_id: &str,
-    ) -> anyhow::Result<control_plane::flow::AgentFlowTemplatePackage> {
-        anyhow::bail!("agent flow source unavailable in frontstage callable tests")
     }
 }
 
@@ -210,6 +187,7 @@ async fn fixture() -> Fixture {
                 store.clone(),
                 api_provider_runtime,
                 config.provider_secret_master_key.clone(),
+                config.api_node_id.clone(),
             )),
         ),
     );
@@ -243,7 +221,6 @@ async fn fixture() -> Fixture {
         ),
         plugin_runner_system: Arc::new(UnreachablePluginRunner),
         official_plugin_source: Arc::new(NoopPluginSource),
-        official_agent_flow_template_source: Arc::new(NoopAgentFlowSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
         official_extension_catalog_source: Arc::new(
             api_server::official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(

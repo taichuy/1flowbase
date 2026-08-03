@@ -8,6 +8,7 @@ import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/A
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
+import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,
@@ -17,8 +18,7 @@ import {
   seedStyleBoundaryCommonFetch,
   seedStyleBoundaryFrontstageFetch,
   seedStyleBoundarySettingsFetch,
-  seedStyleBoundaryTemplateFetch,
-  styleBoundaryNodeContributions
+  seedStyleBoundaryTemplateFetch
 } from './scene-fixtures';
 import { SettingsMcpManagementStyleBoundaryScene } from './SettingsMcpManagementStyleBoundaryScene';
 import { SettingsSystemRuntimeStyleBoundaryScene } from './SettingsSystemRuntimeStyleBoundaryScene';
@@ -74,7 +74,7 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
           applicationId="app-1"
           applicationName="Support Agent"
           initialState={createStyleBoundaryOrchestrationState()}
-          nodeContributions={styleBoundaryNodeContributions}
+          nodeCatalog={{ nodes: [] }}
         />
       </div>
     );
@@ -173,6 +173,17 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   'page.templates': () => {
     seedStyleBoundaryTemplateFetch();
     return renderShellScene('/templates', <TemplatesPage />);
+  },
+  'page.settings-extension-center-agent-flow': () => {
+    seedStyleBoundaryTemplateFetch();
+    return renderRouterScene('/settings/extension-center/agent-flow');
+  },
+  'page.settings-extension-center-mcp': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderShellScene(
+      '/settings/extension-center/mcp',
+      <McpTemplateLibrary variant="compact" />
+    );
   },
   'page.settings': () => {
     seedStyleBoundarySettingsFetch();

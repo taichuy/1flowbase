@@ -37,7 +37,7 @@ fn root_console_navigation_sees_all_builtin_items() {
     assert_eq!(navigation.navigation_items.len(), 18);
     assert_eq!(navigation.permission_bindings.len(), 18);
     assert!(item_ids.contains(&"home"));
-    assert!(item_ids.contains(&"embedded-apps"));
+    assert!(!item_ids.contains(&"embedded-apps"));
     assert!(item_ids.contains(&"templates"));
     assert!(item_ids.contains(&"settings"));
     assert!(item_ids.contains(&"settings.docs"));

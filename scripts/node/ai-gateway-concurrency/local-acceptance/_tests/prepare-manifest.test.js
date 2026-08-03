@@ -26,7 +26,7 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
       schema_version: '1flowbase.local-ai-gateway-acceptance/v1',
       repo: { host: { path: root, revision: 'HEAD' } },
       database: {
-        container: 'docker-db-1', image: 'postgres:16-alpine', host: '127.0.0.1', port: 35432,
+        container: 'docker-db-1', image: 'postgres:18-alpine', host: '127.0.0.1', port: 35432,
       },
       artifacts: {
         apiServer: { path: apiServer, sha256: '0'.repeat(64) },

@@ -32,7 +32,7 @@ import {
 } from '@ant-design/icons';
 import type { TFunction } from 'i18next';
 import type { ChangeEvent, ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -56,6 +56,8 @@ import {
 import { ApplicationFormModal } from '../components/ApplicationFormModal';
 import { ApplicationTagManagerModal } from '../components/ApplicationTagManagerModal';
 import { ApplicationTemplateImportModal } from '../components/ApplicationTemplateImportModal';
+import { InstalledAgentFlowImportFlow } from '../components/InstalledAgentFlowImportFlow';
+import { InstalledAgentFlowPickerDrawer } from '../components/InstalledAgentFlowPickerDrawer';
 import { downloadApplicationArchive } from '../lib/template-download';
 
 type ApplicationTypeFilter = 'all' | Application['application_type'];
@@ -128,6 +130,10 @@ export function ApplicationListPage() {
   const [typeFilter, setTypeFilter] = useState<ApplicationTypeFilter>('all');
   const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [installedTemplateId, setInstalledTemplateId] = useState<string | null>(
+    null
+  );
   const [myCreated, setMyCreated] = useState(false);
   const [editingApplicationId, setEditingApplicationId] = useState<
     string | null
@@ -289,6 +295,18 @@ export function ApplicationListPage() {
     me?.permissions.includes('application.delete.own')
   );
   const normalizedKeyword = keyword.trim().toLowerCase();
+  const closeInstalledTemplateImport = useCallback(
+    () => setInstalledTemplateId(null),
+    []
+  );
+  const finishInstalledTemplateImport = useCallback(
+    async (applicationId: string) => {
+      await queryClient.invalidateQueries({ queryKey: applicationsQueryKey });
+      messageApi.success(t('auto.template_imported'));
+      window.location.assign(`/applications/${applicationId}/orchestration`);
+    },
+    [messageApi, queryClient, t]
+  );
 
   if (applicationsQuery.isPending || applicationCatalogQuery.isPending) {
     return <LoadingState />;
@@ -301,7 +319,11 @@ export function ApplicationListPage() {
   }
 
   const applications = applicationsQuery.data ?? [];
-  const catalog = applicationCatalogQuery.data ?? { types: [], tags: [] };
+  const catalog = applicationCatalogQuery.data ?? {
+    types: [],
+    workflow_triggers: [],
+    tags: []
+  };
   const availableTags = mergeTagCatalog(catalog.tags, optimisticTags);
   const typeTabs = toApplicationTypeTabs(catalog.types, t);
   const typeLabels = new Map(
@@ -367,7 +389,6 @@ export function ApplicationListPage() {
       input
     });
   };
-
   return (
     <div
       style={{
@@ -471,8 +492,9 @@ export function ApplicationListPage() {
             <Button
               type="text"
               icon={<FileTextOutlined />}
+              aria-label={t('auto.create_from_application_template')}
               style={{ justifyContent: 'flex-start' }}
-              disabled
+              onClick={() => setTemplatePickerOpen(true)}
             >
               {t('auto.create_from_application_template')}
             </Button>
@@ -773,6 +795,20 @@ export function ApplicationListPage() {
           setImportPreview(null);
         }}
         onImport={() => importTemplateMutation.mutate()}
+      />
+      <InstalledAgentFlowPickerDrawer
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onSelect={(installationId) => {
+          setTemplatePickerOpen(false);
+          setInstalledTemplateId(installationId);
+        }}
+      />
+      <InstalledAgentFlowImportFlow
+        installationId={installedTemplateId}
+        csrfToken={csrfToken ?? ''}
+        onClose={closeInstalledTemplateImport}
+        onImported={finishInstalledTemplateImport}
       />
     </div>
   );

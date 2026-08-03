@@ -56,7 +56,11 @@ where
         instance.installation_id,
     )
     .await?;
-    let package = load_provider_package(&installation.installed_path)?;
+    let package = load_provider_package(
+        installation
+            .local_path()
+            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+    )?;
 
     Ok(ModelProviderModelCatalog {
         provider_instance_id: instance.id,
@@ -93,10 +97,14 @@ where
         instance.installation_id,
     )
     .await?;
-    if installation.availability_status != domain::PluginAvailabilityStatus::Available {
+    if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
         return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
     }
-    let package = load_provider_package(&installation.installed_path)?;
+    let package = load_provider_package(
+        installation
+            .local_path()
+            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+    )?;
     let provider_config =
         build_provider_runtime_config(repository, provider_secret_master_key, &package, &instance)
             .await?;
@@ -203,7 +211,11 @@ where
         instance.installation_id,
     )
     .await?;
-    let package = load_provider_package(&installation.installed_path)?;
+    let package = load_provider_package(
+        installation
+            .local_path()
+            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+    )?;
     let field = package
         .provider
         .form_schema

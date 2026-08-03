@@ -4,9 +4,12 @@ use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::ports::{
-    AuthRepository, PluginRepository, ProviderRuntimePort,
-    UpsertPluginPackageCatalogProjectionInput,
+use crate::{
+    errors::ControlPlaneError,
+    ports::{
+        AuthRepository, PluginRepository, ProviderRuntimePort,
+        UpsertPluginPackageCatalogProjectionInput,
+    },
 };
 
 use super::{
@@ -35,7 +38,11 @@ where
         let installation = self
             .ready_current_node_installation(command.installation_id)
             .await?;
-        match load_provider_package(&installation.installed_path) {
+        match load_provider_package(
+            installation
+                .local_path()
+                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
+        ) {
             Ok(package) => {
                 refresh_provider_package_catalog_projection(
                     &self.repository,

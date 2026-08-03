@@ -87,6 +87,7 @@ fn official_package_risk_warnings(
 #[derive(Debug, Clone)]
 pub struct InstallPluginResult {
     pub installation: domain::PluginInstallationRecord,
+    pub local_artifact: domain::PluginArtifactInstanceRecord,
     pub task: domain::PluginTaskRecord,
 }
 
@@ -153,7 +154,34 @@ trait InstallationProjectionIdentity {
     fn plugin_version(&self) -> &str;
 }
 
-impl InstallationProjectionIdentity for UpsertPluginInstallationInput {
+#[derive(Debug, Clone)]
+struct PreparedPluginInstallationInput {
+    installation_id: Uuid,
+    provider_code: String,
+    plugin_id: String,
+    plugin_version: String,
+    contract_version: String,
+    protocol: String,
+    display_name: String,
+    source_kind: String,
+    trust_level: String,
+    verification_status: domain::PluginVerificationStatus,
+    desired_state: domain::PluginDesiredState,
+    runtime_status: domain::PluginRuntimeStatus,
+    availability_status: domain::PluginAvailabilityStatus,
+    package_path: Option<String>,
+    installed_path: String,
+    checksum: Option<String>,
+    manifest_fingerprint: Option<String>,
+    signature_status: Option<String>,
+    signature_algorithm: Option<String>,
+    signing_key_id: Option<String>,
+    last_load_error: Option<String>,
+    metadata_json: serde_json::Value,
+    actor_user_id: Uuid,
+}
+
+impl InstallationProjectionIdentity for PreparedPluginInstallationInput {
     fn installation_id(&self) -> Uuid {
         self.installation_id
     }
@@ -394,33 +422,65 @@ fn stable_sha256_json(value: &serde_json::Value) -> String {
 async fn commit_prepared_installation<R>(
     repository: &R,
     node_id: &str,
-    installation: UpsertPluginInstallationInput,
+    installation: PreparedPluginInstallationInput,
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
 ) -> Result<domain::PluginInstallationRecord>
 where
     R: PluginRepository,
 {
+    let category = match route_plugin_package(manifest)? {
+        RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,
+        RoutedPluginPackageKind::ModelProviderRuntime
+        | RoutedPluginPackageKind::DataSourceRuntime => {
+            domain::ExtensionCategory::RuntimeExtensions
+        }
+        RoutedPluginPackageKind::CapabilityPlugin => domain::ExtensionCategory::CapabilityPlugins,
+    };
     let artifact_instance = UpsertPluginArtifactInstanceInput {
         node_id: node_id.to_string(),
         installation_id: installation.installation_id,
         local_version: Some(installation.plugin_version.clone()),
         local_checksum: installation.checksum.clone(),
-        installed_path: Some(installation.installed_path.clone()),
+        local_path: Some(installation.installed_path.clone()),
+        package_path: installation.package_path.clone(),
+        manifest_fingerprint: installation.manifest_fingerprint.clone(),
         artifact_status: domain::PluginArtifactInstanceStatus::Ready,
-        runtime_status: domain::PluginRuntimeStatus::Inactive,
+        runtime_status: installation.runtime_status,
+        availability_status: installation.availability_status,
         checked_at: OffsetDateTime::now_utc(),
-        last_error: None,
+        last_error: installation.last_load_error.clone(),
+        // Runtime/capability activation is workspace-scoped in plugin_assignments.
+        is_current: false,
     };
     let node_contributions = build_node_contribution_sync_input(&installation, manifest);
     let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
     let frontend_blocks = build_frontend_block_sync_input(&installation, manifest);
-    let extension_installation =
-        extension_projection_for_plugin_installation(node_id, &installation, manifest)?;
+    let root = UpsertPluginInstallationInput {
+        installation_id: installation.installation_id,
+        category,
+        organization: manifest.vendor.clone(),
+        provider_code: installation.provider_code,
+        plugin_id: installation.plugin_id,
+        plugin_version: installation.plugin_version,
+        contract_version: installation.contract_version,
+        protocol: installation.protocol,
+        display_name: installation.display_name,
+        source_kind: installation.source_kind.clone(),
+        trust_level: installation.trust_level,
+        verification_status: installation.verification_status,
+        desired_state: installation.desired_state,
+        expected_checksum: installation.checksum,
+        signature_status: extension_signature_status(installation.signature_status.as_deref()),
+        signature_algorithm: installation.signature_algorithm,
+        signing_key_id: installation.signing_key_id,
+        metadata_json: installation.metadata_json,
+        is_system_reserved: installation.source_kind == "builtin",
+        actor_user_id: installation.actor_user_id,
+    };
     repository
-        .commit_plugin_installation_projection(&CommitPluginInstallationProjectionInput {
-            installation,
-            extension_installation,
+        .commit_plugin_installation(&CommitPluginInstallationInput {
+            installation: root,
             artifact_instance,
             package_catalog,
             node_contributions,
@@ -428,6 +488,15 @@ where
             frontend_blocks,
         })
         .await
+}
+
+pub(super) fn extension_signature_status(value: Option<&str>) -> domain::ExtensionSignatureStatus {
+    match value {
+        Some("verified" | "builtin") => domain::ExtensionSignatureStatus::Verified,
+        Some("unknown_key") => domain::ExtensionSignatureStatus::UnknownKey,
+        Some("invalid" | "malformed_signature") => domain::ExtensionSignatureStatus::Invalid,
+        _ => domain::ExtensionSignatureStatus::Missing,
+    }
 }
 
 pub(super) fn map_model_discovery_mode(
@@ -556,7 +625,7 @@ where
         )?;
         staged_installation.activate()?;
 
-        let installation_input = UpsertPluginInstallationInput {
+        let installation_input = PreparedPluginInstallationInput {
             installation_id,
             provider_code,
             plugin_id,
@@ -568,7 +637,6 @@ where
             trust_level: "verified_official".to_string(),
             verification_status: domain::PluginVerificationStatus::Valid,
             desired_state: domain::PluginDesiredState::ActiveRequested,
-            artifact_status: domain::PluginArtifactStatus::Ready,
             runtime_status: domain::PluginRuntimeStatus::Active,
             availability_status: domain::PluginAvailabilityStatus::Available,
             package_path: None,
@@ -640,7 +708,7 @@ where
             if !local_artifact.artifact_status.is_ready() {
                 continue;
             }
-            let Some(installed_path) = local_artifact.installed_path.as_deref() else {
+            let Some(installed_path) = local_artifact.local_path.as_deref() else {
                 continue;
             };
 
@@ -813,7 +881,16 @@ where
                 .get_installation(install.installation.id)
                 .await?
                 .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-            Ok::<InstallPluginResult, anyhow::Error>(InstallPluginResult { installation, task })
+            let local_artifact = self
+                .repository
+                .get_artifact_instance(&self.node_id, installation.id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("plugin_artifact_instance"))?;
+            Ok::<InstallPluginResult, anyhow::Error>(InstallPluginResult {
+                installation,
+                local_artifact,
+                task,
+            })
         }
         .await;
         result
@@ -894,7 +971,16 @@ where
             .get_installation(install.installation.id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        Ok(InstallPluginResult { installation, task })
+        let local_artifact = self
+            .repository
+            .get_artifact_instance(&self.node_id, installation.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_artifact_instance"))?;
+        Ok(InstallPluginResult {
+            installation,
+            local_artifact,
+            task,
+        })
     }
 
     pub async fn install_official_extension(
@@ -1183,7 +1269,7 @@ where
                     let installation = commit_prepared_installation(
                         &self.repository,
                         &self.node_id,
-                        UpsertPluginInstallationInput {
+                        PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: plugin_code.clone(),
                             plugin_id: package_id.clone(),
@@ -1195,7 +1281,6 @@ where
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,
                             desired_state: domain::PluginDesiredState::PendingRestart,
-                            artifact_status: domain::PluginArtifactStatus::Ready,
                             runtime_status: domain::PluginRuntimeStatus::Inactive,
                             availability_status: derive_availability_status(
                                 domain::PluginDesiredState::PendingRestart,
@@ -1247,7 +1332,7 @@ where
                         "runtime_capabilities": installed_package.manifest.runtime.capabilities,
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation_input = UpsertPluginInstallationInput {
+                    let installation_input = PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: installed_package.provider.provider_code.clone(),
                             plugin_id: installed_package.identifier(),
@@ -1259,7 +1344,6 @@ where
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,
                             desired_state: domain::PluginDesiredState::Disabled,
-                            artifact_status: domain::PluginArtifactStatus::Ready,
                             runtime_status: domain::PluginRuntimeStatus::Inactive,
                             availability_status: derive_availability_status(
                                 domain::PluginDesiredState::Disabled,
@@ -1326,7 +1410,7 @@ where
                     let installation = commit_prepared_installation(
                         &self.repository,
                         &self.node_id,
-                        UpsertPluginInstallationInput {
+                        PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: installed_package.definition.source_code.clone(),
                             plugin_id: installed_package.identifier(),
@@ -1338,7 +1422,6 @@ where
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,
                             desired_state: domain::PluginDesiredState::Disabled,
-                            artifact_status: domain::PluginArtifactStatus::Ready,
                             runtime_status: domain::PluginRuntimeStatus::Inactive,
                             availability_status: derive_availability_status(
                                 domain::PluginDesiredState::Disabled,
@@ -1394,7 +1477,7 @@ where
                             .collect::<Vec<_>>(),
                     });
                     merge_install_detail_metadata(&mut metadata_json, &detail_json);
-                    let installation_input = UpsertPluginInstallationInput {
+                    let installation_input = PreparedPluginInstallationInput {
                             installation_id: Uuid::now_v7(),
                             provider_code: stable_plugin_unique_identifier(&manifest.plugin_id),
                             plugin_id: manifest.versioned_plugin_id().map_err(map_framework_error)?,
@@ -1406,7 +1489,6 @@ where
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,
                             desired_state: domain::PluginDesiredState::Disabled,
-                            artifact_status: domain::PluginArtifactStatus::Ready,
                             runtime_status: domain::PluginRuntimeStatus::Inactive,
                             availability_status: derive_availability_status(
                                 domain::PluginDesiredState::Disabled,
@@ -1485,6 +1567,11 @@ where
                         return Err(error);
                     }
                 }
+                let local_path = self
+                    .repository
+                    .get_artifact_instance(&self.node_id, installation.id)
+                    .await?
+                    .and_then(|artifact| artifact.local_path);
                 let installed_message = if is_host_extension_installation(&installation) {
                     "installed; restart required"
                 } else {
@@ -1494,7 +1581,7 @@ where
                     "installation_id": installation.id,
                     "provider_code": installation.provider_code,
                     "plugin_id": installation.plugin_id,
-                    "installed_path": installation.installed_path,
+                    "local_path": local_path,
                 });
                 if let Some(compatibility_override) =
                     detail_json.get("compatibility_override").cloned()
@@ -1509,7 +1596,16 @@ where
                         task_detail_json,
                     )
                     .await?;
-                Ok(InstallPluginResult { installation, task })
+                let local_artifact = self
+                    .repository
+                    .get_artifact_instance(&self.node_id, installation.id)
+                    .await?
+                    .ok_or(ControlPlaneError::NotFound("plugin_artifact_instance"))?;
+                Ok(InstallPluginResult {
+                    installation,
+                    local_artifact,
+                    task,
+                })
             }
             Err(error) => {
                 let _ = self

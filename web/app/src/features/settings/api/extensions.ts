@@ -1,7 +1,7 @@
 import {
-  activateConsoleInstalledI18nExtension,
   applyConsoleInstalledMcpExtension,
   checkConsoleExtensionUpdates,
+  deleteConsoleInstalledExtension,
   getConsoleExtensionCatalogEntry,
   getConsoleInstalledMcpExtensionConflict,
   getConsoleInstalledMcpExtensionIntegrityChallenge,
@@ -10,7 +10,6 @@ import {
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
   previewConsoleInstalledMcpExtension,
-  previewConsoleInstalledI18nExtension,
   type ConsoleExtensionCatalogEntry,
   type ConsoleExtensionApplicationAction,
   type ConsoleExtensionCategory,
@@ -30,8 +29,16 @@ export type SettingsInstalledExtension = ConsoleInstalledExtension;
 export type SettingsExtensionCatalogEntry = ConsoleExtensionCatalogEntry;
 
 export const settingsInstalledExtensionsQueryKey = (
-  cursor: string | undefined
-) => ['settings', 'extension-center', 'installed', cursor ?? 'start'] as const;
+  cursor: string | undefined,
+  category?: SettingsExtensionCategory
+) =>
+  [
+    'settings',
+    'extension-center',
+    'installed',
+    category ?? 'all',
+    cursor ?? 'start'
+  ] as const;
 
 export const settingsExtensionCatalogQueryKey = (
   category: SettingsExtensionCategory,
@@ -45,8 +52,11 @@ export const settingsExtensionCatalogQueryKey = (
     cursor ?? 'start'
   ] as const;
 
-export function fetchSettingsInstalledExtensions(cursor?: string) {
-  return listConsoleInstalledExtensions(cursor);
+export function fetchSettingsInstalledExtensions(
+  cursor?: string,
+  category?: SettingsExtensionCategory
+) {
+  return listConsoleInstalledExtensions(cursor, 20, category);
 }
 
 export function fetchSettingsExtensionCatalog(
@@ -91,6 +101,13 @@ export function installSettingsExtension(
   );
 }
 
+export function deleteSettingsInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return deleteConsoleInstalledExtension(installationId, csrfToken);
+}
+
 export function previewSettingsInstalledMcpExtension(
   extensionInstallationId: string,
   csrfToken: string
@@ -110,24 +127,6 @@ export function applySettingsInstalledMcpExtension(
     extensionInstallationId,
     csrfToken,
     options
-  );
-}
-
-export function previewSettingsInstalledI18nExtension(
-  extensionInstallationId: string
-) {
-  return previewConsoleInstalledI18nExtension(extensionInstallationId);
-}
-
-export function activateSettingsInstalledI18nExtension(
-  extensionInstallationId: string,
-  input: Parameters<typeof activateConsoleInstalledI18nExtension>[1],
-  csrfToken: string
-) {
-  return activateConsoleInstalledI18nExtension(
-    extensionInstallationId,
-    input,
-    csrfToken
   );
 }
 

@@ -33,6 +33,13 @@ const MODEL_PROVIDER_FEATURE_SIMPLE_OPERATIONS: &[&str] = &[
 ];
 
 const MCP_SIMPLE_OPERATIONS: &[&str] = &[
+    "mcp.bundle_library.current.switch",
+    "mcp.bundle_library.import",
+    "mcp.bundle_library.list",
+    "mcp.bundle_library.preview",
+    "mcp.bundle_library.releases.delete",
+    "mcp.bundle_library.releases.repair",
+    "mcp.bundle_library.sync",
     "mcp.bundles.export",
     "mcp.bundles.import",
     "mcp.bundles.official.list",
