@@ -221,7 +221,13 @@ export interface ConsoleMcpTemplateLibraryBundle {
 }
 
 export interface ConsoleMcpTemplateLibrary {
+  source: {
+    source_kind: string;
+    source_label: string;
+    catalog_url: string;
+  };
   remote_available: boolean;
+  remote_error: string | null;
   bundles: ConsoleMcpTemplateLibraryBundle[];
 }
 
@@ -686,6 +692,13 @@ export function importConsoleOfficialMcpBundle(
 export function fetchConsoleMcpTemplateLibrary(baseUrl?: string) {
   return apiFetch<ConsoleMcpTemplateLibrary>({
     path: '/api/console/mcp/bundles/library',
+    baseUrl
+  });
+}
+
+export function refreshConsoleMcpTemplateLibrary(baseUrl?: string) {
+  return apiFetch<ConsoleMcpTemplateLibrary>({
+    path: '/api/console/mcp/bundles/library?refresh_remote=true',
     baseUrl
   });
 }

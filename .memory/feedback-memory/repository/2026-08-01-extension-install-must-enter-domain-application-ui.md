@@ -15,8 +15,8 @@ match_when:
   - 安装产物需要导入 workspace、激活目录或创建领域对象
   - 准备在扩展中心新写简化确认弹窗
 created_at: 2026-08-01 21
-updated_at: 2026-08-02 20
-last_verified_at: 2026-08-02 20
+updated_at: 2026-08-03 01
+last_verified_at: 2026-08-03 01
 decision_policy: direct_reference
 scope:
   - web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx
@@ -46,6 +46,14 @@ scope:
 - 本地已有模板时，应用“导入”只读取数据库 current 记录指向的本地 artifact 创建新应用，不重复请求远程；扩展中心“同步”只拉取远程模板新版本并更新本地模板安装记录，绝不修改任何已创建应用。
 - 模板详情必须能查看数据库记录的本地历史版本；本地版本可设为当前导入版本、用于创建新应用或删除。切换、同步、删除本地模板版本都不得影响已经导入的应用。
 - 应用可以记录来源模板 ID、发布版本与 checksum 作为 provenance，但该记录不能建立自动更新关系。
+
+## MCP 模板边界
+
+- MCP 模板 ZIP 固定保存在 `api/storage/extension-center/mcp`，但安装状态、版本历史、current、路径、checksum 与签名状态统一以 `extension_installations` 为唯一业务真值。
+- MCP 模板普通列表和 `/settings/extension-center/installed` 只查询数据库；只有用户显式刷新、同步或 repair 才访问远端，运行时页面不得扫描 storage 判断状态。
+- 启动 reconciliation 只负责首次迁移历史 receipt 和把丢失文件标记为 missing；数据库已有 current 时，历史磁盘 `current` 文件或最高版本不得覆盖用户选择。
+- “同步”只下载、验签并更新本地模板与安装索引；“导入”只从数据库索引定位本地 ZIP，相同 `instance_id` 覆盖实例、不存在则创建。同步、切换与删除模板均不得修改已导入 MCP 实例。
+- release 同步使用完整 staging 目录后再切换；数据库索引失败时必须移除新 release 或恢复 repair 前的完整旧目录，不能留下可被误认成成功的半安装状态。
 
 ## 原因
 

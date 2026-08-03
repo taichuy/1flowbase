@@ -6,7 +6,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -232,13 +232,24 @@ struct McpBundleLibraryVersionBody {
 async fn list_bundle_library(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    Query(query): Query<McpBundleLibraryQuery>,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::McpBundleLibraryCatalog>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     McpManagementService::new(state.store.clone())
         .authorize_bundle_management(context.user.id)
         .await?;
-    let catalog = state.official_mcp_bundle_source.library_catalog().await?;
+    let catalog = if query.refresh_remote {
+        state.official_mcp_bundle_source.refresh_catalog().await?
+    } else {
+        state.official_mcp_bundle_source.library_catalog().await?
+    };
     Ok(Json(ApiSuccess::new(catalog)))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct McpBundleLibraryQuery {
+    #[serde(default)]
+    refresh_remote: bool,
 }
 
 async fn sync_library_bundle(

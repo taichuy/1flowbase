@@ -35,6 +35,7 @@ import {
   previewConsoleMcpTemplateLibraryBundle,
   previewConsoleOfficialMcpBundle,
   refreshConsoleMcpToolDescription,
+  refreshConsoleMcpTemplateLibrary,
   repairConsoleMcpTemplateLibraryRelease,
   setConsoleMcpTemplateLibraryCurrentVersion,
   syncConsoleMcpTemplateLibraryBundle,
@@ -216,6 +217,12 @@ describe('console-mcp-management client', () => {
       });
     }
   );
+
+  test('refreshes the remote MCP catalog only through the explicit action', async () => {
+    await expect(refreshConsoleMcpTemplateLibrary()).resolves.toMatchObject({
+      path: '/api/console/mcp/bundles/library?refresh_remote=true'
+    });
+  });
 
   test.each([
     {

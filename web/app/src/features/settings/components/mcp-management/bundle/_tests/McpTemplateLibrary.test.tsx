@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
     'template-library'
   ],
   fetchSettingsMcpTemplateLibrary: vi.fn(),
+  refreshSettingsMcpTemplateLibrary: vi.fn(),
   syncSettingsMcpTemplateLibraryBundle: vi.fn(),
   previewSettingsMcpTemplateLibraryBundle: vi.fn(),
   importSettingsMcpTemplateLibraryBundle: vi.fn(),
@@ -107,6 +108,41 @@ describe('McpTemplateLibrary', () => {
       ]
     });
     api.syncSettingsMcpTemplateLibraryBundle.mockResolvedValue(undefined);
+    api.refreshSettingsMcpTemplateLibrary.mockResolvedValue({
+      remote_available: true,
+      bundles: []
+    });
+  });
+
+  test('AC-003 and AC-004 load the local index without remote access until explicit refresh', async () => {
+    api.fetchSettingsMcpTemplateLibrary.mockResolvedValue({
+      remote_available: false,
+      remote_error: null,
+      bundles: []
+    });
+    api.refreshSettingsMcpTemplateLibrary.mockResolvedValue({
+      remote_available: true,
+      remote_error: null,
+      bundles: [
+        {
+          organization: 'taichuy',
+          bundle_id: 'zh',
+          current_bundle_version: null,
+          remote_versions: [version],
+          local_versions: []
+        }
+      ]
+    });
+    renderLibrary();
+
+    expect(api.refreshSettingsMcpTemplateLibrary).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: '刷新模板库' }));
+    await waitFor(() =>
+      expect(api.refreshSettingsMcpTemplateLibrary).toHaveBeenCalledWith()
+    );
+    expect(
+      await screen.findByText('taichuy/zh', {}, { timeout: 3000 })
+    ).toBeInTheDocument();
   });
 
   test('AC-004 keeps sync pending state scoped to each catalog row', async () => {

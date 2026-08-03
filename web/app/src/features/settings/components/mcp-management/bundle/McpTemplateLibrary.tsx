@@ -28,6 +28,7 @@ import { i18nText } from '../../../../../shared/i18n/text';
 import {
   deleteSettingsMcpTemplateLibraryRelease,
   fetchSettingsMcpTemplateLibrary,
+  refreshSettingsMcpTemplateLibrary,
   repairSettingsMcpTemplateLibraryRelease,
   setSettingsMcpTemplateLibraryCurrentVersion,
   settingsMcpCatalogQueryKey,
@@ -36,6 +37,7 @@ import {
   type SettingsMcpTemplateLibraryBundle,
   type SettingsMcpTemplateLibraryVersion
 } from '../../../api/mcp-management';
+import { settingsInstalledExtensionsQueryKey } from '../../../api/extensions';
 import {
   McpBundleImportFlow,
   type McpBundleImportSource
@@ -114,9 +116,14 @@ export function McpTemplateLibrary({
     ) ?? null;
 
   const refreshLibrary = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: settingsMcpTemplateLibraryQueryKey
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: settingsMcpTemplateLibraryQueryKey
+      }),
+      queryClient.invalidateQueries({
+        queryKey: settingsInstalledExtensionsQueryKey(undefined)
+      })
+    ]);
   }, [queryClient]);
   const closeImportFlow = useCallback(() => setImportSource(null), []);
   const refreshMcpCatalog = useCallback(async () => {
@@ -164,27 +171,26 @@ export function McpTemplateLibrary({
     }
   }
 
+  async function checkRemoteCatalog() {
+    const key = 'remote-catalog:refresh';
+    start(key);
+    try {
+      const catalog = await refreshSettingsMcpTemplateLibrary();
+      queryClient.setQueryData(settingsMcpTemplateLibraryQueryKey, catalog);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      finish(key);
+    }
+  }
+
   async function prepareImport(
     bundle: SettingsMcpTemplateLibraryBundle,
     bundleVersion?: string
   ) {
     const key = operationKey(bundle, 'prepare', bundleVersion);
-    const hasLocal = bundleVersion
-      ? bundle.local_versions.some(
-          (version) => version.bundle_version === bundleVersion
-        )
-      : bundle.current_bundle_version !== null;
     start(key);
     try {
-      if (!hasLocal) {
-        await syncSettingsMcpTemplateLibraryBundle(
-          bundle.organization,
-          bundle.bundle_id,
-          bundleVersion ? { bundle_version: bundleVersion } : {},
-          csrfToken
-        );
-        await refreshLibrary();
-      }
       setImportSource({
         kind: 'library',
         organization: bundle.organization,
@@ -299,18 +305,20 @@ export function McpTemplateLibrary({
           );
         return (
           <Space size={4} wrap>
-            <Button
-              type="link"
-              icon={<DownloadOutlined />}
-              aria-label={i18nText(
-                'settingsMcpManagement',
-                'auto.mcp_bundle_import'
-              )}
-              loading={pending.has(operationKey(bundle, 'prepare'))}
-              onClick={() => void prepareImport(bundle)}
-            >
-              {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import')}
-            </Button>
+            {bundle.current_bundle_version ? (
+              <Button
+                type="link"
+                icon={<DownloadOutlined />}
+                aria-label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.mcp_bundle_import'
+                )}
+                loading={pending.has(operationKey(bundle, 'prepare'))}
+                onClick={() => void prepareImport(bundle)}
+              >
+                {i18nText('settingsMcpManagement', 'auto.mcp_bundle_import')}
+              </Button>
+            ) : null}
             {canSync ? (
               <Button
                 type="link"
@@ -510,13 +518,13 @@ export function McpTemplateLibrary({
             'settingsMcpManagement',
             'auto.mcp_template_refresh'
           )}
-          loading={libraryQuery.isFetching}
-          onClick={() => void libraryQuery.refetch()}
+          loading={pending.has('remote-catalog:refresh')}
+          onClick={() => void checkRemoteCatalog()}
         >
           {i18nText('settingsMcpManagement', 'auto.mcp_template_refresh')}
         </Button>
       </Flex>
-      {libraryQuery.data && !libraryQuery.data.remote_available ? (
+      {libraryQuery.data?.remote_error ? (
         <Alert
           showIcon
           type="warning"
