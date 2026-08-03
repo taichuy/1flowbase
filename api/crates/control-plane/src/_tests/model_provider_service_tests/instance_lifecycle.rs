@@ -18,8 +18,7 @@ async fn model_provider_service_masks_secret_in_views_and_reveals_on_demand() {
         )
         .await;
 
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
@@ -121,7 +120,7 @@ async fn model_provider_service_create_instance_inherits_provider_main_instance_
         )
         .await;
 
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
 
     let main_instance = service
         .update_main_instance(UpdateModelProviderMainInstanceCommand {
@@ -173,7 +172,7 @@ async fn model_provider_service_update_instance_can_flip_included_in_main_withou
             true,
         )
         .await;
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
@@ -270,7 +269,7 @@ async fn model_provider_service_list_instances_returns_included_in_main_without_
         .await
         .unwrap();
 
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
     let instances = service
         .list_instances(repository.actor.user_id)
         .await
@@ -333,7 +332,7 @@ async fn model_provider_service_list_instances_does_not_read_global_install_path
         })
         .await
         .unwrap();
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key")
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key")
         .with_node_artifact_context("test-node", install_root);
 
     let instances = service
@@ -366,7 +365,7 @@ async fn model_provider_service_update_instance_blocks_when_current_node_artifac
             true,
         )
         .await;
-    let bootstrap_service = ModelProviderService::new(
+    let bootstrap_service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -389,9 +388,8 @@ async fn model_provider_service_update_instance_blocks_when_current_node_artifac
         .unwrap();
     let current_node_root =
         std::env::temp_dir().join(format!("provider-node-missing-{}", Uuid::now_v7()));
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key")
-            .with_node_artifact_context("node-without-artifact", current_node_root);
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")
+        .with_node_artifact_context("node-without-artifact", current_node_root);
 
     let error = service
         .update_instance(UpdateModelProviderInstanceCommand {
@@ -431,7 +429,7 @@ async fn model_provider_service_blocks_previously_failed_current_node_runtime_wi
             true,
         )
         .await;
-    let bootstrap_service = ModelProviderService::new(
+    let bootstrap_service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -476,9 +474,8 @@ async fn model_provider_service_blocks_previously_failed_current_node_runtime_wi
         })
         .await
         .unwrap();
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key")
-            .with_node_artifact_context("test-node", current_node_root);
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")
+        .with_node_artifact_context("test-node", current_node_root);
 
     let error = service
         .validate_instance(repository.actor.user_id, created.instance.id)
@@ -518,8 +515,7 @@ async fn model_provider_service_create_and_update_allow_empty_enabled_model_ids(
             true,
         )
         .await;
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {

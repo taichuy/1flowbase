@@ -214,6 +214,15 @@ impl InMemoryDataSourceRepository {
     }
 }
 
+fn data_source_service(
+    repository: InMemoryDataSourceRepository,
+    runtime: StubDataSourceRuntime,
+    secret_master_key: impl Into<String>,
+) -> DataSourceService<InMemoryDataSourceRepository, StubDataSourceRuntime> {
+    DataSourceService::new(repository, runtime, secret_master_key)
+        .with_node_artifact_context("test-node", env!("CARGO_MANIFEST_DIR"))
+}
+
 #[async_trait]
 impl AuthRepository for InMemoryDataSourceRepository {
     async fn find_authenticator(&self, _id: Uuid) -> Result<Option<AuthenticatorRecord>> {

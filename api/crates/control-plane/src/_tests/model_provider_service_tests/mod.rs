@@ -290,6 +290,15 @@ impl MemoryModelProviderRepository {
     }
 }
 
+fn model_provider_service(
+    repository: MemoryModelProviderRepository,
+    runtime: MemoryProviderRuntime,
+    secret_master_key: impl Into<String>,
+) -> ModelProviderService<MemoryModelProviderRepository, MemoryProviderRuntime> {
+    ModelProviderService::new(repository, runtime, secret_master_key)
+        .with_node_artifact_context("test-node", env!("CARGO_MANIFEST_DIR"))
+}
+
 #[async_trait]
 impl RoleConsolePolicyReader for MemoryModelProviderRepository {
     async fn load_role_console_policies_for_user(

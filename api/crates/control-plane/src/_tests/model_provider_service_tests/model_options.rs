@@ -20,7 +20,7 @@ async fn model_provider_service_options_group_models_by_model_id_with_ordered_in
             true,
         )
         .await;
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
 
     let alpha = repository
         .create_instance(&CreateModelProviderInstanceInput {
@@ -259,8 +259,7 @@ async fn model_provider_service_persists_configured_models_and_derives_enabled_m
             true,
         )
         .await;
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {

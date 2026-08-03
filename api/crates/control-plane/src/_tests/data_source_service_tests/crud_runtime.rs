@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn map_resource_to_model_rejects_foreign_instance_workspace() {
     let repository = InMemoryDataSourceRepository::default();
-    let service = DataSourceService::new(
+    let service = data_source_service(
         repository.clone(),
         StubDataSourceRuntime::ready(),
         "test-master-key",
