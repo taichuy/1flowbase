@@ -6,6 +6,8 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+mod interface_inventory;
+
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }

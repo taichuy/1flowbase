@@ -16,6 +16,7 @@ pub mod i18n_catalog_repository;
 pub mod js_dependency_repository;
 pub mod mappers;
 pub mod mcp_management_repository;
+pub mod mcp_result_receipt_repository;
 pub mod member_repository;
 pub mod model_definition_repository;
 pub mod model_provider_repository;

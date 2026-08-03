@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
@@ -40,14 +41,14 @@ fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> Stri
     format!("{github_proxy_url}/{url}")
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct OfficialMcpBundleCatalogSource {
     pub source_kind: String,
     pub source_label: String,
     pub catalog_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct McpCatalogVersion {
     pub bundle_version: String,
     pub locale: String,
@@ -77,7 +78,7 @@ struct McpCatalogDocument {
     bundles: Vec<McpCatalogBundle>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct LocalMcpBundleReceipt {
     pub organization: String,
     pub bundle_id: String,
@@ -92,7 +93,7 @@ pub struct LocalMcpBundleReceipt {
     pub signature: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct McpBundleLibraryEntry {
     pub organization: String,
     pub bundle_id: String,
@@ -102,7 +103,7 @@ pub struct McpBundleLibraryEntry {
     pub current_bundle_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct McpBundleLibraryCatalog {
     pub source: OfficialMcpBundleCatalogSource,
     pub remote_available: bool,

@@ -1,8 +1,12 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use control_plane::ports::ModelDefinitionRepository;
+use serde_json::{json, Value};
 
-use crate::{app_state::ApiState, error_response::ApiError, runtime_data_model_docs};
+use crate::{
+    app_state::ApiState, error_response::ApiError, openapi_docs::DocsCatalogOperation,
+    runtime_data_model_docs,
+};
 
 use super::{catalog_entry_from_operation, OpenApiInterfaceCatalogEntry};
 
@@ -137,66 +141,10 @@ pub async fn get_openapi_capability(
     workspace_id: uuid::Uuid,
     interface_id: &str,
 ) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
-    for category in &state.api_docs.catalog().categories {
-        let Some(operations) = state.api_docs.category_operations(&category.id) else {
-            continue;
-        };
-        let Some(operation) = operations
-            .operations
-            .iter()
-            .find(|operation| operation.id == interface_id)
-        else {
-            continue;
-        };
-        if !static_operation_is_bindable(&operation.path) {
-            return Ok(None);
-        }
-        let Some(spec) = state.api_docs.operation_spec(interface_id) else {
-            return Ok(None);
-        };
-        let Some(interface) = catalog_entry_from_operation(operation, spec) else {
-            return Ok(None);
-        };
-        return Ok(Some(OpenApiCapabilityCatalogEntry {
-            risk_level: operation_risk_level(&interface.method),
-            interface,
-            source: OpenApiCapabilitySource::StaticApiDocs,
-            bindable: true,
-            disabled_reason: None,
-        }));
-    }
-
-    let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(interface_id)
-    else {
-        return Ok(None);
-    };
-    let Some(model) = state
-        .store
-        .get_model_definition(workspace_id, model_id)
+    Ok(build_openapi_capability_catalog(state, workspace_id)
         .await?
-        .filter(|model| model.status == domain::DataModelStatus::Published)
-    else {
-        return Ok(None);
-    };
-    let operation =
-        runtime_data_model_docs::build_category_operations(std::slice::from_ref(&model))
-            .operations
-            .into_iter()
-            .find(|operation| operation.id == interface_id);
-    let Some(operation) = operation else {
-        return Ok(None);
-    };
-    let spec = runtime_data_model_docs::build_operation_openapi(&model, kind);
-    let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {
-        return Ok(None);
-    };
-    Ok(Some(OpenApiCapabilityCatalogEntry {
-        risk_level: operation_risk_level(&interface.method),
-        interface,
-        source: OpenApiCapabilitySource::RuntimeDataModelCrud,
-        bindable: true,
-        disabled_reason: None,
-    }))
+        .into_iter()
+        .find(|entry| entry.interface.operation_id == interface_id))
 }
 
 pub async fn get_openapi_capability_by_route(
@@ -205,113 +153,39 @@ pub async fn get_openapi_capability_by_route(
     method: &str,
     path: &str,
 ) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
-    let mut static_match = None;
-    for category in &state.api_docs.catalog().categories {
-        let Some(operations) = state.api_docs.category_operations(&category.id) else {
-            continue;
-        };
-        let Some(operation) = operations
-            .operations
-            .iter()
-            .find(|operation| operation.method == method && operation.path == path)
-        else {
-            continue;
-        };
-        if static_match.is_some() {
-            return Err(control_plane::errors::ControlPlaneError::Conflict(
-                "openapi_capability_route",
-            )
-            .into());
-        }
-        static_match = Some(operation.clone());
-    }
-    if let Some(operation) = static_match {
-        if !static_operation_is_bindable(&operation.path) {
-            return Ok(None);
-        }
-        let Some(spec) = state.api_docs.operation_spec(&operation.id) else {
-            return Ok(None);
-        };
-        let Some(interface) = catalog_entry_from_operation(&operation, spec) else {
-            return Ok(None);
-        };
-        return Ok(Some(OpenApiCapabilityCatalogEntry {
-            risk_level: operation_risk_level(&interface.method),
-            interface,
-            source: OpenApiCapabilitySource::StaticApiDocs,
-            bindable: true,
-            disabled_reason: None,
-        }));
-    }
-
-    if !path.starts_with("/api/runtime/models/") {
-        return Ok(None);
-    }
-    let mut models = state.store.list_model_definitions(workspace_id).await?;
-    models.retain(|model| model.status == domain::DataModelStatus::Published);
-    let Some(operation) = runtime_data_model_docs::build_category_operations(&models)
-        .operations
+    let route = route_identity(method, path);
+    let mut matches = build_openapi_capability_catalog(state, workspace_id)
+        .await?
         .into_iter()
-        .find(|operation| operation.method == method && operation.path == path)
-    else {
-        return Ok(None);
-    };
-    let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
-    else {
-        return Ok(None);
-    };
-    let Some(model) = models.iter().find(|model| model.id == model_id) else {
-        return Ok(None);
-    };
-    let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
-    let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {
-        return Ok(None);
-    };
-    Ok(Some(OpenApiCapabilityCatalogEntry {
-        risk_level: operation_risk_level(&interface.method),
-        interface,
-        source: OpenApiCapabilitySource::RuntimeDataModelCrud,
-        bindable: true,
-        disabled_reason: None,
-    }))
+        .filter(|entry| route_identity(&entry.interface.method, &entry.interface.path) == route)
+        .filter(|entry| entry.bindable);
+    let found = matches.next();
+    if matches.next().is_some() {
+        return Err(
+            control_plane::errors::ControlPlaneError::Conflict("openapi_capability_route").into(),
+        );
+    }
+    Ok(found)
 }
 
 async fn openapi_capability_catalog_summaries(
     state: &ApiState,
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogSummary>, ApiError> {
-    let mut summaries = Vec::new();
-    for category in &state.api_docs.catalog().categories {
-        let Some(operations) = state.api_docs.category_operations(&category.id) else {
-            continue;
-        };
-        summaries.extend(
-            operations
-                .operations
-                .iter()
-                .filter(|operation| static_operation_is_bindable(&operation.path))
-                .map(|operation| OpenApiCapabilityCatalogSummary {
-                    interface_id: operation.id.clone(),
-                    method: operation.method.clone(),
-                    path: operation.path.clone(),
-                    source: OpenApiCapabilitySource::StaticApiDocs,
-                }),
-        );
-    }
-
-    let mut models = state.store.list_model_definitions(workspace_id).await?;
-    models.retain(|model| model.status == domain::DataModelStatus::Published);
-    summaries.extend(
-        runtime_data_model_docs::build_category_operations(&models)
-            .operations
-            .into_iter()
-            .map(|operation| OpenApiCapabilityCatalogSummary {
-                interface_id: operation.id,
-                method: operation.method,
-                path: operation.path,
-                source: OpenApiCapabilitySource::RuntimeDataModelCrud,
-            }),
-    );
+    let mut summaries = build_openapi_capability_catalog(state, workspace_id)
+        .await?
+        .into_iter()
+        .filter(|entry| {
+            entry.source == OpenApiCapabilitySource::RuntimeDataModelCrud
+                || static_operation_is_bindable(&entry.interface.path)
+        })
+        .map(|entry| OpenApiCapabilityCatalogSummary {
+            interface_id: entry.interface.operation_id,
+            method: entry.interface.method,
+            path: entry.interface.path,
+            source: entry.source,
+        })
+        .collect::<Vec<_>>();
     summaries.sort_by(|left, right| {
         left.path
             .cmp(&right.path)
@@ -326,6 +200,19 @@ pub async fn build_openapi_capability_catalog(
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogEntry>, ApiError> {
     let mut entries = Vec::new();
+    let compiled_interfaces = state
+        .console_operation_registry
+        .inventory()
+        .interfaces
+        .iter()
+        .map(|interface| {
+            (
+                route_identity(&interface.route.method, &interface.route.path),
+                interface,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut documented_console_routes = BTreeSet::new();
 
     for category in &state.api_docs.catalog().categories {
         let Some(operations) = state.api_docs.category_operations(&category.id) else {
@@ -338,16 +225,27 @@ pub async fn build_openapi_capability_catalog(
             let Some(interface) = catalog_entry_from_operation(operation, spec) else {
                 continue;
             };
-            let bindable = static_operation_is_bindable(&operation.path);
+            let route = route_identity(&operation.method, &operation.path);
+            if compiled_interfaces.contains_key(&route) {
+                documented_console_routes.insert(route);
+            }
+            let disabled_reason = static_disabled_reason(operation, spec, &interface);
             entries.push(OpenApiCapabilityCatalogEntry {
                 risk_level: operation_risk_level(&interface.method),
                 interface,
                 source: OpenApiCapabilitySource::StaticApiDocs,
-                bindable,
-                disabled_reason: (!bindable).then_some("unsupported_interface_scope"),
+                bindable: disabled_reason.is_none(),
+                disabled_reason,
             });
         }
     }
+
+    entries.extend(
+        compiled_interfaces
+            .into_iter()
+            .filter(|(route, _)| !documented_console_routes.contains(route))
+            .map(|(_, interface)| missing_openapi_entry(interface)),
+    );
 
     let mut models = state.store.list_model_definitions(workspace_id).await?;
     models.retain(|model| model.status == domain::DataModelStatus::Published);
@@ -393,4 +291,95 @@ pub fn operation_risk_level(method: &str) -> &'static str {
 
 fn static_operation_is_bindable(path: &str) -> bool {
     path.starts_with("/api/console/") || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
+}
+
+fn static_disabled_reason(
+    operation: &DocsCatalogOperation,
+    spec: &Value,
+    interface: &OpenApiInterfaceCatalogEntry,
+) -> Option<&'static str> {
+    if !static_operation_is_bindable(&operation.path) {
+        return Some("unsupported_interface_scope");
+    }
+    match interface.response_media_type.as_deref() {
+        Some(media_type) if is_json_media_type(media_type) => None,
+        Some(_) => Some("unsupported_response_media_type"),
+        None if has_no_content_success(operation, spec) => None,
+        None => Some("missing_openapi_contract"),
+    }
+}
+
+fn is_json_media_type(media_type: &str) -> bool {
+    media_type.eq_ignore_ascii_case("application/json") || media_type.ends_with("+json")
+}
+
+fn has_no_content_success(operation: &DocsCatalogOperation, spec: &Value) -> bool {
+    spec.pointer(&format!(
+        "/paths/{}/{}/responses/204",
+        escape_pointer(&operation.path),
+        operation.method.to_ascii_lowercase()
+    ))
+    .is_some()
+}
+
+fn missing_openapi_entry(
+    compiled: &access_control::ConsoleInterfaceInventoryEntry,
+) -> OpenApiCapabilityCatalogEntry {
+    let method = compiled.route.method.to_ascii_uppercase();
+    OpenApiCapabilityCatalogEntry {
+        risk_level: operation_risk_level(&method),
+        interface: OpenApiInterfaceCatalogEntry {
+            operation_id: compiled.interface_id.clone(),
+            method,
+            path: canonical_openapi_path(&compiled.route.path),
+            name: compiled.summary.clone(),
+            description: compiled.description.clone(),
+            parameter_descriptors: Vec::new(),
+            request_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            response_schema: Value::Bool(false),
+            request_media_type: None,
+            response_media_type: None,
+            security: Value::Array(Vec::new()),
+        },
+        source: OpenApiCapabilitySource::StaticApiDocs,
+        bindable: false,
+        disabled_reason: Some("missing_openapi_contract"),
+    }
+}
+
+fn route_identity(method: &str, path: &str) -> (String, String) {
+    (
+        method.to_ascii_uppercase(),
+        path.split('/')
+            .map(|segment| {
+                if segment.starts_with(':') || (segment.starts_with('{') && segment.ends_with('}'))
+                {
+                    "{}"
+                } else {
+                    segment
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
+}
+
+fn canonical_openapi_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            segment
+                .strip_prefix(':')
+                .map(|name| format!("{{{name}}}"))
+                .unwrap_or_else(|| segment.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn escape_pointer(token: &str) -> String {
+    token.replace('~', "~0").replace('/', "~1")
 }

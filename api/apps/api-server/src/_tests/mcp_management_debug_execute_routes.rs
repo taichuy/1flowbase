@@ -168,6 +168,122 @@ async fn bindable_interface_id_for_path(
 }
 
 #[tokio::test]
+async fn ac_004_ac_011_debug_execute_disambiguates_same_named_path_and_body_parameters() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "instance_id": "mcp_debug_location_target",
+                        "name": "Before location update",
+                        "description_short": null,
+                        "status": "enabled",
+                        "default_entry_path": "/"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+
+    let update_interface_id = bindable_interface_id_for_path(
+        &app,
+        &root_cookie,
+        "PUT",
+        "/api/console/mcp/instances/{instance_id}",
+    )
+    .await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/debug/execute")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "interface_id": update_interface_id,
+                        "debug_response_mode": "debug_details",
+                        "mcp_arguments": {
+                            "route_instance_id": "mcp_debug_location_target",
+                            "body_instance_id": "mcp_debug_location_target",
+                            "name": "After location update",
+                            "description_short": null,
+                            "status": "enabled",
+                            "default_entry_path": "/"
+                        },
+                        "input_mapping": {
+                            "mappings": [
+                                {
+                                    "interface_param": "instance_id",
+                                    "mcp_param": "route_instance_id",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "instance_id",
+                                    "mcp_param": "body_instance_id",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "name",
+                                    "mcp_param": "name",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "description_short",
+                                    "mcp_param": "description_short",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "status",
+                                    "mcp_param": "status",
+                                    "required": true
+                                },
+                                {
+                                    "interface_param": "default_entry_path",
+                                    "mcp_param": "default_entry_path",
+                                    "required": true
+                                }
+                            ]
+                        },
+                        "output_mapping": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert_eq!(
+        payload["data"]["interface_arguments"]["path"]["instance_id"],
+        json!("mcp_debug_location_target")
+    );
+    assert_eq!(
+        payload["data"]["interface_arguments"]["body"]["instance_id"],
+        json!("mcp_debug_location_target")
+    );
+    assert_eq!(
+        payload["data"]["interface_response"]["data"]["name"],
+        json!("After location update")
+    );
+}
+
+#[tokio::test]
 async fn mcp_debug_execute_returns_tool_result_by_default() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

@@ -12,6 +12,7 @@ mod i18n_global_key_migration_tests;
 mod identity;
 mod max_output_tokens_migration_tests;
 mod mcp_management_repository_tests;
+mod mcp_result_receipt_repository_tests;
 mod migration_smoke;
 mod model_definition_repository_tests;
 mod model_mapper_tests;
