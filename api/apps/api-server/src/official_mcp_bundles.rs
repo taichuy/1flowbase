@@ -319,7 +319,6 @@ impl ApiOfficialMcpBundleRegistry {
             organization: organization.to_string(),
             artifact_id: bundle_id.to_string(),
             version: bundle_version.to_string(),
-            node_id: self.node_id.clone(),
         }
     }
 
@@ -344,11 +343,10 @@ impl ApiOfficialMcpBundleRegistry {
     ) -> Result<Option<domain::ExtensionInstallationRecord>> {
         Ok(self
             .installation_repository
-            .find_extension_installation(&self.installation_identity(
-                organization,
-                bundle_id,
-                bundle_version,
-            ))
+            .find_extension_installation(
+                &self.node_id,
+                &self.installation_identity(organization, bundle_id, bundle_version),
+            )
             .await?
             .filter(|record| record.status == domain::ExtensionInstallationStatus::Installed))
     }
@@ -365,7 +363,7 @@ impl ApiOfficialMcpBundleRegistry {
         );
         let existing = self
             .installation_repository
-            .find_extension_installation(&identity)
+            .find_extension_installation(&self.node_id, &identity)
             .await?;
         Ok(self
             .installation_repository
@@ -375,8 +373,9 @@ impl ApiOfficialMcpBundleRegistry {
                     .map(|record| record.id)
                     .unwrap_or_else(Uuid::now_v7),
                 identity,
-                source: "official_mcp_catalog".to_string(),
-                trust: "signed".to_string(),
+                node_id: self.node_id.clone(),
+                source_kind: self.source_kind.clone(),
+                trust_level: "verified_official".to_string(),
                 local_path: bundle_path(
                     &self.root,
                     &receipt.organization,
@@ -385,7 +384,8 @@ impl ApiOfficialMcpBundleRegistry {
                 )
                 .to_string_lossy()
                 .into_owned(),
-                checksum: receipt.checksum.clone(),
+                expected_checksum: Some(receipt.checksum.clone()),
+                local_checksum: receipt.checksum.clone(),
                 signature_status: domain::ExtensionSignatureStatus::Verified,
                 signature_algorithm: Some(receipt.algorithm.clone()),
                 signing_key_id: Some(receipt.key_id.clone()),
@@ -394,7 +394,7 @@ impl ApiOfficialMcpBundleRegistry {
                 application_action: domain::ExtensionApplicationAction::ImportMcp,
                 status: domain::ExtensionInstallationStatus::Installed,
                 is_current,
-                installed_by: self.actor_user_id,
+                created_by: self.actor_user_id,
             })
             .await?)
     }
@@ -449,7 +449,12 @@ impl ApiOfficialMcpBundleRegistry {
             if existing_receipt.checksum != version.checksum {
                 bail!("same MCP bundle release has a different checksum");
             }
-            if !repair && Path::new(&existing_record.local_path).is_file() {
+            if !repair
+                && existing_record
+                    .local_path
+                    .as_deref()
+                    .is_some_and(|path| Path::new(path).is_file())
+            {
                 self.installation_repository
                     .select_current_extension_installation(&self.node_id, existing_record.id)
                     .await?;
@@ -647,10 +652,14 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
             .filter(|record| record.identity.category == domain::ExtensionCategory::Mcp)
         {
             if record.status == domain::ExtensionInstallationStatus::Installed
-                && !Path::new(&record.local_path).is_file()
+                && record
+                    .local_path
+                    .as_deref()
+                    .is_none_or(|path| !Path::new(path).is_file())
             {
                 self.installation_repository
                     .set_extension_installation_status(
+                        &self.node_id,
                         record.id,
                         domain::ExtensionInstallationStatus::Missing,
                     )
@@ -693,8 +702,11 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
         };
         let record = record.ok_or_else(|| anyhow!("local MCP bundle release is not installed"))?;
         let receipt = Self::receipt_from_record(&record)?;
-        let bytes =
-            fs::read(&record.local_path).context("failed to read local MCP bundle artifact")?;
+        let local_path = record
+            .local_path
+            .as_deref()
+            .ok_or_else(|| anyhow!("local MCP bundle release has no artifact path on this node"))?;
+        let bytes = fs::read(local_path).context("failed to read local MCP bundle artifact")?;
         plugin_framework::verify_trusted_ed25519_artifact(
             &bytes,
             &receipt.checksum,

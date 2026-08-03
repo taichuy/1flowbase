@@ -73,7 +73,10 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
         indexed[0].signature_status,
         domain::ExtensionSignatureStatus::Verified
     );
-    assert!(indexed[0].local_path.ends_with("/bundle.zip"));
+    assert!(indexed[0]
+        .local_path
+        .as_deref()
+        .is_some_and(|path| path.ends_with("/bundle.zip")));
 
     assert_eq!(
         library
@@ -186,6 +189,17 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
         .await
         .unwrap();
     assert_eq!(reconciled_repository.records().len(), 1);
+    reconciled_repository.clear_local_path();
+    let missing_path_error = reconciled_library
+        .resolve_artifact("taichuy", "zh_hans", None)
+        .await
+        .unwrap_err();
+    assert!(
+        missing_path_error
+            .to_string()
+            .contains("has no artifact path on this node"),
+        "a node-local artifact without a path must fail explicitly"
+    );
     std::fs::remove_file(root.join("@taichuy/zh_hans/releases/1.10.0/bundle.zip")).unwrap();
     reconciled_library
         .reconcile_local_installations()
@@ -263,6 +277,10 @@ impl TestExtensionInstallationRepository {
         self.fail_next_upsert.store(true, Ordering::SeqCst);
     }
 
+    fn clear_local_path(&self) {
+        self.records.lock().unwrap()[0].local_path = None;
+    }
+
     fn current_version(&self) -> Option<String> {
         self.records
             .lock()
@@ -288,7 +306,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
                 record.identity.category == input.identity.category
                     && record.identity.organization == input.identity.organization
                     && record.identity.artifact_id == input.identity.artifact_id
-                    && record.identity.node_id == input.identity.node_id
+                    && record.node_id == input.node_id
             }) {
                 record.is_current = false;
             }
@@ -297,19 +315,22 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
         let record = domain::ExtensionInstallationRecord {
             id: input.installation_id,
             identity: input.identity.clone(),
-            source: input.source.clone(),
-            trust: input.trust.clone(),
-            local_path: input.local_path.clone(),
-            checksum: input.checksum.clone(),
+            source_kind: input.source_kind.clone(),
+            trust_level: input.trust_level.clone(),
+            expected_checksum: input.expected_checksum.clone(),
             signature_status: input.signature_status,
             signature_algorithm: input.signature_algorithm.clone(),
             signing_key_id: input.signing_key_id.clone(),
             warnings: input.warnings.clone(),
             receipt: input.receipt.clone(),
             application_action: input.application_action,
+            is_system_reserved: input.source_kind == "builtin",
+            node_id: input.node_id.clone(),
+            local_path: Some(input.local_path.clone()),
+            local_checksum: Some(input.local_checksum.clone()),
             status: input.status,
             is_current: input.is_current,
-            installed_by: input.installed_by,
+            created_by: input.created_by,
             created_at: now,
             updated_at: now,
         };
@@ -326,6 +347,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
 
     async fn find_extension_installation(
         &self,
+        node_id: &str,
         identity: &domain::ExtensionInstallationIdentity,
     ) -> anyhow::Result<Option<domain::ExtensionInstallationRecord>> {
         Ok(self
@@ -333,7 +355,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
             .lock()
             .unwrap()
             .iter()
-            .find(|record| &record.identity == identity)
+            .find(|record| record.node_id == node_id && &record.identity == identity)
             .cloned())
     }
 
@@ -347,7 +369,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
             .lock()
             .unwrap()
             .iter()
-            .find(|record| record.identity.node_id == node_id && record.id == installation_id)
+            .find(|record| record.node_id == node_id && record.id == installation_id)
             .cloned())
     }
 
@@ -360,13 +382,14 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
             .lock()
             .unwrap()
             .iter()
-            .filter(|record| record.identity.node_id == node_id)
+            .filter(|record| record.node_id == node_id)
             .cloned()
             .collect())
     }
 
     async fn set_extension_installation_status(
         &self,
+        node_id: &str,
         installation_id: Uuid,
         status: domain::ExtensionInstallationStatus,
     ) -> anyhow::Result<()> {
@@ -375,7 +398,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
             .lock()
             .unwrap()
             .iter_mut()
-            .find(|record| record.id == installation_id)
+            .find(|record| record.node_id == node_id && record.id == installation_id)
         {
             record.status = status;
             if status == domain::ExtensionInstallationStatus::Missing {
@@ -393,13 +416,13 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
         let mut records = self.records.lock().unwrap();
         let Some(target) = records
             .iter()
-            .find(|record| record.identity.node_id == node_id && record.id == installation_id)
+            .find(|record| record.node_id == node_id && record.id == installation_id)
             .cloned()
         else {
             return Ok(None);
         };
         for record in records.iter_mut().filter(|record| {
-            record.identity.node_id == node_id
+            record.node_id == node_id
                 && record.identity.category == target.identity.category
                 && record.identity.organization == target.identity.organization
                 && record.identity.artifact_id == target.identity.artifact_id
@@ -412,6 +435,27 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
             .cloned())
     }
 
+    async fn extension_deletion_decision(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ExtensionDeletionDecision>> {
+        Ok(self
+            .records
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|record| record.node_id == node_id && record.id == installation_id)
+            .map(|record| domain::ExtensionDeletionDecision {
+                deletable: !record.is_current,
+                reasons: if record.is_current {
+                    vec!["extension_installation_current".to_string()]
+                } else {
+                    Vec::new()
+                },
+            }))
+    }
+
     async fn remove_extension_installation(
         &self,
         node_id: &str,
@@ -420,7 +464,7 @@ impl control_plane::ports::ExtensionInstallationRepository for TestExtensionInst
         let mut records = self.records.lock().unwrap();
         let Some(record) = records
             .iter_mut()
-            .find(|record| record.identity.node_id == node_id && record.id == installation_id)
+            .find(|record| record.node_id == node_id && record.id == installation_id)
         else {
             return Ok(None);
         };
