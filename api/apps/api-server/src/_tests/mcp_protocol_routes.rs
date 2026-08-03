@@ -5,7 +5,9 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{
+    login_and_capture_cookie, test_api_state_with_database_url, test_app,
+};
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -141,13 +143,13 @@ async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
 
 fn assert_meta_tools(payload: &Value) {
     let tools = payload["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 3);
+    assert_eq!(tools.len(), 4);
     assert_eq!(
         tools
             .iter()
             .map(|tool| tool["name"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        vec!["mcp.list", "mcp.get", "mcp.call"]
+        vec!["mcp.list", "mcp.get", "mcp.result", "mcp.call"]
     );
     assert!(tools
         .iter()
@@ -197,7 +199,7 @@ async fn mcp_initialize_requires_api_key_and_returns_protocol_capabilities() {
 }
 
 #[tokio::test]
-async fn mcp_tools_list_always_returns_three_meta_tools() {
+async fn mcp_tools_list_always_returns_four_meta_tools() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     create_mcp_instance(&app, &cookie, &csrf).await;
@@ -454,6 +456,15 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
     .await;
     assert_eq!(call_payload["result"]["isError"], json!(false));
     assert!(call_payload["result"]["structuredContent"].is_object());
+    assert_eq!(
+        serde_json::from_str::<Value>(
+            call_payload["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap(),
+        call_payload["result"]["structuredContent"]
+    );
 
     let missing_tool_payload = call_mcp(
         &app,
@@ -910,4 +921,334 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
     let serialized = target_failure.to_string();
     assert!(!serialized.contains("change-me"));
     assert!(!serialized.contains("resource not found"));
+}
+
+#[test]
+fn root_1569_ac_006_inline_budget_counts_unicode_and_valid_json_without_truncation() {
+    use crate::routes::mcp_protocol::result_delivery::{
+        exceeds_inline_limit, inline_limit, DEFAULT_INLINE_CHARS, MAX_INLINE_CHARS,
+    };
+
+    let exact = json!("界".repeat(DEFAULT_INLINE_CHARS - 2));
+    let over = json!("界".repeat(DEFAULT_INLINE_CHARS - 1));
+    assert!(!exceeds_inline_limit(&exact, DEFAULT_INLINE_CHARS));
+    assert!(exceeds_inline_limit(&over, DEFAULT_INLINE_CHARS));
+    assert!(!exceeds_inline_limit(
+        &json!({"nested": [{"value": "界"}, [1, 2, 3]]}),
+        DEFAULT_INLINE_CHARS
+    ));
+    assert_eq!(inline_limit(&json!({})), Ok(DEFAULT_INLINE_CHARS));
+    assert_eq!(
+        inline_limit(&json!({"max_inline_chars": MAX_INLINE_CHARS})),
+        Ok(MAX_INLINE_CHARS)
+    );
+    assert!(inline_limit(&json!({"max_inline_chars": MAX_INLINE_CHARS + 1})).is_err());
+    assert!(inline_limit(&json!({"max_inline_chars": 0})).is_err());
+}
+
+#[tokio::test]
+async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuation() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+    create_interface_tool_and_binding(
+        &app,
+        &cookie,
+        &csrf,
+        "catalog_continuation",
+        "get_mcp_catalog",
+        json!({ "mappings": [] }),
+    )
+    .await;
+
+    let oversized = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":30,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.call",
+                "arguments":{
+                    "tool_id":"catalog_continuation",
+                    "arguments":{},
+                    "max_inline_chars":1
+                }
+            }
+        }),
+    )
+    .await;
+    let compact = &oversized["result"]["structuredContent"];
+    assert_eq!(compact["outcome"], json!("succeeded"));
+    assert_eq!(compact["operation_id"], json!("get_mcp_catalog"));
+    assert_eq!(compact["detail"]["status"], json!("continuation_available"));
+    assert_eq!(compact["retry_original"], json!(false));
+    assert!(compact.get("receipt_id").is_none());
+    let result_ref = compact["detail"]["result_ref"].as_str().unwrap();
+
+    let first_page = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":31,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.result",
+                "arguments":{
+                    "result_ref":result_ref,
+                    "max_inline_chars":1000
+                }
+            }
+        }),
+    )
+    .await;
+    let page = &first_page["result"]["structuredContent"];
+    assert_eq!(page["detail_status"], json!("available"));
+    assert_eq!(page["retry_original"], json!(false));
+    assert!(page["entries"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty()));
+    assert!(page["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|entry| entry["path"].is_string() && entry.get("value").is_some()));
+    let next_cursor = page["next_cursor"]
+        .as_str()
+        .expect("the finite fixture should require more than one continuation page");
+    let second_page = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":311,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.result",
+                "arguments":{
+                    "result_ref":result_ref,
+                    "cursor":next_cursor,
+                    "max_inline_chars":1000
+                }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(
+        second_page["result"]["structuredContent"]["detail_status"],
+        json!("available")
+    );
+
+    let cache_key = format!("mcp-result:{}:{}", state.bootstrap_workspace_id, result_ref);
+    state
+        .infrastructure
+        .cache_store()
+        .delete(&cache_key)
+        .await
+        .unwrap();
+    let expired = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":32,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.result",
+                "arguments":{"result_ref":result_ref}
+            }
+        }),
+    )
+    .await;
+    assert_eq!(
+        expired["result"]["structuredContent"]["detail_status"],
+        json!("detail_unavailable")
+    );
+    assert_eq!(
+        expired["result"]["structuredContent"]["retry_original"],
+        json!(false)
+    );
+}
+
+#[tokio::test]
+async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without_retry() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+    create_interface_tool_and_binding(
+        &app,
+        &cookie,
+        &csrf,
+        "create_instance_once",
+        "create_mcp_instance",
+        json!({
+            "mappings": [
+                {"interface_param":"instance_id","mcp_param":"instance_id","required":true},
+                {"interface_param":"name","mcp_param":"name","required":true},
+                {"interface_param":"description_short","mcp_param":"description_short","required":true},
+                {"interface_param":"status","mcp_param":"status","required":true},
+                {"interface_param":"default_entry_path","mcp_param":"default_entry_path","required":true}
+            ]
+        }),
+    )
+    .await;
+
+    let invalid_budget = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":39,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.call",
+                "arguments":{
+                    "tool_id":"create_instance_once",
+                    "arguments":{
+                        "instance_id":"must_not_exist",
+                        "name":"Must not exist",
+                        "description_short":null,
+                        "status":"draft",
+                        "default_entry_path":"/"
+                    },
+                    "max_inline_chars":16001
+                }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(invalid_budget["error"]["code"], json!(-32602));
+    let invalid_write_count: i64 = sqlx::query_scalar(
+        "select count(*) from mcp_instances where workspace_id = $1 and instance_id = 'must_not_exist'",
+    )
+    .bind(state.bootstrap_workspace_id)
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(invalid_write_count, 0);
+
+    let completed = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":40,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.call",
+                "arguments":{
+                    "tool_id":"create_instance_once",
+                    "arguments":{
+                        "instance_id":"created_once",
+                        "name":"Created once",
+                        "description_short":"Single dispatch fixture",
+                        "status":"draft",
+                        "default_entry_path":"/"
+                    },
+                    "max_inline_chars":1
+                }
+            }
+        }),
+    )
+    .await;
+    let compact = &completed["result"]["structuredContent"];
+    assert_eq!(compact["outcome"], json!("succeeded"));
+    assert_eq!(compact["operation_id"], json!("create_mcp_instance"));
+    assert_eq!(compact["receipt_status"], json!("available"));
+    assert_eq!(compact["retry_original"], json!(false));
+    let receipt_id = compact["receipt_id"].as_str().unwrap();
+
+    let created_count: i64 = sqlx::query_scalar(
+        "select count(*) from mcp_instances where workspace_id = $1 and instance_id = 'created_once'",
+    )
+    .bind(state.bootstrap_workspace_id)
+    .fetch_one(state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        created_count, 1,
+        "the gateway must dispatch a write only once"
+    );
+    let receipt_count: i64 = sqlx::query_scalar("select count(*) from audit_logs where id = $1")
+        .bind(uuid::Uuid::parse_str(receipt_id).unwrap())
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(receipt_count, 1);
+
+    let cache_key = format!("mcp-result:{}:{}", state.bootstrap_workspace_id, receipt_id);
+    state
+        .infrastructure
+        .cache_store()
+        .delete(&cache_key)
+        .await
+        .unwrap();
+    let expired = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":41,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp.result",
+                "arguments":{"result_ref":receipt_id}
+            }
+        }),
+    )
+    .await;
+    let expired = &expired["result"]["structuredContent"];
+    assert_eq!(expired["detail_status"], json!("detail_unavailable"));
+    assert_eq!(expired["receipt"]["outcome"], json!("succeeded"));
+    assert_eq!(expired["retry_original"], json!(false));
+}
+
+#[tokio::test]
+async fn root_1569_ac_010_large_or_base64_like_detail_is_never_cached_or_inlined() {
+    use crate::routes::mcp_protocol::result_delivery::{
+        deliver_oversized_result, CompletedOperation,
+    };
+
+    let (state, _) = test_api_state_with_database_url().await;
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
+    for (detail, expected_reason) in [
+        (
+            json!({"rows": "界".repeat(control_plane::ports::EPHEMERAL_VALUE_MAX_BYTES)}),
+            "cache_capacity_exceeded",
+        ),
+        (
+            json!({"content_base64": "A".repeat(4096)}),
+            "binary_or_base64_content",
+        ),
+    ] {
+        let delivered = deliver_oversized_result(
+            state.as_ref(),
+            &actor,
+            CompletedOperation::Read {
+                operation_id: "large_read_fixture",
+            },
+            detail,
+        )
+        .await;
+        assert_eq!(
+            delivered["structuredContent"]["detail"]["status"],
+            json!("detail_unavailable")
+        );
+        assert_eq!(
+            delivered["structuredContent"]["detail"]["reason"],
+            json!(expected_reason)
+        );
+        assert_eq!(
+            delivered["structuredContent"]["retry_original"],
+            json!(false)
+        );
+        assert!(delivered.to_string().len() < 4_000);
+    }
 }
