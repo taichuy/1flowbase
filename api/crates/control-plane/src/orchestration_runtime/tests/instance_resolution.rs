@@ -314,12 +314,15 @@ async fn orchestration_runtime_resolve_llm_route_rejects_unavailable_installatio
         provider_continuation: None,
     };
 
-    let error = orchestration_runtime::execution_engine::ProviderInvoker::resolve_llm_route(
+    let result = orchestration_runtime::execution_engine::ProviderInvoker::resolve_llm_route(
         &invoker,
         &compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider"),
     )
-    .await
-    .expect_err("unavailable installation should fail");
+    .await;
+    let error = match result {
+        Ok(_) => panic!("unavailable installation should fail"),
+        Err(error) => error,
+    };
 
     assert_control_plane_error(
         error,
