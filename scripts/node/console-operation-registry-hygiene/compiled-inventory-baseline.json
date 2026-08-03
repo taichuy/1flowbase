@@ -63,6 +63,16 @@
         "authorization_operation_id": null
       },
       {
+        "interface_id": "mcp.bundle_library.releases.delete",
+        "route": {
+          "method": "DELETE",
+          "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version"
+        },
+        "summary": "Delete MCP bundle library releases",
+        "description": "Delete MCP bundle library releases in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.releases.delete"
+      },
+      {
         "interface_id": "mcp.instances.delete",
         "route": {
           "method": "DELETE",
@@ -861,6 +871,16 @@
         "summary": "Get MCP bundle export defaults",
         "description": "Get MCP bundle export defaults in the system backend.",
         "authorization_operation_id": "get_mcp_bundle_export_defaults"
+      },
+      {
+        "interface_id": "mcp.bundle_library.list",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/mcp/bundles/library"
+        },
+        "summary": "List MCP bundle library",
+        "description": "List MCP bundle library in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.list"
       },
       {
         "interface_id": "mcp.bundles.official.list",
@@ -2121,6 +2141,56 @@
         "summary": "Import uploaded MCP bundle",
         "description": "Import uploaded MCP bundle in the system backend.",
         "authorization_operation_id": "import_uploaded_mcp_bundle"
+      },
+      {
+        "interface_id": "mcp.bundle_library.current.switch",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version"
+        },
+        "summary": "MCP bundle library current switch",
+        "description": "MCP bundle library current switch in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.current.switch"
+      },
+      {
+        "interface_id": "mcp.bundle_library.import",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/import"
+        },
+        "summary": "Import MCP bundle library",
+        "description": "Import MCP bundle library in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.import"
+      },
+      {
+        "interface_id": "mcp.bundle_library.preview",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/preview"
+        },
+        "summary": "Preview MCP bundle library",
+        "description": "Preview MCP bundle library in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.preview"
+      },
+      {
+        "interface_id": "mcp.bundle_library.releases.repair",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair"
+        },
+        "summary": "MCP bundle library releases repair",
+        "description": "MCP bundle library releases repair in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.releases.repair"
+      },
+      {
+        "interface_id": "mcp.bundle_library.sync",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/sync"
+        },
+        "summary": "MCP bundle library sync",
+        "description": "MCP bundle library sync in the system backend.",
+        "authorization_operation_id": "mcp.bundle_library.sync"
       },
       {
         "interface_id": "preview_official_mcp_bundle",
@@ -3497,7 +3567,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 119000,
+        "order": 126000,
         "routes": [
           {
             "method": "POST",
@@ -3882,7 +3952,7 @@
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 192001,
+        "order": 199001,
         "routes": [
           {
             "method": "POST",
@@ -4139,7 +4209,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 119001,
+        "order": 126001,
         "routes": [
           {
             "method": "DELETE",
@@ -4254,7 +4324,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 68000,
+        "order": 75000,
         "routes": [
           {
             "method": "POST",
@@ -4878,31 +4948,6 @@
         }
       },
       {
-        "operation_id": "get_application_operation_bindings",
-        "authorization_profile_id": "applications.view",
-        "owner": {
-          "kind": "core",
-          "owner_id": "boot-core",
-          "version": "0.3.1"
-        },
-        "lifecycle": "active",
-        "policy_group": {
-          "settings_feature": "system.applications"
-        },
-        "order": 12006,
-        "routes": [
-          {
-            "method": "GET",
-            "path": "/api/console/applications/:application_id/api-operation-bindings"
-          }
-        ],
-        "authorization": {
-          "kind": "resource_action",
-          "resource_code": "applications",
-          "action_code": "view"
-        }
-      },
-      {
         "operation_id": "get_application_run_monitoring_report",
         "authorization_profile_id": "applications.view",
         "owner": {
@@ -5164,7 +5209,7 @@
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 191000,
+        "order": 198000,
         "routes": [
           {
             "method": "GET",
@@ -5187,7 +5232,7 @@
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 191002,
+        "order": 198002,
         "routes": [
           {
             "method": "GET",
@@ -5210,7 +5255,7 @@
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 191003,
+        "order": 198003,
         "routes": [
           {
             "method": "GET",
@@ -5375,7 +5420,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 68001,
+        "order": 75001,
         "routes": [
           {
             "method": "GET",
@@ -5398,7 +5443,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 73000,
+        "order": 80000,
         "routes": [
           {
             "method": "GET",
@@ -5421,7 +5466,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 97001,
+        "order": 104001,
         "routes": [
           {
             "method": "GET",
@@ -5960,7 +6005,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 69000,
+        "order": 76000,
         "routes": [
           {
             "method": "POST",
@@ -5983,7 +6028,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 69001,
+        "order": 76001,
         "routes": [
           {
             "method": "POST",
@@ -6204,7 +6249,7 @@
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 191001,
+        "order": 198001,
         "routes": [
           {
             "method": "GET",
@@ -6296,7 +6341,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 73001,
+        "order": 80001,
         "routes": [
           {
             "method": "GET",
@@ -6319,7 +6364,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 73002,
+        "order": 80002,
         "routes": [
           {
             "method": "GET",
@@ -6342,7 +6387,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 97000,
+        "order": 104000,
         "routes": [
           {
             "method": "GET",
@@ -6365,7 +6410,7 @@
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 192002,
+        "order": 199002,
         "routes": [
           {
             "method": "GET",
@@ -6388,11 +6433,172 @@
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 192000,
+        "order": 199000,
         "routes": [
           {
             "method": "GET",
             "path": "/api/console/user-api-keys"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.current.switch",
+        "authorization_profile_id": "mcp.bundle_library.current.switch",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 68,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.import",
+        "authorization_profile_id": "mcp.bundle_library.import",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 69,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/import"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.list",
+        "authorization_profile_id": "mcp.bundle_library.list",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 70,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/mcp/bundles/library"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.preview",
+        "authorization_profile_id": "mcp.bundle_library.preview",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 71,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/preview"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.releases.delete",
+        "authorization_profile_id": "mcp.bundle_library.releases.delete",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 72,
+        "routes": [
+          {
+            "method": "DELETE",
+            "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.releases.repair",
+        "authorization_profile_id": "mcp.bundle_library.releases.repair",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 73,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "mcp.bundle_library.sync",
+        "authorization_profile_id": "mcp.bundle_library.sync",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 74,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/sync"
           }
         ],
         "authorization": {
@@ -6411,7 +6617,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 70,
+        "order": 77,
         "routes": [
           {
             "method": "GET",
@@ -6434,7 +6640,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 72,
+        "order": 79,
         "routes": [
           {
             "method": "GET",
@@ -6457,7 +6663,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 74,
+        "order": 81,
         "routes": [
           {
             "method": "DELETE",
@@ -6480,7 +6686,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 75,
+        "order": 82,
         "routes": [
           {
             "method": "GET",
@@ -6503,7 +6709,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 76,
+        "order": 83,
         "routes": [
           {
             "method": "PUT",
@@ -6526,7 +6732,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 77,
+        "order": 84,
         "routes": [
           {
             "method": "POST",
@@ -6549,7 +6755,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 78,
+        "order": 85,
         "routes": [
           {
             "method": "PUT",
@@ -6572,7 +6778,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 79,
+        "order": 86,
         "routes": [
           {
             "method": "GET",
@@ -6595,7 +6801,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 80,
+        "order": 87,
         "routes": [
           {
             "method": "DELETE",
@@ -6618,7 +6824,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 81,
+        "order": 88,
         "routes": [
           {
             "method": "POST",
@@ -6641,7 +6847,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 82,
+        "order": 89,
         "routes": [
           {
             "method": "POST",
@@ -6664,7 +6870,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 83,
+        "order": 90,
         "routes": [
           {
             "method": "POST",
@@ -6687,7 +6893,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 84,
+        "order": 91,
         "routes": [
           {
             "method": "POST",
@@ -6710,7 +6916,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 85,
+        "order": 92,
         "routes": [
           {
             "method": "DELETE",
@@ -6733,7 +6939,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 86,
+        "order": 93,
         "routes": [
           {
             "method": "POST",
@@ -6756,7 +6962,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 87,
+        "order": 94,
         "routes": [
           {
             "method": "PUT",
@@ -6779,7 +6985,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 88,
+        "order": 95,
         "routes": [
           {
             "method": "GET",
@@ -6802,7 +7008,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 89,
+        "order": 96,
         "routes": [
           {
             "method": "POST",
@@ -6825,7 +7031,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 90,
+        "order": 97,
         "routes": [
           {
             "method": "DELETE",
@@ -6848,7 +7054,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 91,
+        "order": 98,
         "routes": [
           {
             "method": "PUT",
@@ -6871,7 +7077,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 92,
+        "order": 99,
         "routes": [
           {
             "method": "POST",
@@ -6894,7 +7100,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 93,
+        "order": 100,
         "routes": [
           {
             "method": "DELETE",
@@ -6917,7 +7123,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 94,
+        "order": 101,
         "routes": [
           {
             "method": "POST",
@@ -6940,7 +7146,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 95,
+        "order": 102,
         "routes": [
           {
             "method": "POST",
@@ -6963,7 +7169,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 96,
+        "order": 103,
         "routes": [
           {
             "method": "PUT",
@@ -6986,7 +7192,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 98,
+        "order": 105,
         "routes": [
           {
             "method": "POST",
@@ -7009,7 +7215,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 99,
+        "order": 106,
         "routes": [
           {
             "method": "DELETE",
@@ -7032,7 +7238,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 100,
+        "order": 107,
         "routes": [
           {
             "method": "POST",
@@ -7055,7 +7261,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 102,
+        "order": 109,
         "routes": [
           {
             "method": "PUT",
@@ -7078,7 +7284,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 103,
+        "order": 110,
         "routes": [
           {
             "method": "GET",
@@ -7101,7 +7307,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 104,
+        "order": 111,
         "routes": [
           {
             "method": "DELETE",
@@ -7124,7 +7330,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 105,
+        "order": 112,
         "routes": [
           {
             "method": "PUT",
@@ -7147,7 +7353,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 106,
+        "order": 113,
         "routes": [
           {
             "method": "POST",
@@ -7170,7 +7376,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 107,
+        "order": 114,
         "routes": [
           {
             "method": "POST",
@@ -7193,7 +7399,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 108,
+        "order": 115,
         "routes": [
           {
             "method": "POST",
@@ -7216,7 +7422,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 109,
+        "order": 116,
         "routes": [
           {
             "method": "DELETE",
@@ -7239,7 +7445,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 110,
+        "order": 117,
         "routes": [
           {
             "method": "POST",
@@ -7262,7 +7468,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 111,
+        "order": 118,
         "routes": [
           {
             "method": "POST",
@@ -7285,7 +7491,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 112,
+        "order": 119,
         "routes": [
           {
             "method": "GET",
@@ -7308,7 +7514,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 113,
+        "order": 120,
         "routes": [
           {
             "method": "POST",
@@ -7331,7 +7537,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 114,
+        "order": 121,
         "routes": [
           {
             "method": "GET",
@@ -7354,7 +7560,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 115,
+        "order": 122,
         "routes": [
           {
             "method": "PUT",
@@ -7377,7 +7583,7 @@
         "policy_group": {
           "settings_feature": "system.members"
         },
-        "order": 116,
+        "order": 123,
         "routes": [
           {
             "method": "PATCH",
@@ -7400,7 +7606,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 117,
+        "order": 124,
         "routes": [
           {
             "method": "GET",
@@ -7423,7 +7629,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 118,
+        "order": 125,
         "routes": [
           {
             "method": "POST",
@@ -7446,7 +7652,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 120,
+        "order": 127,
         "routes": [
           {
             "method": "GET",
@@ -7469,7 +7675,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 121,
+        "order": 128,
         "routes": [
           {
             "method": "GET",
@@ -7492,7 +7698,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 122,
+        "order": 129,
         "routes": [
           {
             "method": "PATCH",
@@ -7515,7 +7721,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 123,
+        "order": 130,
         "routes": [
           {
             "method": "POST",
@@ -7538,7 +7744,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 124,
+        "order": 131,
         "routes": [
           {
             "method": "DELETE",
@@ -7561,7 +7767,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 125,
+        "order": 132,
         "routes": [
           {
             "method": "PATCH",
@@ -7584,7 +7790,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 126,
+        "order": 133,
         "routes": [
           {
             "method": "POST",
@@ -7607,7 +7813,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 127,
+        "order": 134,
         "routes": [
           {
             "method": "POST",
@@ -7630,7 +7836,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 128,
+        "order": 135,
         "routes": [
           {
             "method": "DELETE",
@@ -7653,7 +7859,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 129,
+        "order": 136,
         "routes": [
           {
             "method": "POST",
@@ -7676,7 +7882,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 130,
+        "order": 137,
         "routes": [
           {
             "method": "POST",
@@ -7699,7 +7905,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 131,
+        "order": 138,
         "routes": [
           {
             "method": "GET",
@@ -7722,7 +7928,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 132,
+        "order": 139,
         "routes": [
           {
             "method": "POST",
@@ -7745,7 +7951,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 133,
+        "order": 140,
         "routes": [
           {
             "method": "POST",
@@ -7768,7 +7974,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 134,
+        "order": 141,
         "routes": [
           {
             "method": "GET",
@@ -7791,7 +7997,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 135,
+        "order": 142,
         "routes": [
           {
             "method": "GET",
@@ -7814,7 +8020,7 @@
         "policy_group": {
           "other": "other.model-providers"
         },
-        "order": 136,
+        "order": 143,
         "routes": [
           {
             "method": "GET",
@@ -7837,7 +8043,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 137,
+        "order": 144,
         "routes": [
           {
             "method": "GET",
@@ -7860,7 +8066,7 @@
         "policy_group": {
           "other": "other.model-providers"
         },
-        "order": 138,
+        "order": 145,
         "routes": [
           {
             "method": "GET",
@@ -7883,7 +8089,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 139,
+        "order": 146,
         "routes": [
           {
             "method": "POST",
@@ -7906,7 +8112,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 140,
+        "order": 147,
         "routes": [
           {
             "method": "DELETE",
@@ -7929,7 +8135,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 141,
+        "order": 148,
         "routes": [
           {
             "method": "POST",
@@ -7952,7 +8158,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 142,
+        "order": 149,
         "routes": [
           {
             "method": "GET",
@@ -7975,7 +8181,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 143,
+        "order": 150,
         "routes": [
           {
             "method": "POST",
@@ -7998,7 +8204,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 144,
+        "order": 151,
         "routes": [
           {
             "method": "PATCH",
@@ -8021,7 +8227,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 145,
+        "order": 152,
         "routes": [
           {
             "method": "POST",
@@ -8044,7 +8250,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 146,
+        "order": 153,
         "routes": [
           {
             "method": "GET",
@@ -8067,7 +8273,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 147,
+        "order": 154,
         "routes": [
           {
             "method": "PUT",
@@ -8090,7 +8296,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 148,
+        "order": 155,
         "routes": [
           {
             "method": "GET",
@@ -8113,7 +8319,7 @@
         "policy_group": {
           "other": "other.model-providers"
         },
-        "order": 149,
+        "order": 156,
         "routes": [
           {
             "method": "GET",
@@ -8136,7 +8342,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 151,
+        "order": 158,
         "routes": [
           {
             "method": "POST",
@@ -8159,7 +8365,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 152,
+        "order": 159,
         "routes": [
           {
             "method": "POST",
@@ -8182,7 +8388,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 153,
+        "order": 160,
         "routes": [
           {
             "method": "DELETE",
@@ -8205,7 +8411,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 154,
+        "order": 161,
         "routes": [
           {
             "method": "GET",
@@ -8228,7 +8434,7 @@
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 150,
+        "order": 157,
         "routes": [
           {
             "method": "GET",
@@ -8251,7 +8457,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 155,
+        "order": 162,
         "routes": [
           {
             "method": "POST",
@@ -8274,7 +8480,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 156,
+        "order": 163,
         "routes": [
           {
             "method": "GET",
@@ -8297,7 +8503,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 157,
+        "order": 164,
         "routes": [
           {
             "method": "PATCH",
@@ -8320,7 +8526,7 @@
         "policy_group": {
           "other": "other.node-contributions"
         },
-        "order": 158,
+        "order": 165,
         "routes": [
           {
             "method": "GET",
@@ -8368,7 +8574,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 173001,
+        "order": 180001,
         "routes": [
           {
             "method": "GET",
@@ -8391,7 +8597,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 173000,
+        "order": 180000,
         "routes": [
           {
             "method": "GET",
@@ -8414,7 +8620,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 159,
+        "order": 166,
         "routes": [
           {
             "method": "POST",
@@ -8437,7 +8643,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 160,
+        "order": 167,
         "routes": [
           {
             "method": "POST",
@@ -8460,34 +8666,11 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 161,
+        "order": 168,
         "routes": [
           {
             "method": "POST",
             "path": "/api/console/plugins/:installation_id/assign"
-          }
-        ],
-        "authorization": {
-          "kind": "simple"
-        }
-      },
-      {
-        "operation_id": "plugins.catalog_projection.refresh",
-        "authorization_profile_id": "plugins.catalog_projection.refresh",
-        "owner": {
-          "kind": "core",
-          "owner_id": "boot-core",
-          "version": "0.3.2"
-        },
-        "lifecycle": "active",
-        "policy_group": {
-          "other": "other.plugins"
-        },
-        "order": 163,
-        "routes": [
-          {
-            "method": "POST",
-            "path": "/api/console/plugins/:installation_id/catalog-projection/refresh"
           }
         ],
         "authorization": {
@@ -8506,11 +8689,34 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 162,
+        "order": 169,
         "routes": [
           {
             "method": "GET",
             "path": "/api/console/plugins/catalog"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "plugins.catalog_projection.refresh",
+        "authorization_profile_id": "plugins.catalog_projection.refresh",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "other": "other.plugins"
+        },
+        "order": 170,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/plugins/:installation_id/catalog-projection/refresh"
           }
         ],
         "authorization": {
@@ -8529,7 +8735,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 164,
+        "order": 171,
         "routes": [
           {
             "method": "POST",
@@ -8552,7 +8758,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 165,
+        "order": 172,
         "routes": [
           {
             "method": "DELETE",
@@ -8575,7 +8781,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 166,
+        "order": 173,
         "routes": [
           {
             "method": "POST",
@@ -8598,7 +8804,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 167,
+        "order": 174,
         "routes": [
           {
             "method": "POST",
@@ -8621,7 +8827,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 168,
+        "order": 175,
         "routes": [
           {
             "method": "GET",
@@ -8644,7 +8850,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 169,
+        "order": 176,
         "routes": [
           {
             "method": "POST",
@@ -8667,7 +8873,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 170,
+        "order": 177,
         "routes": [
           {
             "method": "POST",
@@ -8690,7 +8896,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 171,
+        "order": 178,
         "routes": [
           {
             "method": "POST",
@@ -8713,7 +8919,7 @@
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 172,
+        "order": 179,
         "routes": [
           {
             "method": "GET",
@@ -8736,7 +8942,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 71000,
+        "order": 78000,
         "routes": [
           {
             "method": "POST",
@@ -8759,7 +8965,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 71001,
+        "order": 78001,
         "routes": [
           {
             "method": "POST",
@@ -8978,34 +9184,11 @@
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 192003,
+        "order": 199003,
         "routes": [
           {
             "method": "POST",
             "path": "/api/console/user-api-keys/:api_key_id/revoke"
-          }
-        ],
-        "authorization": {
-          "kind": "simple"
-        }
-      },
-      {
-        "operation_id": "roles.console_policy_catalog.view",
-        "authorization_profile_id": "roles.console_policy_catalog.view",
-        "owner": {
-          "kind": "core",
-          "owner_id": "boot-core",
-          "version": "0.3.2"
-        },
-        "lifecycle": "active",
-        "policy_group": {
-          "settings_feature": "system.roles"
-        },
-        "order": 176,
-        "routes": [
-          {
-            "method": "GET",
-            "path": "/api/console/settings/roles/console-policy-catalog"
           }
         ],
         "authorization": {
@@ -9024,7 +9207,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 174,
+        "order": 181,
         "routes": [
           {
             "method": "PUT",
@@ -9047,11 +9230,34 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 175,
+        "order": 182,
         "routes": [
           {
             "method": "GET",
             "path": "/api/console/settings/roles/:id/console-policy"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "roles.console_policy_catalog.view",
+        "authorization_profile_id": "roles.console_policy_catalog.view",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.2"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.roles"
+        },
+        "order": 183,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/settings/roles/console-policy-catalog"
           }
         ],
         "authorization": {
@@ -9070,7 +9276,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 177,
+        "order": 184,
         "routes": [
           {
             "method": "POST",
@@ -9093,7 +9299,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 178,
+        "order": 185,
         "routes": [
           {
             "method": "GET",
@@ -9116,7 +9322,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 179,
+        "order": 186,
         "routes": [
           {
             "method": "PUT",
@@ -9139,7 +9345,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 180,
+        "order": 187,
         "routes": [
           {
             "method": "GET",
@@ -9162,7 +9368,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 181,
+        "order": 188,
         "routes": [
           {
             "method": "DELETE",
@@ -9185,7 +9391,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 182,
+        "order": 189,
         "routes": [
           {
             "method": "PUT",
@@ -9208,7 +9414,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 183,
+        "order": 190,
         "routes": [
           {
             "method": "GET",
@@ -9231,7 +9437,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 184,
+        "order": 191,
         "routes": [
           {
             "method": "GET",
@@ -9254,7 +9460,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 185,
+        "order": 192,
         "routes": [
           {
             "method": "GET",
@@ -9277,7 +9483,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 186,
+        "order": 193,
         "routes": [
           {
             "method": "PUT",
@@ -9300,7 +9506,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 187,
+        "order": 194,
         "routes": [
           {
             "method": "GET",
@@ -9323,7 +9529,7 @@
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 188,
+        "order": 195,
         "routes": [
           {
             "method": "PATCH",
@@ -9394,7 +9600,7 @@
         "policy_group": {
           "settings_feature": "system.applications"
         },
-        "order": 189,
+        "order": 196,
         "routes": [
           {
             "method": "GET",
@@ -9417,7 +9623,7 @@
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 190,
+        "order": 197,
         "routes": [
           {
             "method": "GET",
@@ -9534,7 +9740,7 @@
         "policy_group": {
           "settings_feature": "system.system-runtime"
         },
-        "order": 193,
+        "order": 200,
         "routes": [
           {
             "method": "GET",
@@ -9557,7 +9763,7 @@
         "policy_group": {
           "settings_feature": "system.system-runtime"
         },
-        "order": 194,
+        "order": 201,
         "routes": [
           {
             "method": "GET",
@@ -9580,7 +9786,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 101001,
+        "order": 108001,
         "routes": [
           {
             "method": "POST",
@@ -9603,7 +9809,7 @@
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 101000,
+        "order": 108000,
         "routes": [
           {
             "method": "POST",
@@ -9768,7 +9974,7 @@
         "policy_group": {
           "other": "other.workspace"
         },
-        "order": 195,
+        "order": 202,
         "routes": [
           {
             "method": "PATCH",

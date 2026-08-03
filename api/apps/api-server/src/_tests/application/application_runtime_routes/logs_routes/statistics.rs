@@ -223,6 +223,7 @@ async fn application_runtime_routes_logs_report_run_statistics() {
         "total_tokens": 50,
         "input_tokens": 10,
         "output_tokens": 20,
+        "count_tokens_input_tokens": null,
         "input_cache_hit_tokens": 49,
         "input_cache_hit_rate": 0.98,
         "unique_node_count": 3,

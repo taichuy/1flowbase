@@ -90,6 +90,7 @@ label: Fixture Chat
 family: llm
 capabilities:
   - stream
+provider_metadata: {}
 "#,
     )
     .unwrap();

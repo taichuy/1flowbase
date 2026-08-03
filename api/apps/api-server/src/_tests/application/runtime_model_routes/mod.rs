@@ -658,10 +658,10 @@ async fn create_model_with_status(
     assert_eq!(response.status(), StatusCode::CREATED);
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(payload["data"]["scope_kind"], json!("system"));
+    assert_eq!(payload["data"]["scope_kind"], json!("workspace"));
     assert_eq!(
         payload["data"]["scope_id"],
-        json!(domain::SYSTEM_SCOPE_ID.to_string())
+        json!(domain::DEFAULT_SCOPE_ID.to_string())
     );
     payload["data"]["id"].as_str().unwrap().to_string()
 }

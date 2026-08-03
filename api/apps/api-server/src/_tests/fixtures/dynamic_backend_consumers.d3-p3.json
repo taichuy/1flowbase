@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 278,
-  "count": 556,
+  "projected_interface_count": 280,
+  "count": 560,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -44,7 +44,7 @@
       "mcp.bundle_library.releases.delete",
       "DELETE",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version",
-      "Delete MCP bundle library release"
+      "Delete MCP bundle library releases"
     ],
     [
       "mcp.instances.delete",
@@ -111,6 +111,12 @@
       "DELETE",
       "/api/console/settings/data-models/model-definitions/:id/fields/:field_id",
       "Delete model fields"
+    ],
+    [
+      "extension_center.installed.delete",
+      "DELETE",
+      "/api/console/settings/extension-center/installed/:installation_id",
+      "Delete extension center installed"
     ],
     [
       "file_storages.delete",
@@ -1064,31 +1070,31 @@
       "mcp.bundle_library.current.switch",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version",
-      "Switch MCP bundle library release"
+      "MCP bundle library current switch"
     ],
     [
       "mcp.bundle_library.import",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/import",
-      "Import MCP bundle library release"
+      "Import MCP bundle library"
     ],
     [
       "mcp.bundle_library.preview",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/preview",
-      "Preview MCP bundle library release"
+      "Preview MCP bundle library"
     ],
     [
       "mcp.bundle_library.releases.repair",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair",
-      "Repair MCP bundle library release"
+      "MCP bundle library releases repair"
     ],
     [
       "mcp.bundle_library.sync",
       "POST",
       "/api/console/mcp/bundles/library/:organization/:bundle_id/sync",
-      "Sync MCP bundle library release"
+      "MCP bundle library sync"
     ],
     [
       "preview_official_mcp_bundle",
@@ -1341,6 +1347,12 @@
       "POST",
       "/api/console/settings/extension-center/install-upload",
       "Upload extension center install"
+    ],
+    [
+      "extension_center.installed.select",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/select",
+      "Extension center installed select"
     ],
     [
       "extension_center.update",
