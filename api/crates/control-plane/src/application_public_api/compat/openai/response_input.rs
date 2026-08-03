@@ -1126,9 +1126,9 @@ pub(super) fn responses_previous_history(
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ResponsesInputMapping {
-    query: String,
-    history: Vec<Value>,
-    system_parts: Vec<String>,
+    pub(super) query: String,
+    pub(super) history: Vec<Value>,
+    pub(super) system_parts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1162,12 +1162,12 @@ pub(super) fn responses_input_message(
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct OpenAiMappedContent {
-    text: String,
-    content_blocks: Option<Value>,
+    pub(super) text: String,
+    pub(super) content_blocks: Option<Value>,
 }
 
 impl OpenAiMappedContent {
-    fn trim(&self) -> &str {
+    pub(super) fn trim(&self) -> &str {
         self.text.trim()
     }
 }

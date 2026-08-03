@@ -2,10 +2,10 @@ use super::*;
 
 #[derive(Debug, Default)]
 pub(super) struct AnthropicRequestMetadata {
-    user_id: Option<String>,
+    pub(super) user_id: Option<String>,
     expand_id: Option<String>,
     session_id: Option<String>,
-    trace_id: Option<String>,
+    pub(super) trace_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

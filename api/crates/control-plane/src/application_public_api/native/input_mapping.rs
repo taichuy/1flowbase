@@ -113,7 +113,7 @@ impl NativeInputMapper {
 }
 
 pub(super) fn operation_target(
-    input: &super::mapping::ApplicationApiMappingInput,
+    input: &super::super::mapping::ApplicationApiMappingInput,
 ) -> std::result::Result<String, NativeInputMappingError> {
     if let Some(inputs_target) = &input.inputs_target {
         return Ok(format!("{inputs_target}.operation"));
@@ -183,7 +183,9 @@ pub(super) fn native_system_content_blocks(
     parse_native_prompt_blocks(value).map_err(|_| NativeInputMappingError::InvalidSystemPrompt)
 }
 
-pub(super) fn system_target(input: &super::mapping::ApplicationApiMappingInput) -> Option<String> {
+pub(super) fn system_target(
+    input: &super::super::mapping::ApplicationApiMappingInput,
+) -> Option<String> {
     if let Some(history_target) = input.history_target.as_deref() {
         if let Some(prefix) = history_target.strip_suffix(".history") {
             return Some(format!("{prefix}.system"));

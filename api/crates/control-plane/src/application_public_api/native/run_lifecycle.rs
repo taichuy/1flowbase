@@ -143,17 +143,20 @@ where
         flow_run: domain::FlowRunRecord,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let metadata = durable_metadata_from_flow_run(&flow_run);
-        let initial_run = super::run_service::native_result_from_flow_run(&flow_run, metadata);
+        let initial_run =
+            super::super::run_service::native_result_from_flow_run(&flow_run, metadata);
         if let Some(stream_state) = self
             .repository
             .get_published_run_stream_state(application_id, flow_run.id)
             .await
             .map_err(|_| NativeRunValidationError::NotFound)?
         {
-            return Ok(super::run_service::native_result_from_run_stream_state(
-                &initial_run,
-                &stream_state,
-            ));
+            return Ok(
+                super::super::run_service::native_result_from_run_stream_state(
+                    &initial_run,
+                    &stream_state,
+                ),
+            );
         }
 
         Ok(initial_run)
@@ -229,7 +232,7 @@ where
             }
         }
 
-        Ok(super::run_service::native_result_from_flow_run(
+        Ok(super::super::run_service::native_result_from_flow_run(
             &cancelled,
             durable_metadata_from_flow_run(&cancelled),
         ))

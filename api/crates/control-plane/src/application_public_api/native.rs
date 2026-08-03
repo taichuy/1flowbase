@@ -51,8 +51,6 @@ pub use model_parameters::{
     NativeExecution, NativeExecutionModelParameters, NativeReasoningMode, NativeReasoningParameters,
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 mod request_translation;
 
 use request_translation::parse_native_prompt_blocks;
@@ -63,17 +61,17 @@ mod serialization;
 mod wire_types;
 
 use serialization::*;
-use wire_types::*;
+use wire_types::{native_attachments, native_history};
 
-pub use input_mapping::{NativeInputMapper, NativeInputMappingError, NativeMappedInput};
+pub use input_mapping::{NativeInputMapper, NativeInputMappingError};
 pub use run_lifecycle::{
     ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,
     GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeRunRepository,
     NativeRunValidationError,
 };
 pub use wire_types::{
-    NativeAttachment, NativeAttachmentSource, NativeError, NativeObject, NativeRequiredAction,
-    NativeRunRequest, NativeRunResult, NativeRunStatus, NativeUsage,
+    NativeAttachment, NativeAttachmentSource, NativeError, NativeMappedInput, NativeObject,
+    NativeRequiredAction, NativeRunRequest, NativeRunResult, NativeRunStatus, NativeUsage,
 };
 
 pub(super) use serialization::durable_metadata_from_flow_run;
