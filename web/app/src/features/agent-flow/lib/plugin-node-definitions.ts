@@ -14,7 +14,6 @@ import type {
 import { i18nText } from '../../../shared/i18n/text';
 export {
   buildNodePickerOptions,
-  getNodePickerOptionDescription,
   getNodePickerOptionKey,
   getNodePickerOptionNodeType,
   toPluginContributionPickerOption,

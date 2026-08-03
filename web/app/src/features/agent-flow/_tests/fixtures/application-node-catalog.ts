@@ -21,7 +21,6 @@ export function createWorkflowStartFieldContract(): ConsoleApplicationNodeFieldC
     config_fields: [
       {
         key: 'config.input_fields[].inputType',
-        description: 'Authoring control type from the server contract.',
         required: true,
         value_types: ['string'],
         allowed_values: [
@@ -33,17 +32,13 @@ export function createWorkflowStartFieldContract(): ConsoleApplicationNodeFieldC
           'file',
           'file_list',
           'url'
-        ],
-        applicability: null
+        ]
       },
       {
         key: 'config.input_fields[].source',
-        description: 'Extension request location from the server contract.',
         required: true,
         value_types: ['string'],
-        allowed_values: ['path', 'query', 'body', 'form'],
-        applicability:
-          'Required for extension publication; ignored for schedules.'
+        allowed_values: ['path', 'query', 'body', 'form']
       }
     ]
   });
@@ -57,11 +52,8 @@ export function createBuiltinCatalogNode(
     source_kind: 'builtin',
     node_type,
     title: node_type,
-    description: `${node_type} server description`,
     category: 'data',
     runtime_status: 'ready',
-    runtime_status_description:
-      'Executable by the current orchestration runtime.',
     dependency_status: 'not_applicable',
     field_contract: createNodeFieldContract(),
     plugin: null,
@@ -114,11 +106,8 @@ export function createPluginCatalogNode(
     source_kind: 'plugin',
     node_type: 'plugin_node',
     title: plugin.title,
-    description: plugin.description,
     category: 'generation',
     runtime_status: 'ready',
-    runtime_status_description:
-      'Executable by the assigned workspace capability plugin.',
     dependency_status: 'ready',
     field_contract: createNodeFieldContract(),
     plugin,

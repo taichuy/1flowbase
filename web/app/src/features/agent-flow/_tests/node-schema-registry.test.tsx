@@ -984,7 +984,6 @@ describe('agent-flow node schema registry', () => {
         {
           title: 'Disabled Exporter',
           runtime_status: 'unavailable',
-          runtime_status_description: '缺少依赖插件',
           dependency_status: 'missing_plugin'
         }
       )
