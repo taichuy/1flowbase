@@ -391,7 +391,7 @@ describe('start input fields', () => {
     ]);
   });
 
-  test('AC-004 uses Workflow Start types, sources, and descriptions from the server field contract', async () => {
+  test('AC-002 uses Workflow Start types and sources without MCP descriptions', async () => {
     const onWorkflowChange = vi.fn();
     const fieldContract = createWorkflowStartFieldContract();
     const inputTypeContract = fieldContract.config_fields.find(
@@ -421,13 +421,13 @@ describe('start input fields', () => {
       await screen.findByRole('combobox', { name: '输入字段参数来源' })
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Authoring control type from the server contract.')
-    ).toBeInTheDocument();
+      screen.queryByText('Authoring control type from the server contract.')
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.queryByText(
         'Extension request location from the server contract. Required for extension publication; ignored for schedules.'
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '保存输入字段' }));
     expect(onWorkflowChange).toHaveBeenCalledWith([
       expect.objectContaining({ source: 'path' })

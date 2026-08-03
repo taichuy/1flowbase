@@ -25,17 +25,14 @@ const agentBuiltinOptions = buildNodePickerOptions([
   }),
   createBuiltinCatalogNode('llm', {
     title: 'LLM',
-    description: 'Server LLM description',
     category: 'generation',
     field_contract: createNodeFieldContract({
       input_fields: [
         {
           key: 'bindings.prompt_messages',
-          description: 'Prompt messages',
           required: true,
           value_types: ['prompt_messages'],
-          allowed_values: [],
-          applicability: null
+          allowed_values: []
         }
       ]
     })
@@ -87,9 +84,7 @@ const unavailablePluginNode = createPluginCatalogNode(
   }),
   {
     title: 'SQL Exporter',
-    description: 'Export rows to sql',
     runtime_status: 'unavailable',
-    runtime_status_description: '缺少依赖插件',
     dependency_status: 'missing_plugin'
   }
 );
@@ -158,7 +153,7 @@ describe('NodePickerPopover', () => {
     expect(screen.queryByText('模型与生成')).not.toBeInTheDocument();
   });
 
-  test('searches server field keys and renders the server description', () => {
+  test('AC-002 searches contract field keys without description rows', () => {
     render(
       <NodePickerPopover
         ariaLabel="在 LLM 后新增节点"
@@ -174,16 +169,17 @@ describe('NodePickerPopover', () => {
     });
 
     expect(screen.getByRole('menuitem', { name: 'LLM' })).toBeInTheDocument();
-    expect(screen.getByText('Server LLM description')).toBeInTheDocument();
+    expect(
+      document.querySelector('.agent-flow-node-picker__description')
+    ).not.toBeInTheDocument();
   });
 
-  test('shows unavailable built-ins disabled with the server reason', () => {
+  test('shows unavailable built-ins disabled without MCP descriptions', () => {
     const options = buildNodePickerOptions([
       createBuiltinCatalogNode('knowledge_retrieval', {
         title: 'Knowledge Retrieval',
         category: 'generation',
-        runtime_status: 'unavailable',
-        runtime_status_description: 'Runtime does not execute this node.'
+        runtime_status: 'unavailable'
       })
     ]);
 
@@ -201,8 +197,8 @@ describe('NodePickerPopover', () => {
       screen.getByRole('menuitem', { name: 'Knowledge Retrieval' })
     ).toBeDisabled();
     expect(
-      screen.getByText('Runtime does not execute this node.')
-    ).toBeInTheDocument();
+      document.querySelector('.agent-flow-node-picker__description')
+    ).not.toBeInTheDocument();
   });
 
   test('renders workflow picker options with general execution nodes', () => {
@@ -382,7 +378,9 @@ describe('NodePickerPopover', () => {
     expect(
       screen.getByRole('menuitem', { name: /SQL Exporter/i })
     ).toBeDisabled();
-    expect(screen.getByText('缺少依赖插件')).toBeInTheDocument();
+    expect(
+      document.querySelector('.agent-flow-node-picker__description')
+    ).not.toBeInTheDocument();
   });
 
   test('keeps final picker items clear of the clipped popup edge', () => {

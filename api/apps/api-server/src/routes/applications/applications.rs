@@ -211,16 +211,12 @@ pub struct ApplicationTagCatalogResponse {
 pub struct ApplicationTypeOptionResponse {
     pub value: ApplicationTypeDto,
     pub label: String,
-    /// Stable boundary and invocation semantics for this Application family.
-    pub description: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowTriggerTypeOptionResponse {
     pub value: WorkflowTriggerTypeDto,
     pub label: String,
-    /// Stable trigger behavior. Request form is an extension input source, never a trigger.
-    pub description: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -488,12 +484,10 @@ async fn application_type_catalog(
         ApplicationTypeOptionResponse {
             value: ApplicationTypeDto::AgentFlow,
             label: agent_flow,
-            description: "Conversational Agent Flow for native runs and OpenAI/Anthropic AI Gateway-compatible APIs. It uses Application API Keys and does not use Workflow extension or schedule triggers.".to_string(),
         },
         ApplicationTypeOptionResponse {
             value: ApplicationTypeDto::Workflow,
             label: workflow,
-            description: "Event-driven Workflow published as an extension HTTP interface or executed by a schedule trigger. It does not expose the Agent Flow Application API Key surface.".to_string(),
         },
     ])
 }
@@ -508,12 +502,10 @@ async fn workflow_trigger_type_catalog(
         WorkflowTriggerTypeOptionResponse {
             value: WorkflowTriggerTypeDto::Extension,
             label: extension,
-            description: "Publishes a normal HTTP interface at /api/ex/{slug}. Workflow Start maps path, query, body, and form input sources; invocation does not require an Application API Key.".to_string(),
         },
         WorkflowTriggerTypeOptionResponse {
             value: WorkflowTriggerTypeDto::Schedule,
             label: schedule,
-            description: "Runs from a cron expression and IANA timezone. A schedule created with the Application is disabled by default; PUT changes both configuration and enabled state.".to_string(),
         },
     ])
 }
@@ -753,7 +745,7 @@ pub async fn list_applications(
     get,
     path = "/api/console/applications/catalog",
     summary = "Get Application type and Workflow trigger catalogs",
-    description = "Returns the closed Agent Flow/Workflow type set, the closed extension/schedule Workflow trigger set, stable semantic descriptions, and Application tags.",
+    description = "Returns the closed Agent Flow/Workflow type set, the closed extension/schedule Workflow trigger set, and Application tags.",
     responses(
         (status = 200, body = ApplicationCatalogResponse),
         (status = 401, body = crate::error_response::ErrorBody),

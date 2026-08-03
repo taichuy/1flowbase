@@ -31,13 +31,11 @@ export interface ConsoleApplicationTagCatalogEntry
 export interface ConsoleApplicationTypeOption {
   value: ConsoleApplicationType;
   label: string;
-  description: string;
 }
 
 export interface ConsoleWorkflowTriggerTypeOption {
   value: ConsoleWorkflowTriggerType;
   label: string;
-  description: string;
 }
 
 export interface ConsoleApplicationCatalog {

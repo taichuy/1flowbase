@@ -657,25 +657,21 @@ export function seedStyleBoundarySettingsFetch() {
           types: [
             {
               value: 'agent_flow',
-              label: 'AgentFlow',
-              description: 'Agent Flow application'
+              label: 'AgentFlow'
             },
             {
               value: 'workflow',
-              label: 'Workflow',
-              description: 'Workflow application'
+              label: 'Workflow'
             }
           ],
           workflow_triggers: [
             {
               value: 'extension',
-              label: 'Extension',
-              description: 'Triggered by an extension endpoint'
+              label: 'Extension'
             },
             {
               value: 'schedule',
-              label: 'Schedule',
-              description: 'Triggered on a schedule'
+              label: 'Schedule'
             }
           ],
           tags: [
@@ -1356,20 +1352,17 @@ export function seedStyleBoundaryApplicationFetch() {
             types: [
               {
                 value: 'agent_flow',
-                label: 'AgentFlow',
-                description: 'Agent Flow application'
+                label: 'AgentFlow'
               }
             ],
             workflow_triggers: [
               {
                 value: 'extension',
-                label: 'Extension',
-                description: 'Triggered by an extension endpoint'
+                label: 'Extension'
               },
               {
                 value: 'schedule',
-                label: 'Schedule',
-                description: 'Triggered on a schedule'
+                label: 'Schedule'
               }
             ],
             tags: []

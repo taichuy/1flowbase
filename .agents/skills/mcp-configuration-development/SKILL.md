@@ -1,13 +1,13 @@
 ---
 name: mcp-configuration-development
-description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置：把 GUI 用户任务投影为 Virtual UI 目录，选择可绑定接口，配置 Tool、input/output mapping、参数说明、Group、Binding 与 discovery policy，并通过 mcp.list、mcp.get、mcp.call 验证。用于修改 MCP 配置数据；不用于实现 MCP 协议或运行时代码、补业务接口或决定产品语义。
+description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置：只读投影 GUI 用户任务与后端契约，配置 Tool、input/output mapping、参数说明、Group、Binding 与 discovery policy，并通过 mcp.list、mcp.get、mcp.call 验证。只修改 MCP 配置数据；不修改 GUI、业务接口、产品源码或产品语义。
 ---
 
 # MCP Configuration Development
 
 ## Goal
 
-把当前 1flowbase 源码表达的用户任务与可执行接口，转换为 Agent 可逐层发现、理解并调用的 MCP Virtual UI。只修改完成任务所需的 MCP 配置数据；不把配置缺口伪装成后端实现任务。
+把当前 1flowbase 源码表达的用户任务与可执行接口，转换为 Agent 可逐层发现、理解并调用的 MCP Virtual UI。GUI 与后端产品源码只作为只读取证；只修改完成任务所需的 MCP 配置数据，不把配置缺口伪装成产品代码任务。
 
 ## Source of Truth
 
@@ -31,7 +31,7 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 3. 沿 backend/interface catalog 找到每个动作的可绑定接口，核对参数、结果、风险、权限和状态约束。
 4. 通过渐进列表、关键词和单项读取盘点现有 MCP catalog；只有结果规模可控时才读取完整 catalog，先判断复用、修复或新增。
 5. 设计 canonical Virtual UI：按用户目标组织 Group 路径，让一个业务能力只有一个规范入口；必要时用搜索和简短描述提高可发现性。
-6. 形成有限变更账本，记录计划创建、复用、更新和删除的 Tool、Group、Binding、mapping 与 policy，以及每项回滚身份。
+6. 形成有限变更账本，记录计划创建、复用、更新和删除的 Tool、Group、Binding、mapping 与 policy，以及每项回滚身份；这些对象是本 Skill 的完整允许写集。
 7. 先验证一个代表性 Tool 的创建或更新与 `mcp.get`；通过后按 `Tool → Group → Binding → policy` 应用，避免先留下空目录。
 8. 在每项写入前复核接口仍可绑定、目标记录仍存在且当前值未并发变化；写入后重新读取确认落库结果。
 9. 创建会动态注册后续接口的资源时，先完成创建与生命周期切换，再重新发现 interface catalog；只为已经出现的动态接口配置 canonical Tool。
@@ -47,11 +47,12 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 - `short_description` 写“调用后得到什么”；普通能力的 `full_description` 使用空字符串 `""`。
 - 仅当跨字段、跨 Tool、跨状态或跨制品的组合契约无法由其他字段表达，且缺失会导致错误调用时填写 `full_description`。
 - 把 Agent 参数名、含义和必填性写入 `input_mapping` 的映射配置；不要要求业务 DTO 重复维护 MCP 专用文案。
+- Agent-facing 描述只写入 Group、Tool、mapping 与 policy 配置记录；不得为补 MCP 描述修改 `web/`、i18n、业务 catalog、后端 DTO / OpenAPI、migration、MCP 协议或运行时代码。
 - 检查必需容器对象是否能由当前接口 request Schema 自动物化；用真实 `mcp.call` 证明空对象可达目标业务边界，不为通过 Schema 伪造 selector 或占位值。
 - `output_mapping` 只表达必要的结果投影；无需投影时使用 `{}`，不得复制 `result_schema` 充当 mapping。
 - 创建父资源后先读取返回值或详情，确认系统是否已原子创建默认子资源；不要假定还需再次创建 Page Tab、默认节点或同类子项。
 - 不配置 `children_count`；它由启用的子 Group、可见 Binding 和启用 Tool 在运行时派生。
-- 不借配置任务调整产品语义、业务权限、后端 DTO、MCP 协议或运行时代码。发现这些缺口时停止对应写入并报告证据。
+- 不借配置任务调整产品语义、业务权限或产品源码。发现这些缺口时停止对应写入并报告证据。
 
 ## Stop Conditions
 
@@ -63,6 +64,7 @@ description: 用于从 1flowbase 当前源码构建、修复和审计 MCP 配置
 - `mcp.get` 暴露的 Schema 与已保存 mapping 不一致，或 `mcp.call` 未按后端约束执行。
 - 现有配置发生并发变化，最小差异不再可靠。
 - 配置管理调用只返回通用错误且本地日志或单项读取仍不能定位失败阶段。
+- 完成配置需要修改产品源码，或本轮准备产生允许写集之外的变更；停止配置并把缺口拆成独立开发任务。
 
 单个候选 Tool 命中停止条件时，只停止依赖该能力的路径并回滚其无消费者配置；不影响已独立验证的同领域能力继续装配。若已发布能力没有可绑定 operation、必需凭据或安全调用 contract，不创建伪 invocation Tool。
 

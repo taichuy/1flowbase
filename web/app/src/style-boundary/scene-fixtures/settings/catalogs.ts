@@ -175,10 +175,8 @@ export const styleBoundaryNodeContributions = {
       source_kind: 'plugin',
       node_type: 'plugin_node',
       title: 'OpenAI Prompt',
-      description: 'Generate prompt output',
       category: 'generation',
       runtime_status: 'ready',
-      runtime_status_description: 'Ready',
       dependency_status: 'ready',
       field_contract: {
         config_fields: [],

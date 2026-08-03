@@ -385,18 +385,6 @@
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.agent-flow-node-picker__description {
-  display: -webkit-box;
-  overflow: hidden;
-  color: #738196;
-  font-size: 12px;
-  line-height: 16px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .agent-flow-node-picker__name {

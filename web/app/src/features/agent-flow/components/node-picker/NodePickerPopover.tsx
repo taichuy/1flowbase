@@ -4,7 +4,6 @@ import type { ReactElement, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 import {
-  getNodePickerOptionDescription,
   getNodePickerOptionKey,
   type NodePickerOption
 } from '../../lib/plugin-node-definitions';
@@ -114,11 +113,7 @@ export function NodePickerPopover({
           .filter(
             (option) =>
               groupMatchesSearch ||
-              matchesNodePickerSearch(
-                option,
-                normalizedSearchValue,
-                getNodePickerOptionDescription(option)
-              )
+              matchesNodePickerSearch(option, normalizedSearchValue)
           );
 
         return { ...group, options: groupedOptions };
@@ -131,18 +126,10 @@ export function NodePickerPopover({
   const uncategorizedBuiltinOptions = builtinOptions.filter(
     (option) =>
       !groupedBuiltinOptionKeys.has(option.category ?? '') &&
-      matchesNodePickerSearch(
-        option,
-        normalizedSearchValue,
-        getNodePickerOptionDescription(option)
-      )
+      matchesNodePickerSearch(option, normalizedSearchValue)
   );
   const filteredPluginOptions = pluginOptions.filter((option) =>
-    matchesNodePickerSearch(
-      option,
-      normalizedSearchValue,
-      getNodePickerOptionDescription(option)
-    )
+    matchesNodePickerSearch(option, normalizedSearchValue)
   );
   const hasVisibleOptions =
     activeTab === 'builtin'
@@ -362,8 +349,6 @@ function NodePickerOptionButton({
     option.kind === 'builtin'
       ? getAgentFlowNodeTypeIcon(option.type)
       : getAgentFlowNodeTypeIcon('plugin_node');
-  const description = getNodePickerOptionDescription(option);
-
   return (
     <button
       aria-label={option.label}
@@ -378,11 +363,6 @@ function NodePickerOptionButton({
       </span>
       <span className="agent-flow-node-picker__text">
         <span className="agent-flow-node-picker__name">{option.label}</span>
-        {description ? (
-          <span className="agent-flow-node-picker__description">
-            {description}
-          </span>
-        ) : null}
       </span>
     </button>
   );
@@ -390,8 +370,7 @@ function NodePickerOptionButton({
 
 function matchesNodePickerSearch(
   option: NodePickerOption,
-  normalizedSearchValue: string,
-  description: string | null
+  normalizedSearchValue: string
 ) {
   if (normalizedSearchValue.length === 0) {
     return true;
@@ -407,8 +386,7 @@ function matchesNodePickerSearch(
       ...option.field_contract.output_fields
     ]
       .map((field) => field.key)
-      .join(' '),
-    description
+      .join(' ')
   ]
     .filter((value): value is string => Boolean(value))
     .join(' ')

@@ -22,10 +22,7 @@ import { agentFlowRendererRegistry } from '../../schema/agent-flow-renderer-regi
 import { MAIN_SOURCE_HANDLE_ID } from '../../lib/canvas/handle-ids';
 import { getNodeDefinitionMeta } from '../../lib/node-definitions';
 import { getCommonErrorBranchSourceHandle } from '../../lib/policy/node-error-policy';
-import {
-  getNodePickerOptionDescription,
-  getNodePickerOptionKey
-} from '../../lib/plugin-node-definitions';
+import { getNodePickerOptionKey } from '../../lib/plugin-node-definitions';
 import { i18nText } from '../../../../shared/i18n/text';
 
 const QUICK_ACTION_HIDE_DELAY_MS = 1000;
@@ -103,9 +100,7 @@ export function AgentFlowNodeCard({
   const unresolvedInfo = unresolvedNodeInfo(data.config);
   const replaceItems: MenuProps['items'] = nodePickerOptions.map((option) => ({
     key: getNodePickerOptionKey(option),
-    label: getNodePickerOptionDescription(option)
-      ? `${option.label} · ${getNodePickerOptionDescription(option)}`
-      : option.label,
+    label: option.label,
     disabled: option.kind === 'plugin_contribution' && option.disabled,
     onClick: ({ domEvent }) => {
       domEvent.stopPropagation();

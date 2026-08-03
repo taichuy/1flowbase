@@ -37,21 +37,22 @@ describe('console application management client', () => {
       types: [
         {
           value: 'workflow',
-          label: 'Workflow',
-          description: 'Runs a typed Workflow graph.'
+          label: 'Workflow'
         }
       ],
       workflow_triggers: [
         {
           value: 'extension',
-          label: 'Extension',
-          description: 'Invoked through a published extension route.'
+          label: 'Extension'
         }
       ],
       tags: []
     } satisfies ConsoleApplicationCatalog;
 
-    expect(fixture.workflow_triggers[0].description).toContain('extension');
+    expect(fixture.workflow_triggers[0]).toEqual({
+      value: 'extension',
+      label: 'Extension'
+    });
     await expect(getConsoleApplicationCatalog()).resolves.toMatchObject({
       path: '/api/console/applications/catalog'
     });
@@ -64,21 +65,16 @@ describe('console application management client', () => {
           source_kind: 'builtin',
           node_type: 'workflow_start',
           title: 'Workflow Start',
-          description: 'Defines Workflow input fields.',
           category: 'io',
           runtime_status: 'ready',
-          runtime_status_description:
-            'Executable by the current orchestration runtime.',
           dependency_status: 'not_applicable',
           field_contract: {
             config_fields: [
               {
                 key: 'config.input_fields[].inputType',
-                description: 'Authoring control type.',
                 required: true,
                 value_types: ['string'],
-                allowed_values: ['text', 'paragraph', 'select'],
-                applicability: null
+                allowed_values: ['text', 'paragraph', 'select']
               }
             ],
             input_fields: [],

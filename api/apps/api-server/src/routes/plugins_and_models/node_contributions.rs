@@ -60,16 +60,12 @@ pub enum ApplicationNodeDependencyStatusResponse {
 pub struct ApplicationNodeContractFieldResponse {
     /// Exact flow-document or runtime field path.
     pub key: String,
-    /// Stable semantic description for an Agent constructing node configuration.
-    pub description: String,
-    /// Whether this field is required when its applicability condition is met.
+    /// Whether this field is required.
     pub required: bool,
     /// Accepted flow-document or JSON value kinds.
     pub value_types: Vec<String>,
     /// Closed value set; empty when the value is open-ended.
     pub allowed_values: Vec<String>,
-    /// Conditional applicability, when the field does not apply to every configuration.
-    pub applicability: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -122,10 +118,8 @@ pub struct ApplicationNodeCatalogEntryResponse {
     /// contribution identity under plugin.
     pub node_type: String,
     pub title: String,
-    pub description: String,
     pub category: String,
     pub runtime_status: ApplicationNodeRuntimeStatusResponse,
-    pub runtime_status_description: String,
     pub dependency_status: ApplicationNodeDependencyStatusResponse,
     pub field_contract: ApplicationNodeFieldContractResponse,
     /// Present only when source_kind is plugin.
@@ -160,11 +154,9 @@ fn to_contract_field(
 ) -> ApplicationNodeContractFieldResponse {
     ApplicationNodeContractFieldResponse {
         key: field.key,
-        description: field.description,
         required: field.required,
         value_types: field.value_types,
         allowed_values: field.allowed_values,
-        applicability: field.applicability,
     }
 }
 
@@ -236,7 +228,6 @@ fn to_response(
         },
         node_type: entry.node_type,
         title: entry.title,
-        description: entry.description,
         category: entry.category,
         runtime_status: match entry.runtime_status {
             control_plane::node_contribution::ApplicationNodeRuntimeStatus::Ready => {
@@ -246,7 +237,6 @@ fn to_response(
                 ApplicationNodeRuntimeStatusResponse::Unavailable
             }
         },
-        runtime_status_description: entry.runtime_status_description,
         dependency_status: match entry.dependency_status {
             control_plane::node_contribution::ApplicationNodeDependencyStatus::NotApplicable => {
                 ApplicationNodeDependencyStatusResponse::NotApplicable

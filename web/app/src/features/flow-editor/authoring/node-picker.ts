@@ -10,11 +10,9 @@ export interface BuiltinNodePickerOption {
   kind: 'builtin';
   type: BuiltinFlowNodeType;
   label: string;
-  description: string;
   category: ConsoleApplicationNodeCatalogEntry['category'];
   field_contract: ConsoleApplicationNodeFieldContract;
   disabled: boolean;
-  disabledReason: string | null;
 }
 
 function getBuiltinNodeType(nodeType: string): BuiltinFlowNodeType {
@@ -42,13 +40,8 @@ export function toBuiltinNodePickerOption(
     kind: 'builtin',
     type: getBuiltinNodeType(node.node_type),
     label: node.title,
-    description: node.description,
     category: node.category,
     field_contract: node.field_contract,
-    disabled: node.runtime_status === 'unavailable',
-    disabledReason:
-      node.runtime_status === 'unavailable'
-        ? node.runtime_status_description
-        : null
+    disabled: node.runtime_status === 'unavailable'
   };
 }

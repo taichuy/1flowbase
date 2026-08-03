@@ -61,8 +61,7 @@ vi.mock('@1flowbase/api-client', () => ({
     workflow_triggers: [
       {
         value: 'extension',
-        label: 'Extension',
-        description: 'Extension trigger'
+        label: 'Extension'
       }
     ],
     tags: []

@@ -35,25 +35,21 @@ describe('ApplicationFormModal create intent', () => {
       types: [
         {
           value: 'agent_flow',
-          label: 'Agent Flow',
-          description: '后端 Agent Flow 描述'
+          label: 'Agent Flow'
         },
         {
           value: 'workflow',
-          label: 'Workflow',
-          description: '后端 Workflow 描述'
+          label: 'Workflow'
         }
       ],
       workflow_triggers: [
         {
           value: 'extension',
-          label: '扩展接口',
-          description: '后端扩展触发描述'
+          label: '扩展接口'
         },
         {
           value: 'schedule',
-          label: '定时调度',
-          description: '后端定时触发描述'
+          label: '定时调度'
         }
       ],
       tags: []
@@ -62,7 +58,7 @@ describe('ApplicationFormModal create intent', () => {
     publicApi.saveWorkflowScheduleTrigger.mockResolvedValue({});
   });
 
-  test('AC-004 renders Application types and descriptions from the backend catalog', async () => {
+  test('AC-001 renders Application type labels without MCP guidance', async () => {
     render(
       <AppProviders>
         <ApplicationFormModal
@@ -75,10 +71,10 @@ describe('ApplicationFormModal create intent', () => {
     );
 
     expect(await screen.findByText('新建应用')).toBeInTheDocument();
-    expect(
-      await screen.findByText('后端 Agent Flow 描述')
-    ).toBeInTheDocument();
-    expect(await screen.findByText('后端 Workflow 描述')).toBeInTheDocument();
+    expect(await screen.findByText('Agent Flow')).toBeInTheDocument();
+    expect(screen.getByText('Workflow')).toBeInTheDocument();
+    expect(screen.queryByText('后端 Agent Flow 描述')).not.toBeInTheDocument();
+    expect(screen.queryByText('后端 Workflow 描述')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '名称' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '创建应用' })
@@ -109,7 +105,7 @@ describe('ApplicationFormModal create intent', () => {
     );
 
     fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
-    expect(screen.getByText('后端扩展触发描述')).toBeInTheDocument();
+    expect(screen.queryByText('后端扩展触发描述')).not.toBeInTheDocument();
     expect(screen.getByText('/api/ex/')).toBeInTheDocument();
     expect(screen.queryByText('访问策略')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '接口子路径' }), {

@@ -361,11 +361,6 @@ export function ApplicationFormModal({
                 readOnly
                 value={applicationTypeOption?.label ?? ''}
               />
-              {applicationTypeOption?.description ? (
-                <Typography.Text type="secondary">
-                  {applicationTypeOption.description}
-                </Typography.Text>
-              ) : null}
             </Form.Item>
           ) : (
             <Form.Item label={t('auto.type')} name="application_type">
@@ -373,12 +368,7 @@ export function ApplicationFormModal({
                 <Space direction="vertical" size="small">
                   {(catalogQuery.data?.types ?? []).map((option) => (
                     <Radio key={option.value} value={option.value}>
-                      <Space direction="vertical" size={0}>
-                        <span>{option.label}</span>
-                        <Typography.Text type="secondary">
-                          {option.description}
-                        </Typography.Text>
-                      </Space>
+                      {option.label}
                     </Radio>
                   ))}
                 </Space>
@@ -397,15 +387,9 @@ export function ApplicationFormModal({
                   readOnly
                   value={workflowTriggerTypeOption?.label ?? ''}
                 />
-                {workflowTriggerTypeOption?.description ? (
-                  <Typography.Text type="secondary">
-                    {workflowTriggerTypeOption.description}
-                  </Typography.Text>
-                ) : null}
               </Form.Item>
             ) : (
               <Form.Item
-                extra={workflowTriggerTypeOption?.description}
                 label={workflowT('auto.workflow_trigger_type')}
                 name="trigger_type"
               >

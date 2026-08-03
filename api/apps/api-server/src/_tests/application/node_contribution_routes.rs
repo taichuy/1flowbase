@@ -514,9 +514,12 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         source["allowed_values"],
         json!(["path", "query", "body", "form"])
     );
-    assert!(source["description"]
-        .as_str()
-        .is_some_and(|description| description.contains("not a Workflow trigger")));
+    assert!(workflow_nodes.iter().all(|node| {
+        node.get("description").is_none() && node.get("runtime_status_description").is_none()
+    }));
+    assert!(fields.iter().all(|field| {
+        field.get("description").is_none() && field.get("applicability").is_none()
+    }));
     for property in [
         "key",
         "label",
