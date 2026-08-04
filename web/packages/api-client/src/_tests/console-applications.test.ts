@@ -66,6 +66,7 @@ describe('console application management client', () => {
           node_type: 'workflow_start',
           title: 'Workflow Start',
           category: 'io',
+          authoring_status: 'published',
           runtime_status: 'ready',
           dependency_status: 'not_applicable',
           field_contract: {
