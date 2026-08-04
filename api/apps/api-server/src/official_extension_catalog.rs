@@ -1696,7 +1696,7 @@ fn validate_page(
                     .and_then(|category| {
                         domain::ExtensionCatalogIdentity::parse(category, &entry.id)
                     })
-                    .map_or(true, |identity| {
+                    .is_none_or(|identity| {
                         identity.organization() != entry.organization
                             || identity.artifact_id() != entry.artifact
                     })
