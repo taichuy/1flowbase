@@ -90,6 +90,7 @@ fn seeded_installation() -> PluginInstallationRecord {
         signature_status: ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
+        legacy_manifest_compatibility: None,
         metadata_json: json!({}),
         is_system_reserved: false,
         created_by: user_id(),

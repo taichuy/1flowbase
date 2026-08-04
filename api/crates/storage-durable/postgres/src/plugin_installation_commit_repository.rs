@@ -38,6 +38,7 @@ pub(crate) async fn commit_plugin_installation(
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,
                 signing_key_id = excluded.signing_key_id,
+                receipt = extension_installations.receipt - 'legacy_manifest_compatibility',
                 application_action = excluded.application_action,
                 metadata_json = excluded.metadata_json,
                 is_system_reserved = excluded.is_system_reserved,
@@ -47,6 +48,7 @@ pub(crate) async fn commit_plugin_installation(
                 plugin_id, artifact_version as plugin_version, contract_version, protocol,
                 display_name, source_kind, trust_level, verification_status, desired_state,
                 expected_checksum, signature_status, signature_algorithm, signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json, is_system_reserved, created_by, updated_by, created_at, updated_at
             "#,
     )

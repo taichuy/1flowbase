@@ -295,6 +295,55 @@ async fn plugin_repository_persists_installations_assignments_and_tasks() {
 }
 
 #[tokio::test]
+async fn publisher_cutover_repository_projects_legacy_manifest_compatibility_receipt() {
+    let (store, _workspace, actor) = seed_store().await;
+    let installation_id = Uuid::now_v7();
+    PluginRepository::upsert_installation(
+        &store,
+        &UpsertPluginInstallationInput {
+            installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "1flowbase".into(),
+            provider_code: "publisher_cutover".into(),
+            plugin_id: "publisher_cutover@0.1.0".into(),
+            plugin_version: "0.1.0".into(),
+            contract_version: "1flowbase.provider/v1".into(),
+            protocol: "stdio_json".into(),
+            display_name: "Publisher Cutover".into(),
+            source_kind: "official_registry".into(),
+            trust_level: "verified_official".into(),
+            verification_status: PluginVerificationStatus::Valid,
+            desired_state: PluginDesiredState::ActiveRequested,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Verified,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: json!({}),
+            is_system_reserved: false,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "update extension_installations set receipt = jsonb_build_object('legacy_manifest_compatibility', 'missing_publisher_namespace_v1') where id = $1",
+    )
+    .bind(installation_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let installation = PluginRepository::get_installation(&store, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        installation.legacy_manifest_compatibility.as_deref(),
+        Some("missing_publisher_namespace_v1")
+    );
+}
+
+#[tokio::test]
 async fn js_dependency_repository_replaces_entries_and_lists_assigned_workspace_catalog() {
     let (store, workspace, actor) = seed_store().await;
     let installation = PluginRepository::upsert_installation(

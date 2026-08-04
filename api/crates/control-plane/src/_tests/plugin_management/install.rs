@@ -11,7 +11,7 @@ use crate::{
     },
     ports::{
         CreatePluginTaskInput, FrontendBlockCatalogRepository, JsDependencyRepository,
-        NodeContributionRepository, PluginRepository,
+        NodeContributionRepository, PluginRepository, UpsertPluginArtifactInstanceInput,
     },
 };
 use domain::{ExtensionSignatureStatus, NodeContributionDependencyStatus, PluginTaskStatus};
@@ -411,6 +411,108 @@ async fn ac_be_4_plugin_management_service_keeps_local_artifact_ready_when_expec
         .await
         .iter()
         .any(|event| event == "plugin.local_artifact_warning"));
+}
+
+#[tokio::test]
+async fn publisher_cutover_artifact_scan_accepts_only_matching_legacy_manifest_receipt() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("publisher-cutover-scan-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "fixture_provider",
+        "0.1.0",
+        domain::PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    let node_id = format!("local:{}", install_root.display());
+    let mut artifact = repository
+        .get_artifact_instance(&node_id, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let installed_path = PathBuf::from(artifact.local_path.clone().unwrap());
+    let manifest_path = installed_path.join("manifest.yaml");
+    let raw = fs::read_to_string(&manifest_path).unwrap();
+    let legacy_raw = raw.replace("publisher_namespace: 1flowbase\n", "");
+    fs::write(&manifest_path, legacy_raw).unwrap();
+    let fingerprint = plugin_framework::compute_manifest_fingerprint(&manifest_path)
+        .await
+        .unwrap();
+    fs::write(
+        installed_path.join(".1flowbase-artifact.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "plugin_id": "fixture_provider@0.1.0",
+            "version": "0.1.0",
+            "checksum": null,
+            "manifest_fingerprint": fingerprint,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    artifact.manifest_fingerprint = Some(fingerprint.clone());
+    repository
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: artifact.node_id.clone(),
+            installation_id: artifact.installation_id,
+            local_version: artifact.local_version.clone(),
+            local_checksum: artifact.local_checksum.clone(),
+            local_path: artifact.local_path.clone(),
+            package_path: artifact.package_path.clone(),
+            manifest_fingerprint: artifact.manifest_fingerprint.clone(),
+            artifact_status: artifact.artifact_status,
+            runtime_status: artifact.runtime_status,
+            availability_status: artifact.availability_status,
+            checked_at: artifact.checked_at,
+            last_error: artifact.last_error.clone(),
+            is_current: artifact.is_current,
+        })
+        .await
+        .unwrap();
+    repository
+        .set_legacy_manifest_compatibility(
+            installation_id,
+            Some("missing_publisher_namespace_v1".to_string()),
+        )
+        .await;
+
+    let ready = service
+        .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id,
+        })
+        .await
+        .unwrap();
+    assert_eq!(ready.artifact_status.as_str(), "ready");
+
+    let mut marker: serde_json::Value =
+        serde_json::from_slice(&fs::read(installed_path.join(".1flowbase-artifact.json")).unwrap())
+            .unwrap();
+    marker["manifest_fingerprint"] = serde_json::Value::String("0".repeat(64));
+    fs::write(
+        installed_path.join(".1flowbase-artifact.json"),
+        serde_json::to_vec_pretty(&marker).unwrap(),
+    )
+    .unwrap();
+    let corrupted = service
+        .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id,
+        })
+        .await
+        .unwrap();
+    assert_eq!(corrupted.artifact_status.as_str(), "corrupted");
 }
 
 #[tokio::test]
