@@ -26,7 +26,7 @@ use super::support::{
 };
 
 #[tokio::test]
-async fn plugin_management_service_lists_latest_installable_official_provider_version() {
+async fn publisher_cutover_family_uses_semver_for_older_official_version() {
     #[derive(Clone)]
     struct NewerOfficialSource;
 
@@ -92,7 +92,7 @@ async fn plugin_management_service_lists_latest_installable_official_provider_ve
         &repository,
         &install_root,
         "openai_compatible",
-        "0.1.0",
+        "0.10.0",
         PluginDesiredState::ActiveRequested,
     )
     .await;
@@ -115,13 +115,13 @@ async fn plugin_management_service_lists_latest_installable_official_provider_ve
         .unwrap();
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].provider_code, "openai_compatible");
-    assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
+    assert_eq!(families.entries[0].current_version, "0.10.0");
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
     assert!(!families.entries[0].has_update);
 }
 
 #[tokio::test]
-async fn plugin_management_service_lists_provider_families_without_official_catalog() {
+async fn publisher_cutover_family_reports_latest_unknown_without_verified_catalog() {
     #[derive(Clone)]
     struct UnavailableOfficialSource;
 
@@ -187,7 +187,7 @@ async fn plugin_management_service_lists_provider_families_without_official_cata
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].provider_code, "openai_compatible");
     assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
+    assert_eq!(families.entries[0].latest_version, None);
     assert!(!families.entries[0].has_update);
 }
 
@@ -533,7 +533,7 @@ async fn plugin_management_service_reconcile_all_installations_backfills_missing
 }
 
 #[tokio::test]
-async fn plugin_management_service_keeps_only_latest_official_entry_per_provider() {
+async fn publisher_cutover_family_uses_normalized_latest_official_entry_per_provider() {
     #[derive(Clone)]
     struct DuplicateOfficialSource;
 
@@ -653,8 +653,8 @@ async fn plugin_management_service_keeps_only_latest_official_entry_per_provider
         .unwrap();
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].current_version, "0.1.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.1.0"));
-    assert!(!families.entries[0].has_update);
+    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
+    assert!(families.entries[0].has_update);
 }
 
 #[tokio::test]

@@ -400,7 +400,6 @@ pub struct PluginFamilyCatalogView {
 struct PluginCatalogProjectionView {
     help_url: Option<String>,
     default_base_url: Option<String>,
-    model_discovery_mode: String,
     i18n_bundles: BTreeMap<String, serde_json::Value>,
     catalog_refresh_status: String,
     catalog_last_error_message: Option<String>,
@@ -408,6 +407,9 @@ struct PluginCatalogProjectionView {
 }
 
 fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
+    if let (Ok(left), Ok(right)) = (semver::Version::parse(left), semver::Version::parse(right)) {
+        return left.cmp(&right);
+    }
     let mut left_parts = left.split('.');
     let mut right_parts = right.split('.');
 
@@ -433,6 +435,16 @@ fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
                 Ok(_) | Err(_) => return Ordering::Less,
             },
         }
+    }
+}
+
+fn semver_version_is_newer(candidate: &str, current: &str) -> bool {
+    match (
+        semver::Version::parse(candidate),
+        semver::Version::parse(current),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        _ => false,
     }
 }
 
@@ -691,7 +703,11 @@ where
                 provider_label_key: "provider.label".to_string(),
                 help_url: projection.help_url,
                 default_base_url: projection.default_base_url,
-                model_discovery_mode: projection.model_discovery_mode,
+                model_discovery_mode: metadata_string(
+                    &installation.metadata_json,
+                    "model_discovery_mode",
+                )
+                .unwrap_or_else(|| "unknown".to_string()),
                 assigned_to_current_workspace: assigned_installation_ids.contains(&installation.id),
                 catalog_refresh_status: projection.catalog_refresh_status,
                 catalog_last_error_message: projection.catalog_last_error_message,
@@ -821,6 +837,15 @@ where
             .repository
             .list_assignments(actor.current_workspace_id)
             .await?;
+        let official_latest_by_provider = self
+            .official_source
+            .cached_official_catalog()
+            .await
+            .map(|snapshot| normalize_official_entries(snapshot.entries))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| (entry.provider_code, entry.latest_version))
+            .collect::<HashMap<_, _>>();
         let installations = self.repository.list_installations().await?;
         let artifact_snapshots = self
             .repository
@@ -875,18 +900,9 @@ where
                 &mut i18n_catalog,
                 trim_json_bundles(&namespace, &projection.i18n_bundles, &locales),
             );
-            let latest_installed_version = installations_by_provider
+            let latest_version = official_latest_by_provider
                 .get(&assignment.provider_code)
-                .into_iter()
-                .flatten()
-                .filter(|installation| is_model_provider_installation(installation))
-                .max_by(|left, right| {
-                    compare_plugin_versions(&left.plugin_version, &right.plugin_version)
-                        .then_with(|| left.created_at.cmp(&right.created_at))
-                        .then_with(|| left.id.cmp(&right.id))
-                })
-                .map(|installation| installation.plugin_version.clone());
-            let latest_version = latest_installed_version;
+                .cloned();
             let installed_versions = installations_by_provider
                 .get(&assignment.provider_code)
                 .into_iter()
@@ -931,20 +947,19 @@ where
                     .default_base_url
                     .clone()
                     .or_else(|| metadata_string(&current.metadata_json, "default_base_url")),
-                model_discovery_mode: if projection.model_discovery_mode == "unknown" {
-                    metadata_string(&current.metadata_json, "model_discovery_mode")
-                        .unwrap_or(projection.model_discovery_mode)
-                } else {
-                    projection.model_discovery_mode
-                },
+                model_discovery_mode: metadata_string(
+                    &current.metadata_json,
+                    "model_discovery_mode",
+                )
+                .unwrap_or_else(|| "unknown".to_string()),
                 icon: metadata_string(&current.metadata_json, "icon"),
                 current_installation_id: current.id,
                 current_version: current.plugin_version.clone(),
                 current_local_artifact,
                 latest_version: latest_version.clone(),
-                has_update: latest_version
-                    .as_deref()
-                    .is_some_and(|version| version != current.plugin_version),
+                has_update: latest_version.as_deref().is_some_and(|version| {
+                    semver_version_is_newer(version, &current.plugin_version)
+                }),
                 installed_versions,
             });
         }
@@ -964,7 +979,6 @@ fn plugin_catalog_projection_view(
         return PluginCatalogProjectionView {
             help_url: None,
             default_base_url: None,
-            model_discovery_mode: "unknown".to_string(),
             i18n_bundles: BTreeMap::new(),
             catalog_refresh_status: domain::PluginPackageCatalogProjectionStatus::Missing
                 .as_str()
@@ -978,8 +992,6 @@ fn plugin_catalog_projection_view(
     PluginCatalogProjectionView {
         help_url: projection_provider_string(snapshot, "help_url"),
         default_base_url: projection_provider_string(snapshot, "default_base_url"),
-        model_discovery_mode: projection_provider_string(snapshot, "model_discovery_mode")
-            .unwrap_or_else(|| "unknown".to_string()),
         i18n_bundles: projection_i18n_bundles(snapshot),
         catalog_refresh_status: projection.projection_status.as_str().to_string(),
         catalog_last_error_message: projection.last_error_message.clone(),
