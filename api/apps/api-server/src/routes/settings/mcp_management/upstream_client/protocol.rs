@@ -1,6 +1,6 @@
 use super::*;
 
-struct RpcResponse {
+pub(super) struct RpcResponse {
     pub(super) body: Value,
     pub(super) session_id: Option<String>,
     pub(super) response_bytes: usize,

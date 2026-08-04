@@ -370,4 +370,7 @@ include!("application_runtime/log_handlers.rs");
 include!("application_runtime/export_handlers.rs");
 
 #[cfg(test)]
+use archive::{build_archive_from_trace_exports, parse_run_archive_v1};
+
+#[cfg(test)]
 mod tests;

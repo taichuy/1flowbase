@@ -96,7 +96,7 @@ fn extract_archive_from_trace_export_zip(
     Ok(Some(build_archive_from_trace_exports(manifest, documents)?))
 }
 
-fn build_archive_from_trace_exports(
+pub(super) fn build_archive_from_trace_exports(
     manifest: ApplicationRunSelectedExportManifestResponse,
     documents: Vec<ApplicationRunTraceExportResponse>,
 ) -> Result<RunArchiveV1Response, ApiError> {
