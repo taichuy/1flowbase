@@ -447,7 +447,8 @@ fn deletion_decision_from_row(row: &PgRow) -> Result<domain::ExtensionDeletionDe
     ];
     let reasons = checks
         .into_iter()
-        .filter_map(|(reason, blocked)| blocked.then(|| reason.to_string()))
+        .filter(|(_, blocked)| *blocked)
+        .map(|(reason, _)| reason.to_string())
         .collect::<Vec<_>>();
     Ok(domain::ExtensionDeletionDecision {
         deletable: reasons.is_empty(),
