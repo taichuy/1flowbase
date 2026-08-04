@@ -873,8 +873,10 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
+            let total_entries = matches.len();
+            drop(matches);
             let next_offset = offset + entries.len();
-            let next_cursor = (next_offset < matches.len()).then(|| {
+            let next_cursor = (next_offset < total_entries).then(|| {
                 encode_search_cursor(
                     &snapshot.checksum,
                     &snapshot.document.source_fingerprint,
@@ -887,7 +889,7 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
                 category: category.to_string(),
                 snapshot_checksum: snapshot.checksum,
                 snapshot_locator: snapshot.locator,
-                total_entries: matches.len(),
+                total_entries,
                 next_cursor,
                 entries,
             });
@@ -944,6 +946,54 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
                     }));
                 }
             }
+        }
+        if let Some(snapshot) = self.cached_search_snapshot(category) {
+            if let Some(search_entry) = snapshot
+                .document
+                .entries
+                .iter()
+                .find(|entry| entry.id == catalog_id)
+            {
+                let page_reference = snapshot
+                    .index
+                    .pages
+                    .iter()
+                    .find(|reference| {
+                        reference.page == search_entry.catalog_page.page
+                            && reference.cursor == search_entry.catalog_page.cursor
+                            && reference.checksum == search_entry.catalog_page.checksum
+                            && reference.locator == search_entry.catalog_page.locator
+                    })
+                    .ok_or_else(|| {
+                        anyhow!("catalog search page reference is not in the catalog index")
+                    })?;
+                let page = if let Some(page) =
+                    self.cached_verified_page(category, &search_entry.catalog_page)
+                {
+                    page
+                } else {
+                    let page = self
+                        .fetch_page(&snapshot.endpoint, &snapshot.index, page_reference)
+                        .await?;
+                    self.remember_page(
+                        Self::cache_key(category, Some(&page.metadata.cursor)),
+                        &page,
+                    );
+                    page
+                };
+                let entry = page
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.id == catalog_id)
+                    .ok_or_else(|| {
+                        anyhow!("catalog search result is missing from its verified source page")
+                    })?;
+                return Ok(Some(LocatedOfficialExtensionCatalogEntry {
+                    source_kind: snapshot.source_kind,
+                    entry,
+                }));
+            }
+            return Ok(None);
         }
         let mut failures = Vec::new();
         for endpoint in self.endpoints(category)? {

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     io::{Cursor, Read},
     sync::Arc,
 };
@@ -87,7 +87,7 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/settings/extension-center/update-check",
             console_post(
-                check_extension_catalog_page_updates,
+                check_extension_catalog_updates,
                 ConsoleOperation("extension_center.update_check".to_string()),
             ),
         )
@@ -724,11 +724,11 @@ pub async fn get_extension_catalog_entry(
 #[utoipa::path(
     post,
     path = "/api/console/settings/extension-center/update-check",
-    operation_id = "extension_center_check_current_page_updates",
+    operation_id = "extension_center_check_updates",
     request_body = ExtensionUpdateCheckBody,
     responses((status = 200, body = ExtensionUpdateCheckResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
-pub async fn check_extension_catalog_page_updates(
+pub async fn check_extension_catalog_updates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<ExtensionUpdateCheckBody>,
@@ -762,41 +762,22 @@ pub async fn check_extension_catalog_page_updates(
             .into());
         }
     }
-    let page = state
-        .official_extension_catalog_source
-        .list_page(category.as_str(), body.catalog_page.as_deref())
-        .await?;
-    if page.category != category.as_str() {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_catalog_category",
-        )
-        .into());
+    let mut items = Vec::with_capacity(body.items.len());
+    for item in body.items {
+        let latest_version =
+            find_catalog_entry_for_requested_identity(&state, category, &item.catalog_id)
+                .await?
+                .map(|located| located.entry.version);
+        let status = extension_update_status(latest_version.as_deref(), &item.installed_versions);
+        items.push(ExtensionUpdateCheckItemResponse {
+            catalog_id: item.catalog_id,
+            current_version: item.current_version,
+            latest_version,
+            status: status.to_string(),
+        });
     }
-    let items = body
-        .items
-        .into_iter()
-        .map(
-            |item| -> Result<ExtensionUpdateCheckItemResponse, ApiError> {
-                let latest_version = catalog_entry_for_requested_identity(
-                    category,
-                    &item.catalog_id,
-                    &page.entries,
-                )?
-                .map(|entry| entry.version.clone());
-                let status =
-                    extension_update_status(latest_version.as_deref(), &item.installed_versions);
-                Ok(ExtensionUpdateCheckItemResponse {
-                    catalog_id: item.catalog_id,
-                    current_version: item.current_version,
-                    latest_version,
-                    status: status.to_string(),
-                })
-            },
-        )
-        .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(ApiSuccess::new(ExtensionUpdateCheckResponse {
         category: body.category,
-        catalog_page: body.catalog_page,
         items,
     })))
 }

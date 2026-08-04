@@ -61,6 +61,36 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
     });
     let source = ApiOfficialExtensionCatalogSource::new(sources);
 
+    let first = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: None,
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    let cursor = first.next_cursor.unwrap();
+
+    requests.lock().unwrap().clear();
+    let cached_snapshot_entry = source
+        .find_entry(
+            "runtime-extensions",
+            "runtime-extensions:other/later-runtime",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(cached_snapshot_entry.entry.catalog_page, 2);
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &["/runtime-extensions/catalog/v1/pages/2.json"]
+    );
+
+    requests.lock().unwrap().clear();
     let filtered = source
         .search(
             "runtime-extensions",
@@ -75,25 +105,8 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
         .unwrap();
     assert_eq!(filtered.total_entries, 1);
     assert_eq!(filtered.entries[0].artifact, "later-runtime");
-    assert!(requests
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|path| path.ends_with("/pages/2.json")));
+    assert!(requests.lock().unwrap().is_empty());
 
-    let first = source
-        .search(
-            "runtime-extensions",
-            OfficialExtensionCatalogSearchQuery {
-                slot_code: Some("model_provider".to_string()),
-                q: None,
-                limit: 1,
-                cursor: None,
-            },
-        )
-        .await
-        .unwrap();
-    let cursor = first.next_cursor.unwrap();
     let stale = source
         .search(
             "runtime-extensions",
@@ -110,17 +123,6 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
         .to_string()
         .contains("snapshot and query"));
 
-    requests.lock().unwrap().clear();
-    let cached = source
-        .find_entry(
-            "runtime-extensions",
-            "runtime-extensions:other/later-runtime",
-        )
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(cached.entry.artifact, "later-runtime");
-    assert!(requests.lock().unwrap().is_empty());
     server.abort();
 }
 

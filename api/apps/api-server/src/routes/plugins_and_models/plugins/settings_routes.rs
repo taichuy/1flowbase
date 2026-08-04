@@ -94,7 +94,7 @@ pub async fn list_official_catalog(
         .into_iter()
         .map(|entry| {
             (
-                entry.installation.provider_code,
+                model_provider_catalog_id(&entry.installation),
                 if entry.assigned_to_current_workspace {
                     "assigned"
                 } else {
@@ -179,6 +179,7 @@ fn project_model_provider_catalog_entry(
         &entry.host_version_requirement,
         &current_host_version,
     );
+    let install_status = exact_catalog_install_status(installed, &entry.id).to_string();
     Ok(Some(OfficialPluginCatalogEntryResponse {
         plugin_id,
         plugin_type: MODEL_PROVIDER_PLUGIN_TYPE.to_string(),
@@ -204,12 +205,64 @@ fn project_model_provider_catalog_entry(
         },
         help_url,
         model_discovery_mode,
-        install_status: installed
-            .get(&provider_code)
-            .copied()
-            .unwrap_or("not_installed")
-            .to_string(),
+        install_status,
     }))
+}
+
+fn model_provider_catalog_id(installation: &domain::PluginInstallationRecord) -> String {
+    canonical_model_provider_catalog_id(
+        installation.category,
+        &installation.organization,
+        &installation.provider_code,
+    )
+}
+
+fn canonical_model_provider_catalog_id(
+    category: domain::ExtensionCategory,
+    organization: &str,
+    provider_code: &str,
+) -> String {
+    format!("{}:{}/{}", category.as_str(), organization, provider_code)
+}
+
+fn exact_catalog_install_status<'a>(
+    installed: &'a std::collections::HashMap<String, &'static str>,
+    catalog_id: &str,
+) -> &'a str {
+    installed
+        .get(catalog_id)
+        .copied()
+        .unwrap_or("not_installed")
+}
+
+#[cfg(test)]
+mod catalog_identity_tests {
+    use super::{canonical_model_provider_catalog_id, exact_catalog_install_status};
+    use std::collections::HashMap;
+
+    #[test]
+    fn api_f2_same_provider_code_from_another_publisher_is_not_marked_installed() {
+        let installed_catalog_id = canonical_model_provider_catalog_id(
+            domain::ExtensionCategory::RuntimeExtensions,
+            "publisher-a",
+            "shared-provider",
+        );
+        let other_publisher_catalog_id = canonical_model_provider_catalog_id(
+            domain::ExtensionCategory::RuntimeExtensions,
+            "publisher-b",
+            "shared-provider",
+        );
+        let installed = HashMap::from([(installed_catalog_id.clone(), "assigned")]);
+
+        assert_eq!(
+            exact_catalog_install_status(&installed, &installed_catalog_id),
+            "assigned"
+        );
+        assert_eq!(
+            exact_catalog_install_status(&installed, &other_publisher_catalog_id),
+            "not_installed"
+        );
+    }
 }
 
 fn catalog_metadata_required(

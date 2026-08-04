@@ -211,7 +211,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
         crate::routes::plugins::extension_center::delete_local_extension_installation,
         crate::routes::plugins::extension_center::list_extension_catalog_gateway,
         crate::routes::plugins::extension_center::get_extension_catalog_entry,
-        crate::routes::plugins::extension_center::check_extension_catalog_page_updates,
+        crate::routes::plugins::extension_center::check_extension_catalog_updates,
         crate::routes::plugins::extension_center::install_official_extension,
         crate::routes::plugins::extension_center::update_official_extension,
         crate::routes::plugins::extension_center::upload::install_uploaded_extension,

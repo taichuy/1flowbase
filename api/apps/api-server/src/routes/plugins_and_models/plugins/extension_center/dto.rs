@@ -166,7 +166,6 @@ pub struct ExtensionUpdateCheckItemBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExtensionUpdateCheckBody {
     pub category: String,
-    pub catalog_page: Option<String>,
     pub items: Vec<ExtensionUpdateCheckItemBody>,
 }
 
@@ -181,7 +180,6 @@ pub struct ExtensionUpdateCheckItemResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ExtensionUpdateCheckResponse {
     pub category: String,
-    pub catalog_page: Option<String>,
     pub items: Vec<ExtensionUpdateCheckItemResponse>,
 }
 

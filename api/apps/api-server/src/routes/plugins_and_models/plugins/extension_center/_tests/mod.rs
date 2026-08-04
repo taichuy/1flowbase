@@ -229,6 +229,70 @@ struct CountingCatalogSource {
     calls: Arc<AtomicUsize>,
 }
 
+#[derive(Clone)]
+struct MixedPageCatalogSource {
+    find_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl OfficialExtensionCatalogSourcePort for MixedPageCatalogSource {
+    async fn search(
+        &self,
+        _category: &str,
+        _query: crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<crate::official_extension_catalog::OfficialExtensionCatalogSearchResult>
+    {
+        anyhow::bail!("update check must resolve exact cached catalog identities")
+    }
+
+    async fn list_page(
+        &self,
+        _category: &str,
+        _cursor: Option<&str>,
+    ) -> anyhow::Result<OfficialExtensionCatalogPage> {
+        anyhow::bail!("update check must not treat a search snapshot as a source page")
+    }
+
+    async fn find_entry(
+        &self,
+        category: &str,
+        catalog_id: &str,
+    ) -> anyhow::Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        self.find_calls.fetch_add(1, Ordering::SeqCst);
+        let mut entry = runtime_entry();
+        match catalog_id {
+            "runtime-extensions:taichuy/openai" => {}
+            "runtime-extensions:other/openai" => {
+                entry.id = catalog_id.to_string();
+                entry.organization = "other".to_string();
+                entry.version = "0.3.0".to_string();
+                entry.catalog_page = 2;
+            }
+            _ => return Ok(None),
+        }
+        Ok(
+            (category == entry.category).then_some(LocatedOfficialExtensionCatalogEntry {
+                source_kind: "official_repository".to_string(),
+                entry,
+            }),
+        )
+    }
+
+    fn resolve_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<OfficialExtensionArtifactDescriptor> {
+        anyhow::bail!("update check must not resolve artifacts")
+    }
+
+    async fn download_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<DownloadedOfficialExtensionArtifact> {
+        anyhow::bail!("update check must not download artifacts")
+    }
+}
+
 #[async_trait]
 impl OfficialExtensionCatalogSourcePort for CountingCatalogSource {
     async fn search(
@@ -353,6 +417,57 @@ async fn root_1545_bf1_exact_local_version_returns_without_catalog_network() {
         "i18n:taichuy/platform"
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn api_f2_update_check_resolves_mixed_source_pages_without_catalog_page_contract() {
+    let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let find_calls = Arc::new(AtomicUsize::new(0));
+    Arc::get_mut(&mut state)
+        .unwrap()
+        .official_extension_catalog_source = Arc::new(MixedPageCatalogSource {
+        find_calls: Arc::clone(&find_calls),
+    });
+    let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
+    let (cookie, csrf) =
+        crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/extension-center/update-check")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "category": "runtime-extensions",
+                        "items": [
+                            {
+                                "catalog_id": "runtime-extensions:taichuy/openai",
+                                "current_version": "0.2.0",
+                                "installed_versions": ["0.2.0"]
+                            },
+                            {
+                                "catalog_id": "runtime-extensions:other/openai",
+                                "current_version": "0.2.0",
+                                "installed_versions": ["0.2.0"]
+                            }
+                        ]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(payload["data"].get("catalog_page").is_none());
+    assert_eq!(payload["data"]["items"][0]["status"], "current");
+    assert_eq!(payload["data"]["items"][1]["status"], "update_available");
+    assert_eq!(find_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
