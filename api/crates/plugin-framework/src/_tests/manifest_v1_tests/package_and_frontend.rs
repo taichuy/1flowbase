@@ -88,7 +88,7 @@ slot_codes: [model_provider]
 binding_targets: [workspace]
 selection_mode: assignment_then_select
 minimum_host_version: 0.1.0
-contract_version: 1flowbase.provider/v2
+contract_version: 1flowbase.provider/v1
 schema_version: 1flowbase.plugin.manifest/v1
 permissions:
   network: outbound_only
@@ -115,6 +115,7 @@ node_contributions: []
     let parsed = parse_legacy_installed_plugin_manifest(&legacy, &eligibility)
         .expect("AC-001 legacy installed artifact should load from explicit durable identity");
     assert_eq!(parsed.publisher_namespace, "fixture_org");
+    assert_eq!(parsed.contract_version, "1flowbase.provider/v1");
     assert_eq!(parsed.vendor, "Historical Vendor");
 
     let wrong_fingerprint = LegacyInstalledManifestEligibility {

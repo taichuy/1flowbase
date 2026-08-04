@@ -322,9 +322,22 @@ impl PluginManifestV1 {
 }
 
 pub fn parse_plugin_manifest(raw: &str) -> FrameworkResult<PluginManifestV1> {
+    parse_plugin_manifest_with_contract_policy(raw, ManifestContractPolicy::CurrentOnly)
+}
+
+#[derive(Clone, Copy)]
+enum ManifestContractPolicy {
+    CurrentOnly,
+    PublisherCutoverLegacyProvider,
+}
+
+fn parse_plugin_manifest_with_contract_policy(
+    raw: &str,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<PluginManifestV1> {
     let manifest: PluginManifestV1 = serde_yaml::from_str(raw)
         .map_err(|error| PluginFrameworkError::invalid_provider_package(error.to_string()))?;
-    validate_plugin_manifest(&manifest)?;
+    validate_plugin_manifest(&manifest, contract_policy)?;
     Ok(manifest)
 }
 
@@ -338,8 +351,9 @@ pub struct LegacyInstalledManifestEligibility {
 /// Parses an already-installed legacy artifact without changing its on-disk bytes.
 ///
 /// The compatibility path is intentionally separate from package intake and only repairs the
-/// historical omission of `publisher_namespace`. Identity and the fingerprint of the original
-/// bytes must already be known from durable installation state.
+/// historical omission of `publisher_namespace` and preserves the provider/v1 contract declared
+/// by older artifacts. Identity and the fingerprint of the original bytes must already be known
+/// from durable installation state.
 pub fn parse_legacy_installed_plugin_manifest(
     raw: &str,
     eligibility: &LegacyInstalledManifestEligibility,
@@ -372,7 +386,10 @@ pub fn parse_legacy_installed_plugin_manifest(
     );
     let repaired_raw = serde_yaml::to_string(&document)
         .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
-    let manifest = parse_plugin_manifest(&repaired_raw)?;
+    let manifest = parse_plugin_manifest_with_contract_policy(
+        &repaired_raw,
+        ManifestContractPolicy::PublisherCutoverLegacyProvider,
+    )?;
     verify_legacy_installed_manifest_eligibility(manifest, raw, eligibility)
 }
 
@@ -393,7 +410,10 @@ fn verify_legacy_installed_manifest_eligibility(
     Ok(manifest)
 }
 
-fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+fn validate_plugin_manifest(
+    manifest: &PluginManifestV1,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<()> {
     if manifest.manifest_version != 1 {
         return Err(PluginFrameworkError::invalid_provider_package(
             "manifest_version must be 1",
@@ -418,7 +438,7 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
     validate_non_empty(&manifest.selection_mode, "selection_mode")?;
     validate_non_empty(&manifest.minimum_host_version, "minimum_host_version")?;
     validate_non_empty(&manifest.contract_version, "contract_version")?;
-    validate_contract_version(manifest)?;
+    validate_contract_version_for_policy(manifest, contract_policy)?;
     validate_allowed(
         &manifest.source_kind,
         "source_kind",
@@ -1507,6 +1527,26 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
         "contract_version must be {expected} for {}",
         manifest.consumption_kind.as_str()
     )))
+}
+
+fn validate_contract_version_for_policy(
+    manifest: &PluginManifestV1,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<()> {
+    if matches!(
+        contract_policy,
+        ManifestContractPolicy::PublisherCutoverLegacyProvider
+    ) && manifest.consumption_kind == PluginConsumptionKind::RuntimeExtension
+        && manifest
+            .slot_codes
+            .iter()
+            .any(|slot| slot == "model_provider")
+        && manifest.contract_version == "1flowbase.provider/v1"
+    {
+        return Ok(());
+    }
+
+    validate_contract_version(manifest)
 }
 
 fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> FrameworkResult<()> {
