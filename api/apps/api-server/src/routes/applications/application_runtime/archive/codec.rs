@@ -96,7 +96,7 @@ fn extract_archive_from_trace_export_zip(
     Ok(Some(build_archive_from_trace_exports(manifest, documents)?))
 }
 
-pub(super) fn build_archive_from_trace_exports(
+pub(in crate::routes::applications_group::application_runtime) fn build_archive_from_trace_exports(
     manifest: ApplicationRunSelectedExportManifestResponse,
     documents: Vec<ApplicationRunTraceExportResponse>,
 ) -> Result<RunArchiveV1Response, ApiError> {
@@ -283,7 +283,9 @@ fn trace_export_flow_run_fact(flow_run: &FlowRunResponse) -> Result<serde_json::
     Ok(value)
 }
 
-pub(super) fn parse_run_archive_v1(bytes: &[u8]) -> Result<RunArchiveV1Response, ApiError> {
+pub(in crate::routes::applications_group::application_runtime) fn parse_run_archive_v1(
+    bytes: &[u8],
+) -> Result<RunArchiveV1Response, ApiError> {
     // Try to parse as JSON first (single file archive)
     let archive: RunArchiveV1Response = match serde_json::from_slice(bytes) {
         Ok(archive) => archive,
