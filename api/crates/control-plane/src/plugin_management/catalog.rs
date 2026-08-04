@@ -834,8 +834,25 @@ where
             .repository
             .list_assignments(actor.current_workspace_id)
             .await?;
-        let official_snapshot = self.official_source.list_official_catalog().await?;
-        let official_latest_by_provider = normalize_official_entries(official_snapshot.entries)
+        // Families are a local inventory read. A verified catalog snapshot may enrich update
+        // truth, but a slow or unavailable remote source must not block the provider settings page.
+        let official_entries = match tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            self.official_source.list_official_catalog(),
+        )
+        .await
+        {
+            Ok(Ok(snapshot)) => snapshot.entries,
+            Ok(Err(error)) => {
+                tracing::warn!(error = %error, "provider family update catalog unavailable");
+                Vec::new()
+            }
+            Err(_) => {
+                tracing::warn!("provider family update catalog exceeded local read budget");
+                Vec::new()
+            }
+        };
+        let official_latest_by_provider = normalize_official_entries(official_entries)
             .into_iter()
             .map(|entry| (entry.provider_code, entry.latest_version))
             .collect::<HashMap<_, _>>();
