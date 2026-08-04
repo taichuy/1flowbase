@@ -149,7 +149,6 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
-                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json,
                 is_system_reserved,
                 created_by,
