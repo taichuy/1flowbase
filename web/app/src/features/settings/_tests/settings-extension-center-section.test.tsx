@@ -380,6 +380,31 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
+  test('catalog tabs label remote versions as latest and keep unchecked updates neutral', async () => {
+    renderSection('runtime-extensions');
+
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    expect(
+      screen.getByRole('columnheader', { name: '最新版本' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: '当前版本' })
+    ).not.toBeInTheDocument();
+    expect(within(row).getByText('1.1.0')).toBeInTheDocument();
+    expect(
+      within(row)
+        .getByRole('button', { name: '更新' })
+        .closest('[data-update-state]')
+    ).toHaveAttribute('data-update-state', 'unchecked');
+    expect(
+      within(row)
+        .getByRole('button', { name: '更新' })
+        .closest('[data-update-state]')
+        ?.querySelector('.ant-badge-dot')
+    ).toHaveStyle('background: transparent');
+    expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
+  });
+
   test('publisher_cutover shows the dedicated artifact download failure message', async () => {
     extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
       category: 'runtime-extensions',

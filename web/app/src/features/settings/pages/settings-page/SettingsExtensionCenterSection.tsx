@@ -55,6 +55,7 @@ import { SettingsSectionSurface } from '../../components/SettingsSectionSurface'
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
 type UpdateState =
+  | 'unchecked'
   | 'checking'
   | 'current'
   | 'update_available'
@@ -488,7 +489,10 @@ function GenericExtensionCenterSection({
         ellipsis: true
       },
       {
-        title: t('auto.current_version'),
+        title:
+          activeTab === 'installed'
+            ? t('auto.current_version')
+            : t('auto.latest_version'),
         key: 'version',
         width: 130,
         render: (_, row) => extensionVersion(row)
@@ -534,10 +538,10 @@ function GenericExtensionCenterSection({
         align: 'center',
         render: (_, row) => {
           const key = extensionKey(row);
-          const updateState = updateStates[key];
+          const updateState = updateStates[key] ?? 'unchecked';
           const action = isInstalledRow(row) ? (
             <Space size={4}>
-              <span data-update-state={updateState ?? 'unknown_error'}>
+              <span data-update-state={updateState}>
                 <Tooltip
                   title={
                     updateState === 'update_available'
@@ -607,7 +611,13 @@ function GenericExtensionCenterSection({
               ) : null}
             </Space>
           ) : (
-            <span data-update-state={updateState ?? 'not_installed'}>
+            <span
+              data-update-state={
+                row.installation_status === 'not_installed'
+                  ? 'not_installed'
+                  : updateState
+              }
+            >
               <Badge
                 dot
                 color={
@@ -617,7 +627,9 @@ function GenericExtensionCenterSection({
                       ? '#ffba00'
                       : updateState === 'current'
                         ? 'transparent'
-                        : '#fb565b'
+                        : updateState === 'unknown_error'
+                          ? '#fb565b'
+                          : 'transparent'
                 }
               >
                 <Button
@@ -654,6 +666,7 @@ function GenericExtensionCenterSection({
     ],
     [
       activeOperationKey,
+      activeTab,
       resolveInstalledUpdate,
       submitOperation,
       t,

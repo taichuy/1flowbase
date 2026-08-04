@@ -887,6 +887,7 @@
     "go_to_mcp_management": "Go to MCP Management",
     "go_to_language_management": "Go to language management",
     "current_version": "Current version",
+    "latest_version": "Latest version",
     "system_requirements": "System requirements",
     "installation": "Installation",
     "trust": "Trust",

@@ -887,6 +887,7 @@
     "go_to_mcp_management": "前往 MCP 管理",
     "go_to_language_management": "前往多语言管理",
     "current_version": "当前版本",
+    "latest_version": "最新版本",
     "system_requirements": "系统要求",
     "installation": "安装状态",
     "trust": "可信度",
