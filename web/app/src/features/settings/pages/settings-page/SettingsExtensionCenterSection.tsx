@@ -279,10 +279,6 @@ function GenericExtensionCenterSection({
           const result = await checkSettingsExtensionUpdates(
             {
               category,
-              catalog_page:
-                activeTab === 'installed'
-                  ? null
-                  : (catalogQuery.data?.catalog_page ?? null),
               items: entries.map((entry) => ({
                 catalog_id: extensionCatalogId(entry),
                 current_version: isInstalledRow(entry)
@@ -309,7 +305,7 @@ function GenericExtensionCenterSection({
       ...current,
       ...Object.fromEntries(results.flat())
     }));
-  }, [activeTab, catalogQuery.data?.catalog_page, csrfToken, rows]);
+  }, [csrfToken, rows]);
 
   const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([

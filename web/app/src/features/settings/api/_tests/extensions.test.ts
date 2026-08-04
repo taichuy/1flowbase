@@ -17,6 +17,7 @@ const apiClient = vi.hoisted(() => ({
 vi.mock('@1flowbase/api-client', () => apiClient);
 
 import {
+  checkSettingsExtensionUpdates,
   fetchSettingsExtensionCatalog,
   settingsExtensionCatalogQueryKey
 } from '../extensions';
@@ -66,6 +67,26 @@ describe('settings extension catalog query contract', () => {
     expect(apiClient.listConsoleExtensionCatalog).toHaveBeenCalledWith(
       'runtime-extensions',
       { q: 'postgres', cursor: 'page-2' }
+    );
+  });
+
+  test('API-F2 forwards update checks with category and items only', () => {
+    const input = {
+      category: 'runtime-extensions' as const,
+      items: [
+        {
+          catalog_id: 'runtime-extensions:taichuy/openai',
+          current_version: '1.0.0',
+          installed_versions: ['1.0.0']
+        }
+      ]
+    };
+
+    checkSettingsExtensionUpdates(input, 'csrf');
+
+    expect(apiClient.checkConsoleExtensionUpdates).toHaveBeenCalledWith(
+      input,
+      'csrf'
     );
   });
 });

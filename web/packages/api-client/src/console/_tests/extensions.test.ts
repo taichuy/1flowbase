@@ -153,12 +153,11 @@ describe('extension center client contract', () => {
     expect(entry.keywords).toEqual(['postgres', 'analytics']);
   });
 
-  test('D4-AC-003 checks only the supplied current category page', async () => {
+  test('D4-AC-003 checks only the supplied category extension items', async () => {
     await expect(
       checkConsoleExtensionUpdates(
         {
           category: 'runtime-extensions',
-          catalog_page: 'page-2',
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
@@ -172,6 +171,16 @@ describe('extension center client contract', () => {
     ).resolves.toMatchObject({
       path: '/api/console/settings/extension-center/update-check',
       method: 'POST',
+      body: {
+        category: 'runtime-extensions',
+        items: [
+          {
+            catalog_id: 'runtime-extensions:taichuy/openai',
+            current_version: '1.0.0',
+            installed_versions: ['1.0.0']
+          }
+        ]
+      },
       csrfToken: 'csrf'
     });
   });

@@ -279,7 +279,6 @@ describe('SettingsExtensionCenterSection', () => {
     );
     extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
       category: 'runtime-extensions',
-      catalog_page: null,
       items: [
         {
           catalog_id: 'runtime-extensions:taichuy/openai',
@@ -349,7 +348,6 @@ describe('SettingsExtensionCenterSection', () => {
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
         {
           category: 'runtime-extensions',
-          catalog_page: null,
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
@@ -519,7 +517,6 @@ describe('SettingsExtensionCenterSection', () => {
     );
     extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
       category: 'runtime-extensions',
-      catalog_page: null,
       items: [
         {
           catalog_id: installedEntry.catalog_id,

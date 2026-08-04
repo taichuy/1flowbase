@@ -145,7 +145,6 @@ export interface ConsoleExtensionUpdateItem {
 
 export interface ConsoleExtensionUpdateResponse {
   category: ConsoleExtensionCategory;
-  catalog_page: string | null;
   items: ConsoleExtensionUpdateItem[];
 }
 
@@ -311,7 +310,6 @@ export function getConsoleExtensionCatalogEntry(
 export function checkConsoleExtensionUpdates(
   input: {
     category: ConsoleExtensionCategory;
-    catalog_page: string | null;
     items: Array<{
       catalog_id: string;
       current_version: string;
