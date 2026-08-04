@@ -13,6 +13,8 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/github/license/taichuy/1flowbase" alt="License"></a>
   <img src="https://img.shields.io/badge/OpenAI-compatible-111827" alt="OpenAI compatible">
   <img src="https://img.shields.io/badge/Claude-compatible-111827" alt="Claude compatible">
+  <img src="https://img.shields.io/badge/MCP-gateway-7c3aed" alt="MCP gateway">
+  <img src="https://img.shields.io/badge/Native_React-blocks-149eca" alt="Native React blocks">
   <img src="https://img.shields.io/badge/self--hosted-1flowbase-2563eb" alt="Self-hosted">
 </p>
 
@@ -23,26 +25,58 @@
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
 
-> **给本地 AI Agent 一个模型接口，让它在背后运行你自己的可观测多模型工作流。**
+> **基于三大开源基座构建 Agent-Native 应用：AI Gateway、MCP Gateway 与 Native React 前端区块。**
 
-Claude Code、Codex、OpenCode、Cline、Continue 和 SDK 仍然只调用一个普通模型名。1flowbase 在这个模型名背后运行工作流：给截图挂载视觉模型、让多个模型组成 Fusion 风格评审团、校验或格式化结果，并展示模型调用、工具回调、Token、延迟和失败原因。
+1flowbase 让 AI 客户端、自主 Agent 和人通过互补的方式使用同一个自托管应用平台。模型客户端调用 OpenAI 兼容或 Claude 兼容接口；Agent 通过 MCP 发现、配置和操作 1flowbase；人通过标准 React 与 CSS 构建的交互界面使用应用。
 
 ```text
-Agent 客户端 -> 一个虚拟模型接口 -> 你的工作流 -> Trace / Token / 成本 -> 最终回答
+AI 客户端 -> AI Gateway  -> 协议转换 / 路由分发 / 工作流
+AI Agent  -> MCP Gateway -> 发现 / 配置 / 搭建 / 操作
+人         -> React 区块  -> 交互式应用界面
+                               |
+                               v
+                    1flowbase 应用 + Trace
 ```
 
-| 如果你想要... | 1flowbase 帮你... |
+| 基座 | 提供的能力 |
 |---|---|
-| 让文本 Coding Model 理解截图 | 把 GLM-5V-Turbo、Gemini、GPT vision、OCR 或其他视觉模型挂成工具 |
-| 跑 Fusion 风格模型评审团 | 分发给多个分支模型，汇总结果，再发布成一个模型接口 |
-| 排查 Agent 回答为什么慢、贵或错 | 查看工作流节点、模型调用、工具回调、Token、延迟和错误 |
-| 在现有客户端里复用更好的模型链 | 发布为 OpenAI 兼容或 Claude 兼容模型 API |
+| **AI Gateway** | 转换和分发 OpenAI Responses、Chat Completions 与 Claude Messages 流量；路由模型，并把可观测工作流发布为虚拟模型 |
+| **MCP Gateway** | 把 1flowbase 能力投影为可渐进发现的工具；管理 Tool、mapping、Group、Binding、策略、上游 MCP 连接与可复用 Bundle |
+| **Native React 前端区块** | 使用标准 React/TSX 与 CSS、受控组件导入、数据绑定和 Shadow DOM 隔离构建响应式应用界面 |
+
+三大基座可以组合成完整应用：Agent 通过 MCP 配置应用，人通过真实界面操作应用，兼容客户端通过模型 API 调用应用。
 
 ![工作流编辑器预览](../assets/workflow_editor_preview_tool.png)
 
 ---
 
 ## 现在可以构建什么
+
+### 让 Agent 搭建和操作 1flowbase 应用
+
+MCP Gateway 把平台能力投影为面向 Agent 的虚拟 UI。Agent 可以渐进发现相关领域、读取 Tool 契约、发起调用、验证结果状态并继续搭建，不需要为每个任务新增一条硬编码前端流程。
+
+```text
+Agent
+  -> mcp.list：发现应用与能力
+  -> mcp.get：读取下一步 Tool 契约
+  -> mcp.call：创建、配置、运行与发布
+  -> 检查状态 / Trace
+  -> 继续迭代
+```
+
+### 使用 Native React 区块构建人机交互界面
+
+前端区块直接使用标准 React/TSX、Hooks、事件和 CSS。1flowbase 在隔离的 Shadow DOM 运行时中编译和挂载区块，并通过受控目录与上下文契约暴露区块获准使用的平台能力。
+
+```tsx
+export default function StatusCard({ ctx }) {
+  const status = ctx.inputs.status;
+  return <button onClick={() => ctx.outputs.publish({ action: 'retry' })}>
+    {status}
+  </button>;
+}
+```
 
 ### 给文本优先 Coding Model 增加视觉能力
 
@@ -165,18 +199,21 @@ node scripts/node/dev-up.js restart
 
 ## 1flowbase 适合放在哪里
 
-1flowbase 不只是模型代理，也不只是普通工作流画布。
+1flowbase 不只是模型代理、MCP Server 集合或又一个聊天界面。
 
 | 工具类别 | 常见功能与定位 | 1flowbase 的不同之处 |
 |---|---|---|
 | LLM 网关 / 模型路由器 | 将单次请求路由至特定供应商或模型 | 将多个模型和工具节点组合成由工作流支撑的虚拟模型 |
-| AI 工作流构建器 | 构建 AI 应用或流程工作流 | 将工作流直接暴露为 OpenAI / Claude 兼容模型 API |
-| Agent 开发框架 | 协助开发者用代码编写 Agent 图 | 提供可视化运行时、协议发布接口和执行日志 |
+| MCP Server / Gateway | 向 Agent 暴露或聚合工具 | 暴露 1flowbase 应用控制面，同时连接并治理上游 MCP 工具 |
+| AI 工作流构建器 | 构建 AI 应用或流程工作流 | 通过模型 API 暴露工作流，并让 Agent 通过 MCP 操作外围应用 |
+| Agent 应用框架 | 帮助开发者编写 Agent 图与交互界面 | 组合可视化运行时、Agent 控制面、协议发布和 Native React 应用界面 |
 | 可观测性 / 成本追踪工具 | 统计 Token 消耗量或账单总额 | 将成本精确关联至工作流节点、模型调用、工具回调和 Trace |
 
 ```text
-模型路由器负责选择模型。
-1flowbase 负责把工作流组合成新的虚拟模型。
+AI Gateway 把客户端连接到模型执行。
+MCP Gateway 把 Agent 连接到应用能力。
+React 区块把人连接到最终应用。
+1flowbase 在一个自托管平台中提供三大基座。
 ```
 
 ---
@@ -284,6 +321,11 @@ node scripts/node/dev-up.js restart
 - [x] 1flowbase 工作流内部的工具回调 Trace
 - [x] 应用级 Token 消耗统计
 - [x] Prompt 与模型配置版本历史管理
+- [x] 支持渐进式 `mcp.list`、`mcp.get` 与 `mcp.call` 发现的 MCP Gateway
+- [x] MCP Tool、mapping、Group、Binding、发现策略与上游连接管理
+- [x] 可复用 MCP Bundle 导入、导出、校验与本地 Library 流程
+- [x] 支持 Hooks、CSS、事件和 Shadow DOM 隔离的 Native React/TSX 前端区块
+- [x] 受控前端组件目录、代码 Studio、响应式上下文与数据绑定
 
 ### 持续增强中
 
@@ -293,17 +335,18 @@ node scripts/node/dev-up.js restart
 - [ ] 异常成本检测与优化建议
 - [ ] 会话导出和 Recall Pack 生成
 - [ ] 更多 Claude Code / Codex / OpenCode / Cline / Continue 模板
-- [ ] 兼容 MCP 的插件节点与工具调用源头追踪
+- [ ] 覆盖更多产品领域的 Agent-Ready MCP Virtual UI
+- [ ] 组合 AI Gateway、MCP Gateway 与前端区块的更多端到端应用 Recipe
 
 ### 长期规划中
 
-- [ ] 面向 AI 组织的低代码应用构建平台
+- [ ] 在三大应用基座之上扩展更完整的低代码创作能力
 - [ ] 团队协作空间与多租户管理
 - [ ] 权限、审批、审计与成本治理机制
 - [ ] 适配更多本地 AI Agent 客户端
 - [ ] 模板市场与工作流 Recipes 生态
 
-> 注意：1flowbase 目前的定位并非 MCP 服务端或 MCP 网关。兼容 MCP 的能力仍在路线图中。当前产品专注于发布兼容模型接口，并追踪 1flowbase 工作流的执行。
+> 三大基座目前都已实现并可用。更完整的低代码创作、团队治理和模板生态仍在持续演进。
 
 ---
 
