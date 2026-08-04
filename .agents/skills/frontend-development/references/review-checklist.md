@@ -37,7 +37,7 @@
 - 风格和 UI 质量是否已经被当成本轮验收项验证，而不是主观假设？
 - 第三方原生组件的交互、布局和图标链路是否仍然成立？
 - 当前样式改动是否能说清 blast radius，且已检查受影响消费者？
-- 本次改动是否已经运行 `node scripts/node/check-style-boundary.js component ... / page ... / file ...` 中至少一种合适模式？
+- 本次改动是否已经运行 `node scripts/node/tooling.js check-style-boundary component ... / page ... / file ...` 中至少一种合适模式？
 - 如果需要浏览器级验收、截图或交互复现，是否已默认使用 `Playwright`，而不是 Chrome 浏览器 MCP / `chrome-devtools`？
 - 如果当前只知道页面路由、需要自动登录、稳定等待或导出运行态证据，是否优先运行 `node scripts/node/page-debug.js snapshot|open ...`，而不是临时手写一次性 Playwright 脚本？
 - 浏览器级等待、截图和操作是否基于业务 ready signal，而不是页面一打开就直接执行？
