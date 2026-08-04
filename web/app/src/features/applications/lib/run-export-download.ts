@@ -17,14 +17,6 @@ export function buildSelectedRunTraceDumpFilename() {
   return 'application-run-traces.zip';
 }
 
-export function buildRunArchiveFilename(runId: string) {
-  return `${normalizeDownloadName(runId)}-archive.json`;
-}
-
-export function buildSelectedRunArchiveFilename() {
-  return 'application-run-archive.json';
-}
-
 export function saveApplicationRunExport(
   download: ApplicationRunExportDownload,
   fallbackFilename: string
