@@ -12,7 +12,7 @@ use runtime_core::{
     },
 };
 use serde_json::Value;
-use sqlx::{postgres::PgRow, Postgres, QueryBuilder, Row};
+use sqlx::{Postgres, QueryBuilder};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
@@ -1113,33 +1113,5 @@ fn is_runtime_object_missing_error(error: &sqlx::Error) -> bool {
             matches!(database_error.code().as_deref(), Some("42P01" | "42703"))
         }
         _ => false,
-    }
-}
-
-#[allow(dead_code)]
-fn to_model_field_record(row: PgRow) -> domain::ModelFieldRecord {
-    domain::ModelFieldRecord {
-        id: row.get("id"),
-        data_model_id: row.get("data_model_id"),
-        code: row.get("code"),
-        title: row.get("title"),
-        description: row.get("description"),
-        physical_column_name: row.get("physical_column_name"),
-        external_field_key: row.get("external_field_key"),
-        field_kind: domain::ModelFieldKind::from_db(row.get("field_kind")),
-        is_system: row.get("is_system"),
-        is_writable: row.get("is_writable"),
-        is_required: row.get("is_required"),
-        api_required: row.get("api_required"),
-        is_unique: row.get("is_unique"),
-        default_value: row.get("default_value"),
-        display_interface: row.get("display_interface"),
-        display_options: row.get("display_options"),
-        relation_target_model_id: row.get("relation_target_model_id"),
-        relation_options: row.get("relation_options"),
-        sort_order: row.get("sort_order"),
-        availability_status: domain::MetadataAvailabilityStatus::from_db(
-            row.get("availability_status"),
-        ),
     }
 }

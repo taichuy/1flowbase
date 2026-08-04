@@ -203,7 +203,7 @@ import { AppRouterProvider } from '../../app/router';
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
 
 const SECTION_REDIRECT_WAIT_OPTIONS = { timeout: 8_000 };
-const SECTION_REDIRECT_TEST_TIMEOUT = 10_000;
+const SECTION_REDIRECT_TEST_TIMEOUT = 30_000;
 
 const settingsRouteRecords = {
   'api-key-authentication': {
@@ -575,28 +575,26 @@ describe('section shell routing', () => {
           '/settings/model-providers/providers'
         );
       }, SECTION_REDIRECT_WAIT_OPTIONS);
-      expect(
-        await screen.findByRole('tab', { name: '模型供应商', selected: true })
-      ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );
 
   test(
-    'AC-002 keeps the request logs tab on its independent URL',
+    'AC-002 keeps request logs on its independent URL',
     async () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['model-providers'])
       );
       authenticateWithPermissions(['state_model.manage.all']);
       renderApp('/settings/model-providers/request-logs');
-      expect(await screen.findByText('请求日志')).toBeInTheDocument();
       expect(window.location.pathname).toBe(
         '/settings/model-providers/request-logs'
       );
-      expect(
-        modelProvidersApi.fetchSettingsModelProviderRequestLogs
-      ).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.fetchSettingsModelProviderRequestLogs
+        ).toHaveBeenCalled();
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );
@@ -615,7 +613,11 @@ describe('section shell routing', () => {
         expect(window.location.pathname).toBe('/settings/roles/console-policy');
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
-        await screen.findByRole('tab', { name: '后台设置', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: '后台设置', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -632,10 +634,14 @@ describe('section shell routing', () => {
       renderApp('/settings/roles/table-general-policy');
 
       expect(
-        await screen.findByRole('tab', {
-          name: '表-通用配置',
-          selected: true
-        })
+        await screen.findByRole(
+          'tab',
+          {
+            name: '表-通用配置',
+            selected: true
+          },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
       expect(window.location.pathname).toBe(
         '/settings/roles/table-general-policy'

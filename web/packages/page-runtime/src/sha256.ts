@@ -1,5 +1,8 @@
 export function sha256Text(value: string): string {
-  const bytes = new TextEncoder().encode(value);
+  return sha256Bytes(new TextEncoder().encode(value));
+}
+
+export function sha256Bytes(bytes: Uint8Array): string {
   const bitLength = bytes.length * 8;
   const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
   const padded = new Uint8Array(paddedLength);

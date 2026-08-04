@@ -402,7 +402,7 @@ describe('LLM prompt messages field', () => {
       within(contextRow).getByRole('combobox', { name: '上下文变量' })
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText('将传入上下文注入当前LLM节点中')
+      screen.getByLabelText('将传入上下文注入当前 LLM 节点中。')
     ).toBeInTheDocument();
   });
 

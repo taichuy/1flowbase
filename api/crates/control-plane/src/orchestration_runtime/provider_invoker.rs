@@ -1435,7 +1435,7 @@ where
 }
 
 #[cfg(test)]
-#[path = "provider_invoker/canonical_writer_tests.rs"]
+#[path = "../_tests/orchestration_runtime/provider_invoker/canonical_writer_tests.rs"]
 mod canonical_writer_tests;
 
 #[cfg(test)]
