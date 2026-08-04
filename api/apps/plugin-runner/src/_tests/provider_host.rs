@@ -342,7 +342,10 @@ fn publisher_cutover_runner_loads_eligible_legacy_installed_provider_receipt() {
         &plugin_framework::LegacyInstalledManifestEligibility {
             expected_publisher_namespace: "1flowbase".to_string(),
             expected_versioned_plugin_id: "fixture_provider@0.1.0".to_string(),
-            expected_raw_manifest_fingerprint: format!("{:x}", Sha256::digest(raw.as_bytes())),
+            expected_raw_manifest_fingerprint: format!(
+                "sha256:{:x}",
+                Sha256::digest(raw.as_bytes())
+            ),
         },
     )
     .expect("AC-001 runner should consume the explicit legacy installation receipt");

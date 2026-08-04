@@ -107,7 +107,10 @@ node_contributions: []
     let eligibility = LegacyInstalledManifestEligibility {
         expected_publisher_namespace: "fixture_org".to_string(),
         expected_versioned_plugin_id: "fixture@1.2.3".to_string(),
-        expected_raw_manifest_fingerprint: format!("{:x}", Sha256::digest(legacy.as_bytes())),
+        expected_raw_manifest_fingerprint: format!(
+            "sha256:{:x}",
+            Sha256::digest(legacy.as_bytes())
+        ),
     };
     let parsed = parse_legacy_installed_plugin_manifest(&legacy, &eligibility)
         .expect("AC-001 legacy installed artifact should load from explicit durable identity");
@@ -115,7 +118,7 @@ node_contributions: []
     assert_eq!(parsed.vendor, "Historical Vendor");
 
     let wrong_fingerprint = LegacyInstalledManifestEligibility {
-        expected_raw_manifest_fingerprint: "0".repeat(64),
+        expected_raw_manifest_fingerprint: format!("sha256:{}", "0".repeat(64)),
         ..eligibility.clone()
     };
     assert!(parse_legacy_installed_plugin_manifest(&legacy, &wrong_fingerprint).is_err());
@@ -123,7 +126,7 @@ node_contributions: []
     let also_missing_contract = legacy.replace("contract_version: 1flowbase.provider/v1\n", "");
     let other_missing = LegacyInstalledManifestEligibility {
         expected_raw_manifest_fingerprint: format!(
-            "{:x}",
+            "sha256:{:x}",
             Sha256::digest(also_missing_contract.as_bytes())
         ),
         ..eligibility

@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Component, Path},
 };
 
 use crate::{
+    artifact_reconcile::canonical_manifest_fingerprint,
     capability_kind::PluginConsumptionKind,
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::{
@@ -348,12 +348,8 @@ pub fn parse_legacy_installed_plugin_manifest(
         return verify_legacy_installed_manifest_eligibility(manifest, raw, eligibility);
     }
 
-    let actual_fingerprint = hex_sha256(raw.as_bytes());
-    if actual_fingerprint
-        != eligibility
-            .expected_raw_manifest_fingerprint
-            .to_ascii_lowercase()
-    {
+    let actual_fingerprint = canonical_manifest_fingerprint(raw.as_bytes());
+    if actual_fingerprint != eligibility.expected_raw_manifest_fingerprint {
         return Err(PluginFrameworkError::invalid_provider_package(
             "legacy installed manifest fingerprint does not match durable identity",
         ));
@@ -385,10 +381,8 @@ fn verify_legacy_installed_manifest_eligibility(
     raw: &str,
     eligibility: &LegacyInstalledManifestEligibility,
 ) -> FrameworkResult<PluginManifestV1> {
-    if hex_sha256(raw.as_bytes())
-        != eligibility
-            .expected_raw_manifest_fingerprint
-            .to_ascii_lowercase()
+    if canonical_manifest_fingerprint(raw.as_bytes())
+        != eligibility.expected_raw_manifest_fingerprint
         || manifest.publisher_namespace != eligibility.expected_publisher_namespace
         || manifest.versioned_plugin_id()? != eligibility.expected_versioned_plugin_id
     {
@@ -397,13 +391,6 @@ fn verify_legacy_installed_manifest_eligibility(
         ));
     }
     Ok(manifest)
-}
-
-fn hex_sha256(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
 
 fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {

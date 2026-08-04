@@ -499,8 +499,10 @@ async fn publisher_cutover_provider_runtime_consumes_legacy_manifest_compatibili
     installation.installation.organization = "1flowbase".to_string();
     installation.installation.legacy_manifest_compatibility =
         Some("missing_publisher_namespace_v1".to_string());
-    installation.artifact.manifest_fingerprint =
-        Some(format!("{:x}", Sha256::digest(legacy_raw.as_bytes())));
+    installation.artifact.manifest_fingerprint = Some(format!(
+        "sha256:{:x}",
+        Sha256::digest(legacy_raw.as_bytes())
+    ));
     let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
         Arc::new(RwLock::new(ProviderHost::default())),
         Arc::new(RwLock::new(CapabilityHost::default())),
