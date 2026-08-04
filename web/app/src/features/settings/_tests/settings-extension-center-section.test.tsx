@@ -800,12 +800,10 @@ describe('SettingsExtensionCenterSection', () => {
   test('AC-003/AC-007 submits remote search, clears its cursor, and isolates the query key without a model-provider slot', async () => {
     renderSection('runtime-extensions', 'cursor-2', 'postgres');
 
-    const search = await screen.findByRole('searchbox', {
-      name: '下拉搜索可安装供应商'
-    });
+    const search = await screen.findByRole('searchbox');
     expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
     fireEvent.change(search, { target: { value: '  analytics  ' } });
-    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
 
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',

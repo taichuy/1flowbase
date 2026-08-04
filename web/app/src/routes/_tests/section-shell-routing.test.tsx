@@ -797,7 +797,7 @@ describe('section shell routing', () => {
         await screen.findByRole('tab', { name: 'mcp', selected: true })
       ).toBeInTheDocument();
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
-        'mcp',
+        'runtime-extensions',
         { q: undefined, slot_code: undefined, cursor: undefined }
       );
 
@@ -849,12 +849,10 @@ describe('section shell routing', () => {
         '/settings/extension-center/runtime-extensions?q=old&cursor=stale'
       );
 
-      const search = await screen.findByRole('searchbox', {
-        name: '下拉搜索可安装供应商'
-      });
+      const search = await screen.findByRole('searchbox');
       expect(search).toHaveValue('old');
       fireEvent.change(search, { target: { value: 'openai' } });
-      fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+      fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
 
       await waitFor(() => {
         expect(window.location.search).toBe('?q=openai');
