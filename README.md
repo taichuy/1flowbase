@@ -48,7 +48,7 @@ Use any foundation independently, or combine them around one 1flowbase applicati
 
 For example, a local agent can use MCP to create `Customer` and `Ticket` Data Models, assemble a workflow-backed `/api/ex/tickets/escalate` operation, and build the React interface. External systems call the generated backend APIs, while people work in the interface. If the same local agent also points its model endpoint at the AI Gateway, it gains published virtual models with routing, model composition, and full logs; the application does not depend on that optional connection.
 
-![Workflow Editor Preview](docs/assets/workflow_editor_preview_tool.png)
+![Current multi-model workflow editor](docs/assets/multi-model-workflow-editor.png)
 
 ---
 
@@ -219,7 +219,7 @@ See [scripts/README.md](scripts/README.md) for more options.
 
 | Tool category | What it usually does | How 1flowbase is different |
 |---|---|---|
-| LLM gateway / model router | routes one request to one provider or model | composes multiple model and tool nodes into one workflow-backed virtual model |
+| LLM gateway / model router | routes external model traffic to providers | exposes OpenAI- and Anthropic-compatible APIs backed by model composition, workflows, and detailed execution records |
 | MCP server / gateway | exposes or aggregates tools for agents | exposes the 1flowbase application control plane while also connecting and governing upstream MCP tools |
 | Backend-as-a-Service / backend builder | provides tables and generic CRUD endpoints | materializes governed PostgreSQL Data Models and combines generated CRUD with workflow-powered custom APIs |
 | AI workflow builder | builds an AI app or workflow | exposes the workflow through model APIs and makes the surrounding application operable through MCP |
@@ -239,87 +239,89 @@ Human experience plane: Native React frontend blocks
 
 ## Feature Preview
 
-### Publish as OpenAI-compatible API
+### 1. MCP Gateway: give agents the application control plane
 
-![Publish OpenAI API](docs/assets/api_endpoint_publish_1.jpeg)
+Connect a local or external agent to 1flowbase through MCP. The agent can progressively discover and operate application, workflow, Data Model, frontend, and MCP-management capabilities through `mcp.list`, `mcp.get`, and `mcp.call`.
 
-### Publish as Claude-compatible Messages API
+The MCP connection works independently. An agent does **not** need to send its model traffic through the AI Gateway.
 
-![Publish Claude API](docs/assets/api_endpoint_publish_2.jpeg)
+![MCP Gateway control plane](docs/assets/mcp-gateway-control-plane.png)
 
-### Customize exposed model information
+### 2. Application Backend: model data and get usable APIs
 
-![Custom Model Settings](docs/assets/custom_model_settings.jpeg)
+Create Data Models directly in 1flowbase. The backend materializes PostgreSQL tables, fields, indexes, and relations, then provides governed CRUD runtime APIs and OpenAPI contracts.
 
-### Use in local AI agent clients
+![Application Backend Data Models](docs/assets/application-backend-data-models.png)
 
-Call a published workflow from compatible clients that support custom model endpoints.
+When generated CRUD is not enough, publish a workflow as a custom synchronous or asynchronous endpoint under `/api/ex/{slug}`.
 
-![Claude Code Terminal Usage](docs/assets/claude_code_terminal_usage.png)
+![Workflow Extension API](docs/assets/workflow-extension-api.png)
 
-### Inspect execution logs
+### 3. Native React blocks: build the human-facing application
 
-Trace model requests, node inputs and outputs, tool callbacks, response content, latency, and errors.
+Build interactive application pages with native React/TSX blocks. Blocks can use Hooks, CSS, events, responsive context, controlled components, and Data Model or API bindings while running inside an isolated frontend runtime.
 
-![Detailed Execution Logs](docs/assets/detailed_execution_logs.jpeg)
+![Native React task board powered by a Data Model API](docs/assets/native-react-task-board.png)
 
-### View tool callback traces
+### 4. AI Gateway: serve composed model capabilities to external clients
 
-![Tool Callback Trace Logs](docs/assets/tool_callback_trace_logs.png)
+Publish an Agent Flow as native, OpenAI-compatible, or Anthropic-compatible APIs. External clients can opt into the AI Gateway for protocol conversion, model composition, API credentials, and detailed request and execution records.
 
-### Track token consumption
+![AI Gateway protocol and API catalog](docs/assets/ai-gateway-api-catalog.png)
 
-![Token Consumption Dashboard](docs/assets/token_consumption_dashboard.jpeg)
+Behind one published model endpoint, the visual runtime can branch across providers, call tools, verify results, and synthesize the final response.
+
+![Multi-model workflow editor](docs/assets/multi-model-workflow-editor.png)
 
 ---
 
 ## Common Use Cases
 
-### Make a text coding model understand screenshots
+### Let an agent build and operate an internal application
 
 ```text
-Screenshot / UI mockup / chart
-  -> vision tool
-  -> structured visual context
-  -> strong coding model
-  -> patch, plan, or explanation
+Local or external agent
+  -> MCP Gateway
+  -> create Data Models and relations
+  -> publish CRUD and Workflow Extension APIs
+  -> assemble Native React blocks
+  -> inspect and evolve the running application
 ```
 
-Useful for UI reconstruction, frontend debugging, visual regression analysis, chart reading, PDF page understanding, and design-to-code workflows.
+This is the primary full-stack path: the agent uses MCP as the control plane, the Application Backend stores data and exposes APIs, and Native React blocks provide the human interface. AI Gateway remains optional and can be added when the application also needs a governed model-serving endpoint.
 
-### Build a Fusion-style reviewer
+### Ship an application backend without assembling a separate backend stack
 
 ```text
-Architecture proposal
-  -> cheap broad reviewer
-  -> strong reasoning reviewer
-  -> provider-diverse reviewer
-  -> synthesis model
-  -> final recommendation
+Data Model
+  -> PostgreSQL table / fields / indexes / relations
+  -> generated CRUD runtime and OpenAPI
+  -> Workflow Extension API for custom business logic
 ```
 
-Useful for architecture review, research synthesis, code review, document review, and high-stakes agent decisions.
+Use this for internal tools, admin systems, operational dashboards, agent memory stores, content systems, and small product backends.
 
-### Control cost with model cascading
+### Add a tailored human interface to agent-managed data
 
 ```text
-Simple classification -> small model
-Formatting -> small model
-Complex reasoning -> strong model
-Final verification -> verifier node
+Data Model / custom API
+  -> Native React block
+  -> search, filters, forms, actions, and responsive layout
 ```
 
-### Guarantee output structure
+The task-planning screenshot above is a real example: a native React interface reads and updates records through the Data Model API instead of requiring a separate frontend backend.
 
-Use verifiers, JSON Schema validation, and formatter nodes before returning the final result. This is useful for JSON outputs, API responses, tool call parameters, code patches, document generation, and automated task results.
-
-### Build a programmable upstream model for agents
+### Publish a programmable upstream model for AI clients
 
 ```text
-Code generation -> test / lint check -> reviewer node -> fix node -> final patch
+External AI client
+  -> optional AI Gateway
+  -> protocol conversion
+  -> model and tool workflow
+  -> logs, traces, token usage, and final response
 ```
 
-The client calls one model name while 1flowbase runs your workflow behind it.
+The client calls one model name while 1flowbase can run a multi-provider workflow behind it. This fits multimodal augmentation, Fusion-style review, model cascading, structured-output verification, and programmable coding-model pipelines.
 
 ---
 
@@ -473,12 +475,13 @@ This project is licensed under [Apache-2.0](LICENSE).
 
 ## Star History
 
-<p align="center">
-  <a href="https://www.star-history.com/#taichuy/1flowbase&Date" target="_blank">
-    <img src="https://api.star-history.com/svg?repos=taichuy/1flowbase&type=Date" alt="Star History" width="600">
-  </a>
-</p>
-
+<a href="https://www.star-history.com/?repos=taichuy%2F1flowbase&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&theme=dark&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+ </picture>
+</a>
 ---
 
 <div align="center">
