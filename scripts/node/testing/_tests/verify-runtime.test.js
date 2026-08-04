@@ -35,7 +35,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
     },
     frontend: {
       turboConcurrency: 8,
-      vitestMaxWorkers: 6,
+      vitestMaxWorkers: 4,
     },
     locks: {
       waitTimeoutMinutes: 30,
@@ -54,7 +54,7 @@ test("frontend defaults reserve local CPU headroom on large machines", () => {
     availableParallelism: 16,
   });
 
-  assert.equal(config.frontend.vitestMaxWorkers, 12);
+  assert.equal(config.frontend.vitestMaxWorkers, 8);
   assert.equal(config.frontend.turboConcurrency, 16);
 });
 

@@ -580,7 +580,7 @@ describe('section shell routing', () => {
   );
 
   test(
-    'AC-002 keeps the request logs tab on its independent URL',
+    'AC-002 keeps request logs on its independent URL',
     async () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['model-providers'])
@@ -590,9 +590,11 @@ describe('section shell routing', () => {
       expect(window.location.pathname).toBe(
         '/settings/model-providers/request-logs'
       );
-      expect(
-        modelProvidersApi.fetchSettingsModelProviderRequestLogs
-      ).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.fetchSettingsModelProviderRequestLogs
+        ).toHaveBeenCalled();
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

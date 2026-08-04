@@ -14,7 +14,7 @@ const HEAVY_VERIFY_LOCK_DIR = path.join(
 const DEFAULT_WAIT_TIMEOUT_MINUTES = 30;
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 // Local heuristic: reserve CPU headroom for the OS, browser helpers, and test cleanup.
-const LOCAL_VITEST_CPU_SHARE = 0.75;
+const LOCAL_VITEST_CPU_SHARE = 0.5;
 
 function getAvailableParallelism() {
   if (typeof os.availableParallelism === "function") {
