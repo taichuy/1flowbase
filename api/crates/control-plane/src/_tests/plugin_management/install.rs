@@ -445,7 +445,12 @@ async fn publisher_cutover_artifact_scan_accepts_only_matching_legacy_manifest_r
     let installed_path = PathBuf::from(artifact.local_path.clone().unwrap());
     let manifest_path = installed_path.join("manifest.yaml");
     let raw = fs::read_to_string(&manifest_path).unwrap();
-    let legacy_raw = raw.replace("publisher_namespace: 1flowbase\n", "");
+    let legacy_raw = raw
+        .lines()
+        .filter(|line| !line.starts_with("publisher_namespace:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     fs::write(&manifest_path, legacy_raw).unwrap();
     let fingerprint = plugin_framework::compute_manifest_fingerprint(&manifest_path)
         .await
