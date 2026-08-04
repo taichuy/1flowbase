@@ -15,8 +15,8 @@ match_when:
   - 设计插件同步、激活、历史版本或删除语义
   - 重构 Root #1545 的 D2 或 D4
 created_at: 2026-08-03 00
-updated_at: 2026-08-04 09
-last_verified_at: 2026-08-04 09
+updated_at: 2026-08-04 17
+last_verified_at: 2026-08-04 17
 decision_policy: verify_before_decision
 status: direction_confirmed_issue_1566
 scope:
@@ -64,3 +64,10 @@ scope:
 - 搜索覆盖名称、稳定 identifiers、协议、keywords 与 description；必须先完成搜索和 slot 过滤，再基于同一 verified snapshot/checksum 分页。
 - 安装状态只按本地 `extension_installations` canonical exact identity 关联；catalog 安装保留远端 `catalog_id`，上传安装从签名 manifest 的 `publisher_namespace` 构建并校验身份。
 - 该契约已于 2026-08-04 在主仓 `dev` 与官方插件仓 `main` 本地合并，并通过官方 catalog、前端/API client 及三 crate Rust 集中回归；是否推送仍由用户人工测试后决定。
+
+## 2026-08-04 Publisher Cutover Repair
+
+- 历史缺少 `publisher_namespace` 的供应商包只在 durable receipt 的 canonical fingerprint、publisher identity 与 versioned plugin identity 全部精确匹配时兼容；普通上传、catalog intake 和新包继续严格拒绝 legacy contract / capability。
+- 开发库 37 个历史安装、5 个 assignment、18 个供应商实例及 ID/FK 已保全；冻结节点 37 个 artifact 全部 ready，恰好 5 个 assigned runtime 为 active/available，未引用历史版本不启动。
+- 供应商 family 的更新状态只投影 generic catalog 已校验的共享 snapshot；冷态/离线立即返回本地 family 和 update unknown，不发起远程 I/O，也不维护第二份更新缓存。
+- 主仓候选 `ff08caf86` 已本地合入 protected `dev`（merge `f1097167c`）；官方候选 `ccefb801` 已本地合入 protected `main`（merge `9cc0b49`）。QA10 通过，未 push、未发布 release，等待人工测试。
