@@ -161,6 +161,44 @@ test('collectRawJsonbReport accepts detail and run-scope raw reads without list 
   assert.equal(runtimePayload.appearsInListInterface, false);
 });
 
+test('collectRawJsonbReport accepts raw reads for a bounded primary-key batch', () => {
+  const repoRoot = createRepoWithMigration(`
+    create table flow_runs (
+      id uuid primary key,
+      output_payload jsonb not null default '{}'::jsonb
+    );
+  `, `
+    async fn list_count_tokens_results(flow_run_ids: &[Uuid]) {
+      sqlx::query("
+        select id, output_payload
+        from flow_runs
+        where id = any($1)
+      ");
+    }
+  `);
+
+  const report = collectRawJsonbReport({
+    repoRoot,
+    config: {
+      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      fields: [{
+        table: 'flow_runs',
+        column: 'output_payload',
+        purpose: 'flow run output truth',
+        payloadKind: 'raw',
+        readContract: 'detail_or_run_scope',
+        listPolicy: 'forbidden_raw',
+        summaryOrPreview: 'overview exposes bounded answer summary fields',
+        protectedBy: ['application_id', 'flow_run_id'],
+      }],
+    },
+  });
+
+  assert.equal(report.status, 'passed');
+  assert.equal(report.summary.listRawRisks, 0);
+  assert.equal(report.fields[0].readEntrypoints[0].readBoundary, 'detail');
+});
+
 test('collectRawJsonbReport treats constant projections as summary reads instead of raw column reads', () => {
   const repoRoot = createRepoWithMigration(`
     create table application_run_log_summaries (
