@@ -460,11 +460,11 @@ node scripts/node/verify.js repo
 
 ## Star 增长历史
 
-<a href="https://www.star-history.com/?repos=taichuy%2F1flowbase&type=date&legend=top-left">
+<a href="https://www.star-history.com/?type=date&repos=taichuy%2F1flowbase">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&theme=dark&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&theme=dark&legend=top-left&sealed_token=FqLzVSU8-9DxFglG-qgV59WwozJJfOHYwvjWNeVtnDP8OJ8r8BwvdLCIloKkdrLXWJqUEaD9xkVSr0RkCvzGaIxDYXYX2Zz53ikx7xZkZckNqgevZkOi1A" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=FqLzVSU8-9DxFglG-qgV59WwozJJfOHYwvjWNeVtnDP8OJ8r8BwvdLCIloKkdrLXWJqUEaD9xkVSr0RkCvzGaIxDYXYX2Zz53ikx7xZkZckNqgevZkOi1A" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=FqLzVSU8-9DxFglG-qgV59WwozJJfOHYwvjWNeVtnDP8OJ8r8BwvdLCIloKkdrLXWJqUEaD9xkVSr0RkCvzGaIxDYXYX2Zz53ikx7xZkZckNqgevZkOi1A" />
  </picture>
 </a>
 
