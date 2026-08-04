@@ -12,7 +12,7 @@ use runtime_core::{
     },
 };
 use serde_json::Value;
-use sqlx::{Postgres, QueryBuilder, Row};
+use sqlx::{Postgres, QueryBuilder};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 

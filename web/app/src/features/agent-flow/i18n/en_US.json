@@ -1,7 +1,5 @@
 {
   "auto": {
-    "run_context": "Run Context",
-    "draft": "draft",
     "llm_tools": "LLM Tools",
     "tools": "Tools",
     "plugin_node_label": "Plugin Node",
@@ -249,7 +247,6 @@
     "delete_variable": "Delete variable {{value1}}",
     "message_role": "message role",
     "debug_stream_connection_interrupted": "Debugging streaming connection interruptions",
-    "pre_run_input_debugging_environment": "Pre-run input and current debugging environment.",
     "matching_variable_found": "No matching variable found",
     "cancel": "Cancel",
     "failed_load_full_value": "Failed to load full value",
@@ -351,7 +348,6 @@
     "filter_field": "Filter field {{value1}}",
     "model_supplier": "model supplier",
     "retry_on_failure": "Retry on failure",
-    "current_draft_defaults": "Current draft defaults",
     "no_fields_yet": "No fields yet",
     "numbers": "numbers",
     "status_alt": "{{value1}} status",
@@ -378,7 +374,6 @@
     "plugin_node_definition_summary": "Perform declarative node contributions from the capability plugin.",
     "add_new_output_variable": "Add new output variable",
     "system_variables": "system variables",
-    "reuse_last_input": "Reuse last input",
     "node_description": "Node description",
     "call_connected_tool_capabilities": "Call the connected tool capabilities.",
     "track": "Track",

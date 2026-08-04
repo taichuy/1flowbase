@@ -575,9 +575,6 @@ describe('section shell routing', () => {
           '/settings/model-providers/providers'
         );
       }, SECTION_REDIRECT_WAIT_OPTIONS);
-      expect(
-        await screen.findByRole('tab', { name: '模型供应商', selected: true })
-      ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

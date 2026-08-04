@@ -13,6 +13,8 @@ const HEAVY_VERIFY_LOCK_DIR = path.join(
 );
 const DEFAULT_WAIT_TIMEOUT_MINUTES = 30;
 const DEFAULT_POLL_INTERVAL_MS = 5000;
+// Local heuristic: reserve CPU headroom for the OS, browser helpers, and test cleanup.
+const LOCAL_VITEST_CPU_SHARE = 0.75;
 
 function getAvailableParallelism() {
   if (typeof os.availableParallelism === "function") {
@@ -96,10 +98,14 @@ function resolveFrontendDefaults(availableParallelism) {
     "availableParallelism",
     availableParallelism,
   );
+  const vitestMaxWorkers = Math.max(
+    1,
+    Math.floor(parallelism * LOCAL_VITEST_CPU_SHARE),
+  );
 
   return {
     turboConcurrency: parallelism,
-    vitestMaxWorkers: parallelism,
+    vitestMaxWorkers,
   };
 }
 
@@ -684,7 +690,8 @@ function main(argv = [], deps = {}) {
     availableParallelism:
       deps.availableParallelism ?? getAvailableParallelism(),
   });
-  const writeStdout = deps.writeStdout ?? ((text) => process.stdout.write(text));
+  const writeStdout =
+    deps.writeStdout ?? ((text) => process.stdout.write(text));
 
   writeStdout(`${runtimeConfig.backend.cargoJobs}\n`);
   return 0;

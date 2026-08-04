@@ -284,19 +284,24 @@ mod workflow_operation_tests {
             );
         }
         for (name, schema) in fragment.schemas {
-            assert!(
-                target.schemas.insert(name.clone(), schema).is_none(),
-                "fragment schema collision: {name}"
-            );
+            if let Some(existing) = target.schemas.get(&name) {
+                assert_eq!(
+                    existing, &schema,
+                    "fragment schema collision with different definitions: {name}"
+                );
+            } else {
+                target.schemas.insert(name, schema);
+            }
         }
         for (name, scheme) in fragment.security_schemes {
-            assert!(
-                target
-                    .security_schemes
-                    .insert(name.clone(), scheme)
-                    .is_none(),
-                "fragment security scheme collision: {name}"
-            );
+            if let Some(existing) = target.security_schemes.get(&name) {
+                assert_eq!(
+                    existing, &scheme,
+                    "fragment security scheme collision with different definitions: {name}"
+                );
+            } else {
+                target.security_schemes.insert(name, scheme);
+            }
         }
     }
 

@@ -1,7 +1,5 @@
 {
   "auto": {
-    "run_context": "运行上下文",
-    "draft": "草稿",
     "llm_tools": "LLM 工具",
     "tools": "工具",
     "plugin_node_label": "插件节点",
@@ -249,7 +247,6 @@
     "delete_variable": "删除变量 {{value1}}",
     "message_role": " 消息角色",
     "debug_stream_connection_interrupted": "调试流式连接中断",
-    "pre_run_input_debugging_environment": "运行前输入与当前调试环境。",
     "matching_variable_found": "未找到匹配变量",
     "cancel": "取消",
     "failed_load_full_value": "加载完整值失败",
@@ -351,7 +348,6 @@
     "filter_field": "过滤字段 {{value1}}",
     "model_supplier": "模型供应商",
     "retry_on_failure": "失败重试",
-    "current_draft_defaults": "当前草稿默认值",
     "no_fields_yet": "暂无字段",
     "numbers": "数字输入",
     "status_alt": "{{value1}} 状态",
@@ -378,7 +374,6 @@
     "plugin_node_definition_summary": "执行来自 capability plugin 的声明式节点贡献。",
     "add_new_output_variable": "新增输出变量",
     "system_variables": "系统变量",
-    "reuse_last_input": "复用上次输入",
     "node_description": "节点说明",
     "call_connected_tool_capabilities": "调用已接入的工具能力。",
     "track": "追踪",
