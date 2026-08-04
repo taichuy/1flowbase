@@ -101,6 +101,13 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "./SettingsExtensionCenterSection",
+      "smokePaths": [
+        "/settings/extensions"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
       "specifier": "./SettingsMcpManagementSection",
       "smokePaths": [
         "/settings/mcp-management"

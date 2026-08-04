@@ -376,7 +376,7 @@
       "method": "internal",
       "path": "OrchestrationRuntimeRepository::list_usage_ledger",
       "api": {
-        "file": "api/crates/control-plane/src/ports/runtime/mod.rs",
+        "file": "api/crates/control-plane/src/ports/runtime/repository.rs",
         "functionName": "list_usage_ledger"
       },
       "repository": {

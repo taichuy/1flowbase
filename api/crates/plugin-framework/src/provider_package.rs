@@ -116,7 +116,7 @@ pub struct ProviderPackage {
 
 impl ProviderPackage {
     pub fn load_from_dir(path: impl AsRef<Path>) -> FrameworkResult<Self> {
-        Self::load_from_dir_with_manifest(path, |raw| parse_plugin_manifest(raw))
+        Self::load_from_dir_with_manifest(path, parse_plugin_manifest)
     }
 
     pub fn load_legacy_installed_from_dir(
