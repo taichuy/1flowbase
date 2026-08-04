@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[test]
 fn plugin_manifest_v1_parses_runtime_extension_provider_fields() {
@@ -68,6 +69,68 @@ node_contributions: []
     assert!(missing_publisher
         .to_string()
         .contains("publisher_namespace"));
+}
+
+#[test]
+fn publisher_cutover_legacy_installed_manifest_repairs_only_missing_namespace_in_memory() {
+    let current = r#"manifest_version: 1
+plugin_id: fixture@1.2.3
+version: 1.2.3
+publisher_namespace: fixture_org
+vendor: Historical Vendor
+display_name: Fixture
+description: Legacy installed fixture
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: [model_provider]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.provider/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/provider
+node_contributions: []
+"#;
+    let legacy = current.replace("publisher_namespace: fixture_org\n", "");
+    assert!(parse_plugin_manifest(&legacy).is_err());
+
+    let eligibility = LegacyInstalledManifestEligibility {
+        expected_publisher_namespace: "fixture_org".to_string(),
+        expected_versioned_plugin_id: "fixture@1.2.3".to_string(),
+        expected_raw_manifest_fingerprint: format!("{:x}", Sha256::digest(legacy.as_bytes())),
+    };
+    let parsed = parse_legacy_installed_plugin_manifest(&legacy, &eligibility)
+        .expect("AC-001 legacy installed artifact should load from explicit durable identity");
+    assert_eq!(parsed.publisher_namespace, "fixture_org");
+    assert_eq!(parsed.vendor, "Historical Vendor");
+
+    let wrong_fingerprint = LegacyInstalledManifestEligibility {
+        expected_raw_manifest_fingerprint: "0".repeat(64),
+        ..eligibility.clone()
+    };
+    assert!(parse_legacy_installed_plugin_manifest(&legacy, &wrong_fingerprint).is_err());
+
+    let also_missing_contract = legacy.replace("contract_version: 1flowbase.provider/v1\n", "");
+    let other_missing = LegacyInstalledManifestEligibility {
+        expected_raw_manifest_fingerprint: format!(
+            "{:x}",
+            Sha256::digest(also_missing_contract.as_bytes())
+        ),
+        ..eligibility
+    };
+    assert!(
+        parse_legacy_installed_plugin_manifest(&also_missing_contract, &other_missing).is_err()
+    );
 }
 
 #[test]

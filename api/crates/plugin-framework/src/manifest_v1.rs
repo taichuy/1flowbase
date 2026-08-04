@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Component, Path},
@@ -325,6 +326,84 @@ pub fn parse_plugin_manifest(raw: &str) -> FrameworkResult<PluginManifestV1> {
         .map_err(|error| PluginFrameworkError::invalid_provider_package(error.to_string()))?;
     validate_plugin_manifest(&manifest)?;
     Ok(manifest)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyInstalledManifestEligibility {
+    pub expected_publisher_namespace: String,
+    pub expected_versioned_plugin_id: String,
+    pub expected_raw_manifest_fingerprint: String,
+}
+
+/// Parses an already-installed legacy artifact without changing its on-disk bytes.
+///
+/// The compatibility path is intentionally separate from package intake and only repairs the
+/// historical omission of `publisher_namespace`. Identity and the fingerprint of the original
+/// bytes must already be known from durable installation state.
+pub fn parse_legacy_installed_plugin_manifest(
+    raw: &str,
+    eligibility: &LegacyInstalledManifestEligibility,
+) -> FrameworkResult<PluginManifestV1> {
+    if let Ok(manifest) = parse_plugin_manifest(raw) {
+        return verify_legacy_installed_manifest_eligibility(manifest, raw, eligibility);
+    }
+
+    let actual_fingerprint = hex_sha256(raw.as_bytes());
+    if actual_fingerprint
+        != eligibility
+            .expected_raw_manifest_fingerprint
+            .to_ascii_lowercase()
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "legacy installed manifest fingerprint does not match durable identity",
+        ));
+    }
+
+    let mut document: serde_yaml::Value = serde_yaml::from_str(raw)
+        .map_err(|error| PluginFrameworkError::invalid_provider_package(error.to_string()))?;
+    let mapping = document.as_mapping_mut().ok_or_else(|| {
+        PluginFrameworkError::invalid_provider_package("plugin manifest must be a YAML mapping")
+    })?;
+    let publisher_key = serde_yaml::Value::String("publisher_namespace".to_string());
+    if mapping.contains_key(&publisher_key) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "legacy compatibility only applies when publisher_namespace is missing",
+        ));
+    }
+    mapping.insert(
+        publisher_key,
+        serde_yaml::Value::String(eligibility.expected_publisher_namespace.clone()),
+    );
+    let repaired_raw = serde_yaml::to_string(&document)
+        .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+    let manifest = parse_plugin_manifest(&repaired_raw)?;
+    verify_legacy_installed_manifest_eligibility(manifest, raw, eligibility)
+}
+
+fn verify_legacy_installed_manifest_eligibility(
+    manifest: PluginManifestV1,
+    raw: &str,
+    eligibility: &LegacyInstalledManifestEligibility,
+) -> FrameworkResult<PluginManifestV1> {
+    if hex_sha256(raw.as_bytes())
+        != eligibility
+            .expected_raw_manifest_fingerprint
+            .to_ascii_lowercase()
+        || manifest.publisher_namespace != eligibility.expected_publisher_namespace
+        || manifest.versioned_plugin_id()? != eligibility.expected_versioned_plugin_id
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "legacy installed manifest does not match durable identity",
+        ));
+    }
+    Ok(manifest)
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
