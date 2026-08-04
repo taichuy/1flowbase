@@ -4,6 +4,17 @@ import { describe, expect, test } from 'vitest';
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
 import { renderReactFlowScene } from '../../../../test/renderers/render-react-flow-scene';
+import {
+  createApplicationNodeCatalog,
+  createBuiltinCatalogNode
+} from '../fixtures/application-node-catalog';
+
+const nodeCatalog = createApplicationNodeCatalog([
+  createBuiltinCatalogNode('llm', { title: 'LLM' }),
+  createBuiltinCatalogNode('template_transform', {
+    title: 'Template Transform'
+  })
+]);
 
 function createInitialState() {
   return {
@@ -28,6 +39,7 @@ describe('AgentFlowCanvas', () => {
         applicationId="app-1"
         applicationName="Support Agent"
         initialState={createInitialState()}
+        nodeCatalog={nodeCatalog}
       />
     );
 
@@ -45,6 +57,7 @@ describe('AgentFlowCanvas', () => {
         applicationId="app-1"
         applicationName="Support Agent"
         initialState={createInitialState()}
+        nodeCatalog={nodeCatalog}
       />
     );
 
@@ -115,6 +128,7 @@ describe('AgentFlowCanvas', () => {
         applicationId="app-1"
         applicationName="Support Agent"
         initialState={iterationState}
+        nodeCatalog={nodeCatalog}
       />
     );
 
