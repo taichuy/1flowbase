@@ -5,17 +5,14 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    errors::ControlPlaneError,
+    installed_provider_package::load_installed_provider_package,
     ports::{
         AuthRepository, PluginRepository, ProviderRuntimePort,
         UpsertPluginPackageCatalogProjectionInput,
     },
 };
 
-use super::{
-    install::{load_actor_context_for_user, load_provider_package},
-    PluginManagementService,
-};
+use super::{install::load_actor_context_for_user, PluginManagementService};
 
 #[derive(Debug, Clone)]
 pub struct RefreshPluginPackageCatalogProjectionCommand {
@@ -38,11 +35,7 @@ where
         let installation = self
             .ready_current_node_installation(command.installation_id)
             .await?;
-        match load_provider_package(
-            installation
-                .local_path()
-                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-        ) {
+        match load_installed_provider_package(&installation) {
             Ok(package) => {
                 refresh_provider_package_catalog_projection(
                     &self.repository,

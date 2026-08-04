@@ -78,6 +78,7 @@ async fn capability_runtime_port_returns_execute_payload() {
         signature_status: ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
+        legacy_manifest_compatibility: None,
         metadata_json: json!({}),
         is_system_reserved: false,
         created_by: Uuid::now_v7(),

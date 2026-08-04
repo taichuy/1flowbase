@@ -509,6 +509,12 @@ where
     }
 
     pub async fn reconcile_all_installations(&self) -> Result<()> {
+        let assigned_installation_ids = self
+            .repository
+            .list_assigned_installation_ids()
+            .await?
+            .into_iter()
+            .collect::<HashSet<_>>();
         for installation in self.repository.list_installations().await? {
             let local_artifact = self
                 .refresh_current_node_artifact_snapshot(&installation)
@@ -519,11 +525,17 @@ where
             if !local_artifact.artifact_status.is_ready() {
                 continue;
             }
-            let Some(installed_path) = local_artifact.local_path.as_deref() else {
+            if local_artifact.local_path.is_none() {
                 continue;
+            }
+            let local_installation = domain::LocalPluginInstallationRecord {
+                installation: installation.clone(),
+                artifact: local_artifact,
             };
 
-            match load_provider_package(installed_path) {
+            match crate::installed_provider_package::load_installed_provider_package(
+                &local_installation,
+            ) {
                 Ok(package) => {
                     refresh_provider_package_catalog_projection(
                         &self.repository,
@@ -531,6 +543,28 @@ where
                         &package,
                     )
                     .await?;
+                    if installation.desired_state == domain::PluginDesiredState::ActiveRequested
+                        && assigned_installation_ids.contains(&installation.id)
+                    {
+                        match self.runtime.ensure_loaded(&local_installation).await {
+                            Ok(()) => {
+                                self.mark_current_node_runtime_status(
+                                    &installation,
+                                    domain::PluginRuntimeStatus::Active,
+                                    None,
+                                )
+                                .await?;
+                            }
+                            Err(error) => {
+                                self.mark_current_node_runtime_status(
+                                    &installation,
+                                    domain::PluginRuntimeStatus::LoadFailed,
+                                    Some(error.to_string()),
+                                )
+                                .await?;
+                            }
+                        }
+                    }
                 }
                 Err(error) => {
                     record_failed_catalog_projection(&self.repository, &installation, &error)

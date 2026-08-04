@@ -9,6 +9,7 @@ use super::canonical_stream::{
     CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
     CanonicalStreamState, CanonicalStreamTransitionError,
 };
+use crate::installed_provider_package::load_installed_provider_package;
 
 mod protocol_context;
 
@@ -43,11 +44,7 @@ where
         self.apply_provider_transport(runtime, &mut input)?;
         let instance = self.resolve_llm_instance(runtime).await?;
         let installation = self.ready_installation(instance.installation_id).await?;
-        let package = load_provider_package(
-            installation
-                .local_path()
-                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-        )?;
+        let package = load_installed_provider_package(&installation)?;
         input.provider_config = build_provider_runtime_config(
             &self.repository,
             &self.provider_secret_master_key,
@@ -67,11 +64,7 @@ where
         let attempted = async {
             let instance = self.resolve_llm_instance(runtime).await?;
             let installation = self.ready_installation(instance.installation_id).await?;
-            let package = load_provider_package(
-                installation
-                    .local_path()
-                    .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-            )?;
+            let package = load_installed_provider_package(&installation)?;
             input.set_provider_config(
                 build_provider_runtime_config(
                     &self.repository,
@@ -140,11 +133,7 @@ where
         }
 
         let package_load_started = std::time::Instant::now();
-        let package = load_provider_package(
-            installation
-                .local_path()
-                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-        )?;
+        let package = load_installed_provider_package(&installation)?;
         tracing::debug!(
             package_load_ms = package_load_started.elapsed().as_millis() as u64,
             "package load finished"
@@ -1349,7 +1338,7 @@ where
 }
 
 mod config;
-use config::{build_provider_runtime_config, load_provider_package};
+use config::build_provider_runtime_config;
 
 mod media;
 use media::adapt_or_ensure_model_supports_content_blocks;

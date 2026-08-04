@@ -175,6 +175,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
+            legacy_manifest_compatibility: None,
             metadata_json: json!({}),
             is_system_reserved: false,
             created_by: Uuid::nil(),
@@ -201,6 +202,7 @@ impl InMemoryOrchestrationRuntimeRepository {
             signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
+            legacy_manifest_compatibility: None,
             metadata_json: json!({}),
             is_system_reserved: false,
             created_by: Uuid::nil(),
@@ -778,6 +780,49 @@ impl InMemoryOrchestrationRuntimeRepository {
                 artifact.availability_status = availability_status;
             }
         }
+    }
+
+    pub(crate) async fn mark_provider_manifest_legacy_missing_publisher_namespace(
+        &self,
+        installation_id: Uuid,
+    ) {
+        let manifest_path = {
+            let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+            let local_path = inner
+                .artifact_instances_by_key
+                .values()
+                .find(|artifact| artifact.installation_id == installation_id)
+                .and_then(|artifact| artifact.local_path.clone())
+                .expect("provider artifact path should exist");
+            std::path::Path::new(&local_path).join("manifest.yaml")
+        };
+        let raw = std::fs::read_to_string(&manifest_path)
+            .expect("provider fixture manifest should be readable");
+        let legacy = raw
+            .lines()
+            .filter(|line| !line.starts_with("publisher_namespace:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        std::fs::write(&manifest_path, legacy)
+            .expect("provider fixture manifest should become legacy");
+        let fingerprint = plugin_framework::compute_manifest_fingerprint(&manifest_path)
+            .await
+            .expect("legacy provider fingerprint should be canonical");
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let installation = inner
+            .installations_by_id
+            .get_mut(&installation_id)
+            .expect("provider installation should exist");
+        installation.organization = "1flowbase-tests".to_string();
+        installation.legacy_manifest_compatibility =
+            Some("missing_publisher_namespace_v1".to_string());
+        inner
+            .artifact_instances_by_key
+            .values_mut()
+            .find(|artifact| artifact.installation_id == installation_id)
+            .expect("provider artifact should exist")
+            .manifest_fingerprint = Some(fingerprint);
     }
 
     pub(crate) fn seed_included_provider_instances(&self) -> (Uuid, Uuid) {

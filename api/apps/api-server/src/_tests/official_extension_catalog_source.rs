@@ -41,6 +41,141 @@ struct CatalogHttpFixture {
     requests: Arc<Mutex<Vec<String>>>,
 }
 
+#[derive(Clone)]
+struct RetryArtifactFixture {
+    catalog: CatalogHttpFixture,
+    artifact_requests: Arc<std::sync::atomic::AtomicUsize>,
+    failures_before_success: usize,
+    success_body: Arc<Vec<u8>>,
+}
+
+async fn retry_artifact_response(
+    State(fixture): State<RetryArtifactFixture>,
+    request: Request<Body>,
+) -> Response {
+    if request.uri().path() == "/i18n/artifacts/i18n-fixture.bin" {
+        let request_number = fixture.artifact_requests.fetch_add(1, Ordering::SeqCst) + 1;
+        if request_number <= fixture.failures_before_success {
+            let stream = futures_util::stream::iter(vec![
+                Ok::<_, std::io::Error>(axum::body::Bytes::from_static(b"partial")),
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "publisher cutover interrupted body",
+                )),
+            ]);
+            return Response::new(Body::from_stream(stream));
+        }
+        return Body::from(fixture.success_body.as_ref().clone()).into_response();
+    }
+    catalog_response(State(fixture.catalog), request).await
+}
+
+#[tokio::test]
+async fn publisher_cutover_artifact_body_interruption_retries_once_with_fresh_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let artifact_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fixture = RetryArtifactFixture {
+        catalog: CatalogHttpFixture {
+            documents: Arc::new(documents),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        },
+        artifact_requests: Arc::clone(&artifact_requests),
+        failures_before_success: 1,
+        success_body: Arc::new(b"i18n-artifact".to_vec()),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(retry_artifact_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+
+    let downloaded = source.download_artifact(&page.entries[0]).await.unwrap();
+
+    assert_eq!(downloaded.artifact_bytes, b"i18n-artifact");
+    assert_eq!(artifact_requests.load(Ordering::SeqCst), 2);
+    server.abort();
+}
+
+#[tokio::test]
+async fn publisher_cutover_artifact_two_body_failures_stop_after_two_requests() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let artifact_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fixture = RetryArtifactFixture {
+        catalog: CatalogHttpFixture {
+            documents: Arc::new(documents),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        },
+        artifact_requests: Arc::clone(&artifact_requests),
+        failures_before_success: 2,
+        success_body: Arc::new(b"i18n-artifact".to_vec()),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(retry_artifact_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+
+    assert!(source.download_artifact(&page.entries[0]).await.is_err());
+    assert_eq!(artifact_requests.load(Ordering::SeqCst), 2);
+    server.abort();
+}
+
+#[tokio::test]
+async fn publisher_cutover_checksum_mismatch_does_not_retry_artifact_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let artifact_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fixture = RetryArtifactFixture {
+        catalog: CatalogHttpFixture {
+            documents: Arc::new(documents),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        },
+        artifact_requests: Arc::clone(&artifact_requests),
+        failures_before_success: 0,
+        success_body: Arc::new(b"checksum-mismatch".to_vec()),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(retry_artifact_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+
+    let error = source
+        .download_artifact(&page.entries[0])
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("checksum mismatch"));
+    assert_eq!(artifact_requests.load(Ordering::SeqCst), 1);
+    server.abort();
+}
+
 #[tokio::test]
 async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verified_pages() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -76,6 +211,25 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
     let cursor = first.next_cursor.unwrap();
 
     requests.lock().unwrap().clear();
+    let cached = source
+        .cached_verified_entries("runtime-extensions", Some("model_provider"))
+        .expect("verified search snapshot should be readable without remote I/O");
+    assert_eq!(cached.entries.len(), 1);
+    assert_eq!(cached.entries[0].artifact, "openai");
+    assert!(requests.lock().unwrap().is_empty());
+    let runtime_source = ApiOfficialRuntimeExtensionSource::new(
+        Arc::new(source.clone()),
+        "allow_unsigned".to_string(),
+        Vec::new(),
+    );
+    let runtime_snapshot = runtime_source
+        .cached_official_catalog()
+        .await
+        .expect("runtime projection should reuse the verified generic snapshot");
+    assert_eq!(runtime_snapshot.entries.len(), 1);
+    assert_eq!(runtime_snapshot.entries[0].provider_code, "openai");
+    assert!(requests.lock().unwrap().is_empty());
+
     let cached_snapshot_entry = source
         .find_entry(
             "runtime-extensions",
@@ -192,7 +346,7 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
     assert_eq!(located.entry.source.kind, "runtime_extension_manifest");
     assert_eq!(
         located.entry.checksum.as_deref(),
-        Some(&artifact_checksum()[..])
+        Some(&artifact_checksum("runtime-extensions", "later-runtime")[..])
     );
     let requested = requests.lock().unwrap().clone();
     assert_eq!(requested.len(), 3, "detail walks only until the match");
@@ -637,11 +791,7 @@ fn catalog_documents(
         if category != "host-extensions" {
             documents.insert(
                 format!("/{category}/artifacts/{category}-fixture.bin"),
-                if category == "i18n" {
-                    b"i18n-artifact".to_vec()
-                } else {
-                    format!("{category}-artifact").into_bytes()
-                },
+                artifact_bytes(category, &format!("{category}-fixture")),
             );
             if category == "runtime-extensions" {
                 documents.insert(
@@ -775,7 +925,7 @@ fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: 
             "locator": format!("{category}/@{organization}/{artifact}")
         },
         "signature": null,
-        "checksum": artifact_checksum(),
+        "checksum": artifact_checksum(category, artifact),
         "download_locator": {
             "kind": "repository_file",
             "locator": format!("{base_url}/{category}/artifacts/{artifact}.bin")
@@ -792,6 +942,19 @@ fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: 
     entry
 }
 
-fn artifact_checksum() -> String {
-    format!("sha256:{}", "a".repeat(64))
+fn artifact_bytes(category: &str, artifact: &str) -> Vec<u8> {
+    if category == "i18n" {
+        b"i18n-artifact".to_vec()
+    } else if category == "runtime-extensions" {
+        format!("{artifact}-artifact").into_bytes()
+    } else {
+        format!("{category}-artifact").into_bytes()
+    }
+}
+
+fn artifact_checksum(category: &str, artifact: &str) -> String {
+    format!(
+        "sha256:{:x}",
+        Sha256::digest(artifact_bytes(category, artifact))
+    )
 }

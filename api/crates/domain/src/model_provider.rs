@@ -211,6 +211,7 @@ pub struct PluginInstallationRecord {
     pub signature_status: ExtensionSignatureStatus,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
+    pub legacy_manifest_compatibility: Option<String>,
     pub metadata_json: serde_json::Value,
     pub is_system_reserved: bool,
     pub created_by: Uuid,

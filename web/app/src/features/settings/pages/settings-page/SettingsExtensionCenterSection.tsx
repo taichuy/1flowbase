@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { ApiClientError } from '@1flowbase/api-client';
 import {
   Badge,
   Button,
@@ -408,9 +409,14 @@ function GenericExtensionCenterSection({
         setActiveOperationKey(null);
       }
     },
-    onError: () => {
+    onError: (error) => {
       setActiveOperationKey(null);
-      message.error(t('auto.extension_operation_failed'));
+      message.error(
+        error instanceof ApiClientError &&
+          error.code === 'extension_artifact_download_unavailable'
+          ? t('auto.extension_artifact_download_failed')
+          : t('auto.extension_operation_failed')
+      );
     }
   });
   const deleteVersionMutation = useMutation({
@@ -425,12 +431,12 @@ function GenericExtensionCenterSection({
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
-  const runOperation = operationMutation.mutateAsync;
+  const runOperation = operationMutation.mutate;
 
   const submitOperation = useCallback(
     (operation: ExtensionOperation) => {
       setActiveOperationKey(operation.entry.id);
-      void runOperation({ operation });
+      runOperation({ operation });
     },
     [runOperation]
   );

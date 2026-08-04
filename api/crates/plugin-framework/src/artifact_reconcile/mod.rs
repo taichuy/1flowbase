@@ -31,7 +31,11 @@ pub async fn compute_manifest_fingerprint(
     let bytes = tokio::fs::read(manifest_path)
         .await
         .map_err(|error| PluginFrameworkError::io(Some(manifest_path), error.to_string()))?;
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    Ok(canonical_manifest_fingerprint(&bytes))
+}
+
+pub(crate) fn canonical_manifest_fingerprint(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 pub async fn reconcile_provider_artifact(

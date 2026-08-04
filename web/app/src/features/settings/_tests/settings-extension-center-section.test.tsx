@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApiClientError } from '@1flowbase/api-client';
 import {
   fireEvent,
   render,
@@ -181,6 +182,12 @@ const catalogEntry = {
   compatibility: null,
   slot_codes: ['model_provider'],
   keywords: ['openai', 'provider']
+};
+
+const installableCatalogEntry = {
+  ...catalogEntry,
+  current_version: null,
+  installation_status: 'not_installed' as const
 };
 
 function authenticate() {
@@ -370,6 +377,60 @@ describe('SettingsExtensionCenterSection', () => {
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
       search: { q: undefined, cursor: undefined }
+    });
+  });
+
+  test('publisher_cutover shows the dedicated artifact download failure message', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [installableCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockRejectedValue(
+      new ApiClientError({
+        status: 502,
+        code: 'extension_artifact_download_unavailable',
+        message: 'upstream unavailable'
+      })
+    );
+    renderSection('runtime-extensions');
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('扩展包下载失败，请重试');
+    });
+  });
+
+  test('publisher_cutover keeps the generic message for unknown mutation errors', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [installableCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockRejectedValue(
+      new Error('unknown failure')
+    );
+    renderSection('runtime-extensions');
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('扩展操作失败');
     });
   });
 

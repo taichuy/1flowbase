@@ -1199,7 +1199,12 @@ async fn install_or_update_official_extension(
     let downloaded = state
         .official_extension_catalog_source
         .download_artifact(&located.entry)
-        .await?;
+        .await
+        .map_err(|_| {
+            control_plane::errors::ControlPlaneError::UpstreamUnavailable(
+                "extension_artifact_download_unavailable",
+            )
+        })?;
     let mut signature_status =
         signature_status_from_descriptor(&downloaded.descriptor, &trusted_key_ids);
     let mut signature_algorithm = downloaded

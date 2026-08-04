@@ -868,6 +868,7 @@
     "extension_center": "扩展中心",
     "extension_operation_completed": "扩展操作已完成",
     "extension_operation_failed": "扩展操作失败",
+    "extension_artifact_download_failed": "扩展包下载失败，请重试",
     "apply_to_workspace": "应用到工作区",
     "extension_application_not_required": "无需应用",
     "extension_application_not_applied": "已安装、未应用",

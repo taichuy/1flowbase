@@ -90,6 +90,7 @@ fn seeded_installation() -> PluginInstallationRecord {
         signature_status: ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
+        legacy_manifest_compatibility: None,
         metadata_json: json!({}),
         is_system_reserved: false,
         created_by: user_id(),
@@ -435,6 +436,19 @@ impl crate::ports::PluginRepository for InMemoryDataSourceRepository {
             .filter(|assignment| assignment.workspace_id == workspace_id)
             .cloned()
             .collect())
+    }
+
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let mut installation_ids = self
+            .assignments
+            .read()
+            .await
+            .iter()
+            .map(|assignment| assignment.installation_id)
+            .collect::<Vec<_>>();
+        installation_ids.sort_unstable();
+        installation_ids.dedup();
+        Ok(installation_ids)
     }
 
     async fn create_task(&self, _input: &CreatePluginTaskInput) -> Result<PluginTaskRecord> {
