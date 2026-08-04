@@ -310,6 +310,16 @@ pub async fn test_app() -> Router {
     test_app_with_database_url().await.0
 }
 
+pub(crate) async fn test_app_with_official_extension_source(
+    source: Arc<dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort>,
+) -> Router {
+    let (mut state, _) = test_api_state_with_database_url().await;
+    Arc::get_mut(&mut state)
+        .expect("test API state should be uniquely owned before router construction")
+        .official_extension_catalog_source = source;
+    crate::app_with_state_and_config(state, &default_test_config())
+}
+
 pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),

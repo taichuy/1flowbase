@@ -16,6 +16,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 use crate::{
     config::{ApiConfig, ResolvedOfficialExtensionCatalogSourceConfig},
@@ -701,51 +702,118 @@ impl ApiOfficialExtensionCatalogSource {
     }
 
     async fn download_document(&self, url: &str) -> Result<Vec<u8>> {
-        self.download_with_budget(
+        self.download_once_with_budget(
             url,
             MAX_EXTENSION_CATALOG_DOCUMENT_BYTES,
             "official extension catalog document",
         )
         .await
+        .map_err(anyhow::Error::new)
     }
 
     async fn download_artifact_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        self.download_with_budget(
-            url,
-            MAX_EXTENSION_ARTIFACT_BYTES,
-            "official extension artifact",
-        )
-        .await
+        let mut last_error = None;
+        for attempt in 0..2 {
+            match self
+                .download_once_with_budget(
+                    url,
+                    MAX_EXTENSION_ARTIFACT_BYTES,
+                    "official extension artifact",
+                )
+                .await
+            {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => {
+                    let retry = attempt == 0 && error.is_retryable();
+                    last_error = Some(error);
+                    if !retry {
+                        break;
+                    }
+                }
+            }
+        }
+        Err(anyhow::Error::new(last_error.expect(
+            "artifact download loop always records a failed attempt",
+        )))
     }
 
-    async fn download_with_budget(
+    async fn download_once_with_budget(
         &self,
         url: &str,
         max_bytes: usize,
         resource: &'static str,
-    ) -> Result<Vec<u8>> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("failed to request {resource} from {url}"))?
-            .error_for_status()
-            .with_context(|| format!("{resource} returned an error status for {url}"))?;
+    ) -> std::result::Result<Vec<u8>, ExtensionDownloadFailure> {
+        let response = self.client.get(url).send().await.map_err(|source| {
+            ExtensionDownloadFailure::Request {
+                resource,
+                url: url.to_string(),
+                source,
+            }
+        })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ExtensionDownloadFailure::Status {
+                resource,
+                url: url.to_string(),
+                status,
+            });
+        }
         let mut stream = response.bytes_stream();
         let mut bytes = Vec::new();
         while let Some(chunk) = stream.next().await {
             let chunk =
-                chunk.with_context(|| format!("failed to read {resource} response body"))?;
+                chunk.map_err(|source| ExtensionDownloadFailure::Body { resource, source })?;
             if bytes.len().saturating_add(chunk.len()) > max_bytes {
-                bail!("{resource} exceeds download budget");
+                return Err(ExtensionDownloadFailure::Budget { resource });
             }
             bytes.extend_from_slice(&chunk);
         }
         if bytes.is_empty() {
-            bail!("{resource} is empty");
+            return Err(ExtensionDownloadFailure::Empty { resource });
         }
         Ok(bytes)
+    }
+}
+
+#[derive(Debug, Error)]
+enum ExtensionDownloadFailure {
+    #[error("failed to request {resource} from {url}: {source}")]
+    Request {
+        resource: &'static str,
+        url: String,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("{resource} returned status {status} for {url}")]
+    Status {
+        resource: &'static str,
+        url: String,
+        status: reqwest::StatusCode,
+    },
+    #[error("failed to read {resource} response body: {source}")]
+    Body {
+        resource: &'static str,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("{resource} exceeds download budget")]
+    Budget { resource: &'static str },
+    #[error("{resource} is empty")]
+    Empty { resource: &'static str },
+}
+
+impl ExtensionDownloadFailure {
+    fn is_retryable(&self) -> bool {
+        match self {
+            Self::Request { source, .. } => source.is_connect() || source.is_timeout(),
+            Self::Status { status, .. } => {
+                *status == reqwest::StatusCode::REQUEST_TIMEOUT
+                    || *status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                    || status.is_server_error()
+            }
+            Self::Body { .. } => true,
+            Self::Budget { .. } | Self::Empty { .. } => false,
+        }
     }
 }
 
@@ -1071,6 +1139,9 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
     ) -> Result<DownloadedOfficialExtensionArtifact> {
         let descriptor = self.resolve_artifact(entry)?;
         let artifact_bytes = self.download_artifact_bytes(&descriptor.locator).await?;
+        if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
+            ensure_sha256(&artifact_bytes, expected_checksum)?;
+        }
         let file_name = descriptor
             .locator
             .split('?')
