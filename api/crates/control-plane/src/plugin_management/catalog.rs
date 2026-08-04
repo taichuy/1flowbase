@@ -400,6 +400,7 @@ pub struct PluginFamilyCatalogView {
 struct PluginCatalogProjectionView {
     help_url: Option<String>,
     default_base_url: Option<String>,
+    model_discovery_mode: String,
     i18n_bundles: BTreeMap<String, serde_json::Value>,
     catalog_refresh_status: String,
     catalog_last_error_message: Option<String>,
@@ -703,11 +704,7 @@ where
                 provider_label_key: "provider.label".to_string(),
                 help_url: projection.help_url,
                 default_base_url: projection.default_base_url,
-                model_discovery_mode: metadata_string(
-                    &installation.metadata_json,
-                    "model_discovery_mode",
-                )
-                .unwrap_or_else(|| "unknown".to_string()),
+                model_discovery_mode: projection.model_discovery_mode,
                 assigned_to_current_workspace: assigned_installation_ids.contains(&installation.id),
                 catalog_refresh_status: projection.catalog_refresh_status,
                 catalog_last_error_message: projection.catalog_last_error_message,
@@ -947,11 +944,12 @@ where
                     .default_base_url
                     .clone()
                     .or_else(|| metadata_string(&current.metadata_json, "default_base_url")),
-                model_discovery_mode: metadata_string(
-                    &current.metadata_json,
-                    "model_discovery_mode",
-                )
-                .unwrap_or_else(|| "unknown".to_string()),
+                model_discovery_mode: if projection.model_discovery_mode == "unknown" {
+                    metadata_string(&current.metadata_json, "model_discovery_mode")
+                        .unwrap_or(projection.model_discovery_mode)
+                } else {
+                    projection.model_discovery_mode
+                },
                 icon: metadata_string(&current.metadata_json, "icon"),
                 current_installation_id: current.id,
                 current_version: current.plugin_version.clone(),
@@ -979,6 +977,7 @@ fn plugin_catalog_projection_view(
         return PluginCatalogProjectionView {
             help_url: None,
             default_base_url: None,
+            model_discovery_mode: "unknown".to_string(),
             i18n_bundles: BTreeMap::new(),
             catalog_refresh_status: domain::PluginPackageCatalogProjectionStatus::Missing
                 .as_str()
@@ -992,6 +991,8 @@ fn plugin_catalog_projection_view(
     PluginCatalogProjectionView {
         help_url: projection_provider_string(snapshot, "help_url"),
         default_base_url: projection_provider_string(snapshot, "default_base_url"),
+        model_discovery_mode: projection_provider_string(snapshot, "model_discovery_mode")
+            .unwrap_or_else(|| "unknown".to_string()),
         i18n_bundles: projection_i18n_bundles(snapshot),
         catalog_refresh_status: projection.projection_status.as_str().to_string(),
         catalog_last_error_message: projection.last_error_message.clone(),
