@@ -431,12 +431,12 @@ function GenericExtensionCenterSection({
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
-  const runOperation = operationMutation.mutateAsync;
+  const runOperation = operationMutation.mutate;
 
   const submitOperation = useCallback(
     (operation: ExtensionOperation) => {
       setActiveOperationKey(operation.entry.id);
-      void runOperation({ operation });
+      runOperation({ operation });
     },
     [runOperation]
   );
