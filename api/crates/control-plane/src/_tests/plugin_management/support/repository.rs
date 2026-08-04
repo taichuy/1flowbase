@@ -758,6 +758,19 @@ impl PluginRepository for MemoryPluginManagementRepository {
             .collect())
     }
 
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let mut installation_ids = self
+            .assignments
+            .read()
+            .await
+            .iter()
+            .map(|assignment| assignment.installation_id)
+            .collect::<Vec<_>>();
+        installation_ids.sort_unstable();
+        installation_ids.dedup();
+        Ok(installation_ids)
+    }
+
     async fn create_task(&self, input: &CreatePluginTaskInput) -> Result<PluginTaskRecord> {
         let now = OffsetDateTime::now_utc();
         let status_override = *self.created_task_status_override.read().await;

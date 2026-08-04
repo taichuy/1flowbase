@@ -468,7 +468,7 @@ fn validate_plugin_manifest(
         &["stdio_json", "stdio_json_worker", "native_host"],
     )?;
     validate_execution_runtime_pair(manifest)?;
-    validate_provider_runtime_capabilities(manifest)?;
+    validate_provider_runtime_capabilities(manifest, contract_policy)?;
     validate_permission_values(&manifest.permissions)?;
     validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
@@ -1549,7 +1549,10 @@ fn validate_contract_version_for_policy(
     validate_contract_version(manifest)
 }
 
-fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+fn validate_provider_runtime_capabilities(
+    manifest: &PluginManifestV1,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<()> {
     let is_model_provider = manifest.consumption_kind == PluginConsumptionKind::RuntimeExtension
         && manifest
             .slot_codes
@@ -1563,28 +1566,37 @@ fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> Framew
 
     let mut seen = HashSet::new();
     for capability in &manifest.runtime.capabilities {
-        validate_allowed(
-            capability,
-            "runtime.capabilities[]",
-            &[
-                "system_prompt_blocks",
-                "system_prompt_cache_control",
-                "end_user_reference",
-                PROVIDER_COUNT_TOKENS_CAPABILITY,
-                PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
-                PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
-                PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
-                PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY,
-                PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
-            ],
-        )?;
+        // Publisher-cutover receipts bind these bytes to durable identity; bare
+        // `protocol_context` remains rejected by every package intake path.
+        let is_legacy_protocol_context = capability == "protocol_context"
+            && matches!(
+                contract_policy,
+                ManifestContractPolicy::PublisherCutoverLegacyProvider
+            );
+        if !is_legacy_protocol_context {
+            validate_allowed(
+                capability,
+                "runtime.capabilities[]",
+                &[
+                    "system_prompt_blocks",
+                    "system_prompt_cache_control",
+                    "end_user_reference",
+                    PROVIDER_COUNT_TOKENS_CAPABILITY,
+                    PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
+                    PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
+                    PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
+                    PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY,
+                    PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
+                ],
+            )?;
+        }
         if !seen.insert(capability.as_str()) {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
                 "runtime.capabilities contains duplicate value: {capability}"

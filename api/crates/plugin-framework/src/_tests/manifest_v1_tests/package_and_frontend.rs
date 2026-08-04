@@ -99,6 +99,7 @@ permissions:
 runtime:
   protocol: stdio_json
   entry: bin/provider
+  capabilities: [protocol_context]
 node_contributions: []
 "#;
     let legacy = current.replace("publisher_namespace: fixture_org\n", "");
@@ -117,6 +118,14 @@ node_contributions: []
     assert_eq!(parsed.publisher_namespace, "fixture_org");
     assert_eq!(parsed.contract_version, "1flowbase.provider/v1");
     assert_eq!(parsed.vendor, "Historical Vendor");
+    assert_eq!(parsed.runtime.capabilities, vec!["protocol_context"]);
+
+    let strict_current = current.replace(
+        "contract_version: 1flowbase.provider/v1",
+        "contract_version: 1flowbase.provider/v2",
+    );
+    let strict_error = parse_plugin_manifest(&strict_current).unwrap_err();
+    assert!(strict_error.to_string().contains("runtime.capabilities"));
 
     let wrong_fingerprint = LegacyInstalledManifestEligibility {
         expected_raw_manifest_fingerprint: format!("sha256:{}", "0".repeat(64)),

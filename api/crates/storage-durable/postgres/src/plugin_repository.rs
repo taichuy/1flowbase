@@ -725,6 +725,15 @@ impl PluginRepository for PgControlPlaneStore {
         rows.into_iter().map(map_assignment).collect()
     }
 
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let rows = sqlx::query_scalar(
+            "select distinct installation_id from plugin_assignments order by installation_id",
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
+    }
+
     async fn create_task(&self, input: &CreatePluginTaskInput) -> Result<domain::PluginTaskRecord> {
         let row = sqlx::query(
             r#"
