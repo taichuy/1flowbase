@@ -270,7 +270,7 @@ where
     let root = UpsertPluginInstallationInput {
         installation_id: installation.installation_id,
         category,
-        organization: manifest.vendor.clone(),
+        organization: manifest.publisher_namespace.clone(),
         provider_code: installation.provider_code,
         plugin_id: installation.plugin_id,
         plugin_version: installation.plugin_version,

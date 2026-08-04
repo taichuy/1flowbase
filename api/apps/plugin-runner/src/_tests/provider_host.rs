@@ -54,6 +54,7 @@ impl TempProviderPackage {
                 r#"manifest_version: 1
 plugin_id: fixture_provider
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: {display_name}
 description: Fixture provider
@@ -236,6 +237,7 @@ esac
                 r#"manifest_version: 1
 plugin_id: {plugin_id}
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: {display_name}
 description: Fixture provider

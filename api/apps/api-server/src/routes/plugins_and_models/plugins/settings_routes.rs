@@ -76,11 +76,19 @@ pub async fn list_official_catalog(
             requested_locales(&locale_meta),
         )
         .await?;
+    let filter = official_filter_from_query(&query);
     let page = state
         .official_extension_catalog_source
-        .list_page("runtime-extensions", query.cursor.as_deref())
+        .search(
+            "runtime-extensions",
+            crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
+                slot_code: Some(MODEL_PROVIDER_PLUGIN_TYPE.to_string()),
+                q: filter.search_query.clone(),
+                limit: filter.limit,
+                cursor: query.cursor.clone(),
+            },
+        )
         .await?;
-    let filter = official_filter_from_query(&query);
     let installed = local_catalog
         .entries
         .into_iter()
@@ -95,7 +103,7 @@ pub async fn list_official_catalog(
             )
         })
         .collect::<std::collections::HashMap<_, _>>();
-    let mut entries = page
+    let entries = page
         .entries
         .into_iter()
         .filter_map(
@@ -106,20 +114,6 @@ pub async fn list_official_catalog(
             },
         )
         .collect::<anyhow::Result<Vec<_>>>()?;
-    if let Some(search) = filter.search_query.as_deref() {
-        let search = search.to_lowercase();
-        entries.retain(|entry| {
-            entry.display_name.to_lowercase().contains(&search)
-                || entry
-                    .description
-                    .as_deref()
-                    .is_some_and(|description| description.to_lowercase().contains(&search))
-                || entry.provider_code.to_lowercase().contains(&search)
-                || entry.plugin_id.to_lowercase().contains(&search)
-                || entry.protocol.to_lowercase().contains(&search)
-        });
-    }
-    entries.truncate(filter.limit);
     let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
         .expect("runtime profile must resolve a supported catalog locale");
     let source_label = crate::app_state::resolve_official_source_label(
@@ -132,16 +126,12 @@ pub async fn list_official_catalog(
     Ok(Json(ApiSuccess::new(OfficialPluginCatalogResponse {
         source_kind: page.source_kind,
         source_label,
-        registry_url: page.metadata.locator,
-        source_freshness: match page.metadata.freshness {
-            crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh => "fresh",
-            crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Stale => "stale",
-        }
-        .to_string(),
+        registry_url: page.snapshot_locator,
+        source_freshness: "fresh".to_string(),
         locale_meta,
         page: OfficialPluginCatalogPageResponse {
             limit: filter.limit,
-            next_cursor: page.metadata.next_cursor,
+            next_cursor: page.next_cursor,
         },
         entries,
     })))

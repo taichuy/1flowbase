@@ -151,7 +151,7 @@ where
                                 domain::ExtensionCategory::CapabilityPlugins
                             }
                         },
-                        organization: manifest.vendor.clone(),
+                        organization: manifest.publisher_namespace.clone(),
                         provider_code: manifest
                             .plugin_code()
                             .map_err(map_framework_error)?

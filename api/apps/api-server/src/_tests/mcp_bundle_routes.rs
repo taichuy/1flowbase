@@ -65,6 +65,8 @@ fn fixture_official_mcp_entry() -> crate::official_extension_catalog::OfficialEx
         version: "1.0.0".to_string(),
         description: "Fixture MCP bundle".to_string(),
         host_version_requirement: "0.2.0".to_string(),
+        slot_codes: Vec::new(),
+        keywords: vec!["mcp".to_string()],
         source: crate::official_extension_catalog::OfficialExtensionCatalogEntrySource {
             kind: "mcp_bundle".to_string(),
             locator: "fixture".to_string(),
@@ -85,6 +87,26 @@ fn fixture_official_mcp_entry() -> crate::official_extension_catalog::OfficialEx
 impl crate::official_extension_catalog::OfficialExtensionCatalogSourcePort
     for FixtureOfficialMcpExtensionCatalogSource
 {
+    async fn search(
+        &self,
+        category: &str,
+        _query: crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<crate::official_extension_catalog::OfficialExtensionCatalogSearchResult>
+    {
+        assert_eq!(category, "mcp");
+        Ok(
+            crate::official_extension_catalog::OfficialExtensionCatalogSearchResult {
+                source_kind: "official_repository".to_string(),
+                category: "mcp".to_string(),
+                snapshot_checksum: "sha256:search".to_string(),
+                snapshot_locator: "fixture://mcp/search".to_string(),
+                total_entries: 1,
+                next_cursor: None,
+                entries: vec![fixture_official_mcp_entry()],
+            },
+        )
+    }
+
     async fn list_page(
         &self,
         category: &str,

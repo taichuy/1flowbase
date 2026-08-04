@@ -13,6 +13,7 @@ pub(crate) fn write_test_provider_package() -> String {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Fixture Provider
 description: Fixture Provider
@@ -178,6 +179,7 @@ pub(crate) fn write_test_capability_package() -> String {
         r#"manifest_version: 1
 plugin_id: fixture_capability@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Fixture Capability
 description: Fixture Capability

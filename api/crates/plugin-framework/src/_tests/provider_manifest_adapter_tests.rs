@@ -49,6 +49,7 @@ fn make_package_fixture(
             r#"manifest_version: 1
 plugin_id: acme_openai_compatible@1.2.3
 version: 1.2.3
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Acme OpenAI Compatible
 description: Acme provider package
@@ -153,6 +154,7 @@ fn provider_package_rejects_plugin_id_version_mismatch() {
         r#"manifest_version: 1
 plugin_id: acme_openai_compatible@9.9.9
 version: 1.2.3
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Acme OpenAI Compatible
 description: Acme provider package

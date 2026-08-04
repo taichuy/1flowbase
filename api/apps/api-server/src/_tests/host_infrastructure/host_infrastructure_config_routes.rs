@@ -26,6 +26,7 @@ fn write_host_extension_fixture(root: &Path) {
         r#"manifest_version: 1
 plugin_id: redis-infra-host@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Redis Infra Host
 description: Redis host infrastructure fixture

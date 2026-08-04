@@ -2,11 +2,11 @@ use super::*;
 
 #[test]
 fn plugin_manifest_v1_parses_runtime_extension_provider_fields() {
-    let manifest = parse_plugin_manifest(
-        r#"
+    let raw = r#"
 manifest_version: 1
 plugin_id: openai_compatible@0.4.0
 version: 0.4.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI Compatible
 description: Generic OpenAI-compatible provider runtime extension
@@ -37,14 +37,15 @@ runtime:
     invoke_timeout_ms: 300000
     memory_bytes: 268435456
 node_contributions: []
-"#,
-    )
-    .unwrap();
+"#;
+    let manifest = parse_plugin_manifest(raw).unwrap();
 
     assert_eq!(manifest.manifest_version, 1);
     assert_eq!(manifest.plugin_id, "openai_compatible@0.4.0");
     assert_eq!(manifest.version, "0.4.0");
+    assert_eq!(manifest.publisher_namespace, "1flowbase");
     assert_eq!(manifest.vendor, "1flowbase");
+    assert!(manifest.keywords.is_empty());
     assert_eq!(manifest.display_name, "OpenAI Compatible");
     assert_eq!(
         manifest.consumption_kind,
@@ -61,6 +62,12 @@ node_contributions: []
     assert_eq!(manifest.runtime.limits.invoke_timeout_ms, Some(300000));
     assert_eq!(manifest.runtime.limits.memory_bytes, Some(268435456));
     assert!(manifest.node_contributions.is_empty());
+
+    let missing_publisher =
+        parse_plugin_manifest(&raw.replace("publisher_namespace: 1flowbase\n", "")).unwrap_err();
+    assert!(missing_publisher
+        .to_string()
+        .contains("publisher_namespace"));
 }
 
 #[test]
@@ -70,6 +77,7 @@ fn plugin_manifest_v1_parses_stateful_provider_worker_runtime() {
 manifest_version: 1
 plugin_id: openai@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI
 description: OpenAI Responses provider runtime extension
@@ -114,6 +122,7 @@ fn plugin_manifest_v1_rejects_stateful_provider_worker_with_plain_stdio() {
 manifest_version: 1
 plugin_id: openai@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI
 description: invalid
@@ -155,6 +164,7 @@ fn plugin_manifest_v1_rejects_host_extension_with_workspace_binding() {
 manifest_version: 1
 plugin_id: bad_host@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Host
 description: invalid
@@ -194,6 +204,7 @@ fn plugin_manifest_v1_rejects_capability_plugin_without_node_contributions() {
 manifest_version: 1
 plugin_id: bad_capability@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Capability
 description: invalid
@@ -234,6 +245,7 @@ fn plugin_manifest_v1_parses_capability_plugin_with_js_dependency_pack() {
 manifest_version: 1
 plugin_id: js_zod_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: JS Zod Pack
 description: Example JS dependency pack plugin
@@ -302,6 +314,7 @@ fn plugin_manifest_v1_accepts_frontend_block_contribution() {
 manifest_version: 1
 plugin_id: fixture_frontend_blocks@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Fixture Frontend Blocks
 description: Frontend block contribution plugin
@@ -463,6 +476,7 @@ fn plugin_manifest_v1_keeps_missing_frontend_block_code_template_null() {
 manifest_version: 1
 plugin_id: frontend_blocks_without_template@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Frontend Blocks Without Template
 description: frontend blocks without a code template
@@ -532,6 +546,7 @@ fn valid_frontend_block_manifest_with_code_template(code_template: &str) -> Stri
 manifest_version: 1
 plugin_id: frontend_blocks_with_template@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Frontend Blocks With Template
 description: frontend blocks with a code template
@@ -582,6 +597,7 @@ fn plugin_manifest_v1_rejects_invalid_frontend_block_values_with_stable_errors()
 manifest_version: 1
 plugin_id: bad_frontend_block@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block
 description: invalid runtime
@@ -635,6 +651,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: missing_frontend_block_entry@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Missing Frontend Block Entry
 description: missing entry
@@ -688,6 +705,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: bad_frontend_block_permission@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block Permission
 description: invalid permission
@@ -741,6 +759,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: bad_frontend_block_primitive@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block Primitive
 description: invalid primitive
@@ -794,6 +813,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: bad_frontend_block_capability@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block Capability
 description: invalid capability

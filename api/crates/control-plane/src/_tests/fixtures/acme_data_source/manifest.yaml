@@ -1,6 +1,7 @@
 manifest_version: 1
 plugin_id: acme_hubspot_source@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Acme HubSpot Source
 description: Test data source package

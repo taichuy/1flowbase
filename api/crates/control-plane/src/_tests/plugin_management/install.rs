@@ -1239,6 +1239,7 @@ fn create_data_source_fixture_package(source_code: &str, version: &str) -> PathB
 manifest_version: 1
 plugin_id: {source_code}@{version}
 version: {version}
+publisher_namespace: acme
 vendor: acme
 display_name: HTTP Source
 description: HTTP source runtime extension

@@ -107,6 +107,9 @@ pub struct ExtensionRiskChallengeResponse {
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
 pub struct ExtensionCatalogGatewayQuery {
+    pub slot_code: Option<String>,
+    pub q: Option<String>,
+    pub limit: Option<usize>,
     pub cursor: Option<String>,
 }
 
@@ -120,6 +123,8 @@ pub struct ExtensionCatalogGatewayEntryResponse {
     pub version: String,
     pub description: String,
     pub host_version_requirement: String,
+    pub slot_codes: Vec<String>,
+    pub keywords: Vec<String>,
     #[schema(value_type = Object)]
     pub source: serde_json::Value,
     #[schema(value_type = Option<Object>)]

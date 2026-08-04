@@ -67,6 +67,7 @@ fn write_failing_provider_package(package: &TempProviderPackage) {
         r#"manifest_version: 1
 plugin_id: fixture_provider
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -139,6 +140,7 @@ fn write_balance_provider_package(package: &TempProviderPackage) {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -216,6 +218,7 @@ fn write_slow_invocation_provider_package(package: &TempProviderPackage) {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -295,6 +298,7 @@ fn write_compact_provider_package(package: &TempProviderPackage, response: &str)
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider

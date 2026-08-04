@@ -280,7 +280,10 @@ pub struct PluginManifestV1 {
     pub manifest_version: u32,
     pub plugin_id: String,
     pub version: String,
+    pub publisher_namespace: String,
     pub vendor: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
     pub display_name: String,
     pub description: String,
     #[serde(default)]
@@ -339,7 +342,9 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
     validate_non_empty(&manifest.plugin_id, "plugin_id")?;
     validate_non_empty(&manifest.version, "version")?;
     plugin_code_from_identity(&manifest.plugin_id, &manifest.version)?;
+    validate_publisher_namespace(&manifest.publisher_namespace)?;
     validate_non_empty(&manifest.vendor, "vendor")?;
+    validate_keywords(&manifest.keywords)?;
     validate_non_empty(&manifest.display_name, "display_name")?;
     validate_non_empty(&manifest.description, "description")?;
     validate_non_empty(&manifest.source_kind, "source_kind")?;
@@ -521,6 +526,36 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
         validate_frontend_block_contributions(&manifest.block_contributions)?;
     }
 
+    Ok(())
+}
+
+fn validate_publisher_namespace(value: &str) -> FrameworkResult<()> {
+    validate_non_empty(value, "publisher_namespace")?;
+    if value.len() > 100
+        || value != value.to_ascii_lowercase()
+        || value.starts_with(['.', '-', '_'])
+        || value.ends_with(['.', '-', '_'])
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".-_".contains(&byte)
+        })
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "publisher_namespace must be a lowercase catalog identity segment",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_keywords(keywords: &[String]) -> FrameworkResult<()> {
+    let mut unique = HashSet::new();
+    for keyword in keywords {
+        let normalized = keyword.trim().to_lowercase();
+        if normalized.is_empty() || normalized.len() > 64 || !unique.insert(normalized) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "keywords must be non-empty, unique, and at most 64 characters",
+            ));
+        }
+    }
     Ok(())
 }
 

@@ -33,11 +33,10 @@ use crate::official_extension_catalog::{
 
 use super::upload::upload_challenge;
 use super::{
-    artifact_preflight_challenge, catalog_application_action, catalog_entry_for_requested_identity,
-    default_application_status, extension_update_status, paginate_installed_families,
-    project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
-    validate_preflight_overrides, InstalledCatalogJoin, PreflightDecision,
-    UploadedExtensionArtifact,
+    artifact_preflight_challenge, catalog_application_action, default_application_status,
+    extension_update_status, paginate_installed_families, project_catalog_entry,
+    project_installed_catalog_joins, requested_installation_identity, validate_preflight_overrides,
+    InstalledCatalogJoin, PreflightDecision, UploadedExtensionArtifact,
 };
 
 #[test]
@@ -192,29 +191,6 @@ fn root_1545_d4_ac_16_treats_catalog_latest_as_current_when_any_local_version_ma
     );
 }
 
-#[test]
-fn issue_1566_installed_provider_identity_resolves_unique_catalog_provider_code() {
-    let entry = runtime_entry();
-    let resolved = catalog_entry_for_requested_identity(
-        super::ExtensionCatalogCategory::RuntimeExtensions,
-        "runtime-extensions:1flowbase/openai",
-        std::slice::from_ref(&entry),
-    )
-    .unwrap()
-    .unwrap();
-    assert_eq!(resolved.id, "runtime-extensions:taichuy/openai");
-
-    let mut ambiguous = entry.clone();
-    ambiguous.id = "runtime-extensions:another/openai".to_string();
-    ambiguous.organization = "another".to_string();
-    assert!(catalog_entry_for_requested_identity(
-        super::ExtensionCatalogCategory::RuntimeExtensions,
-        "runtime-extensions:1flowbase/openai",
-        &[entry, ambiguous],
-    )
-    .is_err());
-}
-
 fn installation_record(
     version: &str,
     updated_at: OffsetDateTime,
@@ -255,6 +231,16 @@ struct CountingCatalogSource {
 
 #[async_trait]
 impl OfficialExtensionCatalogSourcePort for CountingCatalogSource {
+    async fn search(
+        &self,
+        _category: &str,
+        _query: crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<crate::official_extension_catalog::OfficialExtensionCatalogSearchResult>
+    {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        anyhow::bail!("catalog network must not be called for an exact local version")
+    }
+
     async fn list_page(
         &self,
         _category: &str,
@@ -631,6 +617,8 @@ fn runtime_entry() -> OfficialExtensionCatalogEntry {
         version: "0.2.0".to_string(),
         description: "OpenAI runtime extension".to_string(),
         host_version_requirement: ">=0.3.0".to_string(),
+        slot_codes: vec!["model_provider".to_string()],
+        keywords: vec!["openai".to_string()],
         source: OfficialExtensionCatalogEntrySource {
             kind: "runtime_extension_manifest".to_string(),
             locator: "runtime-extensions/@taichuy/openai/manifest.yaml".to_string(),

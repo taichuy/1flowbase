@@ -22,7 +22,7 @@ use crate::{
     config::ResolvedOfficialExtensionCatalogSourceConfig,
     official_extension_catalog::{
         ApiOfficialExtensionCatalogSource, ApiOfficialRuntimeExtensionSource,
-        OfficialExtensionCatalogSourcePort,
+        OfficialExtensionCatalogSearchQuery, OfficialExtensionCatalogSourcePort,
     },
 };
 
@@ -39,6 +39,89 @@ const CATEGORIES: [&str; 6] = [
 struct CatalogHttpFixture {
     documents: Arc<BTreeMap<String, Vec<u8>>>,
     requests: Arc<Mutex<Vec<String>>>,
+}
+
+#[tokio::test]
+async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verified_pages() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+
+    let filtered = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: Some("later-runtime".to_string()),
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(filtered.total_entries, 1);
+    assert_eq!(filtered.entries[0].artifact, "later-runtime");
+    assert!(requests
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|path| path.ends_with("/pages/2.json")));
+
+    let first = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: None,
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    let cursor = first.next_cursor.unwrap();
+    let stale = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: Some("later-runtime".to_string()),
+                limit: 1,
+                cursor: Some(cursor),
+            },
+        )
+        .await;
+    assert!(stale
+        .unwrap_err()
+        .to_string()
+        .contains("snapshot and query"));
+
+    requests.lock().unwrap().clear();
+    let cached = source
+        .find_entry(
+            "runtime-extensions",
+            "runtime-extensions:other/later-runtime",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(cached.entry.artifact, "later-runtime");
+    assert!(requests.lock().unwrap().is_empty());
+    server.abort();
 }
 
 #[tokio::test]
@@ -97,7 +180,7 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
     let located = source
         .find_entry(
             "runtime-extensions",
-            "runtime-extensions:taichuy/later-runtime",
+            "runtime-extensions:other/later-runtime",
         )
         .await
         .unwrap()
@@ -527,14 +610,16 @@ fn catalog_documents(
                         base_url,
                         category,
                         2,
-                        "runtime-extensions:taichuy/later-runtime",
+                        "runtime-extensions:other/later-runtime",
                         "later-runtime",
                     )],
                 ),
             ));
         }
-        let index = catalog_index(base_url, category, &pages);
+        let search = catalog_search_index(base_url, category, &pages);
+        let index = catalog_index(base_url, category, &pages, &search);
         documents.insert(format!("/{category}/catalog/v1/index.json"), index);
+        documents.insert(format!("/{category}/catalog/v1/search-index.json"), search);
         for (page, _, bytes) in pages {
             documents.insert(format!("/{category}/catalog/v1/pages/{page}.json"), bytes);
         }
@@ -571,7 +656,12 @@ fn catalog_documents(
     (documents, sources)
 }
 
-fn catalog_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec<u8>)]) -> Vec<u8> {
+fn catalog_index(
+    base_url: &str,
+    category: &str,
+    pages: &[(u32, &str, Vec<u8>)],
+    search: &[u8],
+) -> Vec<u8> {
     let page_references = pages
         .iter()
         .map(|(page, cursor, bytes)| {
@@ -595,7 +685,49 @@ fn catalog_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec<u8>)])
             "cursor": "start",
             "locator": format!("{base_url}/{category}/catalog/v1/pages/1.json")
         },
-        "pages": page_references
+        "pages": page_references,
+        "search_index": {
+            "schema_version": "1flowbase.extension-catalog-search/v1",
+            "entry_count": page_references.iter().map(|page| page["entry_count"].as_u64().unwrap()).sum::<u64>(),
+            "checksum": format!("sha256:{:x}", Sha256::digest(search)),
+            "locator": format!("{base_url}/{category}/catalog/v1/search-index.json")
+        }
+    }))
+    .unwrap()
+}
+
+fn catalog_search_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec<u8>)]) -> Vec<u8> {
+    let mut entries = Vec::new();
+    for (page, cursor, bytes) in pages {
+        let page_document = serde_json::from_slice::<Value>(bytes).unwrap();
+        let page_checksum = format!("sha256:{:x}", Sha256::digest(bytes));
+        for entry in page_document["entries"].as_array().unwrap() {
+            let mut search_entry = entry.clone();
+            search_entry
+                .as_object_mut()
+                .unwrap()
+                .remove("download_locator");
+            search_entry["slot_codes"] = if category == "runtime-extensions" {
+                json!(["model_provider"])
+            } else {
+                json!([])
+            };
+            search_entry["keywords"] = json!([entry["artifact"].as_str().unwrap()]);
+            search_entry["catalog_page"] = json!({
+                "page": page,
+                "cursor": cursor,
+                "checksum": page_checksum,
+                "locator": format!("{base_url}/{category}/catalog/v1/pages/{page}.json")
+            });
+            entries.push(search_entry);
+        }
+    }
+    serde_json::to_vec(&json!({
+        "schema_version": "1flowbase.extension-catalog-search/v1",
+        "category": category,
+        "generated_at": "2026-08-01T00:00:00Z",
+        "source_fingerprint": format!("sha256:fixture-{category}"),
+        "entries": entries
     }))
     .unwrap()
 }
@@ -620,18 +752,25 @@ fn catalog_page(
 }
 
 fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: &str) -> Value {
+    let organization = id
+        .split_once(':')
+        .and_then(|(_, identity)| identity.split_once('/'))
+        .map(|(organization, _)| organization)
+        .unwrap();
     let mut entry = json!({
         "id": id,
         "name": format!("{artifact} display name"),
         "category": category,
-        "organization": "taichuy",
+        "organization": organization,
         "artifact": artifact,
         "version": "2.4.1",
         "description": "fixture extension",
         "host_version_requirement": ">=0.3.0",
+        "slot_codes": if category == "runtime-extensions" { json!(["model_provider"]) } else { json!([]) },
+        "keywords": [artifact],
         "source": {
             "kind": if category == "runtime-extensions" { "runtime_extension_manifest" } else { "fixture_source" },
-            "locator": format!("{category}/@taichuy/{artifact}")
+            "locator": format!("{category}/@{organization}/{artifact}")
         },
         "signature": null,
         "checksum": artifact_checksum(),
