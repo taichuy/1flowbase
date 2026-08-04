@@ -90,6 +90,7 @@ import {
 import {
   SelectedInterfaceOperationTitle,
   TOOL_FORM_STEPS,
+  emptyObjectSchema,
   interfaceOptionLabel,
   schemaMappingHasContent,
   schemaRecord,

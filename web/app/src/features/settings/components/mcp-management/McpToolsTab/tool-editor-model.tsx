@@ -41,7 +41,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function emptyObjectSchema(): Record<string, unknown> {
+export function emptyObjectSchema(): Record<string, unknown> {
   return {
     type: 'object',
     properties: {},
