@@ -82,6 +82,13 @@ pub struct OfficialExtensionCatalogSearchResult {
     pub entries: Vec<OfficialExtensionCatalogEntry>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CachedOfficialExtensionCatalogEntries {
+    pub source_kind: String,
+    pub snapshot_locator: String,
+    pub entries: Vec<OfficialExtensionCatalogEntry>,
+}
+
 impl OfficialExtensionCatalogEntry {
     pub fn signing_key_id(&self) -> Option<&str> {
         self.signature
@@ -156,6 +163,14 @@ pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
         category: &str,
         cursor: Option<&str>,
     ) -> Result<OfficialExtensionCatalogPage>;
+
+    fn cached_verified_entries(
+        &self,
+        _category: &str,
+        _slot_code: Option<&str>,
+    ) -> Option<CachedOfficialExtensionCatalogEntries> {
+        None
+    }
 
     async fn find_entry(
         &self,
@@ -291,6 +306,27 @@ impl ApiOfficialRuntimeExtensionSource {
 impl OfficialPluginSourcePort for ApiOfficialRuntimeExtensionSource {
     async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
         self.runtime_extension_snapshot().await
+    }
+
+    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
+        let cached = self
+            .catalog
+            .cached_verified_entries("runtime-extensions", Some("model_provider"))?;
+        let entries = cached
+            .entries
+            .iter()
+            .map(|entry| project_runtime_extension_entry(&*self.catalog, entry, &self.trust_mode))
+            .collect::<Result<Vec<_>>>()
+            .ok()?;
+        Some(OfficialPluginCatalogSnapshot {
+            source: OfficialPluginCatalogSource {
+                source_label: "Verified catalog snapshot".to_string(),
+                source_kind: cached.source_kind,
+                registry_url: cached.snapshot_locator,
+            },
+            freshness: OfficialPluginCatalogFreshness::Stale,
+            entries,
+        })
     }
 
     async fn download_plugin(
@@ -983,6 +1019,39 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
             .into_iter()
             .next()
             .unwrap_or_else(|| anyhow!("official extension catalog has no configured source")))
+    }
+
+    fn cached_verified_entries(
+        &self,
+        category: &str,
+        slot_code: Option<&str>,
+    ) -> Option<CachedOfficialExtensionCatalogEntries> {
+        let snapshot = self.cached_search_snapshot(category)?;
+        let normalized_slot = normalized_filter(slot_code);
+        let entries = snapshot
+            .document
+            .entries
+            .iter()
+            .filter(|search_entry| {
+                normalized_slot.as_ref().is_none_or(|slot| {
+                    search_entry
+                        .slot_codes
+                        .iter()
+                        .any(|candidate| candidate == slot)
+                })
+            })
+            .filter_map(|search_entry| {
+                self.cached_verified_page(category, &search_entry.catalog_page)?
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.id == search_entry.id)
+            })
+            .collect();
+        Some(CachedOfficialExtensionCatalogEntries {
+            source_kind: snapshot.source_kind,
+            snapshot_locator: snapshot.locator,
+            entries,
+        })
     }
 
     async fn find_entry(

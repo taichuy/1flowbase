@@ -211,6 +211,25 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
     let cursor = first.next_cursor.unwrap();
 
     requests.lock().unwrap().clear();
+    let cached = source
+        .cached_verified_entries("runtime-extensions", Some("model_provider"))
+        .expect("verified search snapshot should be readable without remote I/O");
+    assert_eq!(cached.entries.len(), 1);
+    assert_eq!(cached.entries[0].artifact, "openai");
+    assert!(requests.lock().unwrap().is_empty());
+    let runtime_source = ApiOfficialRuntimeExtensionSource::new(
+        Arc::new(source.clone()),
+        "allow_unsigned".to_string(),
+        Vec::new(),
+    );
+    let runtime_snapshot = runtime_source
+        .cached_official_catalog()
+        .await
+        .expect("runtime projection should reuse the verified generic snapshot");
+    assert_eq!(runtime_snapshot.entries.len(), 1);
+    assert_eq!(runtime_snapshot.entries[0].provider_code, "openai");
+    assert!(requests.lock().unwrap().is_empty());
+
     let cached_snapshot_entry = source
         .find_entry(
             "runtime-extensions",

@@ -272,6 +272,16 @@ impl OfficialPluginSourcePort for ApiOfficialPluginRegistry {
         self.catalog_snapshot().await
     }
 
+    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
+        let cached = self.cached_registry().await?;
+        let freshness = if cached.fetched_at.elapsed() <= OFFICIAL_PLUGIN_REGISTRY_CACHE_TTL {
+            OfficialPluginCatalogFreshness::Fresh
+        } else {
+            OfficialPluginCatalogFreshness::Stale
+        };
+        Some(self.build_catalog_snapshot(cached, freshness))
+    }
+
     async fn download_plugin(
         &self,
         entry: &OfficialPluginSourceEntry,
