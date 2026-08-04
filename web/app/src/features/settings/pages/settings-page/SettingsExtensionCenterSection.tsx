@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -198,8 +198,10 @@ function GenericExtensionCenterSection({
   const [applicationTarget, setApplicationTarget] =
     useState<ExtensionApplicationTarget | null>(null);
   const [searchText, setSearchText] = useState(q ?? '');
+  const updateCheckRequestRef = useRef(0);
 
   useEffect(() => {
+    updateCheckRequestRef.current += 1;
     setSelected(null);
     setUpdateStates({});
     setSearchText(q ?? '');
@@ -269,6 +271,7 @@ function GenericExtensionCenterSection({
     }
     if (groups.size === 0) return;
 
+    const requestId = ++updateCheckRequestRef.current;
     setUpdateStates((current) => ({
       ...current,
       ...Object.fromEntries(
@@ -303,11 +306,17 @@ function GenericExtensionCenterSection({
         }
       })
     );
+    if (updateCheckRequestRef.current !== requestId) return;
     setUpdateStates((current) => ({
       ...current,
       ...Object.fromEntries(results.flat())
     }));
   }, [csrfToken, rows]);
+
+  useEffect(() => {
+    if (activeTab === 'installed' || !catalogQuery.isSuccess) return;
+    void checkVisibleUpdates();
+  }, [activeTab, catalogQuery.isSuccess, checkVisibleUpdates]);
 
   const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([

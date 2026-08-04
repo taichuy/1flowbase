@@ -380,7 +380,38 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('catalog tabs label remote versions as latest and keep unchecked updates neutral', async () => {
+  test('catalog tabs label remote versions as latest and automatically check only installed rows', async () => {
+    const pendingCheck = deferred<{
+      category: 'runtime-extensions';
+      items: Array<{
+        catalog_id: string;
+        current_version: string;
+        latest_version: string;
+        status: 'update_available';
+      }>;
+    }>();
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 2,
+      entries: [
+        catalogEntry,
+        {
+          ...installableCatalogEntry,
+          id: 'runtime-extensions:taichuy/anthropic',
+          name: 'Anthropic Provider',
+          artifact: 'anthropic'
+        }
+      ]
+    });
+    extensionsApi.checkSettingsExtensionUpdates.mockReturnValue(
+      pendingCheck.promise
+    );
     renderSection('runtime-extensions');
 
     const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
@@ -395,14 +426,88 @@ describe('SettingsExtensionCenterSection', () => {
       within(row)
         .getByRole('button', { name: '更新' })
         .closest('[data-update-state]')
-    ).toHaveAttribute('data-update-state', 'unchecked');
+    ).toHaveAttribute('data-update-state', 'checking');
     expect(
       within(row)
         .getByRole('button', { name: '更新' })
         .closest('[data-update-state]')
         ?.querySelector('.ant-badge-dot')
     ).toHaveStyle('background: transparent');
-    expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
+    expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
+      {
+        category: 'runtime-extensions',
+        items: [
+          {
+            catalog_id: 'runtime-extensions:taichuy/openai',
+            current_version: '1.0.0',
+            installed_versions: ['1.0.0']
+          }
+        ]
+      },
+      'csrf-123'
+    );
+
+    pendingCheck.resolve({
+      category: 'runtime-extensions',
+      items: [
+        {
+          catalog_id: 'runtime-extensions:taichuy/openai',
+          current_version: '1.0.0',
+          latest_version: '1.1.0',
+          status: 'update_available'
+        }
+      ]
+    });
+    await waitFor(() => {
+      expect(
+        within(row)
+          .getByRole('button', { name: '更新' })
+          .closest('[data-update-state]')
+      ).toHaveAttribute('data-update-state', 'update_available');
+    });
+  });
+
+  test('catalog tabs show a failed automatic update check as unknown_error', async () => {
+    extensionsApi.checkSettingsExtensionUpdates.mockRejectedValue(
+      new Error('catalog unavailable')
+    );
+
+    renderSection('runtime-extensions');
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+
+    await waitFor(() => {
+      expect(
+        within(row)
+          .getByRole('button', { name: '更新' })
+          .closest('[data-update-state]')
+      ).toHaveAttribute('data-update-state', 'unknown_error');
+    });
+  });
+
+  test('catalog tabs automatically recheck after the visible page changes', async () => {
+    const view = renderSection('runtime-extensions');
+    await waitFor(() => {
+      expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
+        1
+      );
+    });
+
+    view.rerender(
+      <SettingsExtensionCenterSection
+        category="runtime-extensions"
+        cursor="cursor-2"
+      />
+    );
+
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'runtime-extensions',
+        { q: undefined, slot_code: undefined, cursor: 'cursor-2' }
+      );
+      expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
+        2
+      );
+    });
   });
 
   test('publisher_cutover shows the dedicated artifact download failure message', async () => {
