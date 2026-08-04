@@ -59,10 +59,6 @@ async fn publisher_cutover_family_uses_semver_for_older_official_version() {
             })
         }
 
-        async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-            self.list_official_catalog().await.ok()
-        }
-
         async fn download_plugin(
             &self,
             _entry: &OfficialPluginSourceEntry,
@@ -657,10 +653,6 @@ async fn publisher_cutover_family_uses_normalized_latest_official_entry_per_prov
                     },
                 ],
             })
-        }
-
-        async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-            self.list_official_catalog().await.ok()
         }
 
         async fn download_plugin(

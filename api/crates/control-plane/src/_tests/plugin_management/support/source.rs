@@ -130,10 +130,6 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
         })
     }
 
-    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-        self.list_official_catalog().await.ok()
-    }
-
     async fn download_plugin(
         &self,
         _entry: &OfficialPluginSourceEntry,

@@ -185,7 +185,6 @@ pub struct ApiOfficialRuntimeExtensionSource {
 #[derive(Default)]
 struct RuntimeExtensionProjectionCache {
     entries: HashMap<String, ProjectedRuntimeExtensionEntry>,
-    snapshot: Option<OfficialPluginCatalogSnapshot>,
 }
 
 #[derive(Clone)]
@@ -284,7 +283,6 @@ impl ApiOfficialRuntimeExtensionSource {
             .lock()
             .map_err(|_| anyhow!("runtime extension projection cache is poisoned"))?;
         cache.entries = projected_entries;
-        cache.snapshot = Some(snapshot.clone());
         Ok(snapshot)
     }
 }
@@ -293,10 +291,6 @@ impl ApiOfficialRuntimeExtensionSource {
 impl OfficialPluginSourcePort for ApiOfficialRuntimeExtensionSource {
     async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
         self.runtime_extension_snapshot().await
-    }
-
-    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-        self.projection_cache.lock().ok()?.snapshot.clone()
     }
 
     async fn download_plugin(

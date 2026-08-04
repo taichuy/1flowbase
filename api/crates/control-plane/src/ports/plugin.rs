@@ -185,9 +185,6 @@ pub struct DownloadedOfficialPluginPackage {
 #[async_trait]
 pub trait OfficialPluginSourcePort: Send + Sync {
     async fn list_official_catalog(&self) -> anyhow::Result<OfficialPluginCatalogSnapshot>;
-    async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-        None
-    }
     async fn download_plugin(
         &self,
         entry: &OfficialPluginSourceEntry,

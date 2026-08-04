@@ -834,12 +834,8 @@ where
             .repository
             .list_assignments(actor.current_workspace_id)
             .await?;
-        let official_latest_by_provider = self
-            .official_source
-            .cached_official_catalog()
-            .await
-            .map(|snapshot| normalize_official_entries(snapshot.entries))
-            .unwrap_or_default()
+        let official_snapshot = self.official_source.list_official_catalog().await?;
+        let official_latest_by_provider = normalize_official_entries(official_snapshot.entries)
             .into_iter()
             .map(|entry| (entry.provider_code, entry.latest_version))
             .collect::<HashMap<_, _>>();
