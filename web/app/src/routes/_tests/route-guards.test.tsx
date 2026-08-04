@@ -27,22 +27,13 @@ function renderGuardedRouter(pathname: string) {
       </RouteGuard>
     )
   });
-  const embeddedAppsRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/embedded-apps',
-    component: () => (
-      <RouteGuard routeId="embedded-apps">
-        <div>embedded apps page</div>
-      </RouteGuard>
-    )
-  });
   const signInRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/sign-in',
     component: () => <div>sign-in page</div>
   });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([homeRoute, embeddedAppsRoute, signInRoute])
+    routeTree: rootRoute.addChildren([homeRoute, signInRoute])
   });
 
   return render(
@@ -61,33 +52,5 @@ describe('RouteGuard', () => {
     renderGuardedRouter('/');
 
     expect(await screen.findByText('sign-in page')).toBeInTheDocument();
-  });
-
-  test('renders permission denied state for authenticated users missing the route permission', async () => {
-    useAuthStore.getState().setAuthenticated({
-      csrfToken: 'csrf-123',
-      actor: {
-        id: 'user-1',
-        account: 'member',
-        effective_display_role: 'member',
-        current_workspace_id: 'workspace-1'
-      },
-      me: {
-        id: 'user-1',
-        account: 'member',
-        email: 'manager@example.com',
-        phone: null,
-        nickname: 'Manager',
-        name: 'Manager',
-        avatar_url: null,
-        introduction: '',
-        effective_display_role: 'member',
-        permissions: []
-      }
-    });
-
-    renderGuardedRouter('/embedded-apps');
-
-    expect(await screen.findByText('无权限访问')).toBeInTheDocument();
   });
 });

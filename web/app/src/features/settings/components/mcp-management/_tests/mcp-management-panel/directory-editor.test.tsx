@@ -1,12 +1,13 @@
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
@@ -544,6 +545,11 @@ async function setFullDescription(value: string) {
 }
 
 describe('McpManagementPanel', () => {
+  afterEach(async () => {
+    cleanup();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthStore();

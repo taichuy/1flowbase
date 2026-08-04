@@ -4,6 +4,11 @@ import { describe, expect, test } from 'vitest';
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 import { renderReactFlowScene } from '../../../test/renderers/render-react-flow-scene';
 import { WorkflowEditorAssembly } from '../components/WorkflowEditorAssembly';
+import {
+  createApplicationNodeCatalog,
+  createBuiltinCatalogNode,
+  createWorkflowStartFieldContract
+} from '../../agent-flow/_tests/fixtures/application-node-catalog';
 
 function createWorkflowInitialState() {
   return {
@@ -28,6 +33,26 @@ const workflowTriggerContext = {
   schedule: null,
   workflowStartFieldContract: undefined
 };
+
+const workflowNodeCatalog = createApplicationNodeCatalog([
+  createBuiltinCatalogNode('workflow_start', {
+    title: 'Workflow Start',
+    category: 'io',
+    field_contract: createWorkflowStartFieldContract()
+  }),
+  createBuiltinCatalogNode('workflow_end', {
+    title: 'Workflow End',
+    category: 'io'
+  }),
+  createBuiltinCatalogNode('llm', {
+    title: 'LLM',
+    category: 'generation'
+  }),
+  createBuiltinCatalogNode('code', {
+    title: 'Code',
+    category: 'logic'
+  })
+]);
 
 describe('WorkflowEditor assembly', () => {
   test('AC-001/002 renders workflow entry and terminal nodes with directional connectors', () => {
@@ -88,6 +113,7 @@ describe('WorkflowEditor assembly', () => {
         applicationName="Ticket Workflow"
         workflowTriggerContext={workflowTriggerContext}
         initialState={createWorkflowInitialState()}
+        nodeCatalog={workflowNodeCatalog}
       />
     );
 
