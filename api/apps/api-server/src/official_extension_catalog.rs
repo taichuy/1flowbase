@@ -636,17 +636,15 @@ impl ApiOfficialExtensionCatalogSource {
         let document = serde_json::from_slice::<CatalogSearchDocument>(&bytes)
             .context("failed to decode official extension catalog search index")?;
         validate_search_document(&document, &index)?;
-        Ok((
-            index,
-            VerifiedSearchSnapshot {
-                source_kind: endpoint.source_kind.clone(),
-                endpoint: endpoint.clone(),
-                checksum: index.search_index.checksum.clone(),
-                locator,
-                index: index.clone(),
-                document,
-            },
-        ))
+        let snapshot = VerifiedSearchSnapshot {
+            source_kind: endpoint.source_kind.clone(),
+            endpoint: endpoint.clone(),
+            checksum: index.search_index.checksum.clone(),
+            locator,
+            index: index.clone(),
+            document,
+        };
+        Ok((index, snapshot))
     }
 
     fn cached_search_snapshot(&self, category: &str) -> Option<VerifiedSearchSnapshot> {
