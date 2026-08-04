@@ -805,7 +805,7 @@ enum ExtensionDownloadFailure {
 impl ExtensionDownloadFailure {
     fn is_retryable(&self) -> bool {
         match self {
-            Self::Request { source, .. } => source.is_connect() || source.is_timeout(),
+            Self::Request { source, .. } => !source.is_builder() && !source.is_redirect(),
             Self::Status { status, .. } => {
                 *status == reqwest::StatusCode::REQUEST_TIMEOUT
                     || *status == reqwest::StatusCode::TOO_MANY_REQUESTS
