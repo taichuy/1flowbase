@@ -324,7 +324,8 @@ impl ApiOfficialMcpBundleRegistry {
     }
 
     async fn indexed_records(&self) -> Result<Vec<domain::ExtensionInstallationRecord>> {
-        self.installation_repository
+        Ok(self
+            .installation_repository
             .list_extension_installations_for_node(&self.node_id)
             .await?
             .into_iter()
@@ -365,8 +366,7 @@ impl ApiOfficialMcpBundleRegistry {
             .installation_repository
             .find_extension_installation(&self.node_id, &identity)
             .await?;
-        Ok(self
-            .installation_repository
+        self.installation_repository
             .upsert_extension_installation(&UpsertExtensionInstallationInput {
                 installation_id: existing
                     .as_ref()

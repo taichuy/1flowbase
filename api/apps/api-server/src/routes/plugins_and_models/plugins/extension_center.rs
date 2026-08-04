@@ -475,9 +475,10 @@ fn catalog_entry_warnings(
     let mut warnings = Vec::new();
     if entry.signature.is_none() {
         warnings.push("signature_missing");
-    } else if entry.signing_key_id().is_none_or(|key_id| {
-        !trusted_key_ids.iter().any(|trusted| trusted == key_id)
-    }) {
+    } else if entry
+        .signing_key_id()
+        .is_none_or(|key_id| !trusted_key_ids.iter().any(|trusted| trusted == key_id))
+    {
         warnings.push("signing_key_unknown");
     }
     if entry.checksum.is_none() {
