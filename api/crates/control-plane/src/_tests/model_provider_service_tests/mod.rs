@@ -254,6 +254,42 @@ impl MemoryModelProviderRepository {
         installation_id
     }
 
+    async fn mark_legacy_missing_publisher_namespace(&self, installation_id: Uuid) {
+        let local_path = self
+            .artifact_instances
+            .read()
+            .await
+            .get(&("test-node".to_string(), installation_id))
+            .and_then(|artifact| artifact.local_path.clone())
+            .expect("fixture artifact path should exist");
+        let manifest_path = std::path::Path::new(&local_path).join("manifest.yaml");
+        let raw = fs::read_to_string(&manifest_path).expect("fixture manifest should be readable");
+        let legacy = raw
+            .lines()
+            .filter(|line| !line.starts_with("publisher_namespace:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&manifest_path, legacy).expect("fixture manifest should become legacy");
+        let fingerprint = plugin_framework::compute_manifest_fingerprint(&manifest_path)
+            .await
+            .expect("legacy fixture fingerprint should be canonical");
+        let mut installations = self.installations.write().await;
+        let installation = installations
+            .get_mut(&installation_id)
+            .expect("fixture installation should exist");
+        installation.organization = "1flowbase-tests".to_string();
+        installation.legacy_manifest_compatibility =
+            Some("missing_publisher_namespace_v1".to_string());
+        drop(installations);
+        self.artifact_instances
+            .write()
+            .await
+            .get_mut(&("test-node".to_string(), installation_id))
+            .expect("fixture artifact should exist")
+            .manifest_fingerprint = Some(fingerprint);
+    }
+
     async fn secret_json(&self, instance_id: Uuid) -> Value {
         self.secrets
             .read()

@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
+    installed_provider_package::load_installed_provider_package,
     model_provider::{ModelProviderModelCatalog, ModelProviderUseCase},
     ports::{
         AuthRepository, ModelProviderRepository, PluginRepository, ProviderRuntimePort,
@@ -17,9 +18,8 @@ use super::{
     instances::build_provider_runtime_config,
     shared::{
         empty_object, ensure_model_provider_permission, is_secret_field,
-        load_actor_context_for_user, load_provider_package, map_catalog_source,
-        map_model_discovery_mode, ready_model_provider_installation,
-        ModelProviderNodeArtifactContext,
+        load_actor_context_for_user, map_catalog_source, map_model_discovery_mode,
+        ready_model_provider_installation, ModelProviderNodeArtifactContext,
     },
 };
 
@@ -56,11 +56,7 @@ where
         instance.installation_id,
     )
     .await?;
-    let package = load_provider_package(
-        installation
-            .local_path()
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-    )?;
+    let package = load_installed_provider_package(&installation)?;
 
     Ok(ModelProviderModelCatalog {
         provider_instance_id: instance.id,
@@ -100,11 +96,7 @@ where
     if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
         return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
     }
-    let package = load_provider_package(
-        installation
-            .local_path()
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-    )?;
+    let package = load_installed_provider_package(&installation)?;
     let provider_config =
         build_provider_runtime_config(repository, provider_secret_master_key, &package, &instance)
             .await?;
@@ -211,11 +203,7 @@ where
         instance.installation_id,
     )
     .await?;
-    let package = load_provider_package(
-        installation
-            .local_path()
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-    )?;
+    let package = load_installed_provider_package(&installation)?;
     let field = package
         .provider
         .form_schema

@@ -519,11 +519,17 @@ where
             if !local_artifact.artifact_status.is_ready() {
                 continue;
             }
-            let Some(installed_path) = local_artifact.local_path.as_deref() else {
+            if local_artifact.local_path.is_none() {
                 continue;
+            }
+            let local_installation = domain::LocalPluginInstallationRecord {
+                installation: installation.clone(),
+                artifact: local_artifact,
             };
 
-            match load_provider_package(installed_path) {
+            match crate::installed_provider_package::load_installed_provider_package(
+                &local_installation,
+            ) {
                 Ok(package) => {
                     refresh_provider_package_catalog_projection(
                         &self.repository,

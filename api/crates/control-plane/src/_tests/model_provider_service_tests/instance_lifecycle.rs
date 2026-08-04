@@ -1,6 +1,90 @@
 use super::*;
 
 #[tokio::test]
+async fn publisher_cutover_legacy_instance_form_schema_requires_explicit_receipt() {
+    let workspace_id = Uuid::now_v7();
+    let package_root =
+        std::env::temp_dir().join(format!("publisher-cutover-provider-{}", Uuid::now_v7()));
+    create_provider_fixture(&package_root);
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let installation_id = repository
+        .seed_installation(
+            &package_root.display().to_string(),
+            PluginDesiredState::ActiveRequested,
+            true,
+        )
+        .await;
+    repository
+        .mark_legacy_missing_publisher_namespace(installation_id)
+        .await;
+    let service = model_provider_service(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        "provider-secret-master-key",
+    );
+
+    let created = service
+        .create_instance(CreateModelProviderInstanceCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id,
+            display_name: "Legacy Fixture".to_string(),
+            config_json: json!({
+                "base_url": "https://legacy.example.com",
+                "api_key": "legacy-secret"
+            }),
+            configured_models: Vec::new(),
+            enabled_model_ids: Vec::new(),
+            included_in_main: None,
+            preview_token: None,
+        })
+        .await
+        .expect("AC-001 receipt-marked legacy provider should load its form schema");
+    let listed = service
+        .list_instances(repository.actor.user_id)
+        .await
+        .expect("AC-001 legacy instance list should hydrate with the installed schema");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].instance.id, created.instance.id);
+    assert_eq!(listed[0].instance.config_json["api_key"], "lega****cret");
+
+    let strict_repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let strict_installation_id = strict_repository
+        .seed_installation(
+            &package_root.display().to_string(),
+            PluginDesiredState::ActiveRequested,
+            true,
+        )
+        .await;
+    let strict_service = model_provider_service(
+        strict_repository.clone(),
+        MemoryProviderRuntime::default(),
+        "provider-secret-master-key",
+    );
+    assert!(strict_service
+        .create_instance(CreateModelProviderInstanceCommand {
+            actor_user_id: strict_repository.actor.user_id,
+            installation_id: strict_installation_id,
+            display_name: "Unmarked Legacy Fixture".to_string(),
+            config_json: json!({
+                "base_url": "https://legacy.example.com",
+                "api_key": "legacy-secret"
+            }),
+            configured_models: Vec::new(),
+            enabled_model_ids: Vec::new(),
+            included_in_main: None,
+            preview_token: None,
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
 async fn model_provider_service_masks_secret_in_views_and_reveals_on_demand() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryModelProviderRepository::new(actor_with_permissions(

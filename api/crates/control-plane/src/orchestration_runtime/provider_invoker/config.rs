@@ -72,8 +72,3 @@ fn empty_object() -> Value {
 fn is_secret_field(field_type: &str) -> bool {
     field_type.trim().eq_ignore_ascii_case("secret")
 }
-
-pub(super) fn load_provider_package(path: &str) -> Result<ProviderPackage> {
-    ProviderPackage::load_from_dir(path)
-        .map_err(|_| ControlPlaneError::InvalidInput("provider_package").into())
-}
