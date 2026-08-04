@@ -12,12 +12,10 @@ import {
 export interface PluginContributionPickerOption {
   kind: 'plugin_contribution';
   label: string;
-  description: string;
   category: ConsoleApplicationNodeCatalogEntry['category'];
   field_contract: ConsoleApplicationNodeFieldContract;
   plugin: ConsolePluginNodeIdentity;
   disabled: boolean;
-  disabledReason: string | null;
 }
 
 export type NodePickerOption =
@@ -37,23 +35,23 @@ export function toPluginContributionPickerOption(
   return {
     kind: 'plugin_contribution',
     label: node.title,
-    description: node.description,
     category: node.category,
     field_contract: node.field_contract,
     plugin: node.plugin,
-    disabled,
-    disabledReason: disabled ? node.runtime_status_description : null
+    disabled
   };
 }
 
 export function buildNodePickerOptions(
   nodes: ConsoleApplicationNodeCatalogEntry[]
 ): NodePickerOption[] {
-  return nodes.map((node) =>
-    node.source_kind === 'builtin'
-      ? toBuiltinNodePickerOption(node)
-      : toPluginContributionPickerOption(node)
-  );
+  return nodes
+    .filter((node) => node.authoring_status === 'published')
+    .map((node) =>
+      node.source_kind === 'builtin'
+        ? toBuiltinNodePickerOption(node)
+        : toPluginContributionPickerOption(node)
+    );
 }
 
 export function getNodePickerOptionKey(option: NodePickerOption) {
@@ -64,8 +62,4 @@ export function getNodePickerOptionKey(option: NodePickerOption) {
 
 export function getNodePickerOptionNodeType(option: NodePickerOption) {
   return option.kind === 'builtin' ? option.type : 'plugin_node';
-}
-
-export function getNodePickerOptionDescription(option: NodePickerOption) {
-  return option.disabledReason ?? option.description;
 }

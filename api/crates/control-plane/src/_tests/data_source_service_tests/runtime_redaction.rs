@@ -4,7 +4,7 @@ use super::*;
 async fn validate_and_preview_redact_runtime_echoed_secret_values() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::echoing_secret();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
     let plaintext = "secret-runtime-echo";
 
     let created = service
@@ -65,7 +65,7 @@ async fn validate_and_preview_redact_runtime_echoed_secret_values() {
 async fn validate_preview_and_catalog_redact_embedded_secret_substrings() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::echoing_secret();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
     let plaintext = "embedded-secret-value";
 
     let created = service

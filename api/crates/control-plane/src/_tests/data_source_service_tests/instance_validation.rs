@@ -4,7 +4,7 @@ use super::*;
 async fn ac_003_validate_instance_marks_ready_without_discovering_resources() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -42,7 +42,7 @@ async fn ac_003_validate_instance_marks_ready_without_discovering_resources() {
 #[tokio::test]
 async fn ac_004_only_ready_connections_discover_and_read_cached_resources() {
     let repository = InMemoryDataSourceRepository::default();
-    let service = DataSourceService::new(
+    let service = data_source_service(
         repository.clone(),
         StubDataSourceRuntime::ready(),
         "test-master-key",
@@ -109,7 +109,7 @@ async fn create_instance_requires_data_source_console_policy_not_legacy_permissi
         ["state_model.manage.all".to_string()],
     );
     let denied_repository = InMemoryDataSourceRepository::with_actor(state_model_actor);
-    let denied_service = DataSourceService::new(
+    let denied_service = data_source_service(
         denied_repository,
         StubDataSourceRuntime::ready(),
         "test-master-key",
@@ -136,7 +136,7 @@ async fn create_instance_requires_data_source_console_policy_not_legacy_permissi
         "member",
         ["external_data_source.configure.all".to_string()],
     );
-    let legacy_service = DataSourceService::new(
+    let legacy_service = data_source_service(
         InMemoryDataSourceRepository::with_actor(legacy_actor),
         StubDataSourceRuntime::ready(),
         "test-master-key",
@@ -176,7 +176,7 @@ async fn create_instance_requires_data_source_console_policy_not_legacy_permissi
             )],
         )])
         .await;
-    let allowed_service = DataSourceService::new(
+    let allowed_service = data_source_service(
         allowed_repository.clone(),
         StubDataSourceRuntime::ready(),
         "test-master-key",

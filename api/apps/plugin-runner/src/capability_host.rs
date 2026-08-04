@@ -55,6 +55,18 @@ impl CapabilityHost {
         Ok(summary)
     }
 
+    pub fn load_legacy_installed(
+        &mut self,
+        package_root: impl AsRef<std::path::Path>,
+        eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<LoadedCapabilitySummary> {
+        let loaded = PackageLoader::load_legacy_installed_capability(package_root, eligibility)?;
+        let summary = LoadedCapabilitySummary::from_loaded(&loaded);
+        self.loaded_packages
+            .insert(summary.plugin_id.clone(), loaded);
+        Ok(summary)
+    }
+
     pub async fn validate_config(
         &self,
         plugin_id: &str,

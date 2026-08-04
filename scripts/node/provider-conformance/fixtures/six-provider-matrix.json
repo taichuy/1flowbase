@@ -425,7 +425,11 @@
         "runtime": {
           "protocol": "stdio_json",
           "entry": "bin/openai_compatible-provider",
-          "capabilities": ["count_tokens", "protocol_context.restore.openai_chat.v1"]
+          "capabilities": [
+            "count_tokens",
+            "message_blocks.reasoning_history.v1",
+            "protocol_context.restore.openai_chat.v1"
+          ]
         }
       },
       "input": {
@@ -439,10 +443,21 @@
           "api_key": "$SECRET_CANARY",
           "validate_model": false
         },
-        "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+        "messages": [
+          { "role": "user", "content": "first turn" },
+          {
+            "role": "assistant",
+            "content": "visible first answer",
+            "content_blocks": [
+              { "type": "reasoning", "text": "private reasoning must be preserved" },
+              { "type": "text", "text": "visible first answer" }
+            ]
+          },
+          { "role": "user", "content": "$PROMPT_CANARY" }
+        ],
         "system": [],
         "request_context": {},
-        "required_capabilities": [],
+        "required_capabilities": ["message_blocks.reasoning_history.v1"],
         "tools": [],
         "mcp_bindings": [],
         "response_format": null,
@@ -465,13 +480,21 @@
         },
         "body": {
           "model": "compatible-model",
-          "messages": [{ "role": "user", "content": "$PROMPT_CANARY" }],
+          "messages": [
+            { "role": "user", "content": "first turn" },
+            {
+              "role": "assistant",
+              "content": "visible first answer",
+              "reasoning_content": "private reasoning must be preserved"
+            },
+            { "role": "user", "content": "$PROMPT_CANARY" }
+          ],
           "stream": true,
           "stream_options": { "include_usage": true },
           "temperature": 0.25
         },
         "wire_audit": {
-          "message_count": 1,
+          "message_count": 3,
           "system_block_count": 0,
           "model_parameter_count": 1,
           "counts_capped": false

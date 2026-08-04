@@ -76,17 +76,25 @@ pub async fn list_official_catalog(
             requested_locales(&locale_meta),
         )
         .await?;
+    let filter = official_filter_from_query(&query);
     let page = state
         .official_extension_catalog_source
-        .list_page("runtime-extensions", query.cursor.as_deref())
+        .search(
+            "runtime-extensions",
+            crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
+                slot_code: Some(MODEL_PROVIDER_PLUGIN_TYPE.to_string()),
+                q: filter.search_query.clone(),
+                limit: filter.limit,
+                cursor: query.cursor.clone(),
+            },
+        )
         .await?;
-    let filter = official_filter_from_query(&query);
     let installed = local_catalog
         .entries
         .into_iter()
         .map(|entry| {
             (
-                entry.installation.provider_code,
+                model_provider_catalog_id(&entry.installation),
                 if entry.assigned_to_current_workspace {
                     "assigned"
                 } else {
@@ -95,7 +103,7 @@ pub async fn list_official_catalog(
             )
         })
         .collect::<std::collections::HashMap<_, _>>();
-    let mut entries = page
+    let entries = page
         .entries
         .into_iter()
         .filter_map(
@@ -106,20 +114,6 @@ pub async fn list_official_catalog(
             },
         )
         .collect::<anyhow::Result<Vec<_>>>()?;
-    if let Some(search) = filter.search_query.as_deref() {
-        let search = search.to_lowercase();
-        entries.retain(|entry| {
-            entry.display_name.to_lowercase().contains(&search)
-                || entry
-                    .description
-                    .as_deref()
-                    .is_some_and(|description| description.to_lowercase().contains(&search))
-                || entry.provider_code.to_lowercase().contains(&search)
-                || entry.plugin_id.to_lowercase().contains(&search)
-                || entry.protocol.to_lowercase().contains(&search)
-        });
-    }
-    entries.truncate(filter.limit);
     let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
         .expect("runtime profile must resolve a supported catalog locale");
     let source_label = crate::app_state::resolve_official_source_label(
@@ -132,16 +126,12 @@ pub async fn list_official_catalog(
     Ok(Json(ApiSuccess::new(OfficialPluginCatalogResponse {
         source_kind: page.source_kind,
         source_label,
-        registry_url: page.metadata.locator,
-        source_freshness: match page.metadata.freshness {
-            crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh => "fresh",
-            crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Stale => "stale",
-        }
-        .to_string(),
+        registry_url: page.snapshot_locator,
+        source_freshness: "fresh".to_string(),
         locale_meta,
         page: OfficialPluginCatalogPageResponse {
             limit: filter.limit,
-            next_cursor: page.metadata.next_cursor,
+            next_cursor: page.next_cursor,
         },
         entries,
     })))
@@ -189,6 +179,7 @@ fn project_model_provider_catalog_entry(
         &entry.host_version_requirement,
         &current_host_version,
     );
+    let install_status = exact_catalog_install_status(installed, &entry.id).to_string();
     Ok(Some(OfficialPluginCatalogEntryResponse {
         plugin_id,
         plugin_type: MODEL_PROVIDER_PLUGIN_TYPE.to_string(),
@@ -214,12 +205,64 @@ fn project_model_provider_catalog_entry(
         },
         help_url,
         model_discovery_mode,
-        install_status: installed
-            .get(&provider_code)
-            .copied()
-            .unwrap_or("not_installed")
-            .to_string(),
+        install_status,
     }))
+}
+
+fn model_provider_catalog_id(installation: &domain::PluginInstallationRecord) -> String {
+    canonical_model_provider_catalog_id(
+        installation.category,
+        &installation.organization,
+        &installation.provider_code,
+    )
+}
+
+fn canonical_model_provider_catalog_id(
+    category: domain::ExtensionCategory,
+    organization: &str,
+    provider_code: &str,
+) -> String {
+    format!("{}:{}/{}", category.as_str(), organization, provider_code)
+}
+
+fn exact_catalog_install_status<'a>(
+    installed: &'a std::collections::HashMap<String, &'static str>,
+    catalog_id: &str,
+) -> &'a str {
+    installed
+        .get(catalog_id)
+        .copied()
+        .unwrap_or("not_installed")
+}
+
+#[cfg(test)]
+mod catalog_identity_tests {
+    use super::{canonical_model_provider_catalog_id, exact_catalog_install_status};
+    use std::collections::HashMap;
+
+    #[test]
+    fn api_f2_same_provider_code_from_another_publisher_is_not_marked_installed() {
+        let installed_catalog_id = canonical_model_provider_catalog_id(
+            domain::ExtensionCategory::RuntimeExtensions,
+            "publisher-a",
+            "shared-provider",
+        );
+        let other_publisher_catalog_id = canonical_model_provider_catalog_id(
+            domain::ExtensionCategory::RuntimeExtensions,
+            "publisher-b",
+            "shared-provider",
+        );
+        let installed = HashMap::from([(installed_catalog_id.clone(), "assigned")]);
+
+        assert_eq!(
+            exact_catalog_install_status(&installed, &installed_catalog_id),
+            "assigned"
+        );
+        assert_eq!(
+            exact_catalog_install_status(&installed, &other_publisher_catalog_id),
+            "not_installed"
+        );
+    }
 }
 
 fn catalog_metadata_required(

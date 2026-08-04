@@ -286,6 +286,7 @@ fn make_fixture_package() -> TempDataSourcePackage {
         r#"manifest_version: 1
 plugin_id: fixture_data_source@0.1.0
 version: 0.1.0
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Fixture Data Source
 description: Fixture Data Source

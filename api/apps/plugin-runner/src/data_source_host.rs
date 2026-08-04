@@ -58,6 +58,8 @@ pub struct DataSourceDescriptorOutput {
 #[derive(Debug, Default)]
 pub struct DataSourceHost {
     loaded_packages: HashMap<String, LoadedDataSourcePackage>,
+    legacy_manifest_eligibilities:
+        HashMap<String, plugin_framework::LegacyInstalledManifestEligibility>,
 }
 
 impl DataSourceHost {
@@ -69,12 +71,33 @@ impl DataSourceHost {
         let summary = LoadedDataSourceSummary::from_loaded(&loaded);
         self.loaded_packages
             .insert(summary.plugin_id.clone(), loaded);
+        self.legacy_manifest_eligibilities
+            .remove(&summary.plugin_id);
+        Ok(summary)
+    }
+
+    pub fn load_legacy_installed(
+        &mut self,
+        package_root: impl AsRef<std::path::Path>,
+        eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<LoadedDataSourceSummary> {
+        let loaded = PackageLoader::load_legacy_installed_data_source(package_root, eligibility)?;
+        let summary = LoadedDataSourceSummary::from_loaded(&loaded);
+        self.loaded_packages
+            .insert(summary.plugin_id.clone(), loaded);
+        self.legacy_manifest_eligibilities
+            .insert(summary.plugin_id.clone(), eligibility.clone());
         Ok(summary)
     }
 
     pub fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedDataSourceSummary> {
         let package_root = self.loaded_package(plugin_id)?.package_root.clone();
-        let loaded = PackageLoader::load_data_source(&package_root)?;
+        let loaded = match self.legacy_manifest_eligibilities.get(plugin_id) {
+            Some(eligibility) => {
+                PackageLoader::load_legacy_installed_data_source(&package_root, eligibility)?
+            }
+            None => PackageLoader::load_data_source(&package_root)?,
+        };
         let summary = LoadedDataSourceSummary::from_loaded(&loaded);
         self.loaded_packages.remove(plugin_id);
         self.loaded_packages

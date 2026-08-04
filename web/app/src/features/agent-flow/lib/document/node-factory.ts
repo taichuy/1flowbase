@@ -83,9 +83,7 @@ export function createNodeDocument(
 ): FlowNodeDocument {
   if (isNodePickerOption(nodeTypeOrOption)) {
     if (nodeTypeOrOption.disabled) {
-      throw new Error(
-        `Catalog node is unavailable: ${nodeTypeOrOption.disabledReason ?? nodeTypeOrOption.label}`
-      );
+      throw new Error(`Catalog node is unavailable: ${nodeTypeOrOption.label}`);
     }
 
     if (nodeTypeOrOption.kind === 'plugin_contribution') {

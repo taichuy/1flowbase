@@ -22,6 +22,9 @@ use crate::{
 };
 
 mod input_schema;
+pub(crate) mod result_delivery;
+
+pub(crate) const JSON_RPC_RESPONSE_MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Deserialize)]
 struct JsonRpcRequest {
@@ -77,14 +80,14 @@ async fn handle_mcp_request(
             json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":instance.name,"version":env!("CARGO_PKG_VERSION")}})
         }
         "notifications/initialized" => {
-            return Ok((
+            return Ok(bounded_jsonrpc_response(
                 StatusCode::ACCEPTED,
-                Json(JsonRpcResponse {
+                JsonRpcResponse {
                     jsonrpc: "2.0",
                     id: request.id,
                     result: None,
                     error: None,
-                }),
+                },
             ));
         }
         "tools/list" => json!({"tools": meta_tools()}),
@@ -155,6 +158,37 @@ async fn handle_mcp_request(
                         "des_id_required": tool.des_id_required
                     }))
                 }
+                "mcp.result" => {
+                    let Some(result_ref) = string_argument(&arguments, "result_ref")
+                        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    else {
+                        return Ok(jsonrpc_error(request.id, -32602, "Invalid result_ref"));
+                    };
+                    let cursor = match arguments.get("cursor") {
+                        Some(Value::String(value)) => match value.parse::<usize>() {
+                            Ok(cursor) => cursor,
+                            Err(_) => {
+                                return Ok(jsonrpc_error(request.id, -32602, "Invalid cursor"));
+                            }
+                        },
+                        None => 0,
+                        Some(_) => {
+                            return Ok(jsonrpc_error(request.id, -32602, "Invalid cursor"));
+                        }
+                    };
+                    let inline_chars = match result_delivery::inline_limit(&arguments) {
+                        Ok(limit) => limit,
+                        Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
+                    };
+                    result_delivery::read_continuation(
+                        state.as_ref(),
+                        &context.actor,
+                        result_ref,
+                        cursor,
+                        inline_chars,
+                    )
+                    .await
+                }
                 "mcp.call" => {
                     let Some(tool_id) = string_argument(&arguments, "tool_id") else {
                         return Ok(jsonrpc_error(request.id, -32602, "Invalid tool_id"));
@@ -166,6 +200,10 @@ async fn handle_mcp_request(
                     if tool.des_id_required && des_id != Some(tool.des_id.as_str()) {
                         return Ok(jsonrpc_error(request.id, -32602, "Invalid des_id"));
                     }
+                    let inline_chars = match result_delivery::inline_limit(&arguments) {
+                        Ok(limit) => limit,
+                        Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
+                    };
                     let tool_arguments = arguments
                         .get("arguments")
                         .cloned()
@@ -197,6 +235,18 @@ async fn handle_mcp_request(
                                 input_mapping: tool.input_mapping.clone(),
                                 output_mapping: tool.output_mapping.clone(),
                             };
+                            let completed_operation = if matches!(
+                                interface.method.as_str(),
+                                "GET" | "HEAD" | "OPTIONS"
+                            ) {
+                                result_delivery::CompletedOperation::Read {
+                                    operation_id: interface_id,
+                                }
+                            } else {
+                                result_delivery::CompletedOperation::Write {
+                                    operation_id: interface_id,
+                                }
+                            };
                             match super::mcp_management::debug_execute::execute(
                                 state.clone(),
                                 headers,
@@ -205,7 +255,19 @@ async fn handle_mcp_request(
                             )
                             .await
                             {
-                                Ok(value) => tool_result(value),
+                                Ok(value) => {
+                                    if result_delivery::exceeds_inline_limit(&value, inline_chars) {
+                                        result_delivery::deliver_oversized_result(
+                                            state.as_ref(),
+                                            &context.actor,
+                                            completed_operation,
+                                            value,
+                                        )
+                                        .await
+                                    } else {
+                                        tool_result(value)
+                                    }
+                                }
                                 Err(super::mcp_management::debug_execute::McpDebugExecuteError::Api(error)) => {
                                     tracing::warn!(
                                         tool_id = %tool.tool_id,
@@ -229,7 +291,9 @@ async fn handle_mcp_request(
                                         "Tool execution failed",
                                         json!({
                                             "category": "target_interface",
-                                            "http_status": status.as_u16()
+                                            "http_status": status.as_u16(),
+                                            "outcome": "failed",
+                                            "retry_original": false
                                         }),
                                     ));
                                 }
@@ -317,7 +381,26 @@ async fn handle_mcp_request(
                                 }
                             };
                             match serde_json::to_value(mapped) {
-                                Ok(value) => value,
+                                Ok(value) => {
+                                    let detail = value
+                                        .get("structuredContent")
+                                        .cloned()
+                                        .unwrap_or_else(|| value.clone());
+                                    if result_delivery::exceeds_inline_limit(&detail, inline_chars)
+                                    {
+                                        result_delivery::deliver_oversized_result(
+                                            state.as_ref(),
+                                            &context.actor,
+                                            result_delivery::CompletedOperation::Write {
+                                                operation_id: &tool.tool_id,
+                                            },
+                                            detail,
+                                        )
+                                        .await
+                                    } else {
+                                        value
+                                    }
+                                }
                                 Err(error) => {
                                     return Ok(jsonrpc_error_data(
                                         request.id,
@@ -336,18 +419,18 @@ async fn handle_mcp_request(
         _ => return Ok(jsonrpc_error(request.id, -32601, "Method not found")),
     };
 
-    Ok((
+    Ok(bounded_jsonrpc_response(
         StatusCode::OK,
-        Json(JsonRpcResponse {
+        JsonRpcResponse {
             jsonrpc: "2.0",
             id: request.id,
             result: Some(result),
             error: None,
-        }),
+        },
     ))
 }
 
-fn meta_tools() -> [Value; 3] {
+fn meta_tools() -> [Value; 4] {
     [
         json!({
             "name": "mcp.list",
@@ -377,6 +460,25 @@ fn meta_tools() -> [Value; 3] {
             }
         }),
         json!({
+            "name": "mcp.result",
+            "title": "Continue MCP result detail",
+            "description": "Read a cached page of result detail. Missing detail never authorizes retrying the original operation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "result_ref": {"type": "string", "format": "uuid"},
+                    "cursor": {"type": "string"},
+                    "max_inline_chars": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": result_delivery::MAX_INLINE_CHARS
+                    }
+                },
+                "required": ["result_ref"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "mcp.call",
             "title": "Call MCP tool",
             "description": "Call a visible tool after mcp.get. Supply the current des_id when the tool requires description validation.",
@@ -385,7 +487,13 @@ fn meta_tools() -> [Value; 3] {
                 "properties": {
                     "tool_id": {"type": "string"},
                     "des_id": {"type": "string"},
-                    "arguments": {"type": "object"}
+                    "arguments": {"type": "object"},
+                    "max_inline_chars": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": result_delivery::MAX_INLINE_CHARS,
+                        "default": result_delivery::DEFAULT_INLINE_CHARS
+                    }
                 },
                 "required": ["tool_id", "arguments"],
                 "additionalProperties": false
@@ -415,11 +523,7 @@ fn visible_tool<'a>(
 }
 
 fn tool_result(value: Value) -> Value {
-    json!({
-        "content": [{"type":"text","text":serde_json::to_string(&value).unwrap_or_default()}],
-        "structuredContent": value,
-        "isError": false
-    })
+    result_delivery::tool_result(value)
 }
 
 fn jsonrpc_error(
@@ -427,14 +531,14 @@ fn jsonrpc_error(
     code: i32,
     message: &'static str,
 ) -> (StatusCode, Json<JsonRpcResponse>) {
-    (
+    bounded_jsonrpc_response(
         StatusCode::OK,
-        Json(JsonRpcResponse {
+        JsonRpcResponse {
             jsonrpc: "2.0",
             id,
             result: None,
             error: Some(json!({"code":code,"message":message})),
-        }),
+        },
     )
 }
 
@@ -444,13 +548,38 @@ fn jsonrpc_error_data(
     message: &'static str,
     data: Value,
 ) -> (StatusCode, Json<JsonRpcResponse>) {
-    (
+    bounded_jsonrpc_response(
         StatusCode::OK,
-        Json(JsonRpcResponse {
+        JsonRpcResponse {
             jsonrpc: "2.0",
             id,
             result: None,
             error: Some(json!({"code":code,"message":message,"data":data})),
+        },
+    )
+}
+
+fn bounded_jsonrpc_response(
+    status: StatusCode,
+    response: JsonRpcResponse,
+) -> (StatusCode, Json<JsonRpcResponse>) {
+    if serde_json::to_vec(&response).is_ok_and(|bytes| bytes.len() <= JSON_RPC_RESPONSE_MAX_BYTES) {
+        return (status, Json(response));
+    }
+    (
+        StatusCode::OK,
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id: response.id,
+            result: None,
+            error: Some(json!({
+                "code": -32603,
+                "message": "Response exceeds server limit",
+                "data": {
+                    "category": "response_size_limit",
+                    "max_bytes": JSON_RPC_RESPONSE_MAX_BYTES
+                }
+            })),
         }),
     )
 }
@@ -481,8 +610,21 @@ fn interface_api_error_response(
             }
             _ => (-32603, "interface_dispatch", None),
         };
-    let mut data =
-        serde_json::Map::from_iter([("category".to_string(), Value::String(category.to_string()))]);
+    let mut data = serde_json::Map::from_iter([
+        ("category".to_string(), Value::String(category.to_string())),
+        (
+            "outcome".to_string(),
+            Value::String(
+                if category == "interface_dispatch" {
+                    "unknown"
+                } else {
+                    "not_started"
+                }
+                .to_string(),
+            ),
+        ),
+        ("retry_original".to_string(), Value::Bool(false)),
+    ]);
     if let Some(field) = field {
         data.insert("field".to_string(), Value::String(field.to_string()));
     }
@@ -524,5 +666,38 @@ mod issue_1246_tests {
             assert_eq!(error["data"]["field"], json!(field));
             assert!(!error.to_string().contains("secret-marker"));
         }
+    }
+
+    #[test]
+    fn root_1569_ac_006_final_jsonrpc_response_has_a_hard_byte_limit() {
+        let (_, response) = bounded_jsonrpc_response(
+            StatusCode::OK,
+            JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: Some(json!("oversized")),
+                result: Some(json!({
+                    "content": "界".repeat(JSON_RPC_RESPONSE_MAX_BYTES)
+                })),
+                error: None,
+            },
+        );
+        let bytes = serde_json::to_vec(&response.0).unwrap();
+        assert!(bytes.len() <= JSON_RPC_RESPONSE_MAX_BYTES);
+        assert_eq!(
+            response.0.error.unwrap()["data"]["category"],
+            json!("response_size_limit")
+        );
+    }
+
+    #[test]
+    fn root_1569_ac_007_dispatch_unknown_is_distinct_from_target_failure() {
+        let (_, response) = interface_api_error_response(
+            Some(json!("bundle-import")),
+            &anyhow::anyhow!("dispatch connection closed"),
+        );
+        let data = &response.0.error.unwrap()["data"];
+        assert_eq!(data["category"], json!("interface_dispatch"));
+        assert_eq!(data["outcome"], json!("unknown"));
+        assert_eq!(data["retry_original"], json!(false));
     }
 }

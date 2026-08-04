@@ -527,6 +527,33 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
 }
 
 #[test]
+fn ac_001_provider_request_log_task_preserves_attempt_reasoning_effort() {
+    let started_at = OffsetDateTime::UNIX_EPOCH;
+    let attempt = json!({
+        "provider_code": "openai_compatible",
+        "protocol": "openai_compatible",
+        "upstream_model_id": "deepseek-v4-flash",
+        "reasoning_effort": "high",
+        "status": "succeeded"
+    });
+
+    let task = super::model_attempts::provider_request_log_task_from_attempt(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        None,
+        None,
+        "Reasoning projection fixture",
+        started_at,
+        started_at,
+        &attempt,
+    );
+
+    assert_eq!(task.reasoning_effort.as_deref(), Some("high"));
+}
+
+#[test]
 fn provider_request_log_task_accepts_legacy_queue_payload_without_node_run_id_ac_003() {
     let task = super::model_attempts::provider_request_log_task_from_attempt(
         Uuid::now_v7(),

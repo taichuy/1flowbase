@@ -151,7 +151,7 @@ where
                                 domain::ExtensionCategory::CapabilityPlugins
                             }
                         },
-                        organization: manifest.vendor.clone(),
+                        organization: manifest.publisher_namespace.clone(),
                         provider_code: manifest
                             .plugin_code()
                             .map_err(map_framework_error)?
@@ -737,13 +737,6 @@ async fn inspect_artifact_path(
             };
         }
     };
-    if parse_plugin_manifest(&raw_manifest).is_err() {
-        return ScannedPluginArtifact {
-            artifact_status: domain::PluginArtifactInstanceStatus::Corrupted,
-            last_error: Some("manifest_parse_failed".to_string()),
-            ..base
-        };
-    }
     let actual_fingerprint = match compute_manifest_fingerprint(&manifest_path).await {
         Ok(fingerprint) => fingerprint,
         Err(_) => {
@@ -756,8 +749,39 @@ async fn inspect_artifact_path(
     };
     if marker.manifest_fingerprint.as_deref() != Some(actual_fingerprint.as_str()) {
         return ScannedPluginArtifact {
-            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            artifact_status: if installation.legacy_manifest_compatibility.is_some() {
+                domain::PluginArtifactInstanceStatus::Corrupted
+            } else {
+                domain::PluginArtifactInstanceStatus::Ready
+            },
             last_error: Some("manifest_fingerprint_mismatch".to_string()),
+            ..base
+        };
+    }
+    let manifest_result = match installation.legacy_manifest_compatibility.as_deref() {
+        None => parse_plugin_manifest(&raw_manifest),
+        Some("missing_publisher_namespace_v1") => {
+            plugin_framework::parse_legacy_installed_plugin_manifest(
+                &raw_manifest,
+                &plugin_framework::LegacyInstalledManifestEligibility {
+                    expected_publisher_namespace: installation.organization.clone(),
+                    expected_versioned_plugin_id: installation.plugin_id.clone(),
+                    expected_raw_manifest_fingerprint: actual_fingerprint,
+                },
+            )
+        }
+        Some(_) => {
+            return ScannedPluginArtifact {
+                artifact_status: domain::PluginArtifactInstanceStatus::Corrupted,
+                last_error: Some("manifest_compatibility_unsupported".to_string()),
+                ..base
+            };
+        }
+    };
+    if manifest_result.is_err() {
+        return ScannedPluginArtifact {
+            artifact_status: domain::PluginArtifactInstanceStatus::Corrupted,
+            last_error: Some("manifest_parse_failed".to_string()),
             ..base
         };
     }

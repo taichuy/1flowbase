@@ -144,11 +144,6 @@ export function StartInputFieldSettingsPanel({
             virtual={false}
             onChange={handleTypeChange}
           />
-          {inputTypeContract?.description ? (
-            <Typography.Text type="secondary">
-              {inputTypeContract.description}
-            </Typography.Text>
-          ) : null}
         </div>
         {sourceOptions.length > 0 ? (
           <div className="agent-flow-start-input-fields__form-row">
@@ -164,14 +159,6 @@ export function StartInputFieldSettingsPanel({
               virtual={false}
               onChange={(source) => onChange({ source })}
             />
-            {sourceContract?.description ? (
-              <Typography.Text type="secondary">
-                {sourceContract.description}
-                {sourceContract.applicability
-                  ? ` ${sourceContract.applicability}`
-                  : ''}
-              </Typography.Text>
-            ) : null}
           </div>
         ) : null}
         <div className="agent-flow-start-input-fields__form-row">

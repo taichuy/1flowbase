@@ -188,9 +188,13 @@ async function exportMcpInstanceToOfficial(options, dependencies = {}) {
         cookie: session.cookie,
         'x-csrf-token': session.csrfToken,
       },
-      body: JSON.stringify(identity),
+      body: JSON.stringify({ ...identity, export_profile: 'official_builtin' }),
     });
     if (!response.ok) throw new Error(`MCP instance export failed: ${response.status} ${(await response.text()).slice(0, 500)}`.trim());
+    const excludedToolCount = Number(response.headers?.get('x-1flowbase-mcp-excluded-tool-count') || 0);
+    const exclusionReasons = (response.headers?.get('x-1flowbase-mcp-exclusion-reasons') || '')
+      .split(',')
+      .filter(Boolean);
     const bytes = Buffer.from(await response.arrayBuffer());
     extractBundleArchive(bytes, staged);
     const manifest = validateExportedManifest(staged, identity);
@@ -203,6 +207,8 @@ async function exportMcpInstanceToOfficial(options, dependencies = {}) {
       target,
       bundle_version: identity.bundle_version,
       exported_from_system_version: manifest.exported_from_system_version,
+      excluded_tool_count: excludedToolCount,
+      exclusion_reasons: exclusionReasons,
       committed: false,
       pushed: false,
     };

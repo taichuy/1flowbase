@@ -46,7 +46,8 @@ use crate::{
         OfficialExtensionArtifactDescriptor, OfficialExtensionArtifactPlatform,
         OfficialExtensionCatalogEntry, OfficialExtensionCatalogEntrySource,
         OfficialExtensionCatalogFreshness, OfficialExtensionCatalogPage,
-        OfficialExtensionCatalogPageMetadata, OfficialExtensionCatalogSourcePort,
+        OfficialExtensionCatalogPageMetadata, OfficialExtensionCatalogSearchQuery,
+        OfficialExtensionCatalogSearchResult, OfficialExtensionCatalogSourcePort,
     },
     official_mcp_bundles::{
         DownloadedOfficialMcpBundle, McpBundleLibraryCatalog, McpBundleLibraryEntry,

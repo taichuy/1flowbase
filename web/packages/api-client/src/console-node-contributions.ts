@@ -2,6 +2,7 @@ import { apiFetch } from './transport';
 
 export type ConsoleApplicationNodeSourceKind = 'builtin' | 'plugin';
 export type ConsoleApplicationNodeRuntimeStatus = 'ready' | 'unavailable';
+export type ConsoleApplicationNodeAuthoringStatus = 'published' | 'hidden';
 export type ConsoleApplicationNodeDependencyStatus =
   | 'not_applicable'
   | 'ready'
@@ -11,11 +12,9 @@ export type ConsoleApplicationNodeDependencyStatus =
 
 export interface ConsoleApplicationNodeContractField {
   key: string;
-  description: string;
   required: boolean;
   value_types: string[];
   allowed_values: string[];
-  applicability: string | null;
 }
 
 export interface ConsoleApplicationNodeFieldContract {
@@ -56,10 +55,9 @@ export interface ConsoleApplicationNodeCatalogEntry {
   source_kind: ConsoleApplicationNodeSourceKind;
   node_type: string;
   title: string;
-  description: string;
   category: string;
+  authoring_status: ConsoleApplicationNodeAuthoringStatus;
   runtime_status: ConsoleApplicationNodeRuntimeStatus;
-  runtime_status_description: string;
   dependency_status: ConsoleApplicationNodeDependencyStatus;
   field_contract: ConsoleApplicationNodeFieldContract;
   plugin: ConsolePluginNodeIdentity | null;

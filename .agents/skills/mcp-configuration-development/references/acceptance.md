@@ -30,6 +30,7 @@
 - 必需容器对象已通过真实 `mcp.call` 证明能由当前 request Schema 与 interface wrapper 自动物化，没有用 mapping 虚假占位值绕过 Schema。
 - 已发布能力只有在存在可绑定 operation 与可验证认证 contract 时才配置 invocation Tool；否则明确记录缺口。
 - 本轮停止或失败后不存在无 Tool 的空 Group、错误复用 Binding 或无消费者新 Tool。
+- 本轮变更账本只包含 MCP Instance、Tool、Group、Binding、mapping 与 discovery policy 配置；没有由本轮配置任务引入 `web/`、i18n、业务 catalog、DTO / OpenAPI、migration、协议或运行时代码变更。
 - 动态接口只在父资源达到目标生命周期后创建；系统原子生成的默认子资源被复用，没有重复创建。
 - 请求 scope、运行态回读 scope 与物理资源归属一致；不一致时对应验收点标为未完全满足并报告。
 

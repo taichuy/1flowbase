@@ -21,6 +21,7 @@ use plugin_runner::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -67,6 +68,7 @@ fn write_failing_provider_package(package: &TempProviderPackage) {
         r#"manifest_version: 1
 plugin_id: fixture_provider
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -139,6 +141,7 @@ fn write_balance_provider_package(package: &TempProviderPackage) {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -216,6 +219,7 @@ fn write_slow_invocation_provider_package(package: &TempProviderPackage) {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -295,6 +299,7 @@ fn write_compact_provider_package(package: &TempProviderPackage, response: &str)
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Fixture Provider
 description: Fixture provider
@@ -404,6 +409,7 @@ fn fixture_installation(package: &TempProviderPackage) -> domain::LocalPluginIns
         signature_status: domain::ExtensionSignatureStatus::Missing,
         signature_algorithm: None,
         signing_key_id: None,
+        legacy_manifest_compatibility: None,
         metadata_json: json!({}),
         is_system_reserved: false,
         created_by: Uuid::now_v7(),
@@ -479,6 +485,36 @@ async fn provider_runtime_get_balance_ensures_loaded_and_calls_host() {
     assert_eq!(balance.balance_infos[0].currency, "CNY");
     assert_eq!(balance.balance_infos[0].total_balance, "110.00");
     assert_eq!(balance.provider_metadata["provider"], "deepseek");
+}
+
+#[tokio::test]
+async fn publisher_cutover_provider_runtime_consumes_legacy_manifest_compatibility() {
+    let package = TempProviderPackage::new();
+    write_balance_provider_package(&package);
+    let manifest_path = package.path().join("manifest.yaml");
+    let strict_raw = fs::read_to_string(&manifest_path).unwrap();
+    let legacy_raw = strict_raw.replace("publisher_namespace: 1flowbase\n", "");
+    fs::write(&manifest_path, &legacy_raw).unwrap();
+    let mut installation = fixture_installation(&package);
+    installation.installation.organization = "1flowbase".to_string();
+    installation.installation.legacy_manifest_compatibility =
+        Some("missing_publisher_namespace_v1".to_string());
+    installation.artifact.manifest_fingerprint = Some(format!(
+        "sha256:{:x}",
+        Sha256::digest(legacy_raw.as_bytes())
+    ));
+    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
+        Arc::new(RwLock::new(ProviderHost::default())),
+        Arc::new(RwLock::new(CapabilityHost::default())),
+        Arc::new(RwLock::new(DataSourceHost::default())),
+    )));
+
+    let balance = runtime
+        .get_balance(&installation, json!({ "api_key": "secret" }))
+        .await
+        .expect("AC-001 publisher cutover installation should reach the runner");
+
+    assert!(balance.is_available);
 }
 
 #[tokio::test]

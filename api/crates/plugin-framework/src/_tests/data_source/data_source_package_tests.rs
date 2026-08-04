@@ -45,6 +45,7 @@ fn loads_data_source_package_with_runtime_extension_contract() {
         r#"manifest_version: 1
 plugin_id: acme_hubspot_source
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Acme HubSpot Source
 description: test data source package

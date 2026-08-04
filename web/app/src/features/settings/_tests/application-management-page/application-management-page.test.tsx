@@ -142,25 +142,21 @@ describe('ApplicationManagementPanel', () => {
       types: [
         {
           value: 'agent_flow',
-          label: 'AgentFlow',
-          description: 'Build a conversational Agent Flow.'
+          label: 'AgentFlow'
         },
         {
           value: 'workflow',
-          label: 'Workflow',
-          description: 'Build an extension or scheduled Workflow.'
+          label: 'Workflow'
         }
       ],
       workflow_triggers: [
         {
           value: 'extension',
-          label: '扩展接口触发',
-          description: 'Expose the Workflow through /api/ex/.'
+          label: '扩展接口触发'
         },
         {
           value: 'schedule',
-          label: '定时触发',
-          description: 'Run the Workflow from a disabled-by-default schedule.'
+          label: '定时触发'
         }
       ],
       tags: [{ id: 'tag-report', name: '报表', application_count: 1 }]

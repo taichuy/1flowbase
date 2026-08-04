@@ -340,7 +340,7 @@ async function clearPortConflicts(
       continue;
     }
 
-    logImpl(`${label} 检测到端口 ${port} 被其他进程占用，正在清理 pid=${occupants.join(',')}`);
+    logImpl(`${label} detected occupied port ${port}; terminating pid=${occupants.join(',')}`);
 
     for (const pid of occupants) {
       signalProcessImpl(pid, 'SIGTERM');
@@ -388,11 +388,11 @@ async function startService(
   if (pidRecord && isProcessAliveImpl(pidRecord.pid)) {
     if (await isPortOpenImpl(getProbeHost(service), service.port)) {
       if (!takeOverPortOwnership) {
-        logImpl(`${service.label} 已在运行，跳过启动`);
+        logImpl(`${service.label} is already running; skipping start`);
         return;
       }
 
-      logImpl(`${service.label} 已在运行，正在重启`);
+      logImpl(`${service.label} is already running; restarting`);
     }
 
     await stopServiceImpl(service);
@@ -406,7 +406,7 @@ async function startService(
   }
 
   if (await isPortOpenImpl(getProbeHost(service), service.port)) {
-    throw new Error(`${service.label} 启动失败，端口 ${service.port} 已被其他进程占用`);
+    throw new Error(`${service.label} failed to start because port ${service.port} is occupied`);
   }
 
   const outputFd = fs.openSync(service.logFile, 'w');
@@ -425,7 +425,7 @@ async function startService(
   const ready = await waitForServicePortImpl(service);
   if (!ready) {
     await stopServiceImpl(service);
-    throw new Error(`${service.label} 启动超时，请查看日志：${service.logFile}`);
+    throw new Error(`${service.label} startup timed out; see log: ${service.logFile}`);
   }
 
   const listenerPids = listPortOccupantPidsImpl(service.port);
@@ -433,7 +433,7 @@ async function startService(
     writePidRecordImpl(service, listenerPids[0]);
   }
 
-  logImpl(`${service.label} 已启动，监听 ${getBindHost(service)}:${service.port}`);
+  logImpl(`${service.label} started; listening on ${getBindHost(service)}:${service.port}`);
 }
 
 async function clearServicePortOccupants(
@@ -448,10 +448,10 @@ async function clearServicePortOccupants(
   await clearPortConflictsImpl(service.label, [service.port]);
   const closed = await waitForPortToCloseImpl(getProbeHost(service), service.port, 5000, isPortOpenImpl);
   if (!closed && (await isPortOpenImpl(getProbeHost(service), service.port))) {
-    throw new Error(`${service.label} 端口 ${service.port} 清理失败，仍被占用`);
+    throw new Error(`${service.label} failed to clear port ${service.port}; it is still occupied`);
   }
 
-  logImpl(`${service.label} 端口占用已清理`);
+  logImpl(`${service.label} port occupants cleared`);
 }
 
 async function stopService(
@@ -471,7 +471,7 @@ async function stopService(
   const pidRecord = readPidRecordImpl(service.pidFile);
   if (!pidRecord) {
     if (await isPortOpenImpl(getProbeHost(service), service.port)) {
-      logImpl(`${service.label} 未发现 pid 记录，正在清理端口占用`);
+      logImpl(`${service.label} has no PID record; clearing port occupants`);
       await clearServicePortOccupants(service, {
         isPortOpenImpl,
         waitForPortToCloseImpl,
@@ -481,14 +481,14 @@ async function stopService(
       return;
     }
 
-    logImpl(`${service.label} 未发现 pid 记录，跳过停止`);
+    logImpl(`${service.label} has no PID record; skipping stop`);
     return;
   }
 
   if (!isProcessAliveImpl(pidRecord.pid)) {
     removePidRecordImpl(service.pidFile);
     if (await isPortOpenImpl(getProbeHost(service), service.port)) {
-      logImpl(`${service.label} 进程记录已失效，正在清理端口占用`);
+      logImpl(`${service.label} has a stale process record; clearing port occupants`);
       await clearServicePortOccupants(service, {
         isPortOpenImpl,
         waitForPortToCloseImpl,
@@ -498,7 +498,7 @@ async function stopService(
       return;
     }
 
-    logImpl(`${service.label} 进程记录已失效，已清理`);
+    logImpl(`${service.label} stale process record removed`);
     return;
   }
 
@@ -511,7 +511,7 @@ async function stopService(
 
   removePidRecordImpl(service.pidFile);
   if (await isPortOpenImpl(getProbeHost(service), service.port)) {
-    logImpl(`${service.label} 已停止记录进程，正在清理残留端口占用`);
+    logImpl(`${service.label} recorded process stopped; clearing remaining port occupants`);
     await clearServicePortOccupants(service, {
       isPortOpenImpl,
       waitForPortToCloseImpl,
@@ -521,7 +521,7 @@ async function stopService(
     return;
   }
 
-  logImpl(`${service.label} 已停止`);
+  logImpl(`${service.label} stopped`);
 }
 
 async function statusService(service) {

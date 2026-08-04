@@ -4,7 +4,7 @@ use super::*;
 async fn ac_004_preview_and_mapping_require_a_ready_connection_instance() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime, "test-master-key");
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -55,7 +55,7 @@ async fn ac_004_preview_and_mapping_require_a_ready_connection_instance() {
 async fn update_defaults_persists_valid_data_model_defaults() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository, runtime, "test-master-key");
+    let service = data_source_service(repository, runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -92,7 +92,7 @@ async fn update_defaults_persists_valid_data_model_defaults() {
 async fn preview_read_uses_stored_secret_and_creates_preview_session() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime.clone(), "test-master-key");
+    let service = data_source_service(repository.clone(), runtime.clone(), "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -147,7 +147,7 @@ async fn preview_read_uses_stored_secret_and_creates_preview_session() {
 async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_secret() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
-    let service = DataSourceService::new(repository.clone(), runtime.clone(), "test-master-key");
+    let service = data_source_service(repository.clone(), runtime.clone(), "test-master-key");
 
     let created = service
         .create_instance(CreateDataSourceInstanceCommand {
@@ -245,7 +245,7 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
 async fn map_resource_to_model_redacts_descriptor_secret_echoes_before_mapping() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::echoing_secret();
-    let service = DataSourceService::new(repository.clone(), runtime.clone(), "test-master-key");
+    let service = data_source_service(repository.clone(), runtime.clone(), "test-master-key");
     let plaintext = "descriptor-secret-substring";
 
     let created = service

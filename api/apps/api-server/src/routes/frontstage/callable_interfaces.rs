@@ -613,7 +613,8 @@ fn grant_token_digest(grant_token: &str) -> String {
 fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallable {
     let host_injected_parameters = match entry.source {
         OpenApiCapabilitySource::StaticApiDocs => host_injected_parameters(&entry.interface),
-        OpenApiCapabilitySource::RuntimeDataModelCrud => Vec::new(),
+        OpenApiCapabilitySource::BuiltinDataModelCrud
+        | OpenApiCapabilitySource::WorkspaceDataModelCrud => Vec::new(),
     };
     RegisteredCallable {
         interface: entry.interface,
@@ -624,7 +625,8 @@ fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallab
         scope: "frontstage_page_tab",
         authorization: match entry.source {
             OpenApiCapabilitySource::StaticApiDocs => "target_api_route_policy",
-            OpenApiCapabilitySource::RuntimeDataModelCrud => {
+            OpenApiCapabilitySource::BuiltinDataModelCrud
+            | OpenApiCapabilitySource::WorkspaceDataModelCrud => {
                 "runtime_scope_grant_and_page_tab_access"
             }
         },

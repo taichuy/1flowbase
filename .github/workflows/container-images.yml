@@ -428,11 +428,10 @@ jobs:
             tmp/container-cache/api-server/${{ matrix.arch }}/cargo-registry
             tmp/container-cache/api-server/${{ matrix.arch }}/cargo-git
             tmp/container-cache/api-server/${{ matrix.arch }}/target
-          key: rust-release-seeded-api-server-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ needs.select-api-server.outputs.image_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-release-seeded-api-server-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-release-seeded-api-server-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ needs.select-api-server.outputs.image_tag }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-release-seeded-api-server-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ needs.select-api-server.outputs.image_tag }}-
-            rust-release-seeded-api-server-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
+            rust-release-seeded-api-server-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-
 
       - name: Build api-server binary on native ${{ matrix.arch }}
         shell: bash
@@ -630,11 +629,10 @@ jobs:
             tmp/container-cache/plugin-runner/${{ matrix.arch }}/cargo-registry
             tmp/container-cache/plugin-runner/${{ matrix.arch }}/cargo-git
             tmp/container-cache/plugin-runner/${{ matrix.arch }}/target
-          key: rust-release-seeded-plugin-runner-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ needs.select-plugin-runner.outputs.image_tag }}-${{ hashFiles('api/Cargo.lock', 'api/**/*.rs', 'api/**/Cargo.toml') }}
+          key: rust-release-seeded-plugin-runner-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
           restore-keys: |
-            rust-release-seeded-plugin-runner-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ needs.select-plugin-runner.outputs.image_tag }}-${{ hashFiles('api/Cargo.lock') }}-
-            rust-release-seeded-plugin-runner-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ needs.select-plugin-runner.outputs.image_tag }}-
-            rust-release-seeded-plugin-runner-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-
+            rust-release-seeded-plugin-runner-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
+            rust-release-seeded-plugin-runner-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-
 
       - name: Build plugin-runner binary on native ${{ matrix.arch }}
         shell: bash

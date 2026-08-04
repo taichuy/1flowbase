@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::{McpInstanceStatus, McpRiskLevel, McpToolExecutionTarget, McpToolStatus};
 
 pub const MCP_BUNDLE_SCHEMA_VERSION: &str = "1flowbase.mcp.bundle/v2";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpBundleFileKind {
     Tool,
@@ -12,14 +13,14 @@ pub enum McpBundleFileKind {
     Connection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundleFile {
     pub path: String,
     pub kind: McpBundleFileKind,
     pub sha256: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundleManifest {
     pub schema_version: String,
     pub organization: String,
@@ -165,7 +166,7 @@ pub struct McpBundlePackage {
     pub connections: Vec<McpBundleUpstreamConnection>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpBundleVersionStatus {
     SameSystemVersion,
@@ -174,7 +175,7 @@ pub enum McpBundleVersionStatus {
     UnknownSystemVersion,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpBundleItemEffect {
     Create,
@@ -184,7 +185,7 @@ pub enum McpBundleItemEffect {
     Failed,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundleEffectSummary {
     pub changes: usize,
     pub already_present: usize,
@@ -193,7 +194,7 @@ pub struct McpBundleEffectSummary {
     pub failed: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundleItemReport {
     pub id: String,
     pub effect: McpBundleItemEffect,
@@ -201,13 +202,13 @@ pub struct McpBundleItemReport {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundleSharedToolImpact {
     pub tool_id: String,
     pub instance_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundlePreview {
     pub manifest: McpBundleManifest,
     pub current_system_version: String,
@@ -219,7 +220,7 @@ pub struct McpBundlePreview {
     pub shared_tool_impacts: Vec<McpBundleSharedToolImpact>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct McpBundleImportReport {
     pub manifest: McpBundleManifest,
     pub current_system_version: String,

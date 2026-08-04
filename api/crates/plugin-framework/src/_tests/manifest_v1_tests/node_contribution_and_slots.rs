@@ -7,6 +7,7 @@ fn plugin_manifest_v1_accepts_node_contribution_v2_contract() {
 manifest_version: 1
 plugin_id: prompt_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Prompt Pack
 description: Prompt capability plugin
@@ -78,6 +79,7 @@ fn plugin_manifest_v1_rejects_node_contribution_v1_schema() {
 manifest_version: 1
 plugin_id: prompt_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Prompt Pack
 description: Prompt capability plugin
@@ -139,6 +141,7 @@ fn plugin_manifest_v1_rejects_unknown_node_contribution_renderer() {
 manifest_version: 1
 plugin_id: prompt_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Prompt Pack
 description: Prompt capability plugin
@@ -206,6 +209,7 @@ fn plugin_manifest_v1_rejects_reserved_output_and_host_infra_contracts() {
 manifest_version: 1
 plugin_id: prompt_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Prompt Pack
 description: Prompt capability plugin
@@ -266,6 +270,7 @@ fn plugin_manifest_v1_rejects_storage_host_infra_contracts() {
 manifest_version: 1
 plugin_id: prompt_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Prompt Pack
 description: Prompt capability plugin
@@ -327,6 +332,7 @@ fn plugin_manifest_v1_rejects_node_contribution_output_without_title_or_value_ty
 manifest_version: 1
 plugin_id: prompt_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Prompt Pack
 description: Prompt capability plugin
@@ -388,6 +394,7 @@ fn ac_002_model_provider_manifest_accepts_only_current_contract() {
 manifest_version: 1
 plugin_id: openai_compatible@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: OpenAI Compatible
 description: OpenAI-compatible runtime extension
@@ -435,6 +442,7 @@ fn wp_r14a_provider_manifest_accepts_exact_protocol_context_profiles() {
 manifest_version: 1
 plugin_id: anthropic@0.2.0
 version: 0.2.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Anthropic
 description: Anthropic provider v2
@@ -526,6 +534,7 @@ fn provider_v2_manifest_accepts_openai_remote_and_native_capability_rows() {
 manifest_version: 1
 plugin_id: openai@0.2.13
 version: 0.2.13
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI
 description: OpenAI provider v2
@@ -598,6 +607,7 @@ fn runtime_extension_rejects_provider_as_plugin_type_slot() {
 manifest_version: 1
 plugin_id: legacy_provider@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Legacy Provider
 description: Legacy provider vocabulary
@@ -634,6 +644,7 @@ fn runtime_extension_accepts_data_import_snapshot_slot() {
 manifest_version: 1
 plugin_id: snapshot_importer@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Snapshot Importer
 description: Data import snapshot runtime extension

@@ -20,6 +20,8 @@ fn runtime_extension_catalog_entry() -> OfficialExtensionCatalogEntry {
         version: "0.2.0".to_string(),
         description: "Official provider plugin".to_string(),
         host_version_requirement: ">=0.1.0".to_string(),
+        slot_codes: vec!["model_provider".to_string()],
+        keywords: vec!["openai".to_string()],
         source: OfficialExtensionCatalogEntrySource {
             kind: "runtime_extension_manifest".to_string(),
             locator: "runtime-extensions/@taichuy/openai_compatible/manifest.yaml".to_string(),
@@ -43,6 +45,32 @@ fn runtime_extension_catalog_entry() -> OfficialExtensionCatalogEntry {
 
 #[async_trait]
 impl OfficialExtensionCatalogSourcePort for InMemoryOfficialExtensionCatalogSource {
+    async fn search(
+        &self,
+        category: &str,
+        query: OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<OfficialExtensionCatalogSearchResult> {
+        let entry = runtime_extension_catalog_entry();
+        let entries = (category == entry.category
+            && query
+                .slot_code
+                .as_deref()
+                .is_none_or(|slot| slot == "model_provider"))
+        .then_some(entry)
+        .into_iter()
+        .collect::<Vec<_>>();
+        Ok(OfficialExtensionCatalogSearchResult {
+            source_kind: "official_repository".to_string(),
+            category: category.to_string(),
+            freshness: crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
+            snapshot_checksum: "sha256:test-search".to_string(),
+            snapshot_locator: "https://example.test/search-index.json".to_string(),
+            total_entries: entries.len(),
+            next_cursor: None,
+            entries,
+        })
+    }
+
     async fn list_page(
         &self,
         category: &str,

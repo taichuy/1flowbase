@@ -408,6 +408,9 @@ struct PluginCatalogProjectionView {
 }
 
 fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
+    if let (Ok(left), Ok(right)) = (semver::Version::parse(left), semver::Version::parse(right)) {
+        return left.cmp(&right);
+    }
     let mut left_parts = left.split('.');
     let mut right_parts = right.split('.');
 
@@ -433,6 +436,16 @@ fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
                 Ok(_) | Err(_) => return Ordering::Less,
             },
         }
+    }
+}
+
+fn semver_version_is_newer(candidate: &str, current: &str) -> bool {
+    match (
+        semver::Version::parse(candidate),
+        semver::Version::parse(current),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        _ => false,
     }
 }
 
@@ -821,6 +834,18 @@ where
             .repository
             .list_assignments(actor.current_workspace_id)
             .await?;
+        // Families are a local inventory read. Only an already verified catalog snapshot may
+        // enrich update truth; this path never starts remote I/O or consumes a second cache.
+        let official_entries = self
+            .official_source
+            .cached_official_catalog()
+            .await
+            .map(|snapshot| snapshot.entries)
+            .unwrap_or_default();
+        let official_latest_by_provider = normalize_official_entries(official_entries)
+            .into_iter()
+            .map(|entry| (entry.provider_code, entry.latest_version))
+            .collect::<HashMap<_, _>>();
         let installations = self.repository.list_installations().await?;
         let artifact_snapshots = self
             .repository
@@ -875,18 +900,9 @@ where
                 &mut i18n_catalog,
                 trim_json_bundles(&namespace, &projection.i18n_bundles, &locales),
             );
-            let latest_installed_version = installations_by_provider
+            let latest_version = official_latest_by_provider
                 .get(&assignment.provider_code)
-                .into_iter()
-                .flatten()
-                .filter(|installation| is_model_provider_installation(installation))
-                .max_by(|left, right| {
-                    compare_plugin_versions(&left.plugin_version, &right.plugin_version)
-                        .then_with(|| left.created_at.cmp(&right.created_at))
-                        .then_with(|| left.id.cmp(&right.id))
-                })
-                .map(|installation| installation.plugin_version.clone());
-            let latest_version = latest_installed_version;
+                .cloned();
             let installed_versions = installations_by_provider
                 .get(&assignment.provider_code)
                 .into_iter()
@@ -942,9 +958,9 @@ where
                 current_version: current.plugin_version.clone(),
                 current_local_artifact,
                 latest_version: latest_version.clone(),
-                has_update: latest_version
-                    .as_deref()
-                    .is_some_and(|version| version != current.plugin_version),
+                has_update: latest_version.as_deref().is_some_and(|version| {
+                    semver_version_is_newer(version, &current.plugin_version)
+                }),
                 installed_versions,
             });
         }

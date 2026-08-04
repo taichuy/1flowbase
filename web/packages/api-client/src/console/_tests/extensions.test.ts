@@ -11,6 +11,7 @@ import {
   listConsoleInstalledExtensions,
   selectConsoleInstalledExtension,
   uploadConsoleExtension,
+  type ConsoleExtensionCatalogEntry,
   type ConsoleInstalledExtensionPage
 } from '../extensions';
 import { ApiClientError } from '../../errors';
@@ -108,20 +109,55 @@ describe('extension center client contract', () => {
     });
   });
 
-  test('D4-AC-002 addresses repository category catalog pages directly', async () => {
+  test('AC-003 addresses and searches repository category catalog pages with exact backend fields', async () => {
     await expect(
-      listConsoleExtensionCatalog('runtime-extensions', 'page-2', 20)
+      listConsoleExtensionCatalog('runtime-extensions', {
+        slot_code: 'data_source',
+        q: 'postgres analytics',
+        limit: 20,
+        cursor: 'page-2'
+      })
     ).resolves.toMatchObject({
-      path: '/api/console/settings/extension-center/catalog/runtime-extensions?limit=20&cursor=page-2'
+      path: '/api/console/settings/extension-center/catalog/runtime-extensions?slot_code=data_source&q=postgres+analytics&limit=20&cursor=page-2'
     });
   });
 
-  test('D4-AC-003 checks only the supplied current category page', async () => {
+  test('AC-003 exposes catalog search metadata under backend DTO names', () => {
+    const entry = {
+      category: 'runtime-extensions',
+      id: 'runtime-extensions:taichuy/postgres',
+      name: 'Postgres',
+      organization: 'taichuy',
+      artifact: 'postgres',
+      version: '1.0.0',
+      description: 'Postgres data source',
+      host_version_requirement: '>=0.4.0',
+      source: {},
+      signature: null,
+      checksum: null,
+      download_locator: {},
+      catalog_page: 1,
+      catalog_source: 'official',
+      current_version: null,
+      installation_status: 'not_installed',
+      artifact_kind: 'plugin',
+      installation_source: null,
+      trust: 'official',
+      warnings: [],
+      compatibility: null,
+      slot_codes: ['data_source'],
+      keywords: ['postgres', 'analytics']
+    } satisfies ConsoleExtensionCatalogEntry;
+
+    expect(entry.slot_codes).toEqual(['data_source']);
+    expect(entry.keywords).toEqual(['postgres', 'analytics']);
+  });
+
+  test('D4-AC-003 checks only the supplied category extension items', async () => {
     await expect(
       checkConsoleExtensionUpdates(
         {
           category: 'runtime-extensions',
-          catalog_page: 'page-2',
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
@@ -135,6 +171,16 @@ describe('extension center client contract', () => {
     ).resolves.toMatchObject({
       path: '/api/console/settings/extension-center/update-check',
       method: 'POST',
+      body: {
+        category: 'runtime-extensions',
+        items: [
+          {
+            catalog_id: 'runtime-extensions:taichuy/openai',
+            current_version: '1.0.0',
+            installed_versions: ['1.0.0']
+          }
+        ]
+      },
       csrfToken: 'csrf'
     });
   });

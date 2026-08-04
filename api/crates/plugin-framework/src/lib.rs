@@ -44,13 +44,15 @@ pub use host_extension_manifest::{
 pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension};
 pub use installation::*;
 pub use manifest_v1::{
-    parse_plugin_manifest, FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
+    parse_legacy_installed_plugin_manifest, parse_plugin_manifest,
+    FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
     FrontendBlockPermissionsManifest, FrontendComponentContractManifest,
     FrontendComponentExampleManifest, FrontendComponentPropManifest,
     FrontendComponentUpstreamManifest, FrontendModuleAssetManifest,
     FrontendModuleAssetRoleManifest, FrontendModuleBindingManifest,
-    NodeContributionDependencyManifest, NodeContributionManifest, PluginExecutionMode,
-    PluginManifestV1, PluginPermissionManifest, PluginRuntimeLimits, PluginRuntimeManifest,
+    LegacyInstalledManifestEligibility, NodeContributionDependencyManifest,
+    NodeContributionManifest, PluginExecutionMode, PluginManifestV1, PluginPermissionManifest,
+    PluginRuntimeLimits, PluginRuntimeManifest,
 };
 pub use package_intake::*;
 pub use provider_contract::*;

@@ -30,6 +30,7 @@ impl TempArtifactFixture {
             r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: fixture
 vendor: fixture
 display_name: Fixture Provider
 description: Fixture provider
@@ -137,6 +138,7 @@ async fn reconcile_provider_artifact_reports_corrupted_when_manifest_fingerprint
         r#"manifest_version: 1
 plugin_id: tampered_provider@0.1.0
 version: 0.1.0
+publisher_namespace: fixture
 vendor: fixture
 display_name: Fixture Provider
 description: Fixture provider

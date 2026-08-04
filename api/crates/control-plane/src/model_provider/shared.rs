@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path};
 use anyhow::Result;
 use plugin_framework::{
     provider_contract::{ModelDiscoveryMode, ProviderModelDescriptor, ProviderModelSource},
-    provider_package::{ProviderConfigField, ProviderPackage},
+    provider_package::ProviderConfigField,
 };
 use serde_json::{Map, Value};
 use uuid::Uuid;
@@ -282,10 +282,6 @@ pub(super) fn is_secret_field(field_type: &str) -> bool {
     field_type.trim().eq_ignore_ascii_case("secret")
 }
 
-pub(super) fn load_provider_package(path: &str) -> Result<ProviderPackage> {
-    ProviderPackage::load_from_dir(path).map_err(map_framework_error)
-}
-
 pub(super) fn localized_model_descriptor(
     namespace: &str,
     model: ProviderModelDescriptor,
@@ -340,21 +336,5 @@ pub(super) fn map_catalog_source(mode: ModelDiscoveryMode) -> domain::ModelProvi
         ModelDiscoveryMode::Static => domain::ModelProviderCatalogSource::Static,
         ModelDiscoveryMode::Dynamic => domain::ModelProviderCatalogSource::Dynamic,
         ModelDiscoveryMode::Hybrid => domain::ModelProviderCatalogSource::Hybrid,
-    }
-}
-
-fn map_framework_error(error: plugin_framework::error::PluginFrameworkError) -> anyhow::Error {
-    use plugin_framework::error::PluginFrameworkErrorKind;
-
-    match error.kind() {
-        PluginFrameworkErrorKind::InvalidAssignment
-        | PluginFrameworkErrorKind::InvalidProviderPackage
-        | PluginFrameworkErrorKind::InvalidProviderContract
-        | PluginFrameworkErrorKind::Serialization => {
-            ControlPlaneError::InvalidInput("provider_package").into()
-        }
-        PluginFrameworkErrorKind::Io | PluginFrameworkErrorKind::RuntimeContract => {
-            ControlPlaneError::UpstreamUnavailable("provider_runtime").into()
-        }
     }
 }

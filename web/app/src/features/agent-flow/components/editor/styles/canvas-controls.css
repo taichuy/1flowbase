@@ -240,13 +240,21 @@
   box-shadow: none;
 }
 
+.agent-flow-canvas .agent-flow-node-picker-popover {
+  top: calc(
+    (100% - var(--agent-flow-node-picker-height)) / 2
+  ) !important;
+}
+
 .agent-flow-node-picker {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(260px, calc(100vw - 48px));
-  min-width: 240px;
-  max-height: var(--agent-flow-node-picker-max-height, calc(100vh - 120px));
+  width: min(284px, calc(100vw - 48px));
+  min-width: 264px;
+  height: var(--agent-flow-node-picker-height, 80vh);
+  padding: 12px;
   overflow: hidden;
 }
 
@@ -385,18 +393,6 @@
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.agent-flow-node-picker__description {
-  display: -webkit-box;
-  overflow: hidden;
-  color: #738196;
-  font-size: 12px;
-  line-height: 16px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .agent-flow-node-picker__name {
@@ -418,8 +414,8 @@
 
 @media (max-width: 768px) {
   .agent-flow-node-picker {
-    width: min(260px, calc(100vw - 32px));
-    min-width: 220px;
+    width: min(284px, calc(100vw - 32px));
+    min-width: 244px;
   }
 
   .agent-flow-llm-parameter-form__row {

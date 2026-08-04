@@ -198,7 +198,7 @@ fn official_seed_coverage_is_global_key_based_with_pinned_provenance() {
         .map(|message| message["key"].as_str().unwrap())
         .collect::<BTreeSet<_>>();
     assert_eq!(keys.len(), coverage.expected.catalog_keys);
-    assert_eq!(coverage.expected.p3_identities, 556);
+    assert_eq!(coverage.expected.p3_identities, 560);
     assert_eq!(coverage.expected.p4_identities, 70);
     assert_eq!(coverage.expected.p6_consumers, 19);
     for reference in coverage.p7_references {

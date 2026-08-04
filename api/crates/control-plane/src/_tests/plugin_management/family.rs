@@ -900,6 +900,7 @@ async fn seed_data_source_runtime_installation() -> (
 manifest_version: 1
 plugin_id: http_source@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: HTTP Source
 description: HTTP source runtime extension

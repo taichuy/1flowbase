@@ -1,6 +1,7 @@
 manifest_version: 1
 plugin_id: 1flowbase@1.0.0
 version: 1.0.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: 1flowbase Built-in Frontstage Blocks
 description: System-owned Native React blocks available in every workspace.

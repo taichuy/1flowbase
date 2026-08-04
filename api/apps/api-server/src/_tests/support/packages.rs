@@ -24,6 +24,7 @@ pub(crate) fn write_provider_manifest_v2(
             r#"manifest_version: 1
 plugin_id: {provider_code}@{version}
 version: {version}
+publisher_namespace: taichuy
 vendor: 1flowbase tests
 display_name: {display_name}
 description: {display_name}

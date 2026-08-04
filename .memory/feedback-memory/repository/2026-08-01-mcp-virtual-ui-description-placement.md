@@ -16,8 +16,8 @@ match_when:
   - 编写 MCP short_description、full_description 或字段 Schema description
   - 新增或调整 MCP 构建修复 Skill
 created_at: 2026-08-01 10
-updated_at: 2026-08-01 10
-last_verified_at: 2026-08-01 10
+updated_at: 2026-08-03 22
+last_verified_at: 2026-08-03 22
 decision_policy: direct_reference
 scope:
   - .agents/skills
@@ -32,6 +32,7 @@ scope:
 ## 规则
 
 - 人通过 GUI 页面逐层发现和操作应用；Agent 通过 MCP 目录、Tool 契约与调用逐层发现和操作应用。MCP 层级应保持 GUI 的领域术语、用户目标和状态语义，但不复制纯展示结构或同一组件在多处出现造成的重复能力。
+- MCP Virtual UI 配置任务只把 GUI 与后端源码当作只读取证；Virtual UI 的含义是前端无需改动。Agent-facing 描述只写入 MCP Tool、Group、mapping 与 policy 等配置记录，不为补 MCP 描述修改 `web/`、i18n、业务 catalog、后端 DTO / OpenAPI 或运行时代码。确有产品源码缺口时停止配置并拆成独立开发任务。
 - 当前仓库源码就是 MCP 构建时的原始说明文档：从 Web 路由、页面与动作提取人类任务顺序，从后端 interface catalog、DTO、领域状态和执行入口取得可调用 contract。Skill 不内置一份会漂移的全应用静态目录快照，每次按任务范围从当前源码重新取证。
 - 虚拟 UI 负责直观、开放地暴露可探索能力，不复制 GUI 的入口权限或隐藏规则；权限与状态合法性由后端在真实调用时统一校验。
 - `short_description` 说明能力的直接作用和可观察结果。

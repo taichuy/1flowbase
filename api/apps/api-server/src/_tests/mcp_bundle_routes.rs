@@ -27,6 +27,8 @@ use crate::_tests::support::{
     test_app_with_runtime_profile_error, test_config,
 };
 
+mod openapi_contract;
+
 #[derive(Clone)]
 struct FailingLegacyMcpCatalogSource;
 
@@ -63,6 +65,8 @@ fn fixture_official_mcp_entry() -> crate::official_extension_catalog::OfficialEx
         version: "1.0.0".to_string(),
         description: "Fixture MCP bundle".to_string(),
         host_version_requirement: "0.2.0".to_string(),
+        slot_codes: Vec::new(),
+        keywords: vec!["mcp".to_string()],
         source: crate::official_extension_catalog::OfficialExtensionCatalogEntrySource {
             kind: "mcp_bundle".to_string(),
             locator: "fixture".to_string(),
@@ -83,6 +87,28 @@ fn fixture_official_mcp_entry() -> crate::official_extension_catalog::OfficialEx
 impl crate::official_extension_catalog::OfficialExtensionCatalogSourcePort
     for FixtureOfficialMcpExtensionCatalogSource
 {
+    async fn search(
+        &self,
+        category: &str,
+        _query: crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<crate::official_extension_catalog::OfficialExtensionCatalogSearchResult>
+    {
+        assert_eq!(category, "mcp");
+        Ok(
+            crate::official_extension_catalog::OfficialExtensionCatalogSearchResult {
+                source_kind: "official_repository".to_string(),
+                category: "mcp".to_string(),
+                freshness:
+                    crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
+                snapshot_checksum: "sha256:search".to_string(),
+                snapshot_locator: "fixture://mcp/search".to_string(),
+                total_entries: 1,
+                next_cursor: None,
+                entries: vec![fixture_official_mcp_entry()],
+            },
+        )
+    }
+
     async fn list_page(
         &self,
         category: &str,
@@ -1341,7 +1367,8 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
             "organization": "taichuy",
             "bundle_id": "selected_instance",
             "bundle_version": "1.0.0",
-            "locale": "zh_Hans"
+            "locale": "zh_Hans",
+            "export_profile": "official_builtin"
         }),
     )
     .await;
@@ -1351,6 +1378,8 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
         .to_str()
         .unwrap()
         .contains("selected_instance"));
+    assert_eq!(export.headers()["x-1flowbase-mcp-excluded-tool-count"], "0");
+    assert_eq!(export.headers()["x-1flowbase-mcp-exclusion-reasons"], "");
     let bytes = to_bytes(export.into_body(), usize::MAX).await.unwrap();
     let bundle_bytes = bytes.to_vec();
     let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -1384,6 +1413,25 @@ async fn mcp_instance_bundle_export_contains_only_the_selected_instance_and_its_
     )
     .await;
     assert_eq!(preview.status(), StatusCode::OK);
+
+    let portable_export = post_json(
+        &app,
+        "/api/console/mcp/instances/selected_instance/bundles/export",
+        &cookie,
+        &csrf,
+        json!({
+            "organization": "taichuy",
+            "bundle_id": "selected_instance",
+            "bundle_version": "1.0.1",
+            "locale": "zh_Hans"
+        }),
+    )
+    .await;
+    assert_eq!(portable_export.status(), StatusCode::OK);
+    assert!(portable_export
+        .headers()
+        .get("x-1flowbase-mcp-excluded-tool-count")
+        .is_none());
 }
 
 #[tokio::test]

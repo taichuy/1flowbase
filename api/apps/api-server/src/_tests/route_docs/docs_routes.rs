@@ -223,43 +223,6 @@ struct TestModelFieldInput {
     api_required: bool,
 }
 
-async fn create_scope_grant(
-    app: &axum::Router,
-    cookie: &str,
-    csrf: &str,
-    model_id: &str,
-) -> String {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
-                ))
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "scope_kind": "system",
-                        "scope_id": domain::SYSTEM_SCOPE_ID,
-                        "enabled": true,
-                        "permission_profile": "scope_all"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let payload: Value = serde_json::from_slice(&body).unwrap();
-    payload["data"]["id"].as_str().unwrap().to_string()
-}
-
 async fn find_model_id_by_code(app: &axum::Router, cookie: &str, code: &str) -> String {
     let response = app
         .clone()
@@ -577,7 +540,6 @@ async fn docs_routes_append_dynamic_data_model_api_category_and_specs() {
         },
     )
     .await;
-    create_scope_grant(&app, &cookie, &csrf, &ready_model_id).await;
     let hidden_model_id = create_model(&app, &cookie, &csrf, "docs_hidden_orders", "draft").await;
     assert_ne!(ready_model_id, hidden_model_id);
 

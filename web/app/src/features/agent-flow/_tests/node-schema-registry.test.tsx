@@ -320,66 +320,6 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
-  test('exposes only workflow input fields through the start node contract', () => {
-    const schema = resolveAgentFlowNodeSchema('workflow_start');
-
-    expect(schema.nodeType).toBe('workflow_start');
-    expect(schema.detail.tabs.config.blocks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'section',
-          title: '输入参数',
-          blocks: [
-            expect.objectContaining({
-              kind: 'field',
-              path: 'config.input_fields',
-              renderer: 'start_input_fields',
-              options: [
-                { value: 'path', label: 'path' },
-                { value: 'query', label: 'query' },
-                { value: 'body', label: 'body' },
-                { value: 'form', label: 'form' }
-              ]
-            })
-          ]
-        })
-      ])
-    );
-    expect(schema.detail.tabs.config.blocks).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'section',
-          title: '触发器配置'
-        }),
-        expect.objectContaining({
-          kind: 'section',
-          title: '同步设置'
-        })
-      ])
-    );
-  });
-
-  test('exposes workflow end return fields as editable output contract', () => {
-    const schema = resolveAgentFlowNodeSchema('workflow_end');
-
-    expect(schema.nodeType).toBe('workflow_end');
-    expect(schema.detail.tabs.config.blocks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'section',
-          title: '返回字段',
-          blocks: [
-            expect.objectContaining({
-              kind: 'field',
-              path: 'config.output_contract',
-              renderer: 'output_contract_definition'
-            })
-          ]
-        })
-      ])
-    );
-  });
-
   test('keeps Code on the main input, JavaScript source, and editable output flow', () => {
     const schema = resolveAgentFlowNodeSchema('code');
     const serializedConfigBlocks = JSON.stringify(
@@ -688,13 +628,11 @@ describe('agent-flow node schema registry', () => {
     ]);
   });
 
-  test('registers builtin node runtime contracts for runtime defaults', () => {
+  test('registers static builtin runtime contracts and leaves workflow contracts to their feature owner', () => {
     const expectedTypes = [
       'start',
-      'workflow_start',
       'llm',
       'answer',
-      'workflow_end',
       'template_transform',
       'knowledge_retrieval',
       'question_classifier',
@@ -717,14 +655,8 @@ describe('agent-flow node schema registry', () => {
       'loop'
     ] as const;
 
-    expect([...builtinNodeRuntimeContractTypes]).toEqual(
-      expect.arrayContaining([...expectedTypes])
-    );
-    expect(
-      builtinNodeRuntimeContractTypes.every((nodeType) =>
-        expectedTypes.includes(nodeType)
-      )
-    ).toBe(true);
+    expect(getBuiltinNodeRuntimeContract('workflow_start')).toBeNull();
+    expect(getBuiltinNodeRuntimeContract('workflow_end')).toBeNull();
 
     for (const nodeType of expectedTypes) {
       expect(getBuiltinNodeRuntimeContract(nodeType)).not.toBeNull();
@@ -946,9 +878,13 @@ describe('agent-flow node schema registry', () => {
     );
   });
 
-  test('creates every built-in node document from runtime contract defaults', () => {
+  test('creates every static built-in node document from runtime contract defaults', () => {
     for (const nodeType of builtinNodeRuntimeContractTypes) {
-      if (nodeType === 'plugin_node') {
+      if (
+        nodeType === 'plugin_node' ||
+        nodeType === 'workflow_start' ||
+        nodeType === 'workflow_end'
+      ) {
         continue;
       }
 
@@ -984,7 +920,6 @@ describe('agent-flow node schema registry', () => {
         {
           title: 'Disabled Exporter',
           runtime_status: 'unavailable',
-          runtime_status_description: '缺少依赖插件',
           dependency_status: 'missing_plugin'
         }
       )

@@ -6,6 +6,8 @@ use axum::{
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+mod interface_inventory;
+
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
@@ -90,32 +92,6 @@ async fn create_exposed_published_model(
         .await
         .unwrap();
     assert_eq!(field_response.status(), StatusCode::CREATED);
-
-    let grant_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!(
-                    "/api/console/settings/data-models/model-definitions/{model_id}/scope-grants"
-                ))
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "scope_kind": "system",
-                        "scope_id": domain::SYSTEM_SCOPE_ID,
-                        "enabled": true,
-                        "permission_profile": "scope_all"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(grant_response.status(), StatusCode::CREATED);
 
     let expose_response = app
         .clone()

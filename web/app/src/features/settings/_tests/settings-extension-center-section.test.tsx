@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApiClientError } from '@1flowbase/api-client';
 import {
   fireEvent,
   render,
@@ -21,12 +22,17 @@ const extensionsApi = vi.hoisted(() => ({
     ]
   ),
   settingsExtensionCatalogQueryKey: vi.fn(
-    (category: string, cursor?: string) => [
+    (
+      category: string,
+      query: { q?: string; slot_code?: string; cursor?: string }
+    ) => [
       'settings',
       'extension-center',
       'catalog',
       category,
-      cursor ?? 'start'
+      query.q ?? '',
+      query.slot_code ?? 'all-slots',
+      query.cursor ?? 'start'
     ]
   ),
   fetchSettingsInstalledExtensions: vi.fn(),
@@ -173,7 +179,15 @@ const catalogEntry = {
   installation_source: 'official',
   trust: 'official',
   warnings: [],
-  compatibility: null
+  compatibility: null,
+  slot_codes: ['model_provider'],
+  keywords: ['openai', 'provider']
+};
+
+const installableCatalogEntry = {
+  ...catalogEntry,
+  current_version: null,
+  installation_status: 'not_installed' as const
 };
 
 function authenticate() {
@@ -209,7 +223,8 @@ function renderSection(
     | 'i18n'
     | 'mcp'
     | 'runtime-extensions' = 'installed',
-  cursor?: string
+  cursor?: string,
+  q?: string
 ) {
   const client = new QueryClient({
     defaultOptions: {
@@ -225,7 +240,11 @@ function renderSection(
 
   return {
     ...render(
-      <SettingsExtensionCenterSection category={category} cursor={cursor} />,
+      <SettingsExtensionCenterSection
+        category={category}
+        cursor={cursor}
+        q={q}
+      />,
       { wrapper }
     ),
     queryClient: client
@@ -267,7 +286,6 @@ describe('SettingsExtensionCenterSection', () => {
     );
     extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
       category: 'runtime-extensions',
-      catalog_page: null,
       items: [
         {
           catalog_id: 'runtime-extensions:taichuy/openai',
@@ -315,6 +333,35 @@ describe('SettingsExtensionCenterSection', () => {
     vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
 
+  test('AC-003 shows a retryable catalog error instead of an empty catalog', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockRejectedValueOnce(
+      new Error('catalog snapshot temporarily inconsistent')
+    );
+
+    renderSection('runtime-extensions');
+
+    expect(await screen.findByText('扩展目录暂时无法加载')).toBeInTheDocument();
+    expect(screen.queryByText('暂无扩展')).not.toBeInTheDocument();
+
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValueOnce({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [catalogEntry]
+    });
+    fireEvent.click(screen.getByRole('button', { name: '重新加载目录' }));
+
+    expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
+    expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledTimes(
+      2
+    );
+  });
+
   test('AC-005 loads installed inventory without a remote update check and checks only after the explicit action', async () => {
     renderSection();
 
@@ -337,7 +384,6 @@ describe('SettingsExtensionCenterSection', () => {
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
         {
           category: 'runtime-extensions',
-          catalog_page: null,
           items: [
             {
               catalog_id: 'runtime-extensions:taichuy/openai',
@@ -359,7 +405,191 @@ describe('SettingsExtensionCenterSection', () => {
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
-      search: { cursor: undefined }
+      search: { q: undefined, cursor: undefined }
+    });
+  });
+
+  test('catalog tabs label remote versions as latest and automatically check only installed rows', async () => {
+    const pendingCheck = deferred<{
+      category: 'runtime-extensions';
+      items: Array<{
+        catalog_id: string;
+        current_version: string;
+        latest_version: string;
+        status: 'update_available';
+      }>;
+    }>();
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 2,
+      entries: [
+        catalogEntry,
+        {
+          ...installableCatalogEntry,
+          id: 'runtime-extensions:taichuy/anthropic',
+          name: 'Anthropic Provider',
+          artifact: 'anthropic'
+        }
+      ]
+    });
+    extensionsApi.checkSettingsExtensionUpdates.mockReturnValue(
+      pendingCheck.promise
+    );
+    renderSection('runtime-extensions');
+
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    expect(
+      screen.getByRole('columnheader', { name: '最新版本' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: '当前版本' })
+    ).not.toBeInTheDocument();
+    expect(within(row).getByText('1.1.0')).toBeInTheDocument();
+    expect(
+      within(row)
+        .getByRole('button', { name: '更新' })
+        .closest('[data-update-state]')
+    ).toHaveAttribute('data-update-state', 'checking');
+    expect(
+      within(row)
+        .getByRole('button', { name: '更新' })
+        .closest('[data-update-state]')
+        ?.querySelector('.ant-badge-dot')
+    ).toHaveStyle('background: transparent');
+    expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledWith(
+      {
+        category: 'runtime-extensions',
+        items: [
+          {
+            catalog_id: 'runtime-extensions:taichuy/openai',
+            current_version: '1.0.0',
+            installed_versions: ['1.0.0']
+          }
+        ]
+      },
+      'csrf-123'
+    );
+
+    pendingCheck.resolve({
+      category: 'runtime-extensions',
+      items: [
+        {
+          catalog_id: 'runtime-extensions:taichuy/openai',
+          current_version: '1.0.0',
+          latest_version: '1.1.0',
+          status: 'update_available'
+        }
+      ]
+    });
+    await waitFor(() => {
+      expect(
+        within(row)
+          .getByRole('button', { name: '更新' })
+          .closest('[data-update-state]')
+      ).toHaveAttribute('data-update-state', 'update_available');
+    });
+  });
+
+  test('catalog tabs show a failed automatic update check as unknown_error', async () => {
+    extensionsApi.checkSettingsExtensionUpdates.mockRejectedValue(
+      new Error('catalog unavailable')
+    );
+
+    renderSection('runtime-extensions');
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+
+    await waitFor(() => {
+      expect(
+        within(row)
+          .getByRole('button', { name: '更新' })
+          .closest('[data-update-state]')
+      ).toHaveAttribute('data-update-state', 'unknown_error');
+    });
+  });
+
+  test('catalog tabs automatically recheck after the visible page changes', async () => {
+    const view = renderSection('runtime-extensions');
+    await waitFor(() => {
+      expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
+        1
+      );
+    });
+
+    view.rerender(
+      <SettingsExtensionCenterSection
+        category="runtime-extensions"
+        cursor="cursor-2"
+      />
+    );
+
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'runtime-extensions',
+        { q: undefined, slot_code: undefined, cursor: 'cursor-2' }
+      );
+      expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
+        2
+      );
+    });
+  });
+
+  test('publisher_cutover shows the dedicated artifact download failure message', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [installableCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockRejectedValue(
+      new ApiClientError({
+        status: 502,
+        code: 'extension_artifact_download_unavailable',
+        message: 'upstream unavailable'
+      })
+    );
+    renderSection('runtime-extensions');
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('扩展包下载失败，请重试');
+    });
+  });
+
+  test('publisher_cutover keeps the generic message for unknown mutation errors', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [installableCatalogEntry]
+    });
+    extensionsApi.installSettingsExtension.mockRejectedValue(
+      new Error('unknown failure')
+    );
+    renderSection('runtime-extensions');
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('扩展操作失败');
     });
   });
 
@@ -408,7 +638,9 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       within(drawer).getByText('/api/plugins/openai/0.9.0')
     ).toBeInTheDocument();
-    const deleteButtons = within(drawer).getAllByRole('button', { name: '删除' });
+    const deleteButtons = within(drawer).getAllByRole('button', {
+      name: '删除'
+    });
     expect(deleteButtons[0]).toBeDisabled();
     expect(deleteButtons[1]).toBeEnabled();
     fireEvent.click(deleteButtons[1]);
@@ -458,9 +690,7 @@ describe('SettingsExtensionCenterSection', () => {
         within(row).getByRole('button', { name: '同步最新版本' })
       ).toBeEnabled()
     );
-    fireEvent.click(
-      within(row).getByRole('button', { name: '同步最新版本' })
-    );
+    fireEvent.click(within(row).getByRole('button', { name: '同步最新版本' }));
 
     await waitFor(() => {
       expect(
@@ -507,7 +737,6 @@ describe('SettingsExtensionCenterSection', () => {
     );
     extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
       category: 'runtime-extensions',
-      catalog_page: null,
       items: [
         {
           catalog_id: installedEntry.catalog_id,
@@ -631,8 +860,7 @@ describe('SettingsExtensionCenterSection', () => {
       expect(
         within(row)
           .getByRole('button', { name: '同步最新版本' })
-          .closest('span')
-          ?.parentElement
+          .closest('span')?.parentElement
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });
 
@@ -771,19 +999,50 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('D5-AC-006 restores cursor from route search and writes pagination to navigation', async () => {
-    renderSection('runtime-extensions', 'cursor-2');
+    renderSection('runtime-extensions', 'cursor-2', 'openai');
     await waitFor(() => {
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
         'runtime-extensions',
-        'cursor-2'
+        { q: 'openai', slot_code: undefined, cursor: 'cursor-2' }
       );
     });
     fireEvent.click(screen.getByRole('button', { name: '上一页' }));
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
-      search: { cursor: undefined }
+      search: { q: 'openai', cursor: undefined }
     });
+  });
+
+  test('AC-003/AC-007 submits remote search, clears its cursor, and isolates the query key without a model-provider slot', async () => {
+    renderSection('runtime-extensions', 'cursor-2', 'postgres');
+
+    const search = await screen.findByRole('searchbox');
+    expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: '  analytics  ' } });
+    fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+
+    expect(routerApi.navigate).toHaveBeenCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'runtime-extensions' },
+      search: { q: 'analytics', cursor: undefined }
+    });
+    expect(extensionsApi.settingsExtensionCatalogQueryKey).toHaveBeenCalledWith(
+      'runtime-extensions',
+      { q: 'postgres', slot_code: undefined, cursor: 'cursor-2' }
+    );
+    expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+      'runtime-extensions',
+      { q: 'postgres', slot_code: undefined, cursor: 'cursor-2' }
+    );
+  });
+
+  test('AC-007 keeps installed inventory local and omits the remote search control', async () => {
+    renderSection('installed');
+
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
   });
 
   test('AC-005 exposes Agent Flow management from its generic catalog', async () => {
@@ -804,7 +1063,7 @@ describe('SettingsExtensionCenterSection', () => {
     ).toHaveAttribute('href', '/templates');
     expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
       'agent-flow',
-      undefined
+      { q: undefined, slot_code: undefined, cursor: undefined }
     );
     expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
     expect(

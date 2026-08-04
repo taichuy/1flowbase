@@ -49,6 +49,15 @@ const frontStagePageView = vi.hoisted(() => ({
       nodeId: string,
       input: { parentId: string | null; rank: string }
     ) => Promise<unknown>;
+    onNavigateTab?: (tab: {
+      id: string;
+      page_id: string;
+      title: string | null;
+      rank: string;
+      is_default: boolean;
+      route_segment: string | null;
+      document_root_uid: string;
+    }) => void;
   }
 }));
 
@@ -195,7 +204,9 @@ describe('frontstage topbar root routing', () => {
     );
 
     await waitFor(() => {
-      expect(frontStagePageView.props?.onMovePageNode).toEqual(expect.any(Function));
+      expect(frontStagePageView.props?.onMovePageNode).toEqual(
+        expect.any(Function)
+      );
     });
     await act(async () => {
       await frontStagePageView.props?.onMovePageNode?.('page-in-group', {
@@ -222,5 +233,62 @@ describe('frontstage topbar root routing', () => {
         rank: '002000'
       }
     );
+  });
+
+  test('AC-004 preserves default and non-default tab navigation URLs', async () => {
+    const defaultTab = {
+      id: 'tab-overview',
+      page_id: 'page-top-level',
+      title: 'Overview',
+      rank: '001000',
+      is_default: true,
+      route_segment: null,
+      document_root_uid: 'root-overview'
+    };
+    const analyticsTab = {
+      id: 'tab-analytics',
+      page_id: 'page-top-level',
+      title: 'Analytics',
+      rank: '002000',
+      is_default: false,
+      route_segment: 'analytics',
+      document_root_uid: 'root-analytics'
+    };
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
+      defaultTab,
+      analyticsTab
+    ]);
+    pageContentApi.fetchFrontstagePageContent.mockReturnValue(
+      new Promise(() => undefined)
+    );
+    window.history.pushState({}, '', '/sales/pages/page-top-level');
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.onNavigateTab).toEqual(
+        expect.any(Function)
+      );
+    });
+    act(() => {
+      frontStagePageView.props?.onNavigateTab?.(analyticsTab);
+    });
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(
+        '/sales/pages/page-top-level/tabs/analytics'
+      );
+    });
+
+    act(() => {
+      frontStagePageView.props?.onNavigateTab?.(defaultTab);
+    });
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/sales/pages/page-top-level');
+    });
   });
 });

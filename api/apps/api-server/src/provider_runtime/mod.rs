@@ -890,13 +890,21 @@ impl ApiProviderRuntime {
         let ensure_loaded_started = std::time::Instant::now();
         let mut host = self.services.provider_host.write().await;
         let source_identity = provider_source_identity(installation);
-        let result = host
-            .load_if_needed(
+        let eligibility = legacy_manifest_eligibility(installation)?;
+        let result = match eligibility.as_ref() {
+            Some(eligibility) => host.load_legacy_installed_if_needed(
                 &installation.plugin_id,
                 required_local_path(installation)?,
                 Some(source_identity.as_str()),
-            )
-            .map_err(map_provider_framework_error);
+                eligibility,
+            ),
+            None => host.load_if_needed(
+                &installation.plugin_id,
+                required_local_path(installation)?,
+                Some(source_identity.as_str()),
+            ),
+        }
+        .map_err(map_provider_framework_error);
         tracing::debug!(
             plugin_id = %installation.plugin_id,
             provider_ensure_loaded_ms = ensure_loaded_started.elapsed().as_millis() as u64,
@@ -910,9 +918,15 @@ impl ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let mut host = self.services.capability_host.write().await;
-        host.load(required_local_path(installation)?)
-            .map(|_| ())
-            .map_err(|error| map_framework_error(error, "capability_runtime"))
+        let eligibility = legacy_manifest_eligibility(installation)?;
+        match eligibility.as_ref() {
+            Some(eligibility) => {
+                host.load_legacy_installed(required_local_path(installation)?, eligibility)
+            }
+            None => host.load(required_local_path(installation)?),
+        }
+        .map(|_| ())
+        .map_err(|error| map_framework_error(error, "capability_runtime"))
     }
 
     async fn ensure_data_source_loaded(
@@ -922,12 +936,45 @@ impl ApiProviderRuntime {
         let mut host = self.services.data_source_host.write().await;
         match host.reload(&installation.plugin_id) {
             Ok(_) => Ok(()),
-            Err(_) => host
-                .load(required_local_path(installation)?)
+            Err(_) => {
+                let eligibility = legacy_manifest_eligibility(installation)?;
+                match eligibility.as_ref() {
+                    Some(eligibility) => {
+                        host.load_legacy_installed(required_local_path(installation)?, eligibility)
+                    }
+                    None => host.load(required_local_path(installation)?),
+                }
                 .map(|_| ())
-                .map_err(|error| map_framework_error(error, "data_source_runtime")),
+                .map_err(|error| map_framework_error(error, "data_source_runtime"))
+            }
         }
     }
+}
+
+fn legacy_manifest_eligibility(
+    installation: &domain::LocalPluginInstallationRecord,
+) -> anyhow::Result<Option<plugin_framework::LegacyInstalledManifestEligibility>> {
+    let Some(compatibility) = installation.legacy_manifest_compatibility.as_deref() else {
+        return Ok(None);
+    };
+    if compatibility != "missing_publisher_namespace_v1" {
+        return Err(
+            ControlPlaneError::Conflict("plugin_manifest_compatibility_unsupported").into(),
+        );
+    }
+    let fingerprint =
+        installation
+            .artifact
+            .manifest_fingerprint
+            .clone()
+            .ok_or(ControlPlaneError::Conflict(
+                "plugin_manifest_fingerprint_missing",
+            ))?;
+    Ok(Some(plugin_framework::LegacyInstalledManifestEligibility {
+        expected_publisher_namespace: installation.organization.clone(),
+        expected_versioned_plugin_id: installation.plugin_id.clone(),
+        expected_raw_manifest_fingerprint: fingerprint,
+    }))
 }
 
 fn provider_source_identity(installation: &domain::LocalPluginInstallationRecord) -> String {

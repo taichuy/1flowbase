@@ -18,8 +18,7 @@ async fn model_provider_service_normalizes_multiple_enabled_model_ids_and_allows
             true,
         )
         .await;
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
@@ -150,7 +149,7 @@ async fn model_provider_service_reuses_preview_token_only_to_persist_candidate_c
             true,
         )
         .await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -225,7 +224,7 @@ async fn model_provider_service_refresh_failure_does_not_clear_enabled_model_ids
             true,
         )
         .await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -295,7 +294,7 @@ async fn model_provider_service_refresh_models_blocks_when_current_node_artifact
             true,
         )
         .await;
-    let bootstrap_service = ModelProviderService::new(
+    let bootstrap_service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -318,9 +317,8 @@ async fn model_provider_service_refresh_models_blocks_when_current_node_artifact
         .unwrap();
     let current_node_root =
         std::env::temp_dir().join(format!("provider-refresh-node-missing-{}", Uuid::now_v7()));
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key")
-            .with_node_artifact_context("node-without-artifact", current_node_root);
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")
+        .with_node_artifact_context("node-without-artifact", current_node_root);
 
     let error = service
         .refresh_models(repository.actor.user_id, created.instance.id)
@@ -349,7 +347,7 @@ async fn list_catalog_returns_i18n_namespace_and_keys() {
             true,
         )
         .await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",
@@ -392,7 +390,7 @@ async fn list_catalog_returns_missing_projection_without_package_read() {
         .await;
     repository.remove_catalog_projection(installation_id).await;
     fs::remove_dir_all(&package_root).unwrap();
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",
@@ -451,7 +449,7 @@ async fn list_catalog_uses_persisted_missing_artifact_snapshot() {
         .await
         .unwrap();
     let maintenance_update_count = repository.artifact_snapshot_update_count().await;
-    let service = ModelProviderService::new(
+    let service = model_provider_service(
         repository.clone(),
         MemoryProviderRuntime::default(),
         "provider-secret-master-key",

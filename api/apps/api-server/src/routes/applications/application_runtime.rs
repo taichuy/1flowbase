@@ -60,10 +60,16 @@ use super::debug_run_stream;
 mod application_log_cache;
 mod application_logs;
 pub(crate) mod application_monitoring;
+pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
 pub(crate) mod debug_variable_snapshot;
 mod runtime_debug_artifacts;
 
+use archive::{
+    complete_run_archive_upload_session, create_run_archive_upload_session,
+    export_application_run_archive, export_application_runs_archive, get_run_archive_import_job,
+    upload_run_archive_chunk,
+};
 pub use debug_variable_cache::{
     delete_debug_variable_cache_entries, upsert_debug_variable_cache_entry,
 };
@@ -363,9 +369,8 @@ include!("application_runtime/log_handlers.rs");
 
 include!("application_runtime/export_handlers.rs");
 
-include!("application_runtime/archive_handlers.rs");
-
-include!("application_runtime/archive_restore.rs");
+#[cfg(test)]
+use archive::{build_archive_from_trace_exports, parse_run_archive_v1};
 
 #[cfg(test)]
 mod tests;

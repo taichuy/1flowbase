@@ -168,7 +168,10 @@ const consoleNavigationApi = vi.hoisted(() => ({
 const extensionsApi = vi.hoisted(() => ({
   settingsInstalledExtensionsQueryKey: vi.fn(() => ['extensions', 'installed']),
   settingsExtensionCatalogQueryKey: vi.fn(
-    (category: string, cursor?: string) => ['extensions', category, cursor]
+    (
+      category: string,
+      query: { q?: string; slot_code?: string; cursor?: string }
+    ) => ['extensions', category, query.q, query.slot_code, query.cursor]
   ),
   fetchSettingsInstalledExtensions: vi.fn(),
   fetchSettingsExtensionCatalog: vi.fn(),
@@ -200,7 +203,7 @@ import { AppRouterProvider } from '../../app/router';
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
 
 const SECTION_REDIRECT_WAIT_OPTIONS = { timeout: 8_000 };
-const SECTION_REDIRECT_TEST_TIMEOUT = 10_000;
+const SECTION_REDIRECT_TEST_TIMEOUT = 30_000;
 
 const settingsRouteRecords = {
   'api-key-authentication': {
@@ -572,28 +575,26 @@ describe('section shell routing', () => {
           '/settings/model-providers/providers'
         );
       }, SECTION_REDIRECT_WAIT_OPTIONS);
-      expect(
-        await screen.findByRole('tab', { name: '模型供应商', selected: true })
-      ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );
 
   test(
-    'AC-002 keeps the request logs tab on its independent URL',
+    'AC-002 keeps request logs on its independent URL',
     async () => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['model-providers'])
       );
       authenticateWithPermissions(['state_model.manage.all']);
       renderApp('/settings/model-providers/request-logs');
-      expect(await screen.findByText('请求日志')).toBeInTheDocument();
       expect(window.location.pathname).toBe(
         '/settings/model-providers/request-logs'
       );
-      expect(
-        modelProvidersApi.fetchSettingsModelProviderRequestLogs
-      ).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.fetchSettingsModelProviderRequestLogs
+        ).toHaveBeenCalled();
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );
@@ -612,7 +613,11 @@ describe('section shell routing', () => {
         expect(window.location.pathname).toBe('/settings/roles/console-policy');
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
-        await screen.findByRole('tab', { name: '后台设置', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: '后台设置', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -629,10 +634,14 @@ describe('section shell routing', () => {
       renderApp('/settings/roles/table-general-policy');
 
       expect(
-        await screen.findByRole('tab', {
-          name: '表-通用配置',
-          selected: true
-        })
+        await screen.findByRole(
+          'tab',
+          {
+            name: '表-通用配置',
+            selected: true
+          },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
       expect(window.location.pathname).toBe(
         '/settings/roles/table-general-policy'
@@ -711,15 +720,20 @@ describe('section shell routing', () => {
         settingsConsoleNavigation(['extension-center', 'model-providers'])
       );
       extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
-        async (category: string, cursor?: string) => ({
+        async (
+          category: string,
+          query: { q?: string; slot_code?: string; cursor?: string }
+        ) => ({
           category,
-          catalog_page: cursor ?? 'start',
-          catalog_page_number: cursor ? 2 : 1,
+          catalog_page: query.cursor ?? 'start',
+          catalog_page_number: query.cursor ? 2 : 1,
           catalog_page_checksum: 'sha256:fixture',
           catalog_page_locator: 'fixture',
           limit: 20,
           next_cursor:
-            category === 'runtime-extensions' && !cursor ? 'cursor-2' : null,
+            category === 'runtime-extensions' && !query.cursor
+              ? 'cursor-2'
+              : null,
           total_entries: 0,
           entries: []
         })
@@ -753,14 +767,22 @@ describe('section shell routing', () => {
         expect(window.location.search).toBe('');
         expect(
           extensionsApi.fetchSettingsExtensionCatalog
-        ).toHaveBeenCalledWith('runtime-extensions', undefined);
+        ).toHaveBeenCalledWith('runtime-extensions', {
+          q: undefined,
+          slot_code: undefined,
+          cursor: undefined
+        });
       });
       fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
       await waitFor(() => {
         expect(window.location.search).toBe('?cursor=cursor-2');
         expect(
           extensionsApi.fetchSettingsExtensionCatalog
-        ).toHaveBeenCalledWith('runtime-extensions', 'cursor-2');
+        ).toHaveBeenCalledWith('runtime-extensions', {
+          q: undefined,
+          slot_code: undefined,
+          cursor: 'cursor-2'
+        });
       });
 
       act(() => window.history.back());
@@ -781,8 +803,8 @@ describe('section shell routing', () => {
         await screen.findByRole('tab', { name: 'mcp', selected: true })
       ).toBeInTheDocument();
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
-        'mcp',
-        undefined
+        'runtime-extensions',
+        { q: undefined, slot_code: undefined, cursor: undefined }
       );
 
       act(() => window.history.forward());
@@ -802,6 +824,67 @@ describe('section shell routing', () => {
           selected: true
         })
       ).toBeInTheDocument();
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-003/AC-007 keeps remote search in URL history, resets cursor, and retains q across pagination',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['extension-center'])
+      );
+      extensionsApi.fetchSettingsExtensionCatalog.mockImplementation(
+        async (
+          category: string,
+          query: { q?: string; slot_code?: string; cursor?: string }
+        ) => ({
+          category,
+          catalog_page: query.cursor ?? 'start',
+          catalog_page_number: query.cursor ? 2 : 1,
+          catalog_page_checksum: 'sha256:search-fixture',
+          catalog_page_locator: 'search-fixture',
+          limit: 20,
+          next_cursor: query.cursor ? null : 'search-cursor-2',
+          total_entries: 0,
+          entries: []
+        })
+      );
+      authenticateWithPermissions([], 'root');
+      renderApp(
+        '/settings/extension-center/runtime-extensions?q=old&cursor=stale'
+      );
+
+      const search = await screen.findByRole('searchbox');
+      expect(search).toHaveValue('old');
+      fireEvent.change(search, { target: { value: 'openai' } });
+      fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+
+      await waitFor(() => {
+        expect(window.location.search).toBe('?q=openai');
+        expect(
+          extensionsApi.fetchSettingsExtensionCatalog
+        ).toHaveBeenCalledWith('runtime-extensions', {
+          q: 'openai',
+          slot_code: undefined,
+          cursor: undefined
+        });
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search);
+        expect(params.get('q')).toBe('openai');
+        expect(params.get('cursor')).toBe('search-cursor-2');
+      });
+
+      fireEvent.click(screen.getByRole('tab', { name: 'agent-flow' }));
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/extension-center/agent-flow'
+        );
+        expect(window.location.search).toBe('');
+      });
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

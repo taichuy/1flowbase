@@ -1,6 +1,7 @@
 manifest_version: 1
 plugin_id: data_source_http_fixture@0.1.0
 version: 0.1.0
+publisher_namespace: flowbase
 vendor: flowbase
 display_name: Data Source HTTP Fixture
 description: Example data source runtime extension package

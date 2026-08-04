@@ -33,10 +33,10 @@ function shouldShowDevDatabaseMaintenanceHint(options) {
 
 function buildDevDatabaseMaintenanceHintLines() {
   return [
-    '开发库不会在 dev-up 时自动清理；test schema 或备份变多时先 dry-run，确认后把 --dry-run 换成 --apply。',
+    'Development databases are not cleaned automatically by dev-up. When test schemas or backups accumulate, run a dry run first, then replace --dry-run with --apply after review.',
     'test schema: node scripts/node/dev-db-maintenance/cli.js test-schemas --dry-run --older-than 3d --keep 20',
-    'PGDATA 备份建议只留 1 份: node scripts/node/dev-db-maintenance/cli.js backups --dry-run --keep 1 --older-than 7d',
-    '备份清理只处理 docker/volumes/postgres.empty-* / postgres.backup-*，不会删除当前 docker/volumes/postgres。',
+    'Keep only 1 PGDATA backup: node scripts/node/dev-db-maintenance/cli.js backups --dry-run --keep 1 --older-than 7d',
+    'Backup cleanup only affects docker/volumes/postgres.empty-* / postgres.backup-* and never deletes the active docker/volumes/postgres directory.',
   ];
 }
 
@@ -63,7 +63,7 @@ async function main(argv = process.argv.slice(2)) {
   if (shouldManageDocker(options)) {
     await manageDocker(repoRoot, options.action);
   } else if (options.skipDocker) {
-    log('已跳过 Docker 中间件管理');
+    log('Skipped Docker middleware management');
   }
 
   if (shouldShowDevDatabaseMaintenanceHint(options)) {

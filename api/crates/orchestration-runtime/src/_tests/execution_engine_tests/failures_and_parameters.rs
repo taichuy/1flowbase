@@ -866,7 +866,7 @@ async fn llm_runtime_ignores_external_reasoning_parameters_without_node_opt_in()
         final_content: "ok".to_string(),
     };
 
-    start_flow_debug_run(
+    let outcome = start_flow_debug_run(
         &plan,
         &json!({
             "node-start": { "query": "hello" },
@@ -896,6 +896,10 @@ async fn llm_runtime_ignores_external_reasoning_parameters_without_node_opt_in()
     assert!(!captured_input
         .model_parameters
         .contains_key("thinking_budget_tokens"));
+    assert_eq!(
+        outcome.node_traces[1].metrics_payload["attempts"][0]["reasoning_effort"],
+        Value::Null
+    );
 }
 
 #[tokio::test]
@@ -959,7 +963,7 @@ async fn llm_runtime_preserves_typed_external_reasoning_for_openai_runtime() {
 }
 
 #[tokio::test]
-async fn llm_runtime_preserves_typed_external_reasoning_for_openai_compatible_runtime() {
+async fn llm_runtime_projects_typed_external_reasoning_for_openai_compatible_attempts() {
     let mut plan = base_plan();
     let llm = plan
         .nodes
@@ -977,7 +981,7 @@ async fn llm_runtime_preserves_typed_external_reasoning_for_openai_compatible_ru
         final_content: "ok".to_string(),
     };
 
-    start_flow_debug_run(
+    let outcome = start_flow_debug_run(
         &plan,
         &json!({
             "node-start": { "query": "hello" },
@@ -1003,6 +1007,10 @@ async fn llm_runtime_preserves_typed_external_reasoning_for_openai_compatible_ru
     assert!(!captured_input
         .model_parameters
         .contains_key("reasoning_effort"));
+    assert_eq!(
+        outcome.node_traces[1].metrics_payload["attempts"][0]["reasoning_effort"],
+        json!("medium")
+    );
 }
 
 #[tokio::test]
@@ -1092,7 +1100,7 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_bailian_runtime() {
         final_content: "ok".to_string(),
     };
 
-    start_flow_debug_run(
+    let outcome = start_flow_debug_run(
         &plan,
         &json!({
             "node-start": { "query": "hello" },
@@ -1129,6 +1137,10 @@ async fn llm_runtime_maps_external_reasoning_parameters_for_bailian_runtime() {
     assert!(!captured_input
         .model_parameters
         .contains_key("thinking_budget_tokens"));
+    assert_eq!(
+        outcome.node_traces[1].metrics_payload["attempts"][0]["reasoning_effort"],
+        json!("high")
+    );
 }
 
 #[tokio::test]

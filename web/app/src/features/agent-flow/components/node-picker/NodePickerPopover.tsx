@@ -4,12 +4,10 @@ import type { ReactElement, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 import {
-  getNodePickerOptionDescription,
   getNodePickerOptionKey,
   type NodePickerOption
 } from '../../lib/plugin-node-definitions';
 import { getAgentFlowNodeTypeIcon } from '../../lib/node-type-icons';
-import { calculateNodePickerMaxHeight } from './node-picker-layout';
 import { i18nText } from '../../../../shared/i18n/text';
 
 type BuiltinNodePickerOption = Extract<NodePickerOption, { kind: 'builtin' }>;
@@ -114,11 +112,7 @@ export function NodePickerPopover({
           .filter(
             (option) =>
               groupMatchesSearch ||
-              matchesNodePickerSearch(
-                option,
-                normalizedSearchValue,
-                getNodePickerOptionDescription(option)
-              )
+              matchesNodePickerSearch(option, normalizedSearchValue)
           );
 
         return { ...group, options: groupedOptions };
@@ -131,18 +125,10 @@ export function NodePickerPopover({
   const uncategorizedBuiltinOptions = builtinOptions.filter(
     (option) =>
       !groupedBuiltinOptionKeys.has(option.category ?? '') &&
-      matchesNodePickerSearch(
-        option,
-        normalizedSearchValue,
-        getNodePickerOptionDescription(option)
-      )
+      matchesNodePickerSearch(option, normalizedSearchValue)
   );
   const filteredPluginOptions = pluginOptions.filter((option) =>
-    matchesNodePickerSearch(
-      option,
-      normalizedSearchValue,
-      getNodePickerOptionDescription(option)
-    )
+    matchesNodePickerSearch(option, normalizedSearchValue)
   );
   const hasVisibleOptions =
     activeTab === 'builtin'
@@ -162,25 +148,11 @@ export function NodePickerPopover({
       return document.body;
     }
 
-    const editorBody = triggerNode.closest<HTMLElement>(
-      '.agent-flow-editor__body'
-    );
-    const bottomControlBoundary = editorBody
-      ?.querySelector<HTMLElement>('.agent-flow-editor__variable-cache-trigger')
-      ?.getBoundingClientRect().bottom;
     const canvasRect = canvas.getBoundingClientRect();
-    const triggerRect = triggerNode.getBoundingClientRect();
-    const anchorY =
-      placement === 'bottom' ? triggerRect.bottom : triggerRect.top;
-    const maxHeight = calculateNodePickerMaxHeight({
-      canvasBottom: canvasRect.bottom,
-      anchorY,
-      bottomBoundary: bottomControlBoundary
-    });
 
     canvas.style.setProperty(
-      '--agent-flow-node-picker-max-height',
-      `${maxHeight}px`
+      '--agent-flow-node-picker-height',
+      `${Math.floor(canvasRect.height * 0.8)}px`
     );
 
     return canvas;
@@ -189,15 +161,17 @@ export function NodePickerPopover({
   return (
     <Popover
       rootClassName="agent-flow-node-picker-popover"
+      arrow={false}
       destroyOnHidden
       getPopupContainer={resolvePopupContainer}
       styles={{
         body: {
           boxSizing: 'border-box',
-          maxHeight:
-            'var(--agent-flow-node-picker-max-height, calc(100vh - 120px))',
+          display: 'grid',
+          height: 'var(--agent-flow-node-picker-height, 80vh)',
           overflow: 'hidden',
-          overscrollBehavior: 'contain'
+          overscrollBehavior: 'contain',
+          padding: 0
         }
       }}
       trigger="click"
@@ -362,8 +336,6 @@ function NodePickerOptionButton({
     option.kind === 'builtin'
       ? getAgentFlowNodeTypeIcon(option.type)
       : getAgentFlowNodeTypeIcon('plugin_node');
-  const description = getNodePickerOptionDescription(option);
-
   return (
     <button
       aria-label={option.label}
@@ -378,11 +350,6 @@ function NodePickerOptionButton({
       </span>
       <span className="agent-flow-node-picker__text">
         <span className="agent-flow-node-picker__name">{option.label}</span>
-        {description ? (
-          <span className="agent-flow-node-picker__description">
-            {description}
-          </span>
-        ) : null}
       </span>
     </button>
   );
@@ -390,8 +357,7 @@ function NodePickerOptionButton({
 
 function matchesNodePickerSearch(
   option: NodePickerOption,
-  normalizedSearchValue: string,
-  description: string | null
+  normalizedSearchValue: string
 ) {
   if (normalizedSearchValue.length === 0) {
     return true;
@@ -407,8 +373,7 @@ function matchesNodePickerSearch(
       ...option.field_contract.output_fields
     ]
       .map((field) => field.key)
-      .join(' '),
-    description
+      .join(' ')
   ]
     .filter((value): value is string => Boolean(value))
     .join(' ')

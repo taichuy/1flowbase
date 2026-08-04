@@ -288,6 +288,21 @@ node scripts/node/verify-state-protocols.js --skip-live-acp
 - 前端 `i18n/` key 无静态代码引用 warning
 - 可用 `--include-cross-owner-warnings` 额外查看跨 owner 重复 key / value advisory warning
 
+## MCP Publishing
+
+### `node scripts/node/export-mcp-instance-to-official.js --instance-id <id> --target <absolute-path>`
+
+将一个 MCP 实例同步到官方插件源码目录。脚本使用临时 owner session，自动递增目标 Bundle 的 patch 版本，调用官方仓库校验器，并原子替换目标目录；不会 commit 或 push。
+
+官方发布导出只保留内置静态 API、内置数据表 CRUD 和上游 MCP Proxy Tool；自动排除 `/api/ex/*` Workflow 与工作区自建数据表生成的 CRUD Tool。完整参数和失败保护说明见 [`scripts/node/export-mcp-instance-to-official/README.md`](node/export-mcp-instance-to-official/README.md)。
+
+```bash
+node scripts/node/export-mcp-instance-to-official.js \
+  --instance-id 1flowbase \
+  --target /home/taichuy/git/1flowbase-official-plugins/mcp/@taichuy/1flowbase_zh_hans \
+  --api-base-url http://127.0.0.1:7800
+```
+
 ## Version Tools
 
 ### `node scripts/node/cli/bump-version.js [0|1|2|patch|minor|major] [--dry-run]`

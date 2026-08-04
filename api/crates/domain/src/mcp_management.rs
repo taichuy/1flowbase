@@ -487,6 +487,15 @@ pub struct McpToolRecord {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpInterfaceCatalogSource {
+    StaticApi,
+    PublishedWorkflow,
+    BuiltinDataModelCrud,
+    WorkspaceDataModelCrud,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpToolBindingRecord {
     pub id: Uuid,
@@ -522,6 +531,7 @@ pub struct McpInstanceDiscoveryPolicyRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpInterfaceCatalogEntry {
     pub interface_id: String,
+    pub source: McpInterfaceCatalogSource,
     pub method: String,
     pub path: String,
     pub name: String,

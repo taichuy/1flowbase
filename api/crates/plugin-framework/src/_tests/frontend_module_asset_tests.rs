@@ -13,6 +13,7 @@ fn manifest_with_modules(modules: &str) -> String {
         r#"manifest_version: 1
 plugin_id: native_fixture@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Native Fixture
 description: Native React fixture

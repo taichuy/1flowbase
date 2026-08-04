@@ -1,4 +1,6 @@
-use control_plane::mcp_bundle::{ExportMcpInstanceBundleCommand, ImportMcpBundleCommand};
+use control_plane::mcp_bundle::{
+    ExportMcpInstanceBundleCommand, ImportMcpBundleCommand, McpInstanceBundleExportKind,
+};
 use control_plane::mcp_management::{
     CopyMcpInstanceCommand, CreateMcpInstanceCommand, CreateMcpToolBindingCommand,
     CreateMcpToolCommand, McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
@@ -231,6 +233,7 @@ async fn seed_store() -> (
 fn runtime_profile_interface() -> domain::McpInterfaceCatalogEntry {
     domain::McpInterfaceCatalogEntry {
         interface_id: "get_runtime_profile".into(),
+        source: domain::McpInterfaceCatalogSource::StaticApi,
         method: "GET".into(),
         path: "/api/console/system/runtime-profile".into(),
         name: "Get runtime profile".into(),
@@ -443,9 +446,11 @@ async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_t
             bundle_version: "1.0.0".into(),
             locale: "zh_Hans".into(),
             current_system_version: "0.2.6".into(),
+            kind: McpInstanceBundleExportKind::Portable,
         })
         .await
-        .unwrap();
+        .unwrap()
+        .package;
 
     assert_eq!(bundle.instances.len(), 1);
     assert_eq!(bundle.tools.len(), 1);
@@ -531,9 +536,11 @@ async fn mcp_bundle_import_replaces_instance_atomically_and_preserves_credential
             bundle_version: "1.0.0".into(),
             locale: "zh_Hans".into(),
             current_system_version: "0.3.1".into(),
+            kind: McpInstanceBundleExportKind::Portable,
         })
         .await
-        .unwrap();
+        .unwrap()
+        .package;
     package.instances[0].name = "New name".into();
     package.tools[0].name = "New tool".into();
     let preview = service

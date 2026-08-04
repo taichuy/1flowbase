@@ -7,6 +7,7 @@ fn plugin_manifest_v1_defaults_js_dependency_permissions_to_none() {
 manifest_version: 1
 plugin_id: js_default_permissions_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: JS Default Permissions Pack
 description: Example JS dependency pack plugin
@@ -58,6 +59,7 @@ fn plugin_manifest_v1_rejects_js_dependency_pack_with_invalid_target() {
 manifest_version: 1
 plugin_id: bad_js_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad JS Pack
 description: invalid target
@@ -112,6 +114,7 @@ fn plugin_manifest_v1_rejects_js_dependency_pack_with_native_addon_or_lifecycle_
 manifest_version: 1
 plugin_id: native_addon_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Native Addon Pack
 description: unsupported
@@ -163,6 +166,7 @@ js_dependencies:
 manifest_version: 1
 plugin_id: lifecycle_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Lifecycle Scripts Pack
 description: unsupported
@@ -217,6 +221,7 @@ fn plugin_manifest_v1_rejects_manifest_version_other_than_one() {
 manifest_version: 2
 plugin_id: bad_version@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Version
 description: invalid
@@ -256,6 +261,7 @@ fn plugin_manifest_v1_rejects_runtime_extension_without_supported_binding_target
 manifest_version: 1
 plugin_id: bad_binding@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Binding
 description: invalid
@@ -296,6 +302,7 @@ fn plugin_manifest_v1_rejects_capability_plugin_with_incomplete_node_contributio
 manifest_version: 1
 plugin_id: bad_node@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Node
 description: invalid
@@ -358,6 +365,7 @@ fn plugin_manifest_v1_rejects_runtime_extension_with_tenant_binding_target() {
 manifest_version: 1
 plugin_id: bad_tenant_binding@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Tenant Binding
 description: invalid
@@ -400,6 +408,7 @@ fn plugin_manifest_v1_rejects_capability_plugin_with_invalid_node_contract_value
 manifest_version: 1
 plugin_id: bad_node_contract@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Node Contract
 description: invalid
@@ -462,6 +471,7 @@ fn plugin_manifest_v1_rejects_unknown_source_kind() {
 manifest_version: 1
 plugin_id: bad_source@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Source
 description: invalid
@@ -503,6 +513,7 @@ fn plugin_manifest_v1_rejects_contract_version_mismatch_for_capability_plugin() 
 manifest_version: 1
 plugin_id: bad_contract_version@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Contract Version
 description: invalid

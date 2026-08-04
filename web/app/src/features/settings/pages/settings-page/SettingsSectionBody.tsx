@@ -93,7 +93,8 @@ export function SettingsSectionBody({
   modelProviderTab = 'providers',
   rolePermissionTab = 'console-policy',
   extensionCenterCategory = 'installed',
-  extensionCenterCursor
+  extensionCenterCursor,
+  extensionCenterQ
 }: {
   sectionKey: SettingsSectionKey;
   access: SettingsSectionAccess;
@@ -101,6 +102,7 @@ export function SettingsSectionBody({
   rolePermissionTab?: RolePermissionTab;
   extensionCenterCategory?: SettingsExtensionCenterCategory;
   extensionCenterCursor?: string;
+  extensionCenterQ?: string;
 }) {
   const navigate = useNavigate();
 
@@ -117,6 +119,7 @@ export function SettingsSectionBody({
           <SettingsExtensionCenterSection
             category={extensionCenterCategory}
             cursor={extensionCenterCursor}
+            q={extensionCenterQ}
           />
         </SettingsSectionBoundary>
       );

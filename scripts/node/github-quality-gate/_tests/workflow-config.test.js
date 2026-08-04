@@ -26,6 +26,13 @@ function readContainerImagesWorkflow() {
   );
 }
 
+function readAiGatewayConcurrencyWorkflow() {
+  return fs.readFileSync(
+    path.join(repoRoot, ".github", "workflows", "ai-gateway-concurrency.yml"),
+    "utf8",
+  );
+}
+
 function readReleaseRollbackGateWorkflow() {
   return fs.readFileSync(
     path.join(repoRoot, ".github", "workflows", "release-rollback-gate.yml"),
@@ -153,34 +160,44 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   );
 });
 
-test("quality gate restores release-seeded Rust cache without writing it from CI", () => {
+test("Rust workflow caches are dependency-keyed and bounded across branches", () => {
   const workflow = readQualityGateWorkflow();
   const containerWorkflow = readContainerImagesWorkflow();
+  const aiGatewayWorkflow = readAiGatewayConcurrencyWorkflow();
 
   assert.match(
     containerWorkflow,
-    /key: rust-release-seeded-api-server-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ needs\.select-api-server\.outputs\.image_tag \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /key: rust-release-seeded-api-server-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
     containerWorkflow,
-    /key: rust-release-seeded-plugin-runner-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ needs\.select-plugin-runner\.outputs\.image_tag \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /key: rust-release-seeded-plugin-runner-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
 
   assert.match(workflow, /name: Restore release-seeded api-server Rust cache/u);
   assert.match(workflow, /name: Import release-seeded api-server Rust cache/u);
-  assert.match(workflow, /name: Resolve release-seeded Rust cache tag/u);
+  assert.match(workflow, /name: Resolve release-seeded Rust cache architecture/u);
   assert.match(workflow, /case "\$\{RUNNER_ARCH:-X64\}" in/u);
   assert.match(workflow, /echo "cache_arch=\$cache_arch" >> "\$GITHUB_OUTPUT"/u);
-  assert.match(workflow, /gh release list --limit 1 --json tagName --jq '\.\[0\]\.tagName \/\/ ""'/u);
-  assert.match(workflow, /if: \$\{\{ steps\.release_seed_tag\.outputs\.release_tag != '' \}\}/u);
   assert.match(workflow, /uses: actions\/cache\/restore@v5/u);
-  assert.match(workflow, /key: rust-release-seeded-api-server-\$\{\{ runner\.os \}\}-\$\{\{ steps\.release_seed_tag\.outputs\.cache_arch \}\}-rust-1-slim-bookworm-release-\$\{\{ steps\.release_seed_tag\.outputs\.release_tag \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u);
-  assert.match(workflow, /restore-keys: \|\n\s+rust-release-seeded-api-server-\$\{\{ runner\.os \}\}-\$\{\{ steps\.release_seed_tag\.outputs\.cache_arch \}\}-rust-1-slim-bookworm-release-\$\{\{ steps\.release_seed_tag\.outputs\.release_tag \}\}-/u);
-  assert.match(workflow, /tmp\/container-cache\/api-server\/\$\{\{ steps\.release_seed_tag\.outputs\.cache_arch \}\}\/target/u);
+  assert.match(workflow, /key: rust-release-seeded-api-server-v2-\$\{\{ runner\.os \}\}-\$\{\{ steps\.release_seed_arch\.outputs\.cache_arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u);
+  assert.match(workflow, /tmp\/container-cache\/api-server\/\$\{\{ steps\.release_seed_arch\.outputs\.cache_arch \}\}\/target/u);
   assert.match(workflow, /rsync -a "tmp\/container-cache\/api-server\/\$RUST_RELEASE_SEEDED_CACHE_ARCH\/target\/" "\$CARGO_TARGET_DIR\/"/u);
   assert.doesNotMatch(workflow, /env:\n\s+RUST_RELEASE_SEEDED_CACHE_ARCH: \$\{\{ runner\.arch/u);
   assert.doesNotMatch(workflow, /rust-release-seeded-[^\n]+-quality-gate-/u);
   assert.doesNotMatch(workflow, /actions\/cache@v5[\s\S]{0,240}rust-release-seeded/u);
+  assert.doesNotMatch(
+    `${containerWorkflow}\n${workflow}`,
+    /^\s*key: rust-[^\n]*hashFiles\([^\n]*api\/\*\*\/\*\.rs/gmu,
+  );
+  assert.match(
+    aiGatewayWorkflow,
+    /save-if: \$\{\{ github\.ref_name == github\.event\.repository\.default_branch \}\}/u,
+  );
+
+  assert.match(containerWorkflow, /cargo build --release -p api-server --bin api-server/u);
+  assert.match(containerWorkflow, /- arch: amd64[\s\S]*?- arch: arm64/u);
+  assert.match(containerWorkflow, /Enforce CRITICAL Trivy release gate/u);
 });
 
 test("release rollback gate is nightly/manual only and stays out of daily ci aggregate", () => {
@@ -368,16 +385,6 @@ test("React Doctor keeps current debt as a narrow baseline", () => {
         "react-doctor/no-noninteractive-element-interactions",
         "react-doctor/no-render-in-render",
         "react-doctor/no-static-element-interactions",
-      ],
-    },
-    {
-      files: [
-        "src/features/settings/components/host-infrastructure/HostInfrastructureCachePanel.tsx",
-      ],
-      rules: [
-        "react-doctor/no-chain-state-updates",
-        "react-doctor/no-giant-component",
-        "react-doctor/query-mutation-missing-invalidation",
       ],
     },
     {
@@ -668,7 +675,7 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   );
   assert.match(
     workflow,
-    /repo-backend-gate:[\s\S]*?name: Restore Rust backend quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?key: rust-quality-gate-backend-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /repo-backend-gate:[\s\S]*?name: Restore Rust backend quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?key: rust-quality-gate-backend-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
     workflow,
@@ -676,11 +683,11 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   );
   assert.match(
     workflow,
-    /backend-consistency-gate:[\s\S]*?name: Restore Rust backend consistency quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend-consistency\/\$\{\{ matrix\.group \}\}\/target[\s\S]*?key: rust-quality-gate-backend-consistency-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.group \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /backend-consistency-gate:[\s\S]*?name: Restore Rust backend consistency quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-backend-consistency\/\$\{\{ matrix\.group \}\}\/target[\s\S]*?key: rust-quality-gate-backend-consistency-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.group \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
     workflow,
-    /coverage-backend-gate:[\s\S]*?name: Restore Rust coverage quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-coverage\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?key: rust-quality-gate-coverage-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /coverage-backend-gate:[\s\S]*?name: Restore Rust coverage quality gate cache[\s\S]*?uses: actions\/cache@v5[\s\S]*?tmp\/quality-gate-cache\/rust-coverage\/\$\{\{ matrix\.scope \}\}\/target[\s\S]*?key: rust-quality-gate-coverage-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.match(
     workflow,
@@ -688,7 +695,7 @@ test("quality gate workflow caches Rust profiles without adding warm build jobs"
   );
   assert.match(
     workflow,
-    /single-scope-gate:[\s\S]*?name: Restore Rust single-scope quality gate cache[\s\S]*?if: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}[\s\S]*?key: rust-quality-gate-\$\{\{ \(inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\)\) && 'coverage' \|\| 'backend' \}\}-\$\{\{ runner\.os \}\}-\$\{\{ inputs\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/\*\.rs', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
+    /single-scope-gate:[\s\S]*?name: Restore Rust single-scope quality gate cache[\s\S]*?if: \$\{\{ inputs\.scope == 'repo' \|\| inputs\.scope == 'backend' \|\| startsWith\(inputs\.scope, 'backend-consistency'\) \|\| inputs\.scope == 'state-protocols' \|\| inputs\.scope == 'repo-backend' \|\| startsWith\(inputs\.scope, 'repo-backend-'\) \|\| inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\) \}\}[\s\S]*?key: rust-quality-gate-v2-\$\{\{ \(inputs\.scope == 'coverage' \|\| inputs\.scope == 'coverage-backend' \|\| startsWith\(inputs\.scope, 'coverage-backend-'\)\) && 'coverage' \|\| 'backend' \}\}-\$\{\{ runner\.os \}\}-\$\{\{ inputs\.scope \}\}-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
   assert.doesNotMatch(workflow, /cargo test --no-run/u);
   assert.doesNotMatch(workflow, /test-binar(?:y|ies)/u);
@@ -844,6 +851,6 @@ test("quality gate action isolates middleware postgres per gate scope", () => {
   );
   assert.match(
     middlewareCompose,
-    /\$\{POSTGRES_DATA_DIR:-\.\/volumes\/postgres\}:\/var\/lib\/postgresql\/data/u,
+    /\$\{POSTGRES_DATA_DIR:-\.\/volumes\/postgres\}:\/var\/lib\/postgresql/u,
   );
 });

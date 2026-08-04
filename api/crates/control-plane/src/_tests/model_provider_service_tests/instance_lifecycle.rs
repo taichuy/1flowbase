@@ -1,6 +1,90 @@
 use super::*;
 
 #[tokio::test]
+async fn publisher_cutover_legacy_instance_form_schema_requires_explicit_receipt() {
+    let workspace_id = Uuid::now_v7();
+    let package_root =
+        std::env::temp_dir().join(format!("publisher-cutover-provider-{}", Uuid::now_v7()));
+    create_provider_fixture(&package_root);
+    let repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let installation_id = repository
+        .seed_installation(
+            &package_root.display().to_string(),
+            PluginDesiredState::ActiveRequested,
+            true,
+        )
+        .await;
+    repository
+        .mark_legacy_missing_publisher_namespace(installation_id)
+        .await;
+    let service = model_provider_service(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        "provider-secret-master-key",
+    );
+
+    let created = service
+        .create_instance(CreateModelProviderInstanceCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id,
+            display_name: "Legacy Fixture".to_string(),
+            config_json: json!({
+                "base_url": "https://legacy.example.com",
+                "api_key": "legacy-secret"
+            }),
+            configured_models: Vec::new(),
+            enabled_model_ids: Vec::new(),
+            included_in_main: None,
+            preview_token: None,
+        })
+        .await
+        .expect("AC-001 receipt-marked legacy provider should load its form schema");
+    let listed = service
+        .list_instances(repository.actor.user_id)
+        .await
+        .expect("AC-001 legacy instance list should hydrate with the installed schema");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].instance.id, created.instance.id);
+    assert_eq!(listed[0].instance.config_json["api_key"], "lega****cret");
+
+    let strict_repository = MemoryModelProviderRepository::new(actor_with_permissions(
+        workspace_id,
+        &["state_model.view.all", "state_model.manage.all"],
+    ));
+    let strict_installation_id = strict_repository
+        .seed_installation(
+            &package_root.display().to_string(),
+            PluginDesiredState::ActiveRequested,
+            true,
+        )
+        .await;
+    let strict_service = model_provider_service(
+        strict_repository.clone(),
+        MemoryProviderRuntime::default(),
+        "provider-secret-master-key",
+    );
+    assert!(strict_service
+        .create_instance(CreateModelProviderInstanceCommand {
+            actor_user_id: strict_repository.actor.user_id,
+            installation_id: strict_installation_id,
+            display_name: "Unmarked Legacy Fixture".to_string(),
+            config_json: json!({
+                "base_url": "https://legacy.example.com",
+                "api_key": "legacy-secret"
+            }),
+            configured_models: Vec::new(),
+            enabled_model_ids: Vec::new(),
+            included_in_main: None,
+            preview_token: None,
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
 async fn model_provider_service_masks_secret_in_views_and_reveals_on_demand() {
     let workspace_id = Uuid::now_v7();
     let repository = MemoryModelProviderRepository::new(actor_with_permissions(
@@ -18,8 +102,7 @@ async fn model_provider_service_masks_secret_in_views_and_reveals_on_demand() {
         )
         .await;
 
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
@@ -121,7 +204,7 @@ async fn model_provider_service_create_instance_inherits_provider_main_instance_
         )
         .await;
 
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
 
     let main_instance = service
         .update_main_instance(UpdateModelProviderMainInstanceCommand {
@@ -173,7 +256,7 @@ async fn model_provider_service_update_instance_can_flip_included_in_main_withou
             true,
         )
         .await;
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
@@ -270,7 +353,7 @@ async fn model_provider_service_list_instances_returns_included_in_main_without_
         .await
         .unwrap();
 
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key");
     let instances = service
         .list_instances(repository.actor.user_id)
         .await
@@ -314,6 +397,11 @@ async fn model_provider_service_list_instances_does_not_read_global_install_path
             true,
         )
         .await;
+    repository
+        .artifact_instances
+        .write()
+        .await
+        .remove(&("test-node".to_string(), installation_id));
     let instance = repository
         .create_instance(&CreateModelProviderInstanceInput {
             instance_id: Uuid::now_v7(),
@@ -333,7 +421,7 @@ async fn model_provider_service_list_instances_does_not_read_global_install_path
         })
         .await
         .unwrap();
-    let service = ModelProviderService::new(repository.clone(), runtime, "test-master-key")
+    let service = model_provider_service(repository.clone(), runtime, "test-master-key")
         .with_node_artifact_context("test-node", install_root);
 
     let instances = service
@@ -366,7 +454,7 @@ async fn model_provider_service_update_instance_blocks_when_current_node_artifac
             true,
         )
         .await;
-    let bootstrap_service = ModelProviderService::new(
+    let bootstrap_service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -389,9 +477,8 @@ async fn model_provider_service_update_instance_blocks_when_current_node_artifac
         .unwrap();
     let current_node_root =
         std::env::temp_dir().join(format!("provider-node-missing-{}", Uuid::now_v7()));
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key")
-            .with_node_artifact_context("node-without-artifact", current_node_root);
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")
+        .with_node_artifact_context("node-without-artifact", current_node_root);
 
     let error = service
         .update_instance(UpdateModelProviderInstanceCommand {
@@ -431,7 +518,7 @@ async fn model_provider_service_blocks_previously_failed_current_node_runtime_wi
             true,
         )
         .await;
-    let bootstrap_service = ModelProviderService::new(
+    let bootstrap_service = model_provider_service(
         repository.clone(),
         runtime.clone(),
         "provider-secret-master-key",
@@ -476,9 +563,8 @@ async fn model_provider_service_blocks_previously_failed_current_node_runtime_wi
         })
         .await
         .unwrap();
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key")
-            .with_node_artifact_context("test-node", current_node_root);
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key")
+        .with_node_artifact_context("test-node", current_node_root);
 
     let error = service
         .validate_instance(repository.actor.user_id, created.instance.id)
@@ -518,8 +604,7 @@ async fn model_provider_service_create_and_update_allow_empty_enabled_model_ids(
             true,
         )
         .await;
-    let service =
-        ModelProviderService::new(repository.clone(), runtime, "provider-secret-master-key");
+    let service = model_provider_service(repository.clone(), runtime, "provider-secret-master-key");
 
     let created = service
         .create_instance(CreateModelProviderInstanceCommand {
