@@ -14,8 +14,8 @@ keywords:
   - websocket fallback
   - retry policy
 created_at: 2026-05-21 17
-updated_at: 2026-08-03 23
-last_verified_at: 2026-08-03 23
+updated_at: 2026-08-04 18
+last_verified_at: 2026-08-04 18
 decision_policy: direct_reference
 scope:
   - api/crates/orchestration-runtime
@@ -42,6 +42,8 @@ LLM tool callback continuation 为节省上下文只向 provider 发送 tool res
 供应商协议序列化错误由对应 provider 插件修复；调用失败后的重试分类、次数和退避策略属于 Agent Flow 大语言模型节点专门模块。修复 provider wire shape 时不得顺手修改重试策略；即使发现确定性 `4xx` 被重复调用，也应作为独立的大语言模型节点任务处理。
 
 AI Native `reasoning` 映射到供应商 wire 时，provider 插件应保留可表达的常用推理强度；例如 Chat-compatible 或 DeepSeek 无法表达 `mode=adaptive`、但能表达 `effort=high` 时，继续发送供应商 `reasoning_effort=high`，并在 `provider_metadata.provider_request_translation.decisions` 记录被省略的语义。完全无法表达时省略并记录，不得仅因部分语义不可表达就在 HTTP 前拒绝整个调用；节点显式供应商参数优先，真正不支持的 wire 值交由上游明确返回。
+
+通用 Chat-compatible Provider 的目标是覆盖成熟的共同 wire，不要求调用方因上游使用 `reasoning_content` 等兼容字段而改绑专用 Provider。普通 assistant reasoning history 必须像 DeepSeek adapter 一样无损映射为 `reasoning_content`，同时保留 `content/tool_calls/tool_call_id`；不得省略 reasoning，也不得由主仓路由层在 Provider spawn 前把这类成熟语义一律拒绝。Provider manifest 应诚实声明其 lowering capability；`reasoning_redacted`、媒体或其他尚无通用 wire 表达的用户内容仍须显式能力或 typed failure，不能借“通用宽松”静默丢弃。
 
 ## 原因
 
