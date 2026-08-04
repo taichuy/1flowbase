@@ -62,7 +62,8 @@ test('getServicePrestartCommands checks frontend dependencies with visible pnpm 
     })),
     [
       {
-        description: 'frontend 依赖检查（需要清空重装时由 pnpm 在终端提示确认）',
+        description:
+          'frontend dependency check (pnpm will prompt in the terminal if a clean reinstall is required)',
         command: 'pnpm',
         args: ['install'],
         cwd: path.join(repoRoot, 'web'),
@@ -154,7 +155,7 @@ test('runServicePrestartCommands blocks local postgres rebuild by default after 
             };
           }
         }),
-      /api-server 开发态重置 root 密码 失败，退出码 1/u
+      /api-server development root password reset failed with exit code 1/u
     );
   } finally {
     process.stderr.write = originalStderrWrite;

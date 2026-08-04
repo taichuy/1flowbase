@@ -61,7 +61,7 @@ function pathExistsCaseInsensitive(filePath, platform) {
 
 function requireCommand(commandName) {
   if (!commandExists(commandName)) {
-    throw new Error(`缺少命令：${commandName}`);
+    throw new Error(`Missing command: ${commandName}`);
   }
 }
 
@@ -147,7 +147,7 @@ function ensureServiceEnvFile(service, { logImpl = log } = {}) {
   }
   fs.writeFileSync(service.envFile, content, "utf8");
   logImpl(
-    `已创建 ${path.relative(service.repoRoot || process.cwd(), service.envFile)}`,
+    `Created ${path.relative(service.repoRoot || process.cwd(), service.envFile)}`,
   );
   return true;
 }
@@ -179,7 +179,7 @@ function parseApiEnvironment(value) {
     return "production";
   }
 
-  throw new Error(`无效的 API_ENV：${value}`);
+  throw new Error(`Invalid API_ENV: ${value}`);
 }
 
 function getServicePrestartCommands(service, sourceEnv = process.env) {
@@ -191,7 +191,7 @@ function getServicePrestartCommands(service, sourceEnv = process.env) {
     return [
       {
         description:
-          "frontend 依赖检查（需要清空重装时由 pnpm 在终端提示确认）",
+          "frontend dependency check (pnpm will prompt in the terminal if a clean reinstall is required)",
         command: service.command,
         args: ["install"],
         cwd: service.cwd,
@@ -212,7 +212,7 @@ function getServicePrestartCommands(service, sourceEnv = process.env) {
 
   return [
     {
-      description: "api-server 开发态重置 root 密码",
+      description: "api-server development root password reset",
       command: service.command,
       args: ["run", "-p", "api-server", "--bin", "reset_root_password"],
       cwd: service.cwd,

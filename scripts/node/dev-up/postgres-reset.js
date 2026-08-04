@@ -88,7 +88,7 @@ function buildLocalPostgresResetPlan(service, databaseUrl) {
     databaseName: database.databaseName,
     commands: [
       {
-        description: `重建开发数据库 ${database.databaseName}`,
+        description: `Rebuild development database ${database.databaseName}`,
         args: [
           'exec',
           '-T',
@@ -103,7 +103,7 @@ function buildLocalPostgresResetPlan(service, databaseUrl) {
         ],
       },
       {
-        description: `创建开发数据库 ${database.databaseName}`,
+        description: `Create development database ${database.databaseName}`,
         args: [
           'exec',
           '-T',
@@ -141,8 +141,8 @@ function tryRecoverApiServerPrestartFailure(
 
   if (!isExplicitResetOptInEnabled(prestartCommand.env)) {
     logImpl(
-      `${service.label} 检测到本地开发数据库 migration 记录与当前仓库不一致；` +
-        `为避免误删数据，已停止自动重建。确认可清空本地库时设置 ${ALLOW_DB_RESET_ENV}=1 后重试`
+      `${service.label} detected local development database migration records that do not match the current repository; ` +
+        `automatic rebuild was stopped to prevent data loss. Set ${ALLOW_DB_RESET_ENV}=1 and retry only after confirming that the local database may be cleared`
     );
     return false;
   }
@@ -153,7 +153,7 @@ function tryRecoverApiServerPrestartFailure(
   }
 
   logImpl(
-    `${service.label} 检测到本地开发数据库 migration 记录与当前仓库不一致，准备重建数据库 ${resetPlan.databaseName}`
+    `${service.label} detected local development database migration records that do not match the current repository; rebuilding database ${resetPlan.databaseName}`
   );
 
   for (const command of resetPlan.commands) {
@@ -164,7 +164,7 @@ function tryRecoverApiServerPrestartFailure(
     ensureCommandSuccess(command.description, resetResult);
   }
 
-  logImpl(`${service.label} 已重建数据库 ${resetPlan.databaseName}，重试预启动步骤`);
+  logImpl(`${service.label} rebuilt database ${resetPlan.databaseName}; retrying the pre-start step`);
   return true;
 }
 
@@ -178,7 +178,7 @@ function runServicePrestartCommands(
   } = {}
 ) {
   for (const prestartCommand of getServicePrestartCommands(service, sourceEnv)) {
-    logImpl(`${service.label} 执行预启动步骤：${prestartCommand.description}`);
+    logImpl(`${service.label} running pre-start step: ${prestartCommand.description}`);
     let recovered = false;
 
     while (true) {
@@ -210,7 +210,7 @@ function runServicePrestartCommands(
         throw result.error;
       }
 
-      throw new Error(`${prestartCommand.description} 失败，退出码 ${result.status}`);
+      throw new Error(`${prestartCommand.description} failed with exit code ${result.status}`);
     }
   }
 }
