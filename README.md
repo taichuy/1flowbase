@@ -473,12 +473,13 @@ This project is licensed under [Apache-2.0](LICENSE).
 
 ## Star History
 
-<p align="center">
-  <a href="https://www.star-history.com/#taichuy/1flowbase&Date" target="_blank">
-    <img src="https://api.star-history.com/svg?repos=taichuy/1flowbase&type=Date" alt="Star History" width="600">
-  </a>
-</p>
-
+<a href="https://www.star-history.com/?repos=taichuy%2F1flowbase&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&theme=dark&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&legend=top-left&sealed_token=MBbQLaOtQLafse7QyzDXbFVUinjT_L-sUyFK34gKnxpoBUUUlrvfNk5uLv0C1iahDGvIur6betGCvrXaGdMA1pWFBWWscn211rSoZFOrTLeZbK0gcfxG6A" />
+ </picture>
+</a>
 ---
 
 <div align="center">
