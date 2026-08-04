@@ -184,6 +184,12 @@ const catalogEntry = {
   keywords: ['openai', 'provider']
 };
 
+const installableCatalogEntry = {
+  ...catalogEntry,
+  current_version: null,
+  installation_status: 'not_installed' as const
+};
+
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -375,6 +381,17 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('publisher_cutover shows the dedicated artifact download failure message', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [installableCatalogEntry]
+    });
     extensionsApi.installSettingsExtension.mockRejectedValue(
       new ApiClientError({
         status: 502,
@@ -383,9 +400,9 @@ describe('SettingsExtensionCenterSection', () => {
       })
     );
     renderSection('runtime-extensions');
-    expect(await screen.findByText('openai')).toBeInTheDocument();
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
 
-    fireEvent.click(screen.getByRole('button', { name: '安装' }));
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 
     await waitFor(() => {
       expect(message.error).toHaveBeenCalledWith('扩展包下载失败，请重试');
@@ -393,13 +410,24 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('publisher_cutover keeps the generic message for unknown mutation errors', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [installableCatalogEntry]
+    });
     extensionsApi.installSettingsExtension.mockRejectedValue(
       new Error('unknown failure')
     );
     renderSection('runtime-extensions');
-    expect(await screen.findByText('openai')).toBeInTheDocument();
+    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
 
-    fireEvent.click(screen.getByRole('button', { name: '安装' }));
+    fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 
     await waitFor(() => {
       expect(message.error).toHaveBeenCalledWith('扩展操作失败');
