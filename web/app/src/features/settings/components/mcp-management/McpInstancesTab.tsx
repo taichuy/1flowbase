@@ -1,12 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  FileOutlined,
-  FolderOpenOutlined,
-  FolderOutlined,
-  PlusOutlined,
-  SaveOutlined
-} from '@ant-design/icons';
+import { FolderOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -14,13 +6,10 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Switch,
   Tag,
-  Tooltip,
-  Tree,
   Typography,
   message
 } from 'antd';
@@ -34,6 +23,7 @@ import {
 } from 'react';
 import { McpClientConfigurationModal } from './McpClientConfigurationModal';
 import { McpInstanceTable } from './McpInstancesTab/McpInstanceTable';
+import { McpDirectoryTree } from './McpInstancesTab/McpDirectoryTree';
 import {
   McpCopyInstanceModal,
   McpDiscardDirectoryChangesModal,
@@ -79,7 +69,6 @@ import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/Fixed
 import {
   buildMcpDirectoryTreeData,
   nextMcpDirectoryExpandedKeys,
-  type McpDirectoryTreeNode,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
 import { McpInstanceDiscoveryPolicyModal } from './McpInstanceDiscoveryPolicyModal';
@@ -986,30 +975,24 @@ export function McpInstancesTab({
                 </Button>
               </Flex>
 
-              <Tree<McpDirectoryTreeNode>
-                key={`${directoryEditorMode}:${directoryDraftActive ? directoryDraftVersion : 'stable'}`}
-                className="mcp-management__directory-tree"
-                draggable={canManage ? { icon: false } : false}
-                blockNode
+              <McpDirectoryTree
+                key={`${directoryEditorMode}:${
+                  directoryDraftActive ? directoryDraftVersion : 'stable'
+                }`}
+                canManage={canManage}
                 expandedKeys={expandedDirectoryKeys}
-                showIcon
-                selectedKeys={
-                  selectedDirectoryKey ? [selectedDirectoryKey] : []
-                }
+                selectedKey={selectedDirectoryKey}
                 treeData={treeData}
-                onExpand={(_nextExpandedKeys, info) => {
-                  const changedKey = String(info.node.key);
+                onExpand={(changedKey, expanded) =>
                   setExpandedDirectoryKeys((currentKeys) =>
                     nextMcpDirectoryExpandedKeys(
                       currentKeys,
                       changedKey,
-                      info.expanded
+                      expanded
                     )
-                  );
-                }}
-                onSelect={(selectedKeys) => {
-                  if (selectedKeys.length === 0) return;
-                  const key = String(selectedKeys[0]);
+                  )
+                }
+                onSelect={(key) => {
                   if (key.includes('__draft__')) return;
 
                   requestDirectorySessionChange(() => {
@@ -1039,128 +1022,19 @@ export function McpInstancesTab({
                   });
                 }}
                 onDrop={handleTreeDrop}
-                titleRender={(node) => {
-                  const [type, ...parts] = node.key.split(':');
-                  const isInstance = type === 'instance';
-                  const isGroup = type === 'group';
-                  const isBinding = type === 'binding';
-
-                  let titleNode: React.ReactNode = <span>{node.title}</span>;
-                  if (isGroup) {
-                    const shortDescription = node.description_short?.trim();
-                    titleNode = (
-                      <span className="mcp-management__group-node">
-                        <span className="mcp-management__group-node-id">
-                          {node.title}
-                        </span>
-                        {shortDescription ? (
-                          <span className="mcp-management__group-node-description">
-                            {shortDescription}
-                          </span>
-                        ) : null}
-                      </span>
-                    );
-                  } else if (isBinding) {
-                    const shortDescription =
-                      node.tool_short_description?.trim();
-                    titleNode = (
-                      <span className="mcp-management__binding-node">
-                        <span className="mcp-management__binding-node-id">
-                          {node.title}
-                        </span>
-                        {shortDescription ? (
-                          <span className="mcp-management__binding-node-description">
-                            {shortDescription}
-                          </span>
-                        ) : null}
-                      </span>
-                    );
-                  }
-
-                  return (
-                    <span className="mcp-management__tree-node-title">
-                      {titleNode}
-                      {canManage && (isInstance || isGroup || isBinding) && (
-                        <span
-                          className={
-                            isInstance
-                              ? 'mcp-management__tree-node-actions mcp-management__tree-node-actions--visible'
-                              : 'mcp-management__tree-node-actions'
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {!isInstance ? (
-                            <Tooltip title={i18nText('settings', 'auto.edit')}>
-                              <Button
-                                type="text"
-                                size="small"
-                                icon={<EditOutlined />}
-                                aria-label={i18nText('settings', 'auto.edit')}
-                                onClick={() => {
-                                  if (isGroup) {
-                                    setParentGroupPath(null);
-                                    setDirectoryEditorMode('group');
-                                    setDirectoryEditorIntent('edit');
-                                    setDirectoryDraftActive(false);
-                                    setEditingBinding(null);
-                                    applyDirectoryPathToForms(node.path);
-                                  } else {
-                                    applyBindingSelection(parts.join(':'));
-                                  }
-                                }}
-                              />
-                            </Tooltip>
-                          ) : null}
-                          {!isInstance ? (
-                            <Popconfirm
-                              title={
-                                isGroup
-                                  ? i18nText(
-                                      'settingsMcpManagement',
-                                      'auto.mcp_group_delete_confirm'
-                                    )
-                                  : i18nText(
-                                      'settings',
-                                      'auto.mcp_hard_delete_confirm'
-                                    )
-                              }
-                              onConfirm={() => {
-                                if (isGroup) {
-                                  const path = parts.join(':');
-                                  deleteGroupMutation.mutate(path);
-                                } else {
-                                  const bindingId = parts.join(':');
-                                  deleteBindingMutation.mutate(bindingId);
-                                }
-                              }}
-                            >
-                              <Button
-                                type="text"
-                                danger
-                                size="small"
-                                icon={<DeleteOutlined />}
-                                className="ant-btn-dangerous"
-                                aria-label="Delete"
-                              />
-                            </Popconfirm>
-                          ) : null}
-                        </span>
-                      )}
-                    </span>
-                  );
+                onEditGroup={(path) => {
+                  setParentGroupPath(null);
+                  setDirectoryEditorMode('group');
+                  setDirectoryEditorIntent('edit');
+                  setDirectoryDraftActive(false);
+                  setEditingBinding(null);
+                  applyDirectoryPathToForms(path);
                 }}
-                icon={(nodeProps) => {
-                  const key = 'key' in nodeProps ? nodeProps.key : undefined;
-                  if (!key) return null;
-                  const [type] = String(key).split(':');
-                  if (type === 'instance') {
-                    return <FolderOpenOutlined style={{ color: '#1890ff' }} />;
-                  } else if (type === 'group') {
-                    return <FolderOutlined style={{ color: '#faad14' }} />;
-                  } else {
-                    return <FileOutlined style={{ color: '#52c41a' }} />;
-                  }
-                }}
+                onEditBinding={applyBindingSelection}
+                onDeleteGroup={(path) => deleteGroupMutation.mutate(path)}
+                onDeleteBinding={(bindingId) =>
+                  deleteBindingMutation.mutate(bindingId)
+                }
               />
             </div>
 
