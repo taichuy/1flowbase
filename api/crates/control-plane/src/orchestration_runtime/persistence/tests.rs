@@ -370,13 +370,12 @@ fn ac_001_answer_presentation_projects_multiple_strict_provider_rounds() {
     .expect("each Provider round should have an independent canonical terminal");
     let projected = events
         .iter()
-        .filter_map(|event| {
-            matches!(event.event_type.as_str(), "reasoning_delta" | "text_delta").then(|| {
-                (
-                    event.event_type.as_str(),
-                    event.payload["text"].as_str().unwrap(),
-                )
-            })
+        .filter(|event| matches!(event.event_type.as_str(), "reasoning_delta" | "text_delta"))
+        .map(|event| {
+            (
+                event.event_type.as_str(),
+                event.payload["text"].as_str().unwrap(),
+            )
         })
         .collect::<Vec<_>>();
 

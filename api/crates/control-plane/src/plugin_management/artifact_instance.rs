@@ -628,6 +628,7 @@ fn find_any_local_version_path(
     })
 }
 
+#[allow(clippy::too_many_arguments)] // Marker fields mirror the persisted artifact metadata one-to-one.
 pub(super) fn write_artifact_marker(
     install_path: &Path,
     plugin_id: &str,

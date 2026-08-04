@@ -582,7 +582,7 @@ where
         self.ensure_use_case_permission(&actor, "plugin_config.view.all")
             .await?;
         let mut installations = self.repository.list_installations().await?;
-        installations.sort_by(|left, right| left.id.cmp(&right.id));
+        installations.sort_by_key(|installation| installation.id);
         let start = cursor
             .and_then(|cursor| installations.iter().position(|item| item.id == cursor))
             .map_or(0, |index| index.saturating_add(1));

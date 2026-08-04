@@ -45,6 +45,7 @@ pub struct InstallExtensionArtifactCommand {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // Installed outcomes retain the record by value for the existing service contract.
 pub enum ExtensionArtifactInstallOutcome {
     RiskConfirmationRequired {
         risk_challenge: domain::ExtensionRiskChallenge,
