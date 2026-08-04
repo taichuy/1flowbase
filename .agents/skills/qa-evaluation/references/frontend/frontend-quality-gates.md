@@ -70,7 +70,7 @@
 - 前端 QA 只知道页面路由、需要自动登录、稳定等待、截图、控制台或 `html/css/js` 证据时，优先运行 `node scripts/node/page-debug.js snapshot <route> --wait-for-selector ...`
 - 页面存在规范化跳转时，补 `--wait-for-url <final-url>`；报告里应写明请求路由与最终 URL，避免把旧路由口径当成当前事实
 - `page-debug` 成功后，报告应至少引用 `outputDir` 和其中的 `meta.json`、`page.png`、`console.ndjson`；若需要 DOM / 资源证据，再引用 `index.html`、`css/`、`js/`
-- 导航、共享壳层、全局样式、第三方 slot 覆写改动后，必须至少运行一次 `node scripts/node/check-style-boundary.js component|page|file ...`
+- 导航、共享壳层、全局样式、第三方 slot 覆写改动后，必须至少运行一次 `node scripts/node/tooling.js check-style-boundary component|page|file ...`
 - `--file` 模式若提示“样式扩散失败”，视为文件影响面映射缺失，门禁未通过，先补场景映射
 - 若输出“样式边界失败”，视为声明边界属性被打坏；报告必须包含场景 ID、关键节点、样式属性、实际值、命中的 selector，以及 `uploads/` 中的截图
 
