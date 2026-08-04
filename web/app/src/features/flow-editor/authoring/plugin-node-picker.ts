@@ -45,11 +45,13 @@ export function toPluginContributionPickerOption(
 export function buildNodePickerOptions(
   nodes: ConsoleApplicationNodeCatalogEntry[]
 ): NodePickerOption[] {
-  return nodes.map((node) =>
-    node.source_kind === 'builtin'
-      ? toBuiltinNodePickerOption(node)
-      : toPluginContributionPickerOption(node)
-  );
+  return nodes
+    .filter((node) => node.authoring_status === 'published')
+    .map((node) =>
+      node.source_kind === 'builtin'
+        ? toBuiltinNodePickerOption(node)
+        : toPluginContributionPickerOption(node)
+    );
 }
 
 export function getNodePickerOptionKey(option: NodePickerOption) {

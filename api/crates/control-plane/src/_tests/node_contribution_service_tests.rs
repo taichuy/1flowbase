@@ -6,7 +6,9 @@ use control_plane::{
     errors::ControlPlaneError,
     frontend_block_catalog::{FrontendBlockCatalogService, ListFrontendBlockCatalogQuery},
     js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery},
-    node_contribution::{ApplicationNodeCatalogService, ListApplicationNodesQuery},
+    node_contribution::{
+        ApplicationNodeAuthoringStatus, ApplicationNodeCatalogService, ListApplicationNodesQuery,
+    },
     ports::{
         AuthRepository, FrontendBlockCatalogRepository, JsDependencyRepository,
         NodeContributionRepository, ReplaceInstallationFrontendBlocksInput,
@@ -278,6 +280,71 @@ async fn application_node_catalog_service_combines_type_boundaries_and_workspace
         "openai_prompt"
     );
     assert_eq!(plugin.dependency_status.as_str(), "ready");
+}
+
+#[tokio::test]
+async fn ac_001_application_node_catalog_distinguishes_published_and_hidden_builtins() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryNodeContributionRepository::new(
+        actor_with_permissions(workspace_id, &[]),
+        Vec::new(),
+    )
+    .with_console_operation("other.node-contributions", "node_contributions.view");
+
+    let view = ApplicationNodeCatalogService::new(repository)
+        .list_application_nodes(ListApplicationNodesQuery {
+            actor_user_id: Uuid::now_v7(),
+            application_type: domain::ApplicationType::AgentFlow,
+        })
+        .await
+        .unwrap();
+
+    let hidden_types = view
+        .nodes
+        .iter()
+        .filter(|node| node.authoring_status == ApplicationNodeAuthoringStatus::Hidden)
+        .map(|node| node.node_type.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        hidden_types,
+        vec![
+            "knowledge_retrieval",
+            "question_classifier",
+            "tool",
+            "parameter_extractor",
+            "iteration",
+            "loop",
+            "human_input",
+        ]
+    );
+
+    for published_type in [
+        "start",
+        "answer",
+        "llm",
+        "if_else",
+        "code",
+        "template_transform",
+        "http_request",
+        "tool_result",
+        "data_model_list",
+        "data_model_get",
+        "data_model_create",
+        "data_model_update",
+        "data_model_delete",
+        "sql",
+        "variable_assigner",
+    ] {
+        assert_eq!(
+            view.nodes
+                .iter()
+                .find(|node| node.node_type == published_type)
+                .unwrap()
+                .authoring_status,
+            ApplicationNodeAuthoringStatus::Published,
+            "{published_type} must remain published",
+        );
+    }
 }
 
 #[tokio::test]

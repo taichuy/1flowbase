@@ -174,10 +174,16 @@ describe('NodePickerPopover', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('shows unavailable built-ins disabled without MCP descriptions', () => {
+  test('AC-002 excludes hidden nodes while keeping published unavailable nodes disabled', () => {
     const options = buildNodePickerOptions([
       createBuiltinCatalogNode('knowledge_retrieval', {
         title: 'Knowledge Retrieval',
+        category: 'generation',
+        authoring_status: 'hidden',
+        runtime_status: 'unavailable'
+      }),
+      createBuiltinCatalogNode('llm', {
+        title: 'LLM',
         category: 'generation',
         runtime_status: 'unavailable'
       })
@@ -194,8 +200,9 @@ describe('NodePickerPopover', () => {
     );
 
     expect(
-      screen.getByRole('menuitem', { name: 'Knowledge Retrieval' })
-    ).toBeDisabled();
+      screen.queryByRole('menuitem', { name: 'Knowledge Retrieval' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'LLM' })).toBeDisabled();
     expect(
       document.querySelector('.agent-flow-node-picker__description')
     ).not.toBeInTheDocument();

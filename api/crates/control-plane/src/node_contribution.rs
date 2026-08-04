@@ -15,6 +15,12 @@ pub enum ApplicationNodeRuntimeStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApplicationNodeAuthoringStatus {
+    Published,
+    Hidden,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplicationNodeSourceKind {
     Builtin,
     Plugin,
@@ -82,6 +88,7 @@ pub struct ApplicationNodeCatalogEntry {
     pub node_type: String,
     pub title: String,
     pub category: String,
+    pub authoring_status: ApplicationNodeAuthoringStatus,
     pub runtime_status: ApplicationNodeRuntimeStatus,
     pub dependency_status: ApplicationNodeDependencyStatus,
     pub field_contract: ApplicationNodeFieldContract,
@@ -151,33 +158,34 @@ struct BuiltinNodeSpec {
     node_type: &'static str,
     title: &'static str,
     category: &'static str,
+    authoring_status: ApplicationNodeAuthoringStatus,
     runtime_status: ApplicationNodeRuntimeStatus,
 }
 
 const SHARED_PROCESSING_NODES: &[BuiltinNodeSpec] = &[
-    ready("llm", "LLM", "generation"),
-    unavailable("knowledge_retrieval", "Knowledge Retrieval", "generation"),
-    unavailable("question_classifier", "Question Classifier", "control"),
-    ready("if_else", "If / Else", "control"),
-    ready("code", "Code", "data"),
-    ready("template_transform", "Template Transform", "generation"),
-    ready("http_request", "HTTP Request", "external"),
-    ready("tool", "Tool", "external"),
-    ready("tool_result", "Tool Result", "io"),
-    ready("data_model_list", "Data Model List", "data"),
-    ready("data_model_get", "Data Model Get", "data"),
-    ready("data_model_create", "Data Model Create", "data"),
-    ready("data_model_update", "Data Model Update", "data"),
-    ready("data_model_delete", "Data Model Delete", "data"),
-    ready("sql", "SQL", "data"),
-    ready("variable_assigner", "Variable Assigner", "data"),
-    unavailable("parameter_extractor", "Parameter Extractor", "data"),
-    unavailable("iteration", "Iteration", "control"),
-    unavailable("loop", "Loop", "control"),
-    ready("human_input", "Human Input", "io"),
+    published_ready("llm", "LLM", "generation"),
+    hidden_unavailable("knowledge_retrieval", "Knowledge Retrieval", "generation"),
+    hidden_unavailable("question_classifier", "Question Classifier", "control"),
+    published_ready("if_else", "If / Else", "control"),
+    published_ready("code", "Code", "data"),
+    published_ready("template_transform", "Template Transform", "generation"),
+    published_ready("http_request", "HTTP Request", "external"),
+    hidden_ready("tool", "Tool", "external"),
+    published_ready("tool_result", "Tool Result", "io"),
+    published_ready("data_model_list", "Data Model List", "data"),
+    published_ready("data_model_get", "Data Model Get", "data"),
+    published_ready("data_model_create", "Data Model Create", "data"),
+    published_ready("data_model_update", "Data Model Update", "data"),
+    published_ready("data_model_delete", "Data Model Delete", "data"),
+    published_ready("sql", "SQL", "data"),
+    published_ready("variable_assigner", "Variable Assigner", "data"),
+    hidden_unavailable("parameter_extractor", "Parameter Extractor", "data"),
+    hidden_unavailable("iteration", "Iteration", "control"),
+    hidden_unavailable("loop", "Loop", "control"),
+    hidden_ready("human_input", "Human Input", "io"),
 ];
 
-const fn ready(
+const fn published_ready(
     node_type: &'static str,
     title: &'static str,
     category: &'static str,
@@ -186,11 +194,12 @@ const fn ready(
         node_type,
         title,
         category,
+        authoring_status: ApplicationNodeAuthoringStatus::Published,
         runtime_status: ApplicationNodeRuntimeStatus::Ready,
     }
 }
 
-const fn unavailable(
+const fn hidden_ready(
     node_type: &'static str,
     title: &'static str,
     category: &'static str,
@@ -199,6 +208,21 @@ const fn unavailable(
         node_type,
         title,
         category,
+        authoring_status: ApplicationNodeAuthoringStatus::Hidden,
+        runtime_status: ApplicationNodeRuntimeStatus::Ready,
+    }
+}
+
+const fn hidden_unavailable(
+    node_type: &'static str,
+    title: &'static str,
+    category: &'static str,
+) -> BuiltinNodeSpec {
+    BuiltinNodeSpec {
+        node_type,
+        title,
+        category,
+        authoring_status: ApplicationNodeAuthoringStatus::Hidden,
         runtime_status: ApplicationNodeRuntimeStatus::Unavailable,
     }
 }
@@ -208,12 +232,12 @@ fn builtin_application_nodes(
 ) -> Vec<ApplicationNodeCatalogEntry> {
     let boundary_nodes: &[BuiltinNodeSpec] = match application_type {
         domain::ApplicationType::AgentFlow => &[
-            ready("start", "Start", "io"),
-            ready("answer", "Answer", "io"),
+            published_ready("start", "Start", "io"),
+            published_ready("answer", "Answer", "io"),
         ],
         domain::ApplicationType::Workflow => &[
-            ready("workflow_start", "Workflow Start", "io"),
-            ready("workflow_end", "Workflow End", "io"),
+            published_ready("workflow_start", "Workflow Start", "io"),
+            published_ready("workflow_end", "Workflow End", "io"),
         ],
     };
 
@@ -231,6 +255,7 @@ fn builtin_application_node(spec: BuiltinNodeSpec) -> ApplicationNodeCatalogEntr
         node_type: spec.node_type.to_string(),
         title: spec.title.to_string(),
         category: spec.category.to_string(),
+        authoring_status: spec.authoring_status,
         runtime_status: spec.runtime_status,
         dependency_status: ApplicationNodeDependencyStatus::NotApplicable,
         field_contract: builtin_field_contract(spec.node_type),
@@ -256,6 +281,7 @@ fn plugin_application_node(
         node_type: "plugin_node".to_string(),
         title,
         category,
+        authoring_status: ApplicationNodeAuthoringStatus::Published,
         runtime_status,
         dependency_status,
         field_contract: ApplicationNodeFieldContract {

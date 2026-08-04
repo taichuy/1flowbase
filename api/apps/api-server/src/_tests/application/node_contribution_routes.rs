@@ -385,6 +385,7 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         .find(|entry| entry["node_type"] == "sql")
         .expect("SQL must be present in the unified built-in catalog");
     assert_eq!(sql["source_kind"], "builtin");
+    assert_eq!(sql["authoring_status"], "published");
     assert_eq!(sql["runtime_status"], "ready");
     assert!(sql["field_contract"]["config_fields"]
         .as_array()
@@ -416,12 +417,14 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         .find(|entry| entry["node_type"] == "knowledge_retrieval")
         .expect("known built-in contracts remain discoverable");
     assert_eq!(unavailable["runtime_status"], "unavailable");
+    assert_eq!(unavailable["authoring_status"], "hidden");
 
     let plugin = agent_flow_nodes
         .iter()
         .find(|entry| entry["source_kind"] == "plugin")
         .expect("assigned workspace plugin contribution must be present");
     assert_eq!(plugin["node_type"], "plugin_node");
+    assert_eq!(plugin["authoring_status"], "published");
     assert_eq!(plugin["runtime_status"], "ready");
     assert_eq!(plugin["dependency_status"], "ready");
     assert_eq!(plugin["plugin"]["plugin_id"], "fixture_provider@1.2.3");
