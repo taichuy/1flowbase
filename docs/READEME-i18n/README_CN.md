@@ -48,7 +48,7 @@
 
 例如，本地 Agent 可以通过 MCP 创建 `Customer` 与 `Ticket` Data Model，搭建由 Workflow 支撑的 `/api/ex/tickets/escalate` 接口，并构建 React 界面。外部系统调用自动生成的后端 API，人直接在界面中工作。如果同一个本地 Agent 还把模型端点指向 AI Gateway，就能获得带路由、模型组合和完整日志的虚拟模型；应用本身不依赖这个可选连接。
 
-![工作流编辑器预览](../assets/workflow_editor_preview_tool.png)
+![最新多模型工作流编辑器](../assets/multi-model-workflow-editor.png)
 
 ---
 
@@ -219,7 +219,7 @@ node scripts/node/dev-up.js restart
 
 | 工具类别 | 常见功能与定位 | 1flowbase 的不同之处 |
 |---|---|---|
-| LLM 网关 / 模型路由器 | 将单次请求路由至特定供应商或模型 | 将多个模型和工具节点组合成由工作流支撑的虚拟模型 |
+| LLM 网关 / 模型路由器 | 将外部模型流量路由到不同供应商 | 对外提供 OpenAI / Anthropic 兼容接口，并在背后组合模型、工作流与详细执行记录 |
 | MCP Server / Gateway | 向 Agent 暴露或聚合工具 | 暴露 1flowbase 应用控制面，同时连接并治理上游 MCP 工具 |
 | Backend-as-a-Service / 后端构建器 | 提供数据表和通用 CRUD 接口 | 物化受治理的 PostgreSQL Data Model，并把自动 CRUD 与 Workflow 自定义 API 组合在同一平台 |
 | AI 工作流构建器 | 构建 AI 应用或流程工作流 | 通过模型 API 暴露工作流，并让 Agent 通过 MCP 操作外围应用 |
@@ -239,87 +239,89 @@ Agent 控制平面：MCP Gateway
 
 ## 功能预览
 
-### 发布为 OpenAI 兼容 API
+### 1. MCP Gateway：把应用控制面交给 Agent
 
-![发布 OpenAI API](../assets/api_endpoint_publish_1.jpeg)
+本地或外部 Agent 可以通过 MCP 连接 1flowbase，并使用 `mcp.list`、`mcp.get`、`mcp.call` 渐进发现和操作应用、工作流、Data Model、前端以及 MCP 管理能力。
 
-### 发布为 Claude 兼容 Messages API
+MCP 连接可以独立工作。Agent **不需要**把自己的模型流量接入 AI Gateway。
 
-![发布 Claude API](../assets/api_endpoint_publish_2.jpeg)
+![MCP Gateway 应用控制面](../assets/mcp-gateway-control-plane.png)
 
-### 自定义对外暴露的模型信息
+### 2. 应用后端：完成数据建模并直接获得可用 API
 
-![自定义模型信息](../assets/custom_model_settings.jpeg)
+直接在 1flowbase 中创建 Data Model。后端会物化 PostgreSQL 表、字段、索引和关系，并提供受治理的 CRUD 运行时 API 与 OpenAPI 契约。
 
-### 在本地 AI Agent 客户端中使用
+![应用后端 Data Model](../assets/application-backend-data-models.png)
 
-在支持自定义模型接口的客户端中调用已发布工作流。
+当自动 CRUD 不足以承载业务逻辑时，可以把工作流发布为 `/api/ex/{slug}` 下的同步或异步扩展接口。
 
-![Claude Code 终端使用预览](../assets/claude_code_terminal_usage.png)
+![Workflow Extension API](../assets/workflow-extension-api.png)
 
-### 查看执行日志
+### 3. Native React 区块：构建面向用户的应用界面
 
-追踪模型请求、节点输入输出、工具回调、响应内容、延迟和错误。
+使用原生 React/TSX 区块构建交互页面。区块可以使用 Hooks、CSS、事件、响应式上下文、受控组件以及 Data Model / API 数据绑定，并在隔离的前端运行时中执行。
 
-![运行日志详情](../assets/detailed_execution_logs.jpeg)
+![由 Data Model API 驱动的 Native React 任务看板](../assets/native-react-task-board.png)
 
-### 查看工具回调 Trace
+### 4. AI Gateway：向外部客户端提供组合后的模型能力
 
-![工具回调 Trace 日志](../assets/tool_callback_trace_logs.png)
+把 Agent Flow 发布为原生、OpenAI 兼容或 Anthropic 兼容 API。外部客户端可以按需接入 AI Gateway，获得协议转换、模型组合、API 凭据以及详细的请求与执行记录。
 
-### 追踪 Token 消耗
+![AI Gateway 协议与接口目录](../assets/ai-gateway-api-catalog.png)
 
-![Token 消耗看板](../assets/token_consumption_dashboard.jpeg)
+一个对外模型接口背后，可以通过可视化运行时跨供应商分支调用模型、使用工具、校验结果并汇总最终响应。
+
+![多模型工作流编辑器](../assets/multi-model-workflow-editor.png)
 
 ---
 
 ## 典型应用场景
 
-### 让文本 Coding Model 理解截图
+### 让 Agent 搭建并持续管理内部应用
 
 ```text
-截图 / UI 设计稿 / 图表
-  -> 视觉工具
-  -> 结构化视觉上下文
-  -> 强 Coding Model
-  -> 代码补丁、方案或解释
+本地或外部 Agent
+  -> MCP Gateway
+  -> 创建 Data Model 与关系
+  -> 发布 CRUD 与 Workflow Extension API
+  -> 组装 Native React 区块
+  -> 检查并持续演化运行中的应用
 ```
 
-适用于 UI 复刻、前端调试、视觉回归分析、图表阅读、PDF 页面理解和设计稿转代码。
+这是四大基座组成的主要全栈路径：Agent 通过 MCP 操作控制面，应用后端负责数据和 API，Native React 区块提供人机界面。只有当应用还需要对外提供受治理的模型服务时，才按需接入 AI Gateway。
 
-### 构建 Fusion 风格评审器
+### 无需单独组装后端技术栈即可交付应用后端
 
 ```text
-架构方案
-  -> 便宜快速评审模型
-  -> 强推理评审模型
-  -> 不同供应商评审模型
-  -> 汇总模型
-  -> 最终建议
+Data Model
+  -> PostgreSQL 表 / 字段 / 索引 / 关系
+  -> 自动 CRUD 运行时与 OpenAPI
+  -> 使用 Workflow Extension API 承载自定义业务逻辑
 ```
 
-适用于架构评审、研究综合、代码评审、文档复核和高价值 Agent 决策。
+适用于内部工具、管理系统、运营看板、Agent 记忆存储、内容系统和中小型产品后端。
 
-### 通过模型级联控制成本
+### 给 Agent 管理的数据增加定制化人机界面
 
 ```text
-简单分类 -> 小模型
-格式化 -> 小模型
-复杂推理 -> 强模型
-最终校验 -> 校验节点
+Data Model / 自定义 API
+  -> Native React 区块
+  -> 搜索、筛选、表单、操作与响应式布局
 ```
 
-### 保证输出结构
+上面的任务计划看板就是真实案例：原生 React 界面直接通过 Data Model API 读取和更新记录，不需要再搭建一套独立的前端后端。
 
-在返回最终结果前，通过校验器、JSON Schema 验证和格式化节点确保结构完整。适用于 JSON 输出、API 响应、工具调用参数、代码补丁、文档生成和自动化任务结果。
-
-### 为 Agent 打造可编程的上游模型
+### 为 AI 客户端发布可编程的上游模型
 
 ```text
-代码生成 -> 测试 / Lint 检查 -> 评审节点 -> 修复节点 -> 最终补丁
+外部 AI 客户端
+  -> 可选的 AI Gateway
+  -> 协议转换
+  -> 模型与工具工作流
+  -> 日志、Trace、Token 用量与最终响应
 ```
 
-客户端只调用一个模型名，1flowbase 在后台运行你的工作流。
+客户端只调用一个模型名，1flowbase 可以在背后运行跨供应商工作流。适用于多模态增强、Fusion 风格评审、模型级联、结构化输出校验和可编程 Coding Model 流程。
 
 ---
 
