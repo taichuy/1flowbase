@@ -15,8 +15,8 @@ match_when:
   - 设计插件同步、激活、历史版本或删除语义
   - 重构 Root #1545 的 D2 或 D4
 created_at: 2026-08-03 00
-updated_at: 2026-08-03 00
-last_verified_at: 2026-08-03 00
+updated_at: 2026-08-04 09
+last_verified_at: 2026-08-04 09
 decision_policy: verify_before_decision
 status: direction_confirmed_issue_1566
 scope:
@@ -56,3 +56,11 @@ scope:
 - 普通列表与详情只读数据库；文件系统扫描收口到启动恢复、显式 reconcile 或执行安装 / 删除动作。
 - 不预建 `extension_runtime_details`；少量 runtime contract 字段先由统一安装根和现有 projection 承载，出现稳定独立变化后再提取。
 - 这是 source of truth 与 migration 变化，按 `grade:g4` Issue #1566 实施并固定迁移、回滚和验收矩阵。
+
+## 2026-08-04 Catalog 身份与搜索契约
+
+- 扩展 catalog 的 canonical identity 使用 `publisher_namespace + plugin_id`；GitHub `@path` 只表示 manifest locator，不参与发布者身份推导。
+- 扩展分类使用 `slot_codes`。模型供应商专属入口固定查询 `model_provider` slot，但与通用扩展中心复用同一后端搜索与分页实现。
+- 搜索覆盖名称、稳定 identifiers、协议、keywords 与 description；必须先完成搜索和 slot 过滤，再基于同一 verified snapshot/checksum 分页。
+- 安装状态只按本地 `extension_installations` canonical exact identity 关联；catalog 安装保留远端 `catalog_id`，上传安装从签名 manifest 的 `publisher_namespace` 构建并校验身份。
+- 该契约已于 2026-08-04 在主仓 `dev` 与官方插件仓 `main` 本地合并，并通过官方 catalog、前端/API client 及三 crate Rust 集中回归；是否推送仍由用户人工测试后决定。
