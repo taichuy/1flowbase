@@ -868,6 +868,7 @@
     "extension_center": "Extension Center",
     "extension_operation_completed": "Extension operation completed",
     "extension_operation_failed": "Extension operation failed",
+    "extension_artifact_download_failed": "Extension package download failed. Please try again.",
     "apply_to_workspace": "Apply to workspace",
     "extension_application_not_required": "No application required",
     "extension_application_not_applied": "Installed, not applied",

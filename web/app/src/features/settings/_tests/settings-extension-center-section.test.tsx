@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApiClientError } from '@1flowbase/api-client';
 import {
   fireEvent,
   render,
@@ -370,6 +371,38 @@ describe('SettingsExtensionCenterSection', () => {
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
       search: { q: undefined, cursor: undefined }
+    });
+  });
+
+  test('publisher_cutover shows the dedicated artifact download failure message', async () => {
+    extensionsApi.installSettingsExtension.mockRejectedValue(
+      new ApiClientError({
+        status: 502,
+        code: 'extension_artifact_download_unavailable',
+        message: 'upstream unavailable'
+      })
+    );
+    renderSection('runtime-extensions');
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('扩展包下载失败，请重试');
+    });
+  });
+
+  test('publisher_cutover keeps the generic message for unknown mutation errors', async () => {
+    extensionsApi.installSettingsExtension.mockRejectedValue(
+      new Error('unknown failure')
+    );
+    renderSection('runtime-extensions');
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '安装' }));
+
+    await waitFor(() => {
+      expect(message.error).toHaveBeenCalledWith('扩展操作失败');
     });
   });
 
