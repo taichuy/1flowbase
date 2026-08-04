@@ -9,6 +9,7 @@ import {
   Drawer,
   Empty,
   Flex,
+  Input,
   List,
   Modal,
   Space,
@@ -143,7 +144,7 @@ function McpExtensionCenterSection() {
             void navigate({
               to: '/settings/extension-center/$category',
               params: { category: key },
-              search: { cursor: undefined }
+              search: { q: undefined, cursor: undefined }
             });
           }}
           items={[
@@ -163,6 +164,7 @@ function McpExtensionCenterSection() {
 export function SettingsExtensionCenterSection(props: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
+  q?: string;
 }) {
   if (props.category === 'mcp') {
     return <McpExtensionCenterSection />;
@@ -173,10 +175,12 @@ export function SettingsExtensionCenterSection(props: {
 
 function GenericExtensionCenterSection({
   category: activeTab,
-  cursor
+  cursor,
+  q
 }: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
+  q?: string;
 }) {
   const { t } = useTranslation('settings');
   const navigate = useNavigate();
@@ -191,11 +195,13 @@ function GenericExtensionCenterSection({
   );
   const [applicationTarget, setApplicationTarget] =
     useState<ExtensionApplicationTarget | null>(null);
+  const [searchText, setSearchText] = useState(q ?? '');
 
   useEffect(() => {
     setSelected(null);
     setUpdateStates({});
-  }, [activeTab, cursor]);
+    setSearchText(q ?? '');
+  }, [activeTab, cursor, q]);
 
   const installedQuery = useQuery({
     queryKey: settingsInstalledExtensionsQueryKey(cursor),
@@ -207,11 +213,19 @@ function GenericExtensionCenterSection({
     queryKey:
       activeTab === 'installed'
         ? ['settings', 'extension-center', 'catalog', 'inactive']
-        : settingsExtensionCatalogQueryKey(activeTab, cursor),
+        : settingsExtensionCatalogQueryKey(activeTab, {
+            q,
+            slot_code: undefined,
+            cursor
+          }),
     queryFn: async () => {
       const category = activeTab;
       if (category === 'installed') throw new Error('catalog tab required');
-      const page = await fetchSettingsExtensionCatalog(category, cursor);
+      const page = await fetchSettingsExtensionCatalog(category, {
+        q,
+        slot_code: undefined,
+        cursor
+      });
       if (
         page.category !== category ||
         page.entries.some((entry) => entry.category !== category)
@@ -508,8 +522,7 @@ function GenericExtensionCenterSection({
         title: t('auto.trust'),
         key: 'trust',
         width: 120,
-        render: (_, row) =>
-          isInstalledRow(row) ? row.trust_level : row.trust
+        render: (_, row) => (isInstalledRow(row) ? row.trust_level : row.trust)
       },
       {
         title: t('auto.operation'),
@@ -687,7 +700,7 @@ function GenericExtensionCenterSection({
             void navigate({
               to: '/settings/extension-center/$category',
               params: { category: key },
-              search: { cursor: undefined }
+              search: { q: undefined, cursor: undefined }
             });
           }}
           items={[
@@ -707,6 +720,34 @@ function GenericExtensionCenterSection({
           loading={tableLoading}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
+              {activeTab !== 'installed' ? (
+                <Input.Search
+                  allowClear
+                  aria-label={t('auto.drop_down_search_installable_vendors')}
+                  placeholder={t('auto.drop_down_search_installable_vendors')}
+                  style={{ width: 240 }}
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  onClear={() => {
+                    void navigate({
+                      to: '/settings/extension-center/$category',
+                      params: { category: activeTab },
+                      search: { q: undefined, cursor: undefined }
+                    });
+                  }}
+                  onSearch={(value) => {
+                    const normalizedQuery = value.trim();
+                    void navigate({
+                      to: '/settings/extension-center/$category',
+                      params: { category: activeTab },
+                      search: {
+                        q: normalizedQuery || undefined,
+                        cursor: undefined
+                      }
+                    });
+                  }}
+                />
+              ) : null}
               <Button
                 disabled={rows.length === 0}
                 loading={Object.values(updateStates).some(
@@ -733,7 +774,7 @@ function GenericExtensionCenterSection({
               void navigate({
                 to: '/settings/extension-center/$category',
                 params: { category: activeTab },
-                search: { cursor: undefined }
+                search: { q, cursor: undefined }
               });
             },
             onNextPage: () => {
@@ -741,7 +782,7 @@ function GenericExtensionCenterSection({
               void navigate({
                 to: '/settings/extension-center/$category',
                 params: { category: activeTab },
-                search: { cursor: nextCursor }
+                search: { q, cursor: nextCursor }
               });
             }
           }}
@@ -773,7 +814,9 @@ function GenericExtensionCenterSection({
                 {extensionSource(selected)}
               </Descriptions.Item>
               <Descriptions.Item label={t('auto.trust')}>
-                {isInstalledRow(selected) ? selected.trust_level : selected.trust}
+                {isInstalledRow(selected)
+                  ? selected.trust_level
+                  : selected.trust}
               </Descriptions.Item>
             </Descriptions>
             {isInstalledRow(selected) ? (
@@ -802,7 +845,8 @@ function GenericExtensionCenterSection({
                           disabled={!installedVersion.deletable}
                           loading={
                             deleteVersionMutation.isPending &&
-                            deleteVersionMutation.variables === installedVersion.id
+                            deleteVersionMutation.variables ===
+                              installedVersion.id
                           }
                           onClick={() =>
                             Modal.confirm({

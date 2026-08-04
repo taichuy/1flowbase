@@ -236,7 +236,8 @@ function renderSettingsRoute(
   modelProviderTab?: 'providers' | 'request-logs',
   rolePermissionTab?: RolePermissionTab,
   extensionCenterCategory?: SettingsExtensionCenterCategory,
-  extensionCenterCursor?: string
+  extensionCenterCursor?: string,
+  extensionCenterQ?: string
 ) {
   return (
     <RouteGuard routeId="settings">
@@ -247,6 +248,7 @@ function renderSettingsRoute(
           rolePermissionTab={rolePermissionTab}
           extensionCenterCategory={extensionCenterCategory}
           extensionCenterCursor={extensionCenterCursor}
+          extensionCenterQ={extensionCenterQ}
         />
       </LazyRouteBoundary>
     </RouteGuard>
@@ -614,7 +616,7 @@ const settingsExtensionCenterRoute = createRoute({
     <Navigate
       to="/settings/extension-center/$category"
       params={{ category: 'installed' }}
-      search={{ cursor: undefined }}
+      search={{ q: undefined, cursor: undefined }}
       replace
     />
   )
@@ -634,6 +636,10 @@ const settingsExtensionCenterCategoryRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/extension-center/$category',
   validateSearch: (search: Record<string, unknown>) => ({
+    q:
+      typeof search.q === 'string' && search.q.trim().length > 0
+        ? search.q.trim()
+        : undefined,
     cursor:
       typeof search.cursor === 'string' && search.cursor.trim().length > 0
         ? search.cursor
@@ -642,7 +648,7 @@ const settingsExtensionCenterCategoryRoute = createRoute({
   notFoundComponent: NotFoundPage,
   component: () => {
     const { category } = settingsExtensionCenterCategoryRoute.useParams();
-    const { cursor } = settingsExtensionCenterCategoryRoute.useSearch();
+    const { q, cursor } = settingsExtensionCenterCategoryRoute.useSearch();
     if (
       !extensionCenterCategories.has(
         category as SettingsExtensionCenterCategory
@@ -655,7 +661,8 @@ const settingsExtensionCenterCategoryRoute = createRoute({
       undefined,
       undefined,
       category as SettingsExtensionCenterCategory,
-      cursor
+      cursor,
+      q
     );
   }
 });

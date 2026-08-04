@@ -120,6 +120,8 @@ export interface ConsoleExtensionCatalogEntry {
   trust: string;
   warnings: ConsoleExtensionWarning[];
   compatibility: ConsoleExtensionCompatibilityChallenge | null;
+  slot_codes: string[];
+  keywords: string[];
 }
 
 export interface ConsoleExtensionCatalogPage {
@@ -275,10 +277,22 @@ export function deleteConsoleInstalledExtension(
 
 export function listConsoleExtensionCatalog(
   category: ConsoleExtensionCategory,
-  cursor?: string,
-  limit = 20
+  {
+    slot_code,
+    q,
+    limit = 20,
+    cursor
+  }: {
+    slot_code?: string;
+    q?: string;
+    limit?: number;
+    cursor?: string;
+  } = {}
 ) {
-  const query = new URLSearchParams({ limit: String(limit) });
+  const query = new URLSearchParams();
+  if (slot_code) query.set('slot_code', slot_code);
+  if (q) query.set('q', q);
+  query.set('limit', String(limit));
   if (cursor) query.set('cursor', cursor);
   return apiFetch<ConsoleExtensionCatalogPage>({
     path: `${BASE}/catalog/${category}?${query.toString()}`

@@ -42,13 +42,23 @@ export const settingsInstalledExtensionsQueryKey = (
 
 export const settingsExtensionCatalogQueryKey = (
   category: SettingsExtensionCategory,
-  cursor: string | undefined
+  {
+    q,
+    slot_code,
+    cursor
+  }: {
+    q?: string;
+    slot_code?: string;
+    cursor?: string;
+  }
 ) =>
   [
     'settings',
     'extension-center',
     'catalog',
     category,
+    q ?? '',
+    slot_code ?? 'all-slots',
     cursor ?? 'start'
   ] as const;
 
@@ -61,9 +71,13 @@ export function fetchSettingsInstalledExtensions(
 
 export function fetchSettingsExtensionCatalog(
   category: SettingsExtensionCategory,
-  cursor?: string
+  query: {
+    q?: string;
+    slot_code?: string;
+    cursor?: string;
+  } = {}
 ) {
-  return listConsoleExtensionCatalog(category, cursor);
+  return listConsoleExtensionCatalog(category, query);
 }
 
 export function fetchSettingsExtensionCatalogEntry(

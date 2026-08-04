@@ -21,12 +21,17 @@ const extensionsApi = vi.hoisted(() => ({
     ]
   ),
   settingsExtensionCatalogQueryKey: vi.fn(
-    (category: string, cursor?: string) => [
+    (
+      category: string,
+      query: { q?: string; slot_code?: string; cursor?: string }
+    ) => [
       'settings',
       'extension-center',
       'catalog',
       category,
-      cursor ?? 'start'
+      query.q ?? '',
+      query.slot_code ?? 'all-slots',
+      query.cursor ?? 'start'
     ]
   ),
   fetchSettingsInstalledExtensions: vi.fn(),
@@ -173,7 +178,9 @@ const catalogEntry = {
   installation_source: 'official',
   trust: 'official',
   warnings: [],
-  compatibility: null
+  compatibility: null,
+  slot_codes: ['model_provider'],
+  keywords: ['openai', 'provider']
 };
 
 function authenticate() {
@@ -209,7 +216,8 @@ function renderSection(
     | 'i18n'
     | 'mcp'
     | 'runtime-extensions' = 'installed',
-  cursor?: string
+  cursor?: string,
+  q?: string
 ) {
   const client = new QueryClient({
     defaultOptions: {
@@ -225,7 +233,11 @@ function renderSection(
 
   return {
     ...render(
-      <SettingsExtensionCenterSection category={category} cursor={cursor} />,
+      <SettingsExtensionCenterSection
+        category={category}
+        cursor={cursor}
+        q={q}
+      />,
       { wrapper }
     ),
     queryClient: client
@@ -359,7 +371,7 @@ describe('SettingsExtensionCenterSection', () => {
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
-      search: { cursor: undefined }
+      search: { q: undefined, cursor: undefined }
     });
   });
 
@@ -408,7 +420,9 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       within(drawer).getByText('/api/plugins/openai/0.9.0')
     ).toBeInTheDocument();
-    const deleteButtons = within(drawer).getAllByRole('button', { name: '删除' });
+    const deleteButtons = within(drawer).getAllByRole('button', {
+      name: '删除'
+    });
     expect(deleteButtons[0]).toBeDisabled();
     expect(deleteButtons[1]).toBeEnabled();
     fireEvent.click(deleteButtons[1]);
@@ -458,9 +472,7 @@ describe('SettingsExtensionCenterSection', () => {
         within(row).getByRole('button', { name: '同步最新版本' })
       ).toBeEnabled()
     );
-    fireEvent.click(
-      within(row).getByRole('button', { name: '同步最新版本' })
-    );
+    fireEvent.click(within(row).getByRole('button', { name: '同步最新版本' }));
 
     await waitFor(() => {
       expect(
@@ -631,8 +643,7 @@ describe('SettingsExtensionCenterSection', () => {
       expect(
         within(row)
           .getByRole('button', { name: '同步最新版本' })
-          .closest('span')
-          ?.parentElement
+          .closest('span')?.parentElement
       ).toHaveAttribute('data-update-state', 'unknown_error');
     });
 
@@ -771,19 +782,52 @@ describe('SettingsExtensionCenterSection', () => {
   });
 
   test('D5-AC-006 restores cursor from route search and writes pagination to navigation', async () => {
-    renderSection('runtime-extensions', 'cursor-2');
+    renderSection('runtime-extensions', 'cursor-2', 'openai');
     await waitFor(() => {
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
         'runtime-extensions',
-        'cursor-2'
+        { q: 'openai', slot_code: undefined, cursor: 'cursor-2' }
       );
     });
     fireEvent.click(screen.getByRole('button', { name: '上一页' }));
     expect(routerApi.navigate).toHaveBeenCalledWith({
       to: '/settings/extension-center/$category',
       params: { category: 'runtime-extensions' },
-      search: { cursor: undefined }
+      search: { q: 'openai', cursor: undefined }
     });
+  });
+
+  test('AC-003/AC-007 submits remote search, clears its cursor, and isolates the query key without a model-provider slot', async () => {
+    renderSection('runtime-extensions', 'cursor-2', 'postgres');
+
+    const search = await screen.findByRole('searchbox', {
+      name: '下拉搜索可安装供应商'
+    });
+    expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: '  analytics  ' } });
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+
+    expect(routerApi.navigate).toHaveBeenCalledWith({
+      to: '/settings/extension-center/$category',
+      params: { category: 'runtime-extensions' },
+      search: { q: 'analytics', cursor: undefined }
+    });
+    expect(extensionsApi.settingsExtensionCatalogQueryKey).toHaveBeenCalledWith(
+      'runtime-extensions',
+      { q: 'postgres', slot_code: undefined, cursor: 'cursor-2' }
+    );
+    expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+      'runtime-extensions',
+      { q: 'postgres', slot_code: undefined, cursor: 'cursor-2' }
+    );
+  });
+
+  test('AC-007 keeps installed inventory local and omits the remote search control', async () => {
+    renderSection('installed');
+
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
   });
 
   test('AC-005 exposes Agent Flow management from its generic catalog', async () => {
@@ -804,7 +848,7 @@ describe('SettingsExtensionCenterSection', () => {
     ).toHaveAttribute('href', '/templates');
     expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
       'agent-flow',
-      undefined
+      { q: undefined, slot_code: undefined, cursor: undefined }
     );
     expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
     expect(
