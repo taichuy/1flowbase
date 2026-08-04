@@ -62,6 +62,7 @@ impl OfficialExtensionCatalogSourcePort for InMemoryOfficialExtensionCatalogSour
         Ok(OfficialExtensionCatalogSearchResult {
             source_kind: "official_repository".to_string(),
             category: category.to_string(),
+            freshness: crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
             snapshot_checksum: "sha256:test-search".to_string(),
             snapshot_locator: "https://example.test/search-index.json".to_string(),
             total_entries: entries.len(),

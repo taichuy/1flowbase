@@ -98,6 +98,8 @@ impl crate::official_extension_catalog::OfficialExtensionCatalogSourcePort
             crate::official_extension_catalog::OfficialExtensionCatalogSearchResult {
                 source_kind: "official_repository".to_string(),
                 category: "mcp".to_string(),
+                freshness:
+                    crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
                 snapshot_checksum: "sha256:search".to_string(),
                 snapshot_locator: "fixture://mcp/search".to_string(),
                 total_entries: 1,

@@ -146,6 +146,7 @@ pub struct ExtensionCatalogGatewayEntryResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ExtensionCatalogGatewayPageResponse {
     pub category: String,
+    pub freshness: String,
     pub catalog_page: String,
     pub catalog_page_number: u32,
     pub catalog_page_checksum: String,

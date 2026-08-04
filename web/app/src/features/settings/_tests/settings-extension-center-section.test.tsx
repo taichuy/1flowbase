@@ -333,6 +333,35 @@ describe('SettingsExtensionCenterSection', () => {
     vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
 
+  test('AC-003 shows a retryable catalog error instead of an empty catalog', async () => {
+    extensionsApi.fetchSettingsExtensionCatalog.mockRejectedValueOnce(
+      new Error('catalog snapshot temporarily inconsistent')
+    );
+
+    renderSection('runtime-extensions');
+
+    expect(await screen.findByText('扩展目录暂时无法加载')).toBeInTheDocument();
+    expect(screen.queryByText('暂无扩展')).not.toBeInTheDocument();
+
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValueOnce({
+      category: 'runtime-extensions',
+      catalog_page: 'page-1',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:page-1',
+      catalog_page_locator: 'runtime-extensions/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [catalogEntry]
+    });
+    fireEvent.click(screen.getByRole('button', { name: '重新加载目录' }));
+
+    expect(await screen.findByText('OpenAI Provider')).toBeInTheDocument();
+    expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledTimes(
+      2
+    );
+  });
+
   test('AC-005 loads installed inventory without a remote update check and checks only after the explicit action', async () => {
     renderSection();
 

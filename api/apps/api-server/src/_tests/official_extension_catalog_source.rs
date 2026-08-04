@@ -42,6 +42,32 @@ struct CatalogHttpFixture {
 }
 
 #[derive(Clone)]
+struct MutableCatalogHttpFixture {
+    documents: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+    requests: Arc<Mutex<Vec<String>>>,
+}
+
+async fn mutable_catalog_response(
+    State(fixture): State<MutableCatalogHttpFixture>,
+    request: Request<Body>,
+) -> Response {
+    fixture
+        .requests
+        .lock()
+        .unwrap()
+        .push(request.uri().path().to_string());
+    match fixture.documents.lock().unwrap().get(request.uri().path()) {
+        Some(bytes) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            bytes.clone(),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[derive(Clone)]
 struct RetryArtifactFixture {
     catalog: CatalogHttpFixture,
     artifact_requests: Arc<std::sync::atomic::AtomicUsize>,
@@ -259,7 +285,14 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
         .unwrap();
     assert_eq!(filtered.total_entries, 1);
     assert_eq!(filtered.entries[0].artifact, "later-runtime");
-    assert!(requests.lock().unwrap().is_empty());
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/search-index.json"
+        ],
+        "search refreshes publication metadata while reusing verified page bytes"
+    );
 
     let stale = source
         .search(
@@ -277,6 +310,109 @@ async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verifie
         .to_string()
         .contains("snapshot and query"));
 
+    server.abort();
+}
+
+#[tokio::test]
+async fn ac_001_002_search_refreshes_an_updated_snapshot_and_uses_the_last_complete_snapshot_during_cutover(
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let documents = Arc::new(Mutex::new(documents));
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = MutableCatalogHttpFixture {
+        documents: Arc::clone(&documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(mutable_catalog_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let query = OfficialExtensionCatalogSearchQuery {
+        slot_code: Some("model_provider".to_string()),
+        q: Some("openai".to_string()),
+        limit: 20,
+        cursor: None,
+    };
+
+    let initial = source
+        .search("runtime-extensions", query.clone())
+        .await
+        .unwrap();
+    assert_eq!(initial.entries[0].version, "2.4.1");
+
+    let page_path = "/runtime-extensions/catalog/v1/pages/1.json";
+    let page_two_path = "/runtime-extensions/catalog/v1/pages/2.json";
+    let mut next_page =
+        serde_json::from_slice::<Value>(&documents.lock().unwrap()[page_path]).unwrap();
+    next_page["entries"][0]["version"] = json!("2.4.2");
+    let next_page = serde_json::to_vec(&next_page).unwrap();
+    let page_two = documents.lock().unwrap()[page_two_path].clone();
+    let next_pages = vec![(1, "start", next_page.clone()), (2, "runtime-2", page_two)];
+    let next_search = catalog_search_index(&base_url, "runtime-extensions", &next_pages);
+    let next_index = catalog_index(&base_url, "runtime-extensions", &next_pages, &next_search);
+    {
+        let mut live = documents.lock().unwrap();
+        live.insert(
+            "/runtime-extensions/catalog/v1/index.json".to_string(),
+            next_index,
+        );
+        live.insert(
+            "/runtime-extensions/catalog/v1/search-index.json".to_string(),
+            next_search,
+        );
+    }
+    requests.lock().unwrap().clear();
+
+    let during_cutover = source
+        .search("runtime-extensions", query.clone())
+        .await
+        .expect("an inconsistent candidate must not replace the last complete snapshot");
+    assert_eq!(during_cutover.entries[0].version, "2.4.1");
+    assert_eq!(
+        during_cutover.freshness,
+        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Stale
+    );
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/search-index.json",
+            "/runtime-extensions/catalog/v1/pages/1.json"
+        ],
+        "a cached snapshot must still probe and validate the current publication"
+    );
+
+    documents
+        .lock()
+        .unwrap()
+        .insert(page_path.to_string(), next_page);
+    requests.lock().unwrap().clear();
+    let refreshed = source
+        .search("runtime-extensions", query)
+        .await
+        .expect("the coherent candidate snapshot must replace the old cache");
+    assert_eq!(refreshed.entries[0].version, "2.4.2");
+    assert_eq!(
+        refreshed.freshness,
+        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh
+    );
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/search-index.json",
+            "/runtime-extensions/catalog/v1/pages/1.json"
+        ]
+    );
     server.abort();
 }
 

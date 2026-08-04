@@ -126,6 +126,7 @@ export interface ConsoleExtensionCatalogEntry {
 
 export interface ConsoleExtensionCatalogPage {
   category: ConsoleExtensionCategory;
+  freshness: 'fresh' | 'stale';
   catalog_page: string;
   catalog_page_number: number;
   catalog_page_checksum: string;

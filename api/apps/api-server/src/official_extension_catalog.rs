@@ -36,6 +36,19 @@ pub enum OfficialExtensionCatalogFreshness {
     Stale,
 }
 
+#[derive(Debug, Error)]
+#[error("official extension catalog snapshot is temporarily inconsistent: {source}")]
+pub struct OfficialExtensionCatalogUnavailable {
+    #[source]
+    source: anyhow::Error,
+}
+
+impl OfficialExtensionCatalogUnavailable {
+    pub fn new(source: anyhow::Error) -> Self {
+        Self { source }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct OfficialExtensionCatalogEntrySource {
     pub kind: String,
@@ -75,6 +88,7 @@ pub struct OfficialExtensionCatalogSearchQuery {
 pub struct OfficialExtensionCatalogSearchResult {
     pub source_kind: String,
     pub category: String,
+    pub freshness: OfficialExtensionCatalogFreshness,
     pub snapshot_checksum: String,
     pub snapshot_locator: String,
     pub total_entries: usize,
@@ -524,6 +538,12 @@ struct VerifiedSearchSnapshot {
     document: CatalogSearchDocument,
 }
 
+struct CatalogSearchSelection<'a> {
+    selected: Vec<&'a CatalogSearchEntry>,
+    total_entries: usize,
+    next_cursor: Option<String>,
+}
+
 impl ApiOfficialExtensionCatalogSource {
     pub fn from_config(config: &ApiConfig) -> Self {
         Self {
@@ -686,6 +706,81 @@ impl ApiOfficialExtensionCatalogSource {
         if let Ok(mut cache) = self.search_snapshots.lock() {
             cache.insert(category.to_string(), snapshot.clone());
         }
+    }
+
+    async fn fetch_selected_search_entries(
+        &self,
+        category: &str,
+        index: &CatalogIndexDocument,
+        snapshot: &VerifiedSearchSnapshot,
+        selected: &[&CatalogSearchEntry],
+    ) -> Result<Vec<OfficialExtensionCatalogEntry>> {
+        let selected_ids = selected
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<HashSet<_>>();
+        let mut entries_by_id = HashMap::new();
+        let mut visited_pages = HashSet::new();
+        for search_entry in selected {
+            if !visited_pages.insert(search_entry.catalog_page.cursor.clone()) {
+                continue;
+            }
+            let page_reference = index
+                .pages
+                .iter()
+                .find(|reference| {
+                    reference.page == search_entry.catalog_page.page
+                        && reference.cursor == search_entry.catalog_page.cursor
+                        && reference.checksum == search_entry.catalog_page.checksum
+                        && reference.locator == search_entry.catalog_page.locator
+                })
+                .ok_or_else(|| {
+                    anyhow!("catalog search page reference is not in the catalog index")
+                })?;
+            let page = if let Some(page) =
+                self.cached_verified_page(category, &search_entry.catalog_page)
+            {
+                page
+            } else {
+                let page = self
+                    .fetch_page(&snapshot.endpoint, index, page_reference)
+                    .await?;
+                self.remember_page(
+                    Self::cache_key(category, Some(&page.metadata.cursor)),
+                    &page,
+                );
+                page
+            };
+            for entry in page.entries {
+                if selected_ids.contains(entry.id.as_str()) {
+                    entries_by_id.insert(entry.id.clone(), entry);
+                }
+            }
+        }
+        selected
+            .iter()
+            .map(|search_entry| {
+                entries_by_id.remove(&search_entry.id).ok_or_else(|| {
+                    anyhow!("catalog search result is missing from its verified source page")
+                })
+            })
+            .collect()
+    }
+
+    fn cached_selected_search_entries(
+        &self,
+        category: &str,
+        selected: &[&CatalogSearchEntry],
+    ) -> Option<Vec<OfficialExtensionCatalogEntry>> {
+        selected
+            .iter()
+            .map(|search_entry| {
+                self.cached_verified_page(category, &search_entry.catalog_page)?
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.id == search_entry.id)
+            })
+            .collect()
     }
 
     fn cached_verified_page(
@@ -869,131 +964,70 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         if query.limit == 0 || query.limit > 100 {
             bail!("official extension catalog search limit must be between 1 and 100");
         }
+        let previous_snapshot = self.cached_search_snapshot(category);
         let mut failures = Vec::new();
         for endpoint in self.endpoints(category)? {
-            let loaded = if let Some(snapshot) = self.cached_search_snapshot(category) {
-                Ok((snapshot.index.clone(), snapshot))
-            } else {
-                self.load_search_snapshot(category, &endpoint).await
-            };
-            let (index, snapshot) = match loaded {
+            let (index, snapshot) = match self.load_search_snapshot(category, &endpoint).await {
                 Ok(value) => value,
                 Err(error) => {
                     failures.push(error);
                     continue;
                 }
             };
-            self.remember_search_snapshot(category, &snapshot);
-            let normalized_slot = normalized_filter(query.slot_code.as_deref());
-            let normalized_q = normalized_filter(query.q.as_deref());
-            let query_binding = search_query_binding(
-                category,
-                normalized_slot.as_deref(),
-                normalized_q.as_deref(),
-                query.limit,
-            );
-            let offset = decode_search_cursor(
-                query.cursor.as_deref(),
-                &snapshot.checksum,
-                &snapshot.document.source_fingerprint,
-                &query_binding,
-            )?;
-            let matches = snapshot
-                .document
-                .entries
-                .iter()
-                .filter(|entry| {
-                    normalized_slot.as_ref().is_none_or(|slot| {
-                        entry.slot_codes.iter().any(|candidate| candidate == slot)
-                    }) && normalized_q
-                        .as_ref()
-                        .is_none_or(|needle| entry.matches(needle))
-                })
-                .collect::<Vec<_>>();
-            if offset > matches.len() {
-                bail!("official extension catalog search cursor is out of range");
-            }
-            let selected = matches
-                .iter()
-                .skip(offset)
-                .take(query.limit)
-                .copied()
-                .collect::<Vec<_>>();
-            let selected_ids = selected
-                .iter()
-                .map(|entry| entry.id.as_str())
-                .collect::<HashSet<_>>();
-            let mut entries_by_id = HashMap::new();
-            let mut visited_pages = HashSet::new();
-            for search_entry in &selected {
-                if !visited_pages.insert(search_entry.catalog_page.cursor.clone()) {
+            let selection = match select_search_entries(category, &snapshot, &query) {
+                Ok(selection) => selection,
+                Err(error) => {
+                    failures.push(error);
                     continue;
                 }
-                let page_reference = index
-                    .pages
-                    .iter()
-                    .find(|reference| {
-                        reference.page == search_entry.catalog_page.page
-                            && reference.cursor == search_entry.catalog_page.cursor
-                            && reference.checksum == search_entry.catalog_page.checksum
-                            && reference.locator == search_entry.catalog_page.locator
-                    })
-                    .ok_or_else(|| {
-                        anyhow!("catalog search page reference is not in the catalog index")
-                    })?;
-                let page = if let Some(page) =
-                    self.cached_verified_page(category, &search_entry.catalog_page)
-                {
-                    page
-                } else {
-                    let page = self
-                        .fetch_page(&snapshot.endpoint, &index, page_reference)
-                        .await?;
-                    self.remember_page(
-                        Self::cache_key(category, Some(&page.metadata.cursor)),
-                        &page,
-                    );
-                    page
-                };
-                for entry in page.entries {
-                    if selected_ids.contains(entry.id.as_str()) {
-                        entries_by_id.insert(entry.id.clone(), entry);
-                    }
+            };
+            let entries = match self
+                .fetch_selected_search_entries(category, &index, &snapshot, &selection.selected)
+                .await
+            {
+                Ok(entries) => entries,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
                 }
-            }
-            let entries = selected
-                .into_iter()
-                .map(|search_entry| {
-                    entries_by_id.remove(&search_entry.id).ok_or_else(|| {
-                        anyhow!("catalog search result is missing from its verified source page")
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let total_entries = matches.len();
-            drop(matches);
-            let next_offset = offset + entries.len();
-            let next_cursor = (next_offset < total_entries).then(|| {
-                encode_search_cursor(
-                    &snapshot.checksum,
-                    &snapshot.document.source_fingerprint,
-                    &query_binding,
-                    next_offset,
-                )
-            });
+            };
+            self.remember_search_snapshot(category, &snapshot);
             return Ok(OfficialExtensionCatalogSearchResult {
-                source_kind: snapshot.source_kind,
+                source_kind: snapshot.source_kind.clone(),
                 category: category.to_string(),
-                snapshot_checksum: snapshot.checksum,
-                snapshot_locator: snapshot.locator,
-                total_entries,
-                next_cursor,
+                freshness: OfficialExtensionCatalogFreshness::Fresh,
+                snapshot_checksum: snapshot.checksum.clone(),
+                snapshot_locator: snapshot.locator.clone(),
+                total_entries: selection.total_entries,
+                next_cursor: selection.next_cursor,
                 entries,
             });
         }
-        Err(failures
+        if let Some(snapshot) = previous_snapshot {
+            if let Ok(selection) = select_search_entries(category, &snapshot, &query) {
+                if let Some(entries) =
+                    self.cached_selected_search_entries(category, &selection.selected)
+                {
+                    return Ok(OfficialExtensionCatalogSearchResult {
+                        source_kind: snapshot.source_kind.clone(),
+                        category: category.to_string(),
+                        freshness: OfficialExtensionCatalogFreshness::Stale,
+                        snapshot_checksum: snapshot.checksum.clone(),
+                        snapshot_locator: snapshot.locator.clone(),
+                        total_entries: selection.total_entries,
+                        next_cursor: selection.next_cursor,
+                        entries,
+                    });
+                }
+            }
+        }
+        let source = failures
             .into_iter()
             .next()
-            .unwrap_or_else(|| anyhow!("official extension catalog has no configured source")))
+            .unwrap_or_else(|| anyhow!("official extension catalog has no configured source"));
+        Err(anyhow::Error::new(
+            OfficialExtensionCatalogUnavailable::new(source),
+        ))
     }
 
     async fn list_page(
@@ -1583,6 +1617,64 @@ fn decode_search_cursor(
         .next()
         .and_then(|value| value.parse::<usize>().ok())
         .ok_or_else(|| anyhow!("official extension catalog search cursor is invalid"))
+}
+
+fn select_search_entries<'a>(
+    category: &str,
+    snapshot: &'a VerifiedSearchSnapshot,
+    query: &OfficialExtensionCatalogSearchQuery,
+) -> Result<CatalogSearchSelection<'a>> {
+    let normalized_slot = normalized_filter(query.slot_code.as_deref());
+    let normalized_q = normalized_filter(query.q.as_deref());
+    let query_binding = search_query_binding(
+        category,
+        normalized_slot.as_deref(),
+        normalized_q.as_deref(),
+        query.limit,
+    );
+    let offset = decode_search_cursor(
+        query.cursor.as_deref(),
+        &snapshot.checksum,
+        &snapshot.document.source_fingerprint,
+        &query_binding,
+    )?;
+    let matches = snapshot
+        .document
+        .entries
+        .iter()
+        .filter(|entry| {
+            normalized_slot
+                .as_ref()
+                .is_none_or(|slot| entry.slot_codes.iter().any(|candidate| candidate == slot))
+                && normalized_q
+                    .as_ref()
+                    .is_none_or(|needle| entry.matches(needle))
+        })
+        .collect::<Vec<_>>();
+    if offset > matches.len() {
+        bail!("official extension catalog search cursor is out of range");
+    }
+    let selected = matches
+        .iter()
+        .skip(offset)
+        .take(query.limit)
+        .copied()
+        .collect::<Vec<_>>();
+    let total_entries = matches.len();
+    let next_offset = offset + selected.len();
+    let next_cursor = (next_offset < total_entries).then(|| {
+        encode_search_cursor(
+            &snapshot.checksum,
+            &snapshot.document.source_fingerprint,
+            &query_binding,
+            next_offset,
+        )
+    });
+    Ok(CatalogSearchSelection {
+        selected,
+        total_entries,
+        next_cursor,
+    })
 }
 
 fn validate_page(

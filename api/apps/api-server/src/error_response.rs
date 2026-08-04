@@ -8,6 +8,8 @@ use plugin_framework::error::PluginFrameworkError;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::official_extension_catalog::OfficialExtensionCatalogUnavailable;
+
 #[derive(Debug)]
 pub struct ApiError(pub anyhow::Error);
 
@@ -41,6 +43,16 @@ impl IntoResponse for ApiError {
                 (StatusCode::CONFLICT, "invalid_state_transition")
             }
             Some(ControlPlaneError::UpstreamUnavailable(name)) => (StatusCode::BAD_GATEWAY, *name),
+            None if self
+                .0
+                .downcast_ref::<OfficialExtensionCatalogUnavailable>()
+                .is_some() =>
+            {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "extension_catalog_temporarily_inconsistent",
+                )
+            }
             None => match self.0.downcast_ref::<PluginFrameworkError>() {
                 Some(PluginFrameworkError::RuntimeContract { .. }) => {
                     (StatusCode::BAD_GATEWAY, "provider_runtime")

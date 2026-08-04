@@ -29,7 +29,8 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     official_extension_catalog::{
         LocatedOfficialExtensionCatalogEntry, OfficialExtensionArtifactDescriptor,
-        OfficialExtensionCatalogEntry, OfficialExtensionCatalogSearchQuery,
+        OfficialExtensionCatalogEntry, OfficialExtensionCatalogFreshness,
+        OfficialExtensionCatalogSearchQuery,
     },
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
@@ -640,6 +641,11 @@ async fn load_catalog_page(
         .collect();
     Ok(ExtensionCatalogGatewayPageResponse {
         category: page.category,
+        freshness: match page.freshness {
+            OfficialExtensionCatalogFreshness::Fresh => "fresh",
+            OfficialExtensionCatalogFreshness::Stale => "stale",
+        }
+        .to_string(),
         catalog_page: page.snapshot_checksum.clone(),
         catalog_page_number: 0,
         catalog_page_checksum: page.snapshot_checksum,

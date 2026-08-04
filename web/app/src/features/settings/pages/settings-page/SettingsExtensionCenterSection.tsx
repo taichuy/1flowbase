@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ApiClientError } from '@1flowbase/api-client';
 import {
+  Alert,
   Badge,
   Button,
   Descriptions,
@@ -735,82 +736,110 @@ function GenericExtensionCenterSection({
             }))
           ]}
         />
-        <DataTable<ExtensionRow>
-          rowKey={(row) => extensionKey(row)}
-          columns={columns}
-          configuration={tableConfiguration}
-          dataSource={rows}
-          emptyText={<Empty description={t('auto.no_extensions')} />}
-          loading={tableLoading}
-          toolbar={
-            <Flex justify="flex-end" gap={8} wrap>
-              {activeTab !== 'installed' ? (
-                <Input.Search
-                  allowClear
-                  aria-label={t('auto.drop_down_search_installable_vendors')}
-                  placeholder={t('auto.drop_down_search_installable_vendors')}
-                  style={{ width: 240 }}
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  onClear={() => {
-                    void navigate({
-                      to: '/settings/extension-center/$category',
-                      params: { category: activeTab },
-                      search: { q: undefined, cursor: undefined }
-                    });
-                  }}
-                  onSearch={(value) => {
-                    const normalizedQuery = value.trim();
-                    void navigate({
-                      to: '/settings/extension-center/$category',
-                      params: { category: activeTab },
-                      search: {
-                        q: normalizedQuery || undefined,
-                        cursor: undefined
-                      }
-                    });
-                  }}
-                />
-              ) : null}
-              <Button
-                disabled={rows.length === 0}
-                loading={Object.values(updateStates).some(
-                  (state) => state === 'checking'
-                )}
-                onClick={() => void checkVisibleUpdates()}
-              >
-                {t('auto.check_updates')}
+        {activeTab !== 'installed' && catalogQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message={t('auto.extension_catalog_load_failed')}
+            description={t('auto.extension_catalog_load_failed_description')}
+            action={
+              <Button onClick={() => void catalogQuery.refetch()}>
+                {t('auto.extension_catalog_retry')}
               </Button>
-              <DataTableColumnSettings
-                columns={columns}
-                configuration={tableConfiguration}
-              />
-            </Flex>
-          }
-          cursorPagination={{
-            currentPage: cursor ? 2 : 1,
-            hasPreviousPage: Boolean(cursor),
-            hasNextPage: Boolean(nextCursor),
-            previousLabel: t('auto.previous_page'),
-            nextLabel: t('auto.next_page'),
-            total: totalEntries,
-            onPreviousPage: () => {
-              void navigate({
-                to: '/settings/extension-center/$category',
-                params: { category: activeTab },
-                search: { q, cursor: undefined }
-              });
-            },
-            onNextPage: () => {
-              if (!nextCursor) return;
-              void navigate({
-                to: '/settings/extension-center/$category',
-                params: { category: activeTab },
-                search: { q, cursor: nextCursor }
-              });
             }
-          }}
-        />
+          />
+        ) : (
+          <>
+            {activeTab !== 'installed' &&
+            catalogQuery.data?.freshness === 'stale' ? (
+              <Alert
+                type="warning"
+                showIcon
+                message={t('auto.extension_catalog_stale')}
+              />
+            ) : null}
+            <DataTable<ExtensionRow>
+              rowKey={(row) => extensionKey(row)}
+              columns={columns}
+              configuration={tableConfiguration}
+              dataSource={rows}
+              emptyText={<Empty description={t('auto.no_extensions')} />}
+              loading={tableLoading}
+              toolbar={
+                <Flex justify="flex-end" gap={8} wrap>
+                  {activeTab !== 'installed' ? (
+                    <Input.Search
+                      allowClear
+                      aria-label={t(
+                        'auto.drop_down_search_installable_vendors'
+                      )}
+                      placeholder={t(
+                        'auto.drop_down_search_installable_vendors'
+                      )}
+                      style={{ width: 240 }}
+                      value={searchText}
+                      onChange={(event) => setSearchText(event.target.value)}
+                      onClear={() => {
+                        void navigate({
+                          to: '/settings/extension-center/$category',
+                          params: { category: activeTab },
+                          search: { q: undefined, cursor: undefined }
+                        });
+                      }}
+                      onSearch={(value) => {
+                        const normalizedQuery = value.trim();
+                        void navigate({
+                          to: '/settings/extension-center/$category',
+                          params: { category: activeTab },
+                          search: {
+                            q: normalizedQuery || undefined,
+                            cursor: undefined
+                          }
+                        });
+                      }}
+                    />
+                  ) : null}
+                  <Button
+                    disabled={rows.length === 0}
+                    loading={Object.values(updateStates).some(
+                      (state) => state === 'checking'
+                    )}
+                    onClick={() => void checkVisibleUpdates()}
+                  >
+                    {t('auto.check_updates')}
+                  </Button>
+                  <DataTableColumnSettings
+                    columns={columns}
+                    configuration={tableConfiguration}
+                  />
+                </Flex>
+              }
+              cursorPagination={{
+                currentPage: cursor ? 2 : 1,
+                hasPreviousPage: Boolean(cursor),
+                hasNextPage: Boolean(nextCursor),
+                previousLabel: t('auto.previous_page'),
+                nextLabel: t('auto.next_page'),
+                total: totalEntries,
+                onPreviousPage: () => {
+                  void navigate({
+                    to: '/settings/extension-center/$category',
+                    params: { category: activeTab },
+                    search: { q, cursor: undefined }
+                  });
+                },
+                onNextPage: () => {
+                  if (!nextCursor) return;
+                  void navigate({
+                    to: '/settings/extension-center/$category',
+                    params: { category: activeTab },
+                    search: { q, cursor: nextCursor }
+                  });
+                }
+              }}
+            />
+          </>
+        )}
       </Flex>
 
       <Drawer
