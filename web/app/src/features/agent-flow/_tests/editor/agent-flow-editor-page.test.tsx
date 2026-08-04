@@ -107,21 +107,6 @@ function createInitialState(
   };
 }
 
-function createTemplatePackage() {
-  return {
-    schema_version: '1flowbase.application-template/v1' as const,
-    application: {
-      application_type: 'agent_flow' as const,
-      name: 'Support Agent',
-      description: '',
-      icon: null,
-      icon_type: null,
-      icon_background: null
-    },
-    flow_document: createDefaultAgentFlowDocument({ flowId: 'flow-template' }),
-    dependencies: []
-  };
-}
 
 const readyNodeCatalog = createApplicationNodeCatalog([
   createPluginCatalogNode()

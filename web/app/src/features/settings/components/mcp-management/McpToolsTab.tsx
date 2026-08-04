@@ -39,8 +39,7 @@ import type {
   ConsoleMcpProxyInputMapping,
   ConsoleMcpProxyOutputMapping,
   ConsoleMcpTool,
-  SaveConsoleMcpToolBody,
-  UpdateConsoleMcpToolBody
+  SaveConsoleMcpToolBody
 } from '@1flowbase/api-client';
 
 import {
@@ -71,8 +70,7 @@ import {
 import {
   buildInputMappingFromInterface,
   inputMappingHasContent,
-  normalizeInputMapping,
-  type McpInputMappingValue
+  normalizeInputMapping
 } from './mcp-input-mapping-model';
 import { McpInputMappingEditor } from './McpInputMappingEditor';
 import { McpToolDebugPanel } from './McpToolDebugPanel';

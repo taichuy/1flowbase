@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -185,8 +185,6 @@ import {
   useAuthStore
 } from '../../../../../../state/auth-store';
 import { McpManagementPanel } from '../../McpManagementPanel';
-import { McpToolDebugPanel } from '../../McpToolDebugPanel';
-import { MarkdownIrEditor } from '../../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -546,7 +544,6 @@ async function setFullDescription(value: string) {
 
 describe('McpManagementPanel', () => {
   afterEach(async () => {
-    cleanup();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
 

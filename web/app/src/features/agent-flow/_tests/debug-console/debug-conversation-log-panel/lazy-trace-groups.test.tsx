@@ -6,37 +6,11 @@ import {
   within
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StrictMode, type ComponentProps, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { AgentFlowRunContext } from '../../../api/runtime';
-import { AgentFlowDebugConsole } from '../../../components/debug-console/AgentFlowDebugConsole';
 import { ConversationLogPanel } from '../../../components/debug-console/ConversationLogPanel';
 import { appI18n } from '../../../../../shared/i18n/app-i18n';
-import {
-  answerSnapshotAssistantMessage,
-  assistantMessage,
-  fusionHistoricalBranchDetailAssistantMessage,
-  fusionSummaryOnlyAssistantMessage,
-  llmRoundAssistantMessage,
-  multiLlmRunAssistantMessage,
-  toolCallbackDetailPayload,
-  truncatedLlmRoundsAssistantMessage
-} from '../debug-conversation-log-panel.fixtures';
-const runContext: AgentFlowRunContext = {
-  environmentLabel: 'draft',
-  remembered: false,
-  fields: [
-    {
-      nodeId: 'node-start',
-      nodeLabel: 'Start',
-      key: 'query',
-      title: '问题',
-      valueType: 'string',
-      value: '你好?'
-    }
-  ]
-};
 
 function createQueryClient() {
   return new QueryClient({
@@ -55,46 +29,6 @@ function renderWithQueryClient(children: ReactNode) {
   );
 }
 
-function expandToolsNode(container: HTMLElement, name: RegExp) {
-  const toolsNode = within(container).getByRole('button', { name });
-
-  expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
-  fireEvent.click(toolsNode);
-  expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
-
-  return toolsNode;
-}
-function renderConsole(
-  props: Partial<ComponentProps<typeof AgentFlowDebugConsole>> = {}
-) {
-  return render(
-    <StrictMode>
-      <AgentFlowDebugConsole
-        messages={[
-          {
-            id: 'user-1',
-            role: 'user',
-            status: 'completed',
-            runId: 'run-1',
-            content: '你好?',
-            rawOutput: null,
-            traceSummary: []
-          },
-          assistantMessage
-        ]}
-        runContext={runContext}
-        status="completed"
-        stopping={false}
-        onChangeRunContextValue={vi.fn()}
-        onClearSession={vi.fn()}
-        onClose={vi.fn()}
-        onStopRun={vi.fn()}
-        onSubmitPrompt={vi.fn()}
-        {...props}
-      />
-    </StrictMode>
-  );
-}
 
 describe('debug conversation log panel', () => {
   beforeEach(async () => {

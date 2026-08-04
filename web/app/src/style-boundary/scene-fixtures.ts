@@ -17,7 +17,6 @@ import {
   styleBoundaryNodeContributions,
   styleBoundaryOfficialPluginCatalog,
   styleBoundaryPluginFamiliesCatalog,
-  styleBoundaryPluginI18nCatalog,
   styleBoundaryProviderInstances
 } from './scene-fixtures/settings/catalogs';
 

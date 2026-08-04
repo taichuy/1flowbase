@@ -13,16 +13,7 @@ import type { AgentFlowRunContext } from '../../api/runtime';
 import { AgentFlowDebugConsole } from '../../components/debug-console/AgentFlowDebugConsole';
 import { ConversationLogPanel } from '../../components/debug-console/ConversationLogPanel';
 import { appI18n } from '../../../../shared/i18n/app-i18n';
-import {
-  answerSnapshotAssistantMessage,
-  assistantMessage,
-  fusionHistoricalBranchDetailAssistantMessage,
-  fusionSummaryOnlyAssistantMessage,
-  llmRoundAssistantMessage,
-  multiLlmRunAssistantMessage,
-  toolCallbackDetailPayload,
-  truncatedLlmRoundsAssistantMessage
-} from './debug-conversation-log-panel.fixtures';
+import { assistantMessage } from './debug-conversation-log-panel.fixtures';
 const runContext: AgentFlowRunContext = {
   environmentLabel: 'draft',
   remembered: false,
@@ -55,15 +46,6 @@ function renderWithQueryClient(children: ReactNode) {
   );
 }
 
-function expandToolsNode(container: HTMLElement, name: RegExp) {
-  const toolsNode = within(container).getByRole('button', { name });
-
-  expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
-  fireEvent.click(toolsNode);
-  expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
-
-  return toolsNode;
-}
 function renderConsole(
   props: Partial<ComponentProps<typeof AgentFlowDebugConsole>> = {}
 ) {

@@ -5,7 +5,6 @@ import {
   Flex,
   Form,
   Input,
-  Modal,
   Select,
   Space,
   Switch,
@@ -67,7 +66,6 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import {
-  buildMcpDirectoryTreeData,
   nextMcpDirectoryExpandedKeys,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
