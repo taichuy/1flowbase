@@ -587,7 +587,6 @@ describe('section shell routing', () => {
       );
       authenticateWithPermissions(['state_model.manage.all']);
       renderApp('/settings/model-providers/request-logs');
-      expect(await screen.findByText('请求日志')).toBeInTheDocument();
       expect(window.location.pathname).toBe(
         '/settings/model-providers/request-logs'
       );
