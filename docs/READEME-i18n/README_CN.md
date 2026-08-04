@@ -13,6 +13,9 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/github/license/taichuy/1flowbase" alt="License"></a>
   <img src="https://img.shields.io/badge/OpenAI-compatible-111827" alt="OpenAI compatible">
   <img src="https://img.shields.io/badge/Claude-compatible-111827" alt="Claude compatible">
+  <img src="https://img.shields.io/badge/MCP-gateway-7c3aed" alt="MCP gateway">
+  <img src="https://img.shields.io/badge/Application_Backend-CRUD-0f766e" alt="Application Backend with CRUD APIs">
+  <img src="https://img.shields.io/badge/Native_React-blocks-149eca" alt="Native React blocks">
   <img src="https://img.shields.io/badge/self--hosted-1flowbase-2563eb" alt="Self-hosted">
 </p>
 
@@ -23,26 +26,73 @@
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
 
-> **给本地 AI Agent 一个模型接口，让它在背后运行你自己的可观测多模型工作流。**
+> **基于四大开源基座构建完整的 Agent-Native 应用：AI Gateway、MCP Gateway、内置应用后端与 Native React 前端区块。**
 
-Claude Code、Codex、OpenCode、Cline、Continue 和 SDK 仍然只调用一个普通模型名。1flowbase 在这个模型名背后运行工作流：给截图挂载视觉模型、让多个模型组成 Fusion 风格评审团、校验或格式化结果，并展示模型调用、工具回调、Token、延迟和失败原因。
+1flowbase 让本地 Agent、模型客户端、外部系统和人通过相互独立的入口使用同一个自托管应用平台。本地 Agent 可以只连接 MCP Gateway，继续使用自己已有的模型配置来搭建和操作应用；是否再连接 AI Gateway 是可选项，连接后可以获得兼容模型接口、多模型工作流与详细执行 Trace。
 
 ```text
-Agent 客户端 -> 一个虚拟模型接口 -> 你的工作流 -> Trace / Token / 成本 -> 最终回答
+本地 Agent -> MCP Gateway -> 发现 / 配置 / 搭建 / 操作
+模型客户端 -> AI Gateway -> 兼容接口 / 模型工作流 / Trace
+外部系统   -> 应用后端   -> 自动 CRUD API / 自定义工作流 API
+人         -> React 区块 -> 交互式应用界面
+
+四大基座可以独立使用，也可以围绕同一个 1flowbase 应用组合。
 ```
 
-| 如果你想要... | 1flowbase 帮你... |
+| 基座 | 提供的能力 |
 |---|---|
-| 让文本 Coding Model 理解截图 | 把 GLM-5V-Turbo、Gemini、GPT vision、OCR 或其他视觉模型挂成工具 |
-| 跑 Fusion 风格模型评审团 | 分发给多个分支模型，汇总结果，再发布成一个模型接口 |
-| 排查 Agent 回答为什么慢、贵或错 | 查看工作流节点、模型调用、工具回调、Token、延迟和错误 |
-| 在现有客户端里复用更好的模型链 | 发布为 OpenAI 兼容或 Claude 兼容模型 API |
+| **AI Gateway** | 转换和分发 OpenAI Responses、Chat Completions 与 Claude Messages 流量；路由模型，并把可观测工作流发布为虚拟模型 |
+| **MCP Gateway** | 把 1flowbase 能力投影为可渐进发现的工具；管理 Tool、mapping、Group、Binding、策略、上游 MCP 连接与可复用 Bundle |
+| **应用后端 / Application Backend** | 定义 Data Model 并物化 PostgreSQL 表、字段、索引和关系；自动生成受治理的 CRUD API，并发布由 Workflow 驱动的自定义接口 |
+| **Native React 前端区块** | 使用标准 React/TSX 与 CSS、受控组件导入、数据绑定和 Shadow DOM 隔离构建响应式应用界面 |
+
+例如，本地 Agent 可以通过 MCP 创建 `Customer` 与 `Ticket` Data Model，搭建由 Workflow 支撑的 `/api/ex/tickets/escalate` 接口，并构建 React 界面。外部系统调用自动生成的后端 API，人直接在界面中工作。如果同一个本地 Agent 还把模型端点指向 AI Gateway，就能获得带路由、模型组合和完整日志的虚拟模型；应用本身不依赖这个可选连接。
 
 ![工作流编辑器预览](../assets/workflow_editor_preview_tool.png)
 
 ---
 
 ## 现在可以构建什么
+
+### 让 Agent 搭建和操作 1flowbase 应用
+
+MCP Gateway 把平台能力投影为面向 Agent 的虚拟 UI。Agent 可以渐进发现相关领域、读取 Tool 契约、发起调用、验证结果状态并继续搭建，不需要为每个任务新增一条硬编码前端流程。
+
+```text
+Agent
+  -> mcp.list：发现应用与能力
+  -> mcp.get：读取下一步 Tool 契约
+  -> mcp.call：创建、配置、运行与发布
+  -> 检查状态 / Trace
+  -> 继续迭代
+```
+
+### 创建开箱即用的应用后端
+
+在 1flowbase 中定义并发布 Data Model，平台会物化 PostgreSQL Schema，并生成理解数据模型的 List、Get、Create、Update、Delete API 与 OpenAPI 契约。当标准 CRUD 不够时，可以使用 Workflow Extension 定义业务逻辑，并发布为 `/api/ex/{slug}` 自定义接口。
+
+```text
+Data Model 定义
+  -> PostgreSQL 表 / 字段 / 索引 / 关系
+  -> 自动 CRUD 运行时 API + OpenAPI
+
+Workflow
+  -> 自定义输入输出契约
+  -> 发布 /api/ex/{slug} 接口
+```
+
+### 使用 Native React 区块构建人机交互界面
+
+前端区块直接使用标准 React/TSX、Hooks、事件和 CSS。1flowbase 在隔离的 Shadow DOM 运行时中编译和挂载区块，并通过受控目录与上下文契约暴露区块获准使用的平台能力。
+
+```tsx
+export default function StatusCard({ ctx }) {
+  const status = ctx.inputs.status;
+  return <button onClick={() => ctx.outputs.publish({ action: 'retry' })}>
+    {status}
+  </button>;
+}
+```
 
 ### 给文本优先 Coding Model 增加视觉能力
 
@@ -165,18 +215,24 @@ node scripts/node/dev-up.js restart
 
 ## 1flowbase 适合放在哪里
 
-1flowbase 不只是模型代理，也不只是普通工作流画布。
+1flowbase 不只是模型代理、MCP Server 集合或又一个聊天界面。
 
 | 工具类别 | 常见功能与定位 | 1flowbase 的不同之处 |
 |---|---|---|
 | LLM 网关 / 模型路由器 | 将单次请求路由至特定供应商或模型 | 将多个模型和工具节点组合成由工作流支撑的虚拟模型 |
-| AI 工作流构建器 | 构建 AI 应用或流程工作流 | 将工作流直接暴露为 OpenAI / Claude 兼容模型 API |
-| Agent 开发框架 | 协助开发者用代码编写 Agent 图 | 提供可视化运行时、协议发布接口和执行日志 |
+| MCP Server / Gateway | 向 Agent 暴露或聚合工具 | 暴露 1flowbase 应用控制面，同时连接并治理上游 MCP 工具 |
+| Backend-as-a-Service / 后端构建器 | 提供数据表和通用 CRUD 接口 | 物化受治理的 PostgreSQL Data Model，并把自动 CRUD 与 Workflow 自定义 API 组合在同一平台 |
+| AI 工作流构建器 | 构建 AI 应用或流程工作流 | 通过模型 API 暴露工作流，并让 Agent 通过 MCP 操作外围应用 |
+| Agent 应用框架 | 帮助开发者编写 Agent 图与交互界面 | 组合可视化运行时、Agent 控制面、协议发布和 Native React 应用界面 |
 | 可观测性 / 成本追踪工具 | 统计 Token 消耗量或账单总额 | 将成本精确关联至工作流节点、模型调用、工具回调和 Trace |
 
 ```text
-模型路由器负责选择模型。
-1flowbase 负责把工作流组合成新的虚拟模型。
+模型服务平面：AI Gateway（供外部客户端按需使用）
+Agent 控制平面：MCP Gateway
+数据与 API 平面：应用后端
+人机体验平面：Native React 前端区块
+
+1flowbase 在一个自托管平台中提供四大基座。
 ```
 
 ---
@@ -284,6 +340,14 @@ node scripts/node/dev-up.js restart
 - [x] 1flowbase 工作流内部的工具回调 Trace
 - [x] 应用级 Token 消耗统计
 - [x] Prompt 与模型配置版本历史管理
+- [x] 支持渐进式 `mcp.list`、`mcp.get` 与 `mcp.call` 发现的 MCP Gateway
+- [x] MCP Tool、mapping、Group、Binding、发现策略与上游连接管理
+- [x] 可复用 MCP Bundle 导入、导出、校验与本地 Library 流程
+- [x] 动态 Data Model 物化 PostgreSQL 表、字段、索引和关系
+- [x] 自动生成 Data Model CRUD 运行时 API 与 OpenAPI 契约
+- [x] 在 `/api/ex/{slug}` 下发布自定义 Workflow Extension API
+- [x] 支持 Hooks、CSS、事件和 Shadow DOM 隔离的 Native React/TSX 前端区块
+- [x] 受控前端组件目录、代码 Studio、响应式上下文与数据绑定
 
 ### 持续增强中
 
@@ -293,17 +357,18 @@ node scripts/node/dev-up.js restart
 - [ ] 异常成本检测与优化建议
 - [ ] 会话导出和 Recall Pack 生成
 - [ ] 更多 Claude Code / Codex / OpenCode / Cline / Continue 模板
-- [ ] 兼容 MCP 的插件节点与工具调用源头追踪
+- [ ] 覆盖更多产品领域的 Agent-Ready MCP Virtual UI
+- [ ] 组合 MCP 管理、应用后端、前端区块与可选 AI Gateway 服务的更多端到端应用 Recipe
 
 ### 长期规划中
 
-- [ ] 面向 AI 组织的低代码应用构建平台
+- [ ] 在四大应用基座之上扩展更完整的低代码创作能力
 - [ ] 团队协作空间与多租户管理
 - [ ] 权限、审批、审计与成本治理机制
 - [ ] 适配更多本地 AI Agent 客户端
 - [ ] 模板市场与工作流 Recipes 生态
 
-> 注意：1flowbase 目前的定位并非 MCP 服务端或 MCP 网关。兼容 MCP 的能力仍在路线图中。当前产品专注于发布兼容模型接口，并追踪 1flowbase 工作流的执行。
+> 四大基座目前都已实现并可用，但它们是可组合能力，不是强制串行阶段：外部 Agent 可以只使用 MCP Gateway，而不把模型流量接入 AI Gateway。更完整的低代码创作、团队治理和模板生态仍在持续演进。
 
 ---
 
@@ -403,7 +468,7 @@ node scripts/node/verify.js repo
 
 <div align="center">
 
-**如果你希望本地 AI Agent 调用可观测的多模型虚拟模型，欢迎给 1flowbase 点一个 Star。**
+**如果你希望 Agent 跨 AI、MCP、应用后端与 React 界面搭建并运营自托管应用，欢迎给 1flowbase 点一个 Star。**
 
 [报告 Bug](https://github.com/taichuy/1flowbase/issues) · [提出新需求](https://github.com/taichuy/1flowbase/issues)
 
