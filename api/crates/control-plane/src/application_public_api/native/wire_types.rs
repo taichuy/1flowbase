@@ -529,6 +529,10 @@ impl NativeObject {
     pub fn insert_string(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.0.insert(key.into(), Value::String(value.into()));
     }
+
+    pub fn insert_value(&mut self, key: impl Into<String>, value: Value) {
+        self.0.insert(key.into(), value);
+    }
 }
 
 impl std::ops::Index<&str> for NativeObject {

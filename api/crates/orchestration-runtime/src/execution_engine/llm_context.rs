@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::*;
 
 pub(super) fn build_response_format(config: &Value) -> Option<Value> {
@@ -759,7 +761,10 @@ fn external_provider_tools(
     {
         if let Some(tools) = candidate.as_array() {
             if !tools.is_empty() {
-                return provider_tool_payloads(tools);
+                return merge_external_provider_tools(
+                    provider_tool_payloads(tools),
+                    &runtime_context.tools,
+                );
             }
         }
     }
@@ -782,7 +787,31 @@ fn external_provider_tools(
                         .filter(|tools| !tools.is_empty())
                 })
         })
+        .map(|tools| merge_external_provider_tools(tools, &runtime_context.tools))
         .unwrap_or_else(|| runtime_context.tools.clone())
+}
+
+fn merge_external_provider_tools(mut configured: Vec<Value>, mounted: &[Value]) -> Vec<Value> {
+    let mut names = configured
+        .iter()
+        .filter_map(provider_tool_name)
+        .collect::<HashSet<_>>();
+    for tool in mounted {
+        let name = provider_tool_name(tool);
+        if name.is_some_and(|name| !names.insert(name)) {
+            continue;
+        }
+        configured.push(tool.clone());
+    }
+    configured
+}
+
+fn provider_tool_name(tool: &Value) -> Option<String> {
+    tool.get("function")
+        .and_then(|value| value.get("name"))
+        .or_else(|| tool.get("name"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 fn media_route_has_returned_to_main(
@@ -946,4 +975,30 @@ pub(super) fn provider_tool_payload(tool: &Value) -> Value {
         "type": "function",
         "function": Value::Object(function),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mounted_tools_extend_node_tools_without_duplicate_names() {
+        let configured = vec![json!({
+            "type": "function",
+            "function": { "name": "search" }
+        })];
+        let mounted = vec![
+            json!({"type": "function", "function": { "name": "search" }}),
+            json!({"type": "function", "function": { "name": "mcp_catalog" }}),
+        ];
+
+        let merged = merge_external_provider_tools(configured, &mounted);
+
+        assert_eq!(merged.len(), 2);
+        assert_eq!(provider_tool_name(&merged[0]).as_deref(), Some("search"));
+        assert_eq!(
+            provider_tool_name(&merged[1]).as_deref(),
+            Some("mcp_catalog")
+        );
+    }
 }

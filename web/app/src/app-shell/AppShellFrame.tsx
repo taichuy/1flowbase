@@ -6,6 +6,7 @@ import { Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { AccountMenu } from './AccountMenu';
+import { AssistantChromeAction } from './AssistantChromeAction';
 import { FrontstageDesignModeAction } from './FrontstageDesignModeAction';
 import { HelpChromeMenu } from './HelpChromeMenu';
 import { LanguageChromeMenu } from './LanguageChromeMenu';
@@ -59,6 +60,7 @@ export function AppShellFrame({
         <Space className="app-shell-action-row" size={20}>
           <span className="app-shell-secondary-actions">
             <FrontstageDesignModeAction />
+            <AssistantChromeAction />
             {secondaryActions.map((route) => (
               <span key={route.id}>
                 {route.id === 'settings' ? (

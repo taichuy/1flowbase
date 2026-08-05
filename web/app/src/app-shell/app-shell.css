@@ -178,6 +178,38 @@
   min-width: max-content;
 }
 
+.assistant-chrome-drawer .ant-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.assistant-chrome-conversation {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.assistant-chrome-message {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--fill-tertiary, #f5f5f5);
+}
+
+.assistant-chrome-message--user {
+  align-self: flex-end;
+  background: var(--color-primary-bg, #e6f7f0);
+}
+
+.assistant-chrome-message .ant-typography {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+}
+
 .app-shell-settings-menu.ant-menu-horizontal {
   border-bottom: none !important;
   background: transparent !important;
