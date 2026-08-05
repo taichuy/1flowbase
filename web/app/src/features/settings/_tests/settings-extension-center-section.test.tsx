@@ -1384,12 +1384,19 @@ describe('SettingsExtensionCenterSection', () => {
     renderSection('installed');
     const row = await screen.findByRole('row', { name: /platform/ });
     fireEvent.click(within(row).getByRole('button', { name: '激活' }));
-    const dialog = await screen.findByRole('dialog', {
-      name: '激活多语言目录'
-    });
-    expect(await within(dialog).findByText('2.0.0')).toBeInTheDocument();
-    expect(await within(dialog).findByText('2.0.1')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: /激\s*活/ }));
+    const activationTitle = await screen.findByText('激活多语言目录');
+    const dialog = activationTitle.closest('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    const activationDialog = dialog as HTMLElement;
+    expect(
+      await within(activationDialog).findByText('2.0.0')
+    ).toBeInTheDocument();
+    expect(
+      await within(activationDialog).findByText('2.0.1')
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(activationDialog).getByRole('button', { name: /激\s*活/ })
+    );
     await waitFor(() => {
       expect(
         i18nCatalogApi.activateSettingsInstalledI18nCatalog
