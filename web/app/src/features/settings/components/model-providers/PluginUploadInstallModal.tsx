@@ -53,7 +53,7 @@ export function PluginUploadInstallModal({
           <Alert
             type="success"
             showIcon
-            message={`${resultSummary.displayName} ${resultSummary.version}`}
+            title={`${resultSummary.displayName} ${resultSummary.version}`}
             description={i18nText(
               'settings',
               'auto.source_manual_upload_trust_level_status',
@@ -65,7 +65,7 @@ export function PluginUploadInstallModal({
           />
         ) : null}
         {errorMessage ? (
-          <Alert type="error" showIcon message={errorMessage} />
+          <Alert type="error" showIcon title={errorMessage} />
         ) : null}
         <Button type="primary" block loading={submitting} onClick={onSubmit}>
           {i18nText('settings', 'auto.upload_and_install')}

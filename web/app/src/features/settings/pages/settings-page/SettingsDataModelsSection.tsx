@@ -508,7 +508,7 @@ export function SettingsDataModelsSection({
       heightMode="fill"
       status={
         errorMessage ? (
-          <Alert type="error" showIcon message={errorMessage} />
+          <Alert type="error" showIcon title={errorMessage} />
         ) : null
       }
     >

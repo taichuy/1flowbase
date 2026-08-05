@@ -663,7 +663,7 @@ export function SettingsAuthCenterSection() {
       {overviewQuery.isError ? (
         <Alert
           type="error"
-          message={i18nText(
+          title={i18nText(
             'settings',
             'auto.auth_center_overview_load_failed'
           )}
@@ -687,7 +687,7 @@ export function SettingsAuthCenterSection() {
             </Button>
           </Flex>
           {operationErrorMessage ? (
-            <Alert type="error" message={operationErrorMessage} showIcon />
+            <Alert type="error" title={operationErrorMessage} showIcon />
           ) : null}
           <Table
             className="settings-auth-center__table"

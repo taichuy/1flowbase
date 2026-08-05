@@ -9,7 +9,7 @@ const embeddedAppCapabilities = [
 
 export function EmbeddedAppsPage() {
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <div>
         <Typography.Title level={2}>{i18nText("embeddedApps", "auto.subsystem")}</Typography.Title>
         <Typography.Paragraph>

@@ -150,7 +150,7 @@ export function ModelProviderInstancesModal({
 
     if (!canManage || !sourceInstance) {
       return (
-        <Tag key={target.source_instance_id} bordered={false} color={tagColor}>
+        <Tag key={target.source_instance_id} variant="filled" color={tagColor}>
           {target.source_instance_display_name}
         </Tag>
       );
@@ -159,7 +159,7 @@ export function ModelProviderInstancesModal({
     return (
       <Tag
         key={target.source_instance_id}
-        bordered={false}
+        variant="filled"
         className="model-provider-panel__main-instance-target-tag-action"
         color={tagColor}
         role="button"
@@ -271,7 +271,7 @@ export function ModelProviderInstancesModal({
             <Alert
               type="warning"
               showIcon
-              message={i18nText('settings', 'auto.text')}
+              title={i18nText('settings', 'auto.text')}
               description={
                 versionSwitchNotice.targetVersion
                   ? i18nText(
@@ -302,7 +302,7 @@ export function ModelProviderInstancesModal({
                           {mainInstanceLabel}
                         </Typography.Text>
                         <div className="model-provider-panel__main-instance-summary">
-                          <Tag bordered={false} color="blue">
+                          <Tag variant="filled" color="blue">
                             {i18nText('settings', 'auto.aggregate_view')}
                           </Tag>
                           <Typography.Text type="secondary">
@@ -316,7 +316,7 @@ export function ModelProviderInstancesModal({
                         </div>
                       </div>
                       <Space
-                        direction="horizontal"
+                        orientation="horizontal"
                         size={8}
                         className="model-provider-panel__main-instance-toggle"
                       >

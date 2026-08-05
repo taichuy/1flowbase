@@ -19,14 +19,14 @@ export function HostInfrastructurePanel({ canManage }: { canManage: boolean }) {
   return (
     <SettingsSectionSurface heightMode="fill">
       <Space
-        direction="vertical"
+        orientation="vertical"
         size={16}
         className="host-infrastructure-panel"
       >
         <Alert
           type="info"
           showIcon
-          message={i18nText("settings", "auto.installation_configuration_activation_saved_pending_changes_take_effect_restarting_api")}
+          title={i18nText("settings", "auto.installation_configuration_activation_saved_pending_changes_take_effect_restarting_api")}
         />
         <HostInfrastructureProviderTable
           providers={providersQuery.data ?? []}

@@ -258,7 +258,7 @@ function InterfaceConnectorPanel({
           <Alert
             type="error"
             showIcon
-            message={i18nText(
+            title={i18nText(
               'frontstage',
               'auto.capability_catalog_load_failed'
             )}
@@ -849,7 +849,7 @@ function ResourceHeading({
   title: string;
 }) {
   return (
-    <Space direction="vertical" size={2}>
+    <Space orientation="vertical" size={2}>
       <Typography.Text strong>{title}</Typography.Text>
       <Typography.Text type="secondary">{description}</Typography.Text>
     </Space>

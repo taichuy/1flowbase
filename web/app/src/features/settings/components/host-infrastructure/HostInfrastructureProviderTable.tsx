@@ -26,7 +26,7 @@ export function HostInfrastructureProviderTable({
         dataIndex: 'display_name',
         key: 'provider',
         render: (_, provider) => (
-          <Space direction="vertical" size={2}>
+          <Space orientation="vertical" size={2}>
             <Typography.Text strong>{provider.display_name}</Typography.Text>
             <Typography.Text type="secondary">
               {provider.extension_id} / {provider.provider_code}

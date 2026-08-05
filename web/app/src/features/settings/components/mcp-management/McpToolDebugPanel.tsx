@@ -271,7 +271,7 @@ export function McpToolDebugPanel({
     debugResultMode === 'debug_details' ? '完整内容' : '返回值';
 
   return (
-    <Space className="mcp-tool-debug-panel" direction="vertical" size={12}>
+    <Space className="mcp-tool-debug-panel" orientation="vertical" size={12}>
       <Flex
         className="mcp-tool-debug-panel__header"
         align="center"
@@ -320,9 +320,9 @@ export function McpToolDebugPanel({
           ))}
         </div>
       ) : (
-        <Alert type="info" message="先在 input_mapping 添加 MCP 参数映射" />
+        <Alert type="info" title="先在 input_mapping 添加 MCP 参数映射" />
       )}
-      {errorMessage ? <Alert type="error" message={errorMessage} /> : null}
+      {errorMessage ? <Alert type="error" title={errorMessage} /> : null}
       {debugResult ? (
         <JsonPreviewBlock
           title={debugResultTitle}

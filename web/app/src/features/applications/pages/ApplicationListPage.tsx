@@ -624,12 +624,12 @@ export function ApplicationListPage() {
 
                 <Flex wrap gap={8} style={{ minHeight: 32, marginBottom: 16 }}>
                   {application.tags.length === 0 ? (
-                    <Tag bordered={false} color="default">
+                    <Tag variant="filled" color="default">
                       {t('auto.no_tags')}
                     </Tag>
                   ) : (
                     application.tags.map((tag) => (
-                      <Tag key={tag.id} bordered={false} color="blue">
+                      <Tag key={tag.id} variant="filled" color="blue">
                         {tag.name}
                       </Tag>
                     ))

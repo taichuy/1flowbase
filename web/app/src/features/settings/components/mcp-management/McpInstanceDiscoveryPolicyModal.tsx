@@ -236,7 +236,7 @@ export function McpInstanceDiscoveryPolicyModal({
       destroyOnHidden
     >
       <Space
-        direction="vertical"
+        orientation="vertical"
         size="middle"
         className="mcp-management__stack"
       >

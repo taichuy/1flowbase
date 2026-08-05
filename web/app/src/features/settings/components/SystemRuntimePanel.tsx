@@ -193,7 +193,7 @@ function MetricGauge({
         percent={percent ?? 0}
         size={78}
         strokeColor="#00ab73"
-        trailColor="#e8edea"
+        railColor="#e8edea"
         strokeWidth={8}
         format={() => display}
       />
@@ -311,7 +311,7 @@ export function SystemRuntimePanel() {
         <Alert
           type="error"
           showIcon
-          message={i18nText(
+          title={i18nText(
             'settings',
             'auto.runtime_information_loading_failed'
           )}
@@ -571,7 +571,7 @@ export function SystemRuntimePanel() {
             <Alert
               type="warning"
               showIcon
-              message={i18nText(
+              title={i18nText(
                 'settings',
                 'auto.runtime_information_loading_failed'
               )}
@@ -761,7 +761,7 @@ export function SystemRuntimePanel() {
             type="warning"
             showIcon
             icon={<ExclamationCircleOutlined />}
-            message={i18nText('settings', 'auto.runner_is_unreachable')}
+            title={i18nText('settings', 'auto.runner_is_unreachable')}
           />
         ) : null}
       </div>

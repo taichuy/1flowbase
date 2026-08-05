@@ -99,7 +99,7 @@ export function DataModelDetailDrawer({
     <Drawer
       title={title}
       open={open}
-      width={width}
+      size={width}
       destroyOnHidden
       onClose={onClose}
       rootClassName="data-model-panel__detail-drawer"

@@ -16,12 +16,12 @@ export function SchemaDrawerPanel({
 }) {
   return (
     <Drawer
-      destroyOnClose={schema.destroyOnClose}
+      destroyOnHidden={schema.destroyOnClose}
       getContainer={schema.getContainer}
       open={open}
       placement="right"
       title={schema.title}
-      width={schema.width}
+      size={schema.width}
       onClose={onClose}
     >
       {children}

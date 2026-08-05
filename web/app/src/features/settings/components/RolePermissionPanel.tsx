@@ -589,7 +589,7 @@ export function RolePermissionPanel({
               _: unknown,
               row: ReturnType<typeof policyTableRows>[number]
             ) => (
-              <Space direction="vertical" size={0}>
+              <Space orientation="vertical" size={0}>
                 <Typography.Text strong>
                   {row.catalogGroup.label}
                 </Typography.Text>
@@ -890,7 +890,7 @@ export function RolePermissionPanel({
               }}
             >
               <Space
-                direction="vertical"
+                orientation="vertical"
                 size="middle"
                 style={{ width: '100%' }}
               >
@@ -1100,7 +1100,7 @@ export function RolePermissionPanel({
                   color: '#bfbfbf'
                 }}
               >
-                <Space direction="vertical" align="center">
+                <Space orientation="vertical" align="center">
                   <TeamOutlined style={{ fontSize: 48 }} />
                   <Typography.Text type="secondary">
                     {i18nText('settings', 'auto.select_role_left_view_details')}
@@ -1280,7 +1280,7 @@ export function RolePermissionPanel({
           }
           open={Boolean(consolePolicyDetail)}
           onClose={() => setConsolePolicyDetail(null)}
-          width={640}
+          size={640}
           destroyOnHidden
           footer={
             <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1299,7 +1299,7 @@ export function RolePermissionPanel({
           }
         >
           {consolePolicyDetail ? (
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Space orientation="vertical" size="large" style={{ width: '100%' }}>
               {consolePolicyDetail.catalogGroup.description ? (
                 <Typography.Paragraph type="secondary">
                   {consolePolicyDetail.catalogGroup.description}
@@ -1322,7 +1322,7 @@ export function RolePermissionPanel({
                       _: unknown,
                       operation: ConsolePolicyCatalogGroup['operations'][number]
                     ) => (
-                      <Space direction="vertical" size={0}>
+                      <Space orientation="vertical" size={0}>
                         <Typography.Text>{operation.summary}</Typography.Text>
                         {operation.description ? (
                           <Typography.Text type="secondary">

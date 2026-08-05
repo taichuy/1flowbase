@@ -158,12 +158,12 @@ export function McpBundleReviewModal({
       {loading ? (
         <Spin />
       ) : review ? (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           {integrityWarnings.length > 0 ? (
             <Alert
               showIcon
               type="warning"
-              message={
+              title={
                 <List
                   size="small"
                   dataSource={integrityWarnings}
@@ -172,12 +172,12 @@ export function McpBundleReviewModal({
               }
             />
           ) : null}
-          {warning ? <Alert showIcon type="warning" message={warning} /> : null}
+          {warning ? <Alert showIcon type="warning" title={warning} /> : null}
           {!imported ? (
             <Alert
               showIcon
               type="info"
-              message={i18nText(
+              title={i18nText(
                 'settingsMcpManagement',
                 'auto.mcp_bundle_overwrite_notice'
               )}
@@ -187,7 +187,7 @@ export function McpBundleReviewModal({
             <Alert
               showIcon
               type="warning"
-              message={i18nText(
+              title={i18nText(
                 'settingsMcpManagement',
                 'auto.mcp_bundle_shared_tool_impact'
               )}
@@ -213,7 +213,7 @@ export function McpBundleReviewModal({
                   ? 'success'
                   : 'warning'
               }
-              message={
+              title={
                 importReport?.status === 'already_applied'
                   ? i18nText(
                       'settingsMcpManagement',

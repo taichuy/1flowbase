@@ -60,7 +60,7 @@ export function DataModelPermissionsTab({
       title: 'Scope',
       key: 'scope',
       render: (_, grant) => (
-        <Space direction="vertical" size={2}>
+        <Space orientation="vertical" size={2}>
           <Tag>{grant.scope_kind}</Tag>
           <span>{grant.scope_id}</span>
         </Space>

@@ -102,7 +102,7 @@ describe('overlay shell runtime', () => {
       placement: 'right',
       title: '历史版本',
       getContainer: false,
-      destroyOnClose: undefined
+      destroyOnHidden: undefined
     });
 
     render(
@@ -124,7 +124,7 @@ describe('overlay shell runtime', () => {
       open: true,
       placement: 'right',
       title: '运行详情',
-      destroyOnClose: true
+      destroyOnHidden: true
     });
     expect(screen.getByText('inline drawer body')).toBeInTheDocument();
     expect(screen.getByText('portal drawer body')).toBeInTheDocument();

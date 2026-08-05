@@ -22,7 +22,7 @@ export function IssuesDrawer({
       open={open}
       placement="right"
       title="Issues"
-      width={360}
+      size={360}
       onClose={onClose}
     >
       <List
@@ -30,7 +30,7 @@ export function IssuesDrawer({
         locale={{ emptyText: i18nText("agentFlow", "auto.static_issues_draft") }}
         renderItem={(issue) => (
           <List.Item>
-            <Space direction="vertical" size={4}>
+            <Space orientation="vertical" size={4}>
               <Button type="link" onClick={() => onSelectIssue(issue)}>
                 {issue.title}
               </Button>

@@ -526,7 +526,7 @@ export function ModelProviderRequestLogsPanel() {
               </Button>
             ) : undefined
           }
-          message={
+          title={
             clearProgress.status === 'failed'
               ? i18nText('settings', 'auto.request_log_clear_stopped', {
                   count: clearProgress.deletedCount

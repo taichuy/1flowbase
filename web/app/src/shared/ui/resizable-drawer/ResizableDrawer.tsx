@@ -140,14 +140,14 @@ export function ResizableDrawer({
 
   return (
     <Drawer
-      destroyOnClose={destroyOnClose}
+      destroyOnHidden={destroyOnClose}
       extra={extra}
       footer={footer}
       open={open}
       placement="right"
       rootClassName={resolvedRootClassName}
       title={title}
-      width={width}
+      size={width}
       onClose={onClose}
     >
       <div

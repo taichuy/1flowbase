@@ -123,7 +123,7 @@ export function FileTableDrawer({
       }
       open={open}
       onClose={onClose}
-      width={480}
+      size={480}
       extra={
         !isView ? (
           mode === 'edit' ? (

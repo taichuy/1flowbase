@@ -356,7 +356,7 @@ export function I18nCatalogPage() {
           onClose={() => setConflictVisible(false)}
           showIcon
           type="warning"
-          message={t('auto.translation_catalog_revision_conflict')}
+          title={t('auto.translation_catalog_revision_conflict')}
           data-testid="i18n-catalog-conflict"
         />
       ) : null}
@@ -364,7 +364,7 @@ export function I18nCatalogPage() {
         <Alert
           type="error"
           showIcon
-          message={t('auto.translation_catalog_load_failed')}
+          title={t('auto.translation_catalog_load_failed')}
         />
       ) : null}
       <div

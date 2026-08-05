@@ -740,7 +740,7 @@ function GenericExtensionCenterSection({
           <Alert
             type="error"
             showIcon
-            message={t('auto.extension_catalog_load_failed')}
+            title={t('auto.extension_catalog_load_failed')}
             description={t('auto.extension_catalog_load_failed_description')}
             action={
               <Button onClick={() => void catalogQuery.refetch()}>
@@ -755,7 +755,7 @@ function GenericExtensionCenterSection({
               <Alert
                 type="warning"
                 showIcon
-                message={t('auto.extension_catalog_stale')}
+                title={t('auto.extension_catalog_stale')}
               />
             ) : null}
             <DataTable<ExtensionRow>
@@ -845,7 +845,7 @@ function GenericExtensionCenterSection({
       <Drawer
         open={Boolean(selected)}
         title={selected ? extensionName(selected) : undefined}
-        width={560}
+        size={560}
         onClose={() => setSelected(null)}
       >
         {selected ? (

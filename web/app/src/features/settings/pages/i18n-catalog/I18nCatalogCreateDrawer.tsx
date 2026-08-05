@@ -23,11 +23,11 @@ export function I18nCatalogCreateDrawer({
 
   return (
     <Drawer
-      destroyOnClose
+      destroyOnHidden
       onClose={onClose}
       open={open}
       title={t('auto.translation_catalog_create_custom_key')}
-      width="min(480px, 100vw)"
+      size="min(480px, 100vw)"
       data-testid="i18n-catalog-create-drawer"
     >
       <Form

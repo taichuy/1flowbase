@@ -528,7 +528,7 @@ export function McpTemplateLibrary({
         <Alert
           showIcon
           type="warning"
-          message={i18nText(
+          title={i18nText(
             'settingsMcpManagement',
             'auto.mcp_template_remote_unavailable'
           )}
@@ -538,7 +538,7 @@ export function McpTemplateLibrary({
         <Alert
           showIcon
           type="error"
-          message={
+          title={
             libraryQuery.error instanceof Error
               ? libraryQuery.error.message
               : String(libraryQuery.error)
@@ -556,7 +556,7 @@ export function McpTemplateLibrary({
       <Drawer
         open={Boolean(selected)}
         title={selected ? bundleKey(selected) : undefined}
-        width={variant === 'compact' ? 760 : 900}
+        size={variant === 'compact' ? 760 : 900}
         onClose={() => setSelectedKey(null)}
       >
         {selected ? (

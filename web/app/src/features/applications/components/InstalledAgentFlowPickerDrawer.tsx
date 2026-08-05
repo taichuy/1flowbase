@@ -34,7 +34,7 @@ export function InstalledAgentFlowPickerDrawer({
     <Drawer
       open={open}
       title={t('auto.select_installed_agent_flow')}
-      width={520}
+      size={520}
       onClose={onClose}
       extra={
         <Typography.Link href="/templates">

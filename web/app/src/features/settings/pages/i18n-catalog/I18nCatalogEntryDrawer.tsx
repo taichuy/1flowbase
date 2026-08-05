@@ -65,13 +65,13 @@ export function I18nCatalogEntryDrawer({
 
   return (
     <Drawer
-      destroyOnClose
+      destroyOnHidden
       loading={loading}
       onClose={onClose}
       open={open}
       placement="right"
       title={t('auto.translation_catalog_entry_details')}
-      width="min(480px, 100vw)"
+      size="min(480px, 100vw)"
       data-testid="i18n-catalog-entry-drawer"
     >
       {entry ? (

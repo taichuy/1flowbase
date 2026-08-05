@@ -56,7 +56,7 @@ function PreviewFieldKey({ fieldKey }: { fieldKey: string }) {
   );
 
   return (
-    <Space direction="vertical" size={0}>
+    <Space orientation="vertical" size={0}>
       <Typography.Text>{visibleText}</Typography.Text>
       <OmittedCharacterCount count={omittedCharacterCount} />
     </Space>
@@ -70,7 +70,7 @@ function PreviewScalarValue({ fullText }: { fullText: string }) {
   );
 
   return (
-    <Space direction="vertical" size={0}>
+    <Space orientation="vertical" size={0}>
       <Typography.Text
         copyable={
           omittedCharacterCount > 0
@@ -125,7 +125,7 @@ function PreviewValue({
 
   const visibleEntries = entries.slice(0, PREVIEW_NESTED_ENTRY_LIMIT);
   return (
-    <Space direction="vertical" size={2}>
+    <Space orientation="vertical" size={2}>
       {visibleEntries.map(([key, entry]) => (
         <div key={key}>
           <PreviewFieldKey fieldKey={key} />
@@ -194,12 +194,11 @@ export function DataSourceResourcePreviewDrawer({
       })}
       open
       placement={isMobile ? 'bottom' : 'right'}
-      width={isMobile ? undefined : 760}
-      height={isMobile ? '85vh' : undefined}
+      size={isMobile ? '85vh' : 760}
       onClose={onClose}
     >
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Space direction="vertical" size={2}>
+      <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={2}>
           <Typography.Text>{dataSource.display_name}</Typography.Text>
           <Typography.Text type="secondary">
             <code className="data-model-panel__code-badge">

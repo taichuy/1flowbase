@@ -47,7 +47,7 @@ export function SettingsMcpManagementSection({
       >
         <Alert
           type="error"
-          message={i18nText('settings', 'auto.mcp_load_failed')}
+          title={i18nText('settings', 'auto.mcp_load_failed')}
         />
       </SettingsSectionSurface>
     );

@@ -105,7 +105,7 @@ export function AgentFlowTemplateLibrary() {
       title: t('auto.template_info'),
       key: 'template',
       render: (_, family) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{family.artifact_id}</Typography.Text>
           <Typography.Text type="secondary">
             {family.catalog_id}
@@ -198,11 +198,11 @@ export function AgentFlowTemplateLibrary() {
       <Drawer
         open={Boolean(selectedFamily)}
         title={selectedFamily?.artifact_id}
-        width={640}
+        size={640}
         onClose={() => setSelectedFamily(null)}
       >
         {selectedFamily ? (
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label={t('auto.template_id')}>
                 {selectedFamily.catalog_id}

@@ -59,7 +59,7 @@ export function LlmResponseFormatField({ adapter, block }: SchemaFieldRendererPr
   }
 
   return (
-    <Space direction="vertical" size={12} style={{ display: 'flex' }}>
+    <Space orientation="vertical" size={12} style={{ display: 'flex' }}>
       <Segmented
         block
         value={responseFormat.mode}
@@ -98,7 +98,7 @@ export function LlmResponseFormatField({ adapter, block }: SchemaFieldRendererPr
               }
             }}
           />
-          {parseError ? <Alert type="warning" showIcon message={parseError} /> : null}
+          {parseError ? <Alert type="warning" showIcon title={parseError} /> : null}
         </>
       ) : null}
     </Space>

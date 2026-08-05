@@ -74,7 +74,7 @@ export function JsxStudioComponentsPanel({
           <Alert
             type="error"
             showIcon
-            message={i18nText(
+            title={i18nText(
               'frontstage',
               'auto.component_catalog_load_failed'
             )}

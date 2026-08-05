@@ -281,8 +281,8 @@ export function McpClientConfigurationModal({
         }
       | undefined
   ) => (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="small" style={{ width: '100%' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
           {i18nText(
             'settingsMcpManagement',
@@ -306,7 +306,7 @@ export function McpClientConfigurationModal({
           </Typography.Text>
         )}
       </Space>
-      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="small" style={{ width: '100%' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
           {i18nText('settingsMcpManagement', 'auto.remove_commands')}
         </Typography.Title>
@@ -322,7 +322,7 @@ export function McpClientConfigurationModal({
           <Alert
             type="warning"
             showIcon
-            message={i18nText(
+            title={i18nText(
               'settingsMcpManagement',
               'auto.open_code_remove_unsupported'
             )}
@@ -374,11 +374,11 @@ export function McpClientConfigurationModal({
       width={720}
       destroyOnHidden
     >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Alert
           type="info"
           showIcon
-          message={i18nText(
+          title={i18nText(
             'settingsMcpManagement',
             'auto.api_key_encrypted_storage_notice'
           )}
@@ -404,7 +404,7 @@ export function McpClientConfigurationModal({
         <Alert
           type="warning"
           showIcon
-          message={i18nText(
+          title={i18nText(
             'settingsMcpManagement',
             'auto.client_config_plaintext_notice'
           )}

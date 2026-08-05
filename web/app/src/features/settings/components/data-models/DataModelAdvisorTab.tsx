@@ -76,7 +76,7 @@ export function DataModelAdvisorTab({
 
           return (
             <List.Item>
-              <Space direction="vertical" size={4}>
+              <Space orientation="vertical" size={4}>
                 <Space wrap>
                   <Tag color={severityColor(finding.severity)}>
                     {advisorSeverityLabel(finding.severity)}

@@ -392,7 +392,7 @@ function TraceProjectionStatusNotice({
   return (
     <Alert
       className="agent-flow-editor__conversation-log-projection-status"
-      message={traceProjectionStatusMessage(status)}
+      title={traceProjectionStatusMessage(status)}
       showIcon
       type={status.projection_status === 'failed' ? 'error' : 'info'}
     />
@@ -573,7 +573,7 @@ function FlattenedToolModeTraceNodeChild({
       {childrenQuery.isLoading ? <Spin /> : null}
       {childrenQuery.isError ? (
         <Alert
-          message={i18nText('agentFlow', 'auto.loading_failed')}
+          title={i18nText('agentFlow', 'auto.loading_failed')}
           showIcon
           type="error"
         />
@@ -767,7 +767,7 @@ function LazyTraceNodeItem({
       ) : null}
       {childrenState.loadMoreFailed ? (
         <Alert
-          message={i18nText('agentFlow', 'auto.loading_failed')}
+          title={i18nText('agentFlow', 'auto.loading_failed')}
           showIcon
           type="error"
         />

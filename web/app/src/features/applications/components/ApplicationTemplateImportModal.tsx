@@ -75,12 +75,12 @@ export function ApplicationTemplateImportModal({
       onOk={onImport}
     >
       {preview ? (
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={16} style={{ width: '100%' }}>
           {integrityWarnings.length > 0 ? (
             <Alert
               showIcon
               type="warning"
-              message={
+              title={
                 <List
                   size="small"
                   dataSource={integrityWarnings}
@@ -131,7 +131,7 @@ export function ApplicationTemplateImportModal({
               dataSource={missingDependencies}
               renderItem={(dependency) => (
                 <List.Item>
-                  <Space direction="vertical" size={2}>
+                  <Space orientation="vertical" size={2}>
                     <Typography.Text>
                       {dependencyLabel(dependency)}
                     </Typography.Text>
@@ -155,7 +155,7 @@ export function ApplicationTemplateImportModal({
               dataSource={unresolvedNodes}
               renderItem={(node) => (
                 <List.Item>
-                  <Space direction="vertical" size={2}>
+                  <Space orientation="vertical" size={2}>
                     <Typography.Text>
                       {node.alias} · {node.node_id}
                     </Typography.Text>
@@ -170,7 +170,7 @@ export function ApplicationTemplateImportModal({
             <Alert
               type="success"
               showIcon
-              message={t('auto.template_ready_to_import')}
+              title={t('auto.template_ready_to_import')}
             />
           )}
         </Space>

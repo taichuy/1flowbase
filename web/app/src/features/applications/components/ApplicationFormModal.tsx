@@ -350,7 +350,7 @@ export function ApplicationFormModal({
             <Alert
               type="error"
               showIcon
-              message={
+              title={
                 isEdit
                   ? t('auto.save_failed')
                   : t('auto.create_application_failed')
@@ -373,7 +373,7 @@ export function ApplicationFormModal({
           ) : (
             <Form.Item label={t('auto.type')} name="application_type">
               <Radio.Group>
-                <Space direction="vertical" size="small">
+                <Space orientation="vertical" size="small">
                   {(catalogQuery.data?.types ?? []).map((option) => (
                     <Radio key={option.value} value={option.value}>
                       {option.label}
@@ -547,7 +547,7 @@ export function ApplicationFormModal({
                 <Alert
                   type="info"
                   showIcon
-                  message={t('auto.schedule_disabled_hint')}
+                  title={t('auto.schedule_disabled_hint')}
                 />
               )}
               <Form.Item
@@ -609,7 +609,7 @@ export function ApplicationFormModal({
             <Alert
               type="error"
               showIcon
-              message={t('auto.trigger_load_failed')}
+              title={t('auto.trigger_load_failed')}
             />
           ) : null}
 

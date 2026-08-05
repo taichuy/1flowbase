@@ -296,7 +296,7 @@ export function FrontstagePageTabs({
       className="frontstage-page-tabs__settings"
       onClick={(event) => event.stopPropagation()}
     >
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <Space orientation="vertical" size={12} style={{ width: '100%' }}>
         <Space.Compact style={{ width: '100%' }}>
           <Input
             aria-label={i18nText('frontstage', 'auto.page_tab_name')}

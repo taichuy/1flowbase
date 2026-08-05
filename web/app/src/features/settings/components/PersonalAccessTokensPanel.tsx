@@ -399,7 +399,7 @@ export function PersonalAccessTokensPanel() {
         destroyOnHidden
       >
         <Space
-          direction="vertical"
+          orientation="vertical"
           className="personal-access-tokens-panel__created-token-modal"
         >
           <Typography.Text>

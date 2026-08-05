@@ -71,7 +71,7 @@ export function AgentFlowOverlay({
     >
       <Space className="agent-flow-editor__overlay-status" size="small">
         <Typography.Text strong>{applicationName}</Typography.Text>
-        <Tag color={statusTag.color} bordered={false}>
+        <Tag color={statusTag.color} variant="filled">
           {statusTag.label}
         </Tag>
       </Space>

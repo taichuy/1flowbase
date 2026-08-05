@@ -342,7 +342,7 @@ export function SettingsModelProvidersSection({
   const sectionStatus = useMemo(
     () =>
       errorMessage ? (
-        <Alert type="error" showIcon message={errorMessage} />
+        <Alert type="error" showIcon title={errorMessage} />
       ) : null,
     [errorMessage]
   );

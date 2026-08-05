@@ -24,7 +24,7 @@ export function LoadingState({
 
   return (
     <div className={classNames} role="status" aria-live="polite" aria-label="thinking">
-      <Spin spinning tip="thinking" size={compact ? 'default' : 'large'}>
+      <Spin spinning description="thinking" size={compact ? 'medium' : 'large'}>
         <div className="loading-state__surface" aria-hidden="true">
           <Skeleton
             active

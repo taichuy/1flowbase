@@ -171,7 +171,7 @@ export function DataModelTable({
       key: 'title',
       width: 220,
       render: (_, model) => (
-        <Space direction="vertical" size={2}>
+        <Space orientation="vertical" size={2}>
           <Typography.Text strong className="data-model-panel__model-title">
             {model.title}
           </Typography.Text>
@@ -376,7 +376,7 @@ export function DataModelTable({
                 justify="space-between"
                 style={{ width: '100%' }}
               >
-                <Space direction="vertical" size={2}>
+                <Space orientation="vertical" size={2}>
                   <Typography.Text strong>{model.title}</Typography.Text>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {model.code}

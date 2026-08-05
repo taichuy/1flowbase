@@ -183,7 +183,7 @@ export function FileStorageDrawer({
       }
       open={open}
       onClose={onClose}
-      width={520}
+      size={520}
       extra={
         !isView ? (
           <Button type="primary" loading={submitting} onClick={handleSubmit}>

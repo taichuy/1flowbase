@@ -180,7 +180,7 @@ export function I18nCatalogActivationFlow({
       onOk={() => void activateCatalog()}
     >
       {review ? (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           {review.integrityWarnings.length > 0 ? (
             <List
               size="small"
@@ -192,7 +192,7 @@ export function I18nCatalogActivationFlow({
             <Alert
               showIcon
               type="success"
-              message={t('auto.translation_catalog_is_current')}
+              title={t('auto.translation_catalog_is_current')}
             />
           ) : null}
           <Descriptions size="small" column={1} bordered>

@@ -77,9 +77,6 @@ describe('vite config', () => {
       'echarts',
       'lexical',
       'monaco-editor',
-      'react-markdown',
-      'remark-breaks',
-      'remark-gfm',
       'vditor'
     ];
 
@@ -98,7 +95,7 @@ describe('vite config', () => {
     expect(source).toContain('const reactDraggableBrowserDefines');
     expect(source).toContain("'process.env.DRAGGABLE_DEBUG': 'false'");
     expect(source.match(/define: reactDraggableBrowserDefines/g)).toHaveLength(
-      2
+      1
     );
   });
 });

@@ -99,14 +99,8 @@ export default defineConfig(({ mode }) => {
         'echarts',
         'lexical',
         'monaco-editor',
-        'react-markdown',
-        'remark-breaks',
-        'remark-gfm',
         'vditor'
-      ],
-      esbuildOptions: {
-        define: reactDraggableBrowserDefines
-      }
+      ]
     },
     build: {
       chunkSizeWarningLimit: 3500,

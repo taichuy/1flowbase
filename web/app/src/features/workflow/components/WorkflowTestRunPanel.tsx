@@ -68,7 +68,7 @@ function errorMessage(error: unknown) {
 function ResultValue({ value }: { value: unknown }) {
   if (Array.isArray(value)) {
     return (
-      <Space direction="vertical" size={4}>
+      <Space orientation="vertical" size={4}>
         {value.map((entry, index) => (
           <ResultValue key={index} value={entry} />
         ))}
@@ -224,7 +224,7 @@ export function WorkflowTestRunPanel({
       </Button>
       <Drawer
         open={open}
-        width={520}
+        size={520}
         title={i18nText('workflow', 'auto.workflow_test_run')}
         onClose={() => setOpen(false)}
         destroyOnHidden
@@ -303,7 +303,7 @@ export function WorkflowTestRunPanel({
             <Alert
               showIcon
               type="warning"
-              message={i18nText(
+              title={i18nText(
                 'workflow',
                 'auto.workflow_test_run_unavailable'
               )}
@@ -324,7 +324,7 @@ export function WorkflowTestRunPanel({
           <Alert
             showIcon
             type="error"
-            message={i18nText('workflow', 'auto.workflow_test_run_failed')}
+            title={i18nText('workflow', 'auto.workflow_test_run_failed')}
             description={failure}
             style={{ marginTop: 16 }}
           />
@@ -334,7 +334,7 @@ export function WorkflowTestRunPanel({
           <Alert
             showIcon
             type="info"
-            message={i18nText(
+            title={i18nText(
               'workflow',
               'auto.workflow_test_run_status_running'
             )}
@@ -345,7 +345,7 @@ export function WorkflowTestRunPanel({
         {detail ? (
           <>
             <Divider />
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
               <Descriptions column={1} size="small">
                 <Descriptions.Item
                   label={i18nText('workflow', 'auto.workflow_test_run_status')}

@@ -598,7 +598,7 @@ export function McpToolsTab({
   );
 
   return (
-    <Space direction="vertical" size="middle" className="mcp-management__stack">
+    <Space orientation="vertical" size="middle" className="mcp-management__stack">
       <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
         <Space wrap>
           <Input.Search
@@ -904,7 +904,7 @@ export function McpToolsTab({
           <div hidden={step !== 'interface'}>
             {editingTool?.execution_target.kind === 'mcp_proxy' ? (
               <Space
-                direction="vertical"
+                orientation="vertical"
                 size="middle"
                 className="mcp-management__stack"
               >
@@ -1001,7 +1001,7 @@ export function McpToolsTab({
             <div>
               {editingTool?.execution_target.kind === 'mcp_proxy' ? (
                 <Space
-                  direction="vertical"
+                  orientation="vertical"
                   size="middle"
                   className="mcp-management__stack"
                 >
@@ -1107,7 +1107,7 @@ export function McpToolsTab({
             <div>
               {editingTool?.execution_target.kind === 'mcp_proxy' ? (
                 <Space
-                  direction="vertical"
+                  orientation="vertical"
                   size="middle"
                   className="mcp-management__stack"
                 >
