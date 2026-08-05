@@ -997,7 +997,8 @@ where
                 .ok_or_else(|| anyhow!("flow run detail not found"));
         };
 
-        let execution_started_event = if running.run_mode == domain::FlowRunMode::AssistantExecution {
+        let execution_started_event = if running.run_mode == domain::FlowRunMode::AssistantExecution
+        {
             "assistant_execution_started"
         } else {
             "public_run_execution_started"
@@ -1316,30 +1317,37 @@ where
         }
         let assistant = flow_run.run_mode == domain::FlowRunMode::AssistantExecution;
         let (event_type, audit_action) = match (assistant, flow_run.status) {
-            (true, domain::FlowRunStatus::Succeeded) => {
-                ("assistant_execution_succeeded", "embedded_assistant.run_succeeded")
-            }
-            (true, domain::FlowRunStatus::Incomplete) => {
-                ("assistant_execution_incomplete", "embedded_assistant.run_incomplete")
-            }
-            (true, domain::FlowRunStatus::Failed) => {
-                ("assistant_execution_failed", "embedded_assistant.run_failed")
-            }
-            (true, domain::FlowRunStatus::Cancelled) => {
-                ("assistant_execution_cancelled", "embedded_assistant.run_cancelled")
-            }
-            (false, domain::FlowRunStatus::Succeeded) => {
-                ("public_run_succeeded", "application_public_api.run_succeeded")
-            }
-            (false, domain::FlowRunStatus::Incomplete) => {
-                ("public_run_incomplete", "application_public_api.run_incomplete")
-            }
+            (true, domain::FlowRunStatus::Succeeded) => (
+                "assistant_execution_succeeded",
+                "embedded_assistant.run_succeeded",
+            ),
+            (true, domain::FlowRunStatus::Incomplete) => (
+                "assistant_execution_incomplete",
+                "embedded_assistant.run_incomplete",
+            ),
+            (true, domain::FlowRunStatus::Failed) => (
+                "assistant_execution_failed",
+                "embedded_assistant.run_failed",
+            ),
+            (true, domain::FlowRunStatus::Cancelled) => (
+                "assistant_execution_cancelled",
+                "embedded_assistant.run_cancelled",
+            ),
+            (false, domain::FlowRunStatus::Succeeded) => (
+                "public_run_succeeded",
+                "application_public_api.run_succeeded",
+            ),
+            (false, domain::FlowRunStatus::Incomplete) => (
+                "public_run_incomplete",
+                "application_public_api.run_incomplete",
+            ),
             (false, domain::FlowRunStatus::Failed) => {
                 ("public_run_failed", "application_public_api.run_failed")
             }
-            (false, domain::FlowRunStatus::Cancelled) => {
-                ("public_run_cancelled", "application_public_api.run_cancelled")
-            }
+            (false, domain::FlowRunStatus::Cancelled) => (
+                "public_run_cancelled",
+                "application_public_api.run_cancelled",
+            ),
             (_, _) => return,
         };
         let payload = json!({

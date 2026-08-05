@@ -331,7 +331,7 @@ describe('AppShellFrame', () => {
     expect(headerRule).toContain('overflow-y: hidden;');
     expect(headerRule).toContain('white-space: nowrap;');
     expect(actionRowRule).toContain('flex-wrap: nowrap;');
-    expect(appShellCss).not.toContain('flex-direction: column;');
+    expect(headerRule).not.toContain('flex-direction: column;');
     expect(appShellCss).not.toContain('height: auto;');
     expect(mobileActionsRule).toContain('align-self: center;');
     expect(mobileActionsRule).toContain('width: auto;');

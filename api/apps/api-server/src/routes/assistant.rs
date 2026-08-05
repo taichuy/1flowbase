@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use axum::{extract::State, http::HeaderMap, Json};
 use control_plane::{
@@ -292,36 +292,43 @@ fn assistant_provider_tools(
     catalog: &domain::McpCatalogSnapshot,
     selected_instance_ids: &[String],
 ) -> Vec<Value> {
-    catalog
-        .bindings
-        .iter()
-        .filter(|binding| binding.visible)
-        .filter(|binding| {
-            catalog.groups.iter().any(|group| {
-                group.instance_record_id == binding.instance_record_id
-                    && group.path == binding.group_path
-                    && group.enabled
-            })
-        })
-        .filter_map(|binding| {
-            let instance = catalog.instances.iter().find(|instance| {
-                instance.id == binding.instance_record_id
-                    && instance.status == McpInstanceStatus::Enabled
-                    && selected_instance_ids.contains(&instance.instance_id)
-            })?;
-            let tool = catalog.tools.iter().find(|tool| {
-                tool.id == binding.tool_record_id && tool.status == domain::McpToolStatus::Enabled
-            })?;
-            Some(json!({
-                "type": "function",
-                "function": {
-                    "name": assistant_tool_name(instance, tool),
-                    "description": tool.full_description,
-                    "parameters": tool.parameter_schema,
-                }
-            }))
-        })
-        .collect()
+    let mut names = BTreeSet::new();
+    let mut provider_tools = Vec::new();
+    for binding in catalog.bindings.iter().filter(|binding| binding.visible) {
+        let group_is_enabled = catalog.groups.iter().any(|group| {
+            group.instance_record_id == binding.instance_record_id
+                && group.path == binding.group_path
+                && group.enabled
+        });
+        if !group_is_enabled {
+            continue;
+        }
+        let Some(instance) = catalog.instances.iter().find(|instance| {
+            instance.id == binding.instance_record_id
+                && instance.status == McpInstanceStatus::Enabled
+                && selected_instance_ids.contains(&instance.instance_id)
+        }) else {
+            continue;
+        };
+        let Some(tool) = catalog.tools.iter().find(|tool| {
+            tool.id == binding.tool_record_id && tool.status == domain::McpToolStatus::Enabled
+        }) else {
+            continue;
+        };
+        let name = assistant_tool_name(instance, tool);
+        if !names.insert(name.clone()) {
+            continue;
+        }
+        provider_tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": tool.full_description,
+                "parameters": tool.parameter_schema,
+            }
+        }));
+    }
+    provider_tools
 }
 
 fn assistant_tool_name(
@@ -368,14 +375,18 @@ async fn assistant_tool_result(
     let Some(tool) = available else {
         return Ok(json!({"tool_call_id": id, "content": "Tool is unavailable", "is_error": true}));
     };
-    let arguments = call
-        .get("arguments")
-        .cloned()
-        .map(|value| match value {
-            Value::String(value) => serde_json::from_str(&value).unwrap_or_else(|_| json!({})),
-            value => value,
-        })
-        .unwrap_or_else(|| json!({}));
+    let arguments = match call.get("arguments") {
+        Some(Value::String(value)) => match serde_json::from_str(value) {
+            Ok(arguments) => arguments,
+            Err(_) => {
+                return Ok(
+                    json!({"tool_call_id": id, "name": name, "content": "Tool arguments must be valid JSON", "is_error": true}),
+                );
+            }
+        },
+        Some(value) => value.clone(),
+        None => json!({}),
+    };
     let result = match &tool.execution_target {
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
             let interface =
@@ -396,8 +407,11 @@ async fn assistant_tool_result(
                 .await
                 {
                     Ok(value) => json!({"content": value}),
-                    Err(_) => {
-                        json!({"content": "MCP interface execution failed", "is_error": true})
+                    Err(debug_execute::McpDebugExecuteError::Api(error)) => {
+                        json!({"content": format!("MCP interface execution failed: {error}"), "is_error": true})
+                    }
+                    Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
+                        json!({"content": format!("MCP interface returned HTTP {}", response.status()), "is_error": true})
                     }
                 },
                 Err(_) => json!({"content": "MCP interface is unavailable", "is_error": true}),
@@ -441,7 +455,9 @@ async fn assistant_tool_result(
             .await;
             match upstream {
                 Ok(value) => json!({"content": value}),
-                Err(_) => json!({"content": "Upstream MCP execution failed", "is_error": true}),
+                Err(error) => {
+                    json!({"content": format!("Upstream MCP execution failed: {error}"), "is_error": true})
+                }
             }
         }
     };
@@ -564,7 +580,8 @@ mod tests {
 
     #[test]
     fn assistant_routes_are_authenticated_console_routes() {
-        let bindings = route_assembly().bindings();
+        let assembly = route_assembly();
+        let bindings = assembly.bindings();
         assert!(bindings.iter().any(|binding| {
             binding.route.method == "GET"
                 && binding.route.path == "/api/console/assistant/settings"
@@ -575,5 +592,95 @@ mod tests {
                 && binding.route.path == "/api/console/assistant/runs"
                 && binding.ownership == access_control::ConsoleRouteOwnership::Authenticated
         }));
+    }
+
+    #[test]
+    fn mounted_tool_bound_to_multiple_groups_is_emitted_once() {
+        let now = time::OffsetDateTime::UNIX_EPOCH;
+        let workspace_id = Uuid::from_u128(10);
+        let instance_id = Uuid::from_u128(11);
+        let tool_id = Uuid::from_u128(12);
+        let instance = domain::McpInstanceRecord {
+            id: instance_id,
+            workspace_id,
+            instance_id: "catalog".to_string(),
+            name: "Catalog".to_string(),
+            description_short: None,
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/".to_string(),
+            created_by: workspace_id,
+            updated_by: workspace_id,
+            created_at: now,
+            updated_at: now,
+        };
+        let tool = domain::McpToolRecord {
+            id: tool_id,
+            workspace_id,
+            tool_id: "lookup".to_string(),
+            name: "Lookup".to_string(),
+            short_description: "Lookup".to_string(),
+            full_description: "Lookup a catalog item".to_string(),
+            execution_target: domain::McpToolExecutionTarget::InterfaceWrapper {
+                interface_id: "lookup".to_string(),
+            },
+            parameter_schema: json!({"type":"object"}),
+            result_schema: json!({}),
+            input_mapping: json!({"mappings": []}),
+            output_mapping: json!({"mappings": []}),
+            permission_code: None,
+            risk_level: domain::McpRiskLevel::Low,
+            des_id: "revision".to_string(),
+            des_id_required: false,
+            status: domain::McpToolStatus::Enabled,
+            revision: 1,
+            created_by: workspace_id,
+            updated_by: workspace_id,
+            created_at: now,
+            updated_at: now,
+        };
+        let group = |id, path: &str| domain::McpGroupRecord {
+            id,
+            instance_record_id: instance_id,
+            path: path.to_string(),
+            display_name: path.to_string(),
+            description_short: None,
+            enabled: true,
+            sort_order: 0,
+            created_by: workspace_id,
+            updated_by: workspace_id,
+            created_at: now,
+            updated_at: now,
+        };
+        let binding = |id, path: &str| domain::McpToolBindingRecord {
+            id,
+            instance_record_id: instance_id,
+            tool_record_id: tool_id,
+            group_path: path.to_string(),
+            tool_id: "lookup".to_string(),
+            display_alias: None,
+            visible: true,
+            sort_order: 0,
+            created_by: workspace_id,
+            updated_by: workspace_id,
+            created_at: now,
+            updated_at: now,
+        };
+        let catalog = domain::McpCatalogSnapshot {
+            instances: vec![instance],
+            groups: vec![
+                group(Uuid::from_u128(13), "/one"),
+                group(Uuid::from_u128(14), "/two"),
+            ],
+            tools: vec![tool],
+            bindings: vec![
+                binding(Uuid::from_u128(15), "/one"),
+                binding(Uuid::from_u128(16), "/two"),
+            ],
+            discovery_policies: Vec::new(),
+        };
+
+        let provider_tools = assistant_provider_tools(&catalog, &["catalog".to_string()]);
+
+        assert_eq!(provider_tools.len(), 1);
     }
 }
