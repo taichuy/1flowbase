@@ -48,6 +48,18 @@
 - 记忆 / spec / 历史趋势证据：
 - 归因：硬性失败 / warning / advisory / 未覆盖
 
+## Code Audit Evidence
+
+- Candidate identity：commit / branch / dirty diff / receipt candidate：
+- Artifact freshness：generated_at / candidate SHA / environment / stale or current：
+- Rule：命中的明确规则或不变量：
+- Evidence：文件、调用点、运行路径、fixture、日志、plan 或 artifact：
+- Impact：当前可观察影响与 blast radius：
+- Legal negative：已检查的合法反例，以及为什么不适用：
+- Severity：Blocking / High / Medium / Low warning / Advisory：
+- Unverified：缺失证据、环境限制和结论降级：
+- Authorization：只报告 / 已授权修复 / 需新 Issue：
+
 ## Conclusion
 
 - 是否存在 `Blocking` 问题：
@@ -67,8 +79,12 @@
 ### [Severity] [Title]
 
 - 位置：
-- 证据：
-- 为什么是问题：
+- Rule：
+- Evidence：
+- Impact：
+- Legal negative：
+- Candidate identity / Artifact freshness：
+- Unverified：
 - 建议修正方向：
 
 ### [Severity] [Title]
