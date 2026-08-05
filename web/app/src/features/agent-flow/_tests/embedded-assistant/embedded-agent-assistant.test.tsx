@@ -106,6 +106,11 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       screen.getAllByRole('separator').map((element) => element.getAttribute('aria-label'))
     ).toEqual(expect.arrayContaining([expect.any(String)]));
+    expect(
+      screen.getByRole('combobox', {
+        name: i18nText('appShell', 'auto.assistant_model')
+      })
+    ).toBeInTheDocument();
 
     const settings = screen.getByRole('button', {
       name: i18nText('appShell', 'auto.assistant_settings')
@@ -121,9 +126,6 @@ describe('EmbeddedAgentAssistant', () => {
       await screen.findByRole('dialog', {
         name: i18nText('appShell', 'auto.assistant_settings')
       })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(i18nText('appShell', 'auto.assistant_model'))
     ).toBeInTheDocument();
   });
 

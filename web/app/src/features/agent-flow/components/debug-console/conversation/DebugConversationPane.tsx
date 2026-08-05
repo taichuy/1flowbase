@@ -1,5 +1,5 @@
 import { Empty, Typography } from 'antd';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 import type {
   AgentFlowDebugMessage,
@@ -39,6 +39,7 @@ function debugMessageLabel(role: AgentFlowDebugMessage['role']) {
 
 export function DebugConversationPane({
   composerUiOnly = false,
+  composerFooterActions,
   logActionRunId,
   status,
   stopping,
@@ -67,6 +68,7 @@ export function DebugConversationPane({
   onStopRun: () => void;
   onSubmitPrompt: (prompt: string) => void;
   composerUiOnly?: boolean;
+  composerFooterActions?: ReactNode;
   logActionRunId?: string | null;
   showComposer?: boolean;
 }) {
@@ -310,6 +312,7 @@ export function DebugConversationPane({
       {showComposer ? (
         <DebugComposer
           disabled={composerUiOnly ? false : composerDisabled}
+          footerActions={composerFooterActions}
           submitting={composerUiOnly ? false : stopAvailable}
           stopping={composerUiOnly ? false : stopping}
           value={

@@ -738,6 +738,39 @@
   justify-content: flex-end;
 }
 
+.agent-flow-editor__debug-composer-footer {
+  display: contents;
+}
+
+.agent-flow-editor__debug-composer-box--with-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.agent-flow-editor__debug-composer-box--with-footer
+  .agent-flow-editor__debug-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent-flow-editor__debug-composer-footer-actions {
+  display: flex;
+  min-width: 0;
+  gap: 0.375rem;
+}
+
+.agent-flow-editor__debug-composer-footer-actions .ant-select {
+  min-width: 0;
+  max-width: 11rem;
+}
+
+.agent-flow-editor__debug-composer-footer-actions .ant-select-selector {
+  border-radius: 0.5rem !important;
+}
+
 .agent-flow-editor__debug-composer-submit {
   min-inline-size: clamp(2.125rem, 8.5cqw, 2.375rem);
   inline-size: clamp(2.125rem, 8.5cqw, 2.375rem);

@@ -26,19 +26,14 @@ function hasChangedPreference(
   if (!current || current.application_id !== next.application_id) {
     return true;
   }
-  return (
-    current.mcp_instance_ids.join('\u0000') !==
-      next.mcp_instance_ids.join('\u0000') ||
-    current.model !== next.model ||
-    current.reasoning_effort !== next.reasoning_effort
-  );
+  return current.mcp_instance_ids.join('\u0000') !== next.mcp_instance_ids.join('\u0000');
 }
 
 const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
 
 function initialAssistantWindowRect(): WindowWorkspaceRect {
   const viewport = getWindowWorkspaceViewport();
-  const width = Math.min(520, Math.max(360, viewport.width - 32));
+  const width = Math.min(560, Math.max(400, viewport.width - 32));
   return {
     left: Math.max(8, viewport.left + viewport.width - width - 16),
     top: Math.max(viewport.top + 8, 56),
@@ -65,7 +60,6 @@ export function EmbeddedAgentAssistantPreview({
   const [saving, setSaving] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [form] = Form.useForm<ConsoleAssistantPreference>();
-  const selectedFormModel = Form.useWatch('model', form);
   const {
     activate,
     close,
@@ -149,9 +143,6 @@ export function EmbeddedAgentAssistantPreview({
   const windowEntry = windowWorkspaceState.windows.find(
     (entry) => entry.id === ASSISTANT_WINDOW_ID
   );
-  const selectedModel = settings?.run_capabilities.models.find(
-    (model) => model.id === selectedFormModel
-  );
 
   useEffect(() => {
     if (mobile && windowEntry && !windowEntry.maximized) {
@@ -181,6 +172,25 @@ export function EmbeddedAgentAssistantPreview({
     }
   }
 
+  async function updateRuntimePreference(
+    patch: Pick<ConsoleAssistantPreference, 'model' | 'reasoning_effort'>
+  ) {
+    if (!csrfToken || !settings) {
+      return;
+    }
+    setSaving(true);
+    try {
+      setSettings(
+        await updateConsoleAssistantSettings(
+          { ...settings.preference, ...patch },
+          csrfToken
+        )
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (typeof document === 'undefined') {
     return null;
   }
@@ -198,7 +208,7 @@ export function EmbeddedAgentAssistantPreview({
           dragHandleSelector=".agent-flow-editor__dock-panel-header"
           initialRect={() => windowEntry.rect}
           minHeight={320}
-          minWidth={360}
+          minWidth={400}
           rect={windowEntry.rect}
           resizeEdges={['left', 'right', 'bottom']}
           resizeLabel={(edge) =>
@@ -211,6 +221,60 @@ export function EmbeddedAgentAssistantPreview({
           onRectChange={(rect) => setRect(ASSISTANT_WINDOW_ID, rect)}
         >
           <AgentFlowDebugConsole
+            composerFooterActions={
+              settings?.run_capabilities.model_selection_enabled ? (
+                <>
+                  <Select
+                    aria-label={i18nText('appShell', 'auto.assistant_model')}
+                    disabled={saving}
+                    options={settings.run_capabilities.models.map((model) => ({
+                      value: model.id,
+                      label: model.name ?? model.id
+                    }))}
+                    placeholder={i18nText('appShell', 'auto.assistant_model')}
+                    size="small"
+                    value={settings.preference.model ?? undefined}
+                    onChange={(model) => {
+                      const selected = settings.run_capabilities.models.find(
+                        (candidate) => candidate.id === model
+                      );
+                      void updateRuntimePreference({
+                        model,
+                        reasoning_effort:
+                          selected?.default_reasoning_effort ?? null
+                      });
+                    }}
+                  />
+                  {settings.run_capabilities.reasoning_effort_enabled &&
+                  settings.run_capabilities.models.find(
+                    (model) => model.id === settings.preference.model
+                  )?.reasoning_efforts.length ? (
+                    <Select
+                      aria-label={i18nText(
+                        'appShell',
+                        'auto.assistant_reasoning_effort'
+                      )}
+                      disabled={saving}
+                      options={settings.run_capabilities.models
+                        .find((model) => model.id === settings.preference.model)
+                        ?.reasoning_efforts.map((effort) => ({
+                          value: effort,
+                          label: effort
+                        }))}
+                      placeholder={i18nText(
+                        'appShell',
+                        'auto.assistant_reasoning_effort'
+                      )}
+                      size="small"
+                      value={settings.preference.reasoning_effort ?? undefined}
+                      onChange={(reasoning_effort) => {
+                        void updateRuntimePreference({ reasoning_effort });
+                      }}
+                    />
+                  ) : null}
+                </>
+              ) : null
+            }
             headerActions={
               <Button
                 aria-label={i18nText('appShell', 'auto.assistant_settings')}
@@ -283,38 +347,13 @@ export function EmbeddedAgentAssistantPreview({
               }
             />
           </Form.Item>
-          {settings?.run_capabilities.model_selection_enabled ? (
-            <Form.Item
-              label={i18nText('appShell', 'auto.assistant_model')}
-              name="model"
-            >
-              <Select
-                allowClear
-                options={settings.run_capabilities.models.map((model) => ({
-                  value: model.id,
-                  label: model.name ?? model.id
-                }))}
-              />
-            </Form.Item>
-          ) : null}
-          {settings?.run_capabilities.reasoning_effort_enabled &&
-          selectedModel?.reasoning_efforts.length ? (
-            <Form.Item
-              label={i18nText('appShell', 'auto.assistant_reasoning_effort')}
-              name="reasoning_effort"
-            >
-              <Select
-                allowClear
-                options={selectedModel.reasoning_efforts.map((effort) => ({
-                  value: effort,
-                  label: effort
-                }))}
-              />
-            </Form.Item>
-          ) : null}
           <Button
+            disabled={!settings || saving}
             onClick={() =>
-              form.setFieldsValue({ model: null, reasoning_effort: null })
+              void updateRuntimePreference({
+                model: null,
+                reasoning_effort: null
+              })
             }
           >
             {i18nText('appShell', 'auto.assistant_reset_defaults')}

@@ -1,6 +1,6 @@
 import { ArrowUpOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { Button, Input } from 'antd';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export function DebugComposer({
@@ -8,6 +8,7 @@ export function DebugComposer({
   disabled,
   submitting,
   stopping,
+  footerActions,
   onChange,
   onStop,
   onSubmit
@@ -16,6 +17,7 @@ export function DebugComposer({
   disabled: boolean;
   submitting: boolean;
   stopping: boolean;
+  footerActions?: ReactNode;
   onChange: (value: string) => void;
   onStop: () => void;
   onSubmit: (value: string) => void;
@@ -34,7 +36,14 @@ export function DebugComposer({
 
   return (
     <div className="agent-flow-editor__debug-composer">
-      <div className="agent-flow-editor__debug-composer-box">
+      <div
+        className={[
+          'agent-flow-editor__debug-composer-box',
+          footerActions && 'agent-flow-editor__debug-composer-box--with-footer'
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <Input.TextArea
           autoSize={{ minRows: 1, maxRows: 4 }}
           variant="borderless"
@@ -59,7 +68,13 @@ export function DebugComposer({
             handleSubmit();
           }}
         />
-        <div className="agent-flow-editor__debug-composer-actions">
+        <div className="agent-flow-editor__debug-composer-footer">
+          {footerActions ? (
+            <div className="agent-flow-editor__debug-composer-footer-actions">
+              {footerActions}
+            </div>
+          ) : null}
+          <div className="agent-flow-editor__debug-composer-actions">
           {showStop ? (
             <Button
               aria-label={
@@ -85,6 +100,7 @@ export function DebugComposer({
               onClick={handleSubmit}
             />
           )}
+          </div>
         </div>
       </div>
     </div>
