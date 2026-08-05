@@ -137,6 +137,12 @@ describe('AppShellFrame', () => {
     });
   });
 
+  test('places the AI assistant action beside the UI action', async () => {
+    renderShell('/');
+
+    expect(await screen.findByLabelText('AI assistant')).toBeInTheDocument();
+  });
+
   test('places the language switcher between help and account', async () => {
     renderShell('/settings/data-models');
 

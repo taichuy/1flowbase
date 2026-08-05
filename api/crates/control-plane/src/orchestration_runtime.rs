@@ -949,6 +949,7 @@ where
         if !matches!(
             flow_run.run_mode,
             domain::FlowRunMode::PublishedApiRun
+                | domain::FlowRunMode::AssistantExecution
                 | domain::FlowRunMode::WorkflowHttpRun
                 | domain::FlowRunMode::WorkflowScheduleRun
         ) {
@@ -996,11 +997,16 @@ where
                 .ok_or_else(|| anyhow!("flow run detail not found"));
         };
 
+        let execution_started_event = if running.run_mode == domain::FlowRunMode::AssistantExecution {
+            "assistant_execution_started"
+        } else {
+            "public_run_execution_started"
+        };
         self.repository
             .append_run_event(&AppendRunEventInput {
                 flow_run_id: running.id,
                 node_run_id: None,
-                event_type: "public_run_execution_started".to_string(),
+                event_type: execution_started_event.to_string(),
                 payload: json!({
                     "api_key_id": running.api_key_id,
                     "application_id": running.application_id,
@@ -1302,28 +1308,39 @@ where
         if !matches!(
             flow_run.run_mode,
             domain::FlowRunMode::PublishedApiRun
+                | domain::FlowRunMode::AssistantExecution
                 | domain::FlowRunMode::WorkflowHttpRun
                 | domain::FlowRunMode::WorkflowScheduleRun
         ) {
             return;
         }
-        let (event_type, audit_action) = match flow_run.status {
-            domain::FlowRunStatus::Succeeded => (
-                "public_run_succeeded",
-                "application_public_api.run_succeeded",
-            ),
-            domain::FlowRunStatus::Incomplete => (
-                "public_run_incomplete",
-                "application_public_api.run_incomplete",
-            ),
-            domain::FlowRunStatus::Failed => {
+        let assistant = flow_run.run_mode == domain::FlowRunMode::AssistantExecution;
+        let (event_type, audit_action) = match (assistant, flow_run.status) {
+            (true, domain::FlowRunStatus::Succeeded) => {
+                ("assistant_execution_succeeded", "embedded_assistant.run_succeeded")
+            }
+            (true, domain::FlowRunStatus::Incomplete) => {
+                ("assistant_execution_incomplete", "embedded_assistant.run_incomplete")
+            }
+            (true, domain::FlowRunStatus::Failed) => {
+                ("assistant_execution_failed", "embedded_assistant.run_failed")
+            }
+            (true, domain::FlowRunStatus::Cancelled) => {
+                ("assistant_execution_cancelled", "embedded_assistant.run_cancelled")
+            }
+            (false, domain::FlowRunStatus::Succeeded) => {
+                ("public_run_succeeded", "application_public_api.run_succeeded")
+            }
+            (false, domain::FlowRunStatus::Incomplete) => {
+                ("public_run_incomplete", "application_public_api.run_incomplete")
+            }
+            (false, domain::FlowRunStatus::Failed) => {
                 ("public_run_failed", "application_public_api.run_failed")
             }
-            domain::FlowRunStatus::Cancelled => (
-                "public_run_cancelled",
-                "application_public_api.run_cancelled",
-            ),
-            _ => return,
+            (false, domain::FlowRunStatus::Cancelled) => {
+                ("public_run_cancelled", "application_public_api.run_cancelled")
+            }
+            (_, _) => return,
         };
         let payload = json!({
             "api_key_id": flow_run.api_key_id,
@@ -1350,7 +1367,11 @@ where
             &audit_log(
                 Some(application.workspace_id),
                 Some(flow_run.created_by),
-                "application_public_api_run",
+                if assistant {
+                    "embedded_assistant_run"
+                } else {
+                    "application_public_api_run"
+                },
                 Some(flow_run.id),
                 audit_action,
                 payload,
