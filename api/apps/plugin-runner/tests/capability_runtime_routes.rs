@@ -140,6 +140,7 @@ fn make_fixture_package() -> TempCapabilityPackage {
         r#"manifest_version: 1
 plugin_id: fixture_capability@0.1.0
 version: 0.1.0
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Fixture Capability
 description: Fixture capability package

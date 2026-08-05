@@ -7,6 +7,7 @@ fn manifest_with_slot(slot: &str, contract_version: &str) -> String {
 manifest_version: 1
 plugin_id: fixture@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Fixture
 description: Fixture runtime extension

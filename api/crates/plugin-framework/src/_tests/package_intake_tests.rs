@@ -629,6 +629,7 @@ fn write_provider_fixture(
             r#"manifest_version: 1
 plugin_id: {provider_code}@{version}
 version: {version}
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: {provider_code}
 description: provider package

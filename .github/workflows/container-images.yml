@@ -17,6 +17,8 @@ on:
       - "web/pnpm-workspace.yaml"
       - "api/apps/api-server/Cargo.toml"
       - "api/apps/plugin-runner/Cargo.toml"
+      - "api/plugins/default-extensions.lock.json"
+      - "scripts/shell/package-default-extension.sh"
   workflow_dispatch:
     inputs:
       component:

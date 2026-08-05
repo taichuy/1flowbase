@@ -215,6 +215,8 @@ impl Drop for ActiveProviderInvocationLease {
 pub struct ProviderHost {
     loaded_packages: HashMap<String, LoadedProviderPackage>,
     loaded_sources: HashMap<String, LoadedProviderSource>,
+    legacy_manifest_eligibilities:
+        HashMap<String, plugin_framework::LegacyInstalledManifestEligibility>,
     provider_workers: ProviderWorkerRegistry,
     active_streams: Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
     active_invocation_leases: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
@@ -226,6 +228,7 @@ impl Default for ProviderHost {
         Self {
             loaded_packages: HashMap::new(),
             loaded_sources: HashMap::new(),
+            legacy_manifest_eligibilities: HashMap::new(),
             provider_workers: Arc::new(StdMutex::new(HashMap::new())),
             active_streams: Arc::new(Mutex::new(HashMap::new())),
             active_invocation_leases: Arc::new(Mutex::new(HashMap::new())),
@@ -245,15 +248,21 @@ impl ProviderHost {
         source_identity: Option<&str>,
     ) -> FrameworkResult<LoadedProviderSummary> {
         let source = LoadedProviderSource::resolve(package_root, source_identity)?;
-        self.load_source(source, None)
+        self.load_source(source, None, None)
     }
 
     fn load_source(
         &mut self,
         source: LoadedProviderSource,
         expected_plugin_id: Option<&str>,
+        legacy_eligibility: Option<&plugin_framework::LegacyInstalledManifestEligibility>,
     ) -> FrameworkResult<LoadedProviderSummary> {
-        let loaded = PackageLoader::load(&source.package_root)?;
+        let loaded = match legacy_eligibility {
+            Some(eligibility) => {
+                PackageLoader::load_legacy_installed(&source.package_root, eligibility)?
+            }
+            None => PackageLoader::load(&source.package_root)?,
+        };
         let summary = LoadedProviderSummary::from_loaded(&loaded);
         if let Some(expected_plugin_id) = expected_plugin_id {
             if summary.plugin_id != expected_plugin_id {
@@ -267,6 +276,16 @@ impl ProviderHost {
             .insert(summary.plugin_id.clone(), loaded);
         self.loaded_sources
             .insert(summary.plugin_id.clone(), source);
+        match legacy_eligibility {
+            Some(eligibility) => {
+                self.legacy_manifest_eligibilities
+                    .insert(summary.plugin_id.clone(), eligibility.clone());
+            }
+            None => {
+                self.legacy_manifest_eligibilities
+                    .remove(&summary.plugin_id);
+            }
+        }
         self.remove_provider_worker(&summary.plugin_id)?;
         Ok(summary)
     }
@@ -289,7 +308,26 @@ impl ProviderHost {
         {
             return Ok(());
         }
-        self.load_source(requested_source, Some(plugin_id))
+        self.load_source(requested_source, Some(plugin_id), None)
+            .map(|_| ())
+    }
+
+    pub fn load_legacy_installed_if_needed(
+        &mut self,
+        plugin_id: &str,
+        package_root: &str,
+        source_identity: Option<&str>,
+        eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<()> {
+        let requested_source = LoadedProviderSource::resolve(package_root, source_identity)?;
+        if self
+            .loaded_sources
+            .get(plugin_id)
+            .is_some_and(|loaded_source| loaded_source.can_skip_reload(&requested_source))
+        {
+            return Ok(());
+        }
+        self.load_source(requested_source, Some(plugin_id), Some(eligibility))
             .map(|_| ())
     }
 
@@ -318,7 +356,8 @@ impl ProviderHost {
                 "provider package is not loaded: {plugin_id}"
             )));
         }
-        self.load_source(source, Some(plugin_id))
+        let legacy_eligibility = self.legacy_manifest_eligibilities.get(plugin_id).cloned();
+        self.load_source(source, Some(plugin_id), legacy_eligibility.as_ref())
     }
 
     pub async fn validate(

@@ -12,7 +12,10 @@ use std::{
 };
 
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tokio::time::sleep;
+
+use crate::package_loader::PackageLoader;
 
 struct TempProviderPackage {
     root: PathBuf,
@@ -47,6 +50,14 @@ impl TempProviderPackage {
         self.write_provider_package_with_runtime_timeout(display_name, 30_000);
     }
 
+    fn remove_publisher_namespace(&self) -> String {
+        let path = self.path().join("manifest.yaml");
+        let raw = fs::read_to_string(&path).expect("fixture manifest should be readable");
+        let legacy = raw.replace("publisher_namespace: 1flowbase\n", "");
+        fs::write(path, &legacy).expect("fixture manifest should become a legacy artifact");
+        legacy
+    }
+
     fn write_provider_package_with_runtime_timeout(&self, display_name: &str, timeout_ms: u64) {
         self.write(
             "manifest.yaml",
@@ -54,6 +65,7 @@ impl TempProviderPackage {
                 r#"manifest_version: 1
 plugin_id: fixture_provider
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: {display_name}
 description: Fixture provider
@@ -236,6 +248,7 @@ esac
                 r#"manifest_version: 1
 plugin_id: {plugin_id}
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: {display_name}
 description: Fixture provider
@@ -316,6 +329,29 @@ impl Drop for TempProviderPackage {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
     }
+}
+
+#[test]
+fn publisher_cutover_runner_loads_eligible_legacy_installed_provider_receipt() {
+    let package = TempProviderPackage::new();
+    let raw = package.remove_publisher_namespace();
+    assert!(PackageLoader::load(package.path()).is_err());
+
+    let loaded = PackageLoader::load_legacy_installed(
+        package.path(),
+        &plugin_framework::LegacyInstalledManifestEligibility {
+            expected_publisher_namespace: "1flowbase".to_string(),
+            expected_versioned_plugin_id: "fixture_provider@0.1.0".to_string(),
+            expected_raw_manifest_fingerprint: format!(
+                "sha256:{:x}",
+                Sha256::digest(raw.as_bytes())
+            ),
+        },
+    )
+    .expect("AC-001 runner should consume the explicit legacy installation receipt");
+
+    assert_eq!(loaded.package.manifest.publisher_namespace, "1flowbase");
+    assert_eq!(loaded.package.identifier(), "fixture_provider@0.1.0");
 }
 
 #[test]

@@ -366,8 +366,7 @@ impl ApiOfficialMcpBundleRegistry {
             .installation_repository
             .find_extension_installation(&self.node_id, &identity)
             .await?;
-        Ok(self
-            .installation_repository
+        self.installation_repository
             .upsert_extension_installation(&UpsertExtensionInstallationInput {
                 installation_id: existing
                     .as_ref()
@@ -397,7 +396,7 @@ impl ApiOfficialMcpBundleRegistry {
                 is_current,
                 created_by: self.actor_user_id,
             })
-            .await?)
+            .await
     }
 
     fn receipt_from_record(
@@ -920,6 +919,7 @@ fn local_versions(
     Ok(result)
 }
 
+#[allow(clippy::type_complexity)] // The tuple is the stable on-disk catalog scan shape.
 fn scan_local(
     root: &Path,
 ) -> Result<Vec<(String, String, Vec<LocalMcpBundleReceipt>, Option<String>)>> {

@@ -324,6 +324,7 @@ fn make_fixture_package() -> TempProviderPackage {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Fixture Provider
 description: Fixture Provider
@@ -403,6 +404,7 @@ fn make_stateful_fixture_package() -> TempProviderPackage {
         r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Fixture Provider
 description: Fixture Provider

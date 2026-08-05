@@ -10,7 +10,10 @@ use serde_json::Value;
 use crate::{
     capability_kind::PluginConsumptionKind,
     error::{FrameworkResult, PluginFrameworkError},
-    manifest_v1::{parse_plugin_manifest, PluginManifestV1},
+    manifest_v1::{
+        parse_legacy_installed_plugin_manifest, parse_plugin_manifest,
+        LegacyInstalledManifestEligibility, PluginManifestV1,
+    },
     provider_contract::{
         ModelDiscoveryMode, PluginFormOption, PluginFormSchema, ProviderModelDescriptor,
         ProviderModelSource,
@@ -113,6 +116,22 @@ pub struct ProviderPackage {
 
 impl ProviderPackage {
     pub fn load_from_dir(path: impl AsRef<Path>) -> FrameworkResult<Self> {
+        Self::load_from_dir_with_manifest(path, parse_plugin_manifest)
+    }
+
+    pub fn load_legacy_installed_from_dir(
+        path: impl AsRef<Path>,
+        eligibility: &LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<Self> {
+        Self::load_from_dir_with_manifest(path, |raw| {
+            parse_legacy_installed_plugin_manifest(raw, eligibility)
+        })
+    }
+
+    fn load_from_dir_with_manifest(
+        path: impl AsRef<Path>,
+        parse_manifest: impl FnOnce(&str) -> FrameworkResult<PluginManifestV1>,
+    ) -> FrameworkResult<Self> {
         let root = path.as_ref().to_path_buf();
         if !root.is_dir() {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
@@ -124,7 +143,7 @@ impl ProviderPackage {
         let manifest_path = root.join("manifest.yaml");
         let manifest_raw = fs::read_to_string(&manifest_path)
             .map_err(|error| PluginFrameworkError::io(Some(&manifest_path), error.to_string()))?;
-        let manifest = parse_plugin_manifest(&manifest_raw)?;
+        let manifest = parse_manifest(&manifest_raw)?;
         let provider_code = provider_code_from_plugin_id(&manifest)?;
         validate_manifest(&manifest)?;
 

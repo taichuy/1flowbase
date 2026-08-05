@@ -29,7 +29,8 @@ use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
     official_extension_catalog::{
         LocatedOfficialExtensionCatalogEntry, OfficialExtensionArtifactDescriptor,
-        OfficialExtensionCatalogEntry,
+        OfficialExtensionCatalogEntry, OfficialExtensionCatalogFreshness,
+        OfficialExtensionCatalogSearchQuery,
     },
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
@@ -87,7 +88,7 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/settings/extension-center/update-check",
             console_post(
-                check_extension_catalog_page_updates,
+                check_extension_catalog_updates,
                 ConsoleOperation("extension_center.update_check".to_string()),
             ),
         )
@@ -444,81 +445,16 @@ fn extension_update_status(
     }
 }
 
-fn catalog_entry_for_requested_identity<'a>(
-    category: ExtensionCatalogCategory,
-    catalog_id: &str,
-    entries: &'a [OfficialExtensionCatalogEntry],
-) -> Result<Option<&'a OfficialExtensionCatalogEntry>, ApiError> {
-    let identity = catalog_identity(category, catalog_id)?;
-    if let Some(exact) = entries.iter().find(|entry| entry.id == catalog_id) {
-        return Ok(Some(exact));
-    }
-    if !is_node_plugin_category(category) {
-        return Ok(None);
-    }
-    let mut matches = entries.iter().filter(|entry| {
-        entry.category == category.as_str() && entry.artifact == identity.artifact_id()
-    });
-    let matched = matches.next();
-    if matches.next().is_some() {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_catalog_identity",
-        )
-        .into());
-    }
-    Ok(matched)
-}
-
 async fn find_catalog_entry_for_requested_identity(
     state: &ApiState,
     category: ExtensionCatalogCategory,
     catalog_id: &str,
 ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>, ApiError> {
-    if let Some(located) = state
+    state
         .official_extension_catalog_source
         .find_entry(category.as_str(), catalog_id)
-        .await?
-    {
-        return Ok(Some(located));
-    }
-    if !is_node_plugin_category(category) {
-        return Ok(None);
-    }
-
-    let mut cursor = None;
-    let mut visited = BTreeSet::new();
-    let mut matched = None;
-    loop {
-        let page = state
-            .official_extension_catalog_source
-            .list_page(category.as_str(), cursor.as_deref())
-            .await?;
-        if !visited.insert(page.metadata.cursor.clone()) {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                "extension_catalog_page_cursor",
-            )
-            .into());
-        }
-        if let Some(entry) =
-            catalog_entry_for_requested_identity(category, catalog_id, &page.entries)?
-        {
-            if matched.is_some() {
-                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                    "extension_catalog_identity",
-                )
-                .into());
-            }
-            matched = Some(LocatedOfficialExtensionCatalogEntry {
-                source_kind: page.source_kind.clone(),
-                entry: entry.clone(),
-            });
-        }
-        let Some(next_cursor) = page.metadata.next_cursor else {
-            break;
-        };
-        cursor = Some(next_cursor);
-    }
-    Ok(matched)
+        .await
+        .map_err(Into::into)
 }
 
 fn warning_message(code: &str) -> String {
@@ -539,9 +475,10 @@ fn catalog_entry_warnings(
     let mut warnings = Vec::new();
     if entry.signature.is_none() {
         warnings.push("signature_missing");
-    } else if entry.signing_key_id().map_or(true, |key_id| {
-        !trusted_key_ids.iter().any(|trusted| trusted == key_id)
-    }) {
+    } else if entry
+        .signing_key_id()
+        .is_none_or(|key_id| !trusted_key_ids.iter().any(|trusted| trusted == key_id))
+    {
         warnings.push("signing_key_unknown");
     }
     if entry.checksum.is_none() {
@@ -645,6 +582,8 @@ fn project_catalog_entry(
         version: entry.version,
         description: entry.description,
         host_version_requirement: entry.host_version_requirement,
+        slot_codes: entry.slot_codes,
+        keywords: entry.keywords,
         source,
         signature: entry.signature,
         checksum: entry.checksum,
@@ -670,11 +609,20 @@ fn project_catalog_entry(
 async fn load_catalog_page(
     state: &ApiState,
     category: ExtensionCatalogCategory,
-    cursor: Option<String>,
+    query: ExtensionCatalogGatewayQuery,
 ) -> Result<ExtensionCatalogGatewayPageResponse, ApiError> {
+    let limit = query.limit.unwrap_or(50).clamp(1, 100);
     let page = state
         .official_extension_catalog_source
-        .list_page(category.as_str(), cursor.as_deref())
+        .search(
+            category.as_str(),
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: query.slot_code,
+                q: query.q,
+                limit,
+                cursor: query.cursor,
+            },
+        )
         .await?;
     let installed = installed_catalog_joins(state, category).await?;
     let trusted_key_ids = state
@@ -694,13 +642,18 @@ async fn load_catalog_page(
         .collect();
     Ok(ExtensionCatalogGatewayPageResponse {
         category: page.category,
-        catalog_page: page.metadata.cursor,
-        catalog_page_number: page.metadata.page,
-        catalog_page_checksum: page.metadata.checksum,
-        catalog_page_locator: page.metadata.locator,
-        limit: page.metadata.page_size,
-        next_cursor: page.metadata.next_cursor,
-        total_entries: page.metadata.total_entries,
+        freshness: match page.freshness {
+            OfficialExtensionCatalogFreshness::Fresh => "fresh",
+            OfficialExtensionCatalogFreshness::Stale => "stale",
+        }
+        .to_string(),
+        catalog_page: page.snapshot_checksum.clone(),
+        catalog_page_number: 0,
+        catalog_page_checksum: page.snapshot_checksum,
+        catalog_page_locator: page.snapshot_locator,
+        limit,
+        next_cursor: page.next_cursor,
+        total_entries: page.total_entries,
         entries,
     })
 }
@@ -720,7 +673,7 @@ pub async fn list_extension_catalog_gateway(
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayPageResponse>>, ApiError> {
     let _context = require_session(&state, &headers).await?;
     let category = ExtensionCatalogCategory::parse(&category)?;
-    let page = load_catalog_page(&state, category, query.cursor).await?;
+    let page = load_catalog_page(&state, category, query).await?;
     Ok(Json(ApiSuccess::new(page)))
 }
 
@@ -747,9 +700,8 @@ pub async fn get_extension_catalog_entry(
         ))?;
     if located.entry.category != category.as_str()
         || located.entry.artifact != identity.artifact_id()
-        || (!is_node_plugin_category(category)
-            && (located.entry.id != catalog_id
-                || located.entry.organization != identity.organization()))
+        || located.entry.id != catalog_id
+        || located.entry.organization != identity.organization()
     {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
             "extension_catalog_identity",
@@ -779,11 +731,11 @@ pub async fn get_extension_catalog_entry(
 #[utoipa::path(
     post,
     path = "/api/console/settings/extension-center/update-check",
-    operation_id = "extension_center_check_current_page_updates",
+    operation_id = "extension_center_check_updates",
     request_body = ExtensionUpdateCheckBody,
     responses((status = 200, body = ExtensionUpdateCheckResponse), (status = 403, body = crate::error_response::ErrorBody))
 )]
-pub async fn check_extension_catalog_page_updates(
+pub async fn check_extension_catalog_updates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<ExtensionUpdateCheckBody>,
@@ -817,41 +769,22 @@ pub async fn check_extension_catalog_page_updates(
             .into());
         }
     }
-    let page = state
-        .official_extension_catalog_source
-        .list_page(category.as_str(), body.catalog_page.as_deref())
-        .await?;
-    if page.category != category.as_str() {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_catalog_category",
-        )
-        .into());
+    let mut items = Vec::with_capacity(body.items.len());
+    for item in body.items {
+        let latest_version =
+            find_catalog_entry_for_requested_identity(&state, category, &item.catalog_id)
+                .await?
+                .map(|located| located.entry.version);
+        let status = extension_update_status(latest_version.as_deref(), &item.installed_versions);
+        items.push(ExtensionUpdateCheckItemResponse {
+            catalog_id: item.catalog_id,
+            current_version: item.current_version,
+            latest_version,
+            status: status.to_string(),
+        });
     }
-    let items = body
-        .items
-        .into_iter()
-        .map(
-            |item| -> Result<ExtensionUpdateCheckItemResponse, ApiError> {
-                let latest_version = catalog_entry_for_requested_identity(
-                    category,
-                    &item.catalog_id,
-                    &page.entries,
-                )?
-                .map(|entry| entry.version.clone());
-                let status =
-                    extension_update_status(latest_version.as_deref(), &item.installed_versions);
-                Ok(ExtensionUpdateCheckItemResponse {
-                    catalog_id: item.catalog_id,
-                    current_version: item.current_version,
-                    latest_version,
-                    status: status.to_string(),
-                })
-            },
-        )
-        .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(ApiSuccess::new(ExtensionUpdateCheckResponse {
         category: body.category,
-        catalog_page: body.catalog_page,
         items,
     })))
 }
@@ -1158,7 +1091,7 @@ async fn inspect_node_plugin(
     };
     let inspection = NodePluginInspection {
         category,
-        organization: manifest.vendor,
+        organization: manifest.publisher_namespace,
         artifact_id,
         plugin_id: manifest.plugin_id,
         version: manifest.version,
@@ -1273,7 +1206,12 @@ async fn install_or_update_official_extension(
     let downloaded = state
         .official_extension_catalog_source
         .download_artifact(&located.entry)
-        .await?;
+        .await
+        .map_err(|_| {
+            control_plane::errors::ControlPlaneError::UpstreamUnavailable(
+                "extension_artifact_download_unavailable",
+            )
+        })?;
     let mut signature_status =
         signature_status_from_descriptor(&downloaded.descriptor, &trusted_key_ids);
     let mut signature_algorithm = downloaded
@@ -1300,6 +1238,7 @@ async fn install_or_update_official_extension(
         )
         .await?;
         if inspection.category != category
+            || inspection.organization != located.entry.organization
             || inspection.version != located.entry.version
             || inspection.artifact_id != located.entry.artifact
             || inspection.plugin_id != located.entry.artifact

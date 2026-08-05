@@ -185,6 +185,7 @@ where
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
+                    reasoning_effort: None,
                     status: "failed",
                     failed_after_first_token: false,
                     error_payload: Some(&error_payload),
@@ -284,6 +285,20 @@ where
         };
         inject_visible_internal_llm_tool_media_content_blocks(&mut invocation.input, variable_pool)
             .await;
+        let reasoning_effort = invocation
+            .input
+            .model_parameters
+            .get("reasoning_effort")
+            .and_then(Value::as_str)
+            .or_else(|| {
+                invocation
+                    .input
+                    .model_parameters
+                    .get("reasoning")
+                    .and_then(|value| value.get("effort"))
+                    .and_then(Value::as_str)
+            })
+            .map(str::to_string);
         let invocation_messages = build_llm_debug_invocation_messages(
             node,
             resolved_inputs,
@@ -302,6 +317,7 @@ where
                 attempt_index,
                 retry_reason: retry_reason.as_deref(),
                 runtime: attempt_runtime,
+                reasoning_effort: reasoning_effort.as_deref(),
                 status: "failed",
                 failed_after_first_token: false,
                 error_payload: Some(&error_payload),
@@ -359,6 +375,7 @@ where
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
+                    reasoning_effort: reasoning_effort.as_deref(),
                     status: "failed",
                     failed_after_first_token: false,
                     error_payload: Some(&error_payload),
@@ -491,6 +508,7 @@ where
             attempt_index,
             retry_reason: retry_reason.as_deref(),
             runtime: attempt_runtime,
+            reasoning_effort: reasoning_effort.as_deref(),
             status: attempt_status,
             failed_after_first_token,
             error_payload: error_payload.as_ref(),

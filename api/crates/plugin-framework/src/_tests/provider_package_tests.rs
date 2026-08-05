@@ -48,6 +48,7 @@ fn make_package_fixture() -> TempProviderPackage {
         r#"manifest_version: 1
 plugin_id: acme_openai_compatible
 version: 1.2.3
+publisher_namespace: taichuy
 vendor: taichuy
 display_name: Acme OpenAI Compatible
 description: Acme provider package

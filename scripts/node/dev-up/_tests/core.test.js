@@ -29,6 +29,22 @@ const {
   waitForServicePort,
 } = require('../core.js');
 
+test('AC-001 dev-up runtime messages remain ASCII-only for cross-platform terminals', () => {
+  const devUpDir = path.resolve(__dirname, '..');
+  const runtimeFiles = [
+    path.resolve(devUpDir, '..', 'dev-up.js'),
+    ...fs
+      .readdirSync(devUpDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+      .map((entry) => path.join(devUpDir, entry.name)),
+  ];
+
+  for (const filePath of runtimeFiles) {
+    const source = fs.readFileSync(filePath, 'utf8');
+    assert.doesNotMatch(source, /[^\x00-\x7F]/u, filePath);
+  }
+});
+
 test('parseCliArgs defaults to full start', () => {
   assert.deepEqual(parseCliArgs([]), {
     action: 'start',
@@ -71,7 +87,7 @@ test('dev-up suggests manual development database maintenance for backend starts
   assert.equal(shouldShowDevDatabaseMaintenanceHint(parseCliArgs(['status'])), false);
 
   const hint = buildDevDatabaseMaintenanceHintLines().join('\n');
-  assert.match(hint, /不会在 dev-up 时自动清理/u);
+  assert.match(hint, /Development databases are not cleaned automatically by dev-up/u);
   assert.match(hint, /test-schemas --dry-run --older-than 3d --keep 20/u);
   assert.match(hint, /backups --dry-run --keep 1 --older-than 7d/u);
   assert.match(hint, /postgres\.empty-\* \/ postgres\.backup-\*/u);
@@ -545,7 +561,10 @@ test('stopService clears the service port when the pid record is missing', async
       ports: [3100],
     },
   ]);
-  assert.deepEqual(logs, ['frontend 未发现 pid 记录，正在清理端口占用', 'frontend 端口占用已清理']);
+  assert.deepEqual(logs, [
+    'frontend has no PID record; clearing port occupants',
+    'frontend port occupants cleared',
+  ]);
 });
 
 test('startService resolves the command path before spawning', async () => {
@@ -841,7 +860,7 @@ test('manageDocker restart clears middleware port conflicts before bringing serv
 
   assert.deepEqual(clearCalls, [
     {
-      label: 'docker 中间件',
+      label: 'docker middleware',
       ports: [35432],
     },
   ]);

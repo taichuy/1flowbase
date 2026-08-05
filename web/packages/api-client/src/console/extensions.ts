@@ -120,10 +120,13 @@ export interface ConsoleExtensionCatalogEntry {
   trust: string;
   warnings: ConsoleExtensionWarning[];
   compatibility: ConsoleExtensionCompatibilityChallenge | null;
+  slot_codes: string[];
+  keywords: string[];
 }
 
 export interface ConsoleExtensionCatalogPage {
   category: ConsoleExtensionCategory;
+  freshness: 'fresh' | 'stale';
   catalog_page: string;
   catalog_page_number: number;
   catalog_page_checksum: string;
@@ -143,7 +146,6 @@ export interface ConsoleExtensionUpdateItem {
 
 export interface ConsoleExtensionUpdateResponse {
   category: ConsoleExtensionCategory;
-  catalog_page: string | null;
   items: ConsoleExtensionUpdateItem[];
 }
 
@@ -275,10 +277,22 @@ export function deleteConsoleInstalledExtension(
 
 export function listConsoleExtensionCatalog(
   category: ConsoleExtensionCategory,
-  cursor?: string,
-  limit = 20
+  {
+    slot_code,
+    q,
+    limit = 20,
+    cursor
+  }: {
+    slot_code?: string;
+    q?: string;
+    limit?: number;
+    cursor?: string;
+  } = {}
 ) {
-  const query = new URLSearchParams({ limit: String(limit) });
+  const query = new URLSearchParams();
+  if (slot_code) query.set('slot_code', slot_code);
+  if (q) query.set('q', q);
+  query.set('limit', String(limit));
   if (cursor) query.set('cursor', cursor);
   return apiFetch<ConsoleExtensionCatalogPage>({
     path: `${BASE}/catalog/${category}?${query.toString()}`
@@ -297,7 +311,6 @@ export function getConsoleExtensionCatalogEntry(
 export function checkConsoleExtensionUpdates(
   input: {
     category: ConsoleExtensionCategory;
-    catalog_page: string | null;
     items: Array<{
       catalog_id: string;
       current_version: string;

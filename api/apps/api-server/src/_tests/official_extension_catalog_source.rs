@@ -22,7 +22,7 @@ use crate::{
     config::ResolvedOfficialExtensionCatalogSourceConfig,
     official_extension_catalog::{
         ApiOfficialExtensionCatalogSource, ApiOfficialRuntimeExtensionSource,
-        OfficialExtensionCatalogSourcePort,
+        OfficialExtensionCatalogSearchQuery, OfficialExtensionCatalogSourcePort,
     },
 };
 
@@ -39,6 +39,381 @@ const CATEGORIES: [&str; 6] = [
 struct CatalogHttpFixture {
     documents: Arc<BTreeMap<String, Vec<u8>>>,
     requests: Arc<Mutex<Vec<String>>>,
+}
+
+#[derive(Clone)]
+struct MutableCatalogHttpFixture {
+    documents: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+    requests: Arc<Mutex<Vec<String>>>,
+}
+
+async fn mutable_catalog_response(
+    State(fixture): State<MutableCatalogHttpFixture>,
+    request: Request<Body>,
+) -> Response {
+    fixture
+        .requests
+        .lock()
+        .unwrap()
+        .push(request.uri().path().to_string());
+    match fixture.documents.lock().unwrap().get(request.uri().path()) {
+        Some(bytes) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            bytes.clone(),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[derive(Clone)]
+struct RetryArtifactFixture {
+    catalog: CatalogHttpFixture,
+    artifact_requests: Arc<std::sync::atomic::AtomicUsize>,
+    failures_before_success: usize,
+    success_body: Arc<Vec<u8>>,
+}
+
+async fn retry_artifact_response(
+    State(fixture): State<RetryArtifactFixture>,
+    request: Request<Body>,
+) -> Response {
+    if request.uri().path() == "/i18n/artifacts/i18n-fixture.bin" {
+        let request_number = fixture.artifact_requests.fetch_add(1, Ordering::SeqCst) + 1;
+        if request_number <= fixture.failures_before_success {
+            let stream = futures_util::stream::iter(vec![
+                Ok::<_, std::io::Error>(axum::body::Bytes::from_static(b"partial")),
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "publisher cutover interrupted body",
+                )),
+            ]);
+            return Response::new(Body::from_stream(stream));
+        }
+        return Body::from(fixture.success_body.as_ref().clone()).into_response();
+    }
+    catalog_response(State(fixture.catalog), request).await
+}
+
+#[tokio::test]
+async fn publisher_cutover_artifact_body_interruption_retries_once_with_fresh_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let artifact_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fixture = RetryArtifactFixture {
+        catalog: CatalogHttpFixture {
+            documents: Arc::new(documents),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        },
+        artifact_requests: Arc::clone(&artifact_requests),
+        failures_before_success: 1,
+        success_body: Arc::new(b"i18n-artifact".to_vec()),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(retry_artifact_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+
+    let downloaded = source.download_artifact(&page.entries[0]).await.unwrap();
+
+    assert_eq!(downloaded.artifact_bytes, b"i18n-artifact");
+    assert_eq!(artifact_requests.load(Ordering::SeqCst), 2);
+    server.abort();
+}
+
+#[tokio::test]
+async fn publisher_cutover_artifact_two_body_failures_stop_after_two_requests() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let artifact_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fixture = RetryArtifactFixture {
+        catalog: CatalogHttpFixture {
+            documents: Arc::new(documents),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        },
+        artifact_requests: Arc::clone(&artifact_requests),
+        failures_before_success: 2,
+        success_body: Arc::new(b"i18n-artifact".to_vec()),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(retry_artifact_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+
+    assert!(source.download_artifact(&page.entries[0]).await.is_err());
+    assert_eq!(artifact_requests.load(Ordering::SeqCst), 2);
+    server.abort();
+}
+
+#[tokio::test]
+async fn publisher_cutover_checksum_mismatch_does_not_retry_artifact_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let artifact_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fixture = RetryArtifactFixture {
+        catalog: CatalogHttpFixture {
+            documents: Arc::new(documents),
+            requests: Arc::new(Mutex::new(Vec::new())),
+        },
+        artifact_requests: Arc::clone(&artifact_requests),
+        failures_before_success: 0,
+        success_body: Arc::new(b"checksum-mismatch".to_vec()),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(retry_artifact_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+
+    let error = source
+        .download_artifact(&page.entries[0])
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("checksum mismatch"));
+    assert_eq!(artifact_requests.load(Ordering::SeqCst), 1);
+    server.abort();
+}
+
+#[tokio::test]
+async fn api_01_search_filters_before_pagination_binds_cursor_and_reuses_verified_pages() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+
+    let first = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: None,
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    let cursor = first.next_cursor.unwrap();
+
+    requests.lock().unwrap().clear();
+    let cached = source
+        .cached_verified_entries("runtime-extensions", Some("model_provider"))
+        .expect("verified search snapshot should be readable without remote I/O");
+    assert_eq!(cached.entries.len(), 1);
+    assert_eq!(cached.entries[0].artifact, "openai");
+    assert!(requests.lock().unwrap().is_empty());
+    let runtime_source = ApiOfficialRuntimeExtensionSource::new(
+        Arc::new(source.clone()),
+        "allow_unsigned".to_string(),
+        Vec::new(),
+    );
+    let runtime_snapshot = runtime_source
+        .cached_official_catalog()
+        .await
+        .expect("runtime projection should reuse the verified generic snapshot");
+    assert_eq!(runtime_snapshot.entries.len(), 1);
+    assert_eq!(runtime_snapshot.entries[0].provider_code, "openai");
+    assert!(requests.lock().unwrap().is_empty());
+
+    let cached_snapshot_entry = source
+        .find_entry(
+            "runtime-extensions",
+            "runtime-extensions:other/later-runtime",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(cached_snapshot_entry.entry.catalog_page, 2);
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &["/runtime-extensions/catalog/v1/pages/2.json"]
+    );
+
+    requests.lock().unwrap().clear();
+    let filtered = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: Some("later-runtime".to_string()),
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(filtered.total_entries, 1);
+    assert_eq!(filtered.entries[0].artifact, "later-runtime");
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/search-index.json"
+        ],
+        "search refreshes publication metadata while reusing verified page bytes"
+    );
+
+    let stale = source
+        .search(
+            "runtime-extensions",
+            OfficialExtensionCatalogSearchQuery {
+                slot_code: Some("model_provider".to_string()),
+                q: Some("later-runtime".to_string()),
+                limit: 1,
+                cursor: Some(cursor),
+            },
+        )
+        .await;
+    assert!(stale
+        .unwrap_err()
+        .to_string()
+        .contains("snapshot and query"));
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn ac_001_002_search_refreshes_an_updated_snapshot_and_uses_the_last_complete_snapshot_during_cutover(
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let documents = Arc::new(Mutex::new(documents));
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = MutableCatalogHttpFixture {
+        documents: Arc::clone(&documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new()
+                .fallback(mutable_catalog_response)
+                .with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let query = OfficialExtensionCatalogSearchQuery {
+        slot_code: Some("model_provider".to_string()),
+        q: Some("openai".to_string()),
+        limit: 20,
+        cursor: None,
+    };
+
+    let initial = source
+        .search("runtime-extensions", query.clone())
+        .await
+        .unwrap();
+    assert_eq!(initial.entries[0].version, "2.4.1");
+
+    let page_path = "/runtime-extensions/catalog/v1/pages/1.json";
+    let page_two_path = "/runtime-extensions/catalog/v1/pages/2.json";
+    let mut next_page =
+        serde_json::from_slice::<Value>(&documents.lock().unwrap()[page_path]).unwrap();
+    next_page["entries"][0]["version"] = json!("2.4.2");
+    let next_page = serde_json::to_vec(&next_page).unwrap();
+    let page_two = documents.lock().unwrap()[page_two_path].clone();
+    let next_pages = vec![(1, "start", next_page.clone()), (2, "runtime-2", page_two)];
+    let next_search = catalog_search_index(&base_url, "runtime-extensions", &next_pages);
+    let next_index = catalog_index(&base_url, "runtime-extensions", &next_pages, &next_search);
+    {
+        let mut live = documents.lock().unwrap();
+        live.insert(
+            "/runtime-extensions/catalog/v1/index.json".to_string(),
+            next_index,
+        );
+        live.insert(
+            "/runtime-extensions/catalog/v1/search-index.json".to_string(),
+            next_search,
+        );
+    }
+    requests.lock().unwrap().clear();
+
+    let during_cutover = source
+        .search("runtime-extensions", query.clone())
+        .await
+        .expect("an inconsistent candidate must not replace the last complete snapshot");
+    assert_eq!(during_cutover.entries[0].version, "2.4.1");
+    assert_eq!(
+        during_cutover.freshness,
+        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Stale
+    );
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/search-index.json",
+            "/runtime-extensions/catalog/v1/pages/1.json"
+        ],
+        "a cached snapshot must still probe and validate the current publication"
+    );
+
+    documents
+        .lock()
+        .unwrap()
+        .insert(page_path.to_string(), next_page);
+    requests.lock().unwrap().clear();
+    let refreshed = source
+        .search("runtime-extensions", query)
+        .await
+        .expect("the coherent candidate snapshot must replace the old cache");
+    assert_eq!(refreshed.entries[0].version, "2.4.2");
+    assert_eq!(
+        refreshed.freshness,
+        crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh
+    );
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/search-index.json",
+            "/runtime-extensions/catalog/v1/pages/1.json"
+        ]
+    );
+    server.abort();
 }
 
 #[tokio::test]
@@ -97,7 +472,7 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
     let located = source
         .find_entry(
             "runtime-extensions",
-            "runtime-extensions:taichuy/later-runtime",
+            "runtime-extensions:other/later-runtime",
         )
         .await
         .unwrap()
@@ -107,7 +482,7 @@ async fn root_1545_ac_2_v1_source_reads_six_category_pages_and_later_page_detail
     assert_eq!(located.entry.source.kind, "runtime_extension_manifest");
     assert_eq!(
         located.entry.checksum.as_deref(),
-        Some(&artifact_checksum()[..])
+        Some(&artifact_checksum("runtime-extensions", "later-runtime")[..])
     );
     let requested = requests.lock().unwrap().clone();
     assert_eq!(requested.len(), 3, "detail walks only until the match");
@@ -527,14 +902,16 @@ fn catalog_documents(
                         base_url,
                         category,
                         2,
-                        "runtime-extensions:taichuy/later-runtime",
+                        "runtime-extensions:other/later-runtime",
                         "later-runtime",
                     )],
                 ),
             ));
         }
-        let index = catalog_index(base_url, category, &pages);
+        let search = catalog_search_index(base_url, category, &pages);
+        let index = catalog_index(base_url, category, &pages, &search);
         documents.insert(format!("/{category}/catalog/v1/index.json"), index);
+        documents.insert(format!("/{category}/catalog/v1/search-index.json"), search);
         for (page, _, bytes) in pages {
             documents.insert(format!("/{category}/catalog/v1/pages/{page}.json"), bytes);
         }
@@ -550,11 +927,7 @@ fn catalog_documents(
         if category != "host-extensions" {
             documents.insert(
                 format!("/{category}/artifacts/{category}-fixture.bin"),
-                if category == "i18n" {
-                    b"i18n-artifact".to_vec()
-                } else {
-                    format!("{category}-artifact").into_bytes()
-                },
+                artifact_bytes(category, &format!("{category}-fixture")),
             );
             if category == "runtime-extensions" {
                 documents.insert(
@@ -571,7 +944,12 @@ fn catalog_documents(
     (documents, sources)
 }
 
-fn catalog_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec<u8>)]) -> Vec<u8> {
+fn catalog_index(
+    base_url: &str,
+    category: &str,
+    pages: &[(u32, &str, Vec<u8>)],
+    search: &[u8],
+) -> Vec<u8> {
     let page_references = pages
         .iter()
         .map(|(page, cursor, bytes)| {
@@ -595,7 +973,49 @@ fn catalog_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec<u8>)])
             "cursor": "start",
             "locator": format!("{base_url}/{category}/catalog/v1/pages/1.json")
         },
-        "pages": page_references
+        "pages": page_references,
+        "search_index": {
+            "schema_version": "1flowbase.extension-catalog-search/v1",
+            "entry_count": page_references.iter().map(|page| page["entry_count"].as_u64().unwrap()).sum::<u64>(),
+            "checksum": format!("sha256:{:x}", Sha256::digest(search)),
+            "locator": format!("{base_url}/{category}/catalog/v1/search-index.json")
+        }
+    }))
+    .unwrap()
+}
+
+fn catalog_search_index(base_url: &str, category: &str, pages: &[(u32, &str, Vec<u8>)]) -> Vec<u8> {
+    let mut entries = Vec::new();
+    for (page, cursor, bytes) in pages {
+        let page_document = serde_json::from_slice::<Value>(bytes).unwrap();
+        let page_checksum = format!("sha256:{:x}", Sha256::digest(bytes));
+        for entry in page_document["entries"].as_array().unwrap() {
+            let mut search_entry = entry.clone();
+            search_entry
+                .as_object_mut()
+                .unwrap()
+                .remove("download_locator");
+            search_entry["slot_codes"] = if category == "runtime-extensions" {
+                json!(["model_provider"])
+            } else {
+                json!([])
+            };
+            search_entry["keywords"] = json!([entry["artifact"].as_str().unwrap()]);
+            search_entry["catalog_page"] = json!({
+                "page": page,
+                "cursor": cursor,
+                "checksum": page_checksum,
+                "locator": format!("{base_url}/{category}/catalog/v1/pages/{page}.json")
+            });
+            entries.push(search_entry);
+        }
+    }
+    serde_json::to_vec(&json!({
+        "schema_version": "1flowbase.extension-catalog-search/v1",
+        "category": category,
+        "generated_at": "2026-08-01T00:00:00Z",
+        "source_fingerprint": format!("sha256:fixture-{category}"),
+        "entries": entries
     }))
     .unwrap()
 }
@@ -620,21 +1040,28 @@ fn catalog_page(
 }
 
 fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: &str) -> Value {
+    let organization = id
+        .split_once(':')
+        .and_then(|(_, identity)| identity.split_once('/'))
+        .map(|(organization, _)| organization)
+        .unwrap();
     let mut entry = json!({
         "id": id,
         "name": format!("{artifact} display name"),
         "category": category,
-        "organization": "taichuy",
+        "organization": organization,
         "artifact": artifact,
         "version": "2.4.1",
         "description": "fixture extension",
         "host_version_requirement": ">=0.3.0",
+        "slot_codes": if category == "runtime-extensions" { json!(["model_provider"]) } else { json!([]) },
+        "keywords": [artifact],
         "source": {
             "kind": if category == "runtime-extensions" { "runtime_extension_manifest" } else { "fixture_source" },
-            "locator": format!("{category}/@taichuy/{artifact}")
+            "locator": format!("{category}/@{organization}/{artifact}")
         },
         "signature": null,
-        "checksum": artifact_checksum(),
+        "checksum": artifact_checksum(category, artifact),
         "download_locator": {
             "kind": "repository_file",
             "locator": format!("{base_url}/{category}/artifacts/{artifact}.bin")
@@ -651,6 +1078,19 @@ fn catalog_entry(base_url: &str, category: &str, page: u32, id: &str, artifact: 
     entry
 }
 
-fn artifact_checksum() -> String {
-    format!("sha256:{}", "a".repeat(64))
+fn artifact_bytes(category: &str, artifact: &str) -> Vec<u8> {
+    if category == "i18n" {
+        b"i18n-artifact".to_vec()
+    } else if category == "runtime-extensions" {
+        format!("{artifact}-artifact").into_bytes()
+    } else {
+        format!("{category}-artifact").into_bytes()
+    }
+}
+
+fn artifact_checksum(category: &str, artifact: &str) -> String {
+    format!(
+        "sha256:{:x}",
+        Sha256::digest(artifact_bytes(category, artifact))
+    )
 }

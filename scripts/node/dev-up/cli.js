@@ -2,17 +2,17 @@ const ACTIONS = new Set(['start', 'ensure', 'stop', 'status', 'restart']);
 const SCOPES = new Set(['all', 'frontend', 'backend']);
 
 function usage() {
-  process.stdout.write(`用法：node scripts/node/dev-up.js [选项] [start|ensure|stop|status|restart]
+  process.stdout.write(`Usage: node scripts/node/dev-up.js [options] [start|ensure|stop|status|restart]
 
-默认动作：start
+Default action: start
 
-选项：
-  --frontend-only  仅管理前端进程
-  --backend-only   仅管理后端进程（api-server + plugin-runner）
-  --skip-docker    跳过 Docker 中间件管理
-  -h, --help       查看帮助
+Options:
+  --frontend-only  Manage the frontend process only
+  --backend-only   Manage backend processes only (api-server + plugin-runner)
+  --skip-docker    Skip Docker middleware management
+  -h, --help       Show this help
 
-示例：
+Examples:
   node scripts/node/dev-up.js
   node scripts/node/dev-up.js --skip-docker
   node scripts/node/dev-up.js restart --frontend-only
@@ -40,7 +40,7 @@ function parseCliArgs(argv) {
 
     if (arg === '--frontend-only') {
       if (scope !== 'all') {
-        throw new Error('不能同时指定 --frontend-only 和 --backend-only');
+        throw new Error('Cannot specify --frontend-only and --backend-only together');
       }
       scope = 'frontend';
       continue;
@@ -48,7 +48,7 @@ function parseCliArgs(argv) {
 
     if (arg === '--backend-only') {
       if (scope !== 'all') {
-        throw new Error('不能同时指定 --frontend-only 和 --backend-only');
+        throw new Error('Cannot specify --frontend-only and --backend-only together');
       }
       scope = 'backend';
       continue;
@@ -60,15 +60,15 @@ function parseCliArgs(argv) {
     }
 
     if (arg.startsWith('-')) {
-      throw new Error(`未知选项：${arg}`);
+      throw new Error(`Unknown option: ${arg}`);
     }
 
     if (actionSpecified) {
-      throw new Error(`只能指定一个动作，收到多余参数：${arg}`);
+      throw new Error(`Only one action may be specified; unexpected argument: ${arg}`);
     }
 
     if (!ACTIONS.has(arg)) {
-      throw new Error(`未知动作：${arg}`);
+      throw new Error(`Unknown action: ${arg}`);
     }
 
     action = arg;
@@ -76,7 +76,7 @@ function parseCliArgs(argv) {
   }
 
   if (!SCOPES.has(scope)) {
-    throw new Error(`未知范围：${scope}`);
+    throw new Error(`Unknown scope: ${scope}`);
   }
 
   return {

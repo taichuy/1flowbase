@@ -8,7 +8,6 @@ import {
   type NodePickerOption
 } from '../../lib/plugin-node-definitions';
 import { getAgentFlowNodeTypeIcon } from '../../lib/node-type-icons';
-import { calculateNodePickerMaxHeight } from './node-picker-layout';
 import { i18nText } from '../../../../shared/i18n/text';
 
 type BuiltinNodePickerOption = Extract<NodePickerOption, { kind: 'builtin' }>;
@@ -149,25 +148,11 @@ export function NodePickerPopover({
       return document.body;
     }
 
-    const editorBody = triggerNode.closest<HTMLElement>(
-      '.agent-flow-editor__body'
-    );
-    const bottomControlBoundary = editorBody
-      ?.querySelector<HTMLElement>('.agent-flow-editor__variable-cache-trigger')
-      ?.getBoundingClientRect().bottom;
     const canvasRect = canvas.getBoundingClientRect();
-    const triggerRect = triggerNode.getBoundingClientRect();
-    const anchorY =
-      placement === 'bottom' ? triggerRect.bottom : triggerRect.top;
-    const maxHeight = calculateNodePickerMaxHeight({
-      canvasBottom: canvasRect.bottom,
-      anchorY,
-      bottomBoundary: bottomControlBoundary
-    });
 
     canvas.style.setProperty(
-      '--agent-flow-node-picker-max-height',
-      `${maxHeight}px`
+      '--agent-flow-node-picker-height',
+      `${Math.floor(canvasRect.height * 0.8)}px`
     );
 
     return canvas;
@@ -176,15 +161,17 @@ export function NodePickerPopover({
   return (
     <Popover
       rootClassName="agent-flow-node-picker-popover"
+      arrow={false}
       destroyOnHidden
       getPopupContainer={resolvePopupContainer}
       styles={{
         body: {
           boxSizing: 'border-box',
-          maxHeight:
-            'var(--agent-flow-node-picker-max-height, calc(100vh - 120px))',
+          display: 'grid',
+          height: 'var(--agent-flow-node-picker-height, 80vh)',
           overflow: 'hidden',
-          overscrollBehavior: 'contain'
+          overscrollBehavior: 'contain',
+          padding: 0
         }
       }}
       trigger="click"

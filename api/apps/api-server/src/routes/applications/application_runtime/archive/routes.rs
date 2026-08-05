@@ -17,7 +17,6 @@ use super::*;
     )
 )]
 // Compatibility export endpoint; user-facing run export uses the trace zip path.
-#[deprecated(note = "Use selected trace export zip for user-facing run export.")]
 pub(crate) async fn export_application_run_archive(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -66,7 +65,6 @@ pub(crate) async fn export_application_run_archive(
     )
 )]
 // Compatibility export endpoint; user-facing run export uses the trace zip path.
-#[deprecated(note = "Use selected trace export zip for user-facing run export.")]
 pub(crate) async fn export_application_runs_archive(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

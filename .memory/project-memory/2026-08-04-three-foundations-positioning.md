@@ -1,7 +1,7 @@
 ---
 memory_type: project
-topic: 1flowbase 三大基座完成并统一为 Agent-Native 应用平台定位
-summary: 用户确认 AI Gateway、MCP Gateway 与 Native React 前端区块三大基座已经完成；GitHub README、Description 与 Topics 已改为 Agent-Native application platform 统一定位，后续对外表达不再把 MCP Gateway 写成路线图能力。
+topic: 1flowbase Agent-Native 应用平台基座定位
+summary: 首轮三基座定位遗漏应用后端；用户已确认升级为 AI Gateway、MCP Gateway、Application Backend 与 Native React frontend blocks 四大基座，并明确 AI Gateway 是外部本地 Agent 可选接入的模型服务入口，四者不是强制串行链路。
 keywords:
   - 1flowbase
   - agent-native
@@ -48,3 +48,11 @@ scope:
 ## 后续验证边界
 
 项目记忆超过两天后，继续引用“已实现”结论前应回看当前 README、MCP protocol routes、MCP management routes、frontend block SDK 与 Native React runtime；若能力边界变化，以最新源码和运行证据为准。
+
+## 2026-08-04 应用后端遗漏纠正
+
+用户指出首轮“三大基座”遗漏了完整后端层：1flowbase 可直接定义 Data Model，物化 PostgreSQL 表、字段、索引和关系；已发布 Data Model 自动生成 list/create/get/update/delete 运行时 API；Workflow 可以发布 `/api/ex/{slug}` 自定义扩展接口。
+
+当前事实已由 `physical_schema_repository.rs`、`runtime_data_model_docs.rs`、runtime model CRUD routes 与 `workflow_extension.rs` 取证。用户已确认公开名称使用 `Application Backend / 应用后端`，形成四大基座；不要只叫 `Data Source`，也不要在未满足托管服务预期前直接宣称完整 BaaS。
+
+四大基座关系固定为并列可组合：MCP Gateway 是外部 Agent 控制面；Application Backend 是数据与 API 面；Native React frontend blocks 是人机体验面；AI Gateway 是外部客户端按需接入的模型服务面。外部本地 Agent 不接 AI Gateway 也能通过 MCP 接管 1flowbase；接入后增加兼容模型接口、模型组合与详细执行日志。

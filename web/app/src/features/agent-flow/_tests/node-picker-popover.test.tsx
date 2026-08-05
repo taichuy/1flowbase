@@ -5,7 +5,6 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { NodePickerPopover } from '../components/node-picker/NodePickerPopover';
-import { calculateNodePickerMaxHeight } from '../components/node-picker/node-picker-layout';
 import {
   buildNodePickerOptions,
   type NodePickerOption
@@ -410,7 +409,7 @@ describe('NodePickerPopover', () => {
     );
   });
 
-  test('sets picker height from the canvas bottom control boundary', async () => {
+  test('AC-001 keeps the picker at 80% of the canvas height for lower nodes', async () => {
     const getRectSpy = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockImplementation(function (this: HTMLElement) {
@@ -427,13 +426,7 @@ describe('NodePickerPopover', () => {
         };
 
         if (this.classList.contains('agent-flow-canvas')) {
-          return { ...baseRect, bottom: 900 };
-        }
-
-        if (
-          this.classList.contains('agent-flow-editor__variable-cache-trigger')
-        ) {
-          return { ...baseRect, bottom: 760 };
+          return { ...baseRect, height: 900, bottom: 900 };
         }
 
         if (this.getAttribute('aria-label') === '在 LLM 后新增节点') {
@@ -445,50 +438,64 @@ describe('NodePickerPopover', () => {
 
     try {
       render(
-        <div className="agent-flow-editor__body">
-          <div className="agent-flow-canvas" data-testid="node-picker-canvas">
-            <NodePickerPopover
-              ariaLabel="在 LLM 后新增节点"
-              open
-              placement="bottom"
-              onOpenChange={vi.fn()}
-              onPickNode={vi.fn()}
-            />
-          </div>
-          <button
-            className="agent-flow-editor__variable-cache-trigger"
-            type="button"
-          >
-            查看缓存
-          </button>
+        <div className="agent-flow-canvas" data-testid="node-picker-canvas">
+          <NodePickerPopover
+            ariaLabel="在 LLM 后新增节点"
+            open
+            placement="bottom"
+            onOpenChange={vi.fn()}
+            onPickNode={vi.fn()}
+          />
         </div>
       );
 
       expect(await screen.findByRole('menu')).toBeInTheDocument();
       expect(screen.getByTestId('node-picker-canvas')).toHaveStyle(
-        '--agent-flow-node-picker-max-height: 450px'
+        '--agent-flow-node-picker-height: 720px'
       );
     } finally {
       getRectSpy.mockRestore();
     }
   });
 
-  test('calculates picker height with a 10px canvas bottom gap', () => {
-    expect(
-      calculateNodePickerMaxHeight({ canvasBottom: 500, anchorY: 360 })
-    ).toBe(130);
-    expect(
-      calculateNodePickerMaxHeight({ canvasBottom: 500, anchorY: 460 })
-    ).toBe(120);
+  test('AC-002 centers the canvas picker vertically and scrolls only its list', () => {
+    const canvasControlsCss = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../components/editor/styles/canvas-controls.css'
+      ),
+      'utf8'
+    );
+
+    expect(canvasControlsCss).toMatch(
+      /\.agent-flow-canvas\s+\.agent-flow-node-picker-popover\s*\{[\s\S]*?top:\s*calc\([\s\S]*?var\(--agent-flow-node-picker-height\)[\s\S]*?\/\s*2[\s\S]*?\)\s*!important;/
+    );
+    expect(canvasControlsCss).toMatch(
+      /\.agent-flow-node-picker\s*\{[\s\S]*?height:\s*var\(--agent-flow-node-picker-height,\s*80vh\);/
+    );
+    expect(canvasControlsCss).toMatch(
+      /\.agent-flow-node-picker\s*\{[\s\S]*?box-sizing:\s*border-box;[\s\S]*?padding:\s*12px;/
+    );
+    expect(canvasControlsCss).toMatch(
+      /\.agent-flow-node-picker__list\s*\{[\s\S]*?overflow-y:\s*auto;/
+    );
   });
 
-  test('caps picker height at the canvas bottom control boundary', () => {
-    expect(
-      calculateNodePickerMaxHeight({
-        canvasBottom: 900,
-        anchorY: 260,
-        bottomBoundary: 760
-      })
-    ).toBe(490);
+  test('AC-002 gives the picker the full semantic body height without clipping', async () => {
+    render(
+      <NodePickerPopover
+        ariaLabel="在 LLM 后新增节点"
+        open
+        onOpenChange={vi.fn()}
+        onPickNode={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByRole('menu')).toBeInTheDocument();
+    expect(document.querySelector('.ant-popover-inner')).toHaveStyle({
+      display: 'grid',
+      height: 'var(--agent-flow-node-picker-height, 80vh)',
+      padding: 0
+    });
   });
 });

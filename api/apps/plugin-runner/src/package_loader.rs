@@ -9,6 +9,7 @@ use plugin_framework::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::{PluginExecutionMode, PluginManifestV1},
     provider_package::ProviderPackage,
+    LegacyInstalledManifestEligibility,
 };
 
 #[derive(Debug, Clone)]
@@ -29,6 +30,20 @@ pub struct PackageLoader;
 
 impl PackageLoader {
     pub fn load(package_root: impl AsRef<Path>) -> FrameworkResult<LoadedProviderPackage> {
+        Self::load_provider_package(package_root, None)
+    }
+
+    pub fn load_legacy_installed(
+        package_root: impl AsRef<Path>,
+        eligibility: &LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<LoadedProviderPackage> {
+        Self::load_provider_package(package_root, Some(eligibility))
+    }
+
+    fn load_provider_package(
+        package_root: impl AsRef<Path>,
+        eligibility: Option<&LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<LoadedProviderPackage> {
         let package_root = fs::canonicalize(package_root.as_ref()).map_err(|error| {
             PluginFrameworkError::invalid_provider_package(format!(
                 "cannot resolve package root: {error}"
@@ -41,7 +56,12 @@ impl PackageLoader {
             ));
         }
 
-        let package = ProviderPackage::load_from_dir(&package_root)?;
+        let package = match eligibility {
+            Some(eligibility) => {
+                ProviderPackage::load_legacy_installed_from_dir(&package_root, eligibility)?
+            }
+            None => ProviderPackage::load_from_dir(&package_root)?,
+        };
         let runtime_executable = package.runtime_entry();
         if !runtime_executable.is_file() {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
@@ -60,6 +80,20 @@ impl PackageLoader {
     pub fn load_data_source(
         package_root: impl AsRef<Path>,
     ) -> FrameworkResult<LoadedDataSourcePackage> {
+        Self::load_data_source_package(package_root, None)
+    }
+
+    pub fn load_legacy_installed_data_source(
+        package_root: impl AsRef<Path>,
+        eligibility: &LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<LoadedDataSourcePackage> {
+        Self::load_data_source_package(package_root, Some(eligibility))
+    }
+
+    fn load_data_source_package(
+        package_root: impl AsRef<Path>,
+        eligibility: Option<&LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<LoadedDataSourcePackage> {
         let package_root = fs::canonicalize(package_root.as_ref()).map_err(|error| {
             PluginFrameworkError::invalid_provider_package(format!(
                 "cannot resolve package root: {error}"
@@ -72,7 +106,12 @@ impl PackageLoader {
             ));
         }
 
-        let package = DataSourcePackage::load_from_dir(&package_root)?;
+        let package = match eligibility {
+            Some(eligibility) => {
+                DataSourcePackage::load_legacy_installed_from_dir(&package_root, eligibility)?
+            }
+            None => DataSourcePackage::load_from_dir(&package_root)?,
+        };
         let runtime_executable = package.runtime_entry();
         if !runtime_executable.is_file() {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
@@ -95,6 +134,20 @@ impl PackageLoader {
     pub fn load_capability(
         package_root: impl AsRef<Path>,
     ) -> FrameworkResult<LoadedCapabilityPackage> {
+        Self::load_capability_package(package_root, None)
+    }
+
+    pub fn load_legacy_installed_capability(
+        package_root: impl AsRef<Path>,
+        eligibility: &LegacyInstalledManifestEligibility,
+    ) -> FrameworkResult<LoadedCapabilityPackage> {
+        Self::load_capability_package(package_root, Some(eligibility))
+    }
+
+    fn load_capability_package(
+        package_root: impl AsRef<Path>,
+        eligibility: Option<&LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<LoadedCapabilityPackage> {
         let package_root = fs::canonicalize(package_root.as_ref()).map_err(|error| {
             PluginFrameworkError::invalid_provider_package(format!(
                 "cannot resolve package root: {error}"
@@ -110,7 +163,16 @@ impl PackageLoader {
         let manifest_path = package_root.join("manifest.yaml");
         let manifest_raw = fs::read_to_string(&manifest_path)
             .map_err(|error| PluginFrameworkError::io(Some(&manifest_path), error.to_string()))?;
-        let manifest = parse_capability_manifest(&manifest_raw)?;
+        let manifest = match eligibility {
+            Some(eligibility) => plugin_framework::parse_legacy_installed_plugin_manifest(
+                &manifest_raw,
+                eligibility,
+            )?,
+            None => parse_capability_manifest(&manifest_raw)?,
+        };
+        if eligibility.is_some() {
+            validate_capability_manifest(&manifest)?;
+        }
         let runtime_executable = package_root.join(&manifest.runtime.entry);
         if !runtime_executable.is_file() {
             return Err(PluginFrameworkError::invalid_provider_package(format!(

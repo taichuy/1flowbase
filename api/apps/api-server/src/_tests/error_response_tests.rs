@@ -1,4 +1,5 @@
 use api_server::error_response::ApiError;
+use api_server::official_extension_catalog::OfficialExtensionCatalogUnavailable;
 use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
 use control_plane::errors::ControlPlaneError;
 use plugin_framework::error::PluginFrameworkError;
@@ -14,6 +15,23 @@ async fn error_response_includes_status_field() {
     assert_eq!(payload["status"], 500);
     assert_eq!(payload["code"], "internal_error");
     assert!(payload["message"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn inconsistent_extension_catalog_is_a_retryable_service_failure() {
+    let response = ApiError(anyhow::Error::new(
+        OfficialExtensionCatalogUnavailable::new(anyhow::anyhow!("checksum mismatch")),
+    ))
+    .into_response();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload["status"], 503);
+    assert_eq!(
+        payload["code"],
+        "extension_catalog_temporarily_inconsistent"
+    );
 }
 
 #[tokio::test]

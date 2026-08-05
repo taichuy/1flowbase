@@ -158,6 +158,7 @@ function readBoundaryForContext({ functionName, context }) {
     /\bwhere\b[\s\S]*\bapplication_id\s*=\s*\$/u.test(normalized)
     && /\b(?:id|flow_run_id)\s*=\s*\$/u.test(normalized);
   const hasTraceNodeId = /\btrace_node_id\s*=\s*\$/u.test(normalized);
+  const hasPrimaryKeyBatch = /\bwhere\b[\s\S]*\bid\s*=\s*any\s*\(\s*\$/u.test(normalized);
   const isPageOrList =
     name.startsWith('list_')
     || name.includes('_page')
@@ -167,7 +168,7 @@ function readBoundaryForContext({ functionName, context }) {
   if (name.includes('stitched_trace')) {
     return 'detail';
   }
-  if (hasApplicationAndRunId || hasTraceNodeId || /\b(detail|content|fetch|get_latest)\b/u.test(name)) {
+  if (hasApplicationAndRunId || hasTraceNodeId || hasPrimaryKeyBatch || /\b(detail|content|fetch|get_latest)\b/u.test(name)) {
     return isPageOrList && (hasFlowRunScope || hasNodeRunScope) ? 'run_scope' : 'detail';
   }
   if (hasFlowRunScope || hasNodeRunScope) {

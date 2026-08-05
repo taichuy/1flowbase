@@ -50,26 +50,6 @@ export interface ConsolePluginInstallation {
   updated_at: string;
 }
 
-export interface ConsolePluginCatalogEntry {
-  installation: ConsolePluginInstallation;
-  local_artifact: ConsolePluginArtifactInstance;
-  plugin_type: string;
-  namespace: string;
-  label_key: string;
-  description_key: string | null;
-  provider_label_key: string;
-  help_url: string | null;
-  default_base_url: string | null;
-  model_discovery_mode: string;
-  assigned_to_current_workspace: boolean;
-}
-
-export interface ConsolePluginCatalogResponse {
-  locale_meta: Record<string, unknown>;
-  i18n_catalog: Record<string, unknown>;
-  entries: ConsolePluginCatalogEntry[];
-}
-
 export type ConsoleOfficialPluginInstallStatus =
   | 'not_installed'
   | 'installed'
@@ -180,10 +160,6 @@ export interface ConsolePluginTask {
   created_at: string;
   updated_at: string;
   finished_at: string | null;
-}
-
-export interface InstallConsolePluginInput {
-  package_root: string;
 }
 
 export interface InstallConsoleOfficialPluginInput {
@@ -469,16 +445,6 @@ function buildMemorySearchPath(
   return `${basePath}${separator}q=${encodeURIComponent(request.q)}`;
 }
 
-export function listConsolePluginCatalog(
-  filter?: ConsolePluginCatalogFilter,
-  baseUrl?: string
-) {
-  return apiFetch<ConsolePluginCatalogResponse>({
-    path: buildPluginCatalogPath('/api/console/plugins/catalog', filter),
-    baseUrl
-  });
-}
-
 export function listConsolePluginFamilies(
   filter?: ConsolePluginCatalogFilter,
   baseUrl?: string
@@ -498,20 +464,6 @@ export function listConsoleOfficialPluginCatalog(
       '/api/console/plugins/official-catalog',
       filter
     ),
-    baseUrl
-  });
-}
-
-export function installConsolePlugin(
-  input: InstallConsolePluginInput,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<InstallConsolePluginResult>({
-    path: '/api/console/plugins/install',
-    method: 'POST',
-    body: input,
-    csrfToken,
     baseUrl
   });
 }
@@ -543,32 +495,6 @@ export function uploadConsolePluginPackage(
     method: 'POST',
     rawBody: formData,
     contentType: null,
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function enableConsolePlugin(
-  installationId: string,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<ConsolePluginTask>({
-    path: `/api/console/plugins/${installationId}/enable`,
-    method: 'POST',
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function assignConsolePlugin(
-  installationId: string,
-  csrfToken: string,
-  baseUrl?: string
-) {
-  return apiFetch<ConsolePluginTask>({
-    path: `/api/console/plugins/${installationId}/assign`,
-    method: 'POST',
     csrfToken,
     baseUrl
   });
@@ -643,13 +569,6 @@ export function deleteConsolePluginFamily(
     path: `/api/console/plugins/families/${providerCode}`,
     method: 'DELETE',
     csrfToken,
-    baseUrl
-  });
-}
-
-export function listConsolePluginTasks(baseUrl?: string) {
-  return apiFetch<ConsolePluginTask[]>({
-    path: '/api/console/plugins/tasks',
     baseUrl
   });
 }

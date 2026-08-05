@@ -403,7 +403,7 @@ export function ApplicationListPage() {
       <input
         ref={importFileInputRef}
         type="file"
-        accept="application/zip,.zip"
+        accept="application/zip,.zip,application/json,.json"
         aria-label={t('auto.import_template_file')}
         style={{ display: 'none' }}
         onChange={handleImportTemplateFile}

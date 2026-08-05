@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
 import {
   act,
   fireEvent,
@@ -6,7 +7,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
@@ -184,8 +185,6 @@ import {
   useAuthStore
 } from '../../../../../../state/auth-store';
 import { McpManagementPanel } from '../../McpManagementPanel';
-import { McpToolDebugPanel } from '../../McpToolDebugPanel';
-import { MarkdownIrEditor } from '../../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -544,6 +543,10 @@ async function setFullDescription(value: string) {
 }
 
 describe('McpManagementPanel', () => {
+  afterEach(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     resetAuthStore();

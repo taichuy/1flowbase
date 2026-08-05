@@ -42,6 +42,7 @@ pub(crate) fn map_installation(
         signature_status: row.get("signature_status"),
         signature_algorithm: row.get("signature_algorithm"),
         signing_key_id: row.get("signing_key_id"),
+        legacy_manifest_compatibility: row.get("legacy_manifest_compatibility"),
         metadata_json: row.get("metadata_json"),
         is_system_reserved: row.get("is_system_reserved"),
         created_by: row.get("created_by"),
@@ -175,6 +176,7 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,
                 signing_key_id = excluded.signing_key_id,
+                receipt = extension_installations.receipt - 'legacy_manifest_compatibility',
                 metadata_json = excluded.metadata_json,
                 is_system_reserved = excluded.is_system_reserved,
                 updated_by = excluded.updated_by,
@@ -198,6 +200,7 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json,
                 is_system_reserved,
                 created_by,
@@ -259,6 +262,7 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json,
                 is_system_reserved,
                 created_by,
@@ -299,6 +303,7 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json,
                 is_system_reserved,
                 created_by,
@@ -456,6 +461,7 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json,
                 is_system_reserved,
                 created_by,
@@ -505,6 +511,7 @@ impl PluginRepository for PgControlPlaneStore {
                 signature_status,
                 signature_algorithm,
                 signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                 metadata_json,
                 is_system_reserved,
                 created_by,
@@ -716,6 +723,15 @@ impl PluginRepository for PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_assignment).collect()
+    }
+
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let rows = sqlx::query_scalar(
+            "select distinct installation_id from plugin_assignments order by installation_id",
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows)
     }
 
     async fn create_task(&self, input: &CreatePluginTaskInput) -> Result<domain::PluginTaskRecord> {

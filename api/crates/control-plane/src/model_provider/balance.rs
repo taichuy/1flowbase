@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::{
     data_source::{collect_secret_strings, redact_value},
     errors::ControlPlaneError,
+    installed_provider_package::load_installed_provider_package,
     model_provider::{ModelProviderBalanceResult, ModelProviderUseCase},
     ports::{AuthRepository, ModelProviderRepository, PluginRepository, ProviderRuntimePort},
 };
@@ -12,7 +13,7 @@ use super::{
     instances::build_provider_runtime_config,
     shared::{
         empty_object, ensure_model_provider_permission, load_actor_context_for_user,
-        load_provider_package, ready_model_provider_installation, ModelProviderNodeArtifactContext,
+        ready_model_provider_installation, ModelProviderNodeArtifactContext,
     },
 };
 
@@ -44,11 +45,7 @@ where
     if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
         return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
     }
-    let package = load_provider_package(
-        installation
-            .local_path()
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-    )?;
+    let package = load_installed_provider_package(&installation)?;
     let secret_json = repository
         .get_secret_json(instance.id, provider_secret_master_key)
         .await?

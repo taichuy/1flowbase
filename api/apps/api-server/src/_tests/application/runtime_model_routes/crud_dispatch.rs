@@ -254,6 +254,14 @@ async fn runtime_model_routes_cache_main_source_reads_and_invalidate_after_write
     assert!(cache_entries
         .iter()
         .any(|entry| entry.key.starts_with("runtime-records:get:v1:")));
+    for entry in &cache_entries {
+        assert!(state
+            .infrastructure
+            .cache_store()
+            .touch(&entry.key, time::Duration::minutes(5))
+            .await
+            .unwrap());
+    }
 
     update_runtime_record_title_directly(&database_url, &model_id, &record_id, "db-bypass-title")
         .await;

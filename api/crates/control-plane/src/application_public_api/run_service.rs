@@ -56,6 +56,15 @@ const PUBLIC_PROVIDER_TRANSPORT_SUMMARY: &str = "public_provider_transport";
 const PUBLISHED_RUN_CANCELLED_ERROR_CODE: &str = "cancelled";
 const PUBLISHED_RUN_CANCELLED_ERROR_MESSAGE: &str = "published run cancelled";
 
+/// Starts a published Agent Flow on behalf of the authenticated console user.
+/// This deliberately has no API-key field: embedded assistant runs are session-principal runs.
+pub struct CreateAssistantRunCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub request: NativeRunRequest,
+}
+
 pub struct ApplicationPublishedRunService<R> {
     repository: R,
     last_used_cache: Option<Arc<dyn CacheStore>>,
@@ -91,6 +100,94 @@ where
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         self.start_agentflow_run(command).await
+    }
+
+    pub async fn create_assistant_run(
+        &self,
+        command: CreateAssistantRunCommand,
+    ) -> std::result::Result<domain::FlowRunRecord, NativeRunValidationError> {
+        let application = self
+            .repository
+            .get_application(command.workspace_id, command.application_id)
+            .await
+            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+            .filter(|application| {
+                application.application_type == domain::ApplicationType::AgentFlow
+            })
+            .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        let publication = self
+            .repository
+            .load_active_application_publication(command.application_id)
+            .await
+            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+            .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        let compiled_plan = self
+            .repository
+            .get_application_compiled_plan(publication.compiled_plan_id)
+            .await
+            .map_err(|_| NativeRunValidationError::ApplicationNotPublished)?
+            .ok_or(NativeRunValidationError::ApplicationNotPublished)?;
+        let mapped = NativeInputMapper::map(&command.request, &publication.mapping_snapshot)
+            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        let environment_variables = self
+            .repository
+            .list_application_environment_variables(command.workspace_id, command.application_id)
+            .await
+            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        let started_at = OffsetDateTime::now_utc();
+        let input_payload = freeze_run_input_environment(
+            mapped.node_input_payload,
+            &environment_variables,
+            command.request.execution.model_parameters(),
+        );
+        let created = self
+            .repository
+            .create_published_flow_run(&CreateFlowRunInput {
+                actor_user_id: command.actor_user_id,
+                application_id: command.application_id,
+                flow_id: publication.flow_id,
+                flow_draft_id: compiled_plan.draft_id,
+                compiled_plan_id: publication.compiled_plan_id,
+                debug_session_id: String::new(),
+                flow_schema_version: publication.flow_schema_version.clone(),
+                document_hash: publication.document_hash.clone(),
+                run_mode: domain::FlowRunMode::AssistantExecution,
+                target_node_id: None,
+                title: build_flow_run_title(
+                    command.request.title.as_deref(),
+                    &command.request.query,
+                ),
+                status: domain::FlowRunStatus::Queued,
+                input_payload,
+                started_at,
+                api_key_id: None,
+                publication_version_id: Some(publication.id),
+                external_user: None,
+                external_conversation_id: None,
+                external_trace_id: None,
+                compatibility_mode: Some("embedded_assistant".to_string()),
+                idempotency_key: None,
+            })
+            .await
+            .map_err(|_| NativeRunValidationError::InvalidMapping)?;
+        let flow_run = created.flow_run;
+        let _ = ApplicationRepository::append_audit_log(
+            &self.repository,
+            &audit_log(
+                Some(application.workspace_id),
+                Some(command.actor_user_id),
+                "embedded_assistant_run",
+                Some(flow_run.id),
+                "embedded_assistant.run_started",
+                json!({
+                    "application_id": command.application_id,
+                    "publication_version_id": publication.id,
+                    "actor_user_id": command.actor_user_id,
+                }),
+            ),
+        )
+        .await;
+        Ok(flow_run)
     }
 
     async fn start_agentflow_run(

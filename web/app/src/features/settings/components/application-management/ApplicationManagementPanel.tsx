@@ -2,7 +2,8 @@ import {
   CopyOutlined,
   DeleteOutlined,
   ExportOutlined,
-  MoreOutlined
+  MoreOutlined,
+  PlusOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -134,6 +135,7 @@ export function ApplicationManagementPanel() {
   >([]);
   const [detailsApplication, setDetailsApplication] =
     useState<SettingsApplicationManagementItem | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -853,6 +855,16 @@ export function ApplicationManagementPanel() {
           }}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
+              {canCreate ? (
+                <Button
+                  aria-label={i18nText('settings', 'auto.new')}
+                  icon={<PlusOutlined />}
+                  type="primary"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  {i18nText('settings', 'auto.new')}
+                </Button>
+              ) : null}
               <Button
                 icon={<ExportOutlined />}
                 disabled={selectedApplicationIds.length === 0}
@@ -881,6 +893,16 @@ export function ApplicationManagementPanel() {
           }}
         />
       </div>
+
+      <ApplicationFormModal
+        open={createOpen}
+        csrfToken={csrfToken}
+        intent={{
+          kind: 'create',
+          onCreated: () => void invalidateApplications()
+        }}
+        onClose={() => setCreateOpen(false)}
+      />
 
       <ApplicationFormModal
         open={Boolean(detailsApplication)}

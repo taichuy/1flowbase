@@ -190,12 +190,12 @@ function renderPanel() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });
-  const rendered = render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <SystemRuntimePanel />
     </QueryClientProvider>
   );
-  return { ...rendered, queryClient };
+  return { ...view, queryClient };
 }
 
 describe('SystemRuntimePanel', () => {

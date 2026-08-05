@@ -1065,6 +1065,18 @@ export type ConsoleFlowDebugStreamEvent =
       content_type?: 'text' | 'reasoning' | null;
     }
   | {
+      type: 'flow_incomplete';
+      run_id: string;
+      status: 'incomplete' | string;
+      reason?: string;
+      output: Record<string, unknown>;
+      event_id?: string;
+      sequence?: number;
+      created_at?: string;
+      delta_index?: number | null;
+      content_type?: 'text' | 'reasoning' | null;
+    }
+  | {
       type: 'flow_failed';
       run_id: string;
       error: string;

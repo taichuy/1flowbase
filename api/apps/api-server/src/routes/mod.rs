@@ -1,6 +1,7 @@
 pub mod application_public_api;
 #[path = "applications/mod.rs"]
 mod applications_group;
+pub mod assistant;
 pub mod console_route_assembly;
 pub(crate) mod core_console_i18n;
 pub(crate) mod core_console_operation_specs;
@@ -19,7 +20,7 @@ pub mod runtime_i18n_catalog;
 mod settings_group;
 
 pub use applications_group::{
-    application_api, application_orchestration, application_runtime, applications,
+    application_api, application_orchestration, application_runtime, applications, debug_run_stream,
 };
 pub use identity_group::{auth, me, session, user_api_keys};
 pub use plugins_and_models_group::{

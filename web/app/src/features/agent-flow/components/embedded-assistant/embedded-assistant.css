@@ -1,0 +1,23 @@
+.embedded-agent-assistant-preview {
+  position: fixed;
+  z-index: 19;
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(520px, 100vw);
+  min-width: 0;
+  padding: 16px;
+  pointer-events: auto;
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__debug-console {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .embedded-agent-assistant-preview {
+    width: 100vw;
+    padding: 8px;
+  }
+}

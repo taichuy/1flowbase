@@ -9,9 +9,14 @@ import {
 } from '@1flowbase/flow-schema';
 import { AgentFlowCanvas } from '../../components/editor/AgentFlowCanvas';
 import { createNodeDocument } from '../../lib/document/node-factory';
+import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { selectWorkingDocument } from '../../store/editor/selectors';
+import {
+  createApplicationNodeCatalog,
+  createBuiltinCatalogNode
+} from '../fixtures/application-node-catalog';
 
 type MockNodeChange = {
   id: string;
@@ -112,6 +117,15 @@ let latestViewportChangeOptions: {
   onEnd?: (viewport: MockViewport) => void;
 } | null = null;
 
+const nodePickerOptions = buildNodePickerOptions(
+  createApplicationNodeCatalog([
+    createBuiltinCatalogNode('llm', { title: 'LLM' }),
+    createBuiltinCatalogNode('template_transform', {
+      title: 'Template Transform'
+    })
+  ]).nodes
+);
+
 function createInitialState(
   document = createDefaultAgentFlowDocument({ flowId: 'flow-1' })
 ) {
@@ -188,7 +202,10 @@ function renderCanvas(
           latestState = state;
         }}
       />
-      <AgentFlowCanvas issueCountByNodeId={{}} />
+      <AgentFlowCanvas
+        issueCountByNodeId={{}}
+        nodePickerOptions={nodePickerOptions}
+      />
     </AgentFlowEditorStoreProvider>
   );
 

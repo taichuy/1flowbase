@@ -16,6 +16,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 use crate::{
     config::{ApiConfig, ResolvedOfficialExtensionCatalogSourceConfig},
@@ -23,6 +24,7 @@ use crate::{
 };
 
 const EXTENSION_CATALOG_SCHEMA_VERSION: &str = "1flowbase.extension-catalog/v1";
+const EXTENSION_CATALOG_SEARCH_SCHEMA_VERSION: &str = "1flowbase.extension-catalog-search/v1";
 const MAX_EXTENSION_CATALOG_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_EXTENSION_ARTIFACT_BYTES: usize = 64 * 1024 * 1024;
 const EXTENSION_SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -32,6 +34,19 @@ const EXTENSION_SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 pub enum OfficialExtensionCatalogFreshness {
     Fresh,
     Stale,
+}
+
+#[derive(Debug, Error)]
+#[error("official extension catalog snapshot is temporarily inconsistent: {source}")]
+pub struct OfficialExtensionCatalogUnavailable {
+    #[source]
+    source: anyhow::Error,
+}
+
+impl OfficialExtensionCatalogUnavailable {
+    pub fn new(source: anyhow::Error) -> Self {
+        Self { source }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -52,11 +67,40 @@ pub struct OfficialExtensionCatalogEntry {
     pub version: String,
     pub description: String,
     pub host_version_requirement: String,
+    pub slot_codes: Vec<String>,
+    pub keywords: Vec<String>,
     pub source: OfficialExtensionCatalogEntrySource,
     pub signature: Option<Value>,
     pub checksum: Option<String>,
     pub download_locator: Value,
     pub catalog_page: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfficialExtensionCatalogSearchQuery {
+    pub slot_code: Option<String>,
+    pub q: Option<String>,
+    pub limit: usize,
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OfficialExtensionCatalogSearchResult {
+    pub source_kind: String,
+    pub category: String,
+    pub freshness: OfficialExtensionCatalogFreshness,
+    pub snapshot_checksum: String,
+    pub snapshot_locator: String,
+    pub total_entries: usize,
+    pub next_cursor: Option<String>,
+    pub entries: Vec<OfficialExtensionCatalogEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CachedOfficialExtensionCatalogEntries {
+    pub source_kind: String,
+    pub snapshot_locator: String,
+    pub entries: Vec<OfficialExtensionCatalogEntry>,
 }
 
 impl OfficialExtensionCatalogEntry {
@@ -122,11 +166,25 @@ pub struct DownloadedOfficialExtensionArtifact {
 
 #[async_trait]
 pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
+    async fn search(
+        &self,
+        category: &str,
+        query: OfficialExtensionCatalogSearchQuery,
+    ) -> Result<OfficialExtensionCatalogSearchResult>;
+
     async fn list_page(
         &self,
         category: &str,
         cursor: Option<&str>,
     ) -> Result<OfficialExtensionCatalogPage>;
+
+    fn cached_verified_entries(
+        &self,
+        _category: &str,
+        _slot_code: Option<&str>,
+    ) -> Option<CachedOfficialExtensionCatalogEntries> {
+        None
+    }
 
     async fn find_entry(
         &self,
@@ -156,7 +214,6 @@ pub struct ApiOfficialRuntimeExtensionSource {
 #[derive(Default)]
 struct RuntimeExtensionProjectionCache {
     entries: HashMap<String, ProjectedRuntimeExtensionEntry>,
-    snapshot: Option<OfficialPluginCatalogSnapshot>,
 }
 
 #[derive(Clone)]
@@ -255,7 +312,6 @@ impl ApiOfficialRuntimeExtensionSource {
             .lock()
             .map_err(|_| anyhow!("runtime extension projection cache is poisoned"))?;
         cache.entries = projected_entries;
-        cache.snapshot = Some(snapshot.clone());
         Ok(snapshot)
     }
 }
@@ -267,7 +323,24 @@ impl OfficialPluginSourcePort for ApiOfficialRuntimeExtensionSource {
     }
 
     async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-        self.projection_cache.lock().ok()?.snapshot.clone()
+        let cached = self
+            .catalog
+            .cached_verified_entries("runtime-extensions", Some("model_provider"))?;
+        let entries = cached
+            .entries
+            .iter()
+            .map(|entry| project_runtime_extension_entry(&*self.catalog, entry, &self.trust_mode))
+            .collect::<Result<Vec<_>>>()
+            .ok()?;
+        Some(OfficialPluginCatalogSnapshot {
+            source: OfficialPluginCatalogSource {
+                source_label: "Verified catalog snapshot".to_string(),
+                source_kind: cached.source_kind,
+                registry_url: cached.snapshot_locator,
+            },
+            freshness: OfficialPluginCatalogFreshness::Stale,
+            entries,
+        })
     }
 
     async fn download_plugin(
@@ -439,6 +512,7 @@ pub struct ApiOfficialExtensionCatalogSource {
     sources: Arc<BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>>,
     client: Client,
     last_success: Arc<Mutex<HashMap<CatalogCacheKey, OfficialExtensionCatalogPage>>>,
+    search_snapshots: Arc<Mutex<HashMap<String, VerifiedSearchSnapshot>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -454,12 +528,29 @@ struct CatalogEndpoint {
     github_proxy_url: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct VerifiedSearchSnapshot {
+    source_kind: String,
+    endpoint: CatalogEndpoint,
+    checksum: String,
+    locator: String,
+    index: CatalogIndexDocument,
+    document: CatalogSearchDocument,
+}
+
+struct CatalogSearchSelection<'a> {
+    selected: Vec<&'a CatalogSearchEntry>,
+    total_entries: usize,
+    next_cursor: Option<String>,
+}
+
 impl ApiOfficialExtensionCatalogSource {
     pub fn from_config(config: &ApiConfig) -> Self {
         Self {
             sources: Arc::new(config.official_extension_catalog_sources.clone()),
             client: extension_source_client(),
             last_success: Arc::new(Mutex::new(HashMap::new())),
+            search_snapshots: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -468,6 +559,7 @@ impl ApiOfficialExtensionCatalogSource {
             sources: Arc::new(sources),
             client: extension_source_client(),
             last_success: Arc::new(Mutex::new(HashMap::new())),
+            search_snapshots: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -480,6 +572,7 @@ impl ApiOfficialExtensionCatalogSource {
             sources: Arc::new(sources),
             client: extension_source_client_with_timeout(request_timeout),
             last_success: Arc::new(Mutex::new(HashMap::new())),
+            search_snapshots: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -579,6 +672,138 @@ impl ApiOfficialExtensionCatalogSource {
         self.fetch_page(endpoint, &index, page_reference).await
     }
 
+    async fn load_search_snapshot(
+        &self,
+        category: &str,
+        endpoint: &CatalogEndpoint,
+    ) -> Result<(CatalogIndexDocument, VerifiedSearchSnapshot)> {
+        let index = self.fetch_index(category, endpoint).await?;
+        let locator = rewrite_github_raw_url(
+            &index.search_index.locator,
+            endpoint.github_proxy_url.as_deref(),
+        );
+        let bytes = self.download_document(&locator).await?;
+        ensure_sha256(&bytes, &index.search_index.checksum)?;
+        let document = serde_json::from_slice::<CatalogSearchDocument>(&bytes)
+            .context("failed to decode official extension catalog search index")?;
+        validate_search_document(&document, &index)?;
+        let snapshot = VerifiedSearchSnapshot {
+            source_kind: endpoint.source_kind.clone(),
+            endpoint: endpoint.clone(),
+            checksum: index.search_index.checksum.clone(),
+            locator,
+            index: index.clone(),
+            document,
+        };
+        Ok((index, snapshot))
+    }
+
+    fn cached_search_snapshot(&self, category: &str) -> Option<VerifiedSearchSnapshot> {
+        self.search_snapshots.lock().ok()?.get(category).cloned()
+    }
+
+    fn remember_search_snapshot(&self, category: &str, snapshot: &VerifiedSearchSnapshot) {
+        if let Ok(mut cache) = self.search_snapshots.lock() {
+            cache.insert(category.to_string(), snapshot.clone());
+        }
+    }
+
+    async fn fetch_selected_search_entries(
+        &self,
+        category: &str,
+        index: &CatalogIndexDocument,
+        snapshot: &VerifiedSearchSnapshot,
+        selected: &[&CatalogSearchEntry],
+    ) -> Result<Vec<OfficialExtensionCatalogEntry>> {
+        let selected_ids = selected
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<HashSet<_>>();
+        let mut entries_by_id = HashMap::new();
+        let mut visited_pages = HashSet::new();
+        for search_entry in selected {
+            if !visited_pages.insert(search_entry.catalog_page.cursor.clone()) {
+                continue;
+            }
+            let page_reference = index
+                .pages
+                .iter()
+                .find(|reference| {
+                    reference.page == search_entry.catalog_page.page
+                        && reference.cursor == search_entry.catalog_page.cursor
+                        && reference.checksum == search_entry.catalog_page.checksum
+                        && reference.locator == search_entry.catalog_page.locator
+                })
+                .ok_or_else(|| {
+                    anyhow!("catalog search page reference is not in the catalog index")
+                })?;
+            let page = if let Some(page) =
+                self.cached_verified_page(category, &search_entry.catalog_page)
+            {
+                page
+            } else {
+                let page = self
+                    .fetch_page(&snapshot.endpoint, index, page_reference)
+                    .await?;
+                self.remember_page(
+                    Self::cache_key(category, Some(&page.metadata.cursor)),
+                    &page,
+                );
+                page
+            };
+            for entry in page.entries {
+                if selected_ids.contains(entry.id.as_str()) {
+                    entries_by_id.insert(entry.id.clone(), entry);
+                }
+            }
+        }
+        selected
+            .iter()
+            .map(|search_entry| {
+                entries_by_id.remove(&search_entry.id).ok_or_else(|| {
+                    anyhow!("catalog search result is missing from its verified source page")
+                })
+            })
+            .collect()
+    }
+
+    fn cached_selected_search_entries(
+        &self,
+        category: &str,
+        selected: &[&CatalogSearchEntry],
+    ) -> Option<Vec<OfficialExtensionCatalogEntry>> {
+        selected
+            .iter()
+            .map(|search_entry| {
+                self.cached_verified_page(category, &search_entry.catalog_page)?
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.id == search_entry.id)
+            })
+            .collect()
+    }
+
+    fn cached_verified_page(
+        &self,
+        category: &str,
+        reference: &CatalogSearchPageReference,
+    ) -> Option<OfficialExtensionCatalogPage> {
+        let page = self
+            .last_success
+            .lock()
+            .ok()?
+            .values()
+            .find(|page| {
+                page.category == category
+                    && page.metadata.cursor == reference.cursor
+                    && page.metadata.page == reference.page
+                    && page.metadata.checksum == reference.checksum
+                    && page.metadata.locator.ends_with(&reference.locator)
+            })?
+            .clone();
+        Some(page)
+    }
+
     fn cache_key(category: &str, cursor: Option<&str>) -> CatalogCacheKey {
         CatalogCacheKey {
             category: category.to_string(),
@@ -602,51 +827,118 @@ impl ApiOfficialExtensionCatalogSource {
     }
 
     async fn download_document(&self, url: &str) -> Result<Vec<u8>> {
-        self.download_with_budget(
+        self.download_once_with_budget(
             url,
             MAX_EXTENSION_CATALOG_DOCUMENT_BYTES,
             "official extension catalog document",
         )
         .await
+        .map_err(anyhow::Error::new)
     }
 
     async fn download_artifact_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        self.download_with_budget(
-            url,
-            MAX_EXTENSION_ARTIFACT_BYTES,
-            "official extension artifact",
-        )
-        .await
+        let mut last_error = None;
+        for attempt in 0..2 {
+            match self
+                .download_once_with_budget(
+                    url,
+                    MAX_EXTENSION_ARTIFACT_BYTES,
+                    "official extension artifact",
+                )
+                .await
+            {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => {
+                    let retry = attempt == 0 && error.is_retryable();
+                    last_error = Some(error);
+                    if !retry {
+                        break;
+                    }
+                }
+            }
+        }
+        Err(anyhow::Error::new(last_error.expect(
+            "artifact download loop always records a failed attempt",
+        )))
     }
 
-    async fn download_with_budget(
+    async fn download_once_with_budget(
         &self,
         url: &str,
         max_bytes: usize,
         resource: &'static str,
-    ) -> Result<Vec<u8>> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("failed to request {resource} from {url}"))?
-            .error_for_status()
-            .with_context(|| format!("{resource} returned an error status for {url}"))?;
+    ) -> std::result::Result<Vec<u8>, ExtensionDownloadFailure> {
+        let response = self.client.get(url).send().await.map_err(|source| {
+            ExtensionDownloadFailure::Request {
+                resource,
+                url: url.to_string(),
+                source,
+            }
+        })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ExtensionDownloadFailure::Status {
+                resource,
+                url: url.to_string(),
+                status,
+            });
+        }
         let mut stream = response.bytes_stream();
         let mut bytes = Vec::new();
         while let Some(chunk) = stream.next().await {
             let chunk =
-                chunk.with_context(|| format!("failed to read {resource} response body"))?;
+                chunk.map_err(|source| ExtensionDownloadFailure::Body { resource, source })?;
             if bytes.len().saturating_add(chunk.len()) > max_bytes {
-                bail!("{resource} exceeds download budget");
+                return Err(ExtensionDownloadFailure::Budget { resource });
             }
             bytes.extend_from_slice(&chunk);
         }
         if bytes.is_empty() {
-            bail!("{resource} is empty");
+            return Err(ExtensionDownloadFailure::Empty { resource });
         }
         Ok(bytes)
+    }
+}
+
+#[derive(Debug, Error)]
+enum ExtensionDownloadFailure {
+    #[error("failed to request {resource} from {url}: {source}")]
+    Request {
+        resource: &'static str,
+        url: String,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("{resource} returned status {status} for {url}")]
+    Status {
+        resource: &'static str,
+        url: String,
+        status: reqwest::StatusCode,
+    },
+    #[error("failed to read {resource} response body: {source}")]
+    Body {
+        resource: &'static str,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("{resource} exceeds download budget")]
+    Budget { resource: &'static str },
+    #[error("{resource} is empty")]
+    Empty { resource: &'static str },
+}
+
+impl ExtensionDownloadFailure {
+    fn is_retryable(&self) -> bool {
+        match self {
+            Self::Request { source, .. } => !source.is_builder() && !source.is_redirect(),
+            Self::Status { status, .. } => {
+                *status == reqwest::StatusCode::REQUEST_TIMEOUT
+                    || *status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                    || status.is_server_error()
+            }
+            Self::Body { .. } => true,
+            Self::Budget { .. } | Self::Empty { .. } => false,
+        }
     }
 }
 
@@ -664,6 +956,80 @@ fn extension_source_client_with_timeout(request_timeout: Duration) -> Client {
 
 #[async_trait]
 impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
+    async fn search(
+        &self,
+        category: &str,
+        query: OfficialExtensionCatalogSearchQuery,
+    ) -> Result<OfficialExtensionCatalogSearchResult> {
+        if query.limit == 0 || query.limit > 100 {
+            bail!("official extension catalog search limit must be between 1 and 100");
+        }
+        let previous_snapshot = self.cached_search_snapshot(category);
+        let mut failures = Vec::new();
+        for endpoint in self.endpoints(category)? {
+            let (index, snapshot) = match self.load_search_snapshot(category, &endpoint).await {
+                Ok(value) => value,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
+                }
+            };
+            let selection = match select_search_entries(category, &snapshot, &query) {
+                Ok(selection) => selection,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
+                }
+            };
+            let entries = match self
+                .fetch_selected_search_entries(category, &index, &snapshot, &selection.selected)
+                .await
+            {
+                Ok(entries) => entries,
+                Err(error) => {
+                    failures.push(error);
+                    continue;
+                }
+            };
+            self.remember_search_snapshot(category, &snapshot);
+            return Ok(OfficialExtensionCatalogSearchResult {
+                source_kind: snapshot.source_kind.clone(),
+                category: category.to_string(),
+                freshness: OfficialExtensionCatalogFreshness::Fresh,
+                snapshot_checksum: snapshot.checksum.clone(),
+                snapshot_locator: snapshot.locator.clone(),
+                total_entries: selection.total_entries,
+                next_cursor: selection.next_cursor,
+                entries,
+            });
+        }
+        if let Some(snapshot) = previous_snapshot {
+            if let Ok(selection) = select_search_entries(category, &snapshot, &query) {
+                if let Some(entries) =
+                    self.cached_selected_search_entries(category, &selection.selected)
+                {
+                    return Ok(OfficialExtensionCatalogSearchResult {
+                        source_kind: snapshot.source_kind.clone(),
+                        category: category.to_string(),
+                        freshness: OfficialExtensionCatalogFreshness::Stale,
+                        snapshot_checksum: snapshot.checksum.clone(),
+                        snapshot_locator: snapshot.locator.clone(),
+                        total_entries: selection.total_entries,
+                        next_cursor: selection.next_cursor,
+                        entries,
+                    });
+                }
+            }
+        }
+        let source = failures
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| anyhow!("official extension catalog has no configured source"));
+        Err(anyhow::Error::new(
+            OfficialExtensionCatalogUnavailable::new(source),
+        ))
+    }
+
     async fn list_page(
         &self,
         category: &str,
@@ -689,11 +1055,109 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
             .unwrap_or_else(|| anyhow!("official extension catalog has no configured source")))
     }
 
+    fn cached_verified_entries(
+        &self,
+        category: &str,
+        slot_code: Option<&str>,
+    ) -> Option<CachedOfficialExtensionCatalogEntries> {
+        let snapshot = self.cached_search_snapshot(category)?;
+        let normalized_slot = normalized_filter(slot_code);
+        let entries = snapshot
+            .document
+            .entries
+            .iter()
+            .filter(|search_entry| {
+                normalized_slot.as_ref().is_none_or(|slot| {
+                    search_entry
+                        .slot_codes
+                        .iter()
+                        .any(|candidate| candidate == slot)
+                })
+            })
+            .filter_map(|search_entry| {
+                self.cached_verified_page(category, &search_entry.catalog_page)?
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.id == search_entry.id)
+            })
+            .collect();
+        Some(CachedOfficialExtensionCatalogEntries {
+            source_kind: snapshot.source_kind,
+            snapshot_locator: snapshot.locator,
+            entries,
+        })
+    }
+
     async fn find_entry(
         &self,
         category: &str,
         catalog_id: &str,
     ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        if let Ok(cache) = self.last_success.lock() {
+            if let Some(page) = cache.values().find(|page| {
+                page.category == category && page.entries.iter().any(|entry| entry.id == catalog_id)
+            }) {
+                if let Some(entry) = page
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id == catalog_id)
+                    .cloned()
+                {
+                    return Ok(Some(LocatedOfficialExtensionCatalogEntry {
+                        source_kind: page.source_kind.clone(),
+                        entry,
+                    }));
+                }
+            }
+        }
+        if let Some(snapshot) = self.cached_search_snapshot(category) {
+            if let Some(search_entry) = snapshot
+                .document
+                .entries
+                .iter()
+                .find(|entry| entry.id == catalog_id)
+            {
+                let page_reference = snapshot
+                    .index
+                    .pages
+                    .iter()
+                    .find(|reference| {
+                        reference.page == search_entry.catalog_page.page
+                            && reference.cursor == search_entry.catalog_page.cursor
+                            && reference.checksum == search_entry.catalog_page.checksum
+                            && reference.locator == search_entry.catalog_page.locator
+                    })
+                    .ok_or_else(|| {
+                        anyhow!("catalog search page reference is not in the catalog index")
+                    })?;
+                let page = if let Some(page) =
+                    self.cached_verified_page(category, &search_entry.catalog_page)
+                {
+                    page
+                } else {
+                    let page = self
+                        .fetch_page(&snapshot.endpoint, &snapshot.index, page_reference)
+                        .await?;
+                    self.remember_page(
+                        Self::cache_key(category, Some(&page.metadata.cursor)),
+                        &page,
+                    );
+                    page
+                };
+                let entry = page
+                    .entries
+                    .into_iter()
+                    .find(|entry| entry.id == catalog_id)
+                    .ok_or_else(|| {
+                        anyhow!("catalog search result is missing from its verified source page")
+                    })?;
+                return Ok(Some(LocatedOfficialExtensionCatalogEntry {
+                    source_kind: snapshot.source_kind,
+                    entry,
+                }));
+            }
+            return Ok(None);
+        }
         let mut failures = Vec::new();
         for endpoint in self.endpoints(category)? {
             let index = match self.fetch_index(category, &endpoint).await {
@@ -772,6 +1236,9 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
     ) -> Result<DownloadedOfficialExtensionArtifact> {
         let descriptor = self.resolve_artifact(entry)?;
         let artifact_bytes = self.download_artifact_bytes(&descriptor.locator).await?;
+        if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
+            ensure_sha256(&artifact_bytes, expected_checksum)?;
+        }
         let file_name = descriptor
             .locator
             .split('?')
@@ -918,7 +1385,7 @@ fn rewrite_github_download_url(url: &str, github_proxy_url: Option<&str>) -> Str
     format!("{proxy}/{url}")
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct CatalogIndexDocument {
     schema_version: String,
     category: String,
@@ -928,22 +1395,95 @@ struct CatalogIndexDocument {
     total_entries: usize,
     first_page: CatalogFirstPage,
     pages: Vec<CatalogPageReference>,
+    search_index: CatalogSearchReference,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct CatalogFirstPage {
     page: u32,
     cursor: String,
     locator: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct CatalogPageReference {
     page: u32,
     cursor: String,
     entry_count: usize,
     checksum: String,
     locator: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CatalogSearchReference {
+    schema_version: String,
+    entry_count: usize,
+    checksum: String,
+    locator: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CatalogSearchDocument {
+    schema_version: String,
+    category: String,
+    #[allow(dead_code)]
+    generated_at: String,
+    source_fingerprint: String,
+    #[serde(default)]
+    entries: Vec<CatalogSearchEntry>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+struct CatalogSearchEntry {
+    id: String,
+    name: String,
+    category: String,
+    organization: String,
+    artifact: String,
+    version: String,
+    description: String,
+    host_version_requirement: String,
+    source: OfficialExtensionCatalogEntrySource,
+    signature: Option<Value>,
+    checksum: Option<String>,
+    #[serde(default)]
+    slot_codes: Vec<String>,
+    #[serde(default)]
+    keywords: Vec<String>,
+    catalog_page: CatalogSearchPageReference,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CatalogSearchPageReference {
+    page: u32,
+    cursor: String,
+    checksum: String,
+    locator: String,
+}
+
+impl CatalogSearchEntry {
+    fn matches(&self, needle: &str) -> bool {
+        let source_value = |key: &str| {
+            self.source
+                .metadata
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        };
+        [
+            self.id.as_str(),
+            self.name.as_str(),
+            self.organization.as_str(),
+            self.artifact.as_str(),
+            source_value("provider_code"),
+            source_value("protocol"),
+            self.description.as_str(),
+        ]
+        .into_iter()
+        .chain(self.keywords.iter().map(String::as_str))
+        .any(|value| value.to_lowercase().contains(needle))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -966,6 +1506,13 @@ fn validate_index(index: &CatalogIndexDocument, category: &str) -> Result<()> {
     if index.page_size == 0 || index.pages.is_empty() {
         bail!("official extension catalog index has no usable pages");
     }
+    if index.search_index.schema_version != EXTENSION_CATALOG_SEARCH_SCHEMA_VERSION
+        || index.search_index.entry_count != index.total_entries
+        || index.search_index.checksum.trim().is_empty()
+        || index.search_index.locator.trim().is_empty()
+    {
+        bail!("official extension catalog search reference contract mismatch");
+    }
     let first = index
         .pages
         .iter()
@@ -975,6 +1522,159 @@ fn validate_index(index: &CatalogIndexDocument, category: &str) -> Result<()> {
         bail!("official extension catalog first page reference mismatch");
     }
     Ok(())
+}
+
+fn validate_search_document(
+    document: &CatalogSearchDocument,
+    index: &CatalogIndexDocument,
+) -> Result<()> {
+    if document.schema_version != EXTENSION_CATALOG_SEARCH_SCHEMA_VERSION
+        || document.category != index.category
+        || document.entries.len() != index.search_index.entry_count
+        || document.source_fingerprint.trim().is_empty()
+        || document.entries.iter().any(|entry| {
+            entry.category != index.category
+                || entry.slot_codes.iter().any(|value| value.trim().is_empty())
+                || entry.keywords.iter().any(|value| value.trim().is_empty())
+                || domain::ExtensionCategory::parse(&index.category)
+                    .and_then(|category| {
+                        domain::ExtensionCatalogIdentity::parse(category, &entry.id)
+                    })
+                    .is_none_or(|identity| {
+                        identity.organization() != entry.organization
+                            || identity.artifact_id() != entry.artifact
+                    })
+                || !index.pages.iter().any(|page| {
+                    page.page == entry.catalog_page.page
+                        && page.cursor == entry.catalog_page.cursor
+                        && page.checksum == entry.catalog_page.checksum
+                        && page.locator == entry.catalog_page.locator
+                })
+        })
+    {
+        bail!("official extension catalog search document contract mismatch");
+    }
+    Ok(())
+}
+
+fn normalized_filter(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_lowercase)
+}
+
+fn search_query_binding(
+    category: &str,
+    slot_code: Option<&str>,
+    q: Option<&str>,
+    limit: usize,
+) -> String {
+    digest_text(&format!(
+        "{category}\u{0}{}\u{0}{}\u{0}{limit}",
+        slot_code.unwrap_or_default(),
+        q.unwrap_or_default()
+    ))
+}
+
+fn digest_text(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn encode_search_cursor(
+    checksum: &str,
+    source_fingerprint: &str,
+    query_binding: &str,
+    offset: usize,
+) -> String {
+    format!(
+        "v1.{}.{}.{}.{offset}",
+        digest_text(checksum),
+        digest_text(source_fingerprint),
+        query_binding
+    )
+}
+
+fn decode_search_cursor(
+    cursor: Option<&str>,
+    checksum: &str,
+    source_fingerprint: &str,
+    query_binding: &str,
+) -> Result<usize> {
+    let Some(cursor) = cursor.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(0);
+    };
+    let mut parts = cursor.split('.');
+    let valid = parts.next() == Some("v1")
+        && parts.next() == Some(digest_text(checksum).as_str())
+        && parts.next() == Some(digest_text(source_fingerprint).as_str())
+        && parts.next() == Some(query_binding)
+        && parts.clone().count() == 1;
+    if !valid {
+        bail!("official extension catalog search cursor does not match this snapshot and query");
+    }
+    parts
+        .next()
+        .and_then(|value| value.parse::<usize>().ok())
+        .ok_or_else(|| anyhow!("official extension catalog search cursor is invalid"))
+}
+
+fn select_search_entries<'a>(
+    category: &str,
+    snapshot: &'a VerifiedSearchSnapshot,
+    query: &OfficialExtensionCatalogSearchQuery,
+) -> Result<CatalogSearchSelection<'a>> {
+    let normalized_slot = normalized_filter(query.slot_code.as_deref());
+    let normalized_q = normalized_filter(query.q.as_deref());
+    let query_binding = search_query_binding(
+        category,
+        normalized_slot.as_deref(),
+        normalized_q.as_deref(),
+        query.limit,
+    );
+    let offset = decode_search_cursor(
+        query.cursor.as_deref(),
+        &snapshot.checksum,
+        &snapshot.document.source_fingerprint,
+        &query_binding,
+    )?;
+    let matches = snapshot
+        .document
+        .entries
+        .iter()
+        .filter(|entry| {
+            normalized_slot
+                .as_ref()
+                .is_none_or(|slot| entry.slot_codes.iter().any(|candidate| candidate == slot))
+                && normalized_q
+                    .as_ref()
+                    .is_none_or(|needle| entry.matches(needle))
+        })
+        .collect::<Vec<_>>();
+    if offset > matches.len() {
+        bail!("official extension catalog search cursor is out of range");
+    }
+    let selected = matches
+        .iter()
+        .skip(offset)
+        .take(query.limit)
+        .copied()
+        .collect::<Vec<_>>();
+    let total_entries = matches.len();
+    let next_offset = offset + selected.len();
+    let next_cursor = (next_offset < total_entries).then(|| {
+        encode_search_cursor(
+            &snapshot.checksum,
+            &snapshot.document.source_fingerprint,
+            &query_binding,
+            next_offset,
+        )
+    });
+    Ok(CatalogSearchSelection {
+        selected,
+        total_entries,
+        next_cursor,
+    })
 }
 
 fn validate_page(
@@ -990,11 +1690,13 @@ fn validate_page(
         || page.entries.iter().any(|entry| {
             entry.category != category
                 || entry.catalog_page != page_reference.page
+                || entry.slot_codes.iter().any(|value| value.trim().is_empty())
+                || entry.keywords.iter().any(|value| value.trim().is_empty())
                 || domain::ExtensionCategory::parse(category)
                     .and_then(|category| {
                         domain::ExtensionCatalogIdentity::parse(category, &entry.id)
                     })
-                    .map_or(true, |identity| {
+                    .is_none_or(|identity| {
                         identity.organization() != entry.organization
                             || identity.artifact_id() != entry.artifact
                     })

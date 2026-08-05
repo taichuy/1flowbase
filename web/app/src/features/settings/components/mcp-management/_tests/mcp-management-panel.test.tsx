@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- shared MCP panel fixture inventory is intentionally broader than each scenario file. */
 import {
   act,
   fireEvent,
@@ -181,8 +182,6 @@ vi.mock('@monaco-editor/react', () => ({
 import { AppProviders } from '../../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 import { McpManagementPanel } from '../McpManagementPanel';
-import { McpToolDebugPanel } from '../McpToolDebugPanel';
-import { MarkdownIrEditor } from '../../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
 
 const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   {
@@ -743,7 +742,7 @@ describe('McpManagementPanel', () => {
     const dialog = await screen.findByRole('dialog', {
       name: '导出 MCP 配置包'
     });
-    expect(within(dialog).queryByLabelText('minimum_host_version')).toBeNull();
+    expect(within(dialog).queryByLabelText('minimum_host_version')).not.toBeInTheDocument();
     expect(await within(dialog).findByText(/0.3.0/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /导\s*出/u }));
 

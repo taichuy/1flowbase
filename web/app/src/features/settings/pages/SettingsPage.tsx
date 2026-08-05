@@ -30,13 +30,15 @@ export function SettingsPage({
   modelProviderTab,
   rolePermissionTab,
   extensionCenterCategory,
-  extensionCenterCursor
+  extensionCenterCursor,
+  extensionCenterQ
 }: {
   requestedSectionKey?: string;
   modelProviderTab?: 'providers' | 'request-logs';
   rolePermissionTab?: RolePermissionTab;
   extensionCenterCategory?: SettingsExtensionCenterCategory;
   extensionCenterCursor?: string;
+  extensionCenterQ?: string;
 }) {
   const { t } = useTranslation('settings');
   const actor = useAuthStore((state) => state.actor);
@@ -165,6 +167,7 @@ export function SettingsPage({
           rolePermissionTab={rolePermissionTab}
           extensionCenterCategory={extensionCenterCategory}
           extensionCenterCursor={extensionCenterCursor}
+          extensionCenterQ={extensionCenterQ}
         />
       ) : null}
     </SettingsRouteShell>

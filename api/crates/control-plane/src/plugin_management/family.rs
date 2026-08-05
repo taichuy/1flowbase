@@ -2,10 +2,7 @@ use super::*;
 use super::{
     catalog_projection::refresh_provider_package_catalog_projection,
     filesystem::remove_path_if_exists,
-    install::{
-        load_actor_context_for_user, load_provider_package, map_catalog_source,
-        map_model_discovery_mode,
-    },
+    install::{load_actor_context_for_user, map_catalog_source, map_model_discovery_mode},
 };
 
 pub struct EnablePluginCommand {
@@ -625,11 +622,8 @@ where
                 .await?;
             }
             let local_target = self.ready_current_node_installation(target.id).await?;
-            let package = load_provider_package(
-                local_target
-                    .local_path()
-                    .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-            )?;
+            let package =
+                crate::installed_provider_package::load_installed_provider_package(&local_target)?;
             refresh_provider_package_catalog_projection(&self.repository, &local_target, &package)
                 .await?;
             let migrated_instances = self

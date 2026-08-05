@@ -2,6 +2,11 @@
   "auto": {
     "console_navigation_load_failed": "控制台导航加载失败",
     "console_navigation_loading": "控制台导航加载中",
+    "assistant": "AI 助手",
+    "assistant_flow": "Agent Flow",
+    "assistant_mcp": "MCP 实例",
+    "assistant_run_failed": "本次助手运行失败，请查看应用运行日志。",
+    "assistant_settings": "助手设置",
     "documentation": "文档",
     "enter_design_mode": "进入设计模式",
     "exit_design_mode": "退出设计模式",

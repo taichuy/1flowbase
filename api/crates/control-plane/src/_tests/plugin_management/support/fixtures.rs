@@ -53,6 +53,7 @@ fn write_provider_manifest_v2(root: &Path, provider_code: &str, display_name: &s
             r#"manifest_version: 1
 plugin_id: {provider_code}@{version}
 version: {version}
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: {display_name}
 description: {display_name}
@@ -244,6 +245,7 @@ pub(crate) fn create_capability_plugin_fixture(root: &Path) {
         r#"manifest_version: 1
 plugin_id: fixture_capability@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Fixture Capability
 description: Fixture capability plugin
@@ -313,6 +315,7 @@ pub(crate) fn create_js_dependency_pack_fixture(root: &Path, alias: &str, packag
             r#"manifest_version: 1
 plugin_id: fixture_js_dependency_pack@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Fixture JS Dependency Pack
 description: Fixture JS dependency pack
@@ -374,6 +377,7 @@ pub(crate) fn create_frontend_block_fixture(root: &Path) {
         r#"manifest_version: 1
 plugin_id: fixture_frontend_blocks@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Fixture Frontend Blocks
 description: Fixture frontend block catalog

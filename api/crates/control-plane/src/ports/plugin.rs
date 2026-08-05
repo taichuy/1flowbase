@@ -268,6 +268,7 @@ pub trait PluginRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::PluginAssignmentRecord>>;
+    async fn list_assigned_installation_ids(&self) -> anyhow::Result<Vec<Uuid>>;
     async fn create_task(
         &self,
         input: &CreatePluginTaskInput,

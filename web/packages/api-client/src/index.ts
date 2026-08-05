@@ -16,6 +16,7 @@ export * from './console/frontstage';
 export * from './console/extensions';
 export * from './console/i18n-catalog';
 export * from './console-auth-center';
+export * from './console-assistant';
 export * from './console-model-providers';
 export * from './console-mcp-management';
 export * from './console-node-contributions';

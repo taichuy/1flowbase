@@ -1,5 +1,6 @@
 mod application;
 mod application_public_api;
+mod assistant;
 mod auth_center_routes;
 mod auth_routes;
 mod config_tests;

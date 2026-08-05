@@ -868,6 +868,19 @@ impl PluginRepository for InMemoryOrchestrationRuntimeRepository {
             .unwrap_or_default())
     }
 
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let mut installation_ids = inner
+            .assignments_by_workspace
+            .values()
+            .flatten()
+            .map(|assignment| assignment.installation_id)
+            .collect::<Vec<_>>();
+        installation_ids.sort_unstable();
+        installation_ids.dedup();
+        Ok(installation_ids)
+    }
+
     async fn create_task(
         &self,
         _input: &crate::ports::CreatePluginTaskInput,

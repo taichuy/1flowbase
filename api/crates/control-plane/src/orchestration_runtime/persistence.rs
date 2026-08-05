@@ -210,7 +210,7 @@ where
     .await?;
     let waiting_node_run = persisted_node_traces.waiting_node_run;
     let mut stream_events = persisted_node_traces.stream_events;
-    let close_reason;
+    let mut close_reason = None;
 
     match &outcome.stop_reason {
         orchestration_runtime::execution_state::ExecutionStopReason::WaitingHuman(wait) => {
@@ -358,6 +358,8 @@ where
                 })
                 .await?;
             stream_events.extend(presentation_events);
+            let assistant_execution = flow_run.run_mode == domain::FlowRunMode::AssistantExecution
+                && wait.callback_kind == "llm_tool_calls";
             let waiting_event = debug_stream_events::waiting_callback_with_task(
                 flow_run.id,
                 waiting_node_run.id,
@@ -370,8 +372,12 @@ where
                 &waiting_event,
             )
             .await?;
-            stream_events.push(waiting_event);
-            close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingCallback);
+            // Assistant LLM tool callbacks are completed by the server, so this
+            // durable audit event is not a user-facing Preview terminal.
+            if !assistant_execution {
+                stream_events.push(waiting_event);
+                close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingCallback);
+            }
         }
         orchestration_runtime::execution_state::ExecutionStopReason::Completed => {
             ensure_flow_run_transition(

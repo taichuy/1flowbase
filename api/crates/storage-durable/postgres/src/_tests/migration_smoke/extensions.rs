@@ -1,6 +1,79 @@
 use super::*;
 
 #[tokio::test]
+async fn publisher_cutover_migration_marks_only_unified_legacy_runtime_receipts_idempotently() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let user_id = uuid::Uuid::now_v7();
+    sqlx::query(
+        "insert into users (id, account, email, password_hash, name, nickname, status) values ($1, $2, $3, 'x', 'Publisher Cutover', 'Publisher Cutover', 'active')",
+    )
+    .bind(user_id)
+    .bind(format!("publisher-cutover-{user_id}"))
+    .bind(format!("publisher-cutover-{user_id}@example.com"))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let eligible_id = uuid::Uuid::now_v7();
+    let strict_id = uuid::Uuid::now_v7();
+    for (id, artifact_id, receipt) in [
+        (
+            eligible_id,
+            "publisher_cutover_legacy",
+            serde_json::json!({
+                "migration": "unified_extension_installation_lifecycle",
+                "legacy_plugin_installation_id": eligible_id,
+            }),
+        ),
+        (strict_id, "publisher_cutover_strict", serde_json::json!({})),
+    ] {
+        sqlx::query(
+            r#"insert into extension_installations (
+                id, category, organization, artifact_id, artifact_version, plugin_id,
+                contract_version, protocol, display_name, source_kind, trust_level,
+                verification_status, desired_state, signature_status, receipt, created_by
+            ) values ($1, 'runtime-extensions', '1flowbase', $2, '0.1.0', $3,
+                '1flowbase.provider/v1', 'stdio_json', $2, 'official_registry',
+                'verified_official', 'valid', 'active_requested', 'verified', $4, $5)"#,
+        )
+        .bind(id)
+        .bind(artifact_id)
+        .bind(format!("{artifact_id}@0.1.0"))
+        .bind(receipt)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let migration_sql = include_str!(
+        "../../../migrations/20260804010000_mark_publisher_cutover_legacy_manifest_compatibility.up.sql"
+    );
+    sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
+    sqlx::raw_sql(migration_sql).execute(&pool).await.unwrap();
+
+    let rows: Vec<(uuid::Uuid, Option<String>)> = sqlx::query_as(
+        "select id, receipt ->> 'legacy_manifest_compatibility' from extension_installations where id = any($1) order by id",
+    )
+    .bind(vec![eligible_id, strict_id])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows.iter()
+            .find(|(id, _)| *id == eligible_id)
+            .and_then(|(_, value)| value.as_deref()),
+        Some("missing_publisher_namespace_v1")
+    );
+    assert_eq!(
+        rows.iter()
+            .find(|(id, _)| *id == strict_id)
+            .and_then(|(_, value)| value.as_deref()),
+        None
+    );
+}
+
+#[tokio::test]
 async fn migration_smoke_creates_plugin_trust_columns_and_constraints() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();

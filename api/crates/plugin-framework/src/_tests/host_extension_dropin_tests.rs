@@ -37,6 +37,7 @@ impl TempDropinFixture {
                 r#"manifest_version: 1
 plugin_id: fixture_host_extension@0.1.0
 version: 0.1.0
+publisher_namespace: fixture
 vendor: fixture
 display_name: Fixture Host Extension
 description: Fixture host extension

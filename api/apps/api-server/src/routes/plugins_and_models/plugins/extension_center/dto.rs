@@ -107,6 +107,9 @@ pub struct ExtensionRiskChallengeResponse {
 
 #[derive(Debug, Deserialize, IntoParams, Clone)]
 pub struct ExtensionCatalogGatewayQuery {
+    pub slot_code: Option<String>,
+    pub q: Option<String>,
+    pub limit: Option<usize>,
     pub cursor: Option<String>,
 }
 
@@ -120,6 +123,8 @@ pub struct ExtensionCatalogGatewayEntryResponse {
     pub version: String,
     pub description: String,
     pub host_version_requirement: String,
+    pub slot_codes: Vec<String>,
+    pub keywords: Vec<String>,
     #[schema(value_type = Object)]
     pub source: serde_json::Value,
     #[schema(value_type = Option<Object>)]
@@ -141,6 +146,7 @@ pub struct ExtensionCatalogGatewayEntryResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ExtensionCatalogGatewayPageResponse {
     pub category: String,
+    pub freshness: String,
     pub catalog_page: String,
     pub catalog_page_number: u32,
     pub catalog_page_checksum: String,
@@ -161,7 +167,6 @@ pub struct ExtensionUpdateCheckItemBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExtensionUpdateCheckBody {
     pub category: String,
-    pub catalog_page: Option<String>,
     pub items: Vec<ExtensionUpdateCheckItemBody>,
 }
 
@@ -176,7 +181,6 @@ pub struct ExtensionUpdateCheckItemResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ExtensionUpdateCheckResponse {
     pub category: String,
-    pub catalog_page: Option<String>,
     pub items: Vec<ExtensionUpdateCheckItemResponse>,
 }
 

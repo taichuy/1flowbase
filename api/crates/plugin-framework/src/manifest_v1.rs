@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::{
+    artifact_reconcile::canonical_manifest_fingerprint,
     capability_kind::PluginConsumptionKind,
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::{
@@ -280,7 +281,10 @@ pub struct PluginManifestV1 {
     pub manifest_version: u32,
     pub plugin_id: String,
     pub version: String,
+    pub publisher_namespace: String,
     pub vendor: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
     pub display_name: String,
     pub description: String,
     #[serde(default)]
@@ -318,13 +322,98 @@ impl PluginManifestV1 {
 }
 
 pub fn parse_plugin_manifest(raw: &str) -> FrameworkResult<PluginManifestV1> {
+    parse_plugin_manifest_with_contract_policy(raw, ManifestContractPolicy::CurrentOnly)
+}
+
+#[derive(Clone, Copy)]
+enum ManifestContractPolicy {
+    CurrentOnly,
+    PublisherCutoverLegacyProvider,
+}
+
+fn parse_plugin_manifest_with_contract_policy(
+    raw: &str,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<PluginManifestV1> {
     let manifest: PluginManifestV1 = serde_yaml::from_str(raw)
         .map_err(|error| PluginFrameworkError::invalid_provider_package(error.to_string()))?;
-    validate_plugin_manifest(&manifest)?;
+    validate_plugin_manifest(&manifest, contract_policy)?;
     Ok(manifest)
 }
 
-fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyInstalledManifestEligibility {
+    pub expected_publisher_namespace: String,
+    pub expected_versioned_plugin_id: String,
+    pub expected_raw_manifest_fingerprint: String,
+}
+
+/// Parses an already-installed legacy artifact without changing its on-disk bytes.
+///
+/// The compatibility path is intentionally separate from package intake and only repairs the
+/// historical omission of `publisher_namespace` and preserves the provider/v1 contract declared
+/// by older artifacts. Identity and the fingerprint of the original bytes must already be known
+/// from durable installation state.
+pub fn parse_legacy_installed_plugin_manifest(
+    raw: &str,
+    eligibility: &LegacyInstalledManifestEligibility,
+) -> FrameworkResult<PluginManifestV1> {
+    if let Ok(manifest) = parse_plugin_manifest(raw) {
+        return verify_legacy_installed_manifest_eligibility(manifest, raw, eligibility);
+    }
+
+    let actual_fingerprint = canonical_manifest_fingerprint(raw.as_bytes());
+    if actual_fingerprint != eligibility.expected_raw_manifest_fingerprint {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "legacy installed manifest fingerprint does not match durable identity",
+        ));
+    }
+
+    let mut document: serde_yaml::Value = serde_yaml::from_str(raw)
+        .map_err(|error| PluginFrameworkError::invalid_provider_package(error.to_string()))?;
+    let mapping = document.as_mapping_mut().ok_or_else(|| {
+        PluginFrameworkError::invalid_provider_package("plugin manifest must be a YAML mapping")
+    })?;
+    let publisher_key = serde_yaml::Value::String("publisher_namespace".to_string());
+    if mapping.contains_key(&publisher_key) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "legacy compatibility only applies when publisher_namespace is missing",
+        ));
+    }
+    mapping.insert(
+        publisher_key,
+        serde_yaml::Value::String(eligibility.expected_publisher_namespace.clone()),
+    );
+    let repaired_raw = serde_yaml::to_string(&document)
+        .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+    let manifest = parse_plugin_manifest_with_contract_policy(
+        &repaired_raw,
+        ManifestContractPolicy::PublisherCutoverLegacyProvider,
+    )?;
+    verify_legacy_installed_manifest_eligibility(manifest, raw, eligibility)
+}
+
+fn verify_legacy_installed_manifest_eligibility(
+    manifest: PluginManifestV1,
+    raw: &str,
+    eligibility: &LegacyInstalledManifestEligibility,
+) -> FrameworkResult<PluginManifestV1> {
+    if canonical_manifest_fingerprint(raw.as_bytes())
+        != eligibility.expected_raw_manifest_fingerprint
+        || manifest.publisher_namespace != eligibility.expected_publisher_namespace
+        || manifest.versioned_plugin_id()? != eligibility.expected_versioned_plugin_id
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "legacy installed manifest does not match durable identity",
+        ));
+    }
+    Ok(manifest)
+}
+
+fn validate_plugin_manifest(
+    manifest: &PluginManifestV1,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<()> {
     if manifest.manifest_version != 1 {
         return Err(PluginFrameworkError::invalid_provider_package(
             "manifest_version must be 1",
@@ -339,7 +428,9 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
     validate_non_empty(&manifest.plugin_id, "plugin_id")?;
     validate_non_empty(&manifest.version, "version")?;
     plugin_code_from_identity(&manifest.plugin_id, &manifest.version)?;
+    validate_publisher_namespace(&manifest.publisher_namespace)?;
     validate_non_empty(&manifest.vendor, "vendor")?;
+    validate_keywords(&manifest.keywords)?;
     validate_non_empty(&manifest.display_name, "display_name")?;
     validate_non_empty(&manifest.description, "description")?;
     validate_non_empty(&manifest.source_kind, "source_kind")?;
@@ -347,7 +438,7 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
     validate_non_empty(&manifest.selection_mode, "selection_mode")?;
     validate_non_empty(&manifest.minimum_host_version, "minimum_host_version")?;
     validate_non_empty(&manifest.contract_version, "contract_version")?;
-    validate_contract_version(manifest)?;
+    validate_contract_version_for_policy(manifest, contract_policy)?;
     validate_allowed(
         &manifest.source_kind,
         "source_kind",
@@ -377,7 +468,7 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
         &["stdio_json", "stdio_json_worker", "native_host"],
     )?;
     validate_execution_runtime_pair(manifest)?;
-    validate_provider_runtime_capabilities(manifest)?;
+    validate_provider_runtime_capabilities(manifest, contract_policy)?;
     validate_permission_values(&manifest.permissions)?;
     validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
@@ -521,6 +612,36 @@ fn validate_plugin_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> 
         validate_frontend_block_contributions(&manifest.block_contributions)?;
     }
 
+    Ok(())
+}
+
+fn validate_publisher_namespace(value: &str) -> FrameworkResult<()> {
+    validate_non_empty(value, "publisher_namespace")?;
+    if value.len() > 100
+        || value != value.to_ascii_lowercase()
+        || value.starts_with(['.', '-', '_'])
+        || value.ends_with(['.', '-', '_'])
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".-_".contains(&byte)
+        })
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "publisher_namespace must be a lowercase catalog identity segment",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_keywords(keywords: &[String]) -> FrameworkResult<()> {
+    let mut unique = HashSet::new();
+    for keyword in keywords {
+        let normalized = keyword.trim().to_lowercase();
+        if normalized.is_empty() || normalized.len() > 64 || !unique.insert(normalized) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "keywords must be non-empty, unique, and at most 64 characters",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1408,7 +1529,30 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
     )))
 }
 
-fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+fn validate_contract_version_for_policy(
+    manifest: &PluginManifestV1,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<()> {
+    if matches!(
+        contract_policy,
+        ManifestContractPolicy::PublisherCutoverLegacyProvider
+    ) && manifest.consumption_kind == PluginConsumptionKind::RuntimeExtension
+        && manifest
+            .slot_codes
+            .iter()
+            .any(|slot| slot == "model_provider")
+        && manifest.contract_version == "1flowbase.provider/v1"
+    {
+        return Ok(());
+    }
+
+    validate_contract_version(manifest)
+}
+
+fn validate_provider_runtime_capabilities(
+    manifest: &PluginManifestV1,
+    contract_policy: ManifestContractPolicy,
+) -> FrameworkResult<()> {
     let is_model_provider = manifest.consumption_kind == PluginConsumptionKind::RuntimeExtension
         && manifest
             .slot_codes
@@ -1422,28 +1566,37 @@ fn validate_provider_runtime_capabilities(manifest: &PluginManifestV1) -> Framew
 
     let mut seen = HashSet::new();
     for capability in &manifest.runtime.capabilities {
-        validate_allowed(
-            capability,
-            "runtime.capabilities[]",
-            &[
-                "system_prompt_blocks",
-                "system_prompt_cache_control",
-                "end_user_reference",
-                PROVIDER_COUNT_TOKENS_CAPABILITY,
-                PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
-                PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
-                PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
-                PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY,
-                PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
-                PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
-            ],
-        )?;
+        // Publisher-cutover receipts bind these bytes to durable identity; bare
+        // `protocol_context` remains rejected by every package intake path.
+        let is_legacy_protocol_context = capability == "protocol_context"
+            && matches!(
+                contract_policy,
+                ManifestContractPolicy::PublisherCutoverLegacyProvider
+            );
+        if !is_legacy_protocol_context {
+            validate_allowed(
+                capability,
+                "runtime.capabilities[]",
+                &[
+                    "system_prompt_blocks",
+                    "system_prompt_cache_control",
+                    "end_user_reference",
+                    PROVIDER_COUNT_TOKENS_CAPABILITY,
+                    PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
+                    PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
+                    PROVIDER_RESPONSES_NATIVE_PASSTHROUGH_CAPABILITY,
+                    PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY,
+                    PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_CONSUME_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_CHAT_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_CONSUME_OPENAI_RESPONSES_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
+                    PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
+                ],
+            )?;
+        }
         if !seen.insert(capability.as_str()) {
             return Err(PluginFrameworkError::invalid_provider_package(format!(
                 "runtime.capabilities contains duplicate value: {capability}"

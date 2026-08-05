@@ -12,6 +12,7 @@ impl CanonicalItemId {
         Self(value.into())
     }
 
+    #[cfg(test)]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -47,6 +48,7 @@ impl CanonicalBlockId {
         &self.item_id
     }
 
+    #[cfg(test)]
     pub fn as_str(&self) -> &str {
         &self.value
     }
@@ -69,10 +71,6 @@ impl CanonicalCallId {
     pub fn item_id(&self) -> &CanonicalItemId {
         &self.item_id
     }
-
-    pub fn as_str(&self) -> &str {
-        &self.value
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -88,6 +86,7 @@ impl SegmentedString {
         self.segments.push(segment);
     }
 
+    #[cfg(test)]
     pub fn segments(&self) -> &[String] {
         &self.segments
     }
@@ -96,6 +95,7 @@ impl SegmentedString {
         &self.materialized
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.materialized.is_empty()
     }
@@ -115,14 +115,12 @@ pub struct CanonicalContentBlock {
 }
 
 impl CanonicalContentBlock {
+    #[cfg(test)]
     pub fn id(&self) -> &CanonicalBlockId {
         &self.id
     }
 
-    pub fn kind(&self) -> CanonicalContentKind {
-        self.kind
-    }
-
+    #[cfg(test)]
     pub fn content(&self) -> &SegmentedString {
         &self.content
     }
@@ -135,10 +133,12 @@ pub struct CanonicalToolCall {
 }
 
 impl CanonicalToolCall {
+    #[cfg(test)]
     pub fn id(&self) -> &CanonicalCallId {
         &self.id
     }
 
+    #[cfg(test)]
     pub fn arguments(&self) -> &SegmentedString {
         &self.arguments
     }
@@ -152,14 +152,12 @@ pub struct CanonicalItem {
 }
 
 impl CanonicalItem {
+    #[cfg(test)]
     pub fn id(&self) -> &CanonicalItemId {
         &self.id
     }
 
-    pub fn blocks(&self) -> &[CanonicalContentBlock] {
-        &self.blocks
-    }
-
+    #[cfg(test)]
     pub fn tool_calls(&self) -> &[CanonicalToolCall] {
         &self.tool_calls
     }
@@ -210,6 +208,7 @@ pub struct CanonicalUsage {
 }
 
 impl CanonicalUsage {
+    #[cfg(test)]
     pub fn value(&self) -> &ProviderUsage {
         &self.value
     }
@@ -306,14 +305,17 @@ pub struct CanonicalOutputItem {
 }
 
 impl CanonicalOutputItem {
+    #[cfg(test)]
     pub fn phase(&self) -> ProviderOutputItemPhase {
         self.phase
     }
 
+    #[cfg(test)]
     pub fn output_index(&self) -> usize {
         self.output_index
     }
 
+    #[cfg(test)]
     pub fn item(&self) -> &Value {
         &self.item
     }
@@ -329,6 +331,7 @@ pub struct CanonicalStreamAccumulator {
 }
 
 impl CanonicalStreamAccumulator {
+    #[cfg(test)]
     pub fn items(&self) -> &[CanonicalItem] {
         &self.items
     }
@@ -337,18 +340,22 @@ impl CanonicalStreamAccumulator {
         &self.text
     }
 
+    #[cfg(test)]
     pub fn reasoning(&self) -> &SegmentedString {
         &self.reasoning
     }
 
+    #[cfg(test)]
     pub fn usage(&self) -> &CanonicalUsage {
         &self.usage
     }
 
+    #[cfg(test)]
     pub fn output_items(&self) -> &[CanonicalOutputItem] {
         &self.output_items
     }
 
+    #[cfg(test)]
     pub fn block(&self, block_id: &CanonicalBlockId) -> Option<&CanonicalContentBlock> {
         self.items
             .iter()
@@ -356,6 +363,7 @@ impl CanonicalStreamAccumulator {
             .and_then(|item| item.blocks.iter().find(|block| block.id == *block_id))
     }
 
+    #[cfg(test)]
     pub fn tool_call(&self, call_id: &CanonicalCallId) -> Option<&CanonicalToolCall> {
         self.items
             .iter()

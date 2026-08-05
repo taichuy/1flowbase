@@ -44,7 +44,7 @@ function ensureCommandSuccess(description, result) {
     throw result.error;
   }
 
-  throw new Error(`${description} 失败，退出码 ${result.status}`);
+  throw new Error(`${description} failed with exit code ${result.status}`);
 }
 
 function writeCommandOutput(result) {
@@ -91,7 +91,7 @@ function resolveComposeCommand({ resetCache = false, runCommandImpl = runCommand
     return cachedComposeCommand;
   }
 
-  throw new Error('缺少 `docker compose` 命令或 Docker Compose v2 版 `docker-compose` 命令');
+  throw new Error('Missing `docker compose` or Docker Compose v2 `docker-compose` command');
 }
 
 function ensureMiddlewareEnv(repoRoot, { logImpl = log } = {}) {
@@ -101,7 +101,7 @@ function ensureMiddlewareEnv(repoRoot, { logImpl = log } = {}) {
 
   if (!fs.existsSync(targetPath) && fs.existsSync(examplePath)) {
     fs.copyFileSync(examplePath, targetPath);
-    logImpl('已创建 docker/middleware.env');
+    logImpl('Created docker/middleware.env');
   }
 }
 
@@ -120,7 +120,7 @@ function runMiddlewareCompose(repoRoot, args, options = {}) {
     return result;
   }
 
-  ensureCommandSuccess(`docker 中间件命令 ${args.join(' ')}`, result);
+  ensureCommandSuccess(`Docker middleware command ${args.join(' ')}`, result);
   return result;
 }
 
@@ -186,7 +186,7 @@ async function clearPortConflicts(
       continue;
     }
 
-    logImpl(`${label} 检测到端口 ${port} 被其他进程占用，正在清理 pid=${occupants.join(',')}`);
+    logImpl(`${label} detected occupied port ${port}; terminating pid=${occupants.join(',')}`);
 
     for (const pid of occupants) {
       try {
@@ -247,7 +247,7 @@ async function manageDocker(
     writeCommandOutput(result);
 
     if (result.error || result.status !== 0) {
-      throw new Error('docker 中间件状态检查失败');
+      throw new Error('Docker middleware status check failed');
     }
     return;
   }
@@ -259,7 +259,7 @@ async function manageDocker(
 
   if (action === 'restart') {
     runMiddlewareComposeImpl(repoRoot, ['down']);
-    await clearPortConflictsImpl('docker 中间件', getMiddlewareHostPortsImpl(repoRoot));
+    await clearPortConflictsImpl('docker middleware', getMiddlewareHostPortsImpl(repoRoot));
   }
 
   runMiddlewareComposeImpl(repoRoot, ['up', '-d']);

@@ -370,13 +370,12 @@ fn ac_001_answer_presentation_projects_multiple_strict_provider_rounds() {
     .expect("each Provider round should have an independent canonical terminal");
     let projected = events
         .iter()
-        .filter_map(|event| {
-            matches!(event.event_type.as_str(), "reasoning_delta" | "text_delta").then(|| {
-                (
-                    event.event_type.as_str(),
-                    event.payload["text"].as_str().unwrap(),
-                )
-            })
+        .filter(|event| matches!(event.event_type.as_str(), "reasoning_delta" | "text_delta"))
+        .map(|event| {
+            (
+                event.event_type.as_str(),
+                event.payload["text"].as_str().unwrap(),
+            )
         })
         .collect::<Vec<_>>();
 
@@ -524,6 +523,33 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.time_to_first_token_ms, None);
     assert_eq!(task.total_duration_ms, Some(7426));
     serde_json::to_value(task).unwrap();
+}
+
+#[test]
+fn ac_001_provider_request_log_task_preserves_attempt_reasoning_effort() {
+    let started_at = OffsetDateTime::UNIX_EPOCH;
+    let attempt = json!({
+        "provider_code": "openai_compatible",
+        "protocol": "openai_compatible",
+        "upstream_model_id": "deepseek-v4-flash",
+        "reasoning_effort": "high",
+        "status": "succeeded"
+    });
+
+    let task = super::model_attempts::provider_request_log_task_from_attempt(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        None,
+        None,
+        "Reasoning projection fixture",
+        started_at,
+        started_at,
+        &attempt,
+    );
+
+    assert_eq!(task.reasoning_effort.as_deref(), Some("high"));
 }
 
 #[test]

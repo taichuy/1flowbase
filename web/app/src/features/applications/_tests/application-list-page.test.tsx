@@ -433,15 +433,19 @@ describe('ApplicationListPage', () => {
     );
   }, 15_000);
 
-  test('previews and imports a selected application ZIP archive', async () => {
+  test('AC-001 accepts an application JSON file and previews it for import', async () => {
     renderPage();
 
     expect(
       await screen.findByText('客服助手', {}, { timeout: 10_000 })
     ).toBeInTheDocument();
-    const input = screen.getByLabelText('导入应用压缩包') as HTMLInputElement;
-    const file = new File(['archive'], 'support-application.zip', {
-      type: 'application/zip'
+    const input = screen.getByLabelText('导入') as HTMLInputElement;
+    expect(input).toHaveAttribute(
+      'accept',
+      'application/zip,.zip,application/json,.json'
+    );
+    const file = new File(['{}'], 'support-application.json', {
+      type: 'application/json'
     });
 
     fireEvent.change(input, { target: { files: [file] } });
@@ -458,7 +462,7 @@ describe('ApplicationListPage', () => {
     const dialog = await screen.findByRole('dialog', undefined, {
       timeout: 10_000
     });
-    expect(within(dialog).getByText('导入应用压缩包')).toBeInTheDocument();
+    expect(within(dialog).getByText('导入')).toBeInTheDocument();
     expect(within(dialog).getByText('应用依赖已就绪')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: '导入应用' }));
 
@@ -513,7 +517,7 @@ describe('ApplicationListPage', () => {
         applicationsApi.previewInstalledApplicationExtension
       ).toHaveBeenCalledWith('agent-flow-installation-1');
     });
-    const importTitle = (await screen.findAllByText('导入应用压缩包')).find(
+    const importTitle = (await screen.findAllByText('导入')).find(
       (element) => element.closest('[role="dialog"]')
     );
     const importDialog = importTitle?.closest('[role="dialog"]') ?? null;

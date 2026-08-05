@@ -1,5 +1,51 @@
 [
   {
+    "id": "component.embedded-agent-assistant-preview",
+    "kind": "component",
+    "title": "Embedded Agent Assistant Preview",
+    "impactFiles": [
+      "web/app/src/styles/tokens.css",
+      "web/app/src/styles/globals.css",
+      "web/app/src/features/agent-flow/components/editor/styles/shell.css",
+      "web/app/src/features/agent-flow/components/embedded-assistant/embedded-assistant.css",
+      "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistant.tsx",
+      "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx",
+      "web/app/src/features/agent-flow/hooks/useEmbeddedAssistantSession.ts",
+      "web/app/src/app-shell/AppShellFrame.tsx",
+      "web/app/src/style-boundary/renderers.tsx",
+      "web/app/src/style-boundary/scene-fixtures.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "preview-dock",
+        "selector": ".embedded-agent-assistant-preview",
+        "propertyAssertions": [
+          {
+            "property": "position",
+            "expected": "fixed"
+          },
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "preview-console",
+        "selector": ".embedded-agent-assistant-preview .agent-flow-editor__debug-console",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "component.account-popup",
     "kind": "component",
     "title": "Account Popup",
@@ -115,7 +161,6 @@
       "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
       "web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx",
       "web/app/src/features/applications/api/applications.ts",
-      "web/app/src/features/applications/components/ApplicationCardGrid.tsx",
       "web/app/src/shared/schema-ui/v1/contracts/overlay-shell-schema.ts",
       "web/app/src/shared/schema-ui/v1/overlay-shell/SchemaModalPanel.tsx",
       "web/app/src/features/applications/components/ApplicationFormModal.tsx",
@@ -347,10 +392,6 @@
       "web/app/src/features/agent-flow/components/detail/NodeRunButton.tsx",
       "web/app/src/features/agent-flow/components/detail/tabs/NodeConfigTab.tsx",
       "web/app/src/features/agent-flow/components/detail/tabs/NodeLastRunTab.tsx",
-      "web/app/src/features/agent-flow/components/detail/cards/NodeSummaryCard.tsx",
-      "web/app/src/features/agent-flow/components/detail/cards/NodeOutputContractCard.tsx",
-      "web/app/src/features/agent-flow/components/detail/cards/NodeRelationsCard.tsx",
-      "web/app/src/features/agent-flow/components/detail/cards/NodePolicySection.tsx",
       "web/app/src/features/agent-flow/components/detail/fields/LlmModelField.tsx",
       "web/app/src/features/agent-flow/components/detail/fields/LlmPromptMessagesField.tsx",
       "web/app/src/features/agent-flow/components/detail/fields/OutputContractDefinitionField.tsx",
@@ -379,7 +420,6 @@
       "web/app/src/features/agent-flow/components/debug-console/AgentFlowDebugConsole.tsx",
       "web/app/src/features/agent-flow/components/debug-console/ConversationLogPanel.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation-log-panel.css",
-      "web/app/src/features/agent-flow/components/debug-console/RunContextPanel.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugConversationPane.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugComposer.tsx",
       "web/app/src/features/agent-flow/components/debug-console/conversation/DebugAssistantMessage.tsx",

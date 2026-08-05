@@ -28,6 +28,7 @@ fn create_host_extension_installation_fixture(root: &Path, version: &str, source
             r#"manifest_version: 1
 plugin_id: fixture_host_extension@{version}
 version: {version}
+publisher_namespace: 1flowbase-tests
 vendor: 1flowbase tests
 display_name: Fixture Host Extension
 description: Fixture startup-only host extension

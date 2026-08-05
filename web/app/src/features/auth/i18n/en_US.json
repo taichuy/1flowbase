@@ -9,8 +9,6 @@
     "fallback_password_label": "Password",
     "fallback_submit": "Sign in",
     "fallback_title": "Welcome",
-    "footer": "Powered by 1flowbase",
-    "login_instances_load_failed": "Failed to load sign-in options. Please refresh the page and try again.",
-    "no_login_instances": "No sign-in option is available."
+    "footer": "Powered by 1flowbase"
   }
 }

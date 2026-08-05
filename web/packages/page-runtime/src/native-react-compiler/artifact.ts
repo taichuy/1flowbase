@@ -4,7 +4,7 @@ import type {
   NativeTrustedBlockImportBinding,
   NativeTrustedBlockInjectedModule
 } from '../native-trusted-block/source-evaluator';
-import { sha256Text } from './sha256';
+import { sha256Text } from '../sha256';
 import { transformNativeReactComponentSource } from './component-transform';
 import {
   canonicalizeNativeReactCatalogDependencyLock,
@@ -13,7 +13,7 @@ import {
 } from './module-registry/contracts';
 import { diagnoseLegacyBlockModuleSource } from './source-contract';
 
-export { sha256Text } from './sha256';
+export { sha256Bytes, sha256Text } from '../sha256';
 export type JsonValue =
   | string
   | number

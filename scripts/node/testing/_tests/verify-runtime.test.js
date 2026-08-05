@@ -35,7 +35,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
     },
     frontend: {
       turboConcurrency: 8,
-      vitestMaxWorkers: 8,
+      vitestMaxWorkers: 4,
     },
     locks: {
       waitTimeoutMinutes: 30,
@@ -45,7 +45,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
   });
 });
 
-test("frontend defaults use all available parallelism on large machines", () => {
+test("frontend defaults reserve local CPU headroom on large machines", () => {
   const repoRoot = createRepoRoot();
 
   const config = loadVerifyRuntimeConfig({
@@ -54,7 +54,7 @@ test("frontend defaults use all available parallelism on large machines", () => 
     availableParallelism: 16,
   });
 
-  assert.equal(config.frontend.vitestMaxWorkers, 16);
+  assert.equal(config.frontend.vitestMaxWorkers, 8);
   assert.equal(config.frontend.turboConcurrency, 16);
 });
 

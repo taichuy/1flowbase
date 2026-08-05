@@ -118,6 +118,19 @@ impl MemoryPluginManagementRepository {
             .expected_checksum = expected_checksum;
     }
 
+    pub(crate) async fn set_legacy_manifest_compatibility(
+        &self,
+        installation_id: Uuid,
+        compatibility: Option<String>,
+    ) {
+        self.installations
+            .write()
+            .await
+            .get_mut(&installation_id)
+            .expect("installation should exist")
+            .legacy_manifest_compatibility = compatibility;
+    }
+
     pub(crate) async fn remove_catalog_projection(&self, installation_id: Uuid) {
         self.catalog_projections
             .write()
@@ -512,6 +525,7 @@ impl PluginRepository for MemoryPluginManagementRepository {
             signature_status: input.signature_status,
             signature_algorithm: input.signature_algorithm.clone(),
             signing_key_id: input.signing_key_id.clone(),
+            legacy_manifest_compatibility: None,
             metadata_json: input.metadata_json.clone(),
             is_system_reserved: input.is_system_reserved,
             created_by: input.actor_user_id,
@@ -742,6 +756,19 @@ impl PluginRepository for MemoryPluginManagementRepository {
             .filter(|assignment| assignment.workspace_id == workspace_id)
             .cloned()
             .collect())
+    }
+
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let mut installation_ids = self
+            .assignments
+            .read()
+            .await
+            .iter()
+            .map(|assignment| assignment.installation_id)
+            .collect::<Vec<_>>();
+        installation_ids.sort_unstable();
+        installation_ids.dedup();
+        Ok(installation_ids)
     }
 
     async fn create_task(&self, input: &CreatePluginTaskInput) -> Result<PluginTaskRecord> {

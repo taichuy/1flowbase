@@ -321,7 +321,7 @@ fn collect_json_leaves(value: &Value, path: String, leaves: &mut Vec<JsonLeaf>) 
     match value {
         Value::Object(values) if !values.is_empty() => {
             let mut fields = values.iter().collect::<Vec<_>>();
-            fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            fields.sort_by_key(|(field, _)| *field);
             for (field, value) in fields {
                 collect_json_leaves(
                     value,

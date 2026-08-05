@@ -3,13 +3,8 @@ import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   modelProviderCatalogContract,
-  modelProviderOptionsContract,
   primaryContractProviderEnabledModelIds
 } from '../../../test/model-provider-contract-fixtures';
-import {
-  createSettingsI18nCatalogTestServer,
-  settingsI18nCatalogTestNavigation
-} from '../../../features/settings/pages/i18n-catalog/_tests/i18n-catalog-test-fixture';
 
 export const styleBoundaryProviderInstances = [
   {

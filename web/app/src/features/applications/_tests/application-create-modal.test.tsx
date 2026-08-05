@@ -76,9 +76,14 @@ describe('ApplicationFormModal create intent', () => {
     expect(screen.queryByText('后端 Agent Flow 描述')).not.toBeInTheDocument();
     expect(screen.queryByText('后端 Workflow 描述')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '名称' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '创建应用' })
-    ).toBeInTheDocument();
+    const submitButton = screen.getByRole('button', { name: '创建应用' });
+    const scrollBody = screen.getByTestId('fixed-height-modal-scroll-body');
+    expect(scrollBody).toContainElement(
+      screen.getByRole('textbox', { name: '名称' })
+    );
+    expect(scrollBody).not.toContainElement(submitButton);
+    expect(submitButton.closest('.ant-modal-footer')).toBeInTheDocument();
+    expect(submitButton).toHaveAttribute('form', 'application-form');
     expect(
       screen.queryByRole('textbox', { name: '图标' })
     ).not.toBeInTheDocument();

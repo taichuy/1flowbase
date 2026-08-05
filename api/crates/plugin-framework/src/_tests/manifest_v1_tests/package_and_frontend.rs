@@ -1,12 +1,13 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[test]
 fn plugin_manifest_v1_parses_runtime_extension_provider_fields() {
-    let manifest = parse_plugin_manifest(
-        r#"
+    let raw = r#"
 manifest_version: 1
 plugin_id: openai_compatible@0.4.0
 version: 0.4.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI Compatible
 description: Generic OpenAI-compatible provider runtime extension
@@ -37,14 +38,15 @@ runtime:
     invoke_timeout_ms: 300000
     memory_bytes: 268435456
 node_contributions: []
-"#,
-    )
-    .unwrap();
+"#;
+    let manifest = parse_plugin_manifest(raw).unwrap();
 
     assert_eq!(manifest.manifest_version, 1);
     assert_eq!(manifest.plugin_id, "openai_compatible@0.4.0");
     assert_eq!(manifest.version, "0.4.0");
+    assert_eq!(manifest.publisher_namespace, "1flowbase");
     assert_eq!(manifest.vendor, "1flowbase");
+    assert!(manifest.keywords.is_empty());
     assert_eq!(manifest.display_name, "OpenAI Compatible");
     assert_eq!(
         manifest.consumption_kind,
@@ -61,6 +63,87 @@ node_contributions: []
     assert_eq!(manifest.runtime.limits.invoke_timeout_ms, Some(300000));
     assert_eq!(manifest.runtime.limits.memory_bytes, Some(268435456));
     assert!(manifest.node_contributions.is_empty());
+
+    let missing_publisher =
+        parse_plugin_manifest(&raw.replace("publisher_namespace: 1flowbase\n", "")).unwrap_err();
+    assert!(missing_publisher
+        .to_string()
+        .contains("publisher_namespace"));
+}
+
+#[test]
+fn publisher_cutover_legacy_installed_manifest_repairs_only_missing_namespace_in_memory() {
+    let current = r#"manifest_version: 1
+plugin_id: fixture@1.2.3
+version: 1.2.3
+publisher_namespace: fixture_org
+vendor: Historical Vendor
+display_name: Fixture
+description: Legacy installed fixture
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: [model_provider]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.provider/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/provider
+  capabilities: [protocol_context]
+node_contributions: []
+"#;
+    let legacy = current.replace("publisher_namespace: fixture_org\n", "");
+    assert!(parse_plugin_manifest(&legacy).is_err());
+
+    let eligibility = LegacyInstalledManifestEligibility {
+        expected_publisher_namespace: "fixture_org".to_string(),
+        expected_versioned_plugin_id: "fixture@1.2.3".to_string(),
+        expected_raw_manifest_fingerprint: format!(
+            "sha256:{:x}",
+            Sha256::digest(legacy.as_bytes())
+        ),
+    };
+    let parsed = parse_legacy_installed_plugin_manifest(&legacy, &eligibility)
+        .expect("AC-001 legacy installed artifact should load from explicit durable identity");
+    assert_eq!(parsed.publisher_namespace, "fixture_org");
+    assert_eq!(parsed.contract_version, "1flowbase.provider/v1");
+    assert_eq!(parsed.vendor, "Historical Vendor");
+    assert_eq!(parsed.runtime.capabilities, vec!["protocol_context"]);
+
+    let strict_current = current.replace(
+        "contract_version: 1flowbase.provider/v1",
+        "contract_version: 1flowbase.provider/v2",
+    );
+    let strict_error = parse_plugin_manifest(&strict_current).unwrap_err();
+    assert!(strict_error.to_string().contains("runtime.capabilities"));
+
+    let wrong_fingerprint = LegacyInstalledManifestEligibility {
+        expected_raw_manifest_fingerprint: format!("sha256:{}", "0".repeat(64)),
+        ..eligibility.clone()
+    };
+    assert!(parse_legacy_installed_plugin_manifest(&legacy, &wrong_fingerprint).is_err());
+
+    let also_missing_contract = legacy.replace("contract_version: 1flowbase.provider/v1\n", "");
+    let other_missing = LegacyInstalledManifestEligibility {
+        expected_raw_manifest_fingerprint: format!(
+            "sha256:{:x}",
+            Sha256::digest(also_missing_contract.as_bytes())
+        ),
+        ..eligibility
+    };
+    assert!(
+        parse_legacy_installed_plugin_manifest(&also_missing_contract, &other_missing).is_err()
+    );
 }
 
 #[test]
@@ -70,6 +153,7 @@ fn plugin_manifest_v1_parses_stateful_provider_worker_runtime() {
 manifest_version: 1
 plugin_id: openai@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI
 description: OpenAI Responses provider runtime extension
@@ -114,6 +198,7 @@ fn plugin_manifest_v1_rejects_stateful_provider_worker_with_plain_stdio() {
 manifest_version: 1
 plugin_id: openai@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: OpenAI
 description: invalid
@@ -155,6 +240,7 @@ fn plugin_manifest_v1_rejects_host_extension_with_workspace_binding() {
 manifest_version: 1
 plugin_id: bad_host@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Host
 description: invalid
@@ -194,6 +280,7 @@ fn plugin_manifest_v1_rejects_capability_plugin_without_node_contributions() {
 manifest_version: 1
 plugin_id: bad_capability@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Capability
 description: invalid
@@ -234,6 +321,7 @@ fn plugin_manifest_v1_parses_capability_plugin_with_js_dependency_pack() {
 manifest_version: 1
 plugin_id: js_zod_pack@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: JS Zod Pack
 description: Example JS dependency pack plugin
@@ -302,6 +390,7 @@ fn plugin_manifest_v1_accepts_frontend_block_contribution() {
 manifest_version: 1
 plugin_id: fixture_frontend_blocks@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Fixture Frontend Blocks
 description: Frontend block contribution plugin
@@ -463,6 +552,7 @@ fn plugin_manifest_v1_keeps_missing_frontend_block_code_template_null() {
 manifest_version: 1
 plugin_id: frontend_blocks_without_template@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Frontend Blocks Without Template
 description: frontend blocks without a code template
@@ -532,6 +622,7 @@ fn valid_frontend_block_manifest_with_code_template(code_template: &str) -> Stri
 manifest_version: 1
 plugin_id: frontend_blocks_with_template@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Frontend Blocks With Template
 description: frontend blocks with a code template
@@ -582,6 +673,7 @@ fn plugin_manifest_v1_rejects_invalid_frontend_block_values_with_stable_errors()
 manifest_version: 1
 plugin_id: bad_frontend_block@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block
 description: invalid runtime
@@ -635,6 +727,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: missing_frontend_block_entry@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Missing Frontend Block Entry
 description: missing entry
@@ -688,6 +781,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: bad_frontend_block_permission@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block Permission
 description: invalid permission
@@ -741,6 +835,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: bad_frontend_block_primitive@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block Primitive
 description: invalid primitive
@@ -794,6 +889,7 @@ block_contributions:
 manifest_version: 1
 plugin_id: bad_frontend_block_capability@0.1.0
 version: 0.1.0
+publisher_namespace: acme
 vendor: acme
 display_name: Bad Frontend Block Capability
 description: invalid capability

@@ -2,6 +2,7 @@ schema_version: 1flowbase.plugin.manifest/v1
 manifest_version: 1
 plugin_id: official.runtime-orchestration-host@0.1.0
 version: 0.1.0
+publisher_namespace: 1flowbase
 vendor: 1flowbase
 display_name: Runtime Orchestration Host
 description: Builtin runtime orchestration host module.

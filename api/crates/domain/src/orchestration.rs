@@ -10,6 +10,7 @@ pub enum FlowRunMode {
     DebugNodePreview,
     DebugFlowRun,
     PublishedApiRun,
+    AssistantExecution,
     WorkflowHttpRun,
     WorkflowScheduleRun,
 }
@@ -20,6 +21,7 @@ impl FlowRunMode {
             Self::DebugNodePreview => "debug_node_preview",
             Self::DebugFlowRun => "debug_flow_run",
             Self::PublishedApiRun => "published_api_run",
+            Self::AssistantExecution => "assistant_execution",
             Self::WorkflowHttpRun => "workflow_http_run",
             Self::WorkflowScheduleRun => "workflow_schedule_run",
         }
@@ -36,6 +38,11 @@ impl FlowRunMode {
                 FlowRunExecutionStage::Published,
                 FlowRunInvocationSource::AgentFlowApi,
                 FlowRunPrincipal::application_api_key(api_key_id),
+            ),
+            Self::AssistantExecution => (
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::Assistant,
+                FlowRunPrincipal::user(created_by, authorized_account),
             ),
             Self::WorkflowHttpRun => {
                 let principal = match api_key_id {
@@ -88,6 +95,7 @@ impl FlowRunExecutionStage {
 #[serde(rename_all = "snake_case")]
 pub enum FlowRunInvocationSource {
     AgentFlowApi,
+    Assistant,
     WorkflowHttp,
     WorkflowSchedule,
     Debug,
@@ -97,6 +105,7 @@ impl FlowRunInvocationSource {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::AgentFlowApi => "agent_flow_api",
+            Self::Assistant => "assistant",
             Self::WorkflowHttp => "workflow_http",
             Self::WorkflowSchedule => "workflow_schedule",
             Self::Debug => "debug",
@@ -664,6 +673,13 @@ mod invocation_context_tests {
                 FlowRunExecutionStage::Published,
                 FlowRunInvocationSource::AgentFlowApi,
                 FlowRunPrincipalKind::ApplicationApiKey,
+            ),
+            (
+                FlowRunMode::AssistantExecution,
+                None,
+                FlowRunExecutionStage::Published,
+                FlowRunInvocationSource::Assistant,
+                FlowRunPrincipalKind::User,
             ),
             (
                 FlowRunMode::WorkflowHttpRun,

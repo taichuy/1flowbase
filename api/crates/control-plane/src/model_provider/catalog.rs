@@ -12,6 +12,7 @@ use crate::{
         merge_i18n_catalog, plugin_namespace, trim_json_bundles, trim_provider_bundles,
         RequestedLocales,
     },
+    installed_provider_package::load_installed_provider_package,
     model_provider::{
         ModelProviderCatalogEntry, ModelProviderCatalogView, ModelProviderMainInstanceSummary,
         ModelProviderOptionEntry, ModelProviderOptionGroup, ModelProviderOptionTarget,
@@ -21,9 +22,8 @@ use crate::{
 };
 
 use super::shared::{
-    ensure_model_provider_permission, load_actor_context_for_user, load_provider_package,
-    localized_model_descriptor, model_provider_installation_from_current_snapshot,
-    ModelProviderNodeArtifactContext,
+    ensure_model_provider_permission, load_actor_context_for_user, localized_model_descriptor,
+    model_provider_installation_from_current_snapshot, ModelProviderNodeArtifactContext,
 };
 
 #[derive(Debug)]
@@ -201,11 +201,7 @@ where
         if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
             continue;
         }
-        let package = load_provider_package(
-            installation
-                .local_path()
-                .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-        )?;
+        let package = load_installed_provider_package(installation)?;
         let namespace = plugin_namespace(&provider_code);
         merge_i18n_catalog(
             &mut i18n_catalog,
