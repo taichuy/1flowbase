@@ -444,9 +444,6 @@ describe('ApplicationListPage', () => {
       'accept',
       'application/zip,.zip,application/json,.json'
     );
-    expect(
-      screen.getByText('支持应用压缩包与应用模板 JSON 文件')
-    ).toBeInTheDocument();
     const file = new File(['{}'], 'support-application.json', {
       type: 'application/json'
     });

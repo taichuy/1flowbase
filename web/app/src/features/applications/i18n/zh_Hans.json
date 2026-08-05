@@ -277,7 +277,6 @@
     "export_template": "导出应用",
     "import_template": "导入应用",
     "import_template_file": "导入",
-    "import_template_file_hint": "支持应用压缩包与应用模板 JSON 文件",
     "missing_dependency_count": "缺失依赖 {{value1}}",
     "missing_dependencies": "缺失依赖",
     "template_dependency_summary": "依赖状态",

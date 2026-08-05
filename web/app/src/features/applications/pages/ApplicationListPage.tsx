@@ -507,12 +507,6 @@ export function ApplicationListPage() {
             >
               {t('auto.import_template_file')}
             </Button>
-            <Typography.Text
-              type="secondary"
-              style={{ marginInlineStart: 32, marginTop: -8, fontSize: 12 }}
-            >
-              {t('auto.import_template_file_hint')}
-            </Typography.Text>
           </div>
         )}
 

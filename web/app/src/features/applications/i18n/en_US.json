@@ -277,7 +277,6 @@
     "export_template": "Export application",
     "import_template": "Import application",
     "import_template_file": "Import",
-    "import_template_file_hint": "Supports application archives and application template JSON files",
     "missing_dependency_count": "Missing dependencies {{value1}}",
     "missing_dependencies": "Missing dependencies",
     "template_dependency_summary": "Dependency status",
