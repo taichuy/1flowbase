@@ -4,7 +4,8 @@ import {
   type ConsoleAssistantPreference,
   type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
-import { Button, Form, Modal, Select } from 'antd';
+import { Sender } from '@ant-design/x';
+import { Button, Dropdown, Form, Modal, Select } from 'antd';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -140,6 +141,14 @@ export function EmbeddedAgentAssistantPreview({
   const selectedFlow = settings?.published_agent_flows.find(
     (flow) => flow.application_id === settings.preference.application_id
   );
+  const selectedModel =
+    settings?.run_capabilities.models.find(
+      (model) => model.id === settings.preference.model
+    ) ?? settings?.run_capabilities.models[0];
+  const selectedReasoningEffort =
+    settings?.preference.reasoning_effort ??
+    selectedModel?.default_reasoning_effort ??
+    selectedModel?.reasoning_efforts[0];
   const windowEntry = windowWorkspaceState.windows.find(
     (entry) => entry.id === ASSISTANT_WINDOW_ID
   );
@@ -224,53 +233,76 @@ export function EmbeddedAgentAssistantPreview({
             composerFooterActions={
               settings?.run_capabilities.model_selection_enabled ? (
                 <>
-                  <Select
-                    aria-label={i18nText('appShell', 'auto.assistant_model')}
-                    disabled={saving}
-                    options={settings.run_capabilities.models.map((model) => ({
-                      value: model.id,
-                      label: model.name ?? model.id
-                    }))}
-                    placeholder={i18nText('appShell', 'auto.assistant_model')}
-                    size="small"
-                    value={settings.preference.model ?? undefined}
-                    onChange={(model) => {
-                      const selected = settings.run_capabilities.models.find(
-                        (candidate) => candidate.id === model
-                      );
-                      void updateRuntimePreference({
-                        model,
-                        reasoning_effort:
-                          selected?.default_reasoning_effort ?? null
-                      });
+                  <Dropdown
+                    getPopupContainer={(triggerNode) =>
+                      triggerNode.closest('.embedded-agent-assistant-preview') ??
+                      document.body
+                    }
+                    placement="topLeft"
+                    trigger={['click']}
+                    menu={{
+                      items: settings.run_capabilities.models.map((model) => ({
+                        key: model.id,
+                        label: model.name ?? model.id
+                      })),
+                      selectedKeys: selectedModel ? [selectedModel.id] : [],
+                      onClick: ({ key }) => {
+                        const model = settings.run_capabilities.models.find(
+                          (candidate) => candidate.id === key
+                        );
+                        if (!model) {
+                          return;
+                        }
+                        void updateRuntimePreference({
+                          model: model.id,
+                          reasoning_effort: model.default_reasoning_effort ?? null
+                        });
+                      }
                     }}
-                  />
+                  >
+                    <Sender.Switch value={false}>
+                      {selectedModel?.name ??
+                        selectedModel?.id ??
+                        i18nText('appShell', 'auto.assistant_model')}
+                    </Sender.Switch>
+                  </Dropdown>
                   {settings.run_capabilities.reasoning_effort_enabled &&
-                  settings.run_capabilities.models.find(
-                    (model) => model.id === settings.preference.model
-                  )?.reasoning_efforts.length ? (
-                    <Select
-                      aria-label={i18nText(
-                        'appShell',
-                        'auto.assistant_reasoning_effort'
-                      )}
-                      disabled={saving}
-                      options={settings.run_capabilities.models
-                        .find((model) => model.id === settings.preference.model)
-                        ?.reasoning_efforts.map((effort) => ({
-                          value: effort,
+                  selectedModel?.reasoning_efforts.length ? (
+                    <Dropdown
+                      getPopupContainer={(triggerNode) =>
+                        triggerNode.closest('.embedded-agent-assistant-preview') ??
+                        document.body
+                      }
+                      placement="topLeft"
+                      trigger={['click']}
+                      menu={{
+                        items: selectedModel.reasoning_efforts.map((effort) => ({
+                          key: effort,
                           label: effort
-                        }))}
-                      placeholder={i18nText(
-                        'appShell',
-                        'auto.assistant_reasoning_effort'
-                      )}
-                      size="small"
-                      value={settings.preference.reasoning_effort ?? undefined}
-                      onChange={(reasoning_effort) => {
-                        void updateRuntimePreference({ reasoning_effort });
+                        })),
+                        selectedKeys: selectedReasoningEffort
+                          ? [selectedReasoningEffort]
+                          : [],
+                        onClick: ({ key }) => {
+                          const reasoning_effort = String(key);
+                          if (
+                            !selectedModel.reasoning_efforts.includes(
+                              reasoning_effort
+                            )
+                          ) {
+                            return;
+                          }
+                          void updateRuntimePreference({
+                            model: selectedModel.id,
+                            reasoning_effort
+                          });
+                        }
                       }}
-                    />
+                    >
+                      <Sender.Switch value={false}>
+                        {selectedReasoningEffort ?? '-'}
+                      </Sender.Switch>
+                    </Dropdown>
                   ) : null}
                 </>
               ) : null

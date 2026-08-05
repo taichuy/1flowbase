@@ -2,12 +2,59 @@
   display: flex;
   min-width: 0;
   pointer-events: auto;
+  border-radius: 1.125rem;
+  background: var(--bg-elevated);
 }
 
 .embedded-agent-assistant-preview__body,
 .embedded-agent-assistant-preview .agent-flow-editor__debug-console {
   height: 100%;
   min-width: 0;
+}
+
+/* Keep the assistant visually aligned with the console's warm emerald theme
+ * without changing the reusable Agent Flow debug console. */
+.embedded-agent-assistant-preview .agent-flow-editor__dock-panel {
+  border-color: var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__dock-panel-body,
+.embedded-agent-assistant-preview .agent-flow-editor__dock-panel-header,
+.embedded-agent-assistant-preview .agent-flow-editor__debug-conversation-pane,
+.embedded-agent-assistant-preview .agent-flow-editor__debug-composer {
+  background: var(--bg-elevated);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__dock-panel-header {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb {
+  border-color: var(--bg-elevated);
+  background: var(--scrollbar-thumb);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__debug-message--system
+  .agent-flow-editor__debug-message-main {
+  border-color: var(--border-default);
+  background: var(--bg-page);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__debug-message--system
+  .agent-flow-editor__debug-message-content.ant-typography {
+  color: var(--text-secondary);
+}
+
+.embedded-agent-assistant-preview .agent-flow-editor__debug-message--user
+  .agent-flow-editor__debug-message-content.ant-typography {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 @media (max-width: 640px) {

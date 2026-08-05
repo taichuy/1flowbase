@@ -66,3 +66,4 @@ web/app/.env.*.local
 docker/1flowbase.code-workspace
 docs/private/*
 docs/ziliao/*
+.codex/*

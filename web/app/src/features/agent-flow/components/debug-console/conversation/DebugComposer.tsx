@@ -1,5 +1,7 @@
+import { SendOutlined } from '@ant-design/icons';
 import { Sender } from '@ant-design/x';
-import { type ReactNode } from 'react';
+import { Flex, Tooltip } from 'antd';
+import type { ReactNode } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export function DebugComposer({
@@ -35,39 +37,46 @@ export function DebugComposer({
   return (
     <div className="agent-flow-editor__debug-composer">
       <Sender
-        autoSize={{ minRows: 1, maxRows: 4 }}
+        autoSize={{ minRows: 3, maxRows: 6 }}
         disabled={disabled}
         footer={(_, { components: { LoadingButton, SendButton } }) => (
-          <div className="agent-flow-editor__debug-composer-footer">
-            {footerActions ? (
-              <div className="agent-flow-editor__debug-composer-footer-actions">
-                {footerActions}
-              </div>
-            ) : null}
-            <div className="agent-flow-editor__debug-composer-actions">
+          <Flex align="center" justify="space-between">
+            <Flex align="center" gap="small">
+              {footerActions}
+            </Flex>
+            <Flex align="center">
               {showStop ? (
-                <LoadingButton
-                  aria-label={
+                <Tooltip
+                  title={
                     stopping
                       ? i18nText('agentFlow', 'auto.terminating_debug_run')
                       : i18nText('agentFlow', 'auto.terminate_debugging_run')
                   }
-                  className="agent-flow-editor__debug-composer-submit agent-flow-editor__debug-composer-stop"
-                  disabled={stopping}
-                  loading={stopping}
-                />
+                >
+                  <LoadingButton disabled={stopping} loading={stopping} />
+                </Tooltip>
               ) : (
-                <SendButton
-                  aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
-                  className="agent-flow-editor__debug-composer-submit"
-                />
+                <Tooltip
+                  title={
+                    value
+                      ? i18nText('agentFlow', 'auto.send_debug_message')
+                      : i18nText('agentFlow', 'auto.chat_with_bots')
+                  }
+                >
+                  <SendButton
+                    aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
+                    color="primary"
+                    icon={<SendOutlined />}
+                    shape="default"
+                    variant="text"
+                  />
+                </Tooltip>
               )}
-            </div>
-          </div>
+            </Flex>
+          </Flex>
         )}
         loading={showStop}
         placeholder={i18nText('agentFlow', 'auto.chat_with_bots')}
-        rootClassName="agent-flow-editor__debug-composer-sender"
         submitType="enter"
         suffix={false}
         value={value}
