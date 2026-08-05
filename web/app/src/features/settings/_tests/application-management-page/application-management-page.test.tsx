@@ -368,6 +368,54 @@ describe('ApplicationManagementPanel', () => {
     );
   });
 
+  test('AC-001 opens the existing create application form from the management toolbar', async () => {
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    await screen.findByText('Daily Report');
+    fireEvent.click(screen.getByRole('button', { name: '新增' }));
+
+    expect(
+      await screen.findByRole('dialog', { name: '新建应用' })
+    ).toBeInTheDocument();
+  });
+
+  test('hides the create action without application creation permission', async () => {
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'member-user',
+        account: 'member',
+        effective_display_role: 'member',
+        current_workspace_id: 'workspace-1'
+      },
+      me: {
+        id: 'member-user',
+        account: 'member',
+        email: 'member@example.com',
+        phone: null,
+        nickname: 'Member',
+        name: 'Member',
+        avatar_url: null,
+        introduction: '',
+        effective_display_role: 'member',
+        permissions: []
+      }
+    });
+
+    render(
+      <AppProviders>
+        <ApplicationManagementPanel />
+      </AppProviders>
+    );
+
+    await screen.findByText('Daily Report');
+    expect(screen.queryByRole('button', { name: '新增' })).toBeNull();
+  });
+
   test('applies filter drafts together and resets them from the filter form', async () => {
     render(
       <AppProviders>
