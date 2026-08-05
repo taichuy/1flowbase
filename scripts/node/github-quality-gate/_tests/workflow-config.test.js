@@ -185,6 +185,19 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
   assert.match(fullAiWorkflow, /workflow_call:/u);
   assert.match(fullAiWorkflow, /workflow_dispatch:/u);
 
+  const nextFoundationJob = {
+    'mcp-gateway-fast': 'application-backend-fast',
+    'application-backend-fast': 'native-react-fast',
+  };
+  for (const job of Object.keys(nextFoundationJob)) {
+    const jobStart = fastWorkflow.indexOf(`  ${job}:`);
+    const nextJob = fastWorkflow.indexOf(`\n  ${nextFoundationJob[job]}:`, jobStart + 3);
+    const jobSource = fastWorkflow.slice(jobStart, nextJob === -1 ? undefined : nextJob);
+    assert.match(jobSource, /services:\n\s+postgres:\n\s+image: postgres:18\.4/u);
+    assert.match(jobSource, /API_DATABASE_URL: postgres:\/\/postgres:1flowbase@127\.0\.0\.1:5432\/1flowbase/u);
+    assert.match(jobSource, /DATABASE_URL: postgres:\/\/postgres:1flowbase@127\.0\.0\.1:5432\/1flowbase/u);
+  }
+
   const docs = readGitHubAutomationDocs();
   assert.match(docs, /below one hour/u);
   assert.match(docs, /fewer than three foundations repeatedly fail/u);

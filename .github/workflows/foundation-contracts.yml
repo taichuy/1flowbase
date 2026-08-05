@@ -100,6 +100,23 @@ jobs:
     if: needs.route.outputs.mcp_gateway == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -124,6 +141,23 @@ jobs:
     if: needs.route.outputs.application_backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
