@@ -7,9 +7,14 @@ allowBuilds:
   vue-demi: true
 
 overrides:
-  dompurify: 3.4.0
+  brace-expansion@^1.1.7: 1.1.16
+  brace-expansion@^5.0.5: 5.0.9
+  dompurify: 3.4.13
   fast-uri: 3.1.2
   glob: 10.5.0
-  postcss: 8.5.10
+  js-yaml: 4.3.0
+  postcss: 8.5.25
   protobufjs: 7.5.5
-  shell-quote: 1.8.4
+  seroval: 1.5.3
+  shell-quote: 1.10.0
+  ws: 8.21.2
