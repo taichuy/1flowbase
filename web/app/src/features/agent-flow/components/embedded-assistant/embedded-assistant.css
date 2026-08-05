@@ -31,6 +31,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.embedded-agent-assistant-preview
+  .agent-flow-editor__debug-composer-send.ant-btn {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .embedded-agent-assistant-preview .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb {
   border-color: var(--bg-elevated);
   background: var(--scrollbar-thumb);

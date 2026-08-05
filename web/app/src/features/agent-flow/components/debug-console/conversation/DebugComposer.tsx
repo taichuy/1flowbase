@@ -65,9 +65,15 @@ export function DebugComposer({
                 >
                   <SendButton
                     aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
+                    className="agent-flow-editor__debug-composer-send"
                     color="primary"
                     icon={<SendOutlined />}
                     shape="default"
+                    style={{
+                      borderColor: 'transparent',
+                      color: 'var(--color-primary)',
+                      opacity: 1
+                    }}
                     variant="text"
                   />
                 </Tooltip>
