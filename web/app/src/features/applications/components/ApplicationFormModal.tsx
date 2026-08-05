@@ -20,7 +20,7 @@ import type {
   ConsoleWorkflowExtensionResponseMode,
   ConsoleWorkflowTriggerType
 } from '@1flowbase/api-client';
-import { SchemaModalPanel } from '../../../shared/schema-ui/v1/overlay-shell/SchemaModalPanel';
+import { FixedHeightModal } from '../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import {
   fetchOrchestrationState,
   orchestrationQueryKey
@@ -72,11 +72,7 @@ interface ApplicationFormValues {
   tag_ids: string[];
 }
 
-const applicationFormShell = {
-  schemaVersion: '1.0.0',
-  shellType: 'modal_panel',
-  destroyOnHidden: true
-} as const;
+const APPLICATION_FORM_ID = 'application-form';
 
 export function ApplicationFormModal({
   open,
@@ -320,20 +316,32 @@ export function ApplicationFormModal({
     orchestrationQuery.isError;
 
   return (
-    <SchemaModalPanel
+    <FixedHeightModal
       open={open}
-      schema={{
-        ...applicationFormShell,
-        title: isEdit
-          ? t('auto.edit_application_information')
-          : t('auto.new_application')
-      }}
-      onClose={onClose}
+      title={
+        isEdit ? t('auto.edit_application_information') : t('auto.new_application')
+      }
+      destroyOnHidden
+      footer={
+        loading ? null : (
+          <Button
+            type="primary"
+            htmlType="submit"
+            form={APPLICATION_FORM_ID}
+            disabled={catalogQuery.isError}
+            loading={mutation.isPending}
+          >
+            {isEdit ? t('auto.save_changes') : t('auto.create_application')}
+          </Button>
+        )
+      }
+      onCancel={onClose}
     >
       {loading ? (
         <Typography.Text type="secondary">{t('auto.loading')}</Typography.Text>
       ) : (
         <Form<ApplicationFormValues>
+          id={APPLICATION_FORM_ID}
           form={form}
           layout="vertical"
           onFinish={(values) => mutation.mutate(values)}
@@ -624,17 +632,9 @@ export function ApplicationFormModal({
               }))}
             />
           </Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            disabled={catalogQuery.isError}
-            loading={mutation.isPending}
-          >
-            {isEdit ? t('auto.save_changes') : t('auto.create_application')}
-          </Button>
         </Form>
       )}
-    </SchemaModalPanel>
+    </FixedHeightModal>
   );
 }
 
