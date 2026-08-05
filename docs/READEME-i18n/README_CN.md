@@ -1,7 +1,7 @@
 # 1flowbase
 
 <p align="center">
-  <img src="../assets/logo_index_cn.png" alt="1flowbase Logo">
+  <img src="../../web/app/public/icon.svg" alt="1flowbase Logo" width="120" height="120">
 </p>
 
 <p align="center">
