@@ -165,7 +165,7 @@ export function NodePickerPopover({
       destroyOnHidden
       getPopupContainer={resolvePopupContainer}
       styles={{
-        body: {
+        content: {
           boxSizing: 'border-box',
           display: 'grid',
           height: 'var(--agent-flow-node-picker-height, 80vh)',

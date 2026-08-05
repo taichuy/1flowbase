@@ -318,7 +318,7 @@ function wrapWithHostProviders(
 ): ReactNode {
   const getShadowContainer = () => context.shadowRoot;
   const scopedChildren = (
-    <StyleProvider autoClear cache={styleCache} container={context.shadowRoot}>
+    <StyleProvider cache={styleCache} container={context.shadowRoot}>
       <ConfigProvider
         getPopupContainer={getShadowContainer}
         getTargetContainer={getShadowContainer}

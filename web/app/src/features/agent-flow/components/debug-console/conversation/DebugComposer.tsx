@@ -1,6 +1,5 @@
-import { ArrowUpOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { Button, Input } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { Sender } from '@ant-design/x';
+import { type ReactNode } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export function DebugComposer({
@@ -22,87 +21,60 @@ export function DebugComposer({
   onStop: () => void;
   onSubmit: (value: string) => void;
 }) {
-  const [isComposing, setIsComposing] = useState(false);
   const showStop = submitting || stopping;
 
-  function handleSubmit() {
+  function handleSubmit(message: string) {
     if (disabled || submitting || stopping) {
       return;
     }
 
-    onSubmit(value);
+    onSubmit(message);
     onChange('');
   }
 
   return (
     <div className="agent-flow-editor__debug-composer">
-      <div
-        className={[
-          'agent-flow-editor__debug-composer-box',
-          footerActions && 'agent-flow-editor__debug-composer-box--with-footer'
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <Input.TextArea
-          autoSize={{ minRows: 1, maxRows: 4 }}
-          variant="borderless"
-          placeholder={i18nText('agentFlow', 'auto.chat_with_bots')}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onCompositionStart={() => setIsComposing(true)}
-          onCompositionEnd={() => setIsComposing(false)}
-          onKeyDown={(event) => {
-            // 中文输入法组合态期间不能把 Enter 误判成发送。
-            if (
-              event.key !== 'Enter' ||
-              event.shiftKey ||
-              isComposing ||
-              event.nativeEvent.isComposing
-            ) {
-              return;
-            }
-
-            event.preventDefault();
-
-            handleSubmit();
-          }}
-        />
-        <div className="agent-flow-editor__debug-composer-footer">
-          {footerActions ? (
-            <div className="agent-flow-editor__debug-composer-footer-actions">
-              {footerActions}
+      <Sender
+        autoSize={{ minRows: 1, maxRows: 4 }}
+        disabled={disabled}
+        footer={(_, { components: { LoadingButton, SendButton } }) => (
+          <div className="agent-flow-editor__debug-composer-footer">
+            {footerActions ? (
+              <div className="agent-flow-editor__debug-composer-footer-actions">
+                {footerActions}
+              </div>
+            ) : null}
+            <div className="agent-flow-editor__debug-composer-actions">
+              {showStop ? (
+                <LoadingButton
+                  aria-label={
+                    stopping
+                      ? i18nText('agentFlow', 'auto.terminating_debug_run')
+                      : i18nText('agentFlow', 'auto.terminate_debugging_run')
+                  }
+                  className="agent-flow-editor__debug-composer-submit agent-flow-editor__debug-composer-stop"
+                  disabled={stopping}
+                  loading={stopping}
+                />
+              ) : (
+                <SendButton
+                  aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
+                  className="agent-flow-editor__debug-composer-submit"
+                />
+              )}
             </div>
-          ) : null}
-          <div className="agent-flow-editor__debug-composer-actions">
-          {showStop ? (
-            <Button
-              aria-label={
-                stopping
-                  ? i18nText('agentFlow', 'auto.terminating_debug_run')
-                  : i18nText('agentFlow', 'auto.terminate_debugging_run')
-              }
-              className="agent-flow-editor__debug-composer-submit agent-flow-editor__debug-composer-stop"
-              disabled={stopping}
-              icon={<CloseCircleOutlined />}
-              loading={stopping}
-              shape="circle"
-              onClick={onStop}
-            />
-          ) : (
-            <Button
-              aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
-              className="agent-flow-editor__debug-composer-submit"
-              disabled={disabled}
-              icon={<ArrowUpOutlined />}
-              shape="circle"
-              type="primary"
-              onClick={handleSubmit}
-            />
-          )}
           </div>
-        </div>
-      </div>
+        )}
+        loading={showStop}
+        placeholder={i18nText('agentFlow', 'auto.chat_with_bots')}
+        rootClassName="agent-flow-editor__debug-composer-sender"
+        submitType="enter"
+        suffix={false}
+        value={value}
+        onCancel={onStop}
+        onChange={onChange}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }

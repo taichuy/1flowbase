@@ -1,4 +1,3 @@
-import '@ant-design/v5-patch-for-react-19';
 import { ConfigProvider } from 'antd';
 import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';

@@ -492,7 +492,7 @@ describe('NodePickerPopover', () => {
     );
 
     expect(await screen.findByRole('menu')).toBeInTheDocument();
-    expect(document.querySelector('.ant-popover-inner')).toHaveStyle({
+    expect(document.querySelector('.ant-popover-content')).toHaveStyle({
       display: 'grid',
       height: 'var(--agent-flow-node-picker-height, 80vh)',
       padding: 0

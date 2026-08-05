@@ -21,6 +21,9 @@ describe('DebugComposer', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: '发送调试消息' }));
+    expect(
+      screen.getByPlaceholderText('和 Bot 聊天').closest('.ant-sender')
+    ).toBeInTheDocument();
     expect(screen.queryByText('功能已开启')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '管理功能' })

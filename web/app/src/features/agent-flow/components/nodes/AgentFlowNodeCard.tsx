@@ -296,7 +296,7 @@ export function AgentFlowNodeCard({
             placement="top"
             color="#ffffff"
             styles={{
-              body: {
+              container: {
                 color: '#333',
                 borderRadius: 8,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
@@ -380,7 +380,7 @@ export function AgentFlowNodeCard({
           placement="bottom"
           color="#ffffff"
           styles={{
-            body: {
+            container: {
               color: '#333',
               borderRadius: 8,
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)'

@@ -123,9 +123,7 @@ describe('EmbeddedAgentAssistant', () => {
       fireEvent.click(settings);
     });
     expect(
-      await screen.findByRole('dialog', {
-        name: i18nText('appShell', 'auto.assistant_settings')
-      })
+      await screen.findByText(i18nText('appShell', 'auto.assistant_settings'))
     ).toBeInTheDocument();
   });
 

@@ -6,7 +6,7 @@
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@ant-design/icons": "5.6.1"
+    "@ant-design/icons": "6.1.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"

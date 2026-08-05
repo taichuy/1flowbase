@@ -245,7 +245,7 @@ describe('frontstage native trusted block declarative portal host', () => {
     await shadowQueries(root).findByText('Contained');
     const shadowRoot = root.shadowRoot;
     expect(providerRecords.styles).toEqual([
-      expect.objectContaining({ container: shadowRoot, autoClear: true })
+      expect.objectContaining({ container: shadowRoot })
     ]);
     const config = providerRecords.configs[0];
     expect((config.getPopupContainer as () => ShadowRoot)()).toBe(shadowRoot);

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "antd": "^5.24.6",
+    "antd": "^6.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
