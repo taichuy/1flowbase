@@ -11,7 +11,7 @@ import {
   Table,
   Tag,
   Typography,
-  message
+  App
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -129,6 +129,7 @@ export function DataModelTable({
     input: UpdateSettingsDataModelInput
   ) => void;
 }) {
+  const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const useMobileList = Boolean(screens.xs && !screens.md);
 

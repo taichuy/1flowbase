@@ -1,11 +1,5 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor
-} from '@testing-library/react';
-import { Grid, message } from 'antd';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Grid } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const membersApi = vi.hoisted(() => ({
@@ -377,9 +371,6 @@ describe('File management settings page', () => {
       );
     });
     expect(await screen.findByText('存储配置已创建')).toBeInTheDocument();
-    await act(async () => {
-      message.destroy();
-    });
   });
 
   test('root mode shows existing public base url when editing local storage', async () => {

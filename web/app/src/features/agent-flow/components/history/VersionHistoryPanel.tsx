@@ -3,7 +3,7 @@ import {
   PushpinFilled,
   PushpinOutlined
 } from '@ant-design/icons';
-import { Button, Input, List, Modal, Space, Typography } from 'antd';
+import { Button, Input, Modal, Space, Typography } from 'antd';
 import { useState } from 'react';
 
 import type {
@@ -13,6 +13,7 @@ import type {
 
 import { AgentFlowDockPanel } from '../editor/AgentFlowDockPanel';
 import { i18nText } from '../../../../shared/i18n/text';
+import '../../../../shared/ui/structured-list/structured-list.css';
 
 interface VersionHistoryPanelProps {
   onClose: () => void;
@@ -102,90 +103,86 @@ export function VersionHistoryPanel({
       title={i18nText('agentFlow', 'auto.historical_version')}
       onClose={onClose}
     >
-      <List
-        className="agent-flow-editor__history-list"
-        dataSource={versions}
-        locale={{
-          emptyText: i18nText(
-            'agentFlow',
-            'auto.currently_historical_version_restore'
-          )
-        }}
-        renderItem={(version) => {
-          const createdAt = formatVersionCreatedAt(version.created_at);
-          const title = getVersionTitle(version);
-          const updating = updatingVersionId === version.id;
+      <div className="agent-flow-editor__history-list structured-list">
+        {versions.length > 0 ? (
+          <ul className="structured-list__items">
+            {versions.map((version) => {
+              const createdAt = formatVersionCreatedAt(version.created_at);
+              const title = getVersionTitle(version);
+              const updating = updatingVersionId === version.id;
 
-          return (
-            <List.Item
-              actions={[
-                <Button
-                  aria-label={`${version.is_user_protected ? i18nText('agentFlow', 'auto.cancel_top_protection') : i18nText('agentFlow', 'auto.top_protection')} ${title}`}
-                  disabled={
-                    !version.is_user_protected && userProtectionLimitReached
-                  }
-                  icon={
-                    version.is_user_protected ? (
-                      <PushpinFilled />
-                    ) : (
-                      <PushpinOutlined />
-                    )
-                  }
-                  key="protect"
-                  loading={updating}
-                  type={version.is_user_protected ? 'primary' : 'text'}
-                  onClick={() => {
-                    void onUpdate(version.id, {
-                      is_user_protected: !version.is_user_protected
-                    });
-                  }}
-                />,
-                <Button
-                  aria-label={i18nText('agentFlow', 'auto.edit_title', {
-                    value1: title
-                  })}
-                  icon={<EditOutlined />}
-                  key="edit"
-                  type="text"
-                  onClick={() => {
-                    setEditingVersion(version);
-                    setEditingTitle(title);
-                  }}
-                />,
-                <Button
-                  key="restore"
-                  loading={restoring}
-                  onClick={() => {
-                    void onRestore(version.id);
-                  }}
-                >
-                  {i18nText('agentFlow', 'auto.recovery_version')}{' '}
-                  {version.sequence}
-                </Button>
-              ]}
-            >
-              <List.Item.Meta
-                title={
-                  <Space size={6}>
-                    <span>{title}</span>
-                    {version.is_current_publication ? (
-                      <Typography.Text type="success">
-                        {i18nText('agentFlow', 'auto.current_publication')}
-                      </Typography.Text>
-                    ) : null}
-                    {version.is_user_protected ? (
-                      <Typography.Text type="secondary">
-                        {i18nText('agentFlow', 'auto.protected')}
-                      </Typography.Text>
-                    ) : null}
-                  </Space>
-                }
-                description={createdAt}
-              />
-            </List.Item>
-          );
-        }}
-      />
+              return (
+                <li className="structured-list__item" key={version.id}>
+                  <div className="structured-list__meta">
+                    <Space size={6}>
+                      <span>{title}</span>
+                      {version.is_current_publication ? (
+                        <Typography.Text type="success">
+                          {i18nText('agentFlow', 'auto.current_publication')}
+                        </Typography.Text>
+                      ) : null}
+                      {version.is_user_protected ? (
+                        <Typography.Text type="secondary">
+                          {i18nText('agentFlow', 'auto.protected')}
+                        </Typography.Text>
+                      ) : null}
+                    </Space>
+                    <Typography.Text type="secondary">
+                      {createdAt}
+                    </Typography.Text>
+                  </div>
+                  <div className="structured-list__actions">
+                    <Button
+                      aria-label={`${version.is_user_protected ? i18nText('agentFlow', 'auto.cancel_top_protection') : i18nText('agentFlow', 'auto.top_protection')} ${title}`}
+                      disabled={
+                        !version.is_user_protected && userProtectionLimitReached
+                      }
+                      icon={
+                        version.is_user_protected ? (
+                          <PushpinFilled />
+                        ) : (
+                          <PushpinOutlined />
+                        )
+                      }
+                      loading={updating}
+                      type={version.is_user_protected ? 'primary' : 'text'}
+                      onClick={() => {
+                        void onUpdate(version.id, {
+                          is_user_protected: !version.is_user_protected
+                        });
+                      }}
+                    />
+                    <Button
+                      aria-label={i18nText('agentFlow', 'auto.edit_title', {
+                        value1: title
+                      })}
+                      icon={<EditOutlined />}
+                      type="text"
+                      onClick={() => {
+                        setEditingVersion(version);
+                        setEditingTitle(title);
+                      }}
+                    />
+                    <Button
+                      loading={restoring}
+                      onClick={() => {
+                        void onRestore(version.id);
+                      }}
+                    >
+                      {i18nText('agentFlow', 'auto.recovery_version')}{' '}
+                      {version.sequence}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="structured-list__empty">
+            {i18nText('agentFlow', 'auto.currently_historical_version_restore')}
+          </div>
+        )}
+      </div>
       <Modal
         confirmLoading={
           editingVersion ? updatingVersionId === editingVersion.id : false

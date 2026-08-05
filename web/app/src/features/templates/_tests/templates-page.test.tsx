@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
+import { App } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -102,7 +103,9 @@ function renderPage() {
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppI18nProvider>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <App>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </App>
     </AppI18nProvider>
   );
   return render(<TemplatesPage />, { wrapper });

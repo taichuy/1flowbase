@@ -1,15 +1,7 @@
-import {
-  Alert,
-  Descriptions,
-  List,
-  Modal,
-  Space,
-  Spin,
-  Table,
-  Tag
-} from 'antd';
+import { Alert, Descriptions, Modal, Space, Spin, Table, Tag } from 'antd';
 
 import { i18nText } from '../../../../../shared/i18n/text';
+import '../../../../../shared/ui/structured-list/structured-list.css';
 import type {
   SettingsMcpBundleImportReport,
   SettingsMcpBundlePreview
@@ -164,11 +156,16 @@ export function McpBundleReviewModal({
               showIcon
               type="warning"
               title={
-                <List
-                  size="small"
-                  dataSource={integrityWarnings}
-                  renderItem={(message) => <List.Item>{message}</List.Item>}
-                />
+                <ul className="structured-list__items structured-list--small">
+                  {integrityWarnings.map((message, index) => (
+                    <li
+                      className="structured-list__item"
+                      key={`${message}-${index}`}
+                    >
+                      {message}
+                    </li>
+                  ))}
+                </ul>
               }
             />
           ) : null}
@@ -192,15 +189,13 @@ export function McpBundleReviewModal({
                 'auto.mcp_bundle_shared_tool_impact'
               )}
               description={
-                <List
-                  size="small"
-                  dataSource={review.shared_tool_impacts}
-                  renderItem={(impact) => (
-                    <List.Item>
+                <ul className="structured-list__items structured-list--small">
+                  {review.shared_tool_impacts.map((impact) => (
+                    <li className="structured-list__item" key={impact.tool_id}>
                       {impact.tool_id}: {impact.instance_ids.join(', ')}
-                    </List.Item>
-                  )}
-                />
+                    </li>
+                  ))}
+                </ul>
               }
             />
           ) : null}

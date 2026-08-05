@@ -11,7 +11,7 @@ import {
   Select,
   Space,
   Tag,
-  message
+  App
 } from 'antd';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -74,7 +74,7 @@ export function I18nCatalogPage() {
   const { t } = useTranslation('settings');
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const [messageApi, messageContextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const [filterForm] = Form.useForm<CatalogFilters>();
   const [filters, setFilters] = useState<CatalogFilters>({});
   const [page, setPage] = useState(1);
@@ -349,7 +349,6 @@ export function I18nCatalogPage() {
         </Form>
       }
     >
-      {messageContextHolder}
       {conflictVisible ? (
         <Alert
           closable

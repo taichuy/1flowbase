@@ -1,4 +1,4 @@
-import { message } from 'antd';
+import { App } from 'antd';
 import { useEffect, useState } from 'react';
 
 import {
@@ -48,6 +48,7 @@ export function McpBundleImportFlow({
   onClose: () => void;
   onApplied: () => Promise<void>;
 }) {
+  const { message } = App.useApp();
   const [review, setReview] = useState<McpBundleReview | null>(null);
   const [integrityWarnings, setIntegrityWarnings] = useState<string[]>([]);
   const [installedOptions, setInstalledOptions] = useState<
@@ -144,6 +145,7 @@ export function McpBundleImportFlow({
     libraryBundleId,
     libraryBundleVersion,
     libraryOrganization,
+    message,
     officialBundleId,
     officialOrganization,
     onClose,

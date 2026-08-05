@@ -11,7 +11,7 @@ import {
   Table,
   Tag,
   Typography,
-  message
+  App
 } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -135,6 +135,7 @@ function InterfaceConnectorPanel({
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
+  const { message } = App.useApp();
   const pageSize = 10;
   const [pendingInterfaceId, setPendingInterfaceId] = useState<string | null>(
     null
@@ -692,6 +693,7 @@ function ConfigurationPanel({
   block: FrontstageBlockInstance;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }) {
+  const { message } = App.useApp();
   const [title, setTitle] = useState(readString(block.props.title));
   const [description, setDescription] = useState(
     readString(block.props.description)

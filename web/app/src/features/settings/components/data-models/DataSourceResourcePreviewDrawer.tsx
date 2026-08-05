@@ -6,7 +6,6 @@ import {
   Drawer,
   Empty,
   Grid,
-  List,
   Space,
   Table,
   Typography
@@ -19,6 +18,7 @@ import type {
   SettingsRuntimeExtensionDataSource
 } from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
+import '../../../../shared/ui/structured-list/structured-list.css';
 
 const PREVIEW_FIELD_LIMIT = 20;
 const PREVIEW_ROW_LIMIT = 20;
@@ -232,11 +232,15 @@ export function DataSourceResourcePreviewDrawer({
             description={i18nText('settings', 'auto.preview_no_rows')}
           />
         ) : isMobile ? (
-          <List
+          <ul
             aria-label={i18nText('settings', 'auto.preview_mobile_rows')}
-            dataSource={visibleRows}
-            renderItem={(row, index) => (
-              <List.Item>
+            className="structured-list__items"
+          >
+            {visibleRows.map((row, index) => (
+              <li
+                className="structured-list__item"
+                key={rowKeys.get(row) ?? index}
+              >
                 <Descriptions
                   size="small"
                   bordered
@@ -250,9 +254,9 @@ export function DataSourceResourcePreviewDrawer({
                     children: <PreviewValue value={row[field]} />
                   }))}
                 />
-              </List.Item>
-            )}
-          />
+              </li>
+            ))}
+          </ul>
         ) : (
           <Table
             rowKey={(row) => rowKeys.get(row) ?? 'preview-row'}

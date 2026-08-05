@@ -23,7 +23,7 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
+  App,
   type TableColumnsType
 } from 'antd';
 import { useMemo, useState } from 'react';
@@ -263,6 +263,7 @@ export function ThirdPartyMcpTab({
   canManage: boolean;
   onImported: () => void;
 }) {
+  const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<ConnectionFormValues>();
@@ -683,7 +684,11 @@ export function ThirdPartyMcpTab({
   }
 
   return (
-    <Space orientation="vertical" size="middle" className="mcp-management__stack">
+    <Space
+      orientation="vertical"
+      size="middle"
+      className="mcp-management__stack"
+    >
       <Flex justify="flex-end">
         <Button
           aria-label={text('upstream_new_connection')}

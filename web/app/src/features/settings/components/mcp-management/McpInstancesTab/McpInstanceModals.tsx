@@ -2,7 +2,16 @@ import type {
   ConsoleMcpInstance,
   SaveConsoleMcpInstanceBody
 } from '@1flowbase/api-client';
-import { Button, Form, Input, Modal, Select, Tooltip, Typography } from 'antd';
+import {
+  Button,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Tooltip,
+  Typography
+} from 'antd';
 import type { FormInstance } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 
@@ -119,30 +128,32 @@ export function McpInstanceEditorModal({
       confirmLoading={saving}
     >
       <Form form={form} layout="vertical" onFinish={onSave}>
-        <Form.Item
-          name="instance_id"
-          label="instance_id"
-          rules={[{ required: true }]}
-        >
-          <Input
-            disabled={Boolean(instance)}
-            addonAfter={
-              instance ? undefined : (
-                <Tooltip title="随机生成 instance_id">
-                  <Button
-                    type="text"
-                    htmlType="button"
-                    size="small"
-                    icon={<ReloadOutlined />}
-                    aria-label="随机生成 instance_id"
-                    onClick={() =>
-                      form.setFieldValue('instance_id', buildRandomToolIdSeed())
-                    }
-                  />
-                </Tooltip>
-              )
-            }
-          />
+        <Form.Item htmlFor="instance_id" label="instance_id" required>
+          {instance ? (
+            <Form.Item name="instance_id" noStyle rules={[{ required: true }]}>
+              <Input disabled id="instance_id" />
+            </Form.Item>
+          ) : (
+            <Space.Compact block>
+              <Form.Item
+                name="instance_id"
+                noStyle
+                rules={[{ required: true }]}
+              >
+                <Input id="instance_id" />
+              </Form.Item>
+              <Tooltip title="随机生成 instance_id">
+                <Button
+                  htmlType="button"
+                  icon={<ReloadOutlined />}
+                  aria-label="随机生成 instance_id"
+                  onClick={() =>
+                    form.setFieldValue('instance_id', buildRandomToolIdSeed())
+                  }
+                />
+              </Tooltip>
+            </Space.Compact>
+          )}
         </Form.Item>
         <Form.Item name="name" label="name" rules={[{ required: true }]}>
           <Input />

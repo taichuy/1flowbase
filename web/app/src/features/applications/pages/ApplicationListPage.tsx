@@ -7,7 +7,7 @@ import {
   Input,
   Menu,
   Modal,
-  message,
+  App,
   Result,
   Select,
   Space,
@@ -122,7 +122,7 @@ export function ApplicationListPage() {
   const me = useAuthStore((state) => state.me);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const [messageApi, messageContextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -398,7 +398,6 @@ export function ApplicationListPage() {
         margin: '0 auto'
       }}
     >
-      {messageContextHolder}
       {modalContextHolder}
       <input
         ref={importFileInputRef}

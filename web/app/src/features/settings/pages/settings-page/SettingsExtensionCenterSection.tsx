@@ -12,16 +12,16 @@ import {
   Empty,
   Flex,
   Input,
-  List,
   Modal,
   Space,
   Tabs,
   Tag,
   Tooltip,
   Typography,
-  message
+  App
 } from 'antd';
 import { useTranslation } from 'react-i18next';
+import '../../../../shared/ui/structured-list/structured-list.css';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { McpTemplateLibrary } from '../../components/mcp-management/bundle/McpTemplateLibrary';
@@ -185,6 +185,7 @@ function GenericExtensionCenterSection({
   cursor?: string;
   q?: string;
 }) {
+  const { message } = App.useApp();
   const { t } = useTranslation('settings');
   const navigate = useNavigate();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -364,11 +365,16 @@ function GenericExtensionCenterSection({
         Modal.confirm({
           title: t('auto.risk_warnings'),
           content: (
-            <List
-              size="small"
-              dataSource={challenge.warnings}
-              renderItem={(warning) => <List.Item>{warning.message}</List.Item>}
-            />
+            <ul className="structured-list__items structured-list--small">
+              {challenge.warnings.map((warning, index) => (
+                <li
+                  className="structured-list__item"
+                  key={`${warning.code}-${index}`}
+                >
+                  {warning.message}
+                </li>
+              ))}
+            </ul>
           ),
           okText: t('auto.confirm'),
           cancelText: t('auto.cancel'),
@@ -471,7 +477,7 @@ function GenericExtensionCenterSection({
         message.error(t('auto.extension_operation_failed'));
       }
     },
-    [submitOperation, t]
+    [message, submitOperation, t]
   );
 
   const columns = useMemo<Array<DataTableColumn<ExtensionRow>>>(
@@ -873,82 +879,85 @@ function GenericExtensionCenterSection({
               </Descriptions.Item>
             </Descriptions>
             {isInstalledRow(selected) ? (
-              <List
-                bordered
-                header={
+              <div className="structured-list structured-list--bordered">
+                <div className="structured-list__header">
                   <Typography.Text strong>
                     {t('auto.installed_versions')}
                   </Typography.Text>
-                }
-                dataSource={selected.installed_versions}
-                renderItem={(installedVersion) => (
-                  <List.Item
-                    actions={[
-                      <Tooltip
-                        key="delete"
-                        title={
-                          installedVersion.deletable
-                            ? undefined
-                            : installedVersion.delete_reasons.join(', ')
-                        }
-                      >
-                        <Button
-                          type="link"
-                          danger
-                          disabled={!installedVersion.deletable}
-                          loading={
-                            deleteVersionMutation.isPending &&
-                            deleteVersionMutation.variables ===
-                              installedVersion.id
-                          }
-                          onClick={() =>
-                            Modal.confirm({
-                              title: t('auto.confirm_delete'),
-                              content: installedVersion.version,
-                              okText: t('auto.delete'),
-                              cancelText: t('auto.cancel'),
-                              okButtonProps: { danger: true },
-                              onOk: () =>
-                                deleteVersionMutation.mutateAsync(
-                                  installedVersion.id
-                                )
-                            })
+                </div>
+                <ul className="structured-list__items">
+                  {selected.installed_versions.map((installedVersion) => (
+                    <li
+                      className="structured-list__item"
+                      key={installedVersion.id}
+                    >
+                      <div className="structured-list__content">
+                        <Descriptions column={1} size="small">
+                          <Descriptions.Item label={t('auto.current_version')}>
+                            {installedVersion.version}
+                          </Descriptions.Item>
+                          <Descriptions.Item label={t('auto.source')}>
+                            {installedVersion.source_kind}
+                          </Descriptions.Item>
+                          <Descriptions.Item label={t('auto.trust')}>
+                            {installedVersion.trust_level}
+                          </Descriptions.Item>
+                          <Descriptions.Item label={t('auto.signature_status')}>
+                            {installedVersion.signature_status}
+                          </Descriptions.Item>
+                          <Descriptions.Item label={t('auto.checksum')}>
+                            <Typography.Text copyable ellipsis>
+                              {installedVersion.local_checksum ??
+                                installedVersion.expected_checksum ??
+                                '—'}
+                            </Typography.Text>
+                          </Descriptions.Item>
+                          <Descriptions.Item label={t('auto.local_path')}>
+                            <Typography.Text copyable ellipsis>
+                              {installedVersion.local_path ?? '—'}
+                            </Typography.Text>
+                          </Descriptions.Item>
+                        </Descriptions>
+                      </div>
+                      <div className="structured-list__actions">
+                        <Tooltip
+                          title={
+                            installedVersion.deletable
+                              ? undefined
+                              : installedVersion.delete_reasons.join(', ')
                           }
                         >
-                          {t('auto.delete')}
-                        </Button>
-                      </Tooltip>
-                    ]}
-                  >
-                    <Descriptions column={1} size="small">
-                      <Descriptions.Item label={t('auto.current_version')}>
-                        {installedVersion.version}
-                      </Descriptions.Item>
-                      <Descriptions.Item label={t('auto.source')}>
-                        {installedVersion.source_kind}
-                      </Descriptions.Item>
-                      <Descriptions.Item label={t('auto.trust')}>
-                        {installedVersion.trust_level}
-                      </Descriptions.Item>
-                      <Descriptions.Item label={t('auto.signature_status')}>
-                        {installedVersion.signature_status}
-                      </Descriptions.Item>
-                      <Descriptions.Item label={t('auto.checksum')}>
-                        <Typography.Text copyable ellipsis>
-                          {installedVersion.local_checksum ??
-                            installedVersion.expected_checksum ??
-                            '—'}
-                        </Typography.Text>
-                      </Descriptions.Item>
-                      <Descriptions.Item label={t('auto.local_path')}>
-                        <Typography.Text copyable ellipsis>
-                          {installedVersion.local_path ?? '—'}
-                        </Typography.Text>
-                      </Descriptions.Item>
-                    </Descriptions>
-                  </List.Item>
-                )}
-              />
+                          <Button
+                            type="link"
+                            danger
+                            disabled={!installedVersion.deletable}
+                            loading={
+                              deleteVersionMutation.isPending &&
+                              deleteVersionMutation.variables ===
+                                installedVersion.id
+                            }
+                            onClick={() =>
+                              Modal.confirm({
+                                title: t('auto.confirm_delete'),
+                                content: installedVersion.version,
+                                okText: t('auto.delete'),
+                                cancelText: t('auto.cancel'),
+                                okButtonProps: { danger: true },
+                                onOk: () =>
+                                  deleteVersionMutation.mutateAsync(
+                                    installedVersion.id
+                                  )
+                              })
+                            }
+                          >
+                            {t('auto.delete')}
+                          </Button>
+                        </Tooltip>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </Flex>
         ) : null}

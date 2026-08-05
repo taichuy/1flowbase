@@ -18,7 +18,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
   type TableProps
 } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
@@ -99,7 +99,7 @@ export function McpTemplateLibrary({
 }) {
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
-  const [messageApi, messageContextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [importSource, setImportSource] =
     useState<McpBundleImportSource | null>(null);
@@ -504,7 +504,6 @@ export function McpTemplateLibrary({
 
   return (
     <div className={`mcp-template-library mcp-template-library--${variant}`}>
-      {messageContextHolder}
       <Flex justify="space-between" align="center" gap={12} wrap>
         <Typography.Text type="secondary">
           {i18nText(

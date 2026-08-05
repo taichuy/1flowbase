@@ -10,7 +10,7 @@ import {
   Space,
   Switch,
   Typography,
-  message
+  App
 } from 'antd';
 import { useEffect, useMemo, useRef } from 'react';
 import type {
@@ -154,6 +154,7 @@ export function McpInstanceDiscoveryPolicyModal({
   open: boolean;
   onClose: () => void;
 }) {
+  const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<DiscoveryPolicyFormValues>();

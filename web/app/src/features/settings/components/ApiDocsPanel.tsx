@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import { useRouterState } from '@tanstack/react-router';
+import { App } from 'antd';
 
 import {
   fetchCurrentSession,
@@ -8,8 +9,6 @@ import {
 } from '../../auth/api/session';
 import { ApiDocsExplorer } from '../../../shared/ui/api-docs/ApiDocsExplorer';
 import { installScalarClipboardPatch } from '../lib/scalar-clipboard';
-
-installScalarClipboardPatch();
 
 import {
   fetchSettingsApiDocsCatalog,
@@ -171,6 +170,8 @@ function buildScalarAuthenticationConfig(
 }
 
 export function ApiDocsPanel() {
+  const { message } = App.useApp();
+  useEffect(() => installScalarClipboardPatch(message), [message]);
   const locationSearch = useRouterState({
     select: (state) => state.location.search as Record<string, unknown>
   });
@@ -191,9 +192,7 @@ export function ApiDocsPanel() {
   );
 
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-    >
+    <SettingsSectionSurface heightMode="fill">
       <ApiDocsExplorer
         queryState={{
           categoryId: requestedCategoryId,

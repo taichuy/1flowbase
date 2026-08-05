@@ -7,7 +7,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { message, Modal } from 'antd';
+import { App, Modal } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -234,7 +234,9 @@ function renderSection(
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppI18nProvider>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <App>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </App>
     </AppI18nProvider>
   );
 
@@ -330,7 +332,6 @@ describe('SettingsExtensionCenterSection', () => {
       }
     });
     vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn() } as never);
-    vi.spyOn(message, 'error').mockImplementation(vi.fn());
   });
 
   test('AC-003 shows a retryable catalog error instead of an empty catalog', async () => {
@@ -563,9 +564,9 @@ describe('SettingsExtensionCenterSection', () => {
 
     fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 
-    await waitFor(() => {
-      expect(message.error).toHaveBeenCalledWith('扩展包下载失败，请重试');
-    });
+    expect(
+      await screen.findByText('扩展包下载失败，请重试')
+    ).toBeInTheDocument();
   });
 
   test('publisher_cutover keeps the generic message for unknown mutation errors', async () => {
@@ -588,9 +589,7 @@ describe('SettingsExtensionCenterSection', () => {
 
     fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 
-    await waitFor(() => {
-      expect(message.error).toHaveBeenCalledWith('扩展操作失败');
-    });
+    expect(await screen.findByText('扩展操作失败')).toBeInTheDocument();
   });
 
   test('AC-006 exposes contextual links to the MCP and language management owners', async () => {

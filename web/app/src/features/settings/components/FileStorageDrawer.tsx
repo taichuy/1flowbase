@@ -5,7 +5,7 @@ import {
   Form,
   Input,
   InputNumber,
-  message,
+  App,
   Select,
   Switch
 } from 'antd';
@@ -43,17 +43,31 @@ interface StorageFormValues {
 }
 
 const DRIVER_TYPE_OPTIONS = [
-  { label: i18nText("settings", "auto.local_file_system"), value: 'local' },
-  { label: i18nText("settings", "auto.aws_s_three_compatible"), value: 's3' },
-  { label: i18nText("settings", "auto.alibaba_cloud_oss"), value: 'oss' },
-  { label: i18nText("settings", "auto.tencent_cloud_cos"), value: 'cos' },
-  { label: i18nText("settings", "auto.rustfs_s_three_compatible"), value: 'rustfs' }
+  { label: i18nText('settings', 'auto.local_file_system'), value: 'local' },
+  { label: i18nText('settings', 'auto.aws_s_three_compatible'), value: 's3' },
+  { label: i18nText('settings', 'auto.alibaba_cloud_oss'), value: 'oss' },
+  { label: i18nText('settings', 'auto.tencent_cloud_cos'), value: 'cos' },
+  {
+    label: i18nText('settings', 'auto.rustfs_s_three_compatible'),
+    value: 'rustfs'
+  }
 ];
 
-const DRIVER_FIELDS: Record<string, { key: string; label: string; type: 'string' | 'number' }[]> = {
+const DRIVER_FIELDS: Record<
+  string,
+  { key: string; label: string; type: 'string' | 'number' }[]
+> = {
   local: [
-    { key: 'root_path', label: i18nText("settings", "auto.root_directory_path"), type: 'string' },
-    { key: 'public_base_url', label: i18nText("settings", "auto.public_base_url"), type: 'string' }
+    {
+      key: 'root_path',
+      label: i18nText('settings', 'auto.root_directory_path'),
+      type: 'string'
+    },
+    {
+      key: 'public_base_url',
+      label: i18nText('settings', 'auto.public_base_url'),
+      type: 'string'
+    }
   ],
   s3: [
     { key: 'endpoint', label: 'Endpoint', type: 'string' },
@@ -84,7 +98,11 @@ const DRIVER_FIELDS: Record<string, { key: string; label: string; type: 'string'
     { key: 'access_key_id', label: 'Access Key ID', type: 'string' },
     { key: 'secret_access_key', label: 'Secret Access Key', type: 'string' },
     { key: 'force_path_style', label: 'Force Path Style', type: 'string' },
-    { key: 'public_base_url', label: i18nText("settings", "auto.public_base_url"), type: 'string' }
+    {
+      key: 'public_base_url',
+      label: i18nText('settings', 'auto.public_base_url'),
+      type: 'string'
+    }
   ]
 };
 
@@ -101,6 +119,7 @@ export function FileStorageDrawer({
   onClose,
   onSuccess
 }: FileStorageDrawerProps) {
+  const { message } = App.useApp();
   const [form] = Form.useForm<StorageFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -152,10 +171,14 @@ export function FileStorageDrawer({
           rule_json: input.rule_json
         };
         await updateSettingsFileStorage(record.id, updateInput, csrfToken);
-        message.success(i18nText("settings", "auto.storage_configuration_updated"));
+        message.success(
+          i18nText('settings', 'auto.storage_configuration_updated')
+        );
       } else {
         await createSettingsFileStorage(input, csrfToken);
-        message.success(i18nText("settings", "auto.storage_configuration_created"));
+        message.success(
+          i18nText('settings', 'auto.storage_configuration_created')
+        );
       }
 
       onSuccess();
@@ -163,7 +186,9 @@ export function FileStorageDrawer({
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'errorFields' in err) return;
       const msg =
-        err instanceof Error ? err.message : i18nText("settings", "auto.operation_failed_retry");
+        err instanceof Error
+          ? err.message
+          : i18nText('settings', 'auto.operation_failed_retry');
       message.error(msg);
     } finally {
       setSubmitting(false);
@@ -176,10 +201,10 @@ export function FileStorageDrawer({
     <Drawer
       title={
         mode === 'create'
-          ? i18nText("settings", "auto.add_storage_configuration")
+          ? i18nText('settings', 'auto.add_storage_configuration')
           : mode === 'edit'
-            ? i18nText("settings", "auto.edit_storage_configuration")
-            : i18nText("settings", "auto.view_storage_configuration")
+            ? i18nText('settings', 'auto.edit_storage_configuration')
+            : i18nText('settings', 'auto.view_storage_configuration')
       }
       open={open}
       onClose={onClose}
@@ -187,7 +212,9 @@ export function FileStorageDrawer({
       extra={
         !isView ? (
           <Button type="primary" loading={submitting} onClick={handleSubmit}>
-            {mode === 'create' ? i18nText("settings", "auto.create") : i18nText("settings", "auto.save")}
+            {mode === 'create'
+              ? i18nText('settings', 'auto.create')
+              : i18nText('settings', 'auto.save')}
           </Button>
         ) : undefined
       }
@@ -206,39 +233,70 @@ export function FileStorageDrawer({
       >
         <Form.Item
           name="code"
-          label={i18nText("settings", "auto.storage_code")}
-          rules={[{ required: true, message: i18nText("settings", "auto.storage_code_required") }]}
+          label={i18nText('settings', 'auto.storage_code')}
+          rules={[
+            {
+              required: true,
+              message: i18nText('settings', 'auto.storage_code_required')
+            }
+          ]}
         >
-          <Input placeholder={i18nText("settings", "auto.storage_code_placeholder")} disabled={mode === 'edit' || isView} />
+          <Input
+            placeholder={i18nText('settings', 'auto.storage_code_placeholder')}
+            disabled={mode === 'edit' || isView}
+          />
         </Form.Item>
 
         <Form.Item
           name="title"
-          label={i18nText("settings", "auto.name")}
-          rules={[{ required: true, message: i18nText("settings", "auto.name_required") }]}
+          label={i18nText('settings', 'auto.name')}
+          rules={[
+            {
+              required: true,
+              message: i18nText('settings', 'auto.name_required')
+            }
+          ]}
         >
-          <Input placeholder={i18nText("settings", "auto.storage_name_placeholder")} />
+          <Input
+            placeholder={i18nText('settings', 'auto.storage_name_placeholder')}
+          />
         </Form.Item>
 
         <Form.Item
           name="driver_type"
-          label={i18nText("settings", "auto.driver_type")}
-          rules={[{ required: true, message: i18nText("settings", "auto.driver_type_required") }]}
+          label={i18nText('settings', 'auto.driver_type')}
+          rules={[
+            {
+              required: true,
+              message: i18nText('settings', 'auto.driver_type_required')
+            }
+          ]}
         >
-          <Select options={DRIVER_TYPE_OPTIONS} disabled={mode === 'edit' || isView} />
+          <Select
+            options={DRIVER_TYPE_OPTIONS}
+            disabled={mode === 'edit' || isView}
+          />
         </Form.Item>
 
-        <Form.Item name="enabled" label={i18nText("settings", "auto.enabled")} valuePropName="checked">
+        <Form.Item
+          name="enabled"
+          label={i18nText('settings', 'auto.enabled')}
+          valuePropName="checked"
+        >
           <Switch />
         </Form.Item>
 
-        <Form.Item name="is_default" label={i18nText("settings", "auto.set_as_default_storage")} valuePropName="checked">
+        <Form.Item
+          name="is_default"
+          label={i18nText('settings', 'auto.set_as_default_storage')}
+          valuePropName="checked"
+        >
           <Switch />
         </Form.Item>
 
         {currentDriver && DRIVER_FIELDS[currentDriver] && (
           <div className="storage-drawer-driver-config">
-            <h4>{i18nText("settings", "auto.driver_configuration")}</h4>
+            <h4>{i18nText('settings', 'auto.driver_configuration')}</h4>
             {DRIVER_FIELDS[currentDriver].map((field) => (
               <Form.Item
                 key={field.key}
@@ -248,15 +306,27 @@ export function FileStorageDrawer({
                 {field.type === 'number' ? (
                   <InputNumber style={{ width: '100%' }} />
                 ) : (
-                  <Input placeholder={i18nText("settings", "auto.field_placeholder", { value1: field.label })} />
+                  <Input
+                    placeholder={i18nText(
+                      'settings',
+                      'auto.field_placeholder',
+                      { value1: field.label }
+                    )}
+                  />
                 )}
               </Form.Item>
             ))}
           </div>
         )}
 
-        <Form.Item name={['rule_json', 'description']} label={i18nText("settings", "auto.rule_description")}>
-          <Input.TextArea rows={2} placeholder={i18nText("settings", "auto.optional")} />
+        <Form.Item
+          name={['rule_json', 'description']}
+          label={i18nText('settings', 'auto.rule_description')}
+        >
+          <Input.TextArea
+            rows={2}
+            placeholder={i18nText('settings', 'auto.optional')}
+          />
         </Form.Item>
       </Form>
     </Drawer>

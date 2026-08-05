@@ -18,7 +18,7 @@ import {
   Tag,
   Tree,
   Typography,
-  message
+  App
 } from 'antd';
 import type { TreeDataNode } from 'antd';
 import {
@@ -211,7 +211,7 @@ export function RolePermissionPanel({
   const backendSettingsTabLabel = i18nText('settings', 'auto.backend_setting');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const [messageApi, contextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleCode, setSelectedRoleCode] = useState<string | null>(null);
@@ -806,6 +806,7 @@ export function RolePermissionPanel({
     localCheckedRouteIds,
     openConsolePolicyDetail,
     policyGroupForCatalogGroup,
+    replaceConsolePolicyMutation.isPending,
     replaceFrontstageRoutesMutation,
     roleFrontstageRoutesQuery.data,
     routeKindById,
@@ -864,8 +865,6 @@ export function RolePermissionPanel({
           minHeight: 'calc(100vh - 120px)'
         }}
       >
-        {contextHolder}
-
         <div
           className="role-permission-layout"
           data-testid="role-permission-layout"
@@ -1299,7 +1298,11 @@ export function RolePermissionPanel({
           }
         >
           {consolePolicyDetail ? (
-            <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+            <Space
+              orientation="vertical"
+              size="large"
+              style={{ width: '100%' }}
+            >
               {consolePolicyDetail.catalogGroup.description ? (
                 <Typography.Paragraph type="secondary">
                   {consolePolicyDetail.catalogGroup.description}

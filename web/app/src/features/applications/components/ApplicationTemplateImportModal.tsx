@@ -2,13 +2,13 @@ import {
   Alert,
   Descriptions,
   Input,
-  List,
   Modal,
   Space,
   Tag,
   Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
+import '../../../shared/ui/structured-list/structured-list.css';
 
 import type { AgentFlowTemplatePreview } from '../api/applications';
 
@@ -81,11 +81,13 @@ export function ApplicationTemplateImportModal({
               showIcon
               type="warning"
               title={
-                <List
-                  size="small"
-                  dataSource={integrityWarnings}
-                  renderItem={(warning) => <List.Item>{warning}</List.Item>}
-                />
+                <ul className="structured-list__items structured-list--small">
+                  {integrityWarnings.map((warning) => (
+                    <li className="structured-list__item" key={warning}>
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
               }
             />
           ) : null}
@@ -121,51 +123,54 @@ export function ApplicationTemplateImportModal({
           </Descriptions>
 
           {missingDependencies.length > 0 ? (
-            <List
-              size="small"
-              header={
+            <div className="structured-list structured-list--small">
+              <div className="structured-list__header">
                 <Typography.Text strong>
                   {t('auto.missing_dependencies')}
                 </Typography.Text>
-              }
-              dataSource={missingDependencies}
-              renderItem={(dependency) => (
-                <List.Item>
-                  <Space orientation="vertical" size={2}>
-                    <Typography.Text>
-                      {dependencyLabel(dependency)}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {dependency.reason ?? dependency.status}
-                    </Typography.Text>
-                  </Space>
-                </List.Item>
-              )}
-            />
+              </div>
+              <ul className="structured-list__items">
+                {missingDependencies.map((dependency, index) => (
+                  <li
+                    className="structured-list__item"
+                    key={`${dependencyLabel(dependency)}-${index}`}
+                  >
+                    <Space orientation="vertical" size={2}>
+                      <Typography.Text>
+                        {dependencyLabel(dependency)}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {dependency.reason ?? dependency.status}
+                      </Typography.Text>
+                    </Space>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
 
           {unresolvedNodes.length > 0 ? (
-            <List
-              size="small"
-              header={
+            <div className="structured-list structured-list--small">
+              <div className="structured-list__header">
                 <Typography.Text strong>
                   {t('auto.unresolved_nodes')}
                 </Typography.Text>
-              }
-              dataSource={unresolvedNodes}
-              renderItem={(node) => (
-                <List.Item>
-                  <Space orientation="vertical" size={2}>
-                    <Typography.Text>
-                      {node.alias} · {node.node_id}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {node.original_type} · {node.reason}
-                    </Typography.Text>
-                  </Space>
-                </List.Item>
-              )}
-            />
+              </div>
+              <ul className="structured-list__items">
+                {unresolvedNodes.map((node) => (
+                  <li className="structured-list__item" key={node.node_id}>
+                    <Space orientation="vertical" size={2}>
+                      <Typography.Text>
+                        {node.alias} · {node.node_id}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {node.original_type} · {node.reason}
+                      </Typography.Text>
+                    </Space>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : (
             <Alert
               type="success"
