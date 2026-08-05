@@ -258,6 +258,19 @@ function normalizeFromEnvelope(
     };
   }
 
+  if (eventType === 'flow_incomplete') {
+    return {
+      ...base,
+      type: 'flow_incomplete',
+      run_id: base.run_id ?? '',
+      status: isNonEmptyString(payload.status)
+        ? String(payload.status)
+        : 'incomplete',
+      reason: toOptionalString(payload.reason),
+      output
+    };
+  }
+
   if (eventType === 'flow_failed') {
     return {
       ...base,
@@ -345,6 +358,7 @@ function isKnownStreamEventType(
     type === 'reasoning_delta' ||
     type === 'usage_snapshot' ||
     type === 'flow_finished' ||
+    type === 'flow_incomplete' ||
     type === 'flow_failed' ||
     type === 'flow_cancelled' ||
     type === 'waiting_human' ||
@@ -407,7 +421,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-async function readSseStream(
+export async function consumeConsoleRuntimeEventStream(
   response: Response,
   handlers: ConsoleFlowDebugStreamHandlers
 ) {
@@ -480,7 +494,7 @@ export async function startConsoleFlowDebugRunStream(
     throw await ApiClientError.fromResponse(response);
   }
 
-  await readSseStream(response, handlers);
+  await consumeConsoleRuntimeEventStream(response, handlers);
 }
 
 export async function subscribeConsoleFlowDebugRunStream(
@@ -515,7 +529,7 @@ export async function subscribeConsoleFlowDebugRunStream(
     throw await ApiClientError.fromResponse(response);
   }
 
-  await readSseStream(response, handlers);
+  await consumeConsoleRuntimeEventStream(response, handlers);
 }
 
 function buildStreamCursorQuery(cursor?: ConsoleFlowDebugStreamCursor) {

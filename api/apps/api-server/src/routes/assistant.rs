@@ -1,6 +1,11 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use axum::{extract::State, http::HeaderMap, Json};
+use axum::{
+    extract::State,
+    http::HeaderMap,
+    response::sse::{KeepAlive, Sse},
+    Json,
+};
 use control_plane::{
     application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     application_public_api::{
@@ -12,23 +17,33 @@ use control_plane::{
         },
     },
     mcp_management::McpManagementService,
-    orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
+    orchestration_runtime::{
+        debug_stream_events, project_runtime_event_stream_terminal,
+        spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
+        OrchestrationRuntimeService, StartPublishedFlowRunCommand,
+    },
+    ports::{OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
     profile::{ProfileService, UpdateMeMetaCommand},
 };
 use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio::sync::mpsc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
+    middleware::{
+        require_csrf::require_csrf,
+        require_session::{require_session, RequestContext},
+    },
     response::ApiSuccess,
     routes::{
         application_public_api::native::api_provider_runtime,
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+        debug_run_stream,
         mcp_management::upstream_client::{
             map_proxy_arguments, map_proxy_result, McpStreamableHttpClient,
         },
@@ -85,6 +100,15 @@ pub struct AssistantRunResponse {
     pub error_payload: Option<Value>,
 }
 
+struct PreparedAssistantExecution {
+    application_id: Uuid,
+    actor_user_id: Uuid,
+    flow_run_id: Uuid,
+    catalog: domain::McpCatalogSnapshot,
+    selected_mcp_instance_ids: Vec<String>,
+    request_headers: HeaderMap,
+}
+
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
 
@@ -94,19 +118,24 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(get_settings, Authenticated).patch(update_settings, Authenticated),
         )
         .route("/assistant/runs", console_post(start_run, Authenticated))
+        .route(
+            "/assistant/runs/stream",
+            console_post(start_run_stream, Authenticated),
+        )
 }
 
 #[utoipa::path(
     get,
     path = "/api/console/assistant/settings",
     operation_id = "assistant_get_settings",
-    responses((status = 200, body = AssistantSettingsResponse), (status = 401, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = AssistantSettingsResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn get_settings(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AssistantSettingsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
     let preference = read_preference(
         &state
             .store
@@ -130,7 +159,7 @@ pub async fn get_settings(
     path = "/api/console/assistant/settings",
     operation_id = "assistant_update_settings",
     request_body = AssistantPreferenceBody,
-    responses((status = 200, body = AssistantSettingsResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = AssistantSettingsResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn update_settings(
     State(state): State<Arc<ApiState>>,
@@ -138,6 +167,7 @@ pub async fn update_settings(
     Json(preference): Json<AssistantPreferenceBody>,
 ) -> Result<Json<ApiSuccess<AssistantSettingsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
     require_csrf(&headers, &context)?;
     validate_preference(&state, context.user.id, &preference).await?;
     let workspace_id = context.actor.current_workspace_id;
@@ -166,7 +196,7 @@ pub async fn update_settings(
     path = "/api/console/assistant/runs",
     operation_id = "assistant_start_run",
     request_body = StartAssistantRunBody,
-    responses((status = 200, body = AssistantRunResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody))
+    responses((status = 200, body = AssistantRunResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn start_run(
     State(state): State<Arc<ApiState>>,
@@ -174,7 +204,232 @@ pub async fn start_run(
     Json(body): Json<StartAssistantRunBody>,
 ) -> Result<Json<ApiSuccess<AssistantRunResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
     require_csrf(&headers, &context)?;
+    let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
+    let runtime = OrchestrationRuntimeService::new(
+        state.store.clone(),
+        api_provider_runtime(&state),
+        state.runtime_engine.clone(),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_llm_routing_counter_store(state.infrastructure.cache_store())
+    .with_provider_request_log_queue(state.infrastructure.task_queue());
+    let mut detail = runtime
+        .start_published_flow_run(StartPublishedFlowRunCommand {
+            application_id: execution.application_id,
+            flow_run_id: execution.flow_run_id,
+            provider_transport_slot: None,
+        })
+        .await?;
+    while detail.flow_run.status == domain::FlowRunStatus::WaitingCallback {
+        let callback = detail
+            .callback_tasks
+            .iter()
+            .find(|task| {
+                task.status == domain::CallbackTaskStatus::Pending
+                    && task.callback_kind == "llm_tool_calls"
+            })
+            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                "assistant_callback",
+            ))?;
+        let tool_results = assistant_callback_tool_results(&state, &execution, callback).await?;
+        detail = runtime
+            .complete_callback_task(
+                control_plane::orchestration_runtime::CompleteCallbackTaskCommand {
+                    actor_user_id: execution.actor_user_id,
+                    application_id: execution.application_id,
+                    callback_task_id: callback.id,
+                    response_payload: json!({"tool_results": tool_results}),
+                },
+            )
+            .await?;
+    }
+    let native_result = native_result_from_run_detail(&detail, json!({}));
+    Ok(Json(ApiSuccess::new(AssistantRunResponse {
+        id: detail.flow_run.id,
+        application_id: execution.application_id,
+        status: detail.flow_run.status.as_str().to_string(),
+        answer: native_result.answer,
+        output_payload: detail.flow_run.output_payload,
+        error_payload: detail.flow_run.error_payload,
+    })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/assistant/runs/stream",
+    operation_id = "assistant_start_run_stream",
+    summary = "Start an embedded assistant run stream",
+    description = "Creates a session-principal published Agent Flow run and returns its Runtime Event Stream for the embedded Preview console.",
+    request_body = StartAssistantRunBody,
+    responses(
+        (status = 200, body = crate::routes::debug_run_stream::RuntimeDebugSseEventResponse, content_type = "text/event-stream"),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn start_run_stream(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<StartAssistantRunBody>,
+) -> Result<Sse<debug_run_stream::DebugRunSseStream>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
+    require_csrf(&headers, &context)?;
+    let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
+    let run_id = execution.flow_run_id;
+    let application_id = execution.application_id;
+
+    state
+        .runtime_event_stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await?;
+    let persister_handle = spawn_runtime_debug_event_persister(
+        state.store.clone(),
+        state.runtime_event_stream.clone(),
+        run_id,
+    );
+    state
+        .runtime_event_stream
+        .append(run_id, debug_stream_events::flow_accepted(run_id))
+        .await?;
+    state
+        .runtime_event_stream
+        .append(run_id, debug_stream_events::heartbeat())
+        .await?;
+
+    let (sender, receiver) = mpsc::channel(32);
+    tokio::spawn(debug_run_stream::send_runtime_event_stream(
+        state.runtime_event_stream.clone(),
+        Arc::new(state.store.clone()),
+        run_id,
+        None,
+        sender,
+    ));
+
+    let background_state = state.clone();
+    tokio::spawn(async move {
+        let runtime = OrchestrationRuntimeService::new(
+            background_state.store.clone(),
+            api_provider_runtime(&background_state),
+            background_state.runtime_engine.clone(),
+            background_state.provider_secret_master_key.clone(),
+        )
+        .with_node_artifact_context(
+            background_state.api_node_id.clone(),
+            background_state.provider_install_root.clone(),
+        )
+        .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
+        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
+        .with_runtime_event_stream(background_state.runtime_event_stream.clone());
+        let result = async {
+            let mut detail = runtime
+                .start_published_flow_run(StartPublishedFlowRunCommand {
+                    application_id: execution.application_id,
+                    flow_run_id: execution.flow_run_id,
+                    provider_transport_slot: None,
+                })
+                .await?;
+            while detail.flow_run.status == domain::FlowRunStatus::WaitingCallback {
+                let callback = detail
+                    .callback_tasks
+                    .iter()
+                    .find(|task| {
+                        task.status == domain::CallbackTaskStatus::Pending
+                            && task.callback_kind == "llm_tool_calls"
+                    })
+                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "assistant_callback",
+                    ))?;
+                let tool_results =
+                    assistant_callback_tool_results(&background_state, &execution, callback)
+                        .await?;
+                detail = runtime
+                    .complete_callback_task(
+                        control_plane::orchestration_runtime::CompleteCallbackTaskCommand {
+                            actor_user_id: execution.actor_user_id,
+                            application_id: execution.application_id,
+                            callback_task_id: callback.id,
+                            response_payload: json!({"tool_results": tool_results}),
+                        },
+                    )
+                    .await?;
+            }
+            Ok::<domain::ApplicationRunDetail, ApiError>(detail)
+        }
+        .await;
+
+        match result {
+            Ok(detail)
+                if matches!(
+                    detail.flow_run.status,
+                    domain::FlowRunStatus::Succeeded
+                        | domain::FlowRunStatus::Incomplete
+                        | domain::FlowRunStatus::Failed
+                        | domain::FlowRunStatus::Cancelled
+                ) =>
+            {
+                project_runtime_event_stream_terminal(
+                    background_state.runtime_event_stream.clone(),
+                    &detail.flow_run,
+                )
+                .await;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                match background_state
+                    .store
+                    .get_flow_run(application_id, run_id)
+                    .await
+                {
+                    Ok(Some(winner)) => {
+                        project_runtime_event_stream_terminal(
+                            background_state.runtime_event_stream.clone(),
+                            &winner,
+                        )
+                        .await;
+                    }
+                    Ok(None) => tracing::error!(
+                        application_id = %application_id,
+                        flow_run_id = %run_id,
+                        "assistant stream failure has no durable winner to project"
+                    ),
+                    Err(load_error) => tracing::error!(
+                        application_id = %application_id,
+                        flow_run_id = %run_id,
+                        error = %load_error,
+                        "failed to load assistant stream durable winner"
+                    ),
+                }
+                tracing::error!(
+                    application_id = %application_id,
+                    flow_run_id = %run_id,
+                    error = ?error,
+                    "assistant streamed run failed"
+                );
+            }
+        }
+        wait_for_runtime_debug_event_persister(persister_handle, application_id, run_id).await;
+    });
+
+    Ok(Sse::new(debug_run_stream::DebugRunSseStream::new(receiver))
+        .keep_alive(KeepAlive::default()))
+}
+
+async fn prepare_assistant_execution(
+    state: &Arc<ApiState>,
+    headers: &HeaderMap,
+    context: &RequestContext,
+    body: StartAssistantRunBody,
+) -> Result<PreparedAssistantExecution, ApiError> {
     if body.query.trim().is_empty() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("query").into());
     }
@@ -190,7 +445,7 @@ pub async fn start_run(
             .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
                 "assistant_application_id",
             ))?;
-    validate_preference(&state, context.user.id, &preference).await?;
+    validate_preference(state, context.user.id, &preference).await?;
     ApplicationService::new(state.store.clone())
         .load_application_for_non_crud_console_operation(
             context.user.id,
@@ -201,15 +456,16 @@ pub async fn start_run(
     let catalog = McpManagementService::new(state.store.clone())
         .read_workspace_catalog(context.user.id)
         .await?;
+    let selected_mcp_instance_ids = preference.mcp_instance_ids;
     let mut inputs = NativeObject::default();
     inputs.insert_value(
         "tools",
         Value::Array(assistant_provider_tools(
             &catalog,
-            &preference.mcp_instance_ids,
+            &selected_mcp_instance_ids,
         )),
     );
-    let run = ApplicationPublishedRunService::new(state.store.clone())
+    let flow_run = ApplicationPublishedRunService::new(state.store.clone())
         .create_assistant_run(CreateAssistantRunCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -234,78 +490,44 @@ pub async fn start_run(
         })
         .await
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("assistant_run"))?;
-    let runtime = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue());
-    let mut detail = runtime
-        .start_published_flow_run(StartPublishedFlowRunCommand {
-            application_id,
-            flow_run_id: run.id,
-            provider_transport_slot: None,
-        })
-        .await?;
-    while detail.flow_run.status == domain::FlowRunStatus::WaitingCallback {
-        let callback = detail
-            .callback_tasks
-            .iter()
-            .find(|task| {
-                task.status == domain::CallbackTaskStatus::Pending
-                    && task.callback_kind == "llm_tool_calls"
-            })
-            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                "assistant_callback",
-            ))?;
-        let mut tool_results = Vec::new();
-        for call in callback
-            .request_payload
-            .get("tool_calls")
-            .and_then(Value::as_array)
-            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                "assistant_callback",
-            ))?
-        {
-            tool_results.push(
-                assistant_tool_result(
-                    &catalog,
-                    &preference.mcp_instance_ids,
-                    &state,
-                    &headers,
-                    context.user.id,
-                    call,
-                )
-                .await?,
-            );
-        }
-        detail = runtime
-            .complete_callback_task(
-                control_plane::orchestration_runtime::CompleteCallbackTaskCommand {
-                    actor_user_id: context.user.id,
-                    application_id,
-                    callback_task_id: callback.id,
-                    response_payload: json!({"tool_results": tool_results}),
-                },
-            )
-            .await?;
-    }
-    let native_result = native_result_from_run_detail(&detail, json!({}));
-    Ok(Json(ApiSuccess::new(AssistantRunResponse {
-        id: detail.flow_run.id,
+
+    Ok(PreparedAssistantExecution {
         application_id,
-        status: detail.flow_run.status.as_str().to_string(),
-        answer: native_result.answer,
-        output_payload: detail.flow_run.output_payload,
-        error_payload: detail.flow_run.error_payload,
-    })))
+        actor_user_id: context.user.id,
+        flow_run_id: flow_run.id,
+        catalog,
+        selected_mcp_instance_ids,
+        request_headers: headers.clone(),
+    })
+}
+
+async fn assistant_callback_tool_results(
+    state: &Arc<ApiState>,
+    execution: &PreparedAssistantExecution,
+    callback: &domain::CallbackTaskRecord,
+) -> Result<Vec<Value>, ApiError> {
+    let calls = callback
+        .request_payload
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+            "assistant_callback",
+        ))?;
+    let mut tool_results = Vec::with_capacity(calls.len());
+    for call in calls {
+        tool_results.push(
+            assistant_tool_result(
+                &execution.catalog,
+                &execution.selected_mcp_instance_ids,
+                state,
+                &execution.request_headers,
+                execution.actor_user_id,
+                call,
+            )
+            .await?,
+        );
+    }
+    Ok(tool_results)
 }
 
 fn assistant_provider_tools(
@@ -613,6 +835,11 @@ mod tests {
                 && binding.route.path == "/api/console/assistant/runs"
                 && binding.ownership == access_control::ConsoleRouteOwnership::Authenticated
         }));
+        assert!(bindings.iter().any(|binding| {
+            binding.route.method == "POST"
+                && binding.route.path == "/api/console/assistant/runs/stream"
+                && binding.ownership == access_control::ConsoleRouteOwnership::Authenticated
+        }));
     }
 
     #[test]
@@ -631,8 +858,19 @@ mod tests {
                 "assistant_update_settings",
             ),
             ("post", "/api/console/assistant/runs", "assistant_start_run"),
+            (
+                "post",
+                "/api/console/assistant/runs/stream",
+                "assistant_start_run_stream",
+            ),
         ] {
             assert_eq!(document["paths"][path][method]["operationId"], operation_id);
+            assert!(
+                document["paths"][path][method]["responses"]
+                    .get("403")
+                    .is_some(),
+                "{method} {path} documents the API-key principal rejection"
+            );
         }
     }
 

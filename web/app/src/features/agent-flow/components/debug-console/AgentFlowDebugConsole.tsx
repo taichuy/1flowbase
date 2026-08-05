@@ -18,6 +18,7 @@ export function AgentFlowDebugConsole({
   ariaLabel,
   closeLabel,
   composerUiOnly = false,
+  headerActions,
   logActionRunId,
   messages,
   runContext,
@@ -41,6 +42,7 @@ export function AgentFlowDebugConsole({
   ariaLabel?: string;
   closeLabel?: string;
   composerUiOnly?: boolean;
+  headerActions?: ReactNode;
   logActionRunId?: string | null;
   messages: AgentFlowDebugMessage[];
   runContext: AgentFlowRunContext;
@@ -87,19 +89,22 @@ export function AgentFlowDebugConsole({
       ) : null}
       <AgentFlowDockPanel
         actions={
-          showClearAction ? (
-            <Button
-              aria-label={i18nText('agentFlow', 'auto.clear_preview')}
-              disabled={messages.length === 0}
-              icon={<ReloadOutlined />}
-              size="small"
-              type="text"
-              onClick={() => {
-                setOpenLogMessageId(null);
-                onClearSession();
-              }}
-            />
-          ) : null
+          <>
+            {showClearAction ? (
+              <Button
+                aria-label={i18nText('agentFlow', 'auto.clear_preview')}
+                disabled={messages.length === 0}
+                icon={<ReloadOutlined />}
+                size="small"
+                type="text"
+                onClick={() => {
+                  setOpenLogMessageId(null);
+                  onClearSession();
+                }}
+              />
+            ) : null}
+            {headerActions}
+          </>
         }
         ariaLabel={ariaLabel}
         bodyClassName="agent-flow-editor__debug-console-body"

@@ -5,6 +5,7 @@ import { AppRouterProvider } from '../app/router';
 import { AppShellFrame } from '../app-shell/AppShellFrame';
 import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
+import { EmbeddedAgentAssistantPreview } from '../features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
@@ -78,6 +79,12 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
         />
       </div>
     );
+  },
+  'component.embedded-agent-assistant-preview': () => {
+    seedStyleBoundaryCommonFetch();
+    seedStyleBoundaryAuth();
+
+    return <EmbeddedAgentAssistantPreview open onClose={() => undefined} />;
   },
   'component.account-popup': () => (
     <div className="app-shell-account-popup">

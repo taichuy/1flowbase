@@ -133,7 +133,7 @@ export interface AgentFlowRunContextField {
 }
 
 export interface AgentFlowRunContext {
-  environmentLabel: 'draft';
+  environmentLabel: 'draft' | 'published';
   remembered: boolean;
   fields: AgentFlowRunContextField[];
 }

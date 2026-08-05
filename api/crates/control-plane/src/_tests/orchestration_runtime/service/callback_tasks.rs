@@ -403,6 +403,123 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
 }
 
 #[tokio::test]
+async fn assistant_llm_tool_callback_keeps_the_preview_stream_open_until_the_final_terminal() {
+    use plugin_framework::provider_contract::{
+        ProviderFinishReason, ProviderInvocationResult, ProviderStreamEvent, ProviderToolCall,
+    };
+
+    let tool_call = ProviderToolCall {
+        id: "call_catalog".to_string(),
+        name: "lookup_catalog".to_string(),
+        arguments: json!({ "sku": "sku-1" }),
+        provider_metadata: json!({}),
+    };
+    let service = OrchestrationRuntimeService::for_tests_with_provider_outputs(vec![
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::ToolCallCommit {
+                    call: tool_call.clone(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::ToolCall,
+                },
+            ],
+            result: ProviderInvocationResult {
+                tool_calls: vec![tool_call],
+                finish_reason: Some(ProviderFinishReason::ToolCall),
+                ..ProviderInvocationResult::default()
+            },
+        },
+        crate::ports::ProviderRuntimeInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "Catalog result".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("Catalog result".to_string()),
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+        },
+    ]);
+    let seeded = service
+        .seed_application_with_flow("Embedded Assistant")
+        .await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "Find sku-1" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    service
+        .force_flow_run_mode(started.flow_run.id, domain::FlowRunMode::AssistantExecution)
+        .await;
+
+    let waiting = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        waiting.flow_run.status,
+        domain::FlowRunStatus::WaitingCallback
+    );
+    assert!(stream
+        .events()
+        .iter()
+        .all(|event| event.event_type != "waiting_callback"));
+    assert!(service
+        .list_runtime_events(waiting.flow_run.id, 0)
+        .await
+        .iter()
+        .any(|event| event.event_type == "waiting_callback"));
+    assert!(stream.close_calls().is_empty());
+
+    let completed = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id: waiting.callback_tasks[0].id,
+            response_payload: json!({
+                "tool_results": [{
+                    "tool_call_id": "call_catalog",
+                    "content": "sku-1 is available"
+                }]
+            }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    assert!(stream
+        .events()
+        .iter()
+        .any(|event| event.event_type == "flow_finished"));
+    assert_eq!(
+        stream.close_calls(),
+        vec![(
+            completed.flow_run.id,
+            crate::ports::RuntimeEventCloseReason::Finished
+        )]
+    );
+}
+
+#[tokio::test]
 async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_answer_run() {
     use plugin_framework::provider_contract::{
         ProviderFinishReason, ProviderInvocationResult, ProviderStreamEvent, ProviderToolCall,

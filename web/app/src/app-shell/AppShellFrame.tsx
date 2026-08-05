@@ -6,13 +6,13 @@ import { Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { AccountMenu } from './AccountMenu';
-import { AssistantChromeAction } from './AssistantChromeAction';
 import { FrontstageDesignModeAction } from './FrontstageDesignModeAction';
 import { HelpChromeMenu } from './HelpChromeMenu';
 import { LanguageChromeMenu } from './LanguageChromeMenu';
 import { Navigation } from './Navigation';
 import { SettingsChromeMenu } from './SettingsChromeMenu';
 import { getSecondaryChromeRoutes } from '../routes/route-helpers';
+import { EmbeddedAgentAssistant } from '../features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistant';
 import './app-shell.css';
 
 function renderActionLink(
@@ -55,12 +55,14 @@ export function AppShellFrame({
   return (
     <AppShell
       title="1flowbase"
-      navigation={<Navigation pathname={pathname} useRouterLinks={useRouterLinks} />}
+      navigation={
+        <Navigation pathname={pathname} useRouterLinks={useRouterLinks} />
+      }
       actions={
         <Space className="app-shell-action-row" size={20}>
           <span className="app-shell-secondary-actions">
             <FrontstageDesignModeAction />
-            <AssistantChromeAction />
+            <EmbeddedAgentAssistant />
             {secondaryActions.map((route) => (
               <span key={route.id}>
                 {route.id === 'settings' ? (

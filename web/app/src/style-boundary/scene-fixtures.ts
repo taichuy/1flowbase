@@ -102,6 +102,25 @@ function getStyleBoundaryCommonResponse(
 ): Response | null {
   if (
     method.toUpperCase() === 'GET' &&
+    requestUrl.pathname === '/api/console/assistant/settings'
+  ) {
+    return createStyleBoundaryJsonResponse({
+      data: {
+        preference: {
+          application_id: 'flow-1',
+          mcp_instance_ids: ['catalog']
+        },
+        published_agent_flows: [
+          { application_id: 'flow-1', name: 'Support Agent' }
+        ],
+        enabled_mcp_instances: [{ instance_id: 'catalog', name: 'Catalog' }]
+      },
+      meta: null
+    });
+  }
+
+  if (
+    method.toUpperCase() === 'GET' &&
     requestUrl.pathname === '/api/console/navigation'
   ) {
     return createStyleBoundaryJsonResponse({

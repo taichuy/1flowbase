@@ -20,6 +20,7 @@ function mapFlowStatus(status: string): AgentFlowDebugMessageStatus {
   switch (status) {
     case 'succeeded':
     case 'completed':
+    case 'incomplete':
       return 'completed';
     case 'waiting_callback':
       return 'waiting_callback';
@@ -315,6 +316,23 @@ export function applyDebugStreamEventToAssistantMessage(
         traceSummary: traceItems
       };
     case 'flow_finished': {
+      const closedContent = closeOpenThinkBlock(message.content);
+      const outputText = extractOutputText(event.output);
+      const nextContent =
+        parseAssistantContent(closedContent).answerText || !outputText
+          ? closedContent
+          : appendTextDeltaToAssistantContent(closedContent, outputText);
+
+      return {
+        ...message,
+        runId: event.run_id,
+        status: mapFlowStatus(event.status),
+        content: nextContent,
+        rawOutput: event.output,
+        traceSummary: traceItems
+      };
+    }
+    case 'flow_incomplete': {
       const closedContent = closeOpenThinkBlock(message.content);
       const outputText = extractOutputText(event.output);
       const nextContent =
