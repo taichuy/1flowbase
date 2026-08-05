@@ -16,6 +16,14 @@
 - 是否存在当前失败脚本 / 错误报告输入：
 - 该失败输入的归属：证据来源，不作为完整评估范围
 
+## Foundation Contract Evidence
+
+- 命中的基座 / 组合缝隙：
+- candidate SHA 与触发原因：
+- fast pack 结论：
+- warning / error / blocker：
+- 未覆盖项与 nightly/manual 延后证据：
+
 ## Coverage Matrix
 
 - 适用范围：`Project Health Gate` 必填；其他 lane 可写不适用

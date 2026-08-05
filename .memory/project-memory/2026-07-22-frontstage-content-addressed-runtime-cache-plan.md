@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Frontstage 内容寻址 L1/L2 运行缓存规划
-summary: #1382 的内容寻址缓存增量已实现并通过集中 QA：#1401 交付后端 source_sha256 与同会话 L1 BlockResult 零执行，#1402 交付 IndexedDB CompiledBlockArtifact；不分析静态/动态源码，不持久化运行数据，不改变 BlockModule.main(ctx)。
+summary: #1382 的内容寻址缓存增量历史已交付；其中 BlockModule.main(ctx) 作者契约已被后续 Native React 标准 Component runtime supersede，仅缓存身份、隔离和 artifact 生命周期证据仍可参考。
 keywords:
   - frontstage
   - source_sha256
@@ -16,10 +16,11 @@ match_when:
   - 修改 Frontstage 页面返回缓存、编译产物持久化或 Worker 请求协议
   - 调整 source_sha256、runtime_fingerprint、IndexedDB namespace 或登出清理
 created_at: 2026-07-22 00
-updated_at: 2026-07-22 03
+updated_at: 2026-08-05 10
 last_verified_at: 2026-07-22 03
 decision_policy: verify_before_decision
-status: delivered_pending_user_acceptance
+status: superseded
+superseded_by: 2026-07-26-code-block-native-react-shadow-runtime.md
 source_issue: "#1382"
 depends_on_issue: "#1393"
 delivery_issues:
@@ -34,6 +35,8 @@ scope:
 ---
 
 # Frontstage 内容寻址 L1/L2 运行缓存规划
+
+> Superseded：本文中的 `BlockModule.main(ctx)`、`BlockResult` 作者/执行契约不是当前 QA 真值。当前源码要求默认导出标准 React Component；本文只保留内容寻址、namespace、LRU 与 stale artifact 历史证据。
 
 ## 谁在做什么
 

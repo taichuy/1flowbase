@@ -63,9 +63,11 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
 - `Project Health Gate` 追求维护者感知：先按 `references/governance/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
 - `Project Health Gate` 不得只围绕当前失败脚本或错误报告展开；脚本失败必须先归入对应质量维度、硬性门禁失败、warning 或未覆盖项，再进入 findings
+- 通用 frontend/backend/tooling green 不能结算某个基座；命中 AI Gateway、MCP Gateway、Application Backend 或 Native React 时，必须读取 candidate-bound foundation receipt 或把该基座写为未验证
 - 失败测试必须分流为产品回归、contract 破坏、测试环境问题或旧测试期望过期；只有当前 spec / contract / 验收预期仍支持旧断言时，才把失败作为 blocker。旧测试与新 contract 不兼容时，QA 报告要求更新测试，不要求实现兼容旧断言
 - 评估前先读 `.memory/AGENTS.md`、`.memory/user-memory.md`、项目记忆、反馈记忆和相关 spec
 - 仓库质量门禁“怎么选、怎么组合、各自覆盖什么”看 `references/governance/repo-quality-gates.md`
+- 四大基座、组合缝隙、fast/full pack、receipt 与 warning 语义看 `references/governance/foundation-contract-gates.md`
 - 多语言 key / value hygiene、warning 解释和修复边界看 `references/frontend/i18n-hygiene-gate.md`
 - 需要处理周期性质量门禁值守、GitHub Issue / Actions 报告闭环或无权限贡献者本地门禁取证时，看 `references/governance/quality-gate-watch.md`
 - 评估范围命中容器镜像、Trivy、GHCR、Dockerfile、基础镜像或镜像漏洞报告时，再加载 `references/security/container-image-security.md`

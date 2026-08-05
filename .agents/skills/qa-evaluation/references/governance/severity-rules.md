@@ -57,3 +57,4 @@
 - 严重度判断必须基于证据和影响，不要只看改动大小
 - 证据不足时不要强行给高结论，应该明确写未验证限制
 - maintainability warning 不是修改授权；删除、合并抽象、改公共接口或清理兼容层前必须等待用户同意
+- 非空 warning 或 `warningFiles` 只代表需要维护者查看，不自动改变 gate status；只有显式 error/blocker、失败 component 或非零 exit code才阻断

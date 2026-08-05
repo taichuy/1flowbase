@@ -27,6 +27,7 @@
 | `node scripts/node/test-frontend.js fast` | 前端快速回归 | 需要仓库级前端快检，但还没到 full gate | 不替代移动端/真实运行态证据 |
 | `node scripts/node/test-frontend.js full` | 前端 lint、test、build、style-boundary full gate | 要给前端结论兜底，或 `verify-repo` 前置确认 | 不替代具体页面走查和截图证据 |
 | `node scripts/node/tooling.js gate-router [--staged]` | 根据 changed files 输出非阻塞质量门禁建议；提交前 hook 使用 `--staged`，线上 `repo-tooling` 使用 branch diff | 需要在开发阶段提示“本次改动应该跑哪些相关门禁”，但不想阻塞提交 | 不替代实际运行被建议的门禁 |
+| `node scripts/node/tooling.js foundation-contracts plan/run-fast/aggregate` | 四基座 changed-file 路由、有限 fast/full pack 与 candidate-bound receipt | 改 AI Gateway、MCP Gateway、Application Backend、Native React 或其治理路由 | 不替代 nightly 的完整 Provider、浏览器、migration、coverage，也不改变合并权限 |
 | `node scripts/node/tooling.js repo-hygiene` | 废弃标记、前后端字段兼容标记、弱断言、重复测试标题、超大文件和目录压力，报告写入 `tmp/test-governance/repo-hygiene.json` | 全量审计、热点预防、判断旧逻辑、字段兼容 alias 和测试重复是否已进入 QA 证据层 | 不替代业务正确性、覆盖率和人工架构审查 |
 | `node scripts/node/tooling.js i18n-hygiene` | 多语言 locale 文件名、key 对齐、JSON 重复 key、同 owner value 重复和未引用前端 key warning，报告写入 `tmp/test-governance/i18n-hygiene.json`；`--include-cross-owner-warnings` 可额外输出跨 owner advisory | 改前端 / 插件 `i18n/`、语言切换、UI 文案抽取、common 文案或仓库级 QA tooling | 不替代人工判断跨 owner 文案是否真的同语义，也不替代动态 key 人工确认 |
 | `node scripts/node/tooling.js check-rust-backend` | Rust 后端静态质量门禁，报告写入 `tmp/test-governance/rust-backend-static-gate.json` | 需要快速检查新增 Rust 后端坏味道，或定位 `test-backend` / `verify-backend` 前置静态门禁失败 | 不替代 cargo 编译、测试、clippy 和业务语义审查 |
@@ -55,6 +56,7 @@
 - 需要讨论覆盖率缺口时，再补 `verify-coverage`；不要拿 coverage 结果替代功能结论。
 - 需要运行态页面证据时，优先 `runtime-gate` 或直接 `page-debug`，不要只靠静态阅读代码。
 - 证据已经足够支撑当前任务 QA 结论时停止；不要为了显得全面继续叠加无新增覆盖面的门禁。
+- 少于 3 个基座门禁反复失败时，先本地 `run-fast --foundation <id>`，再手动单基座 Actions，最后恢复 `auto/all`；单次 workflow 最长执行路径必须低于 60 分钟。
 
 ## Quality Rule Changes
 

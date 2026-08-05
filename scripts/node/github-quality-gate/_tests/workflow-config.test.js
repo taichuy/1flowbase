@@ -33,6 +33,13 @@ function readAiGatewayConcurrencyWorkflow() {
   );
 }
 
+function readFoundationContractsWorkflow() {
+  return fs.readFileSync(
+    path.join(repoRoot, ".github", "workflows", "foundation-contracts.yml"),
+    "utf8",
+  );
+}
+
 function readReleaseRollbackGateWorkflow() {
   return fs.readFileSync(
     path.join(repoRoot, ".github", "workflows", "release-rollback-gate.yml"),
@@ -158,6 +165,30 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
     workflow,
     /node scripts\/node\/cli\/github-quality-gate-aggregate\.js/u,
   );
+});
+
+test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/manual", () => {
+  const fastWorkflow = readFoundationContractsWorkflow();
+  const fullAiWorkflow = readAiGatewayConcurrencyWorkflow();
+
+  assert.match(fastWorkflow, /^name: foundation contract evidence/mu);
+  assert.match(fastWorkflow, /pull_request:/u);
+  assert.match(fastWorkflow, /push:\n\s+branches: \[beta\]/u);
+  assert.match(fastWorkflow, /workflow_dispatch:/u);
+  assert.match(fastWorkflow, /foundation-contracts/u);
+  assert.match(fastWorkflow, /timeout-minutes: 40/u);
+  assert.doesNotMatch(fastWorkflow, /timeout-minutes: (?:6\d|[7-9]\d|[1-9]\d{2,})/u);
+
+  assert.doesNotMatch(fullAiWorkflow, /^\s*pull_request:/mu);
+  assert.doesNotMatch(fullAiWorkflow, /branches: \[dev\]/u);
+  assert.match(fullAiWorkflow, /timeout-minutes: 55/u);
+  assert.match(fullAiWorkflow, /workflow_call:/u);
+  assert.match(fullAiWorkflow, /workflow_dispatch:/u);
+
+  const docs = readGitHubAutomationDocs();
+  assert.match(docs, /below one hour/u);
+  assert.match(docs, /fewer than three foundations repeatedly fail/u);
+  assert.match(docs, /not\s+configured as required checks/u);
 });
 
 test("Rust workflow caches are dependency-keyed and bounded across branches", () => {
@@ -484,11 +515,13 @@ test("GitHub automation docs include React Doctor in full ci but not fast verify
   assert.doesNotMatch(readme, /nightly-only/u);
 });
 
-test("GitHub automation docs place reusable AI Gateway conformance in the full ci aggregate", () => {
+test("GitHub automation docs split AI Gateway PR fast evidence from full ci conformance", () => {
   const docs = readGitHubAutomationDocs();
   assert.match(docs, /ai-gateway-concurrency\.yml/u);
   assert.match(docs, /ai-gateway-protocol-conformance/u);
-  assert.match(docs, /runs for pull requests/u);
+  assert.match(docs, /Pull requests use the affected fast pack/u);
+  assert.match(docs, /does not run for every\s+pull request/u);
+  assert.doesNotMatch(docs, /conformance remains independently dispatchable and runs for pull requests/u);
   assert.match(docs, /never\nuses real Provider credentials or local client binaries/u);
 });
 

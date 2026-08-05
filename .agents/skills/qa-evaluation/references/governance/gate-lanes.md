@@ -12,6 +12,10 @@
 | `PR Merge Gate` | PR 是否达到可合入基线 | 中，允许 GitHub Actions 消耗 | CI、artifact、warningFiles、PR comment | Gate DAG -> 并行调度 -> 失败归因 -> 合并风险评分 | blocker、warning、advisory、cost | 足以判断能否合并，或缺少 artifact 时标 unavailable |
 | `Project Health Gate` | 当前项目整体健康度与维护方向 | 高，优先维度覆盖 | 质量维度矩阵、GitHub Actions、quality artifact、coverage、hygiene、security、热点数据 | lane 确认 -> 质量维度矩阵 -> 证据归类 -> 风险热力图 -> 趋势对比 -> 轮转深挖 | 健康快照、硬性失败、风险热区、维护建议 | 全量维度有证据或明确未覆盖，维护问题已转入建议 |
 
+## Foundation Axis
+
+三条 lane 解决“何时、花多少资源验证”，四基座解决“哪个 contract 风险被验证”。选择证据时同时表达 `lane × foundation risk × evidence freshness`；通用 frontend/backend 结果不能替代基座 receipt。具体路由与 fast/full 边界见 `foundation-contract-gates.md`。
+
 ## Dev Acceptance Gate
 
 - 目标是加快开发反馈，不用仓库级门禁惩罚局部开发。

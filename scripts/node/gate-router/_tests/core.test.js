@@ -66,6 +66,17 @@ test('routeChangedFiles recommends state protocol gates for Anthropic ACP projec
       route.command === 'node scripts/node/verify-state-protocols.js'
     )
   );
+  assert(routes.some((route) => route.scope === 'foundation-contract-ai-gateway-fast'));
+});
+
+test('AC-001 gate router exposes foundation-specific evidence instead of generic green', () => {
+  const routes = routeChangedFiles([
+    'api/apps/api-server/src/routes/mcp_protocol.rs',
+    'web/packages/page-runtime/src/native-react-compiler/source-contract.ts',
+  ]);
+
+  assert(routes.some((route) => route.scope === 'foundation-contract-mcp-gateway-fast'));
+  assert(routes.some((route) => route.scope === 'foundation-contract-native-react-fast'));
 });
 
 test('main reads staged changes from env override and never blocks the commit', async () => {
