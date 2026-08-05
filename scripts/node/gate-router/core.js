@@ -1,6 +1,7 @@
 const { spawnSync } = require('node:child_process');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
+const { buildFoundationPlan } = require('../foundation-contracts/core.js');
 
 const DEFAULT_BASE_REF = 'origin/main';
 const CHANGED_FILES_ENV = 'GATE_ROUTER_CHANGED_FILES';
@@ -88,6 +89,16 @@ const ROUTE_DEFINITIONS = [
     command: 'GitHub Actions quality-gate scope=container-images',
     reason: 'container or deployment files changed',
   },
+  ...[
+    ['ai-gateway', 'AI Gateway protocol or provider-facing contract paths changed'],
+    ['mcp-gateway', 'MCP discovery, invocation, ACL, mapping, or continuation paths changed'],
+    ['application-backend', 'Application Backend data model, runtime API, scope, or metadata paths changed'],
+    ['native-react', 'Native React Component, compiler/runtime ABI, dependency, capability, or artifact paths changed'],
+  ].map(([foundation, reason]) => ({
+    scope: `foundation-contract-${foundation}-fast`,
+    command: `node scripts/node/tooling.js foundation-contracts run-fast --foundation ${foundation} --candidate-sha HEAD`,
+    reason,
+  })),
 ];
 
 function normalizePath(filePath) {
@@ -290,8 +301,9 @@ function isContainerFile(filePath) {
 
 function routeChangedFiles(changedFiles) {
   const routes = new Map();
+  const normalizedFiles = splitChangedFiles(changedFiles.join('\n'));
 
-  for (const filePath of splitChangedFiles(changedFiles.join('\n'))) {
+  for (const filePath of normalizedFiles) {
     if (isToolingFile(filePath)) {
       addRoute(routes, 'repo-tooling');
     }
@@ -317,6 +329,11 @@ function routeChangedFiles(changedFiles) {
     if (isContainerFile(filePath)) {
       addRoute(routes, 'container-images');
     }
+  }
+
+  const foundationPlan = buildFoundationPlan({ changedFiles: normalizedFiles });
+  for (const foundation of foundationPlan.selectedFoundations) {
+    addRoute(routes, `foundation-contract-${foundation}-fast`);
   }
 
   return ROUTE_DEFINITIONS.filter((route) => routes.has(route.scope));

@@ -15,8 +15,8 @@ match_when:
   - 修改 Worker 执行边界、渐进加载、artifact cache 或运行状态机
   - 调整 Frontstage/Auth 共享代码区块 host
 created_at: 2026-07-26 22
-updated_at: 2026-07-27 22
-last_verified_at: 2026-07-27 22
+updated_at: 2026-08-05 10
+last_verified_at: 2026-08-05 10
 decision_policy: verify_before_decision
 status: user_acceptance
 source_issue: "#1466"
@@ -43,6 +43,8 @@ scope:
 ---
 
 # 代码区块 Native React + Shadow DOM 运行时
+
+> 当前 QA 真值（2026-08-05）：作者源码默认导出标准 React Component；`BlockModule.main(ctx)` 只作为被拒绝的 legacy source 反例，不是活动兼容契约。
 
 ## 谁在做什么
 

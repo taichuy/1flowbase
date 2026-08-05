@@ -541,6 +541,22 @@ function evaluateFrontstageGovernanceHygiene({ inventory }) {
 
   return {
     generatedAt: new Date().toISOString(),
+    evidenceScope: {
+      id: 'frontstage-page-tree-governance',
+      covers: [
+        'page-tree',
+        'page-visibility',
+        'frontstage-storage-constraints',
+        'settings-route-registry-boundary',
+      ],
+      doesNotCover: [
+        'native-react-component-contract',
+        'native-react-compiler-runtime-abi',
+        'native-react-dependency-lock',
+        'native-react-capability-guard',
+        'native-react-runtime-conformance',
+      ],
+    },
     summary: {
       findings: findings.length,
       errors: findings.filter((finding) => finding.severity === 'error').length,
@@ -557,6 +573,9 @@ function renderMarkdown(report) {
     `- Findings: ${report.summary.findings}`,
     `- Errors: ${report.summary.errors}`,
     `- Warnings: ${report.summary.warnings}`,
+    `- Evidence scope: ${report.evidenceScope.id}`,
+    `- Covers: ${report.evidenceScope.covers.join(', ')}`,
+    `- Does not cover: ${report.evidenceScope.doesNotCover.join(', ')}`,
     '',
   ];
 

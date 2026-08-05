@@ -171,6 +171,20 @@ test('tooling index dispatches frontstage-governance-hygiene subcommand', async 
   assert.deepEqual(capturedArgv, ['--max-findings', '10']);
 });
 
+test('tooling index dispatches foundation-contracts subcommand', async () => {
+  let capturedArgv = null;
+
+  const status = await main(['foundation-contracts', 'plan', '--foundation', 'all'], {
+    runFoundationContractsImpl(argv) {
+      capturedArgv = argv;
+      return 0;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.deepEqual(capturedArgv, ['plan', '--foundation', 'all']);
+});
+
 test('tooling index dispatches i18n-hygiene subcommand', async () => {
   let capturedArgv = null;
 

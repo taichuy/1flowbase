@@ -258,8 +258,11 @@ test('frontstage governance main writes json and markdown reports under tmp/test
 
   const report = JSON.parse(fs.readFileSync(jsonReportPath, 'utf8'));
   assert.equal(report.summary.errors, 9);
+  assert.equal(report.evidenceScope.id, 'frontstage-page-tree-governance');
+  assert.ok(report.evidenceScope.covers.includes('page-tree'));
+  assert.ok(report.evidenceScope.doesNotCover.includes('native-react-runtime-conformance'));
   assert.match(
     fs.readFileSync(markdownReportPath, 'utf8'),
-    /Frontstage Governance Hygiene/u
+    /Does not cover:.*native-react-runtime-conformance/u
   );
 });

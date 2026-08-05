@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - beta
       - main
       - latest
   workflow_dispatch:
@@ -179,11 +180,20 @@ jobs:
           name: test-governance-${{ matrix.scope }}
           path: tmp/test-governance
 
+  foundation-contract-gate:
+    uses: ./.github/workflows/foundation-contracts.yml
+    with:
+      target_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
+      base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
+      foundation: ${{ github.event_name == 'workflow_dispatch' && 'all' || 'auto' }}
+      lane: pr-evidence
+
   verify:
     needs:
       - repo-tooling-gate
       - repo-frontend-gate
       - repo-backend-gate
+      - foundation-contract-gate
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -197,7 +207,7 @@ jobs:
         env:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ci
-          INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps
+          INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts
           INPUT_PUBLISH_ISSUE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/latest' }}
           INPUT_PUBLISH_PR_COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}

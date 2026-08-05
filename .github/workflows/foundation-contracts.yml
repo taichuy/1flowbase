@@ -1,0 +1,303 @@
+name: foundation contract evidence
+
+on:
+  workflow_call:
+    inputs:
+      target_ref:
+        description: Candidate branch, tag, or SHA
+        type: string
+        required: false
+        default: ''
+      base_ref:
+        description: Diff base branch, tag, or SHA
+        type: string
+        required: false
+        default: ''
+      foundation:
+        description: Changed-file routing or one focused foundation
+        type: string
+        required: false
+        default: auto
+      lane:
+        description: Evidence lane recorded in the receipt
+        type: string
+        required: false
+        default: pr-evidence
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Candidate branch, tag, or SHA
+        required: false
+        default: ''
+        type: string
+      base_ref:
+        description: Diff base branch, tag, or SHA
+        required: false
+        default: ''
+        type: string
+      foundation:
+        description: Run changed-file routing or one focused foundation before a full retry
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - all
+          - ai-gateway
+          - mcp-gateway
+          - application-backend
+          - native-react
+      lane:
+        description: Evidence lane recorded in the receipt
+        required: true
+        default: pr-evidence
+        type: choice
+        options:
+          - dev-acceptance
+          - pr-evidence
+          - project-health
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-contract-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ai_gateway: ${{ steps.plan.outputs.ai_gateway }}
+      mcp_gateway: ${{ steps.plan.outputs.mcp_gateway }}
+      application_backend: ${{ steps.plan.outputs.application_backend }}
+      native_react: ${{ steps.plan.outputs.native_react }}
+      any_selected: ${{ steps.plan.outputs.any_selected }}
+      candidate_sha: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.target_ref || github.sha }}
+          fetch-depth: 0
+      - name: Resolve candidate SHA
+        id: candidate
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Build changed-file foundation plan
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_BASE_REF: ${{ inputs.base_ref }}
+          REQUESTED_FOUNDATION: ${{ inputs.foundation || 'auto' }}
+          REQUESTED_LANE: ${{ inputs.lane || 'pr-evidence' }}
+        run: |
+          set -euo pipefail
+          base_ref="${REQUESTED_BASE_REF:-}"
+          if [ -z "$base_ref" ] || [ "$base_ref" = "0000000000000000000000000000000000000000" ]; then
+            base_ref="$(git rev-parse HEAD^)"
+          fi
+          node scripts/node/tooling.js foundation-contracts plan \
+            --base-ref "$base_ref" \
+            --candidate-sha "${{ steps.candidate.outputs.sha }}" \
+            --foundation "$REQUESTED_FOUNDATION" \
+            --lane "$REQUESTED_LANE" \
+            --event "$EVENT_NAME"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: foundation-contract-plan-${{ steps.candidate.outputs.sha }}
+          path: tmp/test-governance/foundation-contracts/foundation-contract-plan.json
+          if-no-files-found: error
+          retention-days: 14
+
+  ai-gateway-fast:
+    needs: route
+    if: needs.route.outputs.ai_gateway == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.route.outputs.candidate_sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v6
+        with:
+          name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts
+      - run: >-
+          node scripts/node/tooling.js foundation-contracts run-fast
+          --foundation ai-gateway --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
+          --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: foundation-contract-component-ai-gateway-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts/components/ai-gateway
+          if-no-files-found: error
+          retention-days: 14
+
+  mcp-gateway-fast:
+    needs: route
+    if: needs.route.outputs.mcp_gateway == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.route.outputs.candidate_sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v6
+        with:
+          name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts
+      - run: >-
+          node scripts/node/tooling.js foundation-contracts run-fast
+          --foundation mcp-gateway --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
+          --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: foundation-contract-component-mcp-gateway-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts/components/mcp-gateway
+          if-no-files-found: error
+          retention-days: 14
+
+  application-backend-fast:
+    needs: route
+    if: needs.route.outputs.application_backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+      DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.route.outputs.candidate_sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v6
+        with:
+          name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts
+      - run: >-
+          node scripts/node/tooling.js foundation-contracts run-fast
+          --foundation application-backend --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
+          --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: foundation-contract-component-application-backend-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts/components/application-backend
+          if-no-files-found: error
+          retention-days: 14
+
+  native-react-fast:
+    needs: route
+    if: needs.route.outputs.native_react == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.route.outputs.candidate_sha }}
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 11.5.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - uses: actions/download-artifact@v6
+        with:
+          name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts
+      - run: >-
+          node scripts/node/tooling.js foundation-contracts run-fast
+          --foundation native-react --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
+          --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: foundation-contract-component-native-react-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts/components/native-react
+          if-no-files-found: error
+          retention-days: 14
+
+  aggregate:
+    needs:
+      - route
+      - ai-gateway-fast
+      - mcp-gateway-fast
+      - application-backend-fast
+      - native-react-fast
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.route.outputs.candidate_sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v6
+        with:
+          name: foundation-contract-plan-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts
+      - uses: actions/download-artifact@v6
+        if: needs.route.outputs.any_selected == 'true'
+        with:
+          pattern: foundation-contract-component-*-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts/downloaded-components
+      - name: Aggregate candidate-bound receipt
+        run: >-
+          node scripts/node/tooling.js foundation-contracts aggregate
+          --candidate-sha "${{ needs.route.outputs.candidate_sha }}"
+          --plan tmp/test-governance/foundation-contracts/foundation-contract-plan.json
+          --component-root tmp/test-governance/foundation-contracts/downloaded-components
+          --event "${{ github.event_name }}"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-governance-foundation-contracts-${{ needs.route.outputs.candidate_sha }}
+          path: tmp/test-governance/foundation-contracts
+          if-no-files-found: error
+          retention-days: 14

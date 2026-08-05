@@ -1,6 +1,6 @@
 ---
 name: qa-evaluation
-description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, stale or incompatible test expectation triage, delivery, full-project audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contract, console settings registry and API-scope authorization, status, boundary and runtime checks, scope/error-handling acceptance, hotspot/churn prevention reviews, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
+description: Evidence-driven QA evaluation for 1flowbase dev acceptance, PR merge gates, project health gates, regression, stale or incompatible test expectation triage, delivery, full-project and AI code audits, quality gate routing, i18n/multilingual key-value hygiene, frontend/backend contracts, console settings registry and API-scope authorization, status/boundary/runtime checks, scope/error-handling acceptance, database/index/query-plan/ephemeral review, algorithm/data-structure/state/concurrency review, logs/observability, test-asset lifecycle, foundation contracts, hotspot/churn prevention, and maintainability/dead-abstraction warnings. Use when Codex must report verifiable findings and risks instead of directly implementing or fixing.
 ---
 
 # QA Evaluation
@@ -48,6 +48,18 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `Context capsule`: 交付后若验收点通过，输出压缩 capsule：做了什么、在哪里、关键决策 / gotchas、后续扩展入口。capsule 只写指针，不复制代码；代码仓库仍是真值来源。
 - `Quality rule change`: 新增或调整 AGENTS / skills / repo hygiene / 质量门禁规则时，必须检查目标、验收证据、资源边界和停止条件；质量规则本身还要有反方样例、确定性 fixture 或历史证据、人工确认点。
 
+## Code Audit Routing
+
+代码审计先读 `references/audit/code-audit-model.md`，再只加载命中风险信号的专项卡；不得默认把全部审计 reference 注入上下文：
+
+- 数据库、索引、query plan、capacity、JSONB、retention 或 ephemeral：`references/audit/database-query-ephemeral.md`
+- 算法、数据结构、状态机、并发、幂等或语义重复：`references/audit/algorithms-state-concurrency.md`
+- 日志、旁路、可观测性、correlation 或 live/durable seam：`references/audit/observability-log-pipeline.md`
+- 测试生命周期、短命测试、harness、测试资产合并/删除候选：`references/audit/test-asset-lifecycle.md`
+- AI Gateway、MCP Gateway、Application Backend、Native React / 低代码基座：`references/audit/foundation-audit-cards.md`
+
+完整审计只有在风险域可独立且并行能降低上下文污染时，才由 Root 启动 1～3 个只读专项 subagent；subagent 不修改、不嵌套调度，Root 统一去重、交叉验证和严重级别。
+
 ## Quick Reference
 
 - 开发阶段默认不加载完整质量门禁；功能完成后再主动进入 `qa-evaluation`
@@ -63,9 +75,11 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - `PR Merge Gate` 追求合并信心：优先 GitHub Actions / artifact / beta 质量门禁结果，报告 blocker、warning、advisory、资源耗时和合并风险
 - `Project Health Gate` 追求维护者感知：先按 `references/governance/project-evaluation-checklist.md` 建质量维度矩阵，再读取远端完整门禁、artifact、warningFiles、beta 质量工作区产物和必要本地证据，输出全局快照、风险热力图、趋势、轮转深挖和维护建议
 - `Project Health Gate` 不得只围绕当前失败脚本或错误报告展开；脚本失败必须先归入对应质量维度、硬性门禁失败、warning 或未覆盖项，再进入 findings
+- 通用 frontend/backend/tooling green 不能结算某个基座；命中 AI Gateway、MCP Gateway、Application Backend 或 Native React 时，必须读取 candidate-bound foundation receipt 或把该基座写为未验证
 - 失败测试必须分流为产品回归、contract 破坏、测试环境问题或旧测试期望过期；只有当前 spec / contract / 验收预期仍支持旧断言时，才把失败作为 blocker。旧测试与新 contract 不兼容时，QA 报告要求更新测试，不要求实现兼容旧断言
 - 评估前先读 `.memory/AGENTS.md`、`.memory/user-memory.md`、项目记忆、反馈记忆和相关 spec
 - 仓库质量门禁“怎么选、怎么组合、各自覆盖什么”看 `references/governance/repo-quality-gates.md`
+- 四大基座、组合缝隙、fast/full pack、receipt 与 warning 语义看 `references/governance/foundation-contract-gates.md`
 - 多语言 key / value hygiene、warning 解释和修复边界看 `references/frontend/i18n-hygiene-gate.md`
 - 需要处理周期性质量门禁值守、GitHub Issue / Actions 报告闭环或无权限贡献者本地门禁取证时，看 `references/governance/quality-gate-watch.md`
 - 评估范围命中容器镜像、Trivy、GHCR、Dockerfile、基础镜像或镜像漏洞报告时，再加载 `references/security/container-image-security.md`
@@ -121,6 +135,12 @@ Dev Acceptance Gate 和 Project Health Gate 都必须把代码体检问题绑定
 - Report output: `references/governance/report-template.md`
 - Severity rules: `references/governance/severity-rules.md`
 - Anti-patterns: `references/governance/anti-patterns.md`
+- Code audit model: `references/audit/code-audit-model.md`
+- Database/query/ephemeral audit: `references/audit/database-query-ephemeral.md`
+- Algorithms/state/concurrency audit: `references/audit/algorithms-state-concurrency.md`
+- Observability/log pipeline audit: `references/audit/observability-log-pipeline.md`
+- Test asset lifecycle audit: `references/audit/test-asset-lifecycle.md`
+- Foundation audit cards: `references/audit/foundation-audit-cards.md`
 
 ## Common Mistakes
 

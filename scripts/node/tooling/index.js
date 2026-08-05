@@ -6,6 +6,7 @@ const { main: runCapacityReport } = require('../capacity-report/core.js');
 const { main: runCheckStyleBoundary } = require('../check-style-boundary/core.js');
 const { main: runCheckRustBackend } = require('../check-rust-backend/core.js');
 const { main: runGateRouter } = require('../gate-router/core.js');
+const { main: runFoundationContracts } = require('../foundation-contracts/core.js');
 const { main: runGrowthTableReport } = require('../growth-table-report/core.js');
 const { main: runHotspotReview } = require('../hotspot-review/core.js');
 const { main: runI18nHygiene } = require('../i18n-hygiene/core.js');
@@ -39,6 +40,7 @@ const TOOLING_COMMANDS = new Set([
   'claude-skill-sync',
   'console-route-registry-hygiene',
   'frontstage-governance-hygiene',
+  'foundation-contracts',
   'gate-router',
   'growth-table-report',
   'hotspot-review',
@@ -113,7 +115,7 @@ function parseToolingCliArgs(argv) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n'
+    'Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n'
   );
 }
 
@@ -161,6 +163,10 @@ async function main(argv = [], deps = {}) {
       options.rest,
       deps
     );
+  }
+
+  if (options.command === 'foundation-contracts') {
+    return (deps.runFoundationContractsImpl || runFoundationContracts)(options.rest, deps);
   }
 
   if (options.command === 'gate-router') {
