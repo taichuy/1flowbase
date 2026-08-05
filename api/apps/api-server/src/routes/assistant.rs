@@ -96,6 +96,12 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route("/assistant/runs", console_post(start_run, Authenticated))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/assistant/settings",
+    operation_id = "assistant_get_settings",
+    responses((status = 200, body = AssistantSettingsResponse), (status = 401, body = crate::error_response::ErrorBody))
+)]
 pub async fn get_settings(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -119,6 +125,13 @@ pub async fn get_settings(
     })))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/console/assistant/settings",
+    operation_id = "assistant_update_settings",
+    request_body = AssistantPreferenceBody,
+    responses((status = 200, body = AssistantSettingsResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody))
+)]
 pub async fn update_settings(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -148,6 +161,13 @@ pub async fn update_settings(
     })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/console/assistant/runs",
+    operation_id = "assistant_start_run",
+    request_body = StartAssistantRunBody,
+    responses((status = 200, body = AssistantRunResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody))
+)]
 pub async fn start_run(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -558,6 +578,7 @@ fn read_preference(meta: &Value, workspace_id: Uuid) -> AssistantPreferenceBody 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use utoipa::OpenApi;
 
     #[test]
     fn preference_is_scoped_to_current_workspace() {
@@ -592,6 +613,27 @@ mod tests {
                 && binding.route.path == "/api/console/assistant/runs"
                 && binding.ownership == access_control::ConsoleRouteOwnership::Authenticated
         }));
+    }
+
+    #[test]
+    fn assistant_console_routes_have_static_openapi_identities() {
+        let document = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
+
+        for (method, path, operation_id) in [
+            (
+                "get",
+                "/api/console/assistant/settings",
+                "assistant_get_settings",
+            ),
+            (
+                "patch",
+                "/api/console/assistant/settings",
+                "assistant_update_settings",
+            ),
+            ("post", "/api/console/assistant/runs", "assistant_start_run"),
+        ] {
+            assert_eq!(document["paths"][path][method]["operationId"], operation_id);
+        }
     }
 
     #[test]
