@@ -59,7 +59,19 @@ describe('EmbeddedAgentAssistant', () => {
       published_agent_flows: [
         { application_id: 'flow-1', name: 'Support Flow' }
       ],
-      enabled_mcp_instances: []
+      enabled_mcp_instances: [],
+      run_capabilities: {
+        model_selection_enabled: true,
+        reasoning_effort_enabled: true,
+        models: [
+          {
+            id: 'gpt-5.4',
+            name: 'GPT-5.4',
+            reasoning_efforts: ['low', 'high'],
+            default_reasoning_effort: 'high'
+          }
+        ]
+      }
     });
     updateConsoleAssistantSettings.mockReset();
     startConsoleAssistantRunStream.mockReset();
@@ -88,6 +100,12 @@ describe('EmbeddedAgentAssistant', () => {
       document.querySelector('.agent-flow-editor__debug-console')
     ).toBeInTheDocument();
     expect(document.querySelector('.ant-drawer')).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId('embedded-agent-assistant-preview')
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('separator').map((element) => element.getAttribute('aria-label'))
+    ).toEqual(expect.arrayContaining([expect.any(String)]));
 
     const settings = screen.getByRole('button', {
       name: i18nText('appShell', 'auto.assistant_settings')
@@ -103,6 +121,9 @@ describe('EmbeddedAgentAssistant', () => {
       await screen.findByRole('dialog', {
         name: i18nText('appShell', 'auto.assistant_settings')
       })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(i18nText('appShell', 'auto.assistant_model'))
     ).toBeInTheDocument();
   });
 

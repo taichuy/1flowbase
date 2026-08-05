@@ -9,6 +9,7 @@ use axum::{
 use control_plane::{
     application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     application_public_api::{
+        model_catalog::extract_agent_model_catalog_from_start_node,
         native::{NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest},
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::{
@@ -60,6 +61,10 @@ pub struct AssistantPreferenceBody {
     pub application_id: Option<Uuid>,
     #[serde(default)]
     pub mcp_instance_ids: Vec<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -75,10 +80,26 @@ pub struct AssistantMcpInstanceOption {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct AssistantModelOption {
+    pub id: String,
+    pub name: Option<String>,
+    pub reasoning_efforts: Vec<String>,
+    pub default_reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize, ToSchema)]
+pub struct AssistantRunCapabilities {
+    pub model_selection_enabled: bool,
+    pub reasoning_effort_enabled: bool,
+    pub models: Vec<AssistantModelOption>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AssistantSettingsResponse {
     pub preference: AssistantPreferenceBody,
     pub published_agent_flows: Vec<AssistantPublishedFlowOption>,
     pub enabled_mcp_instances: Vec<AssistantMcpInstanceOption>,
+    pub run_capabilities: AssistantRunCapabilities,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -147,10 +168,12 @@ pub async fn get_settings(
     );
     let (published_agent_flows, enabled_mcp_instances) =
         available_targets(&state, context.user.id).await?;
+    let run_capabilities = assistant_run_capabilities(&state, preference.application_id).await?;
     Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
         preference,
         published_agent_flows,
         enabled_mcp_instances,
+        run_capabilities,
     })))
 }
 
@@ -169,6 +192,24 @@ pub async fn update_settings(
     let context = require_session(&state, &headers).await?;
     context.cookie_session()?;
     require_csrf(&headers, &context)?;
+    let current_preference = read_preference(
+        &state
+            .store
+            .find_user_by_id(context.user.id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound("user"))?
+            .meta,
+        context.actor.current_workspace_id,
+    );
+    let preference = if current_preference.application_id != preference.application_id {
+        AssistantPreferenceBody {
+            model: None,
+            reasoning_effort: None,
+            ..preference
+        }
+    } else {
+        preference
+    };
     validate_preference(&state, context.user.id, &preference).await?;
     let workspace_id = context.actor.current_workspace_id;
     let meta_patch = json!({
@@ -184,10 +225,12 @@ pub async fn update_settings(
         .await?;
     let (published_agent_flows, enabled_mcp_instances) =
         available_targets(&state, context.user.id).await?;
+    let run_capabilities = assistant_run_capabilities(&state, preference.application_id).await?;
     Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
         preference,
         published_agent_flows,
         enabled_mcp_instances,
+        run_capabilities,
     })))
 }
 
@@ -456,6 +499,7 @@ async fn prepare_assistant_execution(
     let catalog = McpManagementService::new(state.store.clone())
         .read_workspace_catalog(context.user.id)
         .await?;
+    let execution = assistant_execution(&preference)?;
     let selected_mcp_instance_ids = preference.mcp_instance_ids;
     let mut inputs = NativeObject::default();
     inputs.insert_value(
@@ -473,14 +517,14 @@ async fn prepare_assistant_execution(
             request: NativeRunRequest {
                 query: body.query,
                 system: Vec::new(),
-                model: None,
+                model: preference.model,
                 history: body.history,
                 attachments: Vec::new(),
                 conversation: NativeObject::default(),
                 expand_id: None,
                 response_mode: None,
                 stream_options: NativeObject::default(),
-                execution: NativeExecution::default(),
+                execution,
                 metadata: NativeRequestMetadata::default(),
                 request_context: Default::default(),
                 title: body.title,
@@ -499,6 +543,18 @@ async fn prepare_assistant_execution(
         selected_mcp_instance_ids,
         request_headers: headers.clone(),
     })
+}
+
+fn assistant_execution(preference: &AssistantPreferenceBody) -> Result<NativeExecution, ApiError> {
+    let Some(reasoning_effort) = preference.reasoning_effort.as_deref() else {
+        return Ok(NativeExecution::default());
+    };
+    serde_json::from_value(json!({
+        "model_parameters": {
+            "reasoning": { "mode": "adaptive", "effort": reasoning_effort }
+        }
+    }))
+    .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("reasoning_effort").into())
 }
 
 async fn assistant_callback_tool_results(
@@ -754,6 +810,57 @@ async fn available_targets(
     Ok((published_agent_flows, enabled_mcp_instances))
 }
 
+async fn assistant_run_capabilities(
+    state: &Arc<ApiState>,
+    application_id: Option<Uuid>,
+) -> Result<AssistantRunCapabilities, ApiError> {
+    let Some(application_id) = application_id else {
+        return Ok(AssistantRunCapabilities::default());
+    };
+    let publication = ApplicationPublicationService::new(state.store.clone())
+        .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
+        .await?;
+    let model_selection_enabled = publication.mapping_snapshot.input.model_target.is_some();
+    let reasoning_effort_enabled = publication
+        .document_snapshot
+        .get("graph")
+        .and_then(|graph| graph.get("nodes"))
+        .and_then(Value::as_array)
+        .is_some_and(|nodes| {
+            nodes.iter().any(|node| {
+                node.get("type").and_then(Value::as_str) == Some("llm")
+                    && node
+                        .get("config")
+                        .and_then(|config| config.get("external_reasoning_policy"))
+                        .and_then(|policy| policy.get("follow_external_reasoning"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
+        });
+    let models = model_selection_enabled
+        .then(|| extract_agent_model_catalog_from_start_node(&publication.document_snapshot))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|model| AssistantModelOption {
+            id: model.id,
+            name: model.name,
+            reasoning_efforts: model
+                .reasoning
+                .as_ref()
+                .map(|reasoning| reasoning.supported_efforts.clone())
+                .unwrap_or_default(),
+            default_reasoning_effort: model
+                .reasoning
+                .and_then(|reasoning| reasoning.default_effort),
+        })
+        .collect();
+    Ok(AssistantRunCapabilities {
+        model_selection_enabled,
+        reasoning_effort_enabled,
+        models,
+    })
+}
+
 async fn validate_preference(
     state: &Arc<ApiState>,
     actor_user_id: Uuid,
@@ -769,9 +876,38 @@ async fn validate_preference(
             )
             .into());
         }
-        ApplicationPublicationService::new(state.store.clone())
-            .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
-            .await?;
+        let capabilities = assistant_run_capabilities(state, Some(application_id)).await?;
+        if let Some(model) = preference.model.as_deref() {
+            let selected = capabilities
+                .models
+                .iter()
+                .find(|candidate| candidate.id == model)
+                .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "assistant_model",
+                ))?;
+            if let Some(reasoning_effort) = preference.reasoning_effort.as_deref() {
+                if !capabilities.reasoning_effort_enabled
+                    || !selected
+                        .reasoning_efforts
+                        .iter()
+                        .any(|supported| supported == reasoning_effort)
+                {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "reasoning_effort",
+                    )
+                    .into());
+                }
+            }
+        } else if preference.reasoning_effort.is_some() {
+            return Err(
+                control_plane::errors::ControlPlaneError::InvalidInput("reasoning_effort").into(),
+            );
+        }
+    } else if preference.model.is_some() || preference.reasoning_effort.is_some() {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "assistant_application_id",
+        )
+        .into());
     }
     let catalog = McpManagementService::new(state.store.clone())
         .read_workspace_catalog(actor_user_id)

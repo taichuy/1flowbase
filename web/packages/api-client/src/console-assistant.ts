@@ -8,12 +8,26 @@ import {
 export interface ConsoleAssistantPreference {
   application_id: string | null;
   mcp_instance_ids: string[];
+  model?: string | null;
+  reasoning_effort?: string | null;
+}
+
+export interface ConsoleAssistantRunCapabilities {
+  model_selection_enabled: boolean;
+  reasoning_effort_enabled: boolean;
+  models: Array<{
+    id: string;
+    name: string | null;
+    reasoning_efforts: string[];
+    default_reasoning_effort: string | null;
+  }>;
 }
 
 export interface ConsoleAssistantSettings {
   preference: ConsoleAssistantPreference;
   published_agent_flows: Array<{ application_id: string; name: string }>;
   enabled_mcp_instances: Array<{ instance_id: string; name: string }>;
+  run_capabilities: ConsoleAssistantRunCapabilities;
 }
 
 export interface StartConsoleAssistantRunInput {
