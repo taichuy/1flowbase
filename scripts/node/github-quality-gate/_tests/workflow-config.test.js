@@ -96,10 +96,10 @@ function extractPushBranches(workflow) {
     .filter(Boolean);
 }
 
-test("verify workflow runs on main and latest but only publishes quality reports on latest pushes", () => {
+test("verify workflow runs on beta, main and latest but only publishes quality reports on latest pushes", () => {
   const workflow = readVerifyWorkflow();
 
-  assert.deepEqual(extractPushBranches(workflow), ["main", "latest"]);
+  assert.deepEqual(extractPushBranches(workflow), ["beta", "main", "latest"]);
   assert.match(
     workflow,
     /concurrency:\n\s+group: verify-\$\{\{ github\.ref_name \}\}\n\s+cancel-in-progress: true/u,
@@ -143,7 +143,11 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   assert.doesNotMatch(workflow, /coverage-backend-gate:/u);
   assert.match(
     workflow,
-    /verify:\n\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-backend-gate/u,
+    /verify:\n\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-backend-gate\n\s+- foundation-contract-gate/u,
+  );
+  assert.match(
+    workflow,
+    /foundation-contract-gate:\n\s+uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u,
   );
   assert.match(workflow, /scope: repo-tooling/u);
   assert.match(workflow, /scope: repo-frontend-pr/u);
@@ -155,7 +159,7 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   assert.match(workflow, /name: test-governance-repo-tooling/u);
   assert.match(workflow, /name: test-governance-repo-frontend-pr/u);
   assert.match(workflow, /name: test-governance-\$\{\{ matrix\.scope \}\}/u);
-  assert.match(workflow, /INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps/u);
+  assert.match(workflow, /INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts/u);
   assert.match(
     workflow,
     /INPUT_PUBLISH_PR_COMMENT: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository \}\}/u,
@@ -170,20 +174,49 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
 test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/manual", () => {
   const fastWorkflow = readFoundationContractsWorkflow();
   const fullAiWorkflow = readAiGatewayConcurrencyWorkflow();
+  const verifyWorkflow = readVerifyWorkflow();
+  const qualityGateWorkflow = readQualityGateWorkflow();
 
   assert.match(fastWorkflow, /^name: foundation contract evidence/mu);
-  assert.match(fastWorkflow, /pull_request:/u);
-  assert.match(fastWorkflow, /push:\n\s+branches: \[beta\]/u);
+  const trigger = fastWorkflow.slice(fastWorkflow.indexOf('\non:'), fastWorkflow.indexOf('\npermissions:'));
+  assert.match(trigger, /workflow_call:/u);
   assert.match(fastWorkflow, /workflow_dispatch:/u);
+  assert.doesNotMatch(trigger, /pull_request:/u);
+  assert.doesNotMatch(trigger, /push:/u);
+  assert.match(trigger, /target_ref:[\s\S]*base_ref:[\s\S]*foundation:[\s\S]*lane:/u);
   assert.match(fastWorkflow, /foundation-contracts/u);
+  assert.match(fastWorkflow, /name: test-governance-foundation-contracts-/u);
   assert.match(fastWorkflow, /timeout-minutes: 40/u);
   assert.doesNotMatch(fastWorkflow, /timeout-minutes: (?:6\d|[7-9]\d|[1-9]\d{2,})/u);
+
+  const candidateCheckoutJobs = [
+    ['ai-gateway-fast', 'mcp-gateway-fast'],
+    ['mcp-gateway-fast', 'application-backend-fast'],
+    ['application-backend-fast', 'native-react-fast'],
+    ['native-react-fast', 'aggregate'],
+    ['aggregate', null],
+  ];
+  for (const [job, nextJob] of candidateCheckoutJobs) {
+    const jobStart = fastWorkflow.indexOf(`  ${job}:`);
+    const jobEnd = nextJob ? fastWorkflow.indexOf(`\n  ${nextJob}:`, jobStart + 3) : fastWorkflow.length;
+    const jobSource = fastWorkflow.slice(jobStart, jobEnd);
+    assert.match(
+      jobSource,
+      /uses: actions\/checkout@v5\n\s+with:\n\s+ref: \$\{\{ needs\.route\.outputs\.candidate_sha \}\}/u,
+      `${job} must execute the route candidate SHA`,
+    );
+  }
 
   assert.doesNotMatch(fullAiWorkflow, /^\s*pull_request:/mu);
   assert.doesNotMatch(fullAiWorkflow, /branches: \[dev\]/u);
   assert.match(fullAiWorkflow, /timeout-minutes: 55/u);
   assert.match(fullAiWorkflow, /workflow_call:/u);
   assert.match(fullAiWorkflow, /workflow_dispatch:/u);
+
+  assert.match(verifyWorkflow, /foundation-contract-gate:[\s\S]*uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u);
+  assert.match(qualityGateWorkflow, /foundation-contract-gate:[\s\S]*uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u);
+  assert.match(qualityGateWorkflow, /aggregate:[\s\S]*needs:[\s\S]*- foundation-contract-gate/u);
+  assert.match(qualityGateWorkflow, /INPUT_EXPECTED_SCOPES: .*foundation-contracts/u);
 
   const nextFoundationJob = {
     'mcp-gateway-fast': 'application-backend-fast',
@@ -300,7 +333,7 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
   );
   assert.match(
     workflow,
-    /INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,[^']*container-images,ai-gateway-protocol-conformance'/u,
+    /INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,[^']*container-images,ai-gateway-protocol-conformance,foundation-contracts'/u,
   );
   assert.match(
     jobBlock,

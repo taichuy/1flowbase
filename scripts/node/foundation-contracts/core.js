@@ -319,6 +319,40 @@ function buildContractReceipt({ candidateSha, plan, componentResults, eventName 
   };
 }
 
+function buildQualityGateComponentReport(receipt) {
+  return {
+    reportType: 'ci',
+    status: receipt.status,
+    scope: 'foundation-contracts',
+    exitCode: receipt.exitCode,
+    branch: '',
+    commit: receipt.candidateSha,
+    warningFiles: receipt.warningFiles || [],
+    coverageFiles: [],
+    coverageSummaries: [],
+    backendConsistencyTargets: [],
+    foundationContractWarnings: receipt.warnings || [],
+    errors: receipt.errors || [],
+    uncovered: receipt.uncovered || [],
+    deferredEvidence: receipt.deferredEvidence || [],
+  };
+}
+
+function writeQualityGateComponentArtifacts(repoRoot, receipt) {
+  const report = buildQualityGateComponentReport(receipt);
+  const reportPath = writeJson(repoRoot, path.join(OUTPUT_ROOT, 'quality-gate-report.json'), report);
+  const logPath = path.join(repoRoot, OUTPUT_ROOT, 'quality-gate.latest.log');
+  fs.writeFileSync(logPath, [
+    `scope=${report.scope}`,
+    `status=${report.status}`,
+    `exit_code=${report.exitCode}`,
+    `candidate_sha=${report.commit}`,
+    ...report.errors.map((error) => `error=${error}`),
+    ...report.foundationContractWarnings.map((warning) => `warning=${warning}`),
+  ].join('\n') + '\n', 'utf8');
+  return { report, reportPath, logPath };
+}
+
 function writeJson(repoRoot, relativePath, value) {
   const absolutePath = path.join(repoRoot, relativePath);
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
@@ -489,6 +523,7 @@ async function main(argv = [], deps = {}) {
       eventName: options.event || '',
     });
     const receiptPath = writeJson(repoRoot, path.join(OUTPUT_ROOT, 'foundation-contract-receipt.json'), receipt);
+    writeQualityGateComponentArtifacts(repoRoot, receipt);
     writeStdout(`[foundation-contracts] ${receipt.status}: ${receiptPath}\n`);
     return receipt.exitCode;
   }
@@ -501,9 +536,11 @@ module.exports = {
   appendGitHubPlanOutputs,
   buildContractReceipt,
   buildFoundationPlan,
+  buildQualityGateComponentReport,
   collectComponentReceipts,
   main,
   parseArgs,
   runFastPack,
   validatePackInventory,
+  writeQualityGateComponentArtifacts,
 };

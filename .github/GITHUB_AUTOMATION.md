@@ -8,7 +8,7 @@ This directory owns GitHub Actions automation for repository quality gates.
 | --- | --- |
 | `.github/workflows/verify.yml` | Automatic merge CI for `pull_request` and `push` to `main` / `latest`; runs lightweight repo tooling, frontend PR, and backend static/fmt/check gates, updates one PR report comment for same-repository pull requests, then publishes one aggregate issue only for `latest` pushes. |
 | `.github/workflows/quality-gate.yml` | Manual and nightly quality gate run; full `ci` scope runs component gates, coverage gates, and container image security in parallel before one aggregate Issue report. |
-| `.github/workflows/foundation-contracts.yml` | Changed-file PR and `beta` evidence for AI Gateway, MCP Gateway, Application Backend, and Native React fast contract packs; emits candidate-bound receipts and supports focused manual reruns. |
+| `.github/workflows/foundation-contracts.yml` | Reusable four-foundation fast contract executor called by `verify.yml` and full `quality-gate.yml`; emits candidate-bound component evidence and remains manually dispatchable for focused reruns. |
 | `.github/workflows/ai-gateway-concurrency.yml` | Reusable and manually runnable full AI Gateway protocol conformance gate; joins full manual/nightly `ci` aggregation and does not run for every pull request. |
 | `.github/workflows/container-images.yml` | Container image CD for `web`, `api-server`, and `plugin-runner`; builds scan-candidate GHCR tags, runs Trivy admission scans, promotes passing images to version and `latest` tags, then uploads artifact-only CD quality gate evidence. |
 | `.github/actions/quality-gate/action.yml` | Reusable repository-local action used by CI, manual, and nightly quality gates. |
@@ -18,6 +18,7 @@ This directory owns GitHub Actions automation for repository quality gates.
 `verify.yml` runs automatically on:
 
 - `pull_request`
+- `push` to `beta`
 - `push` to `main`
 - `push` to `latest`
 
@@ -29,7 +30,11 @@ scope: repo-frontend-pr
 scope: repo-backend-static
 scope: repo-backend-fmt
 scope: repo-backend-check-{core-libs,runtime-storage,apps}
+component: foundation-contracts
 ```
+
+The `foundation-contracts` component is produced by the reusable four-foundation workflow
+and is downloaded by the same final `verify` aggregate as the repo component reports.
 
 The `repo-frontend-pr` scope runs the Vite lazy dependency static gate, web lint, a
 compact frontend PR smoke suite, and the app build. Full app Vitest, page regression,
@@ -84,12 +89,17 @@ for the same branch before stale runs can publish or close quality issues.
 
 ## Foundation Contract Evidence
 
-`foundation-contracts.yml` adds a second routing axis without changing merge authority:
+`foundation-contracts.yml` adds a second routing axis inside the existing quality gates without changing merge authority:
 
 ```text
 changed files -> affected foundation fast packs -> candidate-bound receipt
               -> complete provider/browser/migration matrices deferred to nightly/manual
 ```
+
+`verify.yml` calls the changed-file fast pack for PR and `beta/main/latest` evidence. Scheduled
+and manual full `quality-gate.yml` calls all four packs and includes the resulting
+`foundation-contracts` component in its unified aggregate report. The reusable workflow has no
+standalone PR or push trigger; `workflow_dispatch` exists only for focused diagnosis.
 
 The receipt is written below `tmp/test-governance/foundation-contracts/` and records the
 candidate SHA, trigger reasons, executed packs, warnings, uncovered items, and deferred
@@ -154,7 +164,8 @@ environment: leave empty
 For manual `scope: ci`, runs use the full quality gate shape: repo tooling,
 full repo frontend, React Doctor, backend static/fmt/package shards, backend app test
 package shards, backend consistency, frontend coverage, backend coverage package shards,
-state protocols, container image security, and mock-backed AI Gateway protocol conformance
+state protocols, container image security, the four-foundation contract receipt, and
+mock-backed AI Gateway protocol conformance
 run as separate jobs. Scheduled `scope: ci`
 runs use the same component set.
 An aggregate job downloads their artifacts, publishes one Issue report, and uploads

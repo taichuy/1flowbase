@@ -101,6 +101,16 @@ jobs:
       - id: target
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+  foundation-contract-gate:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs: resolve-quality-gate-target
+    uses: ./.github/workflows/foundation-contracts.yml
+    with:
+      target_ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
+      base_ref: ''
+      foundation: all
+      lane: project-health
+
   single-scope-gate:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.scope != 'ci' && inputs.scope != 'container-images' }}
     runs-on: ubuntu-latest
@@ -837,6 +847,7 @@ jobs:
       - coverage-backend-api-server-sharded-merge
       - container-images-gate
       - ai-gateway-protocol-conformance
+      - foundation-contract-gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -857,7 +868,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance,foundation-contracts'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

@@ -1,10 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   buildContractReceipt,
   buildFoundationPlan,
+  buildQualityGateComponentReport,
   validatePackInventory,
+  writeQualityGateComponentArtifacts,
 } = require('../core.js');
 
 test('AC-001/006 routes four foundations and ignores legal non-contract changes', () => {
@@ -116,4 +121,39 @@ test('AC-007/009 receipt requires candidate identity and warnings stay advisory'
   });
   assert.equal(staleReceipt.status, 'failed');
   assert.match(staleReceipt.errors[0], /candidate SHA mismatch/u);
+});
+
+test('AC-001/009 foundation receipt adapts into the unified quality gate component', () => {
+  const report = buildQualityGateComponentReport({
+    candidateSha: 'abcdef1234567890',
+    status: 'passed',
+    exitCode: 0,
+    warnings: ['review deferred browser evidence'],
+    warningFiles: ['tmp/test-governance/foundation.warnings.log'],
+    errors: [],
+    deferredEvidence: ['native-react: nightly browser matrix'],
+  });
+
+  assert.equal(report.scope, 'foundation-contracts');
+  assert.equal(report.status, 'passed');
+  assert.equal(report.exitCode, 0);
+  assert.equal(report.commit, 'abcdef1234567890');
+  assert.deepEqual(report.warningFiles, ['tmp/test-governance/foundation.warnings.log']);
+  assert.deepEqual(report.foundationContractWarnings, ['review deferred browser evidence']);
+  assert.deepEqual(report.deferredEvidence, ['native-react: nightly browser matrix']);
+
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'foundation-quality-component-'));
+  const artifacts = writeQualityGateComponentArtifacts(repoRoot, {
+    candidateSha: 'abcdef1234567890',
+    status: 'passed',
+    exitCode: 0,
+    warnings: [],
+    warningFiles: [],
+    errors: [],
+    uncovered: [],
+    deferredEvidence: [],
+  });
+  assert.equal(fs.existsSync(artifacts.reportPath), true);
+  assert.equal(fs.existsSync(artifacts.logPath), true);
+  assert.equal(JSON.parse(fs.readFileSync(artifacts.reportPath, 'utf8')).scope, 'foundation-contracts');
 });
