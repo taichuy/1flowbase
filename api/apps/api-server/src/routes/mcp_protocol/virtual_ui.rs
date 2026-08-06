@@ -498,11 +498,6 @@ fn visible_tool<'a>(
                 && instance.status == McpInstanceStatus::Enabled
                 && scope.contains(instance)
         })?;
-        catalog.groups.iter().find(|group| {
-            group.instance_record_id == binding.instance_record_id
-                && group.path == binding.group_path
-                && group.enabled
-        })?;
         let tool = catalog.tools.iter().find(|tool| {
             tool.id == binding.tool_record_id && tool.status == McpToolStatus::Enabled
         })?;
@@ -670,6 +665,18 @@ mod tests {
         assert!(matches!(
             get(&catalog, &scope, &json!({"tool_id": "lookup"})),
             VirtualToolOutcome::Error { code: -32602, .. }
+        ));
+    }
+
+    #[test]
+    fn assistant_mcp_binding_visibility_does_not_require_group_record() {
+        let mut catalog = catalog_with_server_bound_workspace();
+        catalog.groups.clear();
+        let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
+
+        assert!(matches!(
+            get(&catalog, &scope, &json!({"tool_id": "lookup"})),
+            VirtualToolOutcome::Success(_)
         ));
     }
 
