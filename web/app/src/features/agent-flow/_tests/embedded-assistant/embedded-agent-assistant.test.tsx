@@ -297,7 +297,7 @@ describe('EmbeddedAgentAssistant', () => {
         })
     );
 
-    const { container } = render(
+    render(
       <AppProviders>
         <EmbeddedAgentAssistant />
       </AppProviders>
@@ -320,7 +320,7 @@ describe('EmbeddedAgentAssistant', () => {
     await waitFor(() =>
       expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledTimes(1)
     );
-    const stopButton = container.querySelector<HTMLButtonElement>(
+    const stopButton = document.querySelector<HTMLButtonElement>(
       '.ant-sender button:last-of-type'
     );
     expect(stopButton).not.toBeNull();
