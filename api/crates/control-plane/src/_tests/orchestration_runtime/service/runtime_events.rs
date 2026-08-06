@@ -1128,6 +1128,12 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         "provider usage snapshots should still be written to durable runtime_events: {runtime_event_types:?}"
     );
     assert!(
+        runtime_event_types
+            .iter()
+            .any(|event_type| event_type == "context_snapshot"),
+        "AI Gateway context snapshots should be recoverable from durable runtime_events: {runtime_event_types:?}"
+    );
+    assert!(
         runtime_event_types.iter().any(|event_type| event_type == "finish"),
         "provider finish events should still be written to durable runtime_events: {runtime_event_types:?}"
     );

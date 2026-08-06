@@ -245,17 +245,33 @@ where
         ) {
             match estimate_provider_count_tokens(&input) {
                 Ok(estimate) => {
-                    append_provider_runtime_event(
-                        stream,
+                    let mut context_snapshot = debug_stream_events::context_snapshot(
+                        &active_node.node_id,
+                        active_node.node_run_id,
+                        &estimate,
+                        effective_context_window,
+                    );
+                    match runtime_event_persister::persist_runtime_event_payload(
+                        &self.repository,
                         flow_run_id,
-                        debug_stream_events::context_snapshot(
-                            &active_node.node_id,
-                            active_node.node_run_id,
-                            &estimate,
-                            effective_context_window,
-                        ),
+                        &context_snapshot,
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(()) => {
+                            context_snapshot.persist_required = false;
+                            context_snapshot.durability = RuntimeEventDurability::Ephemeral;
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                flow_run_id = %flow_run_id,
+                                node_id = %active_node.node_id,
+                                error = %error,
+                                "failed to persist AI Gateway context snapshot"
+                            );
+                        }
+                    }
+                    append_provider_runtime_event(stream, flow_run_id, context_snapshot).await;
                 }
                 Err(error) => {
                     tracing::warn!(
