@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react';
+import { Think, ThoughtChain } from '@ant-design/x';
+import type { ThoughtChainItemType } from '@ant-design/x';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { Typography } from 'antd';
 
 import type { AgentFlowTraceItem } from '../../../api/runtime';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
-import { DebugWorkflowNodeItem, StatusIcon } from './DebugWorkflowNodeRow';
+import { DebugWorkflowNodeRow, StatusIcon } from './DebugWorkflowNodeRow';
 import { DebugWorkflowNodeDetailContent } from './LlmToolTraceTree';
 import { groupTraceItemsForDisplay } from './debug-workflow-trace-utils';
+import { collectLlmToolCallbacks } from './llm-tool-callbacks';
 import { i18nText } from '../../../../../shared/i18n/text';
+import { DebugMarkdownContent } from './DebugMarkdownContent';
 
 function workflowStatus(items: AgentFlowTraceItem[]) {
   if (items.some((item) => item.status === 'failed')) {
@@ -33,12 +37,31 @@ function workflowStatus(items: AgentFlowTraceItem[]) {
   return 'running';
 }
 
+function thoughtStatus(
+  status: AgentFlowTraceItem['status']
+): ThoughtChainItemType['status'] {
+  switch (status) {
+    case 'succeeded':
+      return 'success';
+    case 'failed':
+      return 'error';
+    case 'cancelled':
+      return 'abort';
+    default:
+      return 'loading';
+  }
+}
+
 export function DebugWorkflowProcess({
   items,
+  reasoning,
+  reasoningStreaming = false,
   onLoadArtifact,
   onLoadArtifacts
 }: {
   items: AgentFlowTraceItem[];
+  reasoning?: string;
+  reasoningStreaming?: boolean;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
@@ -46,7 +69,112 @@ export function DebugWorkflowProcess({
   const [expandedNodeKeys, setExpandedNodeKeys] = useState<Set<string>>(
     () => new Set()
   );
+  const automaticallyExpandedNodeKeysRef = useRef(new Set<string>());
   const traceGroups = useMemo(() => groupTraceItemsForDisplay(items), [items]);
+  const toolCallbackCounts = useMemo(
+    () =>
+      new Map(
+        traceGroups.map((group) => [
+          group.key,
+          collectLlmToolCallbacks(group.item.debugPayload).length
+        ])
+      ),
+    [traceGroups]
+  );
+  const automaticDetailKeys = useMemo(() => {
+    const keys = traceGroups
+      .filter((group) => (toolCallbackCounts.get(group.key) ?? 0) > 0)
+      .map((group) => group.key);
+    const reasoningLlmGroup = reasoning?.trim()
+      ? [...traceGroups]
+          .reverse()
+          .find((group) => group.item.nodeType === 'llm')
+      : null;
+
+    if (reasoningLlmGroup && !keys.includes(reasoningLlmGroup.key)) {
+      keys.push(reasoningLlmGroup.key);
+    }
+
+    return keys;
+  }, [reasoning, toolCallbackCounts, traceGroups]);
+
+  useEffect(() => {
+    setExpandedNodeKeys((current) => {
+      const next = new Set(current);
+      let changed = false;
+
+      automaticDetailKeys.forEach((key) => {
+        if (automaticallyExpandedNodeKeysRef.current.has(key)) {
+          return;
+        }
+        automaticallyExpandedNodeKeysRef.current.add(key);
+        if (!next.has(key)) {
+          next.add(key);
+          changed = true;
+        }
+      });
+
+      return changed ? next : current;
+    });
+  }, [automaticDetailKeys]);
+  const thoughtItems = useMemo<ThoughtChainItemType[]>(() => {
+    const lastLlmIndex = traceGroups.reduce(
+      (lastIndex, group, index) =>
+        group.item.nodeType === 'llm' ? index : lastIndex,
+      -1
+    );
+
+    return traceGroups.map((group, index) => {
+      const item = group.item;
+      const showReasoning =
+        item.nodeType === 'llm' &&
+        index === lastLlmIndex &&
+        Boolean(reasoning?.trim());
+
+      return {
+        key: group.key,
+        icon: false,
+        title: <DebugWorkflowNodeRow item={item} />,
+        status: thoughtStatus(item.status),
+        blink: item.status === 'running',
+        collapsible: true,
+        content: (
+          <div className="agent-flow-editor__debug-workflow-node-detail">
+            {showReasoning ? (
+              <Think
+                defaultExpanded={item.status === 'running'}
+                loading={item.status === 'running'}
+                title={i18nText('agentFlow', 'auto.think')}
+                blink={reasoningStreaming && item.status === 'running'}
+                className="agent-flow-editor__debug-workflow-think"
+              >
+                <DebugMarkdownContent
+                  className="agent-flow-editor__debug-workflow-think-content"
+                  content={reasoning ?? ''}
+                  streaming={reasoningStreaming}
+                />
+              </Think>
+            ) : null}
+            <DebugWorkflowNodeDetailContent
+              defaultToolsExpanded={
+                (toolCallbackCounts.get(group.key) ?? 0) > 0
+              }
+              item={item}
+              onLoadArtifact={onLoadArtifact}
+              onLoadArtifacts={onLoadArtifacts}
+            />
+          </div>
+        )
+      };
+    });
+  }, [
+    onLoadArtifact,
+    onLoadArtifacts,
+    reasoning,
+    reasoningStreaming,
+    toolCallbackCounts,
+    traceGroups
+  ]);
 
   if (items.length === 0) {
     return null;
@@ -78,41 +206,18 @@ export function DebugWorkflowProcess({
         )}
       </button>
       {expanded ? (
-        <div className="agent-flow-editor__debug-workflow-collapse-list">
-          {traceGroups.map((group) => {
-            const nodeExpanded = expandedNodeKeys.has(group.key);
-            const item = group.item;
-
-            return (
-              <DebugWorkflowNodeItem
-                key={group.key}
-                expanded={nodeExpanded}
-                item={item}
-                onToggle={() => {
-                  setExpandedNodeKeys((current) => {
-                    const next = new Set(current);
-
-                    if (next.has(group.key)) {
-                      next.delete(group.key);
-                    } else {
-                      next.add(group.key);
-                    }
-
-                    return next;
-                  });
-                }}
-              >
-                <div className="agent-flow-editor__debug-workflow-node-detail">
-                  <DebugWorkflowNodeDetailContent
-                    item={item}
-                    onLoadArtifact={onLoadArtifact}
-                    onLoadArtifacts={onLoadArtifacts}
-                  />
-                </div>
-              </DebugWorkflowNodeItem>
-            );
-          })}
-        </div>
+        <ThoughtChain
+          classNames={{
+            item: 'agent-flow-editor__debug-workflow-thought-item',
+            itemContent: 'agent-flow-editor__debug-workflow-thought-content',
+            itemHeader: 'agent-flow-editor__debug-workflow-thought-header'
+          }}
+          expandedKeys={[...expandedNodeKeys]}
+          items={thoughtItems}
+          line={false}
+          rootClassName="agent-flow-editor__debug-workflow-thought-chain"
+          onExpand={(keys) => setExpandedNodeKeys(new Set(keys.map(String)))}
+        />
       ) : null}
     </section>
   );

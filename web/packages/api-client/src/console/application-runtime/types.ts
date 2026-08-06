@@ -1054,6 +1054,32 @@ export type ConsoleFlowDebugStreamEvent =
       content_type?: 'text' | 'reasoning' | null;
     }
   | {
+      type: 'assistant_tool_call_started';
+      node_run_id: string;
+      node_id: string;
+      tool_call: Record<string, unknown>;
+      run_id?: string;
+      event_id?: string;
+      sequence?: number;
+      created_at?: string;
+      delta_index?: number | null;
+      content_type?: 'text' | 'reasoning' | null;
+    }
+  | {
+      type: 'assistant_tool_call_finished';
+      node_run_id: string;
+      node_id: string;
+      tool_call: Record<string, unknown>;
+      tool_result: Record<string, unknown>;
+      duration_ms: number;
+      run_id?: string;
+      event_id?: string;
+      sequence?: number;
+      created_at?: string;
+      delta_index?: number | null;
+      content_type?: 'text' | 'reasoning' | null;
+    }
+  | {
       type: 'flow_finished';
       run_id: string;
       status: string;

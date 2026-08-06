@@ -3,6 +3,7 @@ import type {
   AgentFlowDebugMessage,
   AgentFlowDebugMessageStatus,
   AgentFlowTraceItem,
+  FlowDebugRunStreamEvent,
   FlowDebugRunDetail
 } from '../../api/runtime';
 import {
@@ -11,6 +12,7 @@ import {
   closeOpenThinkBlock,
   parseAssistantContent
 } from './assistant-content';
+import { applyDebugStreamEventToTrace } from './stream-events';
 
 function summarizePayload(payload: Record<string, unknown> | null | undefined) {
   if (!payload || Object.keys(payload).length === 0) {
@@ -215,6 +217,66 @@ function nodeRunDebugPayload(nodeRun: FlowDebugRunDetail['node_runs'][number]) {
   return isRecord(nodeRun.debug_payload) ? nodeRun.debug_payload : {};
 }
 
+function optionalStringField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function assistantToolEventFromRunEvent(
+  event: FlowDebugRunDetail['events'][number]
+): Extract<
+  FlowDebugRunStreamEvent,
+  | { type: 'assistant_tool_call_started' }
+  | { type: 'assistant_tool_call_finished' }
+> | null {
+  if (
+    event.event_type !== 'assistant_tool_call_started' &&
+    event.event_type !== 'assistant_tool_call_finished'
+  ) {
+    return null;
+  }
+
+  const payload = event.payload;
+  const nodeRunId =
+    event.node_run_id ?? optionalStringField(payload, 'node_run_id');
+  const nodeId = optionalStringField(payload, 'node_id');
+  const toolCall = isRecord(payload.tool_call) ? payload.tool_call : null;
+
+  if (!nodeRunId || !nodeId || !toolCall) {
+    return null;
+  }
+
+  const base = {
+    event_id: `persisted:${event.sequence}`,
+    run_id: event.flow_run_id,
+    sequence: event.sequence,
+    created_at: event.created_at,
+    node_run_id: nodeRunId,
+    node_id: nodeId,
+    tool_call: toolCall
+  };
+
+  if (event.event_type === 'assistant_tool_call_started') {
+    return { ...base, type: 'assistant_tool_call_started' };
+  }
+
+  const toolResult = isRecord(payload.tool_result) ? payload.tool_result : null;
+  if (!toolResult) {
+    return null;
+  }
+
+  return {
+    ...base,
+    type: 'assistant_tool_call_finished',
+    tool_result: toolResult,
+    duration_ms:
+      typeof payload.duration_ms === 'number' &&
+      Number.isFinite(payload.duration_ms)
+        ? payload.duration_ms
+        : 0
+  };
+}
+
 function mapNodeRunToTraceItem({
   answerSnapshot,
   debugPayload,
@@ -296,7 +358,15 @@ export function mapRunDetailToTrace(
     });
   });
 
-  return [...currentTraceItems, ...mapStitchedTraceToTraceItems(detail)];
+  const traceWithToolEvents = detail.events
+    .slice()
+    .sort((left, right) => left.sequence - right.sequence)
+    .reduce((items, event) => {
+      const toolEvent = assistantToolEventFromRunEvent(event);
+      return toolEvent ? applyDebugStreamEventToTrace(items, toolEvent) : items;
+    }, currentTraceItems);
+
+  return [...traceWithToolEvents, ...mapStitchedTraceToTraceItems(detail)];
 }
 
 export function extractAssistantOutputText(detail: FlowDebugRunDetail): string {

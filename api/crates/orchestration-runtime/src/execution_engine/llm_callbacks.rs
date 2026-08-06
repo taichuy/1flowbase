@@ -447,10 +447,41 @@ pub(super) fn tool_result_prompt_content(value: Value) -> (Value, Option<Value>)
                 .filter_map(|entry| entry.get("text").and_then(Value::as_str))
                 .collect::<Vec<_>>()
                 .join("\n");
-            (Value::String(text), Some(Value::Array(content_blocks)))
+            if content_blocks
+                .iter()
+                .all(is_canonical_tool_result_content_block)
+            {
+                return (Value::String(text), Some(Value::Array(content_blocks)));
+            }
+
+            let content = if text.is_empty() {
+                Value::Array(content_blocks).to_string()
+            } else {
+                text
+            };
+            (Value::String(content), None)
         }
         other => (Value::String(other.to_string()), None),
     }
+}
+
+fn is_canonical_tool_result_content_block(block: &Value) -> bool {
+    matches!(
+        block
+            .as_object()
+            .and_then(|object| object.get("type"))
+            .and_then(Value::as_str),
+        Some(
+            "text"
+                | "image"
+                | "image_url"
+                | "document"
+                | "tool_use"
+                | "tool_result"
+                | "reasoning"
+                | "reasoning_redacted"
+        )
+    )
 }
 
 fn normalize_tool_result_content_blocks(blocks: Vec<Value>) -> Vec<Value> {
@@ -702,6 +733,16 @@ mod tests {
         assert_eq!(blocks[0]["source"]["type"], json!("base64"));
         assert_eq!(blocks[0]["source"]["media_type"], json!("image/png"));
         assert_eq!(blocks[0]["source"]["data"], json!("aW1hZ2U="));
+    }
+
+    #[test]
+    fn tool_result_prompt_content_keeps_an_untyped_result_array_as_plain_text() {
+        let (content, content_blocks) = tool_result_prompt_content(json!([
+            { "text": "MCP returned a record" }
+        ]));
+
+        assert_eq!(content, json!("MCP returned a record"));
+        assert!(content_blocks.is_none());
     }
 
     #[test]

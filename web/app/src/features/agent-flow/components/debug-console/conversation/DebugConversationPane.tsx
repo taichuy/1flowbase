@@ -1,5 +1,13 @@
+import { Bubble } from '@ant-design/x';
 import { Empty, Typography } from 'antd';
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react';
 
 import type {
   AgentFlowDebugMessage,
@@ -26,14 +34,16 @@ function getQueryField(runContext: AgentFlowRunContext) {
   return runContext.fields.find((field) => field.key === 'query') ?? null;
 }
 
-function debugMessageLabel(role: AgentFlowDebugMessage['role']) {
-  switch (role) {
-    case 'system':
-      return 'System';
-    case 'assistant':
-      return 'Bot';
+function bubbleMessageStatus(message: AgentFlowDebugMessage) {
+  switch (message.status) {
+    case 'running':
+      return message.content ? 'updating' : 'loading';
+    case 'failed':
+      return 'error';
+    case 'cancelled':
+      return 'abort';
     default:
-      return 'User';
+      return 'success';
   }
 }
 
@@ -102,6 +112,66 @@ export function DebugConversationPane({
   const activeAssistantContent = activeAssistantMessage?.content ?? '';
   const firstMessageId = messages[0]?.id ?? null;
   const lastMessageId = messages.at(-1)?.id ?? null;
+  const bubbleItems = useMemo(
+    () =>
+      messages.map((message) => ({
+        key: message.id,
+        role: message.role,
+        content: message,
+        loading: message.role === 'assistant' && message.status === 'running' && !message.content,
+        status: bubbleMessageStatus(message),
+        streaming: message.role === 'assistant' && message.status === 'running'
+      })),
+    [messages]
+  );
+  const bubbleRoles = useMemo(
+    () => ({
+      assistant: {
+        placement: 'start' as const,
+        rootClassName: 'agent-flow-editor__debug-assistant-bubble',
+        styles: {
+          body: { width: '100%' },
+          content: { width: '100%' },
+          root: { paddingInlineEnd: 0, width: '100%' }
+        },
+        variant: 'borderless' as const,
+        contentRender: (message: AgentFlowDebugMessage) => (
+          <DebugAssistantMessage
+            message={message}
+            onLoadArtifact={onLoadArtifact}
+            onLoadArtifacts={onLoadArtifacts}
+            onOpenLog={
+              !logActionRunId ||
+              (message.detailRunId ?? message.runId) === logActionRunId
+                ? onOpenMessageLog
+                : undefined
+            }
+            onOpenResumeTimeline={onOpenResumeTimeline}
+          />
+        )
+      },
+      system: {
+        placement: 'start' as const,
+        variant: 'borderless' as const,
+        contentRender: (message: AgentFlowDebugMessage) => (
+          <DebugMarkdownContent
+            className="agent-flow-editor__debug-message-content"
+            content={message.content}
+          />
+        )
+      },
+      user: {
+        placement: 'end' as const,
+        shape: 'corner' as const,
+        contentRender: (message: AgentFlowDebugMessage) => (
+          <Typography.Paragraph className="agent-flow-editor__debug-message-content">
+            {message.content}
+          </Typography.Paragraph>
+        )
+      }
+    }),
+    [logActionRunId, onLoadArtifact, onLoadArtifacts, onOpenMessageLog, onOpenResumeTimeline]
+  );
   const rememberScrollPosition = useCallback(
     (element: HTMLDivElement | null = messagesRef.current) => {
       if (!element) {
@@ -229,14 +299,6 @@ export function DebugConversationPane({
     }
   }
 
-  function messageMatchesLogActionRun(message: AgentFlowDebugMessage) {
-    if (!logActionRunId) {
-      return true;
-    }
-
-    return (message.detailRunId ?? message.runId) === logActionRunId;
-  }
-
   return (
     <div className="agent-flow-editor__debug-console-pane agent-flow-editor__debug-conversation-pane">
       <div
@@ -261,45 +323,12 @@ export function DebugConversationPane({
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           ) : (
-            messages.map((message) =>
-              message.role === 'assistant' ? (
-                <DebugAssistantMessage
-                  key={message.id}
-                  message={message}
-                  onLoadArtifact={onLoadArtifact}
-                  onLoadArtifacts={onLoadArtifacts}
-                  onOpenLog={
-                    messageMatchesLogActionRun(message)
-                      ? onOpenMessageLog
-                      : undefined
-                  }
-                  onOpenResumeTimeline={onOpenResumeTimeline}
-                />
-              ) : (
-                <article
-                  key={message.id}
-                  className={`agent-flow-editor__debug-message agent-flow-editor__debug-message--${message.role}`}
-                >
-                  <div className="agent-flow-editor__debug-message-main">
-                    <div className="agent-flow-editor__debug-message-header">
-                      <Typography.Text strong>
-                        {debugMessageLabel(message.role)}
-                      </Typography.Text>
-                    </div>
-                    {message.role === 'system' ? (
-                      <DebugMarkdownContent
-                        className="agent-flow-editor__debug-message-content"
-                        content={message.content}
-                      />
-                    ) : (
-                      <Typography.Paragraph className="agent-flow-editor__debug-message-content">
-                        {message.content}
-                      </Typography.Paragraph>
-                    )}
-                  </div>
-                </article>
-              )
-            )
+            <Bubble.List
+              autoScroll={false}
+              items={bubbleItems}
+              role={bubbleRoles}
+              rootClassName="agent-flow-editor__debug-bubble-list"
+            />
           )}
           <div
             ref={bottomRef}

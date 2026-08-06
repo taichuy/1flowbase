@@ -49,6 +49,49 @@ fn waiting_callback_event_references_large_request_without_copying_it() {
     );
 }
 
+#[test]
+fn assistant_tool_call_events_keep_the_live_trace_separate_from_callback_control() {
+    let flow_run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    let tool_call = json!({
+        "id": "call_weather",
+        "name": "lookup_weather",
+        "arguments": { "city": "Shanghai" }
+    });
+
+    let started = crate::orchestration_runtime::debug_stream_events::assistant_tool_call_started(
+        flow_run_id,
+        node_run_id,
+        "node-llm",
+        tool_call.clone(),
+    );
+    let finished = crate::orchestration_runtime::debug_stream_events::assistant_tool_call_finished(
+        flow_run_id,
+        node_run_id,
+        "node-llm",
+        tool_call,
+        json!({
+            "tool_call_id": "call_weather",
+            "name": "lookup_weather",
+            "content": { "temperature": 26 },
+            "is_error": false
+        }),
+        42,
+    );
+
+    assert_eq!(started.event_type, "assistant_tool_call_started");
+    assert_eq!(started.payload["tool_call"]["id"], "call_weather");
+    assert_eq!(started.payload["node_run_id"], json!(node_run_id));
+    assert_eq!(finished.event_type, "assistant_tool_call_finished");
+    assert_eq!(
+        finished.payload["tool_result"]["content"]["temperature"],
+        26
+    );
+    assert_eq!(finished.payload["duration_ms"], 42);
+    assert!(started.persist_required);
+    assert!(finished.trace_visible);
+}
+
 #[tokio::test]
 async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
     use plugin_framework::provider_contract::{

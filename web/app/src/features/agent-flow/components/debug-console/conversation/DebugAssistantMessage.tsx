@@ -1,12 +1,9 @@
 import {
   CopyOutlined,
-  DownOutlined,
   FileTextOutlined,
-  HistoryOutlined,
-  RightOutlined
+  HistoryOutlined
 } from '@ant-design/icons';
 import { App, Button, Space, Tooltip } from 'antd';
-import { useEffect, useState } from 'react';
 
 import type { AgentFlowDebugMessage } from '../../../api/runtime';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
@@ -41,91 +38,6 @@ function fallbackContent(message: AgentFlowDebugMessage) {
   return i18nText('agentFlow', 'auto.no_output_yet');
 }
 
-const TYPEWRITER_INTERVAL_MS = 24;
-const TYPEWRITER_CHARS_PER_TICK = 12;
-
-interface ProgressiveTextState {
-  enabled: boolean;
-  target: string;
-  visibleText: string;
-}
-
-function resolveVisibleTextOnTargetChange({
-  currentVisibleText,
-  enabled,
-  target
-}: {
-  currentVisibleText: string;
-  enabled: boolean;
-  target: string;
-}) {
-  if (!enabled) {
-    return target;
-  }
-
-  if (!target) {
-    return '';
-  }
-
-  return target.startsWith(currentVisibleText) ? currentVisibleText : target;
-}
-
-function useProgressiveText(target: string, enabled: boolean) {
-  const [state, setState] = useState<ProgressiveTextState>(() => ({
-    enabled,
-    target,
-    visibleText: target
-  }));
-  const stateChanged = state.enabled !== enabled || state.target !== target;
-  const effectiveState = stateChanged
-    ? {
-        enabled,
-        target,
-        visibleText: resolveVisibleTextOnTargetChange({
-          currentVisibleText: state.visibleText,
-          enabled,
-          target
-        })
-      }
-    : state;
-
-  useEffect(() => {
-    if (!effectiveState.enabled) {
-      return undefined;
-    }
-
-    if (effectiveState.visibleText.length >= effectiveState.target.length) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      setState((current) => ({
-        ...current,
-        visibleText: current.target.slice(
-          0,
-          Math.min(
-            current.target.length,
-            current.visibleText.length + TYPEWRITER_CHARS_PER_TICK
-          )
-        )
-      }));
-    }, TYPEWRITER_INTERVAL_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    effectiveState.enabled,
-    effectiveState.target,
-    effectiveState.visibleText
-  ]);
-
-  if (stateChanged) {
-    setState(effectiveState);
-    return effectiveState.visibleText;
-  }
-
-  return state.visibleText;
-}
-
 export function DebugAssistantMessage({
   message,
   onLoadArtifact,
@@ -140,12 +52,7 @@ export function DebugAssistantMessage({
   onOpenResumeTimeline?: (message: AgentFlowDebugMessage) => void;
 }) {
   const { message: messageApi } = App.useApp();
-  const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
-  const visibleContent = useProgressiveText(
-    message.content,
-    message.status !== 'running'
-  );
-  const parsedContent = parseAssistantContent(visibleContent);
+  const parsedContent = parseAssistantContent(message.content);
   const parsedFullContent = parseAssistantContent(message.content);
   const hasReasoning = Boolean(parsedContent.reasoningText.trim());
   const hasAnswer = Boolean(parsedContent.answerText.trim());
@@ -169,34 +76,11 @@ export function DebugAssistantMessage({
       <div className="agent-flow-editor__debug-message-main">
         <DebugWorkflowProcess
           items={message.traceSummary}
+          reasoning={parsedContent.reasoningText}
+          reasoningStreaming={message.status === 'running'}
           onLoadArtifact={onLoadArtifact}
           onLoadArtifacts={onLoadArtifacts}
         />
-        {hasReasoning ? (
-          <section
-            aria-label={i18nText('agentFlow', 'auto.think')}
-            className="agent-flow-editor__debug-reasoning"
-          >
-            <button
-              aria-expanded={isReasoningExpanded}
-              className="agent-flow-editor__debug-reasoning-toggle"
-              type="button"
-              onClick={() => setIsReasoningExpanded((current) => !current)}
-            >
-              {isReasoningExpanded ? <DownOutlined /> : <RightOutlined />}
-              <span className="agent-flow-editor__debug-reasoning-title">
-                {i18nText('agentFlow', 'auto.think')}
-              </span>
-            </button>
-            {isReasoningExpanded ? (
-              <DebugMarkdownContent
-                className="agent-flow-editor__debug-reasoning-content"
-                content={parsedContent.reasoningText}
-                streaming={message.status === 'running'}
-              />
-            ) : null}
-          </section>
-        ) : null}
         {hasAnswer || !hasReasoning ? (
           <DebugMarkdownContent
             className="agent-flow-editor__debug-message-content"

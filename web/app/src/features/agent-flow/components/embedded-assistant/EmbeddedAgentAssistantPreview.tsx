@@ -4,8 +4,18 @@ import {
   type ConsoleAssistantPreference,
   type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
+import { CheckOutlined } from '@ant-design/icons';
 import { Sender } from '@ant-design/x';
-import { Button, Dropdown, Form, Modal, Select } from 'antd';
+import {
+  Button,
+  Dropdown,
+  Form,
+  Modal,
+  Progress,
+  Select,
+  Tooltip,
+  type MenuProps
+} from 'antd';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -17,6 +27,7 @@ import { getWindowWorkspaceViewport } from '../../../../shared/ui/window-workspa
 import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole';
+import { formatLlmTokenCount } from '../../lib/model-options';
 import '../editor/styles/shell.css';
 import './embedded-assistant.css';
 
@@ -149,9 +160,76 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.reasoning_effort ??
     selectedModel?.default_reasoning_effort ??
     selectedModel?.reasoning_efforts[0];
+  const contextWindow = selectedModel?.context_window ?? null;
+  const contextTokenUsage = session.contextTokenUsage ?? 0;
+  const contextUsagePercent =
+    contextWindow && contextWindow > 0
+      ? Math.min(100, Math.round((contextTokenUsage / contextWindow) * 100))
+      : 0;
+  const remainingContextTokens = contextWindow
+    ? Math.max(0, contextWindow - contextTokenUsage)
+    : null;
   const windowEntry = windowWorkspaceState.windows.find(
     (entry) => entry.id === ASSISTANT_WINDOW_ID
   );
+  const runtimePreferenceMenuItems: MenuProps['items'] = settings
+    ? [
+        {
+          key: 'model',
+          label: (
+            <span className="embedded-agent-assistant-preview__runtime-menu-row">
+              <span>{i18nText('appShell', 'auto.assistant_model')}</span>
+              <span className="embedded-agent-assistant-preview__runtime-menu-value">
+                {selectedModel?.name ?? selectedModel?.id ?? '-'}
+              </span>
+            </span>
+          ),
+          children: settings.run_capabilities.models.map((model) => ({
+            key: `model:${model.id}`,
+            label: (
+              <span className="embedded-agent-assistant-preview__runtime-menu-option">
+                <span>{model.name ?? model.id}</span>
+                {model.id === selectedModel?.id ? <CheckOutlined /> : null}
+              </span>
+            )
+          }))
+        },
+        ...(settings.run_capabilities.reasoning_effort_enabled &&
+        selectedModel?.reasoning_efforts.length
+          ? [
+              {
+                key: 'reasoning-effort',
+                label: (
+                  <span className="embedded-agent-assistant-preview__runtime-menu-row">
+                    <span>
+                      {i18nText('appShell', 'auto.assistant_reasoning_effort')}
+                    </span>
+                    <span className="embedded-agent-assistant-preview__runtime-menu-value">
+                      {selectedReasoningEffort ?? '-'}
+                    </span>
+                  </span>
+                ),
+                children: selectedModel.reasoning_efforts.map((effort) => ({
+                  key: `reasoning-effort:${effort}`,
+                  label: (
+                    <span className="embedded-agent-assistant-preview__runtime-menu-option">
+                      <span>{effort}</span>
+                      {effort === selectedReasoningEffort ? (
+                        <CheckOutlined />
+                      ) : null}
+                    </span>
+                  )
+                }))
+              }
+            ]
+          : []),
+        { type: 'divider' },
+        {
+          key: 'reset-defaults',
+          label: i18nText('appShell', 'auto.assistant_reset_defaults')
+        }
+      ]
+    : [];
 
   useEffect(() => {
     if (mobile && windowEntry && !windowEntry.maximized) {
@@ -233,77 +311,100 @@ export function EmbeddedAgentAssistantPreview({
             composerFooterActions={
               settings?.run_capabilities.model_selection_enabled ? (
                 <>
+                  {contextWindow && remainingContextTokens !== null ? (
+                    <Tooltip
+                      title={
+                        <span className="embedded-agent-assistant-preview__context-tooltip">
+                          <span>{i18nText('appShell', 'auto.assistant_context_usage')}</span>
+                          <span>
+                            {i18nText('appShell', 'auto.assistant_context_remaining', {
+                              value1: contextUsagePercent,
+                              value2:
+                                formatLlmTokenCount(remainingContextTokens) ??
+                                '0'
+                            })}
+                          </span>
+                          <span>
+                            {i18nText('appShell', 'auto.assistant_context_total', {
+                              value1:
+                                formatLlmTokenCount(contextTokenUsage) ?? '0',
+                              value2: formatLlmTokenCount(contextWindow) ?? '0'
+                            })}
+                          </span>
+                        </span>
+                      }
+                    >
+                      <span className="embedded-agent-assistant-preview__context-progress">
+                        <Progress
+                          percent={contextUsagePercent}
+                          showInfo={false}
+                          size={18}
+                          trailColor="var(--border-default)"
+                          type="circle"
+                        />
+                      </span>
+                    </Tooltip>
+                  ) : null}
                   <Dropdown
-                    getPopupContainer={(triggerNode) =>
-                      triggerNode.closest('.embedded-agent-assistant-preview') ??
-                      document.body
-                    }
+                    overlayStyle={{ zIndex: 1100 + windowEntry.z_index }}
                     placement="topLeft"
                     trigger={['click']}
                     menu={{
-                      items: settings.run_capabilities.models.map((model) => ({
-                        key: model.id,
-                        label: model.name ?? model.id
-                      })),
-                      selectedKeys: selectedModel ? [selectedModel.id] : [],
+                      items: runtimePreferenceMenuItems,
                       onClick: ({ key }) => {
-                        const model = settings.run_capabilities.models.find(
-                          (candidate) => candidate.id === key
-                        );
-                        if (!model) {
+                        const selection = String(key);
+                        if (selection === 'reset-defaults') {
+                          void updateRuntimePreference({
+                            model: null,
+                            reasoning_effort: null
+                          });
                           return;
                         }
-                        void updateRuntimePreference({
-                          model: model.id,
-                          reasoning_effort: model.default_reasoning_effort ?? null
-                        });
-                      }
-                    }}
-                  >
-                    <Sender.Switch value={false}>
-                      {selectedModel?.name ??
-                        selectedModel?.id ??
-                        i18nText('appShell', 'auto.assistant_model')}
-                    </Sender.Switch>
-                  </Dropdown>
-                  {settings.run_capabilities.reasoning_effort_enabled &&
-                  selectedModel?.reasoning_efforts.length ? (
-                    <Dropdown
-                      getPopupContainer={(triggerNode) =>
-                        triggerNode.closest('.embedded-agent-assistant-preview') ??
-                        document.body
-                      }
-                      placement="topLeft"
-                      trigger={['click']}
-                      menu={{
-                        items: selectedModel.reasoning_efforts.map((effort) => ({
-                          key: effort,
-                          label: effort
-                        })),
-                        selectedKeys: selectedReasoningEffort
-                          ? [selectedReasoningEffort]
-                          : [],
-                        onClick: ({ key }) => {
-                          const reasoning_effort = String(key);
+                        if (selection.startsWith('model:')) {
+                          const modelId = selection.slice('model:'.length);
+                          const model = settings.run_capabilities.models.find(
+                            (candidate) => candidate.id === modelId
+                          );
+                          if (model) {
+                            void updateRuntimePreference({
+                              model: model.id,
+                              reasoning_effort:
+                                model.default_reasoning_effort ?? null
+                            });
+                          }
+                          return;
+                        }
+                        if (selection.startsWith('reasoning-effort:')) {
+                          const reasoning_effort = selection.slice(
+                            'reasoning-effort:'.length
+                          );
                           if (
-                            !selectedModel.reasoning_efforts.includes(
+                            selectedModel?.reasoning_efforts.includes(
                               reasoning_effort
                             )
                           ) {
-                            return;
+                            void updateRuntimePreference({
+                              model: selectedModel.id,
+                              reasoning_effort
+                            });
                           }
-                          void updateRuntimePreference({
-                            model: selectedModel.id,
-                            reasoning_effort
-                          });
                         }
-                      }}
+                      }
+                    }}
+                  >
+                    <Sender.Switch
+                      rootClassName="embedded-agent-assistant-preview__runtime-preferences"
+                      value={false}
                     >
-                      <Sender.Switch value={false}>
-                        {selectedReasoningEffort ?? '-'}
-                      </Sender.Switch>
-                    </Dropdown>
-                  ) : null}
+                      <span>{selectedModel?.name ?? selectedModel?.id ?? '-'}</span>
+                      {settings.run_capabilities.reasoning_effort_enabled &&
+                      selectedReasoningEffort ? (
+                        <span className="embedded-agent-assistant-preview__runtime-preferences-effort">
+                          {selectedReasoningEffort}
+                        </span>
+                      ) : null}
+                    </Sender.Switch>
+                  </Dropdown>
                 </>
               ) : null
             }

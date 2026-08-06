@@ -6,6 +6,7 @@ import {
   mapRunDetailToConversation,
   mapRunDetailToTrace
 } from '../../lib/debug-console/run-detail-mapper';
+import { collectLlmToolCallbacks } from '../../components/debug-console/conversation/llm-tool-callbacks';
 
 function baseDetail(): FlowDebugRunDetail {
   return {
@@ -245,6 +246,78 @@ describe('run detail mapper', () => {
         }
       })
     );
+  });
+
+  test('restores persisted assistant tool lifecycle events into the LLM trace', () => {
+    const detail = baseDetail();
+    detail.node_runs = [
+      {
+        id: 'node-run-llm',
+        flow_run_id: 'flow-run-1',
+        node_id: 'node-llm',
+        node_type: 'llm',
+        node_alias: 'LLM',
+        status: 'succeeded',
+        input_payload: {},
+        output_payload: {},
+        error_payload: null,
+        metrics_payload: {},
+        debug_payload: {},
+        started_at: '2026-04-26T10:00:00Z',
+        finished_at: '2026-04-26T10:00:01Z'
+      }
+    ];
+    detail.events = [
+      {
+        id: 'tool-started',
+        flow_run_id: 'flow-run-1',
+        node_run_id: 'node-run-llm',
+        sequence: 3,
+        event_type: 'assistant_tool_call_started',
+        payload: {
+          node_id: 'node-llm',
+          tool_call: {
+            id: 'call-weather',
+            name: 'lookup_weather',
+            arguments: { city: 'Shanghai' }
+          }
+        },
+        created_at: '2026-04-26T10:00:00Z'
+      },
+      {
+        id: 'tool-finished',
+        flow_run_id: 'flow-run-1',
+        node_run_id: 'node-run-llm',
+        sequence: 4,
+        event_type: 'assistant_tool_call_finished',
+        payload: {
+          node_id: 'node-llm',
+          tool_call: {
+            id: 'call-weather',
+            name: 'lookup_weather',
+            arguments: { city: 'Shanghai' }
+          },
+          tool_result: {
+            tool_call_id: 'call-weather',
+            name: 'lookup_weather',
+            content: { temperature: 26 },
+            is_error: false
+          },
+          duration_ms: 42
+        },
+        created_at: '2026-04-26T10:00:01Z'
+      }
+    ];
+
+    expect(collectLlmToolCallbacks(mapRunDetailToTrace(detail)[0]?.debugPayload)).toMatchObject([
+      {
+        id: 'call-weather',
+        callbackStatus: 'returned',
+        executionStatus: 'succeeded',
+        duration_ms: 42,
+        parsedResult: { content: { temperature: 26 }, is_error: false }
+      }
+    ]);
   });
 
   test('uses node input payload truth for trace display when backend also provides a view', () => {

@@ -13,8 +13,8 @@ match_when:
   - 设计已发布 Agent Flow 的 session-backed 调用
   - 处理第三方 MCP 实例挂载与用户 API key 边界
 created_at: 2026-08-05 09
-updated_at: 2026-08-05 22
-last_verified_at: 2026-08-05 22
+updated_at: 2026-08-06 08
+last_verified_at: 2026-08-06 08
 decision_policy: verify_before_decision
 status: implemented
 scope:
@@ -47,6 +47,9 @@ scope:
 - 模型与推理强度覆盖按 `user + workspace` 保存；模型只在已发布 mapping 声明 `model_target` 时开放，推理强度只在已发布 LLM 节点声明外部推理 opt-in 时开放。Flow 切换或重置默认会清空覆盖。
 - Preview 复用 `WindowWorkspaceWindow`，支持标题区拖拽、左右和底部缩放；移动端最大化为安全全屏布局。
 - 助手设置 Modal 只配置 Agent Flow、MCP 实例及重置默认；模型和推理强度是聊天 Composer 内的紧凑运行参数控件。切换 Flow/MCP 清空会话；切模型或推理强度保留会话上下文并应用到下一次运行。
+- 助手对话采用 `Bubble.List` 作为聊天主线，保留完整工作流卡片为 `ThoughtChain`；可见推理事件放入对应 LLM 节点的 `Think`，工具调用详情仍归属对应节点。Answer 是可见末节点，终态调试快照必须回填节点状态，不能在最终回答已显示后继续显示“进行中”。
+- Assistant 的实时真值是 typed SSE：节点、推理、Answer delta 和工具生命周期到达即渲染；运行快照仅用于断线与终态补偿，且必须与已收到的实时轨迹合并，不能覆盖未落库的工具卡片。
+- 自动 MCP callback 在服务端写入 trace-visible `assistant_tool_call_started/finished` 事件；卡片展示真实调用、输入、结果、错误和耗时，不伪造工具轨迹。普通 MCP 数组结果不得误投为多模态 `content_blocks`，否则会阻断工具后的模型续跑与 Answer 闭环。
 
 ## 待确认
 

@@ -5,15 +5,18 @@ import {
 } from '@1flowbase/api-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type {
-  AgentFlowDebugMessage,
-  AgentFlowRunContext,
-  AgentFlowTraceItem
+import {
+  fetchApplicationRunDebugSnapshot,
+  type AgentFlowDebugMessage,
+  type AgentFlowRunContext,
+  type AgentFlowTraceItem
 } from '../api/runtime';
 import {
   applyDebugStreamEventToAssistantMessage,
-  applyDebugStreamEventToTrace
+  applyDebugStreamEventToTrace,
+  reconcileSnapshotTraceWithLiveEvents
 } from '../lib/debug-console/stream-events';
+import { mapRunDetailToTrace } from '../lib/debug-console/run-detail-mapper';
 import { i18nText } from '../../../shared/i18n/text';
 import { useAuthStore } from '../../../state/auth-store';
 import type { AgentFlowDebugSessionStatus } from './runtime/useAgentFlowDebugSession';
@@ -50,7 +53,9 @@ function isTraceEvent(event: ConsoleFlowDebugStreamEvent) {
     event.type === 'node_finished' ||
     event.type === 'text_delta' ||
     event.type === 'reasoning_delta' ||
-    event.type === 'usage_snapshot'
+    event.type === 'usage_snapshot' ||
+    event.type === 'assistant_tool_call_started' ||
+    event.type === 'assistant_tool_call_finished'
   );
 }
 
@@ -65,12 +70,83 @@ function isTerminalEvent(event: ConsoleFlowDebugStreamEvent) {
   );
 }
 
+function contextTokenUsageFromSnapshot(usage: unknown) {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) {
+    return null;
+  }
+
+  const usageRecord = usage as Record<string, unknown>;
+  const inputTokens = usageRecord.input_tokens ?? usageRecord.total_tokens;
+  const tokenCount =
+    typeof inputTokens === 'number' && Number.isFinite(inputTokens)
+      ? inputTokens
+      : null;
+
+  return tokenCount === null ? null : Math.max(0, Math.round(tokenCount));
+}
+
+function contextTokenUsageFromEvent(event: ConsoleFlowDebugStreamEvent) {
+  if (event.type === 'usage_snapshot') {
+    return contextTokenUsageFromSnapshot(event.usage);
+  }
+
+  if (event.type === 'node_finished') {
+    return (
+      contextTokenUsageFromSnapshot(event.metrics_payload) ??
+      contextTokenUsageFromSnapshot(event.output_payload)
+    );
+  }
+
+  return null;
+}
+
+function contextTokenUsageFromTraceItems(items: AgentFlowTraceItem[]) {
+  for (const item of [...items].reverse()) {
+    const contextTokenUsage =
+      contextTokenUsageFromSnapshot(item.metricsPayload) ??
+      contextTokenUsageFromSnapshot(item.outputPayload);
+    if (contextTokenUsage !== null) {
+      return contextTokenUsage;
+    }
+  }
+
+  return null;
+}
+
+const ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS = 750;
+
+function isTerminalFlowRunStatus(status: string) {
+  return ['succeeded', 'completed', 'incomplete', 'failed', 'cancelled'].includes(
+    status
+  );
+}
+
+function sessionStatusFromTerminalFlowRun(
+  status: string
+): AgentFlowDebugSessionStatus {
+  switch (status) {
+    case 'succeeded':
+    case 'completed':
+    case 'incomplete':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return 'running';
+  }
+}
+
 export function useEmbeddedAssistantSession(applicationId: string | null) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [status, setStatus] = useState<AgentFlowDebugSessionStatus>('idle');
   const [stopping, setStopping] = useState(false);
   const [messages, setMessages] = useState<AgentFlowDebugMessage[]>([]);
   const [traceItems, setTraceItems] = useState<AgentFlowTraceItem[]>([]);
+  const [contextTokenUsage, setContextTokenUsage] = useState<number | null>(
+    null
+  );
   const [runContext, setRunContext] = useState(() =>
     createRunContext(applicationId)
   );
@@ -79,6 +155,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
   const activeApplicationIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
   const streamGenerationRef = useRef(0);
+  const liveTraceItemsRef = useRef<AgentFlowTraceItem[]>([]);
 
   const cancelActiveStream = useCallback(() => {
     streamGenerationRef.current += 1;
@@ -95,6 +172,8 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     setStopping(false);
     setMessages([]);
     setTraceItems([]);
+    liveTraceItemsRef.current = [];
+    setContextTokenUsage(null);
     setRunContext(createRunContext(applicationId));
   }, [applicationId, cancelActiveStream]);
 
@@ -103,6 +182,79 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
   }, [clearSession]);
 
   useEffect(() => cancelActiveStream, [cancelActiveStream]);
+
+  useEffect(() => {
+    if (!applicationId || !activeRunId) {
+      return;
+    }
+
+    let disposed = false;
+    let pollTimer: number | null = null;
+
+    const refreshRunSnapshot = () => {
+      void fetchApplicationRunDebugSnapshot(applicationId, activeRunId)
+        .then((detail) => {
+          if (disposed) {
+            return;
+          }
+
+          const traceItems = reconcileSnapshotTraceWithLiveEvents(
+            mapRunDetailToTrace(detail),
+            liveTraceItemsRef.current
+          );
+          liveTraceItemsRef.current = traceItems;
+          setTraceItems(traceItems);
+          setMessages((current) =>
+            current.map((message) =>
+              message.role === 'assistant' && message.runId === activeRunId
+                ? { ...message, traceSummary: traceItems }
+                : message
+            )
+          );
+          const contextTokenUsage = contextTokenUsageFromTraceItems(traceItems);
+          if (contextTokenUsage !== null) {
+            setContextTokenUsage(contextTokenUsage);
+          }
+
+          if (isTerminalFlowRunStatus(detail.flow_run.status)) {
+            const nextStatus = sessionStatusFromTerminalFlowRun(
+              detail.flow_run.status
+            );
+            setStatus(nextStatus);
+            setMessages((current) =>
+              current.map((message) =>
+                message.role === 'assistant' && message.runId === activeRunId
+                  ? { ...message, status: nextStatus, traceSummary: traceItems }
+                  : message
+              )
+            );
+            return;
+          }
+
+          pollTimer = window.setTimeout(
+            refreshRunSnapshot,
+            ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS
+          );
+        })
+        .catch(() => {
+          if (!disposed) {
+            pollTimer = window.setTimeout(
+              refreshRunSnapshot,
+              ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS
+            );
+          }
+        });
+    };
+
+    refreshRunSnapshot();
+
+    return () => {
+      disposed = true;
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer);
+      }
+    };
+  }, [activeRunId, applicationId]);
 
   const setRunContextValue = useCallback(
     (nodeId: string, key: string, value: unknown) => {
@@ -145,7 +297,6 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       const runningMessage = createRunningAssistantMessage();
       const streamGeneration = streamGenerationRef.current + 1;
       let streamAssistantMessage = runningMessage;
-      let streamTraceItems: AgentFlowTraceItem[] = [];
       let receivedTerminal = false;
       const seenEventKeys = new Set<string>();
 
@@ -155,6 +306,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       setStatus('running');
       setStopping(false);
       setTraceItems([]);
+      liveTraceItemsRef.current = [];
       setRunContext((current) => ({
         ...current,
         fields: current.fields.map((field) =>
@@ -196,17 +348,22 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
             }
 
             if (isTraceEvent(event)) {
-              streamTraceItems = applyDebugStreamEventToTrace(
-                streamTraceItems,
+              liveTraceItemsRef.current = applyDebugStreamEventToTrace(
+                liveTraceItemsRef.current,
                 event
               );
-              setTraceItems(streamTraceItems);
+              setTraceItems(liveTraceItemsRef.current);
+            }
+
+            const contextTokenUsage = contextTokenUsageFromEvent(event);
+            if (contextTokenUsage !== null) {
+              setContextTokenUsage(contextTokenUsage);
             }
 
             streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
               streamAssistantMessage,
               event,
-              streamTraceItems
+              liveTraceItemsRef.current
             );
             if (isTerminalEvent(event)) {
               receivedTerminal = true;
@@ -289,6 +446,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     stopping,
     messages,
     traceItems,
+    contextTokenUsage,
     runContext,
     activeRunId,
     clearSession,

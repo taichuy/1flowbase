@@ -143,6 +143,27 @@ describe('DebugAssistantMessage', () => {
     expect(inputToggle).toHaveAttribute('aria-expanded', 'false');
   });
 
+  test('AC-005 renders an arrived answer delta immediately without a client typewriter delay', () => {
+    const message: AgentFlowDebugMessage = {
+      id: 'assistant-live-delta',
+      role: 'assistant',
+      status: 'running',
+      runId: 'run-1',
+      content: '',
+      rawOutput: null,
+      traceSummary: []
+    };
+    const { rerender } = render(<DebugAssistantMessage message={message} />);
+
+    rerender(
+      <DebugAssistantMessage
+        message={{ ...message, content: '已到达的首个输出片段' }}
+      />
+    );
+
+    expect(screen.getByText('已到达的首个输出片段')).toBeInTheDocument();
+  });
+
   test('AC-003 keeps incomplete streamed Markdown control markers out of the preview', async () => {
     const baseMessage: AgentFlowDebugMessage = {
       id: 'assistant-streaming-markdown',

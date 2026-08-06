@@ -160,6 +160,76 @@
   background: transparent;
 }
 
+.agent-flow-editor__debug-bubble-list {
+  display: grid;
+  gap: clamp(0.75rem, 2.4cqw, 1rem);
+}
+
+.agent-flow-editor__debug-bubble-list .ant-bubble {
+  max-width: 100%;
+}
+
+.agent-flow-editor__debug-bubble-list .ant-bubble-content {
+  min-width: 0;
+}
+
+.agent-flow-editor__debug-bubble-list
+  .ant-bubble-start.agent-flow-editor__debug-assistant-bubble {
+  padding-inline-end: 0;
+}
+
+.agent-flow-editor__debug-assistant-bubble,
+.agent-flow-editor__debug-assistant-bubble .ant-bubble-body,
+.agent-flow-editor__debug-assistant-bubble .ant-bubble-content {
+  width: 100%;
+}
+
+.agent-flow-editor__debug-workflow-thought-chain {
+  display: grid;
+  gap: clamp(0.35rem, 1.4cqw, 0.5rem);
+}
+
+.agent-flow-editor__debug-workflow-thought-item {
+  display: block;
+  width: 100%;
+  border: 1px solid #dbe7e4;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.agent-flow-editor__debug-workflow-thought-header {
+  min-height: 2.625rem;
+  padding: clamp(0.4rem, 1.8cqw, 0.5rem);
+}
+
+.agent-flow-editor__debug-workflow-thought-item
+  .ant-thought-chain-node-box,
+.agent-flow-editor__debug-workflow-thought-item
+  .ant-thought-chain-node-content,
+.agent-flow-editor__debug-workflow-thought-content {
+  width: 100%;
+}
+
+.agent-flow-editor__debug-workflow-thought-content {
+  border-top: 1px solid #eef2f6;
+  background: #ffffff;
+}
+
+.agent-flow-editor__debug-workflow-think {
+  border: 1px solid #dbe4ef;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.agent-flow-editor__debug-workflow-think-content {
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
 .agent-flow-editor__debug-workflow-node-item {
   border: 1px solid #dbe7e4;
   border-radius: 0.75rem;

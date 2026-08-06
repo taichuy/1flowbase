@@ -9,8 +9,10 @@ import * as runtimeApi from '../../api/runtime';
 import { useAgentFlowDebugSession } from '../../hooks/runtime/useAgentFlowDebugSession';
 import {
   applyDebugStreamEventToAssistantMessage,
-  applyDebugStreamEventToTrace
+  applyDebugStreamEventToTrace,
+  reconcileSnapshotTraceWithLiveEvents
 } from '../../lib/debug-console/stream-events';
+import { collectLlmToolCallbacks } from '../../components/debug-console/conversation/llm-tool-callbacks';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
 function createQueryClient() {
@@ -160,6 +162,147 @@ afterEach(() => {
 });
 
 describe('useAgentFlowDebugSession streaming', () => {
+  test('AC-004 retains a real-time tool lifecycle while its run snapshot is still behind', () => {
+    const snapshotTrace = [
+      {
+        nodeRunId: 'node-run-llm',
+        nodeId: 'node-llm',
+        nodeAlias: 'LLM',
+        nodeType: 'llm',
+        status: 'running',
+        startedAt: '2026-08-06T00:00:00Z',
+        finishedAt: null,
+        durationMs: null,
+        inputPayload: {},
+        outputPayload: {},
+        errorPayload: null,
+        metricsPayload: {},
+        debugPayload: {}
+      }
+    ];
+    const liveTrace = applyDebugStreamEventToTrace(snapshotTrace, {
+      type: 'assistant_tool_call_started',
+      node_run_id: 'node-run-llm',
+      node_id: 'node-llm',
+      tool_call: {
+        id: 'call-weather',
+        name: 'lookup_weather',
+        arguments: { city: 'Shanghai' }
+      }
+    } as never);
+
+    const reconciledTrace = reconcileSnapshotTraceWithLiveEvents(
+      snapshotTrace,
+      liveTrace
+    );
+
+    expect(collectLlmToolCallbacks(reconciledTrace[0]?.debugPayload)).toMatchObject([
+      {
+        id: 'call-weather',
+        name: 'lookup_weather',
+        callbackStatus: 'waiting_callback'
+      }
+    ]);
+  });
+
+  test('AC-004 projects live assistant tool calls into the active LLM trace', () => {
+    const initialTrace = [
+      {
+        nodeRunId: 'node-run-llm',
+        nodeId: 'node-llm',
+        nodeAlias: 'LLM',
+        nodeType: 'llm',
+        status: 'running',
+        startedAt: '2026-08-06T00:00:00Z',
+        finishedAt: null,
+        durationMs: null,
+        inputPayload: {},
+        outputPayload: {},
+        errorPayload: null,
+        metricsPayload: {},
+        debugPayload: {}
+      }
+    ];
+    const startedTrace = applyDebugStreamEventToTrace(
+      initialTrace,
+      {
+        type: 'assistant_tool_call_started',
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        tool_call: {
+          id: 'call-weather',
+          name: 'lookup_weather',
+          arguments: { city: 'Shanghai' }
+        }
+      } as never
+    );
+    const completedTrace = applyDebugStreamEventToTrace(
+      startedTrace,
+      {
+        type: 'assistant_tool_call_finished',
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        tool_call: {
+          id: 'call-weather',
+          name: 'lookup_weather',
+          arguments: { city: 'Shanghai' }
+        },
+        tool_result: {
+          tool_call_id: 'call-weather',
+          name: 'lookup_weather',
+          content: { temperature: 26 },
+          is_error: false
+        },
+        duration_ms: 42
+      } as never
+    );
+
+    const assistantAfterToolStart = applyDebugStreamEventToAssistantMessage(
+      {
+        id: 'assistant-running',
+        role: 'assistant',
+        status: 'running',
+        runId: 'run-1',
+        content: '',
+        rawOutput: null,
+        traceSummary: []
+      },
+      {
+        type: 'assistant_tool_call_started',
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        tool_call: {
+          id: 'call-weather',
+          name: 'lookup_weather',
+          arguments: { city: 'Shanghai' }
+        }
+      } as never,
+      startedTrace
+    );
+
+    expect(collectLlmToolCallbacks(startedTrace[0]?.debugPayload)).toMatchObject([
+      {
+        id: 'call-weather',
+        name: 'lookup_weather',
+        callbackStatus: 'waiting_callback'
+      }
+    ]);
+    expect(collectLlmToolCallbacks(completedTrace[0]?.debugPayload)).toMatchObject([
+      {
+        id: 'call-weather',
+        name: 'lookup_weather',
+        callbackStatus: 'returned',
+        executionStatus: 'succeeded',
+        duration_ms: 42,
+        parsedResult: {
+          content: { temperature: 26 },
+          is_error: false
+        }
+      }
+    ]);
+    expect(assistantAfterToolStart.traceSummary).toEqual(startedTrace);
+  });
+
   test('AC-002 projects only canonical Answer deltas into assistant content', () => {
     const runningMessage = {
       id: 'assistant-running',

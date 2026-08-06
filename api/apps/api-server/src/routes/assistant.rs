@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc, time::Instant};
 
 use axum::{
     extract::State,
@@ -23,7 +23,7 @@ use control_plane::{
         spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
+    ports::{OrchestrationRuntimeRepository, RuntimeEventPayload, RuntimeEventStreamPolicy},
     profile::{ProfileService, UpdateMeMetaCommand},
 };
 use domain::mcp_management::McpInstanceStatus;
@@ -83,6 +83,7 @@ pub struct AssistantMcpInstanceOption {
 pub struct AssistantModelOption {
     pub id: String,
     pub name: Option<String>,
+    pub context_window: Option<u64>,
     pub reasoning_efforts: Vec<String>,
     pub default_reasoning_effort: Option<String>,
 }
@@ -571,19 +572,102 @@ async fn assistant_callback_tool_results(
         ))?;
     let mut tool_results = Vec::with_capacity(calls.len());
     for call in calls {
-        tool_results.push(
-            assistant_tool_result(
-                &execution.catalog,
-                &execution.selected_mcp_instance_ids,
-                state,
-                &execution.request_headers,
-                execution.actor_user_id,
-                call,
-            )
-            .await?,
-        );
+        let tool_call_id = call.get("id").and_then(Value::as_str).ok_or(
+            control_plane::errors::ControlPlaneError::InvalidInput("assistant_callback"),
+        )?;
+        let tool_name = call.get("name").and_then(Value::as_str).unwrap_or("Tool");
+        let trace_call = assistant_tool_call_for_trace(&execution.catalog, call);
+        let started_at = Instant::now();
+        append_assistant_tool_call_event(
+            state,
+            execution,
+            debug_stream_events::assistant_tool_call_started(
+                execution.flow_run_id,
+                callback.node_run_id,
+                "assistant",
+                trace_call.clone(),
+            ),
+        )
+        .await;
+
+        let tool_result = match assistant_tool_result(
+            &execution.catalog,
+            &execution.selected_mcp_instance_ids,
+            state,
+            &execution.request_headers,
+            execution.actor_user_id,
+            call,
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                append_assistant_tool_call_event(
+                    state,
+                    execution,
+                    debug_stream_events::assistant_tool_call_finished(
+                        execution.flow_run_id,
+                        callback.node_run_id,
+                        "assistant",
+                        trace_call.clone(),
+                        json!({
+                            "tool_call_id": tool_call_id,
+                            "name": tool_name,
+                            "content": error.0.to_string(),
+                            "is_error": true,
+                        }),
+                        started_at
+                            .elapsed()
+                            .as_millis()
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    ),
+                )
+                .await;
+                return Err(error);
+            }
+        };
+        append_assistant_tool_call_event(
+            state,
+            execution,
+            debug_stream_events::assistant_tool_call_finished(
+                execution.flow_run_id,
+                callback.node_run_id,
+                "assistant",
+                trace_call,
+                tool_result.clone(),
+                started_at
+                    .elapsed()
+                    .as_millis()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+        )
+        .await;
+        tool_results.push(tool_result);
     }
     Ok(tool_results)
+}
+
+async fn append_assistant_tool_call_event(
+    state: &Arc<ApiState>,
+    execution: &PreparedAssistantExecution,
+    event: RuntimeEventPayload,
+) {
+    let event_type = event.event_type.clone();
+    if let Err(error) = state
+        .runtime_event_stream
+        .append(execution.flow_run_id, event)
+        .await
+    {
+        tracing::warn!(
+            application_id = %execution.application_id,
+            flow_run_id = %execution.flow_run_id,
+            event_type = %event_type,
+            error = %error,
+            "assistant tool lifecycle event append failed"
+        );
+    }
 }
 
 fn assistant_provider_tools(
@@ -634,6 +718,42 @@ fn assistant_tool_name(
     tool: &domain::McpToolRecord,
 ) -> String {
     format!("mcp_{}_{}", instance.id.simple(), tool.id.simple())
+}
+
+fn assistant_tool_call_for_trace(catalog: &domain::McpCatalogSnapshot, call: &Value) -> Value {
+    let Some(wire_name) = call.get("name").and_then(Value::as_str) else {
+        return call.clone();
+    };
+    let display_name = catalog.bindings.iter().find_map(|binding| {
+        let instance = catalog
+            .instances
+            .iter()
+            .find(|instance| instance.id == binding.instance_record_id)?;
+        let tool = catalog
+            .tools
+            .iter()
+            .find(|tool| tool.id == binding.tool_record_id)?;
+        (assistant_tool_name(instance, tool) == wire_name).then(|| {
+            binding
+                .display_alias
+                .as_deref()
+                .filter(|alias| !alias.trim().is_empty())
+                .unwrap_or(tool.name.as_str())
+                .to_string()
+        })
+    });
+    let Some(display_name) = display_name else {
+        return call.clone();
+    };
+    let mut trace_call = call.clone();
+    if let Some(trace_call) = trace_call.as_object_mut() {
+        trace_call.insert("name".to_string(), Value::String(display_name));
+        trace_call.insert(
+            "wire_name".to_string(),
+            Value::String(wire_name.to_string()),
+        );
+    }
+    trace_call
 }
 
 async fn assistant_tool_result(
@@ -844,6 +964,7 @@ async fn assistant_run_capabilities(
         .map(|model| AssistantModelOption {
             id: model.id,
             name: model.name,
+            context_window: model.context_window,
             reasoning_efforts: model
                 .reasoning
                 .as_ref()
@@ -1098,5 +1219,17 @@ mod tests {
         let provider_tools = assistant_provider_tools(&catalog, &["catalog".to_string()]);
 
         assert_eq!(provider_tools.len(), 1);
+
+        let wire_name = assistant_tool_name(&catalog.instances[0], &catalog.tools[0]);
+        let trace_call = assistant_tool_call_for_trace(
+            &catalog,
+            &json!({
+                "id": "call_lookup",
+                "name": wire_name,
+                "arguments": {}
+            }),
+        );
+        assert_eq!(trace_call["name"], "Lookup");
+        assert_eq!(trace_call["wire_name"], wire_name);
     }
 }

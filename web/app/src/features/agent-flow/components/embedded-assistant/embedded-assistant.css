@@ -38,6 +38,51 @@
   box-shadow: none !important;
 }
 
+.embedded-agent-assistant-preview__runtime-preferences .ant-sender-switch-content.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 16rem;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.embedded-agent-assistant-preview__runtime-preferences-effort {
+  color: var(--text-secondary);
+}
+
+.embedded-agent-assistant-preview__context-progress {
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+
+.embedded-agent-assistant-preview__context-tooltip {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.embedded-agent-assistant-preview__runtime-menu-row,
+.embedded-agent-assistant-preview__runtime-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  min-width: 11rem;
+}
+
+.embedded-agent-assistant-preview__runtime-menu-value {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-agent-assistant-preview__runtime-menu-option .anticon {
+  color: var(--color-primary);
+}
+
 .embedded-agent-assistant-preview .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb {
   border-color: var(--bg-elevated);
   background: var(--scrollbar-thumb);

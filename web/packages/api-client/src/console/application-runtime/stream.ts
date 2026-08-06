@@ -246,6 +246,34 @@ function normalizeFromEnvelope(
     };
   }
 
+  if (eventType === 'assistant_tool_call_started') {
+    return {
+      ...base,
+      type: 'assistant_tool_call_started',
+      run_id: base.run_id,
+      node_run_id: base.node_run_id ?? '',
+      node_id: nodeId,
+      tool_call: isRecord(payload.tool_call) ? payload.tool_call : {}
+    };
+  }
+
+  if (eventType === 'assistant_tool_call_finished') {
+    return {
+      ...base,
+      type: 'assistant_tool_call_finished',
+      run_id: base.run_id,
+      node_run_id: base.node_run_id ?? '',
+      node_id: nodeId,
+      tool_call: isRecord(payload.tool_call) ? payload.tool_call : {},
+      tool_result: isRecord(payload.tool_result) ? payload.tool_result : {},
+      duration_ms:
+        typeof payload.duration_ms === 'number' &&
+        Number.isFinite(payload.duration_ms)
+          ? payload.duration_ms
+          : 0
+    };
+  }
+
   if (eventType === 'flow_finished') {
     return {
       ...base,
@@ -357,6 +385,8 @@ function isKnownStreamEventType(
     type === 'text_delta' ||
     type === 'reasoning_delta' ||
     type === 'usage_snapshot' ||
+    type === 'assistant_tool_call_started' ||
+    type === 'assistant_tool_call_finished' ||
     type === 'flow_finished' ||
     type === 'flow_incomplete' ||
     type === 'flow_failed' ||

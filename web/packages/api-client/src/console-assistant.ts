@@ -18,6 +18,7 @@ export interface ConsoleAssistantRunCapabilities {
   models: Array<{
     id: string;
     name: string | null;
+    context_window: number | null;
     reasoning_efforts: string[];
     default_reasoning_effort: string | null;
   }>;

@@ -196,6 +196,54 @@ pub fn waiting_callback_with_task(
     }
 }
 
+pub fn assistant_tool_call_started(
+    run_id: Uuid,
+    node_run_id: Uuid,
+    node_id: &str,
+    tool_call: Value,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "assistant_tool_call_started".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({
+            "type": "assistant_tool_call_started",
+            "run_id": run_id,
+            "node_run_id": node_run_id,
+            "node_id": node_id,
+            "tool_call": tool_call,
+        }),
+    }
+}
+
+pub fn assistant_tool_call_finished(
+    run_id: Uuid,
+    node_run_id: Uuid,
+    node_id: &str,
+    tool_call: Value,
+    tool_result: Value,
+    duration_ms: u64,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "assistant_tool_call_finished".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: true,
+        payload: json!({
+            "type": "assistant_tool_call_finished",
+            "run_id": run_id,
+            "node_run_id": node_run_id,
+            "node_id": node_id,
+            "tool_call": tool_call,
+            "tool_result": tool_result,
+            "duration_ms": duration_ms,
+        }),
+    }
+}
+
 pub fn visible_internal_llm_tool_route(
     run_id: Uuid,
     node_run_id: Uuid,

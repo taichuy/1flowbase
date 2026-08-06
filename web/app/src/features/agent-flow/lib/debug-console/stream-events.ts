@@ -144,6 +144,141 @@ function appendUsageSnapshotToTrace(
   });
 }
 
+function toolCallId(toolCall: Record<string, unknown>) {
+  for (const key of ['id', 'tool_call_id', 'call_id']) {
+    const value = toolCall[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function toolResultId(toolResult: Record<string, unknown>) {
+  for (const key of ['tool_call_id', 'id', 'call_id']) {
+    const value = toolResult[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function toolRoundIndex(
+  rounds: Record<string, unknown>[],
+  toolCallIdValue: string
+) {
+  return rounds.findIndex((round) => {
+    const assistant = isRecord(round.assistant) ? round.assistant : {};
+    const toolCalls = Array.isArray(assistant.tool_calls)
+      ? assistant.tool_calls.filter(isRecord)
+      : [];
+    const toolResults = Array.isArray(round.tool_results)
+      ? round.tool_results.filter(isRecord)
+      : [];
+
+    return (
+      toolCalls.some((toolCall) => toolCallId(toolCall) === toolCallIdValue) ||
+      toolResults.some((toolResult) => toolResultId(toolResult) === toolCallIdValue)
+    );
+  });
+}
+
+function upsertToolPayload(
+  items: Record<string, unknown>[],
+  nextItem: Record<string, unknown>,
+  idOf: (item: Record<string, unknown>) => string | null
+) {
+  const nextId = idOf(nextItem);
+  const index = nextId
+    ? items.findIndex((item) => idOf(item) === nextId)
+    : -1;
+
+  if (index === -1) {
+    return [...items, nextItem];
+  }
+
+  return items.map((item, itemIndex) =>
+    itemIndex === index ? { ...item, ...nextItem } : item
+  );
+}
+
+function appendAssistantToolCallToTrace(
+  items: AgentFlowTraceItem[],
+  event: Extract<
+    FlowDebugRunStreamEvent,
+    | { type: 'assistant_tool_call_started' }
+    | { type: 'assistant_tool_call_finished' }
+  >
+) {
+  const eventKey = event.node_run_id ?? event.node_id;
+
+  return items.map((item) => {
+    const itemKey = getTraceItemKey(item);
+    const matchesByKey = itemKey === eventKey;
+    const matchesByNodeId = !event.node_run_id && item.nodeId === event.node_id;
+
+    if (!matchesByKey && !matchesByNodeId) {
+      return item;
+    }
+
+    const debugPayload = isRecord(item.debugPayload) ? item.debugPayload : {};
+    const rounds = Array.isArray(debugPayload.llm_rounds)
+      ? debugPayload.llm_rounds.filter(isRecord).map((round) => ({ ...round }))
+      : [];
+    const currentToolCall = event.tool_call;
+    const currentToolCallId = toolCallId(currentToolCall);
+    const currentRoundIndex = currentToolCallId
+      ? toolRoundIndex(rounds, currentToolCallId)
+      : -1;
+    const roundIndex =
+      currentRoundIndex === -1 ? rounds.length : currentRoundIndex;
+    const round = rounds[roundIndex] ?? {
+      round_index: roundIndex,
+      assistant: { tool_calls: [] },
+      tool_results: []
+    };
+    const assistant = isRecord(round.assistant) ? round.assistant : {};
+    const toolCalls = Array.isArray(assistant.tool_calls)
+      ? assistant.tool_calls.filter(isRecord)
+      : [];
+    const toolResults = Array.isArray(round.tool_results)
+      ? round.tool_results.filter(isRecord)
+      : [];
+    const nextRound: Record<string, unknown> = {
+      ...round,
+      assistant: {
+        ...assistant,
+        tool_calls: upsertToolPayload(toolCalls, currentToolCall, toolCallId)
+      },
+      tool_results:
+        event.type === 'assistant_tool_call_finished'
+          ? upsertToolPayload(
+              toolResults,
+              {
+                ...event.tool_result,
+                duration_ms: event.duration_ms,
+                execution_status:
+                  event.tool_result.is_error === true ? 'failed' : 'succeeded'
+              },
+              toolResultId
+            )
+          : toolResults
+    };
+    rounds[roundIndex] = nextRound;
+
+    return {
+      ...item,
+      debugPayload: {
+        ...debugPayload,
+        llm_rounds: rounds
+      }
+    };
+  });
+}
+
 function extractOutputText(output: Record<string, unknown>) {
   for (const key of ['answer', 'text', 'content', 'message']) {
     const value = output[key];
@@ -256,6 +391,13 @@ export function applyDebugStreamEventToTrace(
     return appendUsageSnapshotToTrace(items, event);
   }
 
+  if (
+    event.type === 'assistant_tool_call_started' ||
+    event.type === 'assistant_tool_call_finished'
+  ) {
+    return appendAssistantToolCallToTrace(items, event);
+  }
+
   return items;
 }
 
@@ -268,6 +410,62 @@ function getTraceItemKeyFromFinished(event: {
   node_id: string;
 }) {
   return event.node_run_id ?? event.node_id;
+}
+
+function debugPayloadWithLiveEvents(
+  snapshotPayload: Record<string, unknown> | undefined,
+  livePayload: Record<string, unknown> | undefined
+) {
+  const snapshot = snapshotPayload ?? {};
+  const live = livePayload ?? {};
+  const liveLlmRounds = Array.isArray(live.llm_rounds) ? live.llm_rounds : [];
+  const liveProviderEvents = Array.isArray(live.provider_events)
+    ? live.provider_events
+    : [];
+
+  return {
+    ...snapshot,
+    ...(liveLlmRounds.length > 0 ? { llm_rounds: liveLlmRounds } : {}),
+    ...(liveProviderEvents.length > 0
+      ? { provider_events: liveProviderEvents }
+      : {})
+  };
+}
+
+/**
+ * A run-detail request may observe storage before a just-delivered SSE event is
+ * durable. Keep the live event projection until the snapshot catches up.
+ */
+export function reconcileSnapshotTraceWithLiveEvents(
+  snapshotItems: AgentFlowTraceItem[],
+  liveItems: AgentFlowTraceItem[]
+): AgentFlowTraceItem[] {
+  const liveByKey = new Map(
+    liveItems.map((item) => [getTraceItemKey(item), item])
+  );
+  const snapshotKeys = new Set<string>();
+  const reconciledSnapshotItems = snapshotItems.map((snapshotItem) => {
+    const key = getTraceItemKey(snapshotItem);
+    snapshotKeys.add(key);
+    const liveItem = liveByKey.get(key);
+
+    if (!liveItem) {
+      return snapshotItem;
+    }
+
+    return {
+      ...snapshotItem,
+      debugPayload: debugPayloadWithLiveEvents(
+        snapshotItem.debugPayload,
+        liveItem.debugPayload
+      )
+    };
+  });
+
+  return [
+    ...reconciledSnapshotItems,
+    ...liveItems.filter((item) => !snapshotKeys.has(getTraceItemKey(item)))
+  ];
 }
 
 export function applyDebugStreamEventToAssistantMessage(
@@ -311,6 +509,8 @@ export function applyDebugStreamEventToAssistantMessage(
       };
     case 'node_started':
     case 'node_finished':
+    case 'assistant_tool_call_started':
+    case 'assistant_tool_call_finished':
       return {
         ...message,
         traceSummary: traceItems

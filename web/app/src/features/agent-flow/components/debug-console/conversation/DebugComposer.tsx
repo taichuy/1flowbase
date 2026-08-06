@@ -40,11 +40,9 @@ export function DebugComposer({
         autoSize={{ minRows: 3, maxRows: 6 }}
         disabled={disabled}
         footer={(_, { components: { LoadingButton, SendButton } }) => (
-          <Flex align="center" justify="space-between">
+          <Flex align="center" justify="end">
             <Flex align="center" gap="small">
               {footerActions}
-            </Flex>
-            <Flex align="center">
               {showStop ? (
                 <Tooltip
                   title={

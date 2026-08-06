@@ -627,6 +627,7 @@ function createInitialLlmToolTraceTreeState(
 type LlmToolTraceTreeAction =
   | { type: 'toggle-tools' }
   | { type: 'set-expanded-tool'; toolKey: string | null }
+  | { type: 'reveal-tool'; toolKey: string }
   | { type: 'load-start'; toolKey: string }
   | {
       type: 'load-success';
@@ -649,6 +650,12 @@ function llmToolTraceTreeReducer(
     case 'set-expanded-tool':
       return {
         ...state,
+        expandedToolKey: action.toolKey
+      };
+    case 'reveal-tool':
+      return {
+        ...state,
+        toolsExpanded: true,
         expandedToolKey: action.toolKey
       };
     case 'load-start': {
@@ -685,38 +692,6 @@ function llmToolTraceTreeReducer(
   }
 }
 
-const debugPayloadIdentityKeys = new WeakMap<object, string>();
-let debugPayloadIdentityKeySequence = 0;
-
-function debugPayloadIdentityKey(value: unknown) {
-  if (
-    (typeof value !== 'object' && typeof value !== 'function') ||
-    value === null
-  ) {
-    return `${typeof value}:${String(value)}`;
-  }
-
-  const existingKey = debugPayloadIdentityKeys.get(value);
-  if (existingKey) {
-    return existingKey;
-  }
-
-  debugPayloadIdentityKeySequence += 1;
-  const key = `debug-payload:${debugPayloadIdentityKeySequence}`;
-  debugPayloadIdentityKeys.set(value, key);
-  return key;
-}
-
-function llmToolTraceTreeResetKey({
-  debugPayload,
-  debugPayloads
-}: {
-  debugPayload: unknown;
-  debugPayloads?: unknown[];
-}) {
-  return debugPayloadIdentityKey(debugPayloads ?? debugPayload);
-}
-
 export function LlmToolTraceTree(props: {
   debugPayload: unknown;
   debugPayloads?: unknown[];
@@ -725,14 +700,7 @@ export function LlmToolTraceTree(props: {
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onLoadToolCallbackDetail?: (detailRef: string) => Promise<unknown>;
 }) {
-  const resetKey = llmToolTraceTreeResetKey(props);
-
-  return (
-    <LlmToolTraceTreeContent
-      key={`${resetKey}:${props.defaultToolsExpanded ? 'open' : 'closed'}`}
-      {...props}
-    />
-  );
+  return <LlmToolTraceTreeContent {...props} />;
 }
 
 function LlmToolTraceTreeContent({
@@ -756,6 +724,7 @@ function LlmToolTraceTreeContent({
     createInitialLlmToolTraceTreeState
   );
   const mountedRef = useRef(true);
+  const knownToolKeysRef = useRef(new Set<string>());
   const debugPayloadList = useMemo(
     () => debugPayloads ?? [debugPayload],
     [debugPayload, debugPayloads]
@@ -790,6 +759,22 @@ function LlmToolTraceTreeContent({
       }),
     [traceTreeState.loadedToolCallbacks, toolCallbacks]
   );
+  useEffect(() => {
+    const newCallbacks = effectiveToolCallbacks.filter(
+      (callback) => !knownToolKeysRef.current.has(callback.key)
+    );
+    effectiveToolCallbacks.forEach((callback) =>
+      knownToolKeysRef.current.add(callback.key)
+    );
+
+    const latestCallback = newCallbacks[newCallbacks.length - 1];
+    if (defaultToolsExpanded && latestCallback) {
+      dispatchTraceTree({
+        type: 'reveal-tool',
+        toolKey: latestCallback.key
+      });
+    }
+  }, [defaultToolsExpanded, effectiveToolCallbacks]);
   useEffect(() => {
     mountedRef.current = true;
 
