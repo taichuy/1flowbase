@@ -12,8 +12,18 @@ export function EmbeddedAgentAssistant() {
     <>
       <Button
         aria-label={i18nText('appShell', 'auto.assistant')}
+        aria-pressed={open}
+        className={
+          open
+            ? 'embedded-agent-assistant-trigger embedded-agent-assistant-trigger--active'
+            : 'embedded-agent-assistant-trigger'
+        }
         type="text"
         onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
           setPreviewMounted(true);
           setOpen(true);
         }}

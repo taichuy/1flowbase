@@ -178,6 +178,11 @@
   min-width: max-content;
 }
 
+.app-shell-mode-actions {
+  align-self: stretch;
+  gap: 0;
+}
+
 .app-shell-settings-menu.ant-menu-horizontal {
   border-bottom: none !important;
   background: transparent !important;

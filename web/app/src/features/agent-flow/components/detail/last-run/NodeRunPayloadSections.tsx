@@ -108,6 +108,7 @@ export function NodeRunPayloadSections({
   errorPayload,
   includeDebugPayload = true,
   hideEmptyPayloads = false,
+  defaultCollapsed = false,
   onLoadArtifact,
   onLoadArtifacts
 }: {
@@ -117,6 +118,7 @@ export function NodeRunPayloadSections({
   errorPayload?: unknown;
   includeDebugPayload?: boolean;
   hideEmptyPayloads?: boolean;
+  defaultCollapsed?: boolean;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
@@ -134,6 +136,7 @@ export function NodeRunPayloadSections({
     <>
       {showInputPayload ? (
         <RuntimeDebugPayloadBlock
+          defaultCollapsed={defaultCollapsed}
           payload={inputPayload}
           title={i18nText('agentFlow', 'auto.input')}
           onLoadArtifact={onLoadArtifact}
@@ -142,6 +145,7 @@ export function NodeRunPayloadSections({
       ) : null}
       {showDebugPayload ? (
         <RuntimeDebugPayloadBlock
+          defaultCollapsed={defaultCollapsed}
           payload={processPayload}
           title={i18nText('agentFlow', 'auto.data_processing')}
           onLoadArtifact={onLoadArtifact}
@@ -150,6 +154,7 @@ export function NodeRunPayloadSections({
       ) : null}
       {showOutputPayload ? (
         <RuntimeDebugPayloadBlock
+          defaultCollapsed={defaultCollapsed}
           payload={outputPayload}
           title={i18nText('agentFlow', 'auto.outputs')}
           onLoadArtifact={onLoadArtifact}
@@ -158,6 +163,7 @@ export function NodeRunPayloadSections({
       ) : null}
       {showErrorPayload ? (
         <RuntimeDebugPayloadBlock
+          defaultCollapsed={defaultCollapsed}
           payload={errorPayload}
           title={i18nText('agentFlow', 'auto.error')}
           onLoadArtifact={onLoadArtifact}

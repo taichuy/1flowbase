@@ -162,7 +162,7 @@ describe('DebugConversationPane workflow trace', () => {
     );
   });
 
-  test('renders LLM tool callbacks under the automatically expanded Tools child node', () => {
+  test('keeps LLM tool callbacks collapsed until the user opens the Tools child node', () => {
     renderPane([
       {
         ...assistantMessage('等待工具结果'),
@@ -219,14 +219,39 @@ describe('DebugConversationPane workflow trace', () => {
     const toolsNode = screen.getByRole('button', {
       name: /^工具 1 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole('button', { name: /lookup_weather/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
+
+    const inputPayload = screen.getByRole('button', { name: '输入' });
+    expect(inputPayload).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      inputPayload
+        .closest('.json-preview-block')
+        ?.querySelector('.json-preview-block__editor')
+    ).toBeNull();
+
+    fireEvent.click(inputPayload);
+
+    expect(inputPayload).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      inputPayload
+        .closest('.json-preview-block')
+        ?.querySelector('.json-preview-block__editor')
+    ).not.toBeNull();
+    expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('天气?');
+
+    fireEvent.click(toolsNode);
+
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
+    expect(
       screen.getByRole('button', { name: /lookup_weather/ })
     ).toBeInTheDocument();
-    expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
   });
 
   test('collapses repeated LLM node runs into one workflow row', () => {
@@ -324,17 +349,17 @@ describe('DebugConversationPane workflow trace', () => {
     const toolsNode = screen.getByRole('button', {
       name: /^工具 2 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
 
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /lookup_weather/ })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: /lookup_weather/ })
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /read_policy/ })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: /read_policy/ })
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
     expect(screen.queryByText('call_policy')).not.toBeInTheDocument();
   });

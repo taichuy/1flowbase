@@ -113,7 +113,12 @@ function getStyleBoundaryCommonResponse(
         published_agent_flows: [
           { application_id: 'flow-1', name: 'Support Agent' }
         ],
-        enabled_mcp_instances: [{ instance_id: 'catalog', name: 'Catalog' }]
+        enabled_mcp_instances: [{ instance_id: 'catalog', name: 'Catalog' }],
+        run_capabilities: {
+          model_selection_enabled: false,
+          reasoning_effort_enabled: false,
+          models: []
+        }
       },
       meta: null
     });

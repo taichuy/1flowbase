@@ -250,6 +250,7 @@ export function DebugWorkflowNodeDetailContent({
       ) : null}
       {beforePayloadContent}
       <NodeRunPayloadSections
+        defaultCollapsed
         debugPayload={debugPayload}
         inputPayload={item.inputPayload}
         outputPayload={item.outputPayload}

@@ -61,8 +61,10 @@ export function AppShellFrame({
       actions={
         <Space className="app-shell-action-row" size={20}>
           <span className="app-shell-secondary-actions">
-            <FrontstageDesignModeAction />
-            <EmbeddedAgentAssistant />
+            <span className="app-shell-mode-actions">
+              <FrontstageDesignModeAction />
+              <EmbeddedAgentAssistant />
+            </span>
             {secondaryActions.map((route) => (
               <span key={route.id}>
                 {route.id === 'settings' ? (

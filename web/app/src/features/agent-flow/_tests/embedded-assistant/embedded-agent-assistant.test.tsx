@@ -159,6 +159,34 @@ describe('EmbeddedAgentAssistant', () => {
     ).toBeInTheDocument();
   });
 
+  test('AC-005 toggles the AI preview and its trigger highlight together', async () => {
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+
+    const trigger = screen.getByRole('button', {
+      name: i18nText('appShell', 'auto.assistant')
+    });
+    expect(trigger).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(trigger);
+
+    expect(trigger).toHaveAttribute('aria-pressed', 'true');
+    expect(trigger).toHaveClass('embedded-agent-assistant-trigger--active');
+
+    fireEvent.click(trigger);
+
+    await waitFor(() => {
+      expect(trigger).toHaveAttribute('aria-pressed', 'false');
+      expect(
+        screen.queryByTestId('embedded-agent-assistant-preview')
+      ).not.toBeInTheDocument();
+    });
+    expect(trigger).not.toHaveClass('embedded-agent-assistant-trigger--active');
+  });
+
   test('AC-004 projects primary Assistant WebSocket events through the Preview conversation', async () => {
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
