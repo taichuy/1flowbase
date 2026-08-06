@@ -118,16 +118,22 @@ fn validate_variable_aggregator_contract(
     bindings: &BTreeMap<String, CompiledBinding>,
     outputs: &[CompiledOutput],
 ) -> Result<()> {
-    if !bindings
-        .get("candidates")
-        .is_some_and(|binding| binding.kind == "selector_list")
-    {
-        bail!("node {node_id} variable_aggregator bindings.candidates must be selector_list");
+    if bindings.contains_key("candidates") || bindings.contains_key("value") {
+        bail!(
+            "node {node_id} variable_aggregator legacy candidates/value bindings are not supported"
+        );
     }
-    if outputs.len() != 1 || outputs[0].key != "value" {
-        bail!("node {node_id} variable_aggregator must declare exactly one public output value");
-    }
-    Ok(())
+    let binding = bindings
+        .get("groups")
+        .ok_or_else(|| anyhow!("node {node_id} variable_aggregator is missing bindings.groups"))?;
+    let groups = crate::variable_aggregator_contract::variable_aggregator_groups(binding)
+        .with_context(|| {
+            format!("node {node_id} has an invalid variable_aggregator groups contract")
+        })?;
+    crate::variable_aggregator_contract::validate_variable_aggregator_outputs(&groups, outputs)
+        .with_context(|| {
+            format!("node {node_id} has an invalid variable_aggregator output contract")
+        })
 }
 
 fn validate_native_sql_config(

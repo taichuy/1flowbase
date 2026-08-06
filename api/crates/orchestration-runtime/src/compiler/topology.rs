@@ -351,11 +351,60 @@ pub(super) fn build_nodes_and_topology(
         );
     }
 
+    validate_variable_aggregator_topology(&nodes)?;
     compile_issues.extend(validate_variable_scope_contracts(&nodes));
     compile_issues.extend(validate_llm_context_policies(&nodes));
     compile_issues.extend(validate_executable_node_types(&nodes));
 
     Ok((nodes, compiled_edges, topological_order, compile_issues))
+}
+
+fn validate_variable_aggregator_topology(nodes: &BTreeMap<String, CompiledNode>) -> Result<()> {
+    for node in nodes
+        .values()
+        .filter(|node| node.node_type == "variable_aggregator")
+    {
+        let binding = node
+            .bindings
+            .get("groups")
+            .ok_or_else(|| anyhow!("node {} is missing bindings.groups", node.node_id))?;
+        let groups = crate::variable_aggregator_contract::variable_aggregator_groups(binding)?;
+        for group in groups {
+            for selector in group.candidates {
+                let output = output_for_selector(nodes, &selector).ok_or_else(|| {
+                    anyhow!(
+                        "node {} variable_aggregator group {} selector {} is not a declared upstream output",
+                        node.node_id,
+                        group.key,
+                        selector.join(".")
+                    )
+                })?;
+                let actual = crate::variable_aggregator_contract::normalized_variable_group_value_type(
+                    &output.value_type,
+                )
+                .ok_or_else(|| {
+                    anyhow!(
+                        "node {} variable_aggregator group {} selector {} uses forbidden upstream valueType {}",
+                        node.node_id,
+                        group.key,
+                        selector.join("."),
+                        output.value_type
+                    )
+                })?;
+                if actual != group.value_type {
+                    bail!(
+                        "node {} variable_aggregator group {} expects valueType {} but selector {} declares {}",
+                        node.node_id,
+                        group.key,
+                        group.value_type,
+                        selector.join("."),
+                        output.value_type
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn validate_variable_scope_contracts(

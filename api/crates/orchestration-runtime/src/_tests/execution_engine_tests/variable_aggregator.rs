@@ -16,37 +16,68 @@ fn variable_aggregator_plan() -> CompiledPlan {
         llm_runtime: None,
         code_runtime: None,
     };
+    let groups = json!([
+        { "key": "text", "valueType": "string", "candidates": [["missing", "value"], ["node-start", "text"], ["node-start", "text_fallback"]] },
+        { "key": "count", "valueType": "number", "candidates": [["node-start", "count"]] },
+        { "key": "enabled", "valueType": "boolean", "candidates": [["node-start", "enabled"]] },
+        { "key": "metadata", "valueType": "object", "candidates": [["node-start", "metadata"]] },
+        { "key": "items", "valueType": "array", "candidates": [["node-start", "items"]] }
+    ]);
+    let selector_paths = groups
+        .as_array()
+        .expect("groups fixture must be an array")
+        .iter()
+        .flat_map(|group| {
+            group["candidates"]
+                .as_array()
+                .expect("candidates fixture must be an array")
+        })
+        .map(|selector| {
+            selector
+                .as_array()
+                .expect("selector fixture must be an array")
+                .iter()
+                .map(|segment| {
+                    segment
+                        .as_str()
+                        .expect("selector segment must be a string")
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
     let aggregator = CompiledNode {
         node_id: "node-aggregator".to_string(),
         node_type: "variable_aggregator".to_string(),
-        alias: "First available".to_string(),
+        alias: "First available by group".to_string(),
         container_id: None,
         dependency_node_ids: vec!["node-start".to_string()],
         downstream_node_ids: Vec::new(),
         bindings: BTreeMap::from([(
-            "candidates".to_string(),
+            "groups".to_string(),
             CompiledBinding {
                 i18n_text_ref: None,
-                kind: "selector_list".to_string(),
-                raw_value: json!([
-                    ["missing", "value"],
-                    ["node-start", "primary"],
-                    ["node-start", "fallback"]
-                ]),
-                selector_paths: vec![
-                    vec!["missing".to_string(), "value".to_string()],
-                    vec!["node-start".to_string(), "primary".to_string()],
-                    vec!["node-start".to_string(), "fallback".to_string()],
-                ],
+                kind: "variable_groups".to_string(),
+                raw_value: groups,
+                selector_paths,
             },
         )]),
-        outputs: vec![CompiledOutput {
-            key: "value".to_string(),
-            title: "Value".to_string(),
-            value_type: "any".to_string(),
-            selector: vec!["value".to_string()],
+        outputs: [
+            ("text", "string"),
+            ("count", "number"),
+            ("enabled", "boolean"),
+            ("metadata", "object"),
+            ("items", "array"),
+        ]
+        .into_iter()
+        .map(|(key, value_type)| CompiledOutput {
+            key: key.to_string(),
+            title: key.to_string(),
+            value_type: value_type.to_string(),
+            selector: vec![key.to_string()],
             json_schema: None,
-        }],
+        })
+        .collect(),
         config: json!({}),
         plugin_runtime: None,
         llm_runtime: None,
@@ -73,76 +104,142 @@ fn variable_aggregator_plan() -> CompiledPlan {
     }
 }
 
-// Root AC-001/002/003: missing candidates are skipped and null/empty values are matches.
-#[tokio::test]
-async fn variable_aggregator_uses_first_existing_candidate_in_normal_run() {
-    for primary in [Value::Null, json!("")] {
-        let outcome = start_flow_debug_run(
-            &variable_aggregator_plan(),
-            &json!({
-                "node-start": {
-                    "primary": primary.clone(),
-                    "fallback": "later"
-                }
-            }),
-            &successful_invoker(),
-        )
-        .await
-        .expect("variable aggregator run should execute");
-
-        assert!(matches!(
-            outcome.stop_reason,
-            ExecutionStopReason::Completed
-        ));
-        assert_eq!(outcome.variable_pool["node-aggregator"]["value"], primary);
-        let trace = outcome
-            .node_traces
-            .last()
-            .expect("aggregator trace should exist");
-        assert_eq!(
-            trace.debug_payload["matched_candidate"],
-            json!({ "index": 1, "selector": ["node-start", "primary"] })
-        );
-        assert_eq!(trace.debug_payload.as_object().map(Map::len), Some(1));
-    }
+fn complete_values(text: Value) -> Value {
+    json!({
+        "text": text,
+        "text_fallback": "later",
+        "count": 7,
+        "enabled": false,
+        "metadata": { "source": "fixture" },
+        "items": [1, 2]
+    })
 }
 
-// Root AC-004: an entirely missing candidate list has a stable node error code.
+// Root AC-001/002/003/015: all concrete group types use first-existing order; empty string exists.
 #[tokio::test]
-async fn variable_aggregator_fails_when_all_candidates_are_missing() {
+async fn variable_aggregator_emits_all_groups_and_matched_candidates_in_normal_run() {
     let outcome = start_flow_debug_run(
         &variable_aggregator_plan(),
-        &json!({ "node-start": {} }),
+        &json!({ "node-start": complete_values(json!("")) }),
+        &successful_invoker(),
+    )
+    .await
+    .expect("variable aggregator run should execute");
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    assert_eq!(
+        outcome.variable_pool["node-aggregator"],
+        json!({
+            "text": "",
+            "count": 7,
+            "enabled": false,
+            "metadata": { "source": "fixture" },
+            "items": [1, 2]
+        })
+    );
+    let trace = outcome
+        .node_traces
+        .last()
+        .expect("aggregator trace should exist");
+    assert_eq!(
+        trace.debug_payload["matched_candidates"]["text"],
+        json!({ "index": 1, "selector": ["node-start", "text"] })
+    );
+    assert_eq!(
+        trace.input_payload["groups"].as_array().map(Vec::len),
+        Some(5)
+    );
+}
+
+// Root AC-004: a group with all candidates missing fails without partial output.
+#[tokio::test]
+async fn variable_aggregator_fails_with_group_key_when_all_candidates_are_missing() {
+    let mut values = complete_values(json!("present"));
+    values
+        .as_object_mut()
+        .expect("fixture object")
+        .remove("count");
+    let outcome = start_flow_debug_run(
+        &variable_aggregator_plan(),
+        &json!({ "node-start": values }),
         &successful_invoker(),
     )
     .await
     .expect("missing candidates should be a node outcome");
 
     match outcome.stop_reason {
-        ExecutionStopReason::Failed(failure) => assert_eq!(
-            failure.error_payload["error_code"],
-            json!("variable_aggregator_no_candidate_value")
-        ),
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("variable_aggregator_no_candidate_value")
+            );
+            assert_eq!(failure.error_payload["group_key"], json!("count"));
+            assert!(failure.error_payload.get("value").is_none());
+        }
         other => panic!("expected variable aggregator failure, got {other:?}"),
     }
+    assert_eq!(
+        outcome.node_traces.last().expect("trace").output_payload,
+        json!({})
+    );
 }
 
-// Root AC-006: single-node preview uses the same first-existing rule and debug shape.
+// Root AC-003/014: null is existing but mismatches a concrete type immediately, without fallback.
+#[tokio::test]
+async fn variable_aggregator_type_mismatch_fails_immediately_without_value_or_partial_output() {
+    let outcome = start_flow_debug_run(
+        &variable_aggregator_plan(),
+        &json!({ "node-start": complete_values(Value::Null) }),
+        &successful_invoker(),
+    )
+    .await
+    .expect("type mismatch should be a node outcome");
+
+    let failure = match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => failure,
+        other => panic!("expected variable aggregator failure, got {other:?}"),
+    };
+    assert_eq!(
+        failure.error_payload["error_code"],
+        json!("variable_aggregator_output_type_mismatch")
+    );
+    assert_eq!(failure.error_payload["group_key"], json!("text"));
+    assert_eq!(
+        failure.error_payload["expected_value_type"],
+        json!("string")
+    );
+    assert_eq!(failure.error_payload["actual_value_type"], json!("null"));
+    assert_eq!(failure.error_payload["candidate_index"], json!(1));
+    assert_eq!(
+        failure.error_payload["selector"],
+        json!(["node-start", "text"])
+    );
+    assert!(failure.error_payload.get("value").is_none());
+    assert_eq!(
+        outcome.node_traces.last().expect("trace").output_payload,
+        json!({})
+    );
+}
+
+// Root AC-006: single-node preview shares the normal executor and debug contract.
 #[tokio::test]
 async fn variable_aggregator_preview_matches_normal_runtime_semantics() {
     let preview = crate::preview_executor::run_node_preview(
         &variable_aggregator_plan(),
         "node-aggregator",
-        &json!({ "node-start": { "fallback": 42 } }),
+        &json!({ "node-start": complete_values(json!("preview")) }),
         &successful_invoker(),
     )
     .await
     .expect("variable aggregator preview should execute");
 
-    assert_eq!(preview.node_output, json!({ "value": 42 }));
+    assert_eq!(preview.node_output["text"], json!("preview"));
     assert_eq!(
-        preview.debug_payload["matched_candidate"],
-        json!({ "index": 2, "selector": ["node-start", "fallback"] })
+        preview.debug_payload["matched_candidates"]["text"],
+        json!({ "index": 1, "selector": ["node-start", "text"] })
     );
     assert!(!preview.is_failed());
 }

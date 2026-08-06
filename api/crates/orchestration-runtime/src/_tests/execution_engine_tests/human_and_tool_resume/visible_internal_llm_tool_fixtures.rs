@@ -42,8 +42,8 @@ pub(super) fn visible_internal_llm_tool_plan_with_variable_aggregator() -> Compi
         CompiledBinding {
             i18n_text_ref: None,
             kind: "templated_text".to_string(),
-            selector_paths: vec![vec!["node-aggregator".to_string(), "value".to_string()]],
-            raw_value: json!("aggregated: {{ node-aggregator.value }}"),
+            selector_paths: vec![vec!["node-aggregator".to_string(), "text".to_string()]],
+            raw_value: json!("aggregated: {{ node-aggregator.text }}"),
         },
     )]);
     plan.nodes.insert(
@@ -56,11 +56,15 @@ pub(super) fn visible_internal_llm_tool_plan_with_variable_aggregator() -> Compi
             dependency_node_ids: vec!["node-mounted-llm".to_string()],
             downstream_node_ids: vec!["node-tool-result".to_string()],
             bindings: BTreeMap::from([(
-                "candidates".to_string(),
+                "groups".to_string(),
                 CompiledBinding {
                     i18n_text_ref: None,
-                    kind: "selector_list".to_string(),
-                    raw_value: json!([["node-missing", "value"], ["node-mounted-llm", "text"]]),
+                    kind: "variable_groups".to_string(),
+                    raw_value: json!([{
+                        "key": "text",
+                        "valueType": "string",
+                        "candidates": [["node-missing", "value"], ["node-mounted-llm", "text"]]
+                    }]),
                     selector_paths: vec![
                         vec!["node-missing".to_string(), "value".to_string()],
                         vec!["node-mounted-llm".to_string(), "text".to_string()],
@@ -68,10 +72,10 @@ pub(super) fn visible_internal_llm_tool_plan_with_variable_aggregator() -> Compi
                 },
             )]),
             outputs: vec![CompiledOutput {
-                key: "value".to_string(),
-                title: "Value".to_string(),
-                value_type: "any".to_string(),
-                selector: vec!["value".to_string()],
+                key: "text".to_string(),
+                title: "text".to_string(),
+                value_type: "string".to_string(),
+                selector: vec!["text".to_string()],
                 json_schema: None,
             }],
             config: json!({}),
