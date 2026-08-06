@@ -21,11 +21,11 @@ set input_mapping = jsonb_set(
 )
 where tool_id in (
     'frontstage_update_page_metadata',
-    'list_pages',
-    'create_tab',
-    'list_tabs',
-    'get_page_detail',
-    'create_page'
+    'frontstage_list_pages',
+    'frontstage_create_tab',
+    'frontstage_list_tabs',
+    'frontstage_get_page_detail',
+    'frontstage_create_page'
 )
 and exists (
     select 1

@@ -1040,11 +1040,11 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
 async fn ac_004_frontstage_tool_migration_binds_all_six_workspace_parameters_to_the_server() {
     const TOOL_IDS: [&str; 6] = [
         "frontstage_update_page_metadata",
-        "list_pages",
-        "create_tab",
-        "list_tabs",
-        "get_page_detail",
-        "create_page",
+        "frontstage_list_pages",
+        "frontstage_create_tab",
+        "frontstage_list_tabs",
+        "frontstage_get_page_detail",
+        "frontstage_create_page",
     ];
     const MIGRATION_SQL: &str = include_str!(
         "../../../../crates/storage-durable/postgres/migrations/20260806120000_bind_frontstage_mcp_tools_to_instance_workspace.sql"
