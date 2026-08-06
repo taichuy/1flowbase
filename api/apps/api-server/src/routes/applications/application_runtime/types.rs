@@ -367,6 +367,30 @@ pub struct AnswerSnapshotResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct ContextSnapshotMeasurementResponse {
+    pub method: String,
+    pub accuracy: String,
+    pub coverage: String,
+    pub unknown_block_count: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct ContextSnapshotResponse {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub event_id: String,
+    pub run_id: String,
+    pub node_run_id: Option<String>,
+    pub node_id: String,
+    pub sequence: i64,
+    pub input_tokens: u64,
+    pub effective_context_window: Option<u64>,
+    pub remaining_tokens: Option<u64>,
+    pub measurement: ContextSnapshotMeasurementResponse,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct ApplicationRunStitchedTraceResponse {
     pub source_flow_run: FlowRunResponse,
     pub node_runs: Vec<NodeRunResponse>,
@@ -381,6 +405,7 @@ pub struct ApplicationRunDetailResponse {
     pub detail: application_logs::ApplicationRunTypedDetailResponse,
     pub flow_run: FlowRunResponse,
     pub answer_snapshot: Option<AnswerSnapshotResponse>,
+    pub context_snapshot: Option<ContextSnapshotResponse>,
     pub node_runs: Vec<NodeRunResponse>,
     pub checkpoints: Vec<CheckpointResponse>,
     pub callback_tasks: Vec<CallbackTaskResponse>,

@@ -461,6 +461,7 @@ export interface ConsoleApplicationRunDetail {
   detail?: ConsoleApplicationRunTypedDetail;
   flow_run: ConsoleFlowRunDetail;
   answer_snapshot?: ConsoleAnswerSnapshot | null;
+  context_snapshot?: ConsoleRunContextSnapshot | null;
   node_runs: ConsoleNodeRunDetail[];
   checkpoints: ConsoleRunCheckpoint[];
   callback_tasks: ConsoleCallbackTask[];
@@ -976,6 +977,16 @@ export interface ConsoleContextSnapshot {
     coverage: 'complete' | 'partial';
     unknown_block_count: number;
   };
+}
+
+export interface ConsoleRunContextSnapshot extends ConsoleContextSnapshot {
+  type: 'context_snapshot';
+  event_id: string;
+  run_id: string;
+  node_run_id: string | null;
+  node_id: string;
+  sequence: number;
+  created_at: string;
 }
 
 export type ConsoleFlowDebugStreamEvent =

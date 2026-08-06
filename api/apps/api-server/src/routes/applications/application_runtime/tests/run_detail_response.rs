@@ -1,6 +1,65 @@
 use super::*;
 
 #[test]
+fn run_detail_response_projects_latest_gateway_context_snapshot_for_recovery() {
+    let application = test_application_record();
+    let flow_run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    let flow_run = test_flow_run_record(
+        application.id,
+        flow_run_id,
+        domain::FlowRunStatus::Succeeded,
+        serde_json::json!({}),
+    );
+    let context_snapshot = test_runtime_event_record(
+        flow_run_id,
+        Some(node_run_id),
+        "context_snapshot",
+        serde_json::json!({
+            "type": "context_snapshot",
+            "node_id": "node-llm",
+            "node_run_id": node_run_id,
+            "input_tokens": 13_681,
+            "effective_context_window": 128_000,
+            "remaining_tokens": 114_319,
+            "measurement": {
+                "method": "generic_estimate",
+                "accuracy": "estimated",
+                "coverage": "complete",
+                "unknown_block_count": 0
+            }
+        }),
+    );
+    let detail = domain::ApplicationRunDetail {
+        flow_run: flow_run.clone(),
+        node_runs: Vec::new(),
+        checkpoints: Vec::new(),
+        callback_tasks: Vec::new(),
+        events: Vec::new(),
+        stitched_trace: vec![domain::ApplicationRunStitchedTrace {
+            source_flow_run: flow_run,
+            node_runs: Vec::new(),
+            callback_tasks: Vec::new(),
+            events: Vec::new(),
+            runtime_events: vec![context_snapshot],
+        }],
+        subagent_traces: Vec::new(),
+    };
+
+    let response = to_application_run_detail_response(&application, detail);
+    let snapshot = response
+        .context_snapshot
+        .expect("terminal snapshot should project the latest Gateway context");
+    assert_eq!(snapshot.run_id, flow_run_id.to_string());
+    assert_eq!(snapshot.node_id, "node-llm");
+    assert_eq!(snapshot.node_run_id, Some(node_run_id.to_string()));
+    assert_eq!(snapshot.input_tokens, 13_681);
+    assert_eq!(snapshot.effective_context_window, Some(128_000));
+    assert_eq!(snapshot.remaining_tokens, Some(114_319));
+    assert_eq!(snapshot.measurement.accuracy, "estimated");
+}
+
+#[test]
 fn run_detail_response_does_not_expose_publication_creator_as_scheduler_principal() {
     let application = test_application_record();
     let flow_run_id = Uuid::now_v7();

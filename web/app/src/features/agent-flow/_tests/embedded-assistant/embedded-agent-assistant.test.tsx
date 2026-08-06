@@ -259,9 +259,31 @@ describe('EmbeddedAgentAssistant', () => {
   });
 
   test('issue 1601 drives context from AI Gateway snapshots instead of Provider usage', async () => {
-    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockRejectedValue(
-      new Error('optional calibration unavailable')
-    );
+    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockResolvedValue({
+      flow_run: { status: 'succeeded' },
+      node_runs: [],
+      checkpoints: [],
+      callback_tasks: [],
+      events: [],
+      context_snapshot: {
+        type: 'context_snapshot',
+        event_id: 'event-context-terminal',
+        run_id: 'run-context',
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        sequence: 9,
+        input_tokens: 321,
+        effective_context_window: 100000,
+        remaining_tokens: 99679,
+        measurement: {
+          method: 'generic_estimate',
+          accuracy: 'estimated',
+          coverage: 'complete',
+          unknown_block_count: 0
+        },
+        created_at: '2026-08-06T00:00:00Z'
+      }
+    } as never);
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -361,7 +383,7 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       await screen.findByText(
         i18nText('appShell', 'auto.assistant_context_total', {
-          value1: '100',
+          value1: '321',
           value2: '100K'
         })
       )

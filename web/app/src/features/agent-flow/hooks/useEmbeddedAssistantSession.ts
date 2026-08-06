@@ -1,6 +1,5 @@
 import {
   cancelConsoleFlowRun,
-  normalizeConsoleRuntimeEvent,
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
   type ConsoleAssistantWebSocketControl,
@@ -74,34 +73,6 @@ function isTerminalEvent(event: ConsoleFlowDebugStreamEvent) {
     event.type === 'replay_expired' ||
     event.type === 'replay_gap'
   );
-}
-
-function contextSnapshotFromRunEvents(
-  events: Array<{
-    id: string;
-    flow_run_id: string;
-    node_run_id: string | null;
-    sequence: number;
-    event_type: string;
-    payload: Record<string, unknown>;
-    created_at: string;
-  }>
-) {
-  for (const event of [...events].reverse()) {
-    const normalized = normalizeConsoleRuntimeEvent({
-      event_id: event.id,
-      event_type: event.event_type,
-      run_id: event.flow_run_id,
-      node_run_id: event.node_run_id,
-      sequence: event.sequence,
-      payload: event.payload,
-      created_at: event.created_at
-    });
-    if (normalized?.type === 'context_snapshot') {
-      return normalized;
-    }
-  }
-  return null;
 }
 
 function isTerminalFlowRunStatus(status: string) {
@@ -207,7 +178,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
               : message
           )
         );
-        const nextContextSnapshot = contextSnapshotFromRunEvents(detail.events);
+        const nextContextSnapshot = detail.context_snapshot ?? null;
         if (nextContextSnapshot !== null) {
           setContextSnapshot(nextContextSnapshot);
         }
