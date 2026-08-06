@@ -7,14 +7,10 @@ use axum::{
     Json, Router,
 };
 use control_plane::mcp_management::McpManagementService;
-use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
+use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::mcp_management::upstream_client::{
-    map_proxy_arguments, map_proxy_result, McpStreamableHttpClient,
-};
-use super::mcp_management::{bindable_mcp_interface, McpDebugExecuteBody, McpDebugResponseMode};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -23,6 +19,7 @@ use crate::{
 
 mod input_schema;
 pub(crate) mod result_delivery;
+pub(crate) mod virtual_ui;
 
 pub(crate) const JSON_RPC_RESPONSE_MAX_BYTES: usize = 256 * 1024;
 
@@ -63,8 +60,9 @@ async fn handle_mcp_request(
         return Ok(jsonrpc_error(request.id, -32600, "Invalid Request"));
     }
 
-    let service = McpManagementService::new(state.store.clone());
-    let catalog = service.read_catalog_for_actor(&context.actor).await?;
+    let catalog = McpManagementService::new(state.store.clone())
+        .read_catalog_for_actor(&context.actor)
+        .await?;
     let instance = catalog
         .instances
         .iter()
@@ -90,336 +88,39 @@ async fn handle_mcp_request(
                 },
             ));
         }
-        "tools/list" => json!({"tools": meta_tools()}),
+        "tools/list" => json!({"tools": virtual_ui::meta_tools()}),
         "tools/call" => {
-            let name = request.params.get("name").and_then(Value::as_str).ok_or(
-                control_plane::errors::ControlPlaneError::InvalidInput("name"),
-            )?;
+            let Some(name) = request.params.get("name").and_then(Value::as_str) else {
+                return Ok(jsonrpc_error(request.id, -32602, "Invalid name"));
+            };
             let arguments = request
                 .params
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            match name {
-                "mcp.list" => {
-                    let path = arguments.get("path").and_then(Value::as_str);
-                    let path_regex = arguments.get("path_regex").and_then(Value::as_str);
-                    let keywords =
-                        arguments
-                            .get("keywords")
-                            .and_then(Value::as_array)
-                            .map(|values| {
-                                values
-                                    .iter()
-                                    .filter_map(Value::as_str)
-                                    .map(str::to_owned)
-                                    .collect::<Vec<_>>()
-                            });
-                    let depth = arguments
-                        .get("depth")
-                        .and_then(Value::as_i64)
-                        .and_then(|value| i32::try_from(value).ok());
-                    let limit = arguments
-                        .get("limit")
-                        .and_then(Value::as_u64)
-                        .and_then(|value| usize::try_from(value).ok());
-                    let items = service
-                        .list_items_for_actor(
-                            &context.actor,
-                            Some(&instance_id),
-                            path,
-                            path_regex,
-                            keywords.as_deref(),
-                            depth,
-                            limit,
-                        )
-                        .await?;
-                    tool_result(serde_json::to_value(items).unwrap_or_else(|_| json!([])))
+            let scope = virtual_ui::VirtualMcpScope::single(instance_id);
+            match virtual_ui::dispatch(
+                &state,
+                &headers,
+                &context.actor,
+                &catalog,
+                &scope,
+                name,
+                arguments,
+            )
+            .await?
+            {
+                virtual_ui::VirtualToolOutcome::Success(result) => result,
+                virtual_ui::VirtualToolOutcome::Error {
+                    code,
+                    message,
+                    data,
+                } => {
+                    return Ok(match data {
+                        Some(data) => jsonrpc_error_data(request.id, code, message, data),
+                        None => jsonrpc_error(request.id, code, message),
+                    });
                 }
-                "mcp.get" => {
-                    let Some(tool_id) = string_argument(&arguments, "tool_id") else {
-                        return Ok(jsonrpc_error(request.id, -32602, "Invalid tool_id"));
-                    };
-                    let Some(tool) = visible_tool(&catalog, instance.id, tool_id) else {
-                        return Ok(jsonrpc_error(request.id, -32602, "Tool not visible"));
-                    };
-                    tool_result(json!({
-                        "tool_id": tool.tool_id,
-                        "name": tool.name,
-                        "short_description": tool.short_description,
-                        "full_description": tool.full_description,
-                        "input_schema": input_schema::mapped_schema(
-                            &tool.parameter_schema,
-                            &tool.input_mapping,
-                        ),
-                        "result_schema": tool.result_schema,
-                        "risk_level": tool.risk_level,
-                        "des_id": tool.des_id,
-                        "des_id_required": tool.des_id_required
-                    }))
-                }
-                "mcp.result" => {
-                    let Some(result_ref) = string_argument(&arguments, "result_ref")
-                        .and_then(|value| uuid::Uuid::parse_str(value).ok())
-                    else {
-                        return Ok(jsonrpc_error(request.id, -32602, "Invalid result_ref"));
-                    };
-                    let cursor = match arguments.get("cursor") {
-                        Some(Value::String(value)) => match value.parse::<usize>() {
-                            Ok(cursor) => cursor,
-                            Err(_) => {
-                                return Ok(jsonrpc_error(request.id, -32602, "Invalid cursor"));
-                            }
-                        },
-                        None => 0,
-                        Some(_) => {
-                            return Ok(jsonrpc_error(request.id, -32602, "Invalid cursor"));
-                        }
-                    };
-                    let inline_chars = match result_delivery::inline_limit(&arguments) {
-                        Ok(limit) => limit,
-                        Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
-                    };
-                    result_delivery::read_continuation(
-                        state.as_ref(),
-                        &context.actor,
-                        result_ref,
-                        cursor,
-                        inline_chars,
-                    )
-                    .await
-                }
-                "mcp.call" => {
-                    let Some(tool_id) = string_argument(&arguments, "tool_id") else {
-                        return Ok(jsonrpc_error(request.id, -32602, "Invalid tool_id"));
-                    };
-                    let Some(tool) = visible_tool(&catalog, instance.id, tool_id) else {
-                        return Ok(jsonrpc_error(request.id, -32602, "Tool not visible"));
-                    };
-                    let des_id = arguments.get("des_id").and_then(Value::as_str);
-                    if tool.des_id_required && des_id != Some(tool.des_id.as_str()) {
-                        return Ok(jsonrpc_error(request.id, -32602, "Invalid des_id"));
-                    }
-                    let inline_chars = match result_delivery::inline_limit(&arguments) {
-                        Ok(limit) => limit,
-                        Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
-                    };
-                    let tool_arguments = arguments
-                        .get("arguments")
-                        .cloned()
-                        .unwrap_or_else(|| json!({}));
-                    match &tool.execution_target {
-                        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-                            let interface = match bindable_mcp_interface(
-                                state.as_ref(),
-                                &context.actor,
-                                interface_id,
-                            )
-                            .await
-                            {
-                                Ok(interface) => interface,
-                                Err(error) => {
-                                    tracing::warn!(
-                                        tool_id = %tool.tool_id,
-                                        interface_id = %interface_id,
-                                        error = %error.0,
-                                        "MCP interface tool could not resolve its target interface"
-                                    );
-                                    return Ok(interface_api_error_response(request.id, &error.0));
-                                }
-                            };
-                            let body = McpDebugExecuteBody {
-                                interface_id: interface_id.clone(),
-                                debug_response_mode: McpDebugResponseMode::ToolResult,
-                                mcp_arguments: tool_arguments,
-                                input_mapping: tool.input_mapping.clone(),
-                                output_mapping: tool.output_mapping.clone(),
-                            };
-                            let completed_operation = if matches!(
-                                interface.method.as_str(),
-                                "GET" | "HEAD" | "OPTIONS"
-                            ) {
-                                result_delivery::CompletedOperation::Read {
-                                    operation_id: interface_id,
-                                }
-                            } else {
-                                result_delivery::CompletedOperation::Write {
-                                    operation_id: interface_id,
-                                }
-                            };
-                            match super::mcp_management::debug_execute::execute_with_server_bindings(
-                                state.clone(),
-                                headers,
-                                interface,
-                                body,
-                                super::mcp_management::debug_execute::McpServerBoundInputs {
-                                    workspace_id: instance.workspace_id,
-                                },
-                            )
-                            .await
-                            {
-                                Ok(value) => {
-                                    if result_delivery::exceeds_inline_limit(&value, inline_chars) {
-                                        result_delivery::deliver_oversized_result(
-                                            state.as_ref(),
-                                            &context.actor,
-                                            completed_operation,
-                                            value,
-                                        )
-                                        .await
-                                    } else {
-                                        tool_result(value)
-                                    }
-                                }
-                                Err(super::mcp_management::debug_execute::McpDebugExecuteError::Api(error)) => {
-                                    tracing::warn!(
-                                        tool_id = %tool.tool_id,
-                                        interface_id = %interface_id,
-                                        error = %error,
-                                        "MCP interface tool dispatch failed before receiving a target response"
-                                    );
-                                    return Ok(interface_api_error_response(request.id, &error));
-                                }
-                                Err(super::mcp_management::debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
-                                    let status = response.status();
-                                    tracing::warn!(
-                                        tool_id = %tool.tool_id,
-                                        interface_id = %interface_id,
-                                        status = %status,
-                                        "MCP interface tool target returned a non-success status"
-                                    );
-                                    return Ok(jsonrpc_error_data(
-                                        request.id,
-                                        -32603,
-                                        "Tool execution failed",
-                                        json!({
-                                            "category": "target_interface",
-                                            "http_status": status.as_u16(),
-                                            "outcome": "failed",
-                                            "retry_original": false
-                                        }),
-                                    ));
-                                }
-                            }
-                        }
-                        domain::McpToolExecutionTarget::McpProxy {
-                            upstream_connection_id,
-                            remote_tool_name,
-                            ..
-                        } => {
-                            let availability = service
-                                .upstream_proxy_availability_for_actor(
-                                    &context.actor,
-                                    *upstream_connection_id,
-                                    remote_tool_name,
-                                )
-                                .await?;
-                            if availability != domain::McpToolAvailabilityStatus::Available {
-                                return Ok(jsonrpc_error_data(
-                                    request.id,
-                                    -32603,
-                                    "Upstream tool unavailable",
-                                    json!({"availability_status":availability.as_str()}),
-                                ));
-                            }
-                            let connection = service
-                                .get_upstream_connection_for_actor(
-                                    &context.actor,
-                                    *upstream_connection_id,
-                                )
-                                .await?;
-                            let secret = service
-                                .upstream_secret_for_actor(
-                                    &context.actor,
-                                    *upstream_connection_id,
-                                    &state.provider_secret_master_key,
-                                )
-                                .await?;
-                            let remote_arguments =
-                                match map_proxy_arguments(&tool_arguments, &tool.input_mapping) {
-                                    Ok(arguments) => arguments,
-                                    Err(error) => {
-                                        return Ok(jsonrpc_error_data(
-                                            request.id,
-                                            -32602,
-                                            "Invalid tool arguments",
-                                            json!({"reason":error.to_string()}),
-                                        ));
-                                    }
-                                };
-                            let client = match McpStreamableHttpClient::connect(
-                                &connection,
-                                secret.as_ref(),
-                            )
-                            .await
-                            {
-                                Ok(client) => client,
-                                Err(error) => {
-                                    return Ok(jsonrpc_error_data(
-                                        request.id,
-                                        -32603,
-                                        "Upstream MCP connection failed",
-                                        json!({"reason":error.to_string()}),
-                                    ));
-                                }
-                            };
-                            let upstream =
-                                match client.call_tool(remote_tool_name, remote_arguments).await {
-                                    Ok(result) => result,
-                                    Err(error) => {
-                                        return Ok(jsonrpc_error_data(
-                                            request.id,
-                                            -32603,
-                                            "Upstream MCP tools/call failed",
-                                            json!({"reason":error.to_string()}),
-                                        ));
-                                    }
-                                };
-                            let mapped = match map_proxy_result(&upstream, &tool.output_mapping) {
-                                Ok(result) => result,
-                                Err(error) => {
-                                    return Ok(jsonrpc_error_data(
-                                        request.id,
-                                        -32603,
-                                        "Tool result mapping failed",
-                                        json!({"reason":error.to_string()}),
-                                    ));
-                                }
-                            };
-                            match serde_json::to_value(mapped) {
-                                Ok(value) => {
-                                    let detail = value
-                                        .get("structuredContent")
-                                        .cloned()
-                                        .unwrap_or_else(|| value.clone());
-                                    if result_delivery::exceeds_inline_limit(&detail, inline_chars)
-                                    {
-                                        result_delivery::deliver_oversized_result(
-                                            state.as_ref(),
-                                            &context.actor,
-                                            result_delivery::CompletedOperation::Write {
-                                                operation_id: &tool.tool_id,
-                                            },
-                                            detail,
-                                        )
-                                        .await
-                                    } else {
-                                        value
-                                    }
-                                }
-                                Err(error) => {
-                                    return Ok(jsonrpc_error_data(
-                                        request.id,
-                                        -32603,
-                                        "Tool result serialization failed",
-                                        json!({"reason":error.to_string()}),
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => return Ok(jsonrpc_error(request.id, -32601, "Tool not found")),
             }
         }
         _ => return Ok(jsonrpc_error(request.id, -32601, "Method not found")),
@@ -434,102 +135,6 @@ async fn handle_mcp_request(
             error: None,
         },
     ))
-}
-
-fn meta_tools() -> [Value; 4] {
-    [
-        json!({
-            "name": "mcp.list",
-            "title": "Browse MCP directory",
-            "description": "Browse the current MCP instance by path before requesting full tool details.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "keywords": {"type": "array", "items": {"type": "string"}},
-                    "depth": {"type": "integer", "minimum": 0},
-                    "path_regex": {"type": "string"},
-                    "limit": {"type": "integer", "minimum": 1}
-                },
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "mcp.get",
-            "title": "Get MCP tool details",
-            "description": "Get the current description, schemas, risk information, and des_id for a visible tool before calling it.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"tool_id": {"type": "string"}},
-                "required": ["tool_id"],
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "mcp.result",
-            "title": "Continue MCP result detail",
-            "description": "Read a cached page of result detail. Missing detail never authorizes retrying the original operation.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "result_ref": {"type": "string", "format": "uuid"},
-                    "cursor": {"type": "string"},
-                    "max_inline_chars": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": result_delivery::MAX_INLINE_CHARS
-                    }
-                },
-                "required": ["result_ref"],
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "mcp.call",
-            "title": "Call MCP tool",
-            "description": "Call a visible tool after mcp.get. Supply the current des_id when the tool requires description validation.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "tool_id": {"type": "string"},
-                    "des_id": {"type": "string"},
-                    "arguments": {"type": "object"},
-                    "max_inline_chars": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": result_delivery::MAX_INLINE_CHARS,
-                        "default": result_delivery::DEFAULT_INLINE_CHARS
-                    }
-                },
-                "required": ["tool_id", "arguments"],
-                "additionalProperties": false
-            }
-        }),
-    ]
-}
-
-fn string_argument<'a>(arguments: &'a Value, field: &str) -> Option<&'a str> {
-    arguments.get(field).and_then(Value::as_str)
-}
-
-fn visible_tool<'a>(
-    catalog: &'a domain::McpCatalogSnapshot,
-    instance_record_id: uuid::Uuid,
-    tool_id: &str,
-) -> Option<&'a domain::McpToolRecord> {
-    let binding = catalog.bindings.iter().find(|binding| {
-        binding.instance_record_id == instance_record_id
-            && binding.visible
-            && binding.tool_id == tool_id
-    })?;
-    catalog
-        .tools
-        .iter()
-        .find(|tool| tool.id == binding.tool_record_id && tool.status == McpToolStatus::Enabled)
-}
-
-fn tool_result(value: Value) -> Value {
-    result_delivery::tool_result(value)
 }
 
 fn jsonrpc_error(
@@ -590,53 +195,6 @@ fn bounded_jsonrpc_response(
     )
 }
 
-fn interface_api_error_response(
-    id: Option<Value>,
-    error: &anyhow::Error,
-) -> (StatusCode, Json<JsonRpcResponse>) {
-    let (code, category, field) =
-        match error.downcast_ref::<control_plane::errors::ControlPlaneError>() {
-            Some(control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments")) => {
-                (-32602, "invalid_tool_arguments", Some("mcp_arguments"))
-            }
-            Some(control_plane::errors::ControlPlaneError::InvalidInput("request_schema")) => {
-                (-32602, "invalid_tool_arguments", Some("request_schema"))
-            }
-            Some(control_plane::errors::ControlPlaneError::InvalidInput("input_mapping")) => {
-                (-32603, "invalid_tool_configuration", Some("input_mapping"))
-            }
-            Some(control_plane::errors::ControlPlaneError::InvalidInput("response_schema")) => (
-                -32603,
-                "invalid_tool_configuration",
-                Some("response_schema"),
-            ),
-            Some(control_plane::errors::ControlPlaneError::InvalidInput("interface_id"))
-            | Some(control_plane::errors::ControlPlaneError::NotFound("mcp_interface")) => {
-                (-32603, "interface_catalog", Some("interface_id"))
-            }
-            _ => (-32603, "interface_dispatch", None),
-        };
-    let mut data = serde_json::Map::from_iter([
-        ("category".to_string(), Value::String(category.to_string())),
-        (
-            "outcome".to_string(),
-            Value::String(
-                if category == "interface_dispatch" {
-                    "unknown"
-                } else {
-                    "not_started"
-                }
-                .to_string(),
-            ),
-        ),
-        ("retry_original".to_string(), Value::Bool(false)),
-    ]);
-    if let Some(field) = field {
-        data.insert("field".to_string(), Value::String(field.to_string()));
-    }
-    jsonrpc_error_data(id, code, "Tool execution failed", Value::Object(data))
-}
-
 #[cfg(test)]
 mod issue_1246_tests {
     use super::*;
@@ -665,12 +223,17 @@ mod issue_1246_tests {
         ] {
             let error: anyhow::Error =
                 control_plane::errors::ControlPlaneError::InvalidInput(field).into();
-            let (_, response) = interface_api_error_response(Some(json!("call-1")), &error);
-            let error = response.0.error.unwrap();
-            assert_eq!(error["code"], json!(code));
-            assert_eq!(error["data"]["category"], json!(category));
-            assert_eq!(error["data"]["field"], json!(field));
-            assert!(!error.to_string().contains("secret-marker"));
+            let virtual_ui::VirtualToolOutcome::Error {
+                code: actual, data, ..
+            } = virtual_ui::interface_error(&error)
+            else {
+                panic!("interface failures must remain protocol errors");
+            };
+            let data = data.unwrap();
+            assert_eq!(actual, code);
+            assert_eq!(data["category"], json!(category));
+            assert_eq!(data["field"], json!(field));
+            assert!(!data.to_string().contains("secret-marker"));
         }
     }
 
@@ -697,11 +260,12 @@ mod issue_1246_tests {
 
     #[test]
     fn root_1569_ac_007_dispatch_unknown_is_distinct_from_target_failure() {
-        let (_, response) = interface_api_error_response(
-            Some(json!("bundle-import")),
-            &anyhow::anyhow!("dispatch connection closed"),
-        );
-        let data = &response.0.error.unwrap()["data"];
+        let virtual_ui::VirtualToolOutcome::Error { data, .. } =
+            virtual_ui::interface_error(&anyhow::anyhow!("dispatch connection closed"))
+        else {
+            panic!("interface failures must remain protocol errors");
+        };
+        let data = data.unwrap();
         assert_eq!(data["category"], json!("interface_dispatch"));
         assert_eq!(data["outcome"], json!("unknown"));
         assert_eq!(data["retry_original"], json!(false));

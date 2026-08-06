@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use axum::{
     extract::State,
@@ -47,12 +47,7 @@ use crate::{
         application_public_api::native::api_provider_runtime,
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
         debug_run_stream,
-        mcp_management::upstream_client::{
-            map_proxy_arguments, map_proxy_result, McpStreamableHttpClient,
-        },
-        mcp_management::{
-            bindable_mcp_interface, debug_execute, McpDebugExecuteBody, McpDebugResponseMode,
-        },
+        mcp_protocol::virtual_ui::{self, VirtualMcpScope, VirtualToolOutcome},
     },
 };
 
@@ -131,7 +126,7 @@ struct PreparedAssistantExecution {
     actor: domain::ActorContext,
     flow_run_id: Uuid,
     catalog: domain::McpCatalogSnapshot,
-    selected_mcp_instance_ids: Vec<String>,
+    mcp_scope: VirtualMcpScope,
     request_headers: HeaderMap,
 }
 
@@ -180,7 +175,7 @@ pub async fn get_settings(
         context.actor.current_workspace_id,
     );
     let (published_agent_flows, enabled_mcp_instances) =
-        available_targets(&state, context.user.id).await?;
+        available_targets(&state, &context.actor).await?;
     let run_capabilities = assistant_run_capabilities(&state, preference.application_id).await?;
     Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
         preference,
@@ -223,7 +218,7 @@ pub async fn update_settings(
     } else {
         preference
     };
-    validate_preference(&state, context.user.id, &preference).await?;
+    validate_preference(&state, &context.actor, &preference).await?;
     let workspace_id = context.actor.current_workspace_id;
     let meta_patch = json!({
         ASSISTANT_META_KEY: { "workspaces": { workspace_id.to_string(): preference } }
@@ -237,7 +232,7 @@ pub async fn update_settings(
         })
         .await?;
     let (published_agent_flows, enabled_mcp_instances) =
-        available_targets(&state, context.user.id).await?;
+        available_targets(&state, &context.actor).await?;
     let run_capabilities = assistant_run_capabilities(&state, preference.application_id).await?;
     Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
         preference,
@@ -498,18 +493,12 @@ async fn prepare_assistant_execution(
     let application_id = body.application_id;
     let preference = assistant_preference_for_target(state, context, application_id).await?;
     let catalog = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(context.user.id)
+        .read_catalog_for_actor(&context.actor)
         .await?;
     let execution = assistant_execution(&preference)?;
-    let selected_mcp_instance_ids = preference.mcp_instance_ids;
+    let mcp_scope = VirtualMcpScope::selected(&catalog, &preference.mcp_instance_ids);
     let mut inputs = NativeObject::default();
-    inputs.insert_value(
-        "tools",
-        Value::Array(assistant_provider_tools(
-            &catalog,
-            &selected_mcp_instance_ids,
-        )),
-    );
+    inputs.insert_value("tools", Value::Array(assistant_provider_tools()));
     let flow_run = ApplicationPublishedRunService::new(state.store.clone())
         .create_assistant_run(CreateAssistantRunCommand {
             actor_user_id: context.user.id,
@@ -544,7 +533,7 @@ async fn prepare_assistant_execution(
         actor: context.actor.clone(),
         flow_run_id: flow_run.id,
         catalog,
-        selected_mcp_instance_ids,
+        mcp_scope,
         request_headers: headers.clone(),
     })
 }
@@ -566,7 +555,7 @@ async fn assistant_preference_for_target(
         )
         .into());
     }
-    validate_preference(state, context.user.id, &preference).await?;
+    validate_preference(state, &context.actor, &preference).await?;
     ApplicationService::new(state.store.clone())
         .load_application_for_non_crud_console_operation(
             context.user.id,
@@ -607,7 +596,7 @@ async fn assistant_callback_tool_results(
             control_plane::errors::ControlPlaneError::InvalidInput("assistant_callback"),
         )?;
         let tool_name = call.get("name").and_then(Value::as_str).unwrap_or("Tool");
-        let trace_call = assistant_tool_call_for_trace(&execution.catalog, call);
+        let trace_call = call.clone();
         let started_at = Instant::now();
         append_assistant_tool_call_event(
             state,
@@ -622,11 +611,11 @@ async fn assistant_callback_tool_results(
         .await;
 
         let tool_result = match assistant_tool_result(
-            &execution.catalog,
-            &execution.selected_mcp_instance_ids,
             state,
             &execution.request_headers,
             &execution.actor,
+            &execution.catalog,
+            &execution.mcp_scope,
             call,
         )
         .await
@@ -701,222 +690,72 @@ async fn append_assistant_tool_call_event(
     }
 }
 
-fn assistant_provider_tools(
-    catalog: &domain::McpCatalogSnapshot,
-    selected_instance_ids: &[String],
-) -> Vec<Value> {
-    let mut names = BTreeSet::new();
-    let mut provider_tools = Vec::new();
-    for binding in catalog.bindings.iter().filter(|binding| binding.visible) {
-        let group_is_enabled = catalog.groups.iter().any(|group| {
-            group.instance_record_id == binding.instance_record_id
-                && group.path == binding.group_path
-                && group.enabled
-        });
-        if !group_is_enabled {
-            continue;
-        }
-        let Some(instance) = catalog.instances.iter().find(|instance| {
-            instance.id == binding.instance_record_id
-                && instance.status == McpInstanceStatus::Enabled
-                && selected_instance_ids.contains(&instance.instance_id)
-        }) else {
-            continue;
-        };
-        let Some(tool) = catalog.tools.iter().find(|tool| {
-            tool.id == binding.tool_record_id && tool.status == domain::McpToolStatus::Enabled
-        }) else {
-            continue;
-        };
-        let name = assistant_tool_name(instance, tool);
-        if !names.insert(name.clone()) {
-            continue;
-        }
-        provider_tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": tool.full_description,
-                "parameters": tool.parameter_schema,
-            }
-        }));
-    }
-    provider_tools
-}
-
-fn assistant_tool_name(
-    instance: &domain::McpInstanceRecord,
-    tool: &domain::McpToolRecord,
-) -> String {
-    format!("mcp_{}_{}", instance.id.simple(), tool.id.simple())
-}
-
-fn assistant_tool_call_for_trace(catalog: &domain::McpCatalogSnapshot, call: &Value) -> Value {
-    let Some(wire_name) = call.get("name").and_then(Value::as_str) else {
-        return call.clone();
-    };
-    let display_name = catalog.bindings.iter().find_map(|binding| {
-        let instance = catalog
-            .instances
-            .iter()
-            .find(|instance| instance.id == binding.instance_record_id)?;
-        let tool = catalog
-            .tools
-            .iter()
-            .find(|tool| tool.id == binding.tool_record_id)?;
-        (assistant_tool_name(instance, tool) == wire_name).then(|| {
-            binding
-                .display_alias
-                .as_deref()
-                .filter(|alias| !alias.trim().is_empty())
-                .unwrap_or(tool.name.as_str())
-                .to_string()
-        })
-    });
-    let Some(display_name) = display_name else {
-        return call.clone();
-    };
-    let mut trace_call = call.clone();
-    if let Some(trace_call) = trace_call.as_object_mut() {
-        trace_call.insert("name".to_string(), Value::String(display_name));
-        trace_call.insert(
-            "wire_name".to_string(),
-            Value::String(wire_name.to_string()),
-        );
-    }
-    trace_call
+fn assistant_provider_tools() -> Vec<Value> {
+    virtual_ui::provider_tools()
 }
 
 async fn assistant_tool_result(
-    catalog: &domain::McpCatalogSnapshot,
-    selected_instance_ids: &[String],
     state: &Arc<ApiState>,
     headers: &HeaderMap,
     actor: &domain::ActorContext,
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
     call: &Value,
 ) -> Result<Value, ApiError> {
     let id = call.get("id").and_then(Value::as_str).ok_or(
         control_plane::errors::ControlPlaneError::InvalidInput("assistant_callback"),
     )?;
     let name = call.get("name").and_then(Value::as_str).unwrap_or_default();
-    let available = catalog
-        .bindings
-        .iter()
-        .filter(|binding| binding.visible)
-        .filter(|binding| {
-            catalog.groups.iter().any(|group| {
-                group.instance_record_id == binding.instance_record_id
-                    && group.path == binding.group_path
-                    && group.enabled
-            })
-        })
-        .find_map(|binding| {
-            let instance = catalog.instances.iter().find(|instance| {
-                instance.id == binding.instance_record_id
-                    && instance.status == McpInstanceStatus::Enabled
-                    && selected_instance_ids.contains(&instance.instance_id)
-            })?;
-            let tool = catalog.tools.iter().find(|tool| {
-                tool.id == binding.tool_record_id && tool.status == domain::McpToolStatus::Enabled
-            })?;
-            (assistant_tool_name(instance, tool) == name).then_some(tool)
-        });
-    let Some(tool) = available else {
-        return Ok(json!({"tool_call_id": id, "content": "Tool is unavailable", "is_error": true}));
-    };
     let arguments = match call.get("arguments") {
         Some(Value::String(value)) => match serde_json::from_str(value) {
             Ok(arguments) => arguments,
             Err(_) => {
-                return Ok(
-                    json!({"tool_call_id": id, "name": name, "content": "Tool arguments must be valid JSON", "is_error": true}),
-                );
+                return Ok(json!({
+                    "tool_call_id": id,
+                    "name": name,
+                    "content": "Tool arguments must be valid JSON",
+                    "is_error": true
+                }));
             }
         },
         Some(value) => value.clone(),
         None => json!({}),
     };
-    let result = match &tool.execution_target {
-        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-            let interface = bindable_mcp_interface(state.as_ref(), actor, interface_id).await;
-            match interface {
-                Ok(interface) => match debug_execute::execute(
-                    state.clone(),
-                    headers.clone(),
-                    interface,
-                    McpDebugExecuteBody {
-                        interface_id: interface_id.clone(),
-                        debug_response_mode: McpDebugResponseMode::ToolResult,
-                        mcp_arguments: arguments,
-                        input_mapping: tool.input_mapping.clone(),
-                        output_mapping: tool.output_mapping.clone(),
-                    },
-                )
-                .await
-                {
-                    Ok(value) => json!({"content": value}),
-                    Err(debug_execute::McpDebugExecuteError::Api(error)) => {
-                        json!({"content": format!("MCP interface execution failed: {error}"), "is_error": true})
-                    }
-                    Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
-                        json!({"content": format!("MCP interface returned HTTP {}", response.status()), "is_error": true})
-                    }
-                },
-                Err(_) => json!({"content": "MCP interface is unavailable", "is_error": true}),
-            }
+    let outcome =
+        virtual_ui::dispatch(state, headers, actor, catalog, scope, name, arguments).await?;
+    Ok(assistant_callback_result(id, name, outcome))
+}
+
+fn assistant_callback_result(id: &str, name: &str, outcome: VirtualToolOutcome) -> Value {
+    let (content, is_error) = match outcome {
+        VirtualToolOutcome::Success(result) => {
+            let is_error = result
+                .get("isError")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let content = result.get("content").cloned().unwrap_or(result);
+            (content, is_error)
         }
-        domain::McpToolExecutionTarget::McpProxy {
-            upstream_connection_id,
-            remote_tool_name,
-            ..
-        } => {
-            let service = McpManagementService::new(state.store.clone());
-            let upstream = async {
-                let availability = service
-                    .upstream_proxy_availability_for_actor(
-                        actor,
-                        *upstream_connection_id,
-                        remote_tool_name,
-                    )
-                    .await?;
-                if availability != domain::McpToolAvailabilityStatus::Available {
-                    anyhow::bail!("upstream tool unavailable: {}", availability.as_str());
-                }
-                let connection = service
-                    .get_upstream_connection_for_actor(actor, *upstream_connection_id)
-                    .await?;
-                let secret = service
-                    .upstream_secret_for_actor(
-                        actor,
-                        *upstream_connection_id,
-                        &state.provider_secret_master_key,
-                    )
-                    .await?;
-                let remote_arguments = map_proxy_arguments(&arguments, &tool.input_mapping)?;
-                let client = McpStreamableHttpClient::connect(&connection, secret.as_ref()).await?;
-                let result = client.call_tool(remote_tool_name, remote_arguments).await?;
-                Ok::<Value, anyhow::Error>(serde_json::to_value(map_proxy_result(
-                    &result,
-                    &tool.output_mapping,
-                )?)?)
-            }
-            .await;
-            match upstream {
-                Ok(value) => json!({"content": value}),
-                Err(error) => {
-                    json!({"content": format!("Upstream MCP execution failed: {error}"), "is_error": true})
-                }
-            }
-        }
+        VirtualToolOutcome::Error {
+            code,
+            message,
+            data,
+        } => (
+            json!({"code": code, "message": message, "data": data}),
+            true,
+        ),
     };
-    Ok(
-        json!({"tool_call_id": id, "name": name, "content": result["content"], "is_error": result["is_error"].as_bool().unwrap_or(false)}),
-    )
+    json!({
+        "tool_call_id": id,
+        "name": name,
+        "content": content,
+        "is_error": is_error
+    })
 }
 
 async fn available_targets(
     state: &Arc<ApiState>,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
 ) -> Result<
     (
         Vec<AssistantPublishedFlowOption>,
@@ -925,7 +764,7 @@ async fn available_targets(
     ApiError,
 > {
     let applications = ApplicationService::new(state.store.clone())
-        .list_applications(actor_user_id)
+        .list_applications(actor.user_id)
         .await?;
     let mut published_agent_flows = Vec::new();
     for application in applications
@@ -946,7 +785,7 @@ async fn available_targets(
         }
     }
     let catalog = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(actor_user_id)
+        .read_catalog_for_actor(actor)
         .await?;
     let enabled_mcp_instances = catalog
         .instances
@@ -1014,12 +853,12 @@ async fn assistant_run_capabilities(
 
 async fn validate_preference(
     state: &Arc<ApiState>,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     preference: &AssistantPreferenceBody,
 ) -> Result<(), ApiError> {
     if let Some(application_id) = preference.application_id {
         let application = ApplicationService::new(state.store.clone())
-            .get_application(actor_user_id, application_id)
+            .get_application(actor.user_id, application_id)
             .await?;
         if application.application_type != domain::ApplicationType::AgentFlow {
             return Err(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -1061,7 +900,7 @@ async fn validate_preference(
         .into());
     }
     let catalog = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(actor_user_id)
+        .read_catalog_for_actor(actor)
         .await?;
     for instance_id in &preference.mcp_instance_ids {
         if !catalog.instances.iter().any(|instance| {
@@ -1162,7 +1001,7 @@ mod tests {
     }
 
     #[test]
-    fn mounted_tool_bound_to_multiple_groups_is_emitted_once() {
+    fn assistant_mcp_provider_exposes_only_virtual_ui_meta_tools() {
         let now = time::OffsetDateTime::UNIX_EPOCH;
         let workspace_id = Uuid::from_u128(10);
         let instance_id = Uuid::from_u128(11);
@@ -1232,7 +1071,7 @@ mod tests {
             created_at: now,
             updated_at: now,
         };
-        let catalog = domain::McpCatalogSnapshot {
+        let _catalog = domain::McpCatalogSnapshot {
             instances: vec![instance],
             groups: vec![
                 group(Uuid::from_u128(13), "/one"),
@@ -1246,20 +1085,42 @@ mod tests {
             discovery_policies: Vec::new(),
         };
 
-        let provider_tools = assistant_provider_tools(&catalog, &["catalog".to_string()]);
+        let provider_tools = assistant_provider_tools();
 
-        assert_eq!(provider_tools.len(), 1);
-
-        let wire_name = assistant_tool_name(&catalog.instances[0], &catalog.tools[0]);
-        let trace_call = assistant_tool_call_for_trace(
-            &catalog,
-            &json!({
-                "id": "call_lookup",
-                "name": wire_name,
-                "arguments": {}
-            }),
+        assert_eq!(provider_tools.len(), 4);
+        assert_eq!(
+            provider_tools
+                .iter()
+                .map(|tool| tool["function"]["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["mcp.list", "mcp.get", "mcp.result", "mcp.call"]
         );
-        assert_eq!(trace_call["name"], "Lookup");
-        assert_eq!(trace_call["wire_name"], wire_name);
+        assert!(provider_tools.iter().all(|tool| {
+            !tool["function"]["parameters"]
+                .to_string()
+                .contains("workspace_id")
+        }));
+    }
+
+    #[test]
+    fn assistant_mcp_callback_uses_provider_content_without_nested_tool_envelope() {
+        let callback = assistant_callback_result(
+            "call-1",
+            "mcp.get",
+            VirtualToolOutcome::Success(json!({
+                "content": [{"type": "text", "text": "tool detail"}],
+                "structuredContent": {"tool_id": "lookup"},
+                "isError": false
+            })),
+        );
+
+        assert_eq!(callback["tool_call_id"], json!("call-1"));
+        assert_eq!(callback["name"], json!("mcp.get"));
+        assert_eq!(
+            callback["content"],
+            json!([{"type": "text", "text": "tool detail"}])
+        );
+        assert_eq!(callback["is_error"], json!(false));
+        assert!(callback["content"].get("content").is_none());
     }
 }

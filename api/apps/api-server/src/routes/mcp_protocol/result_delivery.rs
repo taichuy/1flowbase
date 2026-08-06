@@ -402,3 +402,35 @@ fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
 fn serialized(value: &Value) -> String {
     serde_json::to_string(value).expect("serde_json::Value serialization must be infallible")
 }
+
+#[cfg(test)]
+mod assistant_mcp_tests {
+    use super::*;
+
+    #[test]
+    fn assistant_mcp_small_result_remains_inline() {
+        assert!(!exceeds_inline_limit(
+            &json!({"items": [1, 2, 3]}),
+            DEFAULT_INLINE_CHARS,
+        ));
+    }
+
+    #[test]
+    fn assistant_mcp_result_continuation_pages_have_stable_cursors() {
+        let detail = json!({
+            "alpha": "a".repeat(700),
+            "beta": "b".repeat(700),
+            "gamma": "c".repeat(700)
+        });
+        let leaves = json_leaves(&detail);
+        let (first, next) = page_leaves(&leaves, 0, 1_600).expect("first page must fit");
+        let next = next.expect("detail must require continuation");
+        let (second, final_cursor) =
+            page_leaves(&leaves, next, MAX_INLINE_CHARS).expect("remaining page must fit");
+
+        assert!(!first.is_empty());
+        assert!(!second.is_empty());
+        assert_eq!(first.len() + second.len(), leaves.len());
+        assert_eq!(final_cursor, None);
+    }
+}

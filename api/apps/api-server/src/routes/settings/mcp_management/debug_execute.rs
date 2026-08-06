@@ -310,7 +310,7 @@ mod server_binding_tests {
     use serde_json::json;
 
     #[test]
-    fn ac_002_mcp_protocol_server_workspace_binding_cannot_be_overridden() {
+    fn assistant_mcp_server_workspace_binding_cannot_be_overridden() {
         let trusted_workspace_id = Uuid::now_v7();
         let interface = domain::McpInterfaceCatalogEntry {
             interface_id: "frontstage_list_pages".into(),
