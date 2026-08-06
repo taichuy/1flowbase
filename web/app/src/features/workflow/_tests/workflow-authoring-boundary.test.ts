@@ -10,6 +10,7 @@ import { duplicateNodeSubgraph } from '../../agent-flow/lib/document/transforms/
 import { buildNodePickerOptions } from '../../flow-editor';
 import { createBuiltinCatalogNode } from '../../agent-flow/_tests/fixtures/application-node-catalog';
 import { validateWorkflowDocument } from '../lib/validate-document';
+import { listWorkflowVariableOptions } from '../lib/variables';
 
 describe('workflow authoring boundary', () => {
   test('AC-004 consumes the unified server node catalog without a local picker inventory', () => {
@@ -31,11 +32,11 @@ describe('workflow authoring boundary', () => {
     expect(source).not.toContain('global-answer-missing');
   });
 
-  test('AC-005/006 authors Variable Aggregator through the shared contract without a Workflow implementation', () => {
+  test('AC-014/015 consumes Variable Aggregator group outputs through the shared Workflow authoring boundary', () => {
     const [option] = buildNodePickerOptions([
       createBuiltinCatalogNode('variable_aggregator', {
         title: 'Variable Aggregator',
-        category: 'data'
+        category: 'control'
       })
     ]);
     const aggregator = createNodeDocument(
@@ -44,13 +45,22 @@ describe('workflow authoring boundary', () => {
       280,
       220
     );
-    aggregator.bindings.candidates = {
-      kind: 'selector_list',
+    aggregator.bindings.groups = {
+      kind: 'variable_groups',
       value: [
-        ['node-workflow-start', 'primary'],
-        ['node-workflow-start', 'fallback']
+        {
+          key: 'group1',
+          valueType: 'string',
+          candidates: [
+            ['node-workflow-start', 'primary'],
+            ['node-workflow-start', 'fallback']
+          ]
+        }
       ]
     };
+    aggregator.outputs = [
+      { key: 'group1', title: 'group1', valueType: 'string' }
+    ];
 
     const document = createDefaultWorkflowDocument({
       flowId: 'workflow-variable-aggregator'
@@ -85,8 +95,15 @@ describe('workflow authoring boundary', () => {
     );
 
     expect(aggregator.type).toBe('variable_aggregator');
-    expect(aggregator.outputs.map((output) => output.key)).toEqual(['value']);
-    expect(copy?.bindings.candidates).toEqual(aggregator.bindings.candidates);
+    expect(aggregator.outputs.map((output) => output.key)).toEqual(['group1']);
+    expect(copy?.bindings.groups).toEqual(aggregator.bindings.groups);
+    expect(
+      listWorkflowVariableOptions(document, 'node-workflow-end', null).some(
+        (option) =>
+          option.value.join('.') === 'node-variable-aggregator.group1' &&
+          option.valueType === 'string'
+      )
+    ).toBe(true);
     expect(
       validateWorkflowDocument(document).filter(
         (issue) => issue.nodeId === aggregator.id

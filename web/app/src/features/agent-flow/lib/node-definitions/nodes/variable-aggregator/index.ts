@@ -15,9 +15,9 @@ export const variableAggregatorNodeDefinition: NodeDefinition = {
       title: i18nText('agentFlow', 'auto.input'),
       fields: [
         {
-          key: 'bindings.candidates',
+          key: 'bindings.groups',
           label: i18nText('agentFlow', 'auto.variable_aggregator_candidates'),
-          editor: 'selector_list',
+          editor: 'variable_groups',
           required: true
         }
       ]

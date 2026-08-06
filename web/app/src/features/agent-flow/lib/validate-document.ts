@@ -45,7 +45,10 @@ import {
   isConditionGroup,
   isConditionRule
 } from './if-else-branches';
-import { isSelectorVisible } from './selector-options';
+import {
+  isSelectorVisible,
+  listVisibleSelectorOptions
+} from './selector-options';
 import { workflowTriggerVariableNodeId } from './variables/workflow-trigger-variables';
 import { parseTemplateSelectorTokens } from './template-binding';
 import {
@@ -118,6 +121,18 @@ function isMissingRequiredField(
       return (
         binding.value.length === 0 ||
         binding.value.some((selector) => !selectorHasRequiredInput(selector))
+      );
+    case 'variable_groups':
+      return (
+        binding.value.length === 0 ||
+        binding.value.some(
+          (group) =>
+            group.key.trim().length === 0 ||
+            group.candidates.length === 0 ||
+            group.candidates.some(
+              (selector) => !selectorHasRequiredInput(selector)
+            )
+        )
       );
     case 'data_model_query':
       return false;
@@ -277,6 +292,8 @@ function collectBindingSelectors(binding: FlowBinding): string[][] {
       return [binding.value];
     case 'selector_list':
       return binding.value;
+    case 'variable_groups':
+      return binding.value.flatMap((group) => group.candidates);
     case 'prompt_messages':
       return binding.value.flatMap((message) =>
         parseTemplateSelectorTokens(message.content.value)
@@ -294,6 +311,92 @@ function collectBindingSelectors(binding: FlowBinding): string[][] {
       ]);
     case 'data_model_query':
       return extractDataModelQuerySelectors(binding.value);
+  }
+}
+
+function validateVariableAggregatorGroups(
+  issues: AgentFlowIssue[],
+  node: FlowNodeDocument,
+  document: FlowAuthoringDocument,
+  environmentVariables: AgentFlowEnvironmentVariable[],
+  workflowTriggerContext: unknown
+) {
+  const binding = node.bindings.groups;
+
+  if (
+    node.type !== 'variable_aggregator' ||
+    binding?.kind !== 'variable_groups'
+  ) {
+    return;
+  }
+
+  const options = listVisibleSelectorOptions(
+    document,
+    node.id,
+    environmentVariables,
+    workflowTriggerContext
+  );
+  const seenGroupKeys = new Set<string>();
+  const outputsMatchGroups =
+    node.outputs.length === binding.value.length &&
+    binding.value.every((group, index) => {
+      const output = node.outputs[index];
+
+      return (
+        output?.key === group.key &&
+        output.title === group.key &&
+        output.valueType === group.valueType
+      );
+    });
+
+  if (!outputsMatchGroups) {
+    pushFieldIssue(
+      issues,
+      node,
+      'bindings.groups',
+      i18nText('agentFlow', 'auto.variable_group_outputs_out_of_sync'),
+      i18nText('agentFlow', 'auto.variable_group_outputs_must_match_groups')
+    );
+  }
+
+  for (const group of binding.value) {
+    if (seenGroupKeys.has(group.key)) {
+      pushFieldIssue(
+        issues,
+        node,
+        'bindings.groups',
+        i18nText('agentFlow', 'auto.duplicate_variable_group'),
+        i18nText('agentFlow', 'auto.variable_group_keys_must_unique')
+      );
+    }
+    seenGroupKeys.add(group.key);
+
+    for (const selector of group.candidates) {
+      if (!selectorHasRequiredInput(selector)) {
+        continue;
+      }
+
+      const selectedOption = options.find(
+        (option) =>
+          option.value.length === selector.length &&
+          option.value.every((segment, index) => segment === selector[index])
+      );
+      const declaredType = selectedOption?.valueType.startsWith('array[')
+        ? 'array'
+        : selectedOption?.valueType;
+
+      if (selectedOption && declaredType !== group.valueType) {
+        pushFieldIssue(
+          issues,
+          node,
+          'bindings.groups',
+          i18nText('agentFlow', 'auto.variable_group_candidate_incompatible'),
+          i18nText('agentFlow', 'auto.variable_group_candidate_type_mismatch', {
+            value1: group.valueType
+          })
+        );
+      }
+    }
   }
 }
 
@@ -942,6 +1045,13 @@ export function validateDocument(
     }
 
     validateVariableAssignmentOperations(issues, node, document);
+    validateVariableAggregatorGroups(
+      issues,
+      node,
+      document,
+      environmentVariables,
+      workflowTriggerContext
+    );
 
     if (node.type === 'answer') {
       validateAnswerPresentationReferences(

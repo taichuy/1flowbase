@@ -475,11 +475,25 @@ export interface IfElseBranchDocument {
   condition?: FlowConditionGroupDocument;
 }
 
+export type FlowVariableGroupValueType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'object'
+  | 'array';
+
+export interface FlowVariableGroupDocument {
+  key: string;
+  valueType: FlowVariableGroupValueType;
+  candidates: string[][];
+}
+
 export type FlowBinding =
   | { kind: 'templated_text'; value: string }
   | { kind: 'i18n_text'; value: I18nTextRef }
   | { kind: 'selector'; value: string[] }
   | { kind: 'selector_list'; value: string[][] }
+  | { kind: 'variable_groups'; value: FlowVariableGroupDocument[] }
   | {
       kind: 'data_model_query';
       value: DataModelQueryBindingValue;

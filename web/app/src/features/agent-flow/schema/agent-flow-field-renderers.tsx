@@ -6,6 +6,7 @@ import type {
   FlowAuthoringDocument,
   FlowConditionGroupDocument,
   FlowNodeDocument,
+  FlowVariableGroupDocument,
   IfElseBranchDocument
 } from '@1flowbase/flow-schema';
 import { DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE } from '@1flowbase/flow-schema';
@@ -25,6 +26,7 @@ import { NamedBindingsField } from '../components/bindings/NamedBindingsField';
 import { SelectorField } from '../components/bindings/SelectorField';
 import { StateWriteField } from '../components/bindings/StateWriteField';
 import { TemplatedTextField } from '../components/bindings/TemplatedTextField';
+import { VariableGroupsField } from '../components/bindings/VariableGroupsField';
 import {
   VariableAssignmentField,
   type VariableAssignmentValue
@@ -307,6 +309,32 @@ function renderSelectorListField({ adapter, block }: SchemaFieldRendererProps) {
         adapter.setValue(block.path, {
           kind: 'selector_list',
           value: nextValue as string[][]
+        })
+      }
+    />
+  );
+}
+
+function renderVariableGroupsField({
+  adapter,
+  block
+}: SchemaFieldRendererProps) {
+  const value = adapter.getValue(block.path);
+  const binding = getBindingValue<FlowVariableGroupDocument[]>(
+    value,
+    'variable_groups',
+    []
+  );
+
+  return (
+    <VariableGroupsField
+      ariaLabel={block.label}
+      options={getSelectorOptions(adapter)}
+      value={binding}
+      onChange={(groups) =>
+        adapter.setValue(block.path, {
+          kind: 'variable_groups',
+          value: groups
         })
       }
     />
@@ -1011,6 +1039,7 @@ export const agentFlowFieldRenderers = {
   number: renderNumberField,
   selector: renderSelectorField,
   selector_list: renderSelectorListField,
+  variable_groups: renderVariableGroupsField,
   templated_text: renderTemplatedTextField,
   named_bindings: renderNamedBindingsField,
   templated_named_bindings: renderTemplatedNamedBindingsField,

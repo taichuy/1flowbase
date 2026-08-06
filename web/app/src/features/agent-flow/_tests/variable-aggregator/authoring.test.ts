@@ -11,12 +11,16 @@ import { duplicateNodeSubgraph } from '../../lib/document/transforms/duplicate';
 import { getAgentFlowNodeTypeIcon } from '../../lib/node-type-icons';
 import { getBuiltinNodeRuntimeContract } from '../../lib/node-definitions/contracts';
 import { validateDocument } from '../../lib/validate-document';
+import { listVisibleSelectorOptions } from '../../lib/selector-options';
 import { createAgentFlowNodeSchemaAdapter } from '../../schema/node-schema-adapter';
 import { resolveAgentFlowNodeSchema } from '../../schema/node-schema-registry';
 
-const ORDERED_CANDIDATES = [
-  ['node-llm', 'text'],
-  ['node-llm', 'usage']
+const STRING_GROUPS = [
+  {
+    key: 'group1',
+    valueType: 'string' as const,
+    candidates: [['node-llm', 'text']]
+  }
 ];
 
 function appendAggregator(document: FlowAuthoringDocument) {
@@ -57,7 +61,7 @@ function appendAggregator(document: FlowAuthoringDocument) {
 }
 
 describe('Variable Aggregator shared authoring fixtures', () => {
-  test('AC-005 AC-007 freezes the runtime contract and schema to ordered candidates in the control category with one value output', () => {
+  test('AC-008 freezes first-class variable groups in the control category', () => {
     const contract = getBuiltinNodeRuntimeContract('variable_aggregator');
     const schema = resolveAgentFlowNodeSchema('variable_aggregator');
     const configBlocks = JSON.stringify(schema.detail.tabs.config.blocks);
@@ -67,18 +71,23 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     expect(contract?.card.category).toBe('control');
     expect(contract?.defaults.config).toEqual({});
     expect(contract?.defaults.bindings).toEqual({
-      candidates: { kind: 'selector_list', value: [] }
+      groups: {
+        kind: 'variable_groups',
+        value: [{ key: 'group1', valueType: 'string', candidates: [[]] }]
+      }
     });
     expect(contract?.defaults.outputs).toEqual([
-      expect.objectContaining({ key: 'value', valueType: 'unknown' })
+      { key: 'group1', title: 'group1', valueType: 'string' }
     ]);
     expect(contract?.defaults.outputs).toHaveLength(1);
-    expect(configBlocks).toContain('"path":"bindings.candidates"');
-    expect(configBlocks).toContain('"renderer":"selector_list"');
+    expect(contract?.defaults.bindings).not.toHaveProperty('candidates');
+    expect(contract?.defaults.outputs[0]).not.toHaveProperty('value');
+    expect(configBlocks).toContain('"path":"bindings.groups"');
+    expect(configBlocks).toContain('"renderer":"variable_groups"');
     expect(getAgentFlowNodeTypeIcon('variable_aggregator')).not.toBeNull();
   });
 
-  test('AC-005 creates and saves candidates without changing their priority order', () => {
+  test('AC-009 atomically saves group truth and materializes ordered outputs', () => {
     const initialDocument = appendAggregator(
       createDefaultAgentFlowDocument({ flowId: 'agent-flow-aggregator' })
     );
@@ -93,19 +102,40 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       dispatch() {}
     });
 
-    adapter.setValue('bindings.candidates', {
-      kind: 'selector_list',
-      value: ORDERED_CANDIDATES
+    adapter.setValue('bindings.groups', {
+      kind: 'variable_groups',
+      value: [
+        ...STRING_GROUPS,
+        {
+          key: 'group3',
+          valueType: 'array',
+          candidates: [['node-start', 'files']]
+        }
+      ]
     });
 
-    expect(
-      savedDocument.graph.nodes.find(
-        (node) => node.id === 'node-variable-aggregator'
-      )?.bindings.candidates
-    ).toEqual({ kind: 'selector_list', value: ORDERED_CANDIDATES });
+    const savedNode = savedDocument.graph.nodes.find(
+      (node) => node.id === 'node-variable-aggregator'
+    );
+
+    expect(savedNode?.bindings.groups).toEqual({
+      kind: 'variable_groups',
+      value: [
+        ...STRING_GROUPS,
+        {
+          key: 'group3',
+          valueType: 'array',
+          candidates: [['node-start', 'files']]
+        }
+      ]
+    });
+    expect(savedNode?.outputs).toEqual([
+      { key: 'group1', title: 'group1', valueType: 'string' },
+      { key: 'group3', title: 'group3', valueType: 'array' }
+    ]);
   });
 
-  test('AC-005 duplicates the node with an independent ordered candidate list', () => {
+  test('AC-011 duplicates group candidates independently and remaps internal selectors', () => {
     const document = appendAggregator(
       createDefaultAgentFlowDocument({ flowId: 'duplicate-aggregator' })
     );
@@ -117,9 +147,15 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       throw new Error('Variable Aggregator fixture is missing');
     }
 
-    source.bindings.candidates = {
-      kind: 'selector_list',
-      value: ORDERED_CANDIDATES
+    source.bindings.groups = {
+      kind: 'variable_groups',
+      value: [
+        {
+          key: 'group1',
+          valueType: 'string',
+          candidates: [[source.id, 'group1']]
+        }
+      ]
     };
 
     const duplicated = duplicateNodeSubgraph(document, {
@@ -129,12 +165,21 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       (node) => node.id === 'node-variable-aggregator-copy'
     );
 
-    expect(copy?.bindings.candidates).toEqual(source.bindings.candidates);
-    expect(copy?.bindings.candidates).not.toBe(source.bindings.candidates);
+    expect(copy?.bindings.groups).toEqual({
+      kind: 'variable_groups',
+      value: [
+        {
+          key: 'group1',
+          valueType: 'string',
+          candidates: [['node-variable-aggregator-copy', 'group1']]
+        }
+      ]
+    });
+    expect(copy?.bindings.groups).not.toBe(source.bindings.groups);
     expect(copy?.outputs).toEqual(source.outputs);
   });
 
-  test('AC-006 reports an incomplete candidate list and accepts ordered upstream selectors', () => {
+  test('AC-010 rejects empty and incompatible candidates without legacy compatibility', () => {
     const document = appendAggregator(
       createDefaultAgentFlowDocument({ flowId: 'validate-aggregator' })
     );
@@ -149,39 +194,83 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     expect(
       validateDocument(document).some(
         (issue) =>
-          issue.nodeId === aggregator.id &&
-          issue.fieldKey === 'bindings.candidates'
+          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
       )
     ).toBe(true);
 
-    aggregator.bindings.candidates = {
-      kind: 'selector_list',
-      value: [[]]
+    aggregator.bindings.groups = {
+      kind: 'variable_groups',
+      value: [{ key: 'group1', valueType: 'string', candidates: [[]] }]
     };
 
     expect(
       validateDocument(document).some(
         (issue) =>
-          issue.nodeId === aggregator.id &&
-          issue.fieldKey === 'bindings.candidates'
+          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
       )
     ).toBe(true);
 
-    aggregator.bindings.candidates = {
-      kind: 'selector_list',
-      value: ORDERED_CANDIDATES
+    aggregator.bindings.groups = {
+      kind: 'variable_groups',
+      value: [
+        {
+          key: 'group1',
+          valueType: 'string',
+          candidates: [['node-llm', 'usage']]
+        }
+      ]
+    };
+
+    expect(
+      validateDocument(document).some(
+        (issue) =>
+          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
+      )
+    ).toBe(true);
+
+    aggregator.bindings.groups = {
+      kind: 'variable_groups',
+      value: STRING_GROUPS
     };
 
     expect(
       validateDocument(document).filter(
         (issue) =>
-          issue.nodeId === aggregator.id &&
-          issue.fieldKey === 'bindings.candidates'
+          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
       )
     ).toEqual([]);
   });
 
-  test('AC-006 AC-007 exposes the registered builtin in the control category through the shared catalog picker', () => {
+  test('AC-014 exposes materialized group outputs to downstream Answer selectors', () => {
+    const document = appendAggregator(
+      createDefaultAgentFlowDocument({ flowId: 'consume-aggregator' })
+    );
+    const aggregator = document.graph.nodes.find(
+      (node) => node.id === 'node-variable-aggregator'
+    );
+
+    if (!aggregator) {
+      throw new Error('Variable Aggregator fixture is missing');
+    }
+
+    aggregator.bindings.groups = {
+      kind: 'variable_groups',
+      value: STRING_GROUPS
+    };
+    aggregator.outputs = [
+      { key: 'group1', title: 'group1', valueType: 'string' }
+    ];
+
+    expect(
+      listVisibleSelectorOptions(document, 'node-answer').some(
+        (option) =>
+          option.value.join('.') === 'node-variable-aggregator.group1' &&
+          option.valueType === 'string'
+      )
+    ).toBe(true);
+  });
+
+  test('AC-015 exposes the registered builtin without legacy candidates/value fields', () => {
     const [option] = buildNodePickerOptions([
       createBuiltinCatalogNode('variable_aggregator', {
         title: 'Variable Aggregator',
@@ -198,14 +287,21 @@ describe('Variable Aggregator shared authoring fixtures', () => {
         disabled: false
       })
     );
-    expect(createNodeDocument(option, 'node-from-picker')).toEqual(
+    const createdNode = createNodeDocument(option, 'node-from-picker');
+
+    expect(createdNode).toEqual(
       expect.objectContaining({
         id: 'node-from-picker',
         type: 'variable_aggregator',
         bindings: {
-          candidates: { kind: 'selector_list', value: [] }
+          groups: {
+            kind: 'variable_groups',
+            value: [{ key: 'group1', valueType: 'string', candidates: [[]] }]
+          }
         }
       })
     );
+    expect(createdNode.bindings).not.toHaveProperty('candidates');
+    expect(createdNode.outputs.map((output) => output.key)).toEqual(['group1']);
   });
 });

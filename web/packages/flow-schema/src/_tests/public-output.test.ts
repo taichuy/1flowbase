@@ -11,6 +11,7 @@ import {
   getLlmNodeOutputs,
   validatePublicOutputKey,
   type FlowLlmVisibleInternalToolDocument,
+  type FlowVariableGroupDocument,
   type NodeRuntimeUiContract
 } from '../index';
 
@@ -137,6 +138,16 @@ describe('workflow authoring defaults', () => {
 });
 
 describe('node runtime UI contract type', () => {
+  it('AC-008 exposes the first-class variable group binding shape', () => {
+    const groups = [
+      { key: 'group1', valueType: 'string', candidates: [[]] }
+    ] satisfies FlowVariableGroupDocument[];
+
+    expect(groups).toEqual([
+      { key: 'group1', valueType: 'string', candidates: [[]] }
+    ]);
+  });
+
   it('supports the required first-class contract sections', () => {
     const contract = {
       meta: {

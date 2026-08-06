@@ -2,7 +2,8 @@ import {
   type FlowAuthoringDocument,
   type FlowBinding,
   type FlowNodeDocument,
-  type FlowNodeOutputDocument
+  type FlowNodeOutputDocument,
+  type FlowVariableGroupDocument
 } from '@1flowbase/flow-schema';
 import type { ConsoleReferencedI18nMessage } from '@1flowbase/api-client';
 
@@ -160,6 +161,16 @@ function deriveVariableAssignmentOutputs(
   }
 
   return outputs;
+}
+
+function deriveVariableGroupOutputs(
+  groups: FlowVariableGroupDocument[]
+): FlowNodeOutputDocument[] {
+  return groups.map((group) => ({
+    key: group.key,
+    title: group.key,
+    valueType: group.valueType
+  }));
 }
 
 function updateVariableAssignerOperationsField({
@@ -328,6 +339,34 @@ export function createAgentFlowNodeSchemaAdapter({
             binding: value,
             conversationVariables: availableConversationVariables
           })
+        );
+
+        return;
+      }
+
+      if (
+        node.type === 'variable_aggregator' &&
+        path === 'bindings.groups' &&
+        typeof value === 'object' &&
+        value !== null &&
+        (value as { kind?: unknown }).kind === 'variable_groups' &&
+        Array.isArray((value as { value?: unknown }).value)
+      ) {
+        const binding = value as Extract<
+          FlowBinding,
+          { kind: 'variable_groups' }
+        >;
+
+        setWorkingDocument((currentDocument) =>
+          replaceNodeOutputs(
+            updateNodeField(currentDocument, {
+              nodeId,
+              fieldKey: path,
+              value: binding
+            }),
+            nodeId,
+            deriveVariableGroupOutputs(binding.value)
+          )
         );
 
         return;

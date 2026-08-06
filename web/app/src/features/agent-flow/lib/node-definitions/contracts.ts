@@ -900,9 +900,9 @@ function createVariableAssignerContract(): NodeRuntimeUiContract {
 function createVariableAggregatorContract(): NodeRuntimeUiContract {
   const outputs = [
     {
-      key: 'value',
-      title: i18nText('agentFlow', 'auto.value'),
-      valueType: 'unknown'
+      key: 'group1',
+      title: 'group1',
+      valueType: 'string'
     }
   ];
 
@@ -916,9 +916,9 @@ function createVariableAggregatorContract(): NodeRuntimeUiContract {
     category: 'control',
     config: {},
     bindings: {
-      candidates: {
-        kind: 'selector_list',
-        value: []
+      groups: {
+        kind: 'variable_groups',
+        value: [{ key: 'group1', valueType: 'string', candidates: [[]] }]
       }
     },
     outputs,
@@ -926,9 +926,9 @@ function createVariableAggregatorContract(): NodeRuntimeUiContract {
       basicsPanelSection,
       panelSection('inputs', i18nText('agentFlow', 'auto.input'), [
         panelField({
-          key: 'bindings.candidates',
+          key: 'bindings.groups',
           title: i18nText('agentFlow', 'auto.variable_aggregator_candidates'),
-          renderer: 'selector_list',
+          renderer: 'variable_groups',
           valueType: 'array',
           required: true
         })
