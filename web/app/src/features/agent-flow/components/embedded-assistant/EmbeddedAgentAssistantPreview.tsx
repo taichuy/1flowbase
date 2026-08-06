@@ -164,14 +164,21 @@ export function EmbeddedAgentAssistantPreview({
     selectedModel?.default_reasoning_effort ??
     selectedModel?.reasoning_efforts[0];
   const contextWindow = selectedModel?.context_window ?? null;
-  const contextTokenUsage = session.contextTokenUsage ?? 0;
+  const contextTokenUsage = session.contextTokenUsage;
+  const measuredContextTokenUsage = contextTokenUsage ?? 0;
   const contextUsagePercent =
     contextWindow && contextWindow > 0
-      ? Math.min(100, Math.round((contextTokenUsage / contextWindow) * 100))
+      ? Math.min(
+          100,
+          Math.round((measuredContextTokenUsage / contextWindow) * 1000) / 10
+        )
       : 0;
-  const remainingContextTokens = contextWindow
-    ? Math.max(0, contextWindow - contextTokenUsage)
-    : null;
+  const contextVisualPercent =
+    measuredContextTokenUsage > 0 ? Math.max(1, contextUsagePercent) : 0;
+  const remainingContextTokens =
+    contextWindow && contextTokenUsage !== null
+      ? Math.max(0, contextWindow - contextTokenUsage)
+      : null;
   const windowEntry = windowWorkspaceState.windows.find(
     (entry) => entry.id === ASSISTANT_WINDOW_ID
   );
@@ -316,46 +323,56 @@ export function EmbeddedAgentAssistantPreview({
             composerFooterActions={
               settings?.run_capabilities.model_selection_enabled ? (
                 <>
-                  {contextWindow && remainingContextTokens !== null ? (
+                  {contextWindow ? (
                     <Tooltip
                       title={
-                        <span className="embedded-agent-assistant-preview__context-tooltip">
-                          <span>
-                            {i18nText(
-                              'appShell',
-                              'auto.assistant_context_usage'
-                            )}
+                        contextTokenUsage === null ||
+                        remainingContextTokens === null ? (
+                          i18nText(
+                            'appShell',
+                            'auto.assistant_context_unavailable'
+                          )
+                        ) : (
+                          <span className="embedded-agent-assistant-preview__context-tooltip">
+                            <span>
+                              {i18nText(
+                                'appShell',
+                                'auto.assistant_context_usage'
+                              )}
+                            </span>
+                            <span>
+                              {i18nText(
+                                'appShell',
+                                'auto.assistant_context_remaining',
+                                {
+                                  value1: contextUsagePercent,
+                                  value2:
+                                    formatLlmTokenCount(
+                                      remainingContextTokens
+                                    ) ?? '0'
+                                }
+                              )}
+                            </span>
+                            <span>
+                              {i18nText(
+                                'appShell',
+                                'auto.assistant_context_total',
+                                {
+                                  value1:
+                                    formatLlmTokenCount(contextTokenUsage) ??
+                                    '0',
+                                  value2:
+                                    formatLlmTokenCount(contextWindow) ?? '0'
+                                }
+                              )}
+                            </span>
                           </span>
-                          <span>
-                            {i18nText(
-                              'appShell',
-                              'auto.assistant_context_remaining',
-                              {
-                                value1: contextUsagePercent,
-                                value2:
-                                  formatLlmTokenCount(remainingContextTokens) ??
-                                  '0'
-                              }
-                            )}
-                          </span>
-                          <span>
-                            {i18nText(
-                              'appShell',
-                              'auto.assistant_context_total',
-                              {
-                                value1:
-                                  formatLlmTokenCount(contextTokenUsage) ?? '0',
-                                value2:
-                                  formatLlmTokenCount(contextWindow) ?? '0'
-                              }
-                            )}
-                          </span>
-                        </span>
+                        )
                       }
                     >
                       <span className="embedded-agent-assistant-preview__context-progress">
                         <Progress
-                          percent={contextUsagePercent}
+                          percent={contextVisualPercent}
                           showInfo={false}
                           size={18}
                           trailColor="var(--border-default)"

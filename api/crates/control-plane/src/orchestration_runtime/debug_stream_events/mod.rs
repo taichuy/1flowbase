@@ -328,6 +328,26 @@ pub fn text_delta(node_id: &str, node_run_id: Uuid, text: String) -> RuntimeEven
     }
 }
 
+pub fn usage_snapshot(
+    node_id: &str,
+    node_run_id: Uuid,
+    usage: &plugin_framework::provider_contract::ProviderUsage,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "usage_snapshot".to_string(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: true,
+        trace_visible: false,
+        payload: json!({
+            "type": "usage_snapshot",
+            "node_run_id": node_run_id,
+            "node_id": node_id,
+            "usage": usage,
+        }),
+    }
+}
+
 pub fn provider_native_event(
     node_id: &str,
     node_run_id: Uuid,

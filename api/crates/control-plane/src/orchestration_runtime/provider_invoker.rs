@@ -307,6 +307,13 @@ where
                                     )
                                 }
                             }],
+                            ProviderStreamEvent::UsageSnapshot { usage } => {
+                                vec![debug_stream_events::usage_snapshot(
+                                    &node_id,
+                                    node_run_id,
+                                    usage,
+                                )]
+                            }
                             _ => Vec::new(),
                         };
                         for runtime_event in runtime_events {
