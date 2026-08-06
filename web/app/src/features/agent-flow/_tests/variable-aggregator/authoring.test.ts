@@ -64,7 +64,7 @@ describe('Variable Aggregator shared authoring fixtures', () => {
 
     expect(contract).not.toBeNull();
     expect(contract?.meta.type).toBe('variable_aggregator');
-    expect(contract?.meta.category).toBe('control');
+    expect(contract?.card.category).toBe('control');
     expect(contract?.defaults.config).toEqual({});
     expect(contract?.defaults.bindings).toEqual({
       candidates: { kind: 'selector_list', value: [] }
