@@ -207,6 +207,7 @@ where
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
+        let provider_stream_timing = Arc::new(Mutex::new(Vec::<Value>::new()));
         let mut required_forward_handle = None;
         let mut diagnostic_forward_handle = None;
         let active_node = self
@@ -229,6 +230,7 @@ where
             let runtime_event_stream = self.runtime_event_stream.clone();
             let flow_run_id = self.flow_run_id;
             let first_token_timing_for_task = first_token_timing.clone();
+            let provider_stream_timing_for_task = provider_stream_timing.clone();
             let canonical_tool_registry_for_task = canonical_tool_registry.clone();
             let answer_presentation = answer_presentation_source_is_active(
                 presentation_source_node_id.as_deref(),
@@ -243,7 +245,12 @@ where
             let diagnostic_node_id = node_id.clone();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
+                let mut ingress_sequence = 0_u64;
                 while let Some(mut event) = required_receiver.recv().await {
+                    ingress_sequence += 1;
+                    let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
+                    let event_kind = provider_stream_event_kind(&event);
+                    let size_bytes = serde_json::to_vec(&event).map_or(0, |payload| payload.len());
                     orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
                             &canonical_tool_registry_for_task,
@@ -264,16 +271,6 @@ where
                         &canonical_deltas,
                     )
                     .await;
-                    if let Some(sender) = &live_sender {
-                        sender
-                            .send(LiveProviderStreamEvent {
-                                node_id: node_id.clone(),
-                                node_run_id,
-                                event: event.clone(),
-                            })
-                            .await
-                            .map_err(|_| anyhow!("required live provider event writer closed"))?;
-                    }
                     if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
                     {
                         let runtime_events = match &event {
@@ -312,9 +309,6 @@ where
                             }],
                             _ => Vec::new(),
                         };
-                        if runtime_events.is_empty() {
-                            continue;
-                        };
                         for runtime_event in runtime_events {
                             let event_type = runtime_event.event_type.clone();
                             let source = runtime_event.source;
@@ -347,6 +341,25 @@ where
                                 }
                             }
                         }
+                    }
+                    if let Ok(mut timeline) = provider_stream_timing_for_task.lock() {
+                        timeline.push(json!({
+                            "sequence": ingress_sequence,
+                            "event_kind": event_kind,
+                            "size_bytes": size_bytes,
+                            "ingress_ms": ingress_ms,
+                            "runtime_append_ms": provider_invoke_started.elapsed().as_millis() as u64,
+                        }));
+                    }
+                    if let Some(sender) = &live_sender {
+                        sender
+                            .send(LiveProviderStreamEvent {
+                                node_id: node_id.clone(),
+                                node_run_id,
+                                event: event.clone(),
+                            })
+                            .await
+                            .map_err(|_| anyhow!("required live provider event writer closed"))?;
                     }
                 }
                 let completion_deltas = canonical_writer.complete()?;
@@ -411,7 +424,18 @@ where
                 anyhow!("provider diagnostic event forwarding task panicked: {error}")
             })?;
         }
-        let invocation_output = invocation_result?;
+        let mut invocation_output = invocation_result?;
+        let runtime_stream_timing = provider_stream_timing
+            .lock()
+            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
+            .clone();
+        if !runtime_stream_timing.is_empty() {
+            let provider_metadata = std::mem::take(&mut invocation_output.result.provider_metadata);
+            invocation_output.result.provider_metadata = json!({
+                "_1flowbase_runtime_stream_timing": runtime_stream_timing,
+                "_1flowbase_upstream_provider_metadata": provider_metadata,
+            });
+        }
         self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
             .await?;
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
@@ -427,6 +451,24 @@ where
             &canonical_tool_registry,
         );
         Ok(output)
+    }
+}
+
+fn provider_stream_event_kind(event: &ProviderStreamEvent) -> &'static str {
+    match event {
+        ProviderStreamEvent::NativeEvent { .. } => "native_event",
+        ProviderStreamEvent::TextDelta { .. } => "text_delta",
+        ProviderStreamEvent::ReasoningDelta { .. } => "reasoning_delta",
+        ProviderStreamEvent::ReasoningSignatureDelta { .. } => "reasoning_signature_delta",
+        ProviderStreamEvent::ToolCallDelta { .. } => "tool_call_delta",
+        ProviderStreamEvent::ToolCallCommit { .. } => "tool_call_commit",
+        ProviderStreamEvent::McpCallDelta { .. } => "mcp_call_delta",
+        ProviderStreamEvent::McpCallCommit { .. } => "mcp_call_commit",
+        ProviderStreamEvent::OutputItem { .. } => "output_item",
+        ProviderStreamEvent::UsageDelta { .. } => "usage_delta",
+        ProviderStreamEvent::UsageSnapshot { .. } => "usage_snapshot",
+        ProviderStreamEvent::Finish { .. } => "finish",
+        ProviderStreamEvent::Error { .. } => "error",
     }
 }
 

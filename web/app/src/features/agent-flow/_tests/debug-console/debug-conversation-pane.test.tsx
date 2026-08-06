@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type {
   AgentFlowDebugMessage,
@@ -21,6 +21,20 @@ const runContext: AgentFlowRunContext = {
     }
   ]
 };
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class IntersectionObserver {
+      disconnect() {}
+      observe() {}
+      takeRecords() {
+        return [];
+      }
+      unobserve() {}
+    }
+  );
+});
 
 function assistantMessage(content: string): AgentFlowDebugMessage {
   return {
@@ -118,7 +132,37 @@ describe('DebugConversationPane auto scroll', () => {
 });
 
 describe('DebugConversationPane workflow trace', () => {
-  test('renders LLM tool callbacks under a collapsed Tools child node', () => {
+  test('shows a running workflow node before the first answer delta arrives', () => {
+    renderPane([
+      {
+        ...assistantMessage(''),
+        traceSummary: [
+          {
+            nodeId: 'node-llm',
+            nodeRunId: 'node-run-llm',
+            nodeAlias: 'LLM',
+            nodeType: 'llm',
+            status: 'running',
+            startedAt: '2026-08-06T10:00:00Z',
+            finishedAt: null,
+            durationMs: null,
+            inputPayload: { prompt: '你好' },
+            outputPayload: {},
+            errorPayload: null,
+            metricsPayload: {},
+            debugPayload: {}
+          }
+        ]
+      }
+    ]);
+
+    expect(screen.getByText('工作流')).toBeInTheDocument();
+    expect(screen.getByTestId('debug-workflow-node-row')).toHaveTextContent(
+      'LLM'
+    );
+  });
+
+  test('renders LLM tool callbacks under the automatically expanded Tools child node', () => {
     renderPane([
       {
         ...assistantMessage('等待工具结果'),
@@ -170,17 +214,12 @@ describe('DebugConversationPane workflow trace', () => {
     ]);
 
     expect(screen.getByText('工作流')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /LLM/ }));
-
     expect(screen.queryByText('Round #1')).not.toBeInTheDocument();
 
     const toolsNode = screen.getByRole('button', {
       name: /^工具 1 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('lookup_weather')).not.toBeInTheDocument();
-
-    fireEvent.click(toolsNode);
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
     ).not.toBeInTheDocument();
@@ -279,14 +318,13 @@ describe('DebugConversationPane workflow trace', () => {
 
     expect(screen.getAllByTestId('debug-workflow-node-row')).toHaveLength(2);
 
-    const llmTraceNode = screen.getByRole('button', { name: /LLM/ });
+    const llmTraceNode = screen.getAllByTestId('debug-workflow-node-row')[1];
     expect(llmTraceNode).toHaveTextContent('工具 2');
 
-    fireEvent.click(llmTraceNode);
     const toolsNode = screen.getByRole('button', {
       name: /^工具 2 次工具回调$/
     });
-    fireEvent.click(toolsNode);
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
 
     expect(
       screen.queryByLabelText('工具回调索引 JSON')

@@ -1,5 +1,6 @@
 use super::*;
 use std::sync::Arc;
+use time::format_description::well_known::Rfc3339;
 
 pub(in crate::orchestration_runtime) type PreparedNodeRuns =
     std::collections::BTreeMap<String, domain::NodeRunRecord>;
@@ -88,15 +89,24 @@ where
             },
         )
         .await?;
+        let next_node_started_at = outcome
+            .node_traces
+            .get(index + 1)
+            .and_then(|next_trace| prepared_node_runs?.get(&next_trace.node_id))
+            .map(|node_run| node_run.started_at);
+        let completed_at = trace_finished_at(trace)
+            .or(next_node_started_at)
+            .unwrap_or_else(OffsetDateTime::now_utc)
+            .max(started_at);
         let (status, finished_at) = match waiting_node_id {
             Some((waiting_id, waiting_status)) if waiting_id == trace.node_id => {
                 if waiting_status == domain::NodeRunStatus::Failed {
-                    (waiting_status, Some(started_at))
+                    (waiting_status, Some(completed_at))
                 } else {
                     (waiting_status, None)
                 }
             }
-            _ => (domain::NodeRunStatus::Succeeded, Some(started_at)),
+            _ => (domain::NodeRunStatus::Succeeded, Some(completed_at)),
         };
         ensure_node_run_transition(
             domain::NodeRunStatus::Running,
@@ -170,6 +180,54 @@ where
         waiting_node_run,
         stream_events,
     })
+}
+
+fn trace_finished_at(
+    trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
+) -> Option<OffsetDateTime> {
+    trace
+        .metrics_payload
+        .get("attempts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|attempt| {
+            attempt
+                .get("finished_at")
+                .and_then(Value::as_str)
+                .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+        })
+        .max()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn llm_trace_uses_the_last_real_attempt_finish_time() {
+        let trace = orchestration_runtime::execution_state::NodeExecutionTrace {
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "LLM".to_string(),
+            input_payload: json!({}),
+            output_payload: json!({}),
+            error_payload: None,
+            metrics_payload: json!({
+                "attempts": [
+                    { "finished_at": "2026-08-06T10:00:04Z" },
+                    { "finished_at": "2026-08-06T10:00:09Z" }
+                ]
+            }),
+            debug_payload: json!({}),
+            provider_events: Vec::new(),
+        };
+
+        assert_eq!(
+            trace_finished_at(&trace),
+            Some(OffsetDateTime::parse("2026-08-06T10:00:09Z", &Rfc3339).unwrap())
+        );
+    }
 }
 
 async fn persist_visible_internal_llm_tool_route_events<R>(

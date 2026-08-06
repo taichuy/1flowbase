@@ -2,6 +2,50 @@ use super::*;
 use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
 
 #[test]
+fn provider_timing_classifies_events_without_recording_their_content() {
+    let event = ProviderStreamEvent::TextDelta {
+        delta: "sensitive answer text".to_string(),
+    };
+
+    assert_eq!(provider_stream_event_kind(&event), "text_delta");
+}
+
+#[tokio::test]
+async fn canonical_provider_deltas_append_before_the_terminal_event() {
+    let stream = Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
+    let flow_run_id = Uuid::nil();
+    let node_run_id = Uuid::max();
+
+    project_canonical_provider_deltas(
+        Some(&(stream.clone() as Arc<dyn RuntimeEventStream>)),
+        Some(flow_run_id),
+        None,
+        "node-llm",
+        node_run_id,
+        &[CanonicalProviderDelta {
+            kind: CanonicalContentKind::Text,
+            text: "first".to_string(),
+        }],
+    )
+    .await;
+    assert_eq!(stream.events().len(), 1);
+
+    project_canonical_provider_deltas(
+        Some(&(stream.clone() as Arc<dyn RuntimeEventStream>)),
+        Some(flow_run_id),
+        None,
+        "node-llm",
+        node_run_id,
+        &[CanonicalProviderDelta {
+            kind: CanonicalContentKind::Text,
+            text: "second".to_string(),
+        }],
+    )
+    .await;
+    assert_eq!(stream.events().len(), 2);
+}
+
+#[test]
 fn answer_presentation_requires_the_provider_trace_to_match_the_active_node() {
     assert!(answer_presentation_source_is_active(
         Some("node-main"),

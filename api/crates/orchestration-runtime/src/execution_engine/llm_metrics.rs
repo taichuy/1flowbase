@@ -231,6 +231,22 @@ pub(super) fn build_attempt_metric(input: AttemptMetricInput<'_>) -> Value {
     })
 }
 
+pub(super) fn attach_provider_stream_timing(attempt: &mut Value, timing: Option<&Value>) {
+    let (Some(attempt), Some(timing)) = (attempt.as_object_mut(), timing) else {
+        return;
+    };
+    attempt.insert("provider_stream_timing".to_string(), timing.clone());
+}
+
+pub(super) fn take_provider_stream_timing(result: &mut ProviderInvocationResult) -> Option<Value> {
+    let metadata = result.provider_metadata.as_object_mut()?;
+    let timing = metadata.remove("_1flowbase_runtime_stream_timing");
+    if let Some(upstream_metadata) = metadata.remove("_1flowbase_upstream_provider_metadata") {
+        result.provider_metadata = upstream_metadata;
+    }
+    timing
+}
+
 pub(super) fn build_llm_metrics_payload(
     runtime: &CompiledLlmRuntime,
     usage: ProviderUsage,
@@ -290,6 +306,55 @@ pub(super) fn build_llm_route_payload(runtime: &CompiledLlmRuntime) -> Value {
             "upstream_model_id": runtime.model,
             "protocol": runtime.protocol,
         }),
+    }
+}
+
+#[cfg(test)]
+mod provider_stream_timing_tests {
+    use super::*;
+
+    #[test]
+    fn timing_receipt_contains_only_safe_event_facts() {
+        let timing = json!([{
+            "sequence": 1,
+            "event_kind": "text_delta",
+            "size_bytes": 42,
+            "ingress_ms": 120,
+            "runtime_append_ms": 121
+        }]);
+        let mut attempt = json!({ "attempt_index": 0 });
+
+        attach_provider_stream_timing(&mut attempt, Some(&timing));
+
+        assert_eq!(attempt["provider_stream_timing"], timing);
+        assert!(!attempt.to_string().contains("sensitive answer text"));
+    }
+
+    #[test]
+    fn timing_wrapper_restores_upstream_provider_metadata_exactly() {
+        let upstream = json!({
+            "response_id": "response-1",
+            "_1flowbase_runtime_stream_timing": "upstream-owned-value"
+        });
+        let timing = json!([{
+            "sequence": 1,
+            "event_kind": "finish",
+            "size_bytes": 32,
+            "ingress_ms": 200,
+            "runtime_append_ms": 201
+        }]);
+        let mut result = ProviderInvocationResult {
+            provider_metadata: json!({
+                "_1flowbase_runtime_stream_timing": timing,
+                "_1flowbase_upstream_provider_metadata": upstream
+            }),
+            ..ProviderInvocationResult::default()
+        };
+
+        let receipt = take_provider_stream_timing(&mut result);
+
+        assert_eq!(receipt, Some(timing));
+        assert_eq!(result.provider_metadata, upstream);
     }
 }
 

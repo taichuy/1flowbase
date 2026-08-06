@@ -428,6 +428,7 @@ where
         };
         let attempt_finished_at = OffsetDateTime::now_utc();
         canonicalize_provider_output_tool_call_names(&mut output, &invocation_tools);
+        let provider_stream_timing = take_provider_stream_timing(&mut output.result);
 
         let usage = collect_usage(&output.events, &output.result.usage);
         let finish_reason = output
@@ -504,7 +505,7 @@ where
             Some(_) => "failed",
             None => "succeeded",
         };
-        let attempt = build_attempt_metric(AttemptMetricInput {
+        let mut attempt = build_attempt_metric(AttemptMetricInput {
             attempt_index,
             retry_reason: retry_reason.as_deref(),
             runtime: attempt_runtime,
@@ -519,6 +520,7 @@ where
             finished_at: attempt_finished_at,
             time_to_first_token_ms: output.time_to_first_token_ms,
         });
+        attach_provider_stream_timing(&mut attempt, provider_stream_timing.as_ref());
         attempt_metrics.push(attempt.clone());
 
         if let Some(error_payload) = &error_payload {

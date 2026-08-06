@@ -31,6 +31,7 @@ mod role;
 mod session_security;
 mod state_transition_tests;
 mod support;
+pub(crate) use support::RecordingRuntimeEventStream;
 mod system_agent_tests;
 mod system_metadata_tests;
 mod system_runtime;
