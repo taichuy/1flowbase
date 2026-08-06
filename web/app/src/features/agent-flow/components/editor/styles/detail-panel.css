@@ -88,23 +88,13 @@
   overflow: hidden;
 }
 
-.agent-flow-node-detail .ant-tabs-content-holder {
+.agent-flow-node-detail .ant-tabs-body-holder,
+.agent-flow-node-detail .ant-tabs-body,
+.agent-flow-node-detail .ant-tabs-content {
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-.agent-flow-node-detail .ant-tabs-content,
-.agent-flow-node-detail .ant-tabs-tabpane-active {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.agent-flow-node-detail .ant-tabs-tabpane-hidden {
-  display: none;
 }
 
 .agent-flow-node-detail__config-tab,

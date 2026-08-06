@@ -83,4 +83,18 @@ describe('AgentFlow editor layout CSS', () => {
       '.agent-flow-edge-add-button-wrapper .ant-btn'
     );
   });
+
+  test('keeps the node detail tab body bounded so its content can scroll', () => {
+    const detailPanelCss = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../components/editor/styles/detail-panel.css'
+      ),
+      'utf8'
+    );
+
+    expect(detailPanelCss).toMatch(
+      /\.agent-flow-node-detail \.ant-tabs-body-holder,[\s\S]*?\.agent-flow-node-detail \.ant-tabs-body,[\s\S]*?\.agent-flow-node-detail \.ant-tabs-content\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/u
+    );
+  });
 });
