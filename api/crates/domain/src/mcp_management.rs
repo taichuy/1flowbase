@@ -412,6 +412,19 @@ pub enum McpParameterType {
     JsonBody,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpServerBinding {
+    WorkspaceId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum McpInputValueSource {
+    McpArgument { path: String },
+    ServerBinding { binding: McpServerBinding },
+}
+
 impl McpParameterType {
     pub fn as_str(self) -> &'static str {
         match self {

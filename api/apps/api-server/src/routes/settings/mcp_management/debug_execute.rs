@@ -6,7 +6,9 @@ use serde_json::{Map, Value};
 use utoipa::ToSchema;
 
 use crate::app_state::ApiState;
+use domain::mcp_management::{McpInputValueSource, McpServerBinding};
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct McpDebugExecuteBody {
@@ -61,9 +63,16 @@ struct McpInputMapping {
 #[derive(Debug, Deserialize)]
 struct McpInputMappingEntry {
     interface_param: String,
-    mcp_param: String,
+    #[serde(default)]
+    mcp_param: Option<String>,
+    source: Option<McpInputValueSource>,
     #[serde(default)]
     required: bool,
+}
+
+#[derive(Clone, Copy)]
+pub struct McpServerBoundInputs {
+    pub workspace_id: Uuid,
 }
 
 #[derive(Default)]
@@ -86,8 +95,34 @@ pub async fn execute(
     interface_entry: domain::McpInterfaceCatalogEntry,
     body: McpDebugExecuteBody,
 ) -> Result<Value, McpDebugExecuteError> {
-    let interface_arguments =
-        build_interface_arguments(&interface_entry, &body.input_mapping, &body.mcp_arguments)?;
+    let context = crate::middleware::require_session::require_session(&state, &headers)
+        .await
+        .map_err(|error| McpDebugExecuteError::Api(error.0))?;
+    execute_with_server_bindings(
+        state,
+        headers,
+        interface_entry,
+        body,
+        McpServerBoundInputs {
+            workspace_id: context.actor.current_workspace_id,
+        },
+    )
+    .await
+}
+
+pub async fn execute_with_server_bindings(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    interface_entry: domain::McpInterfaceCatalogEntry,
+    body: McpDebugExecuteBody,
+    server_bound_inputs: McpServerBoundInputs,
+) -> Result<Value, McpDebugExecuteError> {
+    let interface_arguments = build_interface_arguments(
+        &interface_entry,
+        &body.input_mapping,
+        &body.mcp_arguments,
+        server_bound_inputs,
+    )?;
     let dispatch_entry = crate::openapi_interface::OpenApiInterfaceCatalogEntry {
         operation_id: interface_entry.interface_id.clone(),
         method: interface_entry.method.clone(),
@@ -153,16 +188,36 @@ fn build_interface_arguments(
     interface_entry: &domain::McpInterfaceCatalogEntry,
     input_mapping: &Value,
     mcp_arguments: &Value,
+    server_bound_inputs: McpServerBoundInputs,
 ) -> anyhow::Result<TargetArguments> {
     if !mcp_arguments.is_object() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments").into());
     }
     let input_mapping: McpInputMapping = serde_json::from_value(input_mapping.clone())
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("input_mapping"))?;
+    let server_bound_parameters = input_mapping
+        .mappings
+        .iter()
+        .filter(|mapping| {
+            matches!(
+                mapping.source.as_ref(),
+                Some(McpInputValueSource::ServerBinding { .. })
+            )
+        })
+        .map(|mapping| mapping.interface_param.clone())
+        .collect::<std::collections::HashSet<_>>();
     let mut arguments = TargetArguments::default();
     let mut next_parameter_target = BTreeMap::<String, usize>::new();
 
     for mapping in input_mapping.mappings {
+        if server_bound_parameters.contains(mapping.interface_param.as_str())
+            && !matches!(
+                mapping.source.as_ref(),
+                Some(McpInputValueSource::ServerBinding { .. })
+            )
+        {
+            continue;
+        }
         // The persisted mapping identifies a parameter by name, so repeated names consume the
         // canonical OpenAPI location order independently of which optional values are present.
         let target_index = {
@@ -173,15 +228,36 @@ fn build_interface_arguments(
             *next_index = (*next_index).saturating_add(1);
             current_index
         };
-        let mcp_value = match get_path_value(mcp_arguments, &mapping.mcp_param) {
-            Some(value) => value.clone(),
-            _ if mapping.required => {
-                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                    "mcp_arguments",
-                )
-                .into());
+        let mcp_value = match mapping.source {
+            Some(McpInputValueSource::ServerBinding {
+                binding: McpServerBinding::WorkspaceId,
+            }) => Value::String(server_bound_inputs.workspace_id.to_string()),
+            Some(McpInputValueSource::McpArgument { path }) => {
+                match get_path_value(mcp_arguments, &path) {
+                    Some(value) => value.clone(),
+                    _ if mapping.required => {
+                        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                            "mcp_arguments",
+                        )
+                        .into())
+                    }
+                    _ => continue,
+                }
             }
-            _ => continue,
+            None => match mapping
+                .mcp_param
+                .as_deref()
+                .and_then(|path| get_path_value(mcp_arguments, path))
+            {
+                Some(value) => value.clone(),
+                _ if mapping.required => {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "mcp_arguments",
+                    )
+                    .into())
+                }
+                _ => continue,
+            },
         };
         let targets = parameter_targets(interface_entry, &mapping.interface_param)?;
         let target = targets
@@ -225,6 +301,50 @@ fn build_interface_arguments(
     );
 
     Ok(arguments)
+}
+
+#[cfg(test)]
+mod server_binding_tests {
+    use super::*;
+    use domain::mcp_management::{McpInterfaceCatalogSource, McpRiskLevel};
+    use serde_json::json;
+
+    #[test]
+    fn ac_002_mcp_protocol_server_workspace_binding_cannot_be_overridden() {
+        let trusted_workspace_id = Uuid::now_v7();
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "frontstage_list_pages".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "GET".into(),
+            path: "/api/console/frontstage/{workspace_id}/pages".into(),
+            name: "List pages".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![McpParameterDescriptor {
+                name: "workspace_id".into(),
+                field_type: "string".into(),
+                parameter_type: McpParameterType::Url,
+                description: None,
+                required: true,
+                schema: json!({"type":"string"}),
+            }],
+            parameter_schema: json!({"type":"object","properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"}}}}}),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::Low,
+            bindable: true,
+            disabled_reason: None,
+        };
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[{"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true}]}),
+            &json!({"workspace_id":Uuid::nil()}),
+            McpServerBoundInputs { workspace_id: trusted_workspace_id },
+        )
+        .unwrap();
+
+        assert_eq!(mapped.path["workspace_id"], json!(trusted_workspace_id));
+    }
 }
 
 fn materialize_required_object_containers(schema: Option<&Value>, target: &mut Map<String, Value>) {

@@ -112,7 +112,7 @@ pub(super) fn to_tool_response(
 
 pub(super) async fn to_tool_response_for_actor(
     state: &ApiState,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     record: domain::McpToolRecord,
     operations: &HashMap<String, String>,
 ) -> Result<McpToolResponse, ApiError> {
@@ -123,8 +123,8 @@ pub(super) async fn to_tool_response_for_actor(
             ..
         } => Some(
             McpManagementService::new(state.store.clone())
-                .upstream_proxy_availability(
-                    actor_user_id,
+                .upstream_proxy_availability_for_actor(
+                    actor,
                     *upstream_connection_id,
                     remote_tool_name,
                 )

@@ -30,7 +30,7 @@ use control_plane::mcp_management::{
 };
 use control_plane::{
     application_public_api::published_workflow_operation::build_published_workflow_operations,
-    ports::{ApplicationPublicationRepository, AuthRepository},
+    ports::ApplicationPublicationRepository,
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
@@ -294,8 +294,8 @@ pub async fn get_mcp_catalog(
 ) -> Result<Json<ApiSuccess<McpCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let service = McpManagementService::new(state.store.clone());
-    let snapshot = service.read_workspace_catalog(context.user.id).await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let snapshot = service.read_catalog_for_actor(&context.actor).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(to_catalog_response(
         snapshot,
         &operations,
@@ -312,7 +312,7 @@ pub async fn list_mcp_interface_capabilities(
     McpManagementService::new(state.store.clone())
         .authorize_interface_catalog_view(context.user.id)
         .await?;
-    let mut entries = mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+    let mut entries = mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     if query.bindable_only.unwrap_or(false) {
         entries.retain(|entry| entry.bindable);
     }
@@ -330,8 +330,8 @@ pub async fn list_mcp_items(
     let context = require_session(&state, &headers).await?;
     let service = McpManagementService::new(state.store.clone());
     let items = service
-        .list_items(
-            context.user.id,
+        .list_items_for_actor(
+            &context.actor,
             query.instance_id.as_deref(),
             query.path.as_deref(),
             query.path_regex.as_deref(),
@@ -344,7 +344,7 @@ pub async fn list_mcp_items(
         control_plane::errors::ControlPlaneError::InvalidInput("instance_id"),
     )?;
     let discovery_policy = service
-        .get_instance_discovery_policy(context.user.id, instance_id)
+        .get_instance_discovery_policy_for_actor(&context.actor, instance_id)
         .await?;
     let return_fields = list_response_field_set(&discovery_policy.list_return_fields)?;
     Ok(Json(ApiSuccess::new(
@@ -362,9 +362,9 @@ pub async fn export_mcp_catalog(
 ) -> Result<Json<ApiSuccess<McpExportPackageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let export = McpManagementService::new(state.store.clone())
-        .export_workspace_catalog(context.user.id)
+        .export_catalog_for_actor(&context.actor)
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(to_export_response(
         export,
         &operations,
@@ -378,7 +378,7 @@ pub async fn list_mcp_instances(
 ) -> Result<Json<ApiSuccess<Vec<McpInstanceResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let snapshot = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(context.user.id)
+        .read_catalog_for_actor(&context.actor)
         .await?;
     Ok(Json(ApiSuccess::new(
         snapshot
@@ -398,7 +398,7 @@ pub async fn create_mcp_instance(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .create_instance(to_instance_command(context.user.id, body)?)
+        .create_instance_for_actor(&context.actor, to_instance_command(context.user.id, body)?)
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -416,12 +416,15 @@ pub async fn copy_mcp_instance(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .copy_instance(CopyMcpInstanceCommand {
-            actor_user_id: context.user.id,
-            source_instance_id,
-            instance_id: body.instance_id,
-            name: body.name,
-        })
+        .copy_instance_for_actor(
+            &context.actor,
+            CopyMcpInstanceCommand {
+                actor_user_id: context.user.id,
+                source_instance_id,
+                instance_id: body.instance_id,
+                name: body.name,
+            },
+        )
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -440,7 +443,7 @@ pub async fn update_mcp_instance(
     require_csrf(&headers, &context)?;
     body.instance_id = instance_id;
     let record = McpManagementService::new(state.store.clone())
-        .update_instance(to_instance_command(context.user.id, body)?)
+        .update_instance_for_actor(&context.actor, to_instance_command(context.user.id, body)?)
         .await?;
     Ok(Json(ApiSuccess::new(to_instance_response(record))))
 }
@@ -454,7 +457,7 @@ pub async fn delete_mcp_instance(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     McpManagementService::new(state.store.clone())
-        .delete_instance(context.user.id, &instance_id)
+        .delete_instance_for_actor(&context.actor, &instance_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -469,15 +472,18 @@ pub async fn upsert_mcp_group(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .upsert_group(UpsertMcpGroupCommand {
-            actor_user_id: context.user.id,
-            instance_id,
-            path: body.path,
-            display_name: body.display_name,
-            description_short: body.description_short,
-            enabled: body.enabled,
-            sort_order: body.sort_order,
-        })
+        .upsert_group_for_actor(
+            &context.actor,
+            UpsertMcpGroupCommand {
+                actor_user_id: context.user.id,
+                instance_id,
+                path: body.path,
+                display_name: body.display_name,
+                description_short: body.description_short,
+                enabled: body.enabled,
+                sort_order: body.sort_order,
+            },
+        )
         .await?;
     Ok(Json(ApiSuccess::new(to_group_response(record))))
 }
@@ -492,13 +498,16 @@ pub async fn move_mcp_group(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .move_group(MoveMcpGroupCommand {
-            actor_user_id: context.user.id,
-            instance_id,
-            source_path: body.source_path,
-            target_parent_path: body.target_parent_path,
-            sort_order: body.sort_order,
-        })
+        .move_group_for_actor(
+            &context.actor,
+            MoveMcpGroupCommand {
+                actor_user_id: context.user.id,
+                instance_id,
+                source_path: body.source_path,
+                target_parent_path: body.target_parent_path,
+                sort_order: body.sort_order,
+            },
+        )
         .await?;
     Ok(Json(ApiSuccess::new(to_group_response(record))))
 }
@@ -513,7 +522,7 @@ pub async fn delete_mcp_group(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     McpManagementService::new(state.store.clone())
-        .delete_group(context.user.id, &instance_id, &query.path)
+        .delete_group_for_actor(&context.actor, &instance_id, &query.path)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -525,14 +534,13 @@ pub async fn list_mcp_tools(
 ) -> Result<Json<ApiSuccess<Vec<McpToolResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let snapshot = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(context.user.id)
+        .read_catalog_for_actor(&context.actor)
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     let mut tools = Vec::with_capacity(snapshot.tools.len());
     for record in snapshot.tools {
         tools.push(
-            to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations)
-                .await?,
+            to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations).await?,
         );
     }
     Ok(Json(ApiSuccess::new(tools)))
@@ -548,14 +556,13 @@ pub async fn create_mcp_tool(
     require_csrf(&headers, &context)?;
     let interface_id = interface_target_id(&body.execution_target)?;
     let interface_entry =
-        bindable_mcp_interface(state.as_ref(), context.user.id, interface_id).await?;
+        bindable_mcp_interface(state.as_ref(), &context.actor, interface_id).await?;
     let operation = interface_operation(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
-        .create_tool(to_create_tool_command(
-            context.user.id,
-            body,
-            interface_entry,
-        )?)
+        .create_tool_for_actor(
+            &context.actor,
+            to_create_tool_command(context.user.id, body, interface_entry)?,
+        )
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -577,9 +584,9 @@ pub async fn get_mcp_tool(
     let record = McpManagementService::new(state.store.clone())
         .get_tool(context.user.id, &tool_id)
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(
-        to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations).await?,
+        to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations).await?,
     )))
 }
 
@@ -595,15 +602,13 @@ pub async fn update_mcp_tool(
     match &body.execution_target {
         McpToolExecutionTargetDto::InterfaceWrapper { interface_id } => {
             let interface_entry =
-                bindable_mcp_interface(state.as_ref(), context.user.id, interface_id).await?;
+                bindable_mcp_interface(state.as_ref(), &context.actor, interface_id).await?;
             let operation = interface_operation(&interface_entry);
             let record = McpManagementService::new(state.store.clone())
-                .update_tool(to_update_tool_command(
-                    context.user.id,
-                    tool_id,
-                    body,
-                    interface_entry,
-                )?)
+                .update_tool_for_actor(
+                    &context.actor,
+                    to_update_tool_command(context.user.id, tool_id, body, interface_entry)?,
+                )
                 .await?;
             Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
                 record,
@@ -614,25 +619,28 @@ pub async fn update_mcp_tool(
         McpToolExecutionTargetDto::McpProxy { .. } => {
             let execution_target = to_domain_execution_target(&body.execution_target)?;
             let record = McpManagementService::new(state.store.clone())
-                .update_proxy_tool(UpdateMcpProxyToolCommand {
-                    actor_user_id: context.user.id,
-                    tool_id,
-                    des_id: body.des_id,
-                    name: body.name,
-                    short_description: body.short_description,
-                    full_description: body.full_description,
-                    execution_target,
-                    parameter_schema: body.parameter_schema,
-                    result_schema: body.result_schema,
-                    input_mapping: body.input_mapping,
-                    output_mapping: body.output_mapping,
-                    risk_level: parse_risk_level(&body.risk_level)?,
-                    status: parse_tool_status(&body.status)?,
-                })
+                .update_proxy_tool_for_actor(
+                    &context.actor,
+                    UpdateMcpProxyToolCommand {
+                        actor_user_id: context.user.id,
+                        tool_id,
+                        des_id: body.des_id,
+                        name: body.name,
+                        short_description: body.short_description,
+                        full_description: body.full_description,
+                        execution_target,
+                        parameter_schema: body.parameter_schema,
+                        result_schema: body.result_schema,
+                        input_mapping: body.input_mapping,
+                        output_mapping: body.output_mapping,
+                        risk_level: parse_risk_level(&body.risk_level)?,
+                        status: parse_tool_status(&body.status)?,
+                    },
+                )
                 .await?;
-            let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+            let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
             Ok(Json(ApiSuccess::new(
-                to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations)
+                to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations)
                     .await?,
             )))
         }
@@ -648,7 +656,7 @@ pub async fn delete_mcp_tool(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     McpManagementService::new(state.store.clone())
-        .delete_tool(context.user.id, &tool_id)
+        .delete_tool_for_actor(&context.actor, &tool_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -662,12 +670,15 @@ pub async fn refresh_mcp_tool_description(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .refresh_tool_description(RefreshMcpToolDescriptionCommand {
-            actor_user_id: context.user.id,
-            tool_id,
-        })
+        .refresh_tool_description_for_actor(
+            &context.actor,
+            RefreshMcpToolDescriptionCommand {
+                actor_user_id: context.user.id,
+                tool_id,
+            },
+        )
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(to_tool_response(record, &operations))))
 }
 
@@ -700,7 +711,7 @@ pub async fn execute_mcp_debug(
         .authorize_debug_execute(context.user.id)
         .await?;
     let interface_entry =
-        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
+        bindable_mcp_interface(state.as_ref(), &context.actor, &body.interface_id).await?;
 
     match debug_execute::execute(state, headers, interface_entry, body).await {
         Ok(result) => Ok(Json(ApiSuccess::new(result)).into_response()),
@@ -719,15 +730,18 @@ pub async fn create_mcp_tool_binding(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .create_tool_binding(CreateMcpToolBindingCommand {
-            actor_user_id: context.user.id,
-            instance_id,
-            group_path: body.group_path,
-            tool_id: body.tool_id,
-            display_alias: body.display_alias,
-            visible: body.visible,
-            sort_order: body.sort_order,
-        })
+        .create_tool_binding_for_actor(
+            &context.actor,
+            CreateMcpToolBindingCommand {
+                actor_user_id: context.user.id,
+                instance_id,
+                group_path: body.group_path,
+                tool_id: body.tool_id,
+                display_alias: body.display_alias,
+                visible: body.visible,
+                sort_order: body.sort_order,
+            },
+        )
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -745,14 +759,17 @@ pub async fn update_mcp_tool_binding(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .update_tool_binding(UpdateMcpToolBindingCommand {
-            actor_user_id: context.user.id,
-            binding_id: parse_uuid(&binding_id, "binding_id")?,
-            group_path: body.group_path,
-            display_alias: body.display_alias,
-            visible: body.visible,
-            sort_order: body.sort_order,
-        })
+        .update_tool_binding_for_actor(
+            &context.actor,
+            UpdateMcpToolBindingCommand {
+                actor_user_id: context.user.id,
+                binding_id: parse_uuid(&binding_id, "binding_id")?,
+                group_path: body.group_path,
+                display_alias: body.display_alias,
+                visible: body.visible,
+                sort_order: body.sort_order,
+            },
+        )
         .await?;
     Ok(Json(ApiSuccess::new(to_binding_response(record))))
 }
@@ -766,7 +783,7 @@ pub async fn delete_mcp_tool_binding(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     McpManagementService::new(state.store.clone())
-        .delete_tool_binding(context.user.id, parse_uuid(&binding_id, "binding_id")?)
+        .delete_tool_binding_for_actor(&context.actor, parse_uuid(&binding_id, "binding_id")?)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -797,15 +814,18 @@ pub async fn update_mcp_instance_discovery_policy(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let record = McpManagementService::new(state.store.clone())
-        .update_instance_discovery_policy(UpdateMcpInstanceDiscoveryPolicyCommand {
-            actor_user_id: context.user.id,
-            instance_id: instance_id.clone(),
-            list_default_limit: body.list_default_limit,
-            list_max_depth: body.list_max_depth,
-            list_regex_enabled: body.list_regex_enabled,
-            list_regex_max_length: body.list_regex_max_length,
-            list_return_fields: body.list_return_fields,
-        })
+        .update_instance_discovery_policy_for_actor(
+            &context.actor,
+            UpdateMcpInstanceDiscoveryPolicyCommand {
+                actor_user_id: context.user.id,
+                instance_id: instance_id.clone(),
+                list_default_limit: body.list_default_limit,
+                list_max_depth: body.list_max_depth,
+                list_regex_enabled: body.list_regex_enabled,
+                list_regex_max_length: body.list_regex_max_length,
+                list_return_fields: body.list_return_fields,
+            },
+        )
         .await?;
     Ok(Json(ApiSuccess::new(to_discovery_policy_response(
         record,

@@ -64,7 +64,7 @@ async fn handle_mcp_request(
     }
 
     let service = McpManagementService::new(state.store.clone());
-    let catalog = service.read_workspace_catalog(context.user.id).await?;
+    let catalog = service.read_catalog_for_actor(&context.actor).await?;
     let instance = catalog
         .instances
         .iter()
@@ -124,8 +124,8 @@ async fn handle_mcp_request(
                         .and_then(Value::as_u64)
                         .and_then(|value| usize::try_from(value).ok());
                     let items = service
-                        .list_items(
-                            context.user.id,
+                        .list_items_for_actor(
+                            &context.actor,
                             Some(&instance_id),
                             path,
                             path_regex,
@@ -212,7 +212,7 @@ async fn handle_mcp_request(
                         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
                             let interface = match bindable_mcp_interface(
                                 state.as_ref(),
-                                context.user.id,
+                                &context.actor,
                                 interface_id,
                             )
                             .await
@@ -247,11 +247,14 @@ async fn handle_mcp_request(
                                     operation_id: interface_id,
                                 }
                             };
-                            match super::mcp_management::debug_execute::execute(
+                            match super::mcp_management::debug_execute::execute_with_server_bindings(
                                 state.clone(),
                                 headers,
                                 interface,
                                 body,
+                                super::mcp_management::debug_execute::McpServerBoundInputs {
+                                    workspace_id: instance.workspace_id,
+                                },
                             )
                             .await
                             {
@@ -305,8 +308,8 @@ async fn handle_mcp_request(
                             ..
                         } => {
                             let availability = service
-                                .upstream_proxy_availability(
-                                    context.user.id,
+                                .upstream_proxy_availability_for_actor(
+                                    &context.actor,
                                     *upstream_connection_id,
                                     remote_tool_name,
                                 )
@@ -320,11 +323,14 @@ async fn handle_mcp_request(
                                 ));
                             }
                             let connection = service
-                                .get_upstream_connection(context.user.id, *upstream_connection_id)
+                                .get_upstream_connection_for_actor(
+                                    &context.actor,
+                                    *upstream_connection_id,
+                                )
                                 .await?;
                             let secret = service
-                                .upstream_secret_for_execution(
-                                    context.user.id,
+                                .upstream_secret_for_actor(
+                                    &context.actor,
                                     *upstream_connection_id,
                                     &state.provider_secret_master_key,
                                 )
