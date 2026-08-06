@@ -156,6 +156,7 @@ export function DebugWorkflowProcess({
               </Think>
             ) : null}
             <DebugWorkflowNodeDetailContent
+              defaultToolsExpanded={(toolCallbackCounts.get(group.key) ?? 0) > 0}
               item={item}
               onLoadArtifact={onLoadArtifact}
               onLoadArtifacts={onLoadArtifacts}

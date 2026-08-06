@@ -627,8 +627,8 @@ function createInitialLlmToolTraceTreeState(
 
 type LlmToolTraceTreeAction =
   | { type: 'toggle-tools' }
+  | { type: 'expand-tools' }
   | { type: 'set-expanded-tool'; toolKey: string | null }
-  | { type: 'reveal-tool'; toolKey: string }
   | { type: 'load-start'; toolKey: string }
   | {
       type: 'load-success';
@@ -648,15 +648,16 @@ function llmToolTraceTreeReducer(
         ...state,
         toolsExpanded: !state.toolsExpanded
       };
+    case 'expand-tools':
+      return state.toolsExpanded
+        ? state
+        : {
+            ...state,
+            toolsExpanded: true
+          };
     case 'set-expanded-tool':
       return {
         ...state,
-        expandedToolKey: action.toolKey
-      };
-    case 'reveal-tool':
-      return {
-        ...state,
-        toolsExpanded: true,
         expandedToolKey: action.toolKey
       };
     case 'load-start': {
@@ -725,7 +726,6 @@ function LlmToolTraceTreeContent({
     createInitialLlmToolTraceTreeState
   );
   const mountedRef = useRef(true);
-  const knownToolKeysRef = useRef(new Set<string>());
   const debugPayloadList = useMemo(
     () => debugPayloads ?? [debugPayload],
     [debugPayload, debugPayloads]
@@ -761,19 +761,8 @@ function LlmToolTraceTreeContent({
     [traceTreeState.loadedToolCallbacks, toolCallbacks]
   );
   useEffect(() => {
-    const newCallbacks = effectiveToolCallbacks.filter(
-      (callback) => !knownToolKeysRef.current.has(callback.key)
-    );
-    effectiveToolCallbacks.forEach((callback) =>
-      knownToolKeysRef.current.add(callback.key)
-    );
-
-    const latestCallback = newCallbacks[newCallbacks.length - 1];
-    if (defaultToolsExpanded && latestCallback) {
-      dispatchTraceTree({
-        type: 'reveal-tool',
-        toolKey: latestCallback.key
-      });
+    if (defaultToolsExpanded && effectiveToolCallbacks.length > 0) {
+      dispatchTraceTree({ type: 'expand-tools' });
     }
   }, [defaultToolsExpanded, effectiveToolCallbacks]);
   useEffect(() => {

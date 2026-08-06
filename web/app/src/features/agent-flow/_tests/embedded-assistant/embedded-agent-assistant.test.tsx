@@ -170,14 +170,22 @@ describe('EmbeddedAgentAssistant', () => {
     const trigger = screen.getByRole('button', {
       name: i18nText('appShell', 'auto.assistant')
     });
+    expect(trigger).toHaveClass('app-shell-design-block');
+    expect(trigger.closest('.app-shell-design-menu')).toBeInTheDocument();
     expect(trigger).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(trigger);
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
 
     expect(trigger).toHaveAttribute('aria-pressed', 'true');
-    expect(trigger).toHaveClass('embedded-agent-assistant-trigger--active');
+    expect(trigger.closest('.embedded-agent-assistant-trigger')).toHaveClass(
+      'ant-menu-item-selected'
+    );
 
-    fireEvent.click(trigger);
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
 
     await waitFor(() => {
       expect(trigger).toHaveAttribute('aria-pressed', 'false');
@@ -185,7 +193,9 @@ describe('EmbeddedAgentAssistant', () => {
         screen.queryByTestId('embedded-agent-assistant-preview')
       ).not.toBeInTheDocument();
     });
-    expect(trigger).not.toHaveClass('embedded-agent-assistant-trigger--active');
+    expect(
+      trigger.closest('.embedded-agent-assistant-trigger')
+    ).not.toHaveClass('ant-menu-item-selected');
   });
 
   test('AC-004 projects primary Assistant WebSocket events through the Preview conversation', async () => {

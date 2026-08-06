@@ -6,6 +6,7 @@ import type {
   AgentFlowRunContext
 } from '../../api/runtime';
 import { DebugConversationPane } from '../../components/debug-console/conversation/DebugConversationPane';
+import { LlmToolTraceTree } from '../../components/debug-console/conversation/LlmToolTraceTree';
 
 const runContext: AgentFlowRunContext = {
   environmentLabel: 'draft',
@@ -162,7 +163,7 @@ describe('DebugConversationPane workflow trace', () => {
     );
   });
 
-  test('keeps LLM tool callbacks collapsed until the user opens the Tools child node', () => {
+  test('expands the LLM tool callback list while keeping callback details collapsed', () => {
     renderPane([
       {
         ...assistantMessage('等待工具结果'),
@@ -219,13 +220,14 @@ describe('DebugConversationPane workflow trace', () => {
     const toolsNode = screen.getByRole('button', {
       name: /^工具 1 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /lookup_weather/ })
-    ).not.toBeInTheDocument();
+    const toolCallback = screen.getByRole('button', {
+      name: /lookup_weather/
+    });
+    expect(toolCallback).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
 
     const inputPayload = screen.getByRole('button', { name: '输入' });
@@ -246,12 +248,50 @@ describe('DebugConversationPane workflow trace', () => {
     ).not.toBeNull();
     expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('天气?');
 
-    fireEvent.click(toolsNode);
+    fireEvent.click(toolCallback);
 
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
+    expect(toolCallback).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('opens the tool callback list when a streaming LLM node receives its first callback', () => {
+    const { rerender } = render(
+      <LlmToolTraceTree debugPayload={{}} defaultToolsExpanded={false} />
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /^工具 1 次工具回调$/ })
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <LlmToolTraceTree
+        debugPayload={{
+          llm_rounds: [
+            {
+              round_index: 0,
+              assistant: {
+                role: 'assistant',
+                content: 'need tool',
+                tool_calls: [
+                  {
+                    id: 'call_weather',
+                    name: 'lookup_weather'
+                  }
+                ]
+              },
+              finish_reason: 'tool_call'
+            }
+          ]
+        }}
+        defaultToolsExpanded
+      />
+    );
+
+    expect(
+      screen.getByRole('button', { name: /^工具 1 次工具回调$/ })
+    ).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getByRole('button', { name: /lookup_weather/ })
-    ).toBeInTheDocument();
+    ).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('collapses repeated LLM node runs into one workflow row', () => {
@@ -349,17 +389,17 @@ describe('DebugConversationPane workflow trace', () => {
     const toolsNode = screen.getByRole('button', {
       name: /^工具 2 次工具回调$/
     });
-    expect(toolsNode).toHaveAttribute('aria-expanded', 'false');
+    expect(toolsNode).toHaveAttribute('aria-expanded', 'true');
 
     expect(
       screen.queryByLabelText('工具回调索引 JSON')
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /lookup_weather/ })
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: /lookup_weather/ })
+    ).toHaveAttribute('aria-expanded', 'false');
     expect(
-      screen.queryByRole('button', { name: /read_policy/ })
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: /read_policy/ })
+    ).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
     expect(screen.queryByText('call_policy')).not.toBeInTheDocument();
   });
