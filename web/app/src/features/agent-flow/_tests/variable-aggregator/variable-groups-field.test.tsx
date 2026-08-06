@@ -139,7 +139,7 @@ describe('VariableGroupsField', () => {
     const stringSelector = screen.getByRole('combobox', {
       name: 'Groups-group1-1'
     });
-    fireEvent.click(stringSelector);
+    fireEvent.mouseDown(stringSelector);
     expect(stringSelector).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(await screen.findByText('Source'));
     expect(await screen.findByText('text')).toBeInTheDocument();
@@ -155,7 +155,7 @@ describe('VariableGroupsField', () => {
     const arraySelector = screen.getByRole('combobox', {
       name: 'Groups-group1-1'
     });
-    fireEvent.click(arraySelector);
+    fireEvent.mouseDown(arraySelector);
     expect(arraySelector).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(await screen.findByText('Source'));
     expect(await screen.findByText('items')).toBeInTheDocument();
