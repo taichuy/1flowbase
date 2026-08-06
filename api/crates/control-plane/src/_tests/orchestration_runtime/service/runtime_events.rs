@@ -29,12 +29,20 @@ async fn completed_nodes_finish_before_the_next_slow_node_returns() {
         .await;
     let stream = Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
     let service = service.with_runtime_event_stream(stream.clone());
-    let execution = service.start_flow_debug_run(StartFlowDebugRunCommand {
-        actor_user_id: seeded.actor_user_id,
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "hello" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    let execution = service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
         application_id: seeded.application_id,
-        input_payload: json!({ "node-start": { "query": "hello" } }),
-        document_snapshot: None,
-        debug_session_id: None,
+        flow_run_id: started.flow_run.id,
+        workspace_id: Uuid::nil(),
     });
     tokio::pin!(execution);
 
