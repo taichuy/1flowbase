@@ -129,6 +129,7 @@ where
         + NodeContributionRepository
         + PluginRepository
         + ApplicationJsDependencySelectionRepository
+        + ApplicationRepository
         + Send
         + Sync,
 {

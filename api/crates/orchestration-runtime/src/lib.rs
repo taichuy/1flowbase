@@ -14,7 +14,6 @@ pub mod node_errors;
 pub mod output_schema;
 pub mod payload_builder;
 pub mod preview_executor;
-mod variable_aggregator_contract;
 
 pub fn crate_name() -> &'static str {
     "orchestration-runtime"

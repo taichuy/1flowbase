@@ -290,10 +290,7 @@ fn compile_rejects_variable_aggregator_outputs_that_diverge_from_groups() {
             "valueType": "string",
             "candidates": [["node-start", "query"]]
         }]),
-        json!([
-            { "key": "value", "title": "value", "valueType": "string" },
-            { "key": "extra", "title": "Extra", "valueType": "string" }
-        ]),
+        json!([{ "key": "value", "title": "Wrong title", "valueType": "string" }]),
     );
 
     let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
@@ -301,7 +298,7 @@ fn compile_rejects_variable_aggregator_outputs_that_diverge_from_groups() {
 
     assert!(error
         .to_string()
-        .contains("outputs must match groups in order and count"));
+        .contains("invalid variable_aggregator output contract"));
 }
 
 // Root AC-012/013/014: legacy, malformed, unsupported, and topology-incompatible contracts fail closed.
@@ -398,6 +395,96 @@ fn compile_rejects_forbidden_upstream_variable_group_types() {
         let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
             .expect_err("forbidden upstream value types must be rejected");
         assert!(error.to_string().contains("forbidden upstream valueType"));
+    }
+}
+
+// Root AC-012/013/014: backend declarations provide the same strict truth for all run-level namespaces.
+#[test]
+fn compile_variable_aggregator_accepts_declared_run_level_concrete_types() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["variables"] = json!({
+        "conversation": [{
+            "name": "approved",
+            "valueType": "boolean",
+            "description": ""
+        }]
+    });
+    set_variable_aggregator_fixture(
+        &mut document,
+        json!([
+            { "key": "user_id", "valueType": "string", "candidates": [["sys", "user_id"]] },
+            { "key": "items", "valueType": "array", "candidates": [["env", "Items"]] },
+            { "key": "approved", "valueType": "boolean", "candidates": [["conversation", "approved"]] },
+            { "key": "trigger_type", "valueType": "string", "candidates": [["trigger", "type"]] }
+        ]),
+        json!([
+            { "key": "user_id", "title": "user_id", "valueType": "string" },
+            { "key": "items", "title": "items", "valueType": "array" },
+            { "key": "approved", "title": "approved", "valueType": "boolean" },
+            { "key": "trigger_type", "title": "trigger_type", "valueType": "string" }
+        ]),
+    );
+    let mut context = compile_context();
+    context.run_level_variables = vec![
+        FlowCompileRunLevelVariable {
+            selector: vec!["sys".to_string(), "user_id".to_string()],
+            value_type: "string".to_string(),
+        },
+        FlowCompileRunLevelVariable {
+            selector: vec!["env".to_string(), "Items".to_string()],
+            value_type: "array[object]".to_string(),
+        },
+        FlowCompileRunLevelVariable {
+            selector: vec!["trigger".to_string(), "type".to_string()],
+            value_type: "string".to_string(),
+        },
+    ];
+
+    FlowCompiler::compile(flow_id, "draft-1", &document, &context)
+        .expect("declared concrete run-level selectors must compile");
+}
+
+#[test]
+fn compile_variable_aggregator_rejects_unknown_run_level_selectors() {
+    for selector in [
+        ["sys", "missing"],
+        ["env", "Missing"],
+        ["conversation", "missing"],
+        ["trigger", "missing"],
+    ] {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        document["variables"] = json!({ "conversation": [] });
+        set_variable_aggregator_fixture(
+            &mut document,
+            json!([{ "key": "value", "valueType": "string", "candidates": [selector] }]),
+            json!([{ "key": "value", "title": "value", "valueType": "string" }]),
+        );
+
+        FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+            .expect_err("unknown run-level selectors must be rejected");
+    }
+}
+
+#[test]
+fn compile_variable_aggregator_rejects_incompatible_or_unknown_run_level_types() {
+    for declared_type in ["number", "unknown"] {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        set_variable_aggregator_fixture(
+            &mut document,
+            json!([{ "key": "value", "valueType": "string", "candidates": [["sys", "user_id"]] }]),
+            json!([{ "key": "value", "title": "value", "valueType": "string" }]),
+        );
+        let mut context = compile_context();
+        context.run_level_variables = vec![FlowCompileRunLevelVariable {
+            selector: vec!["sys".to_string(), "user_id".to_string()],
+            value_type: declared_type.to_string(),
+        }];
+
+        FlowCompiler::compile(flow_id, "draft-1", &document, &context)
+            .expect_err("incompatible and unknown run-level types must be rejected");
     }
 }
 

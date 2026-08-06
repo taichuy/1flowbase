@@ -97,6 +97,7 @@ impl ApplicationCompileContextRepository for ApplicationPublicApiTestRepository 
             model_routing_policies: Default::default(),
             node_contributions: Default::default(),
             js_dependencies,
+            run_level_variables: Vec::new(),
         })
     }
 }

@@ -3,7 +3,8 @@ use serde_json::{json, Map, Value};
 
 use crate::{
     binding_runtime::lookup_selector_value, compiled_plan::CompiledNode,
-    output_schema::validate_output_value, variable_aggregator_contract::variable_aggregator_groups,
+    compiler::variable_aggregator_contract::variable_aggregator_groups,
+    output_schema::validate_output_value,
 };
 
 pub(super) const VARIABLE_AGGREGATOR_NO_CANDIDATE_VALUE: &str =

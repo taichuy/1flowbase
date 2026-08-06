@@ -7,7 +7,7 @@ use orchestration_runtime::compiled_plan::{
 use orchestration_runtime::compiler::{
     ensure_plan_execution_contract, FlowCompileContext, FlowCompileJsDependency,
     FlowCompileModelRoutingPolicy, FlowCompileNodeContribution, FlowCompileProviderFamily,
-    FlowCompileProviderInstance, FlowCompiler,
+    FlowCompileProviderInstance, FlowCompileRunLevelVariable, FlowCompiler,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -42,6 +42,7 @@ fn compile_context() -> FlowCompileContext {
         model_routing_policies: BTreeMap::new(),
         node_contributions: BTreeMap::new(),
         js_dependencies: BTreeMap::new(),
+        run_level_variables: Vec::new(),
     }
 }
 

@@ -55,10 +55,12 @@ pub(super) fn extract_selector_paths(kind: &str, raw_value: &Value) -> Result<Ve
                 selector_paths: Vec::new(),
             };
             Ok(
-                crate::variable_aggregator_contract::variable_aggregator_groups(&binding)?
-                    .into_iter()
-                    .flat_map(|group| group.candidates)
-                    .collect(),
+                crate::compiler::variable_aggregator_contract::variable_aggregator_groups(
+                    &binding,
+                )?
+                .into_iter()
+                .flat_map(|group| group.candidates)
+                .collect(),
             )
         }
         "named_bindings" => {

@@ -126,14 +126,14 @@ fn validate_variable_aggregator_contract(
     let binding = bindings
         .get("groups")
         .ok_or_else(|| anyhow!("node {node_id} variable_aggregator is missing bindings.groups"))?;
-    let groups = crate::variable_aggregator_contract::variable_aggregator_groups(binding)
+    let groups = crate::compiler::variable_aggregator_contract::variable_aggregator_groups(binding)
         .with_context(|| {
             format!("node {node_id} has an invalid variable_aggregator groups contract")
         })?;
-    crate::variable_aggregator_contract::validate_variable_aggregator_outputs(&groups, outputs)
-        .with_context(|| {
-            format!("node {node_id} has an invalid variable_aggregator output contract")
-        })
+    crate::compiler::variable_aggregator_contract::validate_variable_aggregator_outputs(
+        &groups, outputs,
+    )
+    .with_context(|| format!("node {node_id} has an invalid variable_aggregator output contract"))
 }
 
 fn validate_native_sql_config(
