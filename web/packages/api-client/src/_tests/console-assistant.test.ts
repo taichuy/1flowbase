@@ -335,4 +335,49 @@ describe('console assistant client', () => {
     ).toEqual(['Hel', 'lo']);
     vi.unstubAllGlobals();
   });
+
+  test('issue 1601 rejects a WebSocket handshake that never opens', async () => {
+    vi.useFakeTimers();
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce({
+      ticket: 'ticket-stalled',
+      protocol: '1flowbase.assistant.v1',
+      expires_in_seconds: 60
+    } as never);
+    const close = vi.fn();
+
+    class StalledWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = 0;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      close() {
+        close();
+      }
+
+      send() {}
+    }
+
+    vi.stubGlobal('WebSocket', StalledWebSocket);
+    const run = startConsoleAssistantRunWebSocket(
+      { application_id: 'application-1', query: 'hello', history: [] },
+      'csrf-token',
+      {},
+      {
+        baseUrl: 'http://127.0.0.1:3100',
+        handshakeTimeoutMs: 25
+      }
+    );
+
+    const rejection = expect(run).rejects.toThrow(
+      'Assistant WebSocket handshake timed out'
+    );
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(close).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 });

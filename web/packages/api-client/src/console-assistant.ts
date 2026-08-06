@@ -126,11 +126,13 @@ export async function startConsoleAssistantRunWebSocket(
   handlers: ConsoleFlowDebugStreamHandlers,
   options?: {
     baseUrl?: string;
+    handshakeTimeoutMs?: number;
     onControl?: (control: ConsoleAssistantWebSocketControl) => void;
     maxReconnects?: number;
   }
 ) {
   const baseUrl = options?.baseUrl ?? getDefaultApiBaseUrl();
+  const handshakeTimeoutMs = options?.handshakeTimeoutMs ?? 10_000;
   const maxReconnects = options?.maxReconnects ?? 2;
   const abortController = new AbortController();
   handlers.getAbortController?.(abortController);
@@ -143,12 +145,21 @@ export async function startConsoleAssistantRunWebSocket(
     let reconnectCount = 0;
     let settled = false;
     let requestSequence = 1;
+    let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearHandshakeDeadline = () => {
+      if (handshakeTimer !== null) {
+        clearTimeout(handshakeTimer);
+        handshakeTimer = null;
+      }
+    };
 
     const finish = (error?: unknown) => {
       if (settled) {
         return;
       }
       settled = true;
+      clearHandshakeDeadline();
       socket?.close();
       if (error) {
         reject(error);
@@ -182,6 +193,11 @@ export async function startConsoleAssistantRunWebSocket(
     );
 
     const connect = async (attach: boolean) => {
+      clearHandshakeDeadline();
+      handshakeTimer = setTimeout(
+        () => finish(new Error('Assistant WebSocket handshake timed out')),
+        handshakeTimeoutMs
+      );
       try {
         const ticket = await apiFetch<ConsoleAssistantWebSocketTicket>({
           path: '/api/console/assistant/runs/websocket-ticket',
@@ -204,6 +220,7 @@ export async function startConsoleAssistantRunWebSocket(
         ]);
         socket = current;
         current.onopen = () => {
+          clearHandshakeDeadline();
           if (attach && activeRunId) {
             current.send(
               JSON.stringify({
@@ -277,6 +294,7 @@ export async function startConsoleAssistantRunWebSocket(
           current.close();
         };
         current.onclose = () => {
+          clearHandshakeDeadline();
           if (settled || terminal) {
             return;
           }
@@ -288,6 +306,7 @@ export async function startConsoleAssistantRunWebSocket(
           finish(new Error('Assistant WebSocket connection interrupted'));
         };
       } catch (error) {
+        clearHandshakeDeadline();
         finish(error);
       }
     };

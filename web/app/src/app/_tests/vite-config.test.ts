@@ -5,7 +5,10 @@ import { describe, expect, test } from 'vitest';
 
 describe('vite config', () => {
   test('proxies backend routes to support same-origin docs requests', async () => {
-    const source = await readFile(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
 
     expect(source).toContain('VITE_API_PROXY_TARGET');
     expect(source).toContain("'/api'");
@@ -13,10 +16,14 @@ describe('vite config', () => {
     expect(source).toContain("'/health'");
     expect(source).toContain("'/openapi.json'");
     expect(source).toContain('target: apiProxyTarget');
+    expect(source.match(/ws: true/gu)).toHaveLength(2);
   });
 
   test('can expose the dev proxy to configured frontend origins', async () => {
-    const source = await readFile(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
 
     expect(source).toContain('VITE_DEV_CORS_ALLOWED_ORIGINS');
     expect(source).toContain('devCorsAllowedOrigins');
@@ -45,7 +52,10 @@ describe('vite config', () => {
   });
 
   test('splits large frontend dependencies into named chunks', async () => {
-    const source = await readFile(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
 
     expect(source).toContain('manualChunks');
     expect(source).toContain('flow-vendor');
@@ -54,7 +64,10 @@ describe('vite config', () => {
   });
 
   test('pre-optimizes dependencies used by lazy application pages', async () => {
-    const source = await readFile(path.resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
     const lazyOnlyDeps = [
       '@ant-design/x-markdown',
       '@dnd-kit/core',

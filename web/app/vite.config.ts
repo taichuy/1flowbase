@@ -141,11 +141,13 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: apiProxyTarget,
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
         },
         '/v1': {
           target: apiProxyTarget,
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
         },
         '/health': {
           target: apiProxyTarget,

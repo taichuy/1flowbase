@@ -457,7 +457,6 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     const runApplicationId = activeApplicationIdRef.current;
     if (
       !csrfToken ||
-      !runId ||
       !runApplicationId ||
       !['running', 'waiting_callback', 'waiting_human'].includes(status)
     ) {
@@ -466,6 +465,18 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
 
     setStopping(true);
     try {
+      if (!runId) {
+        cancelActiveStream();
+        setStatus('cancelled');
+        setMessages((current) =>
+          current.map((message) =>
+            message.role === 'assistant' && message.status === 'running'
+              ? { ...message, status: 'cancelled' }
+              : message
+          )
+        );
+        return;
+      }
       const websocketControl = websocketControlRef.current;
       if (websocketControl) {
         websocketControl.cancel(runId);
@@ -487,6 +498,42 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     }
   }, [cancelActiveStream, csrfToken, status]);
 
+  const closeSession = useCallback(async () => {
+    const runId = activeRunIdRef.current;
+    const runApplicationId = activeApplicationIdRef.current;
+    const shouldCancel = [
+      'running',
+      'waiting_callback',
+      'waiting_human'
+    ].includes(status);
+
+    cancelActiveStream();
+    activeRunIdRef.current = null;
+    activeApplicationIdRef.current = null;
+    setActiveRunId(null);
+    setStopping(false);
+
+    if (shouldCancel) {
+      setStatus('cancelled');
+      setMessages((current) =>
+        current.map((message) =>
+          message.role === 'assistant' && message.status === 'running'
+            ? { ...message, status: 'cancelled' }
+            : message
+        )
+      );
+    }
+
+    if (shouldCancel && csrfToken && runId && runApplicationId) {
+      try {
+        await cancelConsoleFlowRun(runApplicationId, runId, csrfToken);
+      } catch {
+        // Closing the local Assistant session remains authoritative even when
+        // the best-effort durable cancellation cannot be confirmed.
+      }
+    }
+  }, [cancelActiveStream, csrfToken, status]);
+
   return {
     status,
     stopping,
@@ -496,6 +543,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     runContext,
     activeRunId,
     clearSession,
+    closeSession,
     setRunContextValue,
     submitPrompt,
     stopRun

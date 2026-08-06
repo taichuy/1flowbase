@@ -38,7 +38,10 @@ function hasChangedPreference(
   if (!current || current.application_id !== next.application_id) {
     return true;
   }
-  return current.mcp_instance_ids.join('\u0000') !== next.mcp_instance_ids.join('\u0000');
+  return (
+    current.mcp_instance_ids.join('\u0000') !==
+    next.mcp_instance_ids.join('\u0000')
+  );
 }
 
 const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
@@ -288,7 +291,9 @@ export function EmbeddedAgentAssistantPreview({
         <WindowWorkspaceWindow
           active={
             windowEntry.z_index ===
-            Math.max(...windowWorkspaceState.windows.map((entry) => entry.z_index))
+            Math.max(
+              ...windowWorkspaceState.windows.map((entry) => entry.z_index)
+            )
           }
           bodyClassName="embedded-agent-assistant-preview__body"
           className="embedded-agent-assistant-preview"
@@ -315,21 +320,35 @@ export function EmbeddedAgentAssistantPreview({
                     <Tooltip
                       title={
                         <span className="embedded-agent-assistant-preview__context-tooltip">
-                          <span>{i18nText('appShell', 'auto.assistant_context_usage')}</span>
                           <span>
-                            {i18nText('appShell', 'auto.assistant_context_remaining', {
-                              value1: contextUsagePercent,
-                              value2:
-                                formatLlmTokenCount(remainingContextTokens) ??
-                                '0'
-                            })}
+                            {i18nText(
+                              'appShell',
+                              'auto.assistant_context_usage'
+                            )}
                           </span>
                           <span>
-                            {i18nText('appShell', 'auto.assistant_context_total', {
-                              value1:
-                                formatLlmTokenCount(contextTokenUsage) ?? '0',
-                              value2: formatLlmTokenCount(contextWindow) ?? '0'
-                            })}
+                            {i18nText(
+                              'appShell',
+                              'auto.assistant_context_remaining',
+                              {
+                                value1: contextUsagePercent,
+                                value2:
+                                  formatLlmTokenCount(remainingContextTokens) ??
+                                  '0'
+                              }
+                            )}
+                          </span>
+                          <span>
+                            {i18nText(
+                              'appShell',
+                              'auto.assistant_context_total',
+                              {
+                                value1:
+                                  formatLlmTokenCount(contextTokenUsage) ?? '0',
+                                value2:
+                                  formatLlmTokenCount(contextWindow) ?? '0'
+                              }
+                            )}
                           </span>
                         </span>
                       }
@@ -396,7 +415,9 @@ export function EmbeddedAgentAssistantPreview({
                       rootClassName="embedded-agent-assistant-preview__runtime-preferences"
                       value={false}
                     >
-                      <span>{selectedModel?.name ?? selectedModel?.id ?? '-'}</span>
+                      <span>
+                        {selectedModel?.name ?? selectedModel?.id ?? '-'}
+                      </span>
                       {settings.run_capabilities.reasoning_effort_enabled &&
                       selectedReasoningEffort ? (
                         <span className="embedded-agent-assistant-preview__runtime-preferences-effort">
@@ -428,7 +449,10 @@ export function EmbeddedAgentAssistantPreview({
             title={i18nText('appShell', 'auto.assistant')}
             onChangeRunContextValue={session.setRunContextValue}
             onClearSession={session.clearSession}
-            onClose={onClose}
+            onClose={() => {
+              void session.closeSession();
+              onClose();
+            }}
             onStopRun={() => {
               void session.stopRun();
             }}

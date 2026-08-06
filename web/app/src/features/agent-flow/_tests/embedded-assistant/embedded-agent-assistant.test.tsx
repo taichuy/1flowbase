@@ -8,11 +8,13 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
+  cancelConsoleFlowRun,
   getConsoleAssistantSettings,
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
   updateConsoleAssistantSettings
 } = vi.hoisted(() => ({
+  cancelConsoleFlowRun: vi.fn(),
   getConsoleAssistantSettings: vi.fn(),
   startConsoleAssistantRunWebSocket: vi.fn(),
   startConsoleAssistantRunStream: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
   return {
     ...actual,
+    cancelConsoleFlowRun,
     getConsoleAssistantSettings,
     startConsoleAssistantRunWebSocket,
     startConsoleAssistantRunStream,
@@ -94,6 +97,8 @@ describe('EmbeddedAgentAssistant', () => {
       }
     });
     updateConsoleAssistantSettings.mockReset();
+    cancelConsoleFlowRun.mockReset();
+    cancelConsoleFlowRun.mockResolvedValue(undefined);
     startConsoleAssistantRunWebSocket.mockReset();
     startConsoleAssistantRunStream.mockReset();
   });
@@ -276,5 +281,116 @@ describe('EmbeddedAgentAssistant', () => {
         expect.any(Object)
       )
     );
+  });
+
+  test('issue 1601 stops a stalled handshake before a run id exists', async () => {
+    const abort = vi.fn();
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) =>
+        new Promise<void>((_resolve, reject) => {
+          const abortController = new AbortController();
+          abortController.signal.addEventListener('abort', () => {
+            abort();
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+          handlers.getAbortController?.(abortController);
+        })
+    );
+
+    const { container } = render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.change(composer, { target: { value: 'Stall' } });
+    fireEvent.click(sendButton);
+
+    await waitFor(() =>
+      expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledTimes(1)
+    );
+    const stopButton = container.querySelector<HTMLButtonElement>(
+      '.ant-sender button:last-of-type'
+    );
+    expect(stopButton).not.toBeNull();
+    fireEvent.click(stopButton!);
+
+    await waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
+    expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();
+    await waitFor(() => expect(composer).not.toBeDisabled());
+  });
+
+  test('issue 1601 closes the transport and cancels an accepted run', async () => {
+    const abort = vi.fn();
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) =>
+        new Promise<void>((_resolve, reject) => {
+          const abortController = new AbortController();
+          abortController.signal.addEventListener('abort', () => {
+            abort();
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+          handlers.getAbortController?.(abortController);
+          handlers.onEvent({
+            type: 'flow_accepted',
+            run_id: 'run-close',
+            status: 'queued'
+          });
+        })
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.change(composer, { target: { value: 'Close me' } });
+    fireEvent.click(sendButton);
+    await waitFor(() =>
+      expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledTimes(1)
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.close', {
+          value1: i18nText('appShell', 'auto.assistant')
+        })
+      })
+    );
+
+    await waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(cancelConsoleFlowRun).toHaveBeenCalledWith(
+        'flow-1',
+        'run-close',
+        'csrf-token'
+      )
+    );
+    expect(
+      screen.queryByTestId('embedded-agent-assistant-preview')
+    ).not.toBeInTheDocument();
   });
 });
