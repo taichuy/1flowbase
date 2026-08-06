@@ -76,7 +76,11 @@ where
     let executions = join_all(panel_nodes.into_iter().map(|node| {
         let mut panel_variable_pool = variable_pool.clone();
         async move {
-            let resolved_inputs = match resolve_node_inputs(&node, &panel_variable_pool) {
+            let resolved_inputs = match if node.node_type == "variable_aggregator" {
+                variable_aggregator_input_payload(&node)
+            } else {
+                resolve_node_inputs(&node, &panel_variable_pool)
+            } {
                 Ok(inputs) => inputs,
                 Err(error) => {
                     let error_payload = visible_internal_llm_tool_node_error(

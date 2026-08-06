@@ -70,6 +70,9 @@ pub(super) fn compile_node(
             }
         }
     }
+    if node_type == "variable_aggregator" {
+        validate_variable_aggregator_contract(&node_id, &bindings, &outputs)?;
+    }
     if node_type == "start" && !outputs.is_empty() {
         bail!("start node {node_id} outputs must be empty");
     }
@@ -108,6 +111,23 @@ pub(super) fn compile_node(
         llm_runtime,
         code_runtime,
     })
+}
+
+fn validate_variable_aggregator_contract(
+    node_id: &str,
+    bindings: &BTreeMap<String, CompiledBinding>,
+    outputs: &[CompiledOutput],
+) -> Result<()> {
+    if !bindings
+        .get("candidates")
+        .is_some_and(|binding| binding.kind == "selector_list")
+    {
+        bail!("node {node_id} variable_aggregator bindings.candidates must be selector_list");
+    }
+    if !outputs.iter().any(|output| output.key == "value") {
+        bail!("node {node_id} variable_aggregator must declare public output value");
+    }
+    Ok(())
 }
 
 fn validate_native_sql_config(

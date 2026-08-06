@@ -9,6 +9,9 @@ use crate::{
     execution_engine::{
         execute_code_node, execute_http_request_node, execute_llm_node,
         execute_variable_assignment_node, materialize_start_builtin_defaults, resolved_native_sql,
+        variable_aggregator::{
+            execute_variable_aggregator_node, variable_aggregator_input_payload,
+        },
         CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister,
         LlmRoutingCounterStore, ProviderInvoker,
     },
@@ -174,6 +177,8 @@ where
             .and_then(|value| value.as_object())
             .cloned()
             .unwrap_or_default()
+    } else if node.node_type == "variable_aggregator" {
+        variable_aggregator_input_payload(node)?
     } else {
         resolve_node_inputs(node, &variable_pool)?
     };
@@ -236,6 +241,15 @@ where
             None,
             json!({ "preview_mode": true }),
             json!({}),
+            Vec::new(),
+        )
+    } else if node.node_type == "variable_aggregator" {
+        let execution = execute_variable_aggregator_node(node, &variable_pool)?;
+        (
+            execution.output_payload,
+            execution.error_payload,
+            json!({ "preview_mode": true }),
+            execution.debug_payload,
             Vec::new(),
         )
     } else if node.node_type == "http_request" {

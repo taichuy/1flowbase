@@ -314,6 +314,49 @@ async fn visible_internal_llm_tool_returns_tool_result_node_content() {
     assert_eq!(tool_result.content, "tool-result: mounted-visible ");
 }
 
+// Root AC-006: mounted visible-internal-tool branches execute the same aggregator semantics.
+#[tokio::test]
+async fn visible_internal_llm_tool_branch_executes_variable_aggregator() {
+    let (invoker, captured_inputs) = sequential_tool_invoker(vec![
+        ProviderInvocationResult {
+            final_content: Some("main-before ".to_string()),
+            tool_calls: vec![ProviderToolCall {
+                id: "call_visible".to_string(),
+                name: "inspect_visible_context".to_string(),
+                arguments: json!({ "query": "aggregate" }),
+                provider_metadata: json!({}),
+            }],
+            finish_reason: Some(ProviderFinishReason::ToolCall),
+            ..ProviderInvocationResult::default()
+        },
+        final_llm_response("mounted-visible "),
+        final_llm_response("main-after"),
+    ]);
+
+    let outcome = start_flow_debug_run(
+        &visible_internal_llm_tool_plan_with_variable_aggregator(),
+        &json!({ "node-start": { "query": "aggregate", "history": [] } }),
+        &invoker,
+    )
+    .await
+    .expect("visible internal branch aggregator should execute");
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+
+    let captured = captured_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned")
+        .clone();
+    let tool_result = captured[2]
+        .messages
+        .iter()
+        .find(|message| message.tool_call_id.as_deref() == Some("call_visible"))
+        .expect("main llm recall should include aggregator-backed tool result");
+    assert_eq!(tool_result.content, "aggregated: mounted-visible ");
+}
+
 #[tokio::test]
 async fn visible_internal_llm_tool_branch_llm_can_wait_for_external_tool_callback() {
     let (waiting_invoker, waiting_inputs) = sequential_tool_invoker(vec![

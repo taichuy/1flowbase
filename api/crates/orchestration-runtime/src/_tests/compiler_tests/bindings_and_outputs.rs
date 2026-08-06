@@ -184,6 +184,64 @@ fn execution_contract_rejects_unsupported_node_type_missing_from_legacy_issues()
     assert!(error.to_string().contains("knowledge_retrieval"));
 }
 
+// Root AC-001/006: compiler retains ordered selector candidates and their dependencies.
+#[test]
+fn compile_variable_aggregator_preserves_candidate_order_and_dependencies() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    document["graph"]["nodes"][1] = json!({
+        "id": "node-aggregator",
+        "type": "variable_aggregator",
+        "alias": "First available",
+        "description": "",
+        "containerId": null,
+        "position": { "x": 240, "y": 0 },
+        "configVersion": 1,
+        "config": {},
+        "bindings": {
+            "candidates": {
+                "kind": "selector_list",
+                "value": [
+                    ["node-start", "query"],
+                    ["node-start", "history"],
+                    ["node-start", "query"]
+                ]
+            }
+        },
+        "outputs": [{ "key": "value", "title": "Value", "valueType": "any" }]
+    });
+    document["graph"]["edges"][0]["target"] = json!("node-aggregator");
+
+    let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect("variable aggregator should compile");
+    let aggregator = &plan.nodes["node-aggregator"];
+
+    assert!(plan
+        .compile_issues
+        .iter()
+        .all(|issue| { issue.code != CompileIssueCode::UnsupportedNodeType }));
+    assert_eq!(
+        aggregator.bindings["candidates"].selector_paths,
+        vec![
+            vec!["node-start".to_string(), "query".to_string()],
+            vec!["node-start".to_string(), "history".to_string()],
+            vec!["node-start".to_string(), "query".to_string()],
+        ]
+    );
+    assert!(aggregator
+        .dependency_node_ids
+        .contains(&"node-start".to_string()));
+    assert!(
+        plan.topological_order
+            .iter()
+            .position(|id| id == "node-start")
+            < plan
+                .topological_order
+                .iter()
+                .position(|id| id == "node-aggregator")
+    );
+}
+
 #[test]
 fn compile_rejects_answer_presentation_reversing_real_dependency_order() {
     let flow_id = Uuid::now_v7();
