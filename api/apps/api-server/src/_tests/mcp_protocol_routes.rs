@@ -1051,6 +1051,29 @@ async fn ac_004_frontstage_tool_migration_binds_all_six_workspace_parameters_to_
     let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state(state);
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let secondary_workspace_id = seed_workspace(&database_url, "MCP migration workspace").await;
+    let switch_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/session/actions/switch-workspace")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"workspace_id":secondary_workspace_id}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(switch_response.status(), StatusCode::OK);
+    let csrf = response_json(switch_response).await["data"]["csrf_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    create_mcp_instance(&app, &cookie, &csrf).await;
 
     for tool_id in TOOL_IDS {
         create_interface_tool_and_binding(

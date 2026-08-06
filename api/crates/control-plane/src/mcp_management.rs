@@ -646,6 +646,14 @@ where
         command: CreateMcpInstanceCommand,
     ) -> Result<domain::McpInstanceRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.create_instance_for_actor(&actor, command).await
+    }
+
+    pub async fn create_instance_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: CreateMcpInstanceCommand,
+    ) -> Result<domain::McpInstanceRecord> {
         validate_identifier(&command.instance_id, "instance_id")?;
         validate_path(&command.default_entry_path)?;
         self.repository
@@ -667,6 +675,14 @@ where
         command: CopyMcpInstanceCommand,
     ) -> Result<domain::McpInstanceRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.copy_instance_for_actor(&actor, command).await
+    }
+
+    pub async fn copy_instance_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: CopyMcpInstanceCommand,
+    ) -> Result<domain::McpInstanceRecord> {
         validate_identifier(&command.source_instance_id, "source_instance_id")?;
         validate_identifier(&command.instance_id, "instance_id")?;
         if command.name.trim().is_empty() {
@@ -743,6 +759,14 @@ where
         command: CreateMcpInstanceCommand,
     ) -> Result<domain::McpInstanceRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.update_instance_for_actor(&actor, command).await
+    }
+
+    pub async fn update_instance_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: CreateMcpInstanceCommand,
+    ) -> Result<domain::McpInstanceRecord> {
         validate_identifier(&command.instance_id, "instance_id")?;
         validate_path(&command.default_entry_path)?;
         self.repository
@@ -760,6 +784,14 @@ where
 
     pub async fn delete_instance(&self, actor_user_id: Uuid, instance_id: &str) -> Result<()> {
         let actor = self.authorize_manage(actor_user_id).await?;
+        self.delete_instance_for_actor(&actor, instance_id).await
+    }
+
+    pub async fn delete_instance_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        instance_id: &str,
+    ) -> Result<()> {
         self.repository
             .delete_mcp_instance(actor.current_workspace_id, instance_id)
             .await
@@ -770,6 +802,14 @@ where
         command: UpsertMcpGroupCommand,
     ) -> Result<domain::McpGroupRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.upsert_group_for_actor(&actor, command).await
+    }
+
+    pub async fn upsert_group_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpsertMcpGroupCommand,
+    ) -> Result<domain::McpGroupRecord> {
         validate_path(&command.path)?;
         let instance = self
             .repository
@@ -797,6 +837,15 @@ where
         path: &str,
     ) -> Result<()> {
         let actor = self.authorize_manage(actor_user_id).await?;
+        self.delete_group_for_actor(&actor, instance_id, path).await
+    }
+
+    pub async fn delete_group_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        instance_id: &str,
+        path: &str,
+    ) -> Result<()> {
         validate_path(path)?;
         let instance = self
             .repository
@@ -810,6 +859,14 @@ where
 
     pub async fn move_group(&self, command: MoveMcpGroupCommand) -> Result<domain::McpGroupRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.move_group_for_actor(&actor, command).await
+    }
+
+    pub async fn move_group_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: MoveMcpGroupCommand,
+    ) -> Result<domain::McpGroupRecord> {
         validate_path(&command.source_path)?;
         validate_path(&command.target_parent_path)?;
         let instance = self
@@ -867,6 +924,14 @@ where
         command: CreateMcpToolCommand,
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.create_tool_for_actor(&actor, command).await
+    }
+
+    pub async fn create_tool_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: CreateMcpToolCommand,
+    ) -> Result<domain::McpToolRecord> {
         validate_identifier(&command.tool_id, "tool_id")?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
@@ -901,6 +966,14 @@ where
         command: UpdateMcpToolCommand,
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.update_tool_for_actor(&actor, command).await
+    }
+
+    pub async fn update_tool_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpdateMcpToolCommand,
+    ) -> Result<domain::McpToolRecord> {
         validate_identifier(&command.tool_id, "tool_id")?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
@@ -934,6 +1007,14 @@ where
         command: UpdateMcpProxyToolCommand,
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.update_proxy_tool_for_actor(&actor, command).await
+    }
+
+    pub async fn update_proxy_tool_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpdateMcpProxyToolCommand,
+    ) -> Result<domain::McpToolRecord> {
         let existing = self
             .repository
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
@@ -998,6 +1079,15 @@ where
         command: RefreshMcpToolDescriptionCommand,
     ) -> Result<domain::McpToolRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.refresh_tool_description_for_actor(&actor, command)
+            .await
+    }
+
+    pub async fn refresh_tool_description_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: RefreshMcpToolDescriptionCommand,
+    ) -> Result<domain::McpToolRecord> {
         self.repository
             .refresh_mcp_tool_des_id(
                 actor.current_workspace_id,
@@ -1010,6 +1100,14 @@ where
 
     pub async fn delete_tool(&self, actor_user_id: Uuid, tool_id: &str) -> Result<()> {
         let actor = self.authorize_manage(actor_user_id).await?;
+        self.delete_tool_for_actor(&actor, tool_id).await
+    }
+
+    pub async fn delete_tool_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        tool_id: &str,
+    ) -> Result<()> {
         self.repository
             .delete_mcp_tool(actor.current_workspace_id, tool_id)
             .await
@@ -1020,6 +1118,14 @@ where
         command: CreateMcpToolBindingCommand,
     ) -> Result<domain::McpToolBindingRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.create_tool_binding_for_actor(&actor, command).await
+    }
+
+    pub async fn create_tool_binding_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: CreateMcpToolBindingCommand,
+    ) -> Result<domain::McpToolBindingRecord> {
         validate_path(&command.group_path)?;
         let instance = self
             .repository
@@ -1050,6 +1156,14 @@ where
         command: UpdateMcpToolBindingCommand,
     ) -> Result<domain::McpToolBindingRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.update_tool_binding_for_actor(&actor, command).await
+    }
+
+    pub async fn update_tool_binding_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpdateMcpToolBindingCommand,
+    ) -> Result<domain::McpToolBindingRecord> {
         validate_path(&command.group_path)?;
         self.repository
             .update_mcp_tool_binding(&UpdateMcpToolBindingInput {
@@ -1066,6 +1180,14 @@ where
 
     pub async fn delete_tool_binding(&self, actor_user_id: Uuid, binding_id: Uuid) -> Result<()> {
         let actor = self.authorize_manage(actor_user_id).await?;
+        self.delete_tool_binding_for_actor(&actor, binding_id).await
+    }
+
+    pub async fn delete_tool_binding_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        binding_id: Uuid,
+    ) -> Result<()> {
         self.repository
             .delete_mcp_tool_binding(actor.current_workspace_id, binding_id)
             .await
@@ -1102,6 +1224,15 @@ where
         command: UpdateMcpInstanceDiscoveryPolicyCommand,
     ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
         let actor = self.authorize_manage(command.actor_user_id).await?;
+        self.update_instance_discovery_policy_for_actor(&actor, command)
+            .await
+    }
+
+    pub async fn update_instance_discovery_policy_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        command: UpdateMcpInstanceDiscoveryPolicyCommand,
+    ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
         validate_positive(command.list_default_limit, "list_default_limit")?;
         validate_positive(command.list_max_depth, "list_max_depth")?;
         validate_positive(command.list_regex_max_length, "list_regex_max_length")?;
