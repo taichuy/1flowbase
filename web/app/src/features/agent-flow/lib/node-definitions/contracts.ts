@@ -913,7 +913,7 @@ function createVariableAggregatorContract(): NodeRuntimeUiContract {
       'agentFlow',
       'auto.variable_aggregator_description'
     ),
-    category: 'data',
+    category: 'control',
     config: {},
     bindings: {
       candidates: {
