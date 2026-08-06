@@ -179,7 +179,7 @@ const SHARED_PROCESSING_NODES: &[BuiltinNodeSpec] = &[
     published_ready("data_model_delete", "Data Model Delete", "data"),
     published_ready("sql", "SQL", "data"),
     published_ready("variable_assigner", "Variable Assigner", "data"),
-    published_ready("variable_aggregator", "Variable Aggregator", "data"),
+    published_ready("variable_aggregator", "Variable Aggregator", "control"),
     hidden_unavailable("parameter_extractor", "Parameter Extractor", "data"),
     hidden_unavailable("iteration", "Iteration", "control"),
     hidden_unavailable("loop", "Loop", "control"),

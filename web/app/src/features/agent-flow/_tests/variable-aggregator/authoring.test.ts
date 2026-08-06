@@ -57,13 +57,14 @@ function appendAggregator(document: FlowAuthoringDocument) {
 }
 
 describe('Variable Aggregator shared authoring fixtures', () => {
-  test('AC-005 freezes the runtime contract and schema to ordered candidates with one value output', () => {
+  test('AC-005 AC-007 freezes the runtime contract and schema to ordered candidates in the control category with one value output', () => {
     const contract = getBuiltinNodeRuntimeContract('variable_aggregator');
     const schema = resolveAgentFlowNodeSchema('variable_aggregator');
     const configBlocks = JSON.stringify(schema.detail.tabs.config.blocks);
 
     expect(contract).not.toBeNull();
     expect(contract?.meta.type).toBe('variable_aggregator');
+    expect(contract?.meta.category).toBe('control');
     expect(contract?.defaults.config).toEqual({});
     expect(contract?.defaults.bindings).toEqual({
       candidates: { kind: 'selector_list', value: [] }
@@ -180,11 +181,11 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     ).toEqual([]);
   });
 
-  test('AC-006 exposes the registered builtin through the shared catalog picker', () => {
+  test('AC-006 AC-007 exposes the registered builtin in the control category through the shared catalog picker', () => {
     const [option] = buildNodePickerOptions([
       createBuiltinCatalogNode('variable_aggregator', {
         title: 'Variable Aggregator',
-        category: 'data'
+        category: 'control'
       })
     ]);
 
@@ -193,6 +194,7 @@ describe('Variable Aggregator shared authoring fixtures', () => {
         kind: 'builtin',
         type: 'variable_aggregator',
         label: 'Variable Aggregator',
+        category: 'control',
         disabled: false
       })
     );

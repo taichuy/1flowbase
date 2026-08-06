@@ -349,7 +349,7 @@ async fn ac_001_application_node_catalog_distinguishes_published_and_hidden_buil
 }
 
 #[tokio::test]
-async fn ac_005_ac_006_variable_aggregator_is_shared_with_the_exact_public_contract() {
+async fn ac_005_ac_006_ac_007_variable_aggregator_is_shared_with_the_exact_public_contract() {
     for application_type in [
         domain::ApplicationType::AgentFlow,
         domain::ApplicationType::Workflow,
@@ -375,6 +375,7 @@ async fn ac_005_ac_006_variable_aggregator_is_shared_with_the_exact_public_contr
             .expect("variable aggregator must be shared by both application catalogs");
 
         assert_eq!(aggregator.source_kind, ApplicationNodeSourceKind::Builtin);
+        assert_eq!(aggregator.category, "control");
         assert_eq!(
             aggregator.authoring_status,
             ApplicationNodeAuthoringStatus::Published
