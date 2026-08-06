@@ -320,11 +320,11 @@ describe('EmbeddedAgentAssistant', () => {
     await waitFor(() =>
       expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledTimes(1)
     );
-    const stopButton = document.querySelector<HTMLButtonElement>(
-      '.ant-sender button:last-of-type'
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.terminate_debugging_run')
+      })
     );
-    expect(stopButton).not.toBeNull();
-    fireEvent.click(stopButton!);
 
     await waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
     expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();

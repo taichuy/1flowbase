@@ -51,7 +51,14 @@ export function DebugComposer({
                       : i18nText('agentFlow', 'auto.terminate_debugging_run')
                   }
                 >
-                  <LoadingButton disabled={stopping} loading={stopping} />
+                  <LoadingButton
+                    aria-label={i18nText(
+                      'agentFlow',
+                      'auto.terminate_debugging_run'
+                    )}
+                    disabled={stopping}
+                    loading={stopping}
+                  />
                 </Tooltip>
               ) : (
                 <Tooltip
@@ -62,7 +69,10 @@ export function DebugComposer({
                   }
                 >
                   <SendButton
-                    aria-label={i18nText('agentFlow', 'auto.send_debug_message')}
+                    aria-label={i18nText(
+                      'agentFlow',
+                      'auto.send_debug_message'
+                    )}
                     className="agent-flow-editor__debug-composer-send"
                     color="primary"
                     icon={<SendOutlined />}
