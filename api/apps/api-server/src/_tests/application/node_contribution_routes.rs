@@ -432,15 +432,15 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         json!({
             "config_fields": [],
             "input_fields": [{
-                "key": "bindings.candidates",
+                "key": "bindings.groups",
                 "required": true,
-                "value_types": ["selector_list"],
+                "value_types": ["variable_groups"],
                 "allowed_values": []
             }],
             "output_fields": [{
-                "key": "value",
+                "key": "outputs[]",
                 "required": true,
-                "value_types": ["string", "number", "boolean", "object", "array"],
+                "value_types": ["array"],
                 "allowed_values": []
             }]
         })

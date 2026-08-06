@@ -437,12 +437,16 @@ async fn ac_006_preview_agent_flow_template_recognizes_variable_aggregator_as_bu
         "configVersion": 1,
         "config": {},
         "bindings": {
-            "candidates": {
-                "kind": "selector_list",
-                "value": [["node-start", "query"], ["node-start", "inputs"]]
+            "groups": {
+                "kind": "variable_groups",
+                "value": [{
+                    "key": "group1",
+                    "valueType": "string",
+                    "candidates": [["node-start", "query"], ["node-start", "inputs"]]
+                }]
             }
         },
-        "outputs": [{ "name": "value" }]
+        "outputs": [{ "key": "group1", "title": "group1", "valueType": "string" }]
     });
 
     let preview = service
@@ -465,12 +469,19 @@ async fn ac_006_preview_agent_flow_template_recognizes_variable_aggregator_as_bu
     assert_eq!(dependency.dependency.kind, "builtin_node");
     assert_eq!(dependency.status, "ready");
     assert_eq!(
-        preview.document["graph"]["nodes"][1]["bindings"]["candidates"]["kind"],
-        "selector_list"
+        preview.document["graph"]["nodes"][1]["bindings"]["groups"],
+        json!({
+            "kind": "variable_groups",
+            "value": [{
+                "key": "group1",
+                "valueType": "string",
+                "candidates": [["node-start", "query"], ["node-start", "inputs"]]
+            }]
+        })
     );
     assert_eq!(
         preview.document["graph"]["nodes"][1]["outputs"],
-        json!([{ "name": "value" }])
+        json!([{ "key": "group1", "title": "group1", "valueType": "string" }])
     );
 }
 
