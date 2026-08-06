@@ -255,6 +255,12 @@ function extractSelectors(binding: FlowBinding): string[][] {
       return binding.value
         .map((value) => normalizeSelectorPath(value))
         .filter((value): value is string[] => value !== null);
+    case 'variable_groups':
+      return binding.value.flatMap((group) =>
+        group.candidates
+          .map((candidate) => normalizeSelectorPath(candidate))
+          .filter((candidate): candidate is string[] => candidate !== null)
+      );
     case 'prompt_messages':
       return binding.value.flatMap((message) =>
         extractTemplateSelectors(message.content.value)
