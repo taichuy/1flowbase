@@ -477,6 +477,14 @@ pub async fn get_flow_debug_run_snapshot(
         return Err(ControlPlaneError::NotFound("flow_run").into());
     }
 
+    let runtime_events =
+        <MainDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+            &state.store,
+            run_id,
+            0,
+        )
+        .await?;
+
     let detail = offload_application_run_detail_artifacts(
         state,
         context.actor.current_workspace_id,
@@ -485,10 +493,10 @@ pub async fn get_flow_debug_run_snapshot(
     )
     .await?;
 
-    Ok(Json(ApiSuccess::new(to_application_run_detail_response(
-        &application,
-        detail,
-    ))))
+    let mut response = to_application_run_detail_response(&application, detail);
+    response.context_snapshot = to_context_snapshot_response(&runtime_events);
+
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(

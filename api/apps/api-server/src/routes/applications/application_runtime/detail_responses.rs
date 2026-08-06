@@ -297,13 +297,10 @@ fn flow_run_can_expose_answer_snapshot(status: &domain::FlowRunStatus) -> bool {
 }
 
 fn to_context_snapshot_response(
-    detail: &domain::ApplicationRunDetail,
+    runtime_events: &[domain::RuntimeEventRecord],
 ) -> Option<ContextSnapshotResponse> {
-    let event = detail
-        .stitched_trace
+    let event = runtime_events
         .iter()
-        .filter(|trace| trace.source_flow_run.id == detail.flow_run.id)
-        .flat_map(|trace| trace.runtime_events.iter())
         .filter(|event| event.event_type == "context_snapshot")
         .max_by_key(|event| event.sequence)?;
     let payload = event.payload.as_object()?;
@@ -337,7 +334,6 @@ fn to_application_run_detail_response(
     application: &domain::ApplicationRecord,
     detail: domain::ApplicationRunDetail,
 ) -> ApplicationRunDetailResponse {
-    let context_snapshot = to_context_snapshot_response(&detail);
     let (answer_snapshot_node_run, visible_node_run_records) =
         split_answer_snapshot_node_runs(&detail);
     let answer_snapshot = if flow_run_can_expose_answer_snapshot(&detail.flow_run.status) {
@@ -439,7 +435,7 @@ fn to_application_run_detail_response(
         detail: typed_detail,
         flow_run,
         answer_snapshot,
-        context_snapshot,
+        context_snapshot: None,
         node_runs,
         checkpoints,
         callback_tasks,

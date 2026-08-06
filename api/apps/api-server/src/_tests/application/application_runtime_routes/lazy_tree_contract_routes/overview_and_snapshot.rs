@@ -52,7 +52,7 @@ async fn application_runtime_routes_run_overview_loads_detail_without_trace_node
 #[tokio::test]
 async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
     let (state, _) = test_api_state_with_database_url().await;
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
     let application_id =
@@ -61,6 +61,39 @@ async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
     let preview_payload =
         start_llm_preview(&app, &cookie, &csrf, &application_id, "总结退款政策").await;
     let flow_run_id = preview_payload["data"]["flow_run"]["id"].as_str().unwrap();
+    let flow_run_uuid = Uuid::parse_str(flow_run_id).unwrap();
+    <MainDurableStore as OrchestrationRuntimeRepository>::append_runtime_event(
+        &state.store,
+        &AppendRuntimeEventInput {
+            flow_run_id: flow_run_uuid,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            event_type: "context_snapshot".to_string(),
+            layer: domain::RuntimeEventLayer::RuntimeItem,
+            source: domain::RuntimeEventSource::Host,
+            trust_level: domain::RuntimeTrustLevel::HostFact,
+            item_id: None,
+            ledger_ref: None,
+            payload: json!({
+                "type": "context_snapshot",
+                "node_id": "node-llm",
+                "input_tokens": 13_681,
+                "effective_context_window": 128_000,
+                "remaining_tokens": 114_319,
+                "measurement": {
+                    "method": "generic_estimate",
+                    "accuracy": "estimated",
+                    "coverage": "complete",
+                    "unknown_block_count": 0
+                }
+            }),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        },
+    )
+    .await
+    .unwrap();
 
     let snapshot = app
         .clone()
@@ -81,6 +114,12 @@ async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
     let payload: Value = serde_json::from_slice(&body).unwrap();
     let data = &payload["data"];
     assert_eq!(data["flow_run"]["id"], json!(flow_run_id));
+    assert_eq!(data["context_snapshot"]["run_id"], json!(flow_run_id));
+    assert_eq!(data["context_snapshot"]["input_tokens"], json!(13_681));
+    assert_eq!(
+        data["context_snapshot"]["measurement"]["accuracy"],
+        json!("estimated")
+    );
     assert!(
         data["node_runs"]
             .as_array()

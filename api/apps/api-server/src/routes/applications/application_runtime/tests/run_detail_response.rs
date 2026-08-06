@@ -1,16 +1,9 @@
 use super::*;
 
 #[test]
-fn run_detail_response_projects_latest_gateway_context_snapshot_for_recovery() {
-    let application = test_application_record();
+fn context_snapshot_response_projects_current_run_runtime_event_for_recovery() {
     let flow_run_id = Uuid::now_v7();
     let node_run_id = Uuid::now_v7();
-    let flow_run = test_flow_run_record(
-        application.id,
-        flow_run_id,
-        domain::FlowRunStatus::Succeeded,
-        serde_json::json!({}),
-    );
     let context_snapshot = test_runtime_event_record(
         flow_run_id,
         Some(node_run_id),
@@ -30,25 +23,8 @@ fn run_detail_response_projects_latest_gateway_context_snapshot_for_recovery() {
             }
         }),
     );
-    let detail = domain::ApplicationRunDetail {
-        flow_run: flow_run.clone(),
-        node_runs: Vec::new(),
-        checkpoints: Vec::new(),
-        callback_tasks: Vec::new(),
-        events: Vec::new(),
-        stitched_trace: vec![domain::ApplicationRunStitchedTrace {
-            source_flow_run: flow_run,
-            node_runs: Vec::new(),
-            callback_tasks: Vec::new(),
-            events: Vec::new(),
-            runtime_events: vec![context_snapshot],
-        }],
-        subagent_traces: Vec::new(),
-    };
 
-    let response = to_application_run_detail_response(&application, detail);
-    let snapshot = response
-        .context_snapshot
+    let snapshot = to_context_snapshot_response(&[context_snapshot])
         .expect("terminal snapshot should project the latest Gateway context");
     assert_eq!(snapshot.run_id, flow_run_id.to_string());
     assert_eq!(snapshot.node_id, "node-llm");
