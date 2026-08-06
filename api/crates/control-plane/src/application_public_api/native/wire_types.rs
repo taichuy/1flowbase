@@ -28,8 +28,8 @@ pub struct NativeRunRequest {
     pub expand_id: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_string_reject_null")]
     pub response_mode: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_native_object")]
-    pub stream_options: NativeObject,
+    #[serde(default)]
+    pub stream_options: NativeStreamOptions,
     #[serde(default)]
     pub execution: NativeExecution,
     #[serde(default)]
@@ -40,6 +40,28 @@ pub struct NativeRunRequest {
     pub title: Option<String>,
     #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub client_protocol_envelope: Option<ProtocolContextEnvelope>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeWorkflowEventVisibility {
+    #[default]
+    None,
+    Public,
+    Debug,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeStreamOptions {
+    #[serde(default)]
+    pub include_workflow_events: NativeWorkflowEventVisibility,
+}
+
+impl NativeStreamOptions {
+    pub fn as_value(&self) -> Value {
+        serde_json::to_value(self).expect("Native stream options must serialize")
+    }
 }
 
 impl NativeRunRequest {

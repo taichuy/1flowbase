@@ -61,8 +61,16 @@ pub(super) fn native_create_run_schema(docs: &DocTextResolver) -> Value {
             },
             "stream_options": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": docs.field_description("application_public_api.native.create_run.request.stream_options")
+                "additionalProperties": false,
+                "description": docs.field_description("application_public_api.native.create_run.request.stream_options"),
+                "properties": {
+                    "include_workflow_events": {
+                        "type": "string",
+                        "enum": ["none", "public"],
+                        "default": "none",
+                        "description": "public returns only the node id, type, title, and status summary. debug is reserved for an authorized browser session principal."
+                    }
+                }
             },
             "execution": {
                 "type": "object",

@@ -34,7 +34,9 @@ function getQueryField(runContext: AgentFlowRunContext) {
   return runContext.fields.find((field) => field.key === 'query') ?? null;
 }
 
-function bubbleMessageStatus(message: AgentFlowDebugMessage) {
+function bubbleMessageStatus(
+  message: AgentFlowDebugMessage
+): 'loading' | 'updating' | 'error' | 'abort' | 'success' {
   switch (message.status) {
     case 'running':
       return message.content ? 'updating' : 'loading';
@@ -118,7 +120,10 @@ export function DebugConversationPane({
         key: message.id,
         role: message.role,
         content: message,
-        loading: message.role === 'assistant' && message.status === 'running' && !message.content,
+        loading:
+          message.role === 'assistant' &&
+          message.status === 'running' &&
+          !message.content,
         status: bubbleMessageStatus(message),
         streaming: message.role === 'assistant' && message.status === 'running'
       })),
@@ -170,7 +175,13 @@ export function DebugConversationPane({
         )
       }
     }),
-    [logActionRunId, onLoadArtifact, onLoadArtifacts, onOpenMessageLog, onOpenResumeTimeline]
+    [
+      logActionRunId,
+      onLoadArtifact,
+      onLoadArtifacts,
+      onOpenMessageLog,
+      onOpenResumeTimeline
+    ]
   );
   const rememberScrollPosition = useCallback(
     (element: HTMLDivElement | null = messagesRef.current) => {

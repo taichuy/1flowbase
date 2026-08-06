@@ -123,6 +123,68 @@ async fn application_api_docs_catalog_lists_public_api_categories() {
     assert!(labels.contains(&"Application Native API"));
     assert!(labels.contains(&"OpenAI Compatible API"));
     assert!(labels.contains(&"Anthropic Compatible API"));
+    assert!(labels.contains(&"Browser Session Assistant API"));
+}
+
+#[tokio::test]
+async fn issue_1601_application_api_docs_list_native_and_session_websockets() {
+    let app = test_app().await;
+    let (cookie, application_id) = setup_published_app(&app).await;
+
+    let native = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-docs/categories/application-native-api/operations"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(native.status(), StatusCode::OK);
+    let native_operations = response_json(native).await;
+    assert!(native_operations["data"]["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |operation| operation["id"] == "applicationNativeRunsWebSocket"
+                && operation["method"] == "GET"
+                && operation["path"] == "/api/agent/v1/runs/websocket"
+        ));
+
+    let assistant = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/api-docs/categories/browser-session-assistant-api/operations"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(assistant.status(), StatusCode::OK);
+    let assistant_operations = response_json(assistant).await;
+    let operation_paths = assistant_operations["data"]["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|operation| {
+            (
+                operation["method"].as_str().unwrap(),
+                operation["path"].as_str().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(operation_paths.contains(&("POST", "/api/console/assistant/runs/stream")));
+    assert!(operation_paths.contains(&("POST", "/api/console/assistant/runs/websocket-ticket")));
+    assert!(operation_paths.contains(&("GET", "/api/console/assistant/runs/websocket")));
 }
 
 #[tokio::test]

@@ -4,6 +4,7 @@ pub mod compat_sse;
 pub mod ex;
 pub(crate) mod llm_tool_visibility;
 pub mod native;
+pub(crate) mod native_websocket;
 pub mod openai;
 pub(crate) mod responses_websocket;
 pub mod sse;
@@ -23,6 +24,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/models", get(native::list_native_models))
         .route("/runs", post(native::create_native_run))
+        .route("/runs/websocket", get(native_websocket::upgrade))
         .route("/runs/:run_id", axum::routing::get(native::get_native_run))
         .route("/runs/:run_id/cancel", post(native::cancel_native_run))
         .route("/runs/:run_id/resume", post(native::resume_native_run))

@@ -53,7 +53,7 @@ fn native_request(model: Value) -> Value {
         },
         "response_mode": "blocking",
         "stream_options": {
-            "include_usage": true
+            "include_workflow_events": "public"
         },
         "execution": {
             "timeout_seconds": 30
@@ -153,9 +153,27 @@ fn native_run_request_validates_public_native_fields() {
     assert_eq!(accepted.attachments[0].value, "file-1");
     assert_eq!(accepted.conversation["id"], json!("conversation-1"));
     assert_eq!(accepted.response_mode.as_deref(), Some("blocking"));
-    assert_eq!(accepted.stream_options["include_usage"], json!(true));
+    assert_eq!(
+        accepted.stream_options.include_workflow_events,
+        control_plane::application_public_api::native::NativeWorkflowEventVisibility::Public
+    );
     assert_eq!(accepted.execution["timeout_seconds"], json!(30));
     assert_eq!(accepted.metadata.trace_id(), Some("trace-native-1"));
+}
+
+#[test]
+fn issue_1601_native_stream_options_reject_unknown_and_accept_typed_visibility() {
+    let mut unknown = native_request(json!("provider/model"));
+    unknown["stream_options"] = json!({"include_usage": true});
+    assert!(translate_native_run_request(unknown).is_err());
+
+    let mut debug = native_request(json!("provider/model"));
+    debug["stream_options"] = json!({"include_workflow_events": "debug"});
+    let translated = translate_native_run_request(debug).expect("debug is a typed Native value");
+    assert_eq!(
+        translated.request.stream_options.include_workflow_events,
+        control_plane::application_public_api::native::NativeWorkflowEventVisibility::Debug
+    );
 }
 
 #[test]

@@ -143,6 +143,14 @@ pub(super) fn native_resume_run_responses(docs: &DocTextResolver) -> Value {
     native_responses(docs, "200", true)
 }
 
+pub(super) fn native_websocket_responses(_docs: &DocTextResolver) -> Value {
+    json!({
+        "101": {"description": "WebSocket upgrade"},
+        "401": {"description": "Invalid or missing Application API key"},
+        "403": {"description": "Requested workflow event visibility is not allowed"}
+    })
+}
+
 pub(super) fn native_model_list_responses(docs: &DocTextResolver) -> Value {
     json!({
         "200": json_response(

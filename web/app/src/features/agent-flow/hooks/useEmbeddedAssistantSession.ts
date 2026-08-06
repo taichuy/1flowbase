@@ -1,7 +1,10 @@
 import {
   cancelConsoleFlowRun,
+  startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
-  type ConsoleFlowDebugStreamEvent
+  type ConsoleAssistantWebSocketControl,
+  type ConsoleFlowDebugStreamEvent,
+  type ConsoleFlowDebugStreamHandlers
 } from '@1flowbase/api-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -66,7 +69,8 @@ function isTerminalEvent(event: ConsoleFlowDebugStreamEvent) {
     event.type === 'flow_failed' ||
     event.type === 'flow_cancelled' ||
     event.type === 'waiting_human' ||
-    event.type === 'replay_expired'
+    event.type === 'replay_expired' ||
+    event.type === 'replay_gap'
   );
 }
 
@@ -116,14 +120,18 @@ function contextTokenUsageFromTraceItems(items: AgentFlowTraceItem[]) {
 const ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS = 750;
 
 function isTerminalFlowRunStatus(status: string) {
-  return ['succeeded', 'completed', 'incomplete', 'failed', 'cancelled'].includes(
-    status
-  );
+  return [
+    'succeeded',
+    'completed',
+    'incomplete',
+    'failed',
+    'cancelled'
+  ].includes(status);
 }
 
 function sessionStatusFromTerminalFlowRun(
   status: string
-): AgentFlowDebugSessionStatus {
+): AgentFlowDebugMessage['status'] {
   switch (status) {
     case 'succeeded':
     case 'completed':
@@ -154,6 +162,9 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
   const activeRunIdRef = useRef<string | null>(null);
   const activeApplicationIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
+  const websocketControlRef = useRef<ConsoleAssistantWebSocketControl | null>(
+    null
+  );
   const streamGenerationRef = useRef(0);
   const liveTraceItemsRef = useRef<AgentFlowTraceItem[]>([]);
 
@@ -161,6 +172,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     streamGenerationRef.current += 1;
     streamAbortControllerRef.current?.abort();
     streamAbortControllerRef.current = null;
+    websocketControlRef.current = null;
   }, []);
 
   const clearSession = useCallback(() => {
@@ -298,6 +310,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       const streamGeneration = streamGenerationRef.current + 1;
       let streamAssistantMessage = runningMessage;
       let receivedTerminal = false;
+      let receivedAnyEvent = false;
       const seenEventKeys = new Set<string>();
 
       cancelActiveStream();
@@ -319,65 +332,92 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
         runningMessage
       ]);
 
-      try {
-        await startConsoleAssistantRunStream({ query, history }, csrfToken, {
-          getAbortController: (abortController) => {
-            if (streamGenerationRef.current !== streamGeneration) {
-              abortController.abort();
-              return;
-            }
-            streamAbortControllerRef.current = abortController;
-          },
-          onEvent: (event) => {
-            if (streamGenerationRef.current !== streamGeneration) {
-              return;
-            }
-            const eventKeys = buildStreamEventDedupKeys(event);
-            if (eventKeys.some((key) => seenEventKeys.has(key))) {
-              return;
-            }
-            eventKeys.forEach((key) => seenEventKeys.add(key));
-
-            if (
-              event.type === 'flow_accepted' ||
-              event.type === 'flow_started' ||
-              event.type === 'flow_cancelled'
-            ) {
-              activeRunIdRef.current = event.run_id;
-              setActiveRunId(event.run_id);
-            }
-
-            if (isTraceEvent(event)) {
-              liveTraceItemsRef.current = applyDebugStreamEventToTrace(
-                liveTraceItemsRef.current,
-                event
-              );
-              setTraceItems(liveTraceItemsRef.current);
-            }
-
-            const contextTokenUsage = contextTokenUsageFromEvent(event);
-            if (contextTokenUsage !== null) {
-              setContextTokenUsage(contextTokenUsage);
-            }
-
-            streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
-              streamAssistantMessage,
-              event,
-              liveTraceItemsRef.current
-            );
-            if (isTerminalEvent(event)) {
-              receivedTerminal = true;
-            }
-            setStatus(streamAssistantMessage.status);
-            setMessages((current) =>
-              replaceAssistantMessage(
-                current,
-                streamAssistantMessage,
-                runningMessage.id
-              )
-            );
+      const handlers: ConsoleFlowDebugStreamHandlers = {
+        getAbortController: (abortController) => {
+          if (streamGenerationRef.current !== streamGeneration) {
+            abortController.abort();
+            return;
           }
-        });
+          streamAbortControllerRef.current = abortController;
+        },
+        onEvent: (event) => {
+          if (streamGenerationRef.current !== streamGeneration) {
+            return;
+          }
+          receivedAnyEvent = true;
+          const eventKeys = buildStreamEventDedupKeys(event);
+          if (eventKeys.some((key) => seenEventKeys.has(key))) {
+            return;
+          }
+          eventKeys.forEach((key) => seenEventKeys.add(key));
+
+          if (
+            event.type === 'flow_accepted' ||
+            event.type === 'flow_started' ||
+            event.type === 'flow_cancelled'
+          ) {
+            activeRunIdRef.current = event.run_id;
+            setActiveRunId(event.run_id);
+          }
+
+          if (isTraceEvent(event)) {
+            liveTraceItemsRef.current = applyDebugStreamEventToTrace(
+              liveTraceItemsRef.current,
+              event
+            );
+            setTraceItems(liveTraceItemsRef.current);
+          }
+
+          const contextTokenUsage = contextTokenUsageFromEvent(event);
+          if (contextTokenUsage !== null) {
+            setContextTokenUsage(contextTokenUsage);
+          }
+
+          streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
+            streamAssistantMessage,
+            event,
+            liveTraceItemsRef.current
+          );
+          if (isTerminalEvent(event)) {
+            receivedTerminal = true;
+          }
+          setStatus(streamAssistantMessage.status);
+          setMessages((current) =>
+            replaceAssistantMessage(
+              current,
+              streamAssistantMessage,
+              runningMessage.id
+            )
+          );
+        }
+      };
+
+      try {
+        try {
+          await startConsoleAssistantRunWebSocket(
+            { application_id: applicationId, query, history },
+            csrfToken,
+            handlers,
+            {
+              onControl: (control) => {
+                websocketControlRef.current = control;
+              }
+            }
+          );
+        } catch (error) {
+          if (
+            receivedAnyEvent ||
+            streamGenerationRef.current !== streamGeneration
+          ) {
+            throw error;
+          }
+          websocketControlRef.current = null;
+          await startConsoleAssistantRunStream(
+            { application_id: applicationId, query, history },
+            csrfToken,
+            handlers
+          );
+        }
 
         if (
           streamGenerationRef.current === streamGeneration &&
@@ -405,6 +445,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       } finally {
         if (streamGenerationRef.current === streamGeneration) {
           streamAbortControllerRef.current = null;
+          websocketControlRef.current = null;
         }
       }
     },
@@ -425,6 +466,11 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
 
     setStopping(true);
     try {
+      const websocketControl = websocketControlRef.current;
+      if (websocketControl) {
+        websocketControl.cancel(runId);
+        return;
+      }
       await cancelConsoleFlowRun(runApplicationId, runId, csrfToken);
       cancelActiveStream();
       setStatus('cancelled');

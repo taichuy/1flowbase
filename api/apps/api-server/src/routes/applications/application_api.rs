@@ -653,6 +653,21 @@ async fn load_application_public_docs_context(
         application,
         active_publication,
         locale: locale.resolved_locale,
+        assistant_operations: [
+            "assistant_start_run_stream",
+            "assistant_create_websocket_ticket",
+            "assistant_runs_websocket",
+        ]
+        .into_iter()
+        .filter_map(|operation_id| {
+            Some(
+                crate::application_public_docs::ApplicationSessionOperation {
+                    operation: state.api_docs.operation(operation_id)?,
+                    spec: state.api_docs.operation_spec(operation_id)?.clone(),
+                },
+            )
+        })
+        .collect(),
     })
 }
 

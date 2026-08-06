@@ -4,6 +4,7 @@ import {
   getConsoleAssistantSettings,
   startConsoleAssistantRun,
   startConsoleAssistantRunStream,
+  startConsoleAssistantRunWebSocket,
   updateConsoleAssistantSettings
 } from '../console-assistant';
 import * as transport from '../transport';
@@ -36,6 +37,7 @@ describe('console assistant client', () => {
     await expect(
       startConsoleAssistantRun(
         {
+          application_id: 'application-1',
           query: 'hello',
           history: []
         },
@@ -61,7 +63,7 @@ describe('console assistant client', () => {
     );
 
     await startConsoleAssistantRunStream(
-      { query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello', history: [] },
       'csrf-token',
       { onEvent }
     );
@@ -71,7 +73,11 @@ describe('console assistant client', () => {
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',
-        body: JSON.stringify({ query: 'hello', history: [] }),
+        body: JSON.stringify({
+          application_id: 'application-1',
+          query: 'hello',
+          history: []
+        }),
         headers: expect.objectContaining({
           accept: 'text/event-stream',
           'x-csrf-token': 'csrf-token'
@@ -96,7 +102,7 @@ describe('console assistant client', () => {
     );
 
     await startConsoleAssistantRunStream(
-      { query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello', history: [] },
       'csrf-token',
       { onEvent }
     );
@@ -109,5 +115,224 @@ describe('console assistant client', () => {
         output: { answer: 'Partial answer' }
       })
     );
+  });
+
+  test('issue 1601 streams multiple Assistant WebSocket deltas before terminal', async () => {
+    const sent: string[] = [];
+    const onEvent = vi.fn();
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce({
+      ticket: 'ticket-1',
+      protocol: '1flowbase.assistant.v1',
+      expires_in_seconds: 60
+    } as never);
+
+    class FakeWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = FakeWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor(
+        readonly url: URL,
+        readonly protocols: string[]
+      ) {
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      send(value: string) {
+        sent.push(value);
+        const command = JSON.parse(value) as { type: string };
+        if (command.type !== 'run.create') {
+          return;
+        }
+        for (const event of [
+          {
+            type: 'flow_accepted',
+            event_type: 'flow_accepted',
+            event_id: 'run-1:1',
+            run_id: 'run-1',
+            sequence: 1,
+            created_at: '2026-08-06T00:00:00Z',
+            payload: { status: 'queued' }
+          },
+          {
+            type: 'text_delta',
+            event_type: 'text_delta',
+            event_id: 'run-1:2',
+            run_id: 'run-1',
+            sequence: 2,
+            created_at: '2026-08-06T00:00:01Z',
+            text: 'Hel',
+            payload: { node_id: 'answer', text: 'Hel' }
+          },
+          {
+            type: 'text_delta',
+            event_type: 'text_delta',
+            event_id: 'run-1:3',
+            run_id: 'run-1',
+            sequence: 3,
+            created_at: '2026-08-06T00:00:02Z',
+            text: 'lo',
+            payload: { node_id: 'answer', text: 'lo' }
+          },
+          {
+            type: 'flow_finished',
+            event_type: 'flow_finished',
+            event_id: 'run-1:4',
+            run_id: 'run-1',
+            sequence: 4,
+            created_at: '2026-08-06T00:00:03Z',
+            payload: { status: 'succeeded', output: { answer: 'Hello' } }
+          }
+        ]) {
+          this.onmessage?.({ data: JSON.stringify(event) } as MessageEvent);
+        }
+      }
+
+      close() {
+        this.onclose?.();
+      }
+    }
+
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    await startConsoleAssistantRunWebSocket(
+      { application_id: 'application-1', query: 'hello', history: [] },
+      'csrf-token',
+      { onEvent },
+      { baseUrl: 'http://127.0.0.1:3100' }
+    );
+
+    expect(sent[0]).toContain('"type":"run.create"');
+    expect(transport.apiFetch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/api/console/assistant/runs/websocket-ticket',
+        method: 'POST',
+        body: { application_id: 'application-1' },
+        csrfToken: 'csrf-token'
+      })
+    );
+    expect(
+      onEvent.mock.calls
+        .map(([event]) => event)
+        .filter((event) => event.type === 'text_delta')
+        .map((event) => event.text)
+    ).toEqual(['Hel', 'lo']);
+    vi.unstubAllGlobals();
+  });
+
+  test('issue 1601 reconnects with run.attach and the last event id', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const onEvent = vi.fn();
+    vi.mocked(transport.apiFetch)
+      .mockResolvedValueOnce({
+        ticket: 'ticket-1',
+        protocol: '1flowbase.assistant.v1',
+        expires_in_seconds: 60
+      } as never)
+      .mockResolvedValueOnce({
+        ticket: 'ticket-2',
+        protocol: '1flowbase.assistant.v1',
+        expires_in_seconds: 60
+      } as never);
+    let connection = 0;
+
+    class ReconnectingWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = ReconnectingWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      readonly connection = ++connection;
+
+      constructor(
+        readonly url: URL,
+        readonly protocols: string[]
+      ) {
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      send(value: string) {
+        const command = JSON.parse(value) as Record<string, unknown>;
+        sent.push(command);
+        if (this.connection === 1 && command.type === 'run.create') {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'flow_accepted',
+              event_type: 'flow_accepted',
+              event_id: 'run-1:1',
+              run_id: 'run-1',
+              sequence: 1,
+              payload: { status: 'queued' }
+            })
+          } as MessageEvent);
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'text_delta',
+              event_type: 'text_delta',
+              event_id: 'run-1:2',
+              run_id: 'run-1',
+              sequence: 2,
+              text: 'Hel',
+              payload: { node_id: 'answer', text: 'Hel' }
+            })
+          } as MessageEvent);
+          queueMicrotask(() => this.onclose?.());
+          return;
+        }
+        if (this.connection === 2 && command.type === 'run.attach') {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'text_delta',
+              event_type: 'text_delta',
+              event_id: 'run-1:3',
+              run_id: 'run-1',
+              sequence: 3,
+              text: 'lo',
+              payload: { node_id: 'answer', text: 'lo' }
+            })
+          } as MessageEvent);
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'flow_finished',
+              event_type: 'flow_finished',
+              event_id: 'run-1:4',
+              run_id: 'run-1',
+              sequence: 4,
+              payload: { status: 'succeeded', output: { answer: 'Hello' } }
+            })
+          } as MessageEvent);
+        }
+      }
+
+      close() {
+        this.onclose?.();
+      }
+    }
+
+    vi.stubGlobal('WebSocket', ReconnectingWebSocket);
+    await startConsoleAssistantRunWebSocket(
+      { application_id: 'application-1', query: 'hello', history: [] },
+      'csrf-token',
+      { onEvent },
+      { baseUrl: 'http://127.0.0.1:3100' }
+    );
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: 'run.attach',
+        run_id: 'run-1',
+        after_event_id: 'run-1:2'
+      })
+    );
+    expect(
+      onEvent.mock.calls
+        .map(([event]) => event)
+        .filter((event) => event.type === 'text_delta')
+        .map((event) => event.text)
+    ).toEqual(['Hel', 'lo']);
+    vi.unstubAllGlobals();
   });
 });

@@ -1167,6 +1167,17 @@ export type ConsoleFlowDebugStreamEvent =
       created_at?: string;
       delta_index?: number | null;
       content_type?: 'text' | 'reasoning' | null;
+    }
+  | {
+      type: 'replay_gap';
+      run_id: string;
+      from_sequence?: number | null;
+      reason?: 'live_stream_closed_without_terminal' | string;
+      event_id?: string;
+      sequence?: number;
+      created_at?: string;
+      delta_index?: number | null;
+      content_type?: 'text' | 'reasoning' | null;
     };
 
 export interface ConsoleFlowDebugStreamHandlers {

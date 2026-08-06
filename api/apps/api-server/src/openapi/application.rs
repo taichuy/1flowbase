@@ -36,6 +36,7 @@ use utoipa::OpenApi;
         crate::routes::application_public_api::native::cancel_native_run,
         crate::routes::application_public_api::native::resume_native_run,
         crate::routes::application_public_api::native::upload_native_file,
+        crate::routes::application_public_api::native_websocket::upgrade,
         crate::routes::application_public_api::openai::list_models,
         crate::routes::application_public_api::openai::create_chat_completion,
         crate::routes::application_public_api::openai::create_response,

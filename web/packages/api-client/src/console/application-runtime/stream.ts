@@ -37,7 +37,11 @@ function dispatchSseEvent(
   }
 
   const rawPayload = JSON.parse(dataLines.join('\n'));
-  const parsedPayload = normalizeStreamPayload(rawPayload, eventType, eventId);
+  const parsedPayload = normalizeConsoleRuntimeEvent(
+    rawPayload,
+    eventType,
+    eventId
+  );
 
   if (!parsedPayload) {
     return;
@@ -46,7 +50,7 @@ function dispatchSseEvent(
   handlers.onEvent(parsedPayload);
 }
 
-function normalizeStreamPayload(
+export function normalizeConsoleRuntimeEvent(
   raw: unknown,
   fallbackEventType?: string,
   fallbackEventId?: string
@@ -353,10 +357,10 @@ function normalizeFromEnvelope(
     };
   }
 
-  if (eventType === 'replay_expired') {
+  if (eventType === 'replay_expired' || eventType === 'replay_gap') {
     return {
       ...base,
-      type: 'replay_expired',
+      type: eventType,
       run_id: base.run_id ?? toOptionalString(payload.run_id) ?? '',
       from_sequence:
         typeof payload.from_sequence === 'number'
@@ -394,7 +398,8 @@ function isKnownStreamEventType(
     type === 'waiting_human' ||
     type === 'waiting_callback' ||
     type === 'heartbeat' ||
-    type === 'replay_expired'
+    type === 'replay_expired' ||
+    type === 'replay_gap'
   );
 }
 

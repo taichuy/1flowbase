@@ -32,7 +32,7 @@ pub enum IncludeWorkflowEvents {
 }
 
 #[derive(Debug, Serialize)]
-struct NativeSsePayload {
+pub(crate) struct NativeSsePayload {
     run_id: Uuid,
     status: &'static str,
     created_at: String,
@@ -124,7 +124,7 @@ fn runtime_event_to_native_sse(
         .expect("native SSE payload should serialize")))
 }
 
-fn native_sse_payload_for_runtime_event(
+pub(crate) fn native_sse_payload_for_runtime_event(
     initial_run: &NativeRunResult,
     include_workflow_events: IncludeWorkflowEvents,
     envelope: RuntimeEventEnvelope,
@@ -334,7 +334,7 @@ fn native_required_action_payload(
         })
 }
 
-fn is_public_terminal_runtime_event(event_type: &str) -> bool {
+pub(crate) fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
         "flow_finished"
@@ -346,7 +346,7 @@ fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     )
 }
 
-fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> bool {
+pub(crate) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> bool {
     matches!(
         envelope.event_type.as_str(),
         "reasoning_delta" | "text_delta"

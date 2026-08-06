@@ -505,7 +505,8 @@ export function useAgentFlowDebugSession({
             event.type === 'flow_failed' ||
             event.type === 'waiting_human' ||
             event.type === 'waiting_callback' ||
-            event.type === 'replay_expired';
+            event.type === 'replay_expired' ||
+            event.type === 'replay_gap';
 
           if (isTraceEvent) {
             streamTraceItemsSnapshot = applyDebugStreamEventToTrace(

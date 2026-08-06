@@ -1,12 +1,20 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   getConsoleAssistantSettings,
+  startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
   updateConsoleAssistantSettings
 } = vi.hoisted(() => ({
   getConsoleAssistantSettings: vi.fn(),
+  startConsoleAssistantRunWebSocket: vi.fn(),
   startConsoleAssistantRunStream: vi.fn(),
   updateConsoleAssistantSettings: vi.fn()
 }));
@@ -16,6 +24,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   return {
     ...actual,
     getConsoleAssistantSettings,
+    startConsoleAssistantRunWebSocket,
     startConsoleAssistantRunStream,
     updateConsoleAssistantSettings
   };
@@ -74,6 +83,7 @@ describe('EmbeddedAgentAssistant', () => {
       }
     });
     updateConsoleAssistantSettings.mockReset();
+    startConsoleAssistantRunWebSocket.mockReset();
     startConsoleAssistantRunStream.mockReset();
   });
 
@@ -104,7 +114,9 @@ describe('EmbeddedAgentAssistant', () => {
       screen.getByTestId('embedded-agent-assistant-preview')
     ).toBeInTheDocument();
     expect(
-      screen.getAllByRole('separator').map((element) => element.getAttribute('aria-label'))
+      screen
+        .getAllByRole('separator')
+        .map((element) => element.getAttribute('aria-label'))
     ).toEqual(expect.arrayContaining([expect.any(String)]));
     expect(
       screen.getByRole('combobox', {
@@ -127,8 +139,8 @@ describe('EmbeddedAgentAssistant', () => {
     ).toBeInTheDocument();
   });
 
-  test('AC-004 projects assistant SSE events through the Preview conversation', async () => {
-    startConsoleAssistantRunStream.mockImplementation(
+  test('AC-004 projects primary Assistant WebSocket events through the Preview conversation', async () => {
+    startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
           type: 'flow_accepted',
@@ -182,12 +194,74 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.click(sendButton);
 
     await waitFor(() => {
-      expect(startConsoleAssistantRunStream).toHaveBeenCalledWith(
-        { query: 'Summarize this', history: [] },
+      expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
+        {
+          application_id: 'flow-1',
+          query: 'Summarize this',
+          history: []
+        },
         'csrf-token',
-        expect.any(Object)
+        expect.any(Object),
+        expect.objectContaining({ onControl: expect.any(Function) })
       );
     });
+    expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();
     expect(await screen.findByText('Assistant reply')).toBeInTheDocument();
+  });
+
+  test('issue 1601 falls back to Assistant SSE only before any WebSocket event', async () => {
+    startConsoleAssistantRunWebSocket.mockRejectedValue(
+      new Error('WebSocket unavailable')
+    );
+    startConsoleAssistantRunStream.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-fallback',
+          status: 'queued'
+        });
+        handlers.onEvent({
+          type: 'flow_finished',
+          run_id: 'run-fallback',
+          status: 'succeeded',
+          output: { answer: 'SSE fallback reply' }
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    await waitFor(() =>
+      expect(getConsoleAssistantSettings).toHaveBeenCalledTimes(1)
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.change(composer, { target: { value: 'Fallback please' } });
+    fireEvent.click(sendButton);
+
+    await waitFor(() =>
+      expect(startConsoleAssistantRunStream).toHaveBeenCalledWith(
+        {
+          application_id: 'flow-1',
+          query: 'Fallback please',
+          history: []
+        },
+        'csrf-token',
+        expect.any(Object)
+      )
+    );
   });
 });

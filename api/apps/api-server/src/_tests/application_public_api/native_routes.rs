@@ -24,6 +24,7 @@ use plugin_framework::provider_contract::{
 };
 use serde_json::{json, Value};
 use time::OffsetDateTime;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -257,7 +258,7 @@ fn native_run_body(model: Value) -> Value {
         },
         "response_mode": "blocking",
         "stream_options": {
-            "include_usage": true
+            "include_workflow_events": "public"
         },
         "execution": {
             "timeout_seconds": 30
@@ -281,6 +282,53 @@ async fn post_native_run(app: &Router, token: &str, body: Value) -> axum::respon
         )
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn issue_1601_native_websocket_handshake_uses_application_key_and_versioned_protocol() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_application(&app, &cookie, &csrf, "Native WebSocket").await;
+    publish_native_application(
+        &app,
+        &cookie,
+        &csrf,
+        &application_id,
+        mapping_with_runnable_generate_target(),
+    )
+    .await;
+    let token = create_application_key(&app, &cookie, &csrf, &application_id).await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    socket
+        .write_all(
+            format!(
+                "GET /api/agent/v1/runs/websocket HTTP/1.1\r\nHost: {address}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Protocol: 1flowbase.native.v1\r\nAuthorization: Bearer {token}\r\n\r\n"
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let mut response = vec![0_u8; 2048];
+    let size = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        socket.read(&mut response),
+    )
+    .await
+    .expect("WebSocket handshake should respond")
+    .unwrap();
+    let response = String::from_utf8_lossy(&response[..size]).to_ascii_lowercase();
+    assert!(response.starts_with("http/1.1 101"), "{response}");
+    assert!(
+        response.contains("sec-websocket-protocol: 1flowbase.native.v1"),
+        "{response}"
+    );
+    server.abort();
 }
 
 pub(super) async fn configure_runnable_native_generate_target(

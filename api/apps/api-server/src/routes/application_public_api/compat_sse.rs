@@ -634,6 +634,33 @@ pub(crate) async fn start_compatible_typed_turn_stream(
     })
 }
 
+pub(crate) async fn start_compatible_typed_attach_stream(
+    state: Arc<ApiState>,
+    initial_run: NativeRunResult,
+    from_sequence: Option<i64>,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    let subscription = state
+        .runtime_event_stream
+        .subscribe(initial_run.id, from_sequence)
+        .await
+        .map_err(service_error)?;
+    let (sender, events) = mpsc::channel(32);
+    tokio::spawn(send_subscribed_compatible_typed_event_stream(
+        SubscribedCompatibleTypedEventStream {
+            state,
+            initial_run: initial_run.clone(),
+            from_sequence,
+            ignored_waiting_callback_task_id: None,
+            subscription,
+            sender,
+        },
+    ));
+    Ok(CompatibleTypedTurnStream {
+        initial_run,
+        events,
+    })
+}
+
 async fn open_compatible_turn(
     state: Arc<ApiState>,
     prepared: PreparedCompatibleTurn,

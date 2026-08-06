@@ -181,7 +181,9 @@ function toolRoundIndex(
 
     return (
       toolCalls.some((toolCall) => toolCallId(toolCall) === toolCallIdValue) ||
-      toolResults.some((toolResult) => toolResultId(toolResult) === toolCallIdValue)
+      toolResults.some(
+        (toolResult) => toolResultId(toolResult) === toolCallIdValue
+      )
     );
   });
 }
@@ -192,9 +194,7 @@ function upsertToolPayload(
   idOf: (item: Record<string, unknown>) => string | null
 ) {
   const nextId = idOf(nextItem);
-  const index = nextId
-    ? items.findIndex((item) => idOf(item) === nextId)
-    : -1;
+  const index = nextId ? items.findIndex((item) => idOf(item) === nextId) : -1;
 
   if (index === -1) {
     return [...items, nextItem];
@@ -578,6 +578,15 @@ export function applyDebugStreamEventToAssistantMessage(
         ...message,
         status: 'failed',
         content: i18nText('agentFlow', 'auto.debug_stream_replay_expired')
+      };
+    case 'replay_gap':
+      return {
+        ...message,
+        status: 'failed',
+        content: i18nText(
+          'agentFlow',
+          'auto.debug_stream_connection_interrupted'
+        )
       };
     default:
       return message;

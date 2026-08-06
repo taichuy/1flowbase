@@ -8,7 +8,7 @@ use super::metadata::NativeRequestMetadataParseError;
 use super::model_parameters::record_native_execution_receipts;
 use super::{
     native_attachments, native_history, NativeExecution, NativeObject, NativeRequestMetadata,
-    NativeRunRequest,
+    NativeRunRequest, NativeStreamOptions,
 };
 use crate::application_public_api::protocol_translation::{
     anonymous_unknown_source_paths, TranslatedNativeRunRequest, TranslationDecisionKind,
@@ -193,13 +193,7 @@ pub fn translate_native_run_request(
             "$.response_mode",
             &mut report,
         )?,
-        stream_options: optional_native_object(
-            object,
-            "stream_options",
-            "$.stream_options",
-            "$.stream_options",
-            &mut report,
-        )?,
+        stream_options: native_stream_options(object, &mut report)?,
         execution: native_execution(object, &mut report)?,
         metadata: native_metadata(object, &mut report)?,
         request_context: NativeModelRequestContext::default(),
@@ -210,6 +204,41 @@ pub fn translate_native_run_request(
         .ensure_consistent()
         .map_err(|_| NativeRequestTranslationError::translation_invariant(report.clone()))?;
     Ok(TranslatedNativeRunRequest { request, report })
+}
+
+fn native_stream_options(
+    object: &Map<String, Value>,
+    report: &mut TranslationReport,
+) -> std::result::Result<NativeStreamOptions, NativeRequestTranslationError> {
+    let Some(value) = object.get("stream_options") else {
+        report.record(
+            "$.stream_options",
+            Some("$.stream_options"),
+            TranslationDecisionKind::Defaulted,
+            Some("default Native stream options"),
+            TranslationSafeRepresentation::Defaulted,
+        );
+        return Ok(NativeStreamOptions::default());
+    };
+    let options = serde_json::from_value::<NativeStreamOptions>(value.clone()).map_err(|_| {
+        NativeRequestTranslationError::rejected(
+            "stream_options",
+            "stream_options must contain only a valid include_workflow_events value",
+            "$.stream_options",
+            TranslationDecisionKind::Rejected,
+            "Native stream options must match the typed contract",
+            TranslationSafeRepresentation::Present,
+            report.clone(),
+        )
+    })?;
+    report.record(
+        "$.stream_options",
+        Some("$.stream_options"),
+        TranslationDecisionKind::Exact,
+        None,
+        TranslationSafeRepresentation::Present,
+    );
+    Ok(options)
 }
 
 fn required_native_string(

@@ -120,6 +120,69 @@ fn to_runtime_event_stream_envelope_response(
     }
 }
 
+pub(crate) fn runtime_event_to_websocket_value(
+    envelope: RuntimeEventEnvelope,
+) -> serde_json::Value {
+    let response = to_runtime_event_stream_envelope_response(envelope);
+    let mut value =
+        serde_json::to_value(&response).expect("runtime event WebSocket envelope should serialize");
+    value["type"] = serde_json::Value::String(response.event_type);
+    value
+}
+
+pub(crate) async fn send_runtime_event_websocket_stream(
+    stream: Arc<dyn RuntimeEventStream>,
+    run_id: Uuid,
+    from_sequence: Option<i64>,
+    sender: mpsc::Sender<serde_json::Value>,
+) {
+    let Ok(mut subscription) = stream.subscribe(run_id, from_sequence).await else {
+        let _ = sender
+            .send(serde_json::json!({
+                "type": "replay_expired",
+                "run_id": run_id,
+                "from_sequence": from_sequence,
+                "reason": "cursor_expired"
+            }))
+            .await;
+        return;
+    };
+    for event in subscription.replay {
+        let terminal = is_terminal_runtime_event(&event.event_type);
+        if sender
+            .send(runtime_event_to_websocket_value(event))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        if terminal {
+            return;
+        }
+    }
+    while let Some(event) = subscription.live_events.recv().await {
+        let terminal = is_terminal_runtime_event(&event.event_type);
+        if sender
+            .send(runtime_event_to_websocket_value(event))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        if terminal {
+            return;
+        }
+    }
+    let _ = sender
+        .send(serde_json::json!({
+            "type": "replay_gap",
+            "run_id": run_id,
+            "from_sequence": from_sequence,
+            "reason": "live_stream_closed_without_terminal"
+        }))
+        .await;
+}
+
 fn payload_i64(payload: &serde_json::Value, key: &str) -> Option<i64> {
     payload.get(key).and_then(|value| {
         value
@@ -498,6 +561,36 @@ mod tests {
             matches!(closed, Ok(None)),
             "sender should close after terminal event"
         );
+    }
+
+    #[tokio::test]
+    async fn issue_1601_websocket_stream_reports_live_close_without_terminal() {
+        let stream = Arc::new(LocalRuntimeEventStream::new());
+        let run_id = Uuid::now_v7();
+        stream
+            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .await
+            .unwrap();
+        let (sender, mut receiver) = mpsc::channel(8);
+        let handle = tokio::spawn(send_runtime_event_websocket_stream(
+            stream.clone(),
+            run_id,
+            None,
+            sender,
+        ));
+
+        stream
+            .close_run(run_id, RuntimeEventCloseReason::Finished)
+            .await
+            .unwrap();
+
+        let gap = timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .expect("WebSocket stream should report the missing terminal")
+            .expect("replay gap should be emitted");
+        assert_eq!(gap["type"], "replay_gap");
+        assert_eq!(gap["reason"], "live_stream_closed_without_terminal");
+        handle.await.unwrap();
     }
 
     #[tokio::test]

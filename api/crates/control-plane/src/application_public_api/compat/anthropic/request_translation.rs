@@ -16,7 +16,7 @@ use crate::application_public_api::client_protocol_envelope::{
     capture_client_protocol_body, ClientProtocolIngressPolicy,
 };
 use crate::application_public_api::native::{
-    NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest,
+    NativeExecution, NativeRequestMetadata, NativeRunRequest, NativeStreamOptions,
 };
 use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -150,7 +150,7 @@ pub fn translate_messages_request_with_context_window(
         conversation,
         expand_id: None,
         response_mode,
-        stream_options: NativeObject::default(),
+        stream_options: NativeStreamOptions::default(),
         execution,
         metadata: native_metadata,
         request_context: NativeModelRequestContext {

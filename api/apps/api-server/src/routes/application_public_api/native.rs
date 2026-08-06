@@ -658,7 +658,7 @@ pub async fn create_native_run(
     );
     let request = translated.request;
     let response_mode = request.response_mode.clone();
-    let include_workflow_events = include_workflow_events(&request);
+    let include_workflow_events = include_workflow_events(&request)?;
     let run = ApplicationNativeRunService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .create_native_run(CreateNativeRunCommand {
@@ -692,14 +692,29 @@ pub async fn create_native_run(
         .into_response())
 }
 
-fn include_workflow_events(request: &NativeRunRequest) -> sse::IncludeWorkflowEvents {
-    match request
-        .stream_options
-        .get("include_workflow_events")
-        .and_then(Value::as_str)
-    {
-        Some("public") => sse::IncludeWorkflowEvents::Public,
-        _ => sse::IncludeWorkflowEvents::None,
+pub(crate) fn include_workflow_events(
+    request: &NativeRunRequest,
+) -> Result<sse::IncludeWorkflowEvents, NativeApiError> {
+    include_workflow_event_visibility(request.stream_options.include_workflow_events)
+}
+
+pub(crate) fn include_workflow_event_visibility(
+    visibility: control_plane::application_public_api::native::NativeWorkflowEventVisibility,
+) -> Result<sse::IncludeWorkflowEvents, NativeApiError> {
+    match visibility {
+        control_plane::application_public_api::native::NativeWorkflowEventVisibility::None => {
+            Ok(sse::IncludeWorkflowEvents::None)
+        }
+        control_plane::application_public_api::native::NativeWorkflowEventVisibility::Public => {
+            Ok(sse::IncludeWorkflowEvents::Public)
+        }
+        control_plane::application_public_api::native::NativeWorkflowEventVisibility::Debug => {
+            Err(NativeApiError::new(
+                StatusCode::FORBIDDEN,
+                "workflow_event_visibility_forbidden",
+                "debug workflow events require a browser session principal",
+            ))
+        }
     }
 }
 

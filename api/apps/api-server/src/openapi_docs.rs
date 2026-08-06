@@ -78,6 +78,14 @@ impl ApiDocsRegistry {
         self.operation_specs.get(operation_id)
     }
 
+    pub fn operation(&self, operation_id: &str) -> Option<DocsCatalogOperation> {
+        self.category_operations
+            .values()
+            .flat_map(|category| category.operations.iter())
+            .find(|operation| operation.id == operation_id)
+            .cloned()
+    }
+
     pub fn category_operations(&self, category_id: &str) -> Option<&DocsCatalogCategoryOperations> {
         self.category_operations.get(category_id)
     }

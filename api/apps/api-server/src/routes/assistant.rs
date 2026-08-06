@@ -33,6 +33,8 @@ use tokio::sync::mpsc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+pub(crate) mod websocket;
+
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -105,6 +107,7 @@ pub struct AssistantSettingsResponse {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct StartAssistantRunBody {
+    pub application_id: Uuid,
     pub query: String,
     #[serde(default)]
     pub history: Vec<Value>,
@@ -143,6 +146,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/assistant/runs/stream",
             console_post(start_run_stream, Authenticated),
+        )
+        .route(
+            "/assistant/runs/websocket-ticket",
+            console_post(websocket::create_ticket, Authenticated),
+        )
+        .route(
+            "/assistant/runs/websocket",
+            console_get(websocket::upgrade, Authenticated),
         )
 }
 
@@ -328,9 +339,26 @@ pub async fn start_run_stream(
     context.cookie_session()?;
     require_csrf(&headers, &context)?;
     let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
+    let run_id = launch_assistant_execution(state.clone(), execution).await?;
+    let (sender, receiver) = mpsc::channel(32);
+    tokio::spawn(debug_run_stream::send_runtime_event_stream(
+        state.runtime_event_stream.clone(),
+        Arc::new(state.store.clone()),
+        run_id,
+        None,
+        sender,
+    ));
+
+    Ok(Sse::new(debug_run_stream::DebugRunSseStream::new(receiver))
+        .keep_alive(KeepAlive::default()))
+}
+
+async fn launch_assistant_execution(
+    state: Arc<ApiState>,
+    execution: PreparedAssistantExecution,
+) -> Result<Uuid, ApiError> {
     let run_id = execution.flow_run_id;
     let application_id = execution.application_id;
-
     state
         .runtime_event_stream
         .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
@@ -349,16 +377,7 @@ pub async fn start_run_stream(
         .append(run_id, debug_stream_events::heartbeat())
         .await?;
 
-    let (sender, receiver) = mpsc::channel(32);
-    tokio::spawn(debug_run_stream::send_runtime_event_stream(
-        state.runtime_event_stream.clone(),
-        Arc::new(state.store.clone()),
-        run_id,
-        None,
-        sender,
-    ));
-
-    let background_state = state.clone();
+    let background_state = state;
     tokio::spawn(async move {
         let runtime = OrchestrationRuntimeService::new(
             background_state.store.clone(),
@@ -463,9 +482,7 @@ pub async fn start_run_stream(
         }
         wait_for_runtime_debug_event_persister(persister_handle, application_id, run_id).await;
     });
-
-    Ok(Sse::new(debug_run_stream::DebugRunSseStream::new(receiver))
-        .keep_alive(KeepAlive::default()))
+    Ok(run_id)
 }
 
 async fn prepare_assistant_execution(
@@ -477,26 +494,8 @@ async fn prepare_assistant_execution(
     if body.query.trim().is_empty() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("query").into());
     }
-    let user = state
-        .store
-        .find_user_by_id(context.user.id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound("user"))?;
-    let preference = read_preference(&user.meta, context.actor.current_workspace_id);
-    let application_id =
-        preference
-            .application_id
-            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                "assistant_application_id",
-            ))?;
-    validate_preference(state, context.user.id, &preference).await?;
-    ApplicationService::new(state.store.clone())
-        .load_application_for_non_crud_console_operation(
-            context.user.id,
-            application_id,
-            ApplicationNonCrudConsoleOperation::Run,
-        )
-        .await?;
+    let application_id = body.application_id;
+    let preference = assistant_preference_for_target(state, context, application_id).await?;
     let catalog = McpManagementService::new(state.store.clone())
         .read_workspace_catalog(context.user.id)
         .await?;
@@ -524,7 +523,9 @@ async fn prepare_assistant_execution(
                 conversation: NativeObject::default(),
                 expand_id: None,
                 response_mode: None,
-                stream_options: NativeObject::default(),
+                stream_options: control_plane::application_public_api::native::NativeStreamOptions {
+                    include_workflow_events: control_plane::application_public_api::native::NativeWorkflowEventVisibility::Debug,
+                },
                 execution,
                 metadata: NativeRequestMetadata::default(),
                 request_context: Default::default(),
@@ -544,6 +545,34 @@ async fn prepare_assistant_execution(
         selected_mcp_instance_ids,
         request_headers: headers.clone(),
     })
+}
+
+async fn assistant_preference_for_target(
+    state: &Arc<ApiState>,
+    context: &RequestContext,
+    application_id: Uuid,
+) -> Result<AssistantPreferenceBody, ApiError> {
+    let user = state
+        .store
+        .find_user_by_id(context.user.id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound("user"))?;
+    let preference = read_preference(&user.meta, context.actor.current_workspace_id);
+    if preference.application_id != Some(application_id) {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "assistant_application_id",
+        )
+        .into());
+    }
+    validate_preference(state, context.user.id, &preference).await?;
+    ApplicationService::new(state.store.clone())
+        .load_application_for_non_crud_console_operation(
+            context.user.id,
+            application_id,
+            ApplicationNonCrudConsoleOperation::Run,
+        )
+        .await?;
+    Ok(preference)
 }
 
 fn assistant_execution(preference: &AssistantPreferenceBody) -> Result<NativeExecution, ApiError> {

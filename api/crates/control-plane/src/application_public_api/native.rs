@@ -71,7 +71,8 @@ pub use run_lifecycle::{
 };
 pub use wire_types::{
     NativeAttachment, NativeAttachmentSource, NativeError, NativeMappedInput, NativeObject,
-    NativeRequiredAction, NativeRunRequest, NativeRunResult, NativeRunStatus, NativeUsage,
+    NativeRequiredAction, NativeRunRequest, NativeRunResult, NativeRunStatus, NativeStreamOptions,
+    NativeUsage, NativeWorkflowEventVisibility,
 };
 
 pub(super) use serialization::durable_metadata_from_flow_run;

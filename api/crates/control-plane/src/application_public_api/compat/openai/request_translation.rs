@@ -20,7 +20,7 @@ use crate::application_public_api::client_protocol_envelope::{
 };
 use crate::application_public_api::native::{
     compaction_intent, CompactionProfile, NativeExecution, NativeObject, NativeRequestMetadata,
-    NativeRunRequest,
+    NativeRunRequest, NativeStreamOptions,
 };
 use crate::application_public_api::protocol_translation::{
     TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -201,7 +201,7 @@ pub fn translate_chat_completion_request(
         conversation,
         expand_id: None,
         response_mode,
-        stream_options: NativeObject::default(),
+        stream_options: NativeStreamOptions::default(),
         execution,
         metadata,
         request_context: NativeModelRequestContext::default(),
@@ -376,7 +376,7 @@ pub fn translate_response_request_with_context_and_previous(
         conversation,
         expand_id: None,
         response_mode,
-        stream_options: NativeObject::default(),
+        stream_options: NativeStreamOptions::default(),
         execution,
         metadata,
         request_context: NativeModelRequestContext::default(),

@@ -13,14 +13,16 @@ use schemas::{
     anthropic_message_request_body, anthropic_responses, native_create_run_request_body,
     native_create_run_responses, native_get_run_responses, native_model_list_responses,
     native_resume_run_request_body, native_resume_run_responses, native_upload_file_request_body,
-    native_upload_responses, openai_chat_completion_request_body, openai_compact_request_body,
-    openai_compact_responses, openai_model_list_responses, openai_response_create_request_body,
-    openai_response_responses, openai_responses, operation_request_body, operation_responses,
+    native_upload_responses, native_websocket_responses, openai_chat_completion_request_body,
+    openai_compact_request_body, openai_compact_responses, openai_model_list_responses,
+    openai_response_create_request_body, openai_response_responses, openai_responses,
+    operation_request_body, operation_responses,
 };
 
 const NATIVE_CATEGORY_ID: &str = "application-native-api";
 const OPENAI_CATEGORY_ID: &str = "openai-compatible-api";
 const ANTHROPIC_CATEGORY_ID: &str = "anthropic-compatible-api";
+const ASSISTANT_CATEGORY_ID: &str = "browser-session-assistant-api";
 
 type RequestBodyBuilder = fn(&DocTextResolver) -> Value;
 type ResponseBuilder = fn(&DocTextResolver) -> Value;
@@ -30,6 +32,13 @@ pub struct ApplicationPublicDocsContext {
     pub application: ApplicationRecord,
     pub active_publication: Option<ApplicationPublicationVersionRecord>,
     pub locale: String,
+    pub assistant_operations: Vec<ApplicationSessionOperation>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplicationSessionOperation {
+    pub operation: DocsCatalogOperation,
+    pub spec: Value,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,7 +80,7 @@ pub fn build_application_public_docs_catalog(
 ) -> DocsCatalog {
     let locale = docs_locale(context);
     let operations = public_operations();
-    let categories = [
+    let mut categories = [
         (
             NATIVE_CATEGORY_ID,
             category_label(NATIVE_CATEGORY_ID, locale),
@@ -94,7 +103,18 @@ pub fn build_application_public_docs_catalog(
             .filter(|operation| operation.category_id == id)
             .count(),
     })
-    .collect();
+    .collect::<Vec<_>>();
+    if context.application.application_type == domain::ApplicationType::AgentFlow
+        && !context.assistant_operations.is_empty()
+    {
+        categories.push(DocsCatalogCategory {
+            id: ASSISTANT_CATEGORY_ID.to_string(),
+            label: category_label(ASSISTANT_CATEGORY_ID, locale)
+                .unwrap_or(ASSISTANT_CATEGORY_ID)
+                .to_string(),
+            operation_count: context.assistant_operations.len(),
+        });
+    }
 
     DocsCatalog {
         title: match locale {
@@ -111,6 +131,23 @@ pub fn build_application_public_docs_category_operations(
     category_id: &str,
 ) -> Option<DocsCatalogCategoryOperations> {
     let locale = docs_locale(context);
+    if category_id == ASSISTANT_CATEGORY_ID {
+        let label = category_label(category_id, locale)?;
+        return (!context.assistant_operations.is_empty()).then(|| DocsCatalogCategoryOperations {
+            id: category_id.to_string(),
+            label: label.to_string(),
+            operations: context
+                .assistant_operations
+                .iter()
+                .map(|entry| {
+                    let mut operation = entry.operation.clone();
+                    operation.group = label.to_string();
+                    operation.tags = vec![label.to_string()];
+                    operation
+                })
+                .collect(),
+        });
+    }
     let operations = public_operations()
         .iter()
         .filter(|operation| operation.category_id == category_id)
@@ -131,6 +168,9 @@ pub fn build_application_public_docs_category_spec(
     context: &ApplicationPublicDocsContext,
     category_id: &str,
 ) -> Option<Value> {
+    if category_id == ASSISTANT_CATEGORY_ID {
+        return build_assistant_category_spec(context);
+    }
     let operations = public_operations()
         .iter()
         .filter(|operation| operation.category_id == category_id)
@@ -145,10 +185,55 @@ pub fn build_application_public_docs_operation_spec(
     context: &ApplicationPublicDocsContext,
     operation_id: &str,
 ) -> Option<Value> {
+    if let Some(operation) = context
+        .assistant_operations
+        .iter()
+        .find(|entry| entry.operation.id == operation_id)
+    {
+        return Some(decorate_assistant_spec(context, operation.spec.clone()));
+    }
     public_operations()
         .iter()
         .find(|operation| operation.id == operation_id)
         .map(|operation| openapi_spec(context, vec![operation]))
+}
+
+fn build_assistant_category_spec(context: &ApplicationPublicDocsContext) -> Option<Value> {
+    let mut entries = context.assistant_operations.iter();
+    let first = entries.next()?;
+    let mut spec = first.spec.clone();
+    for entry in entries {
+        let Some(paths) = entry.spec.get("paths").and_then(Value::as_object) else {
+            continue;
+        };
+        let target = spec
+            .get_mut("paths")
+            .and_then(Value::as_object_mut)
+            .expect("canonical Assistant OpenAPI spec must contain paths");
+        target.extend(paths.clone());
+    }
+    Some(decorate_assistant_spec(context, spec))
+}
+
+fn decorate_assistant_spec(context: &ApplicationPublicDocsContext, mut spec: Value) -> Value {
+    spec["info"]["title"] = Value::String(application_title(context));
+    spec["info"]["version"] = Value::String(publication_version(context));
+    spec["info"]["description"] = Value::String(match docs_locale(context) {
+        DocsLocale::ZhHans => format!(
+            "{} 的登录浏览器 Assistant API。Cookie session 与 Application API key 是不同 principal；运行请求必须显式携带当前 application_id。",
+            context.application.name
+        ),
+        DocsLocale::EnUs => format!(
+            "Browser-session Assistant API for {}. Cookie session and Application API key are distinct principals; run requests must explicitly carry this application_id.",
+            context.application.name
+        ),
+    });
+    spec["x-1flowbase-application"] = json!({
+        "id": context.application.id,
+        "name": context.application.name,
+        "principal": "browser_session"
+    });
+    spec
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -170,6 +255,9 @@ impl DocTextResolver {
             ("application_public_api.native.upload_file", DocsLocale::ZhHans) => "上传原生公开文件",
             ("application_public_api.native.list_models", DocsLocale::ZhHans) => {
                 "拉取原生模型能力列表"
+            }
+            ("application_public_api.native.websocket", DocsLocale::ZhHans) => {
+                "打开 AI Native 双向 WebSocket"
             }
             ("application_public_api.openai.chat_completion", DocsLocale::ZhHans) => {
                 "创建 OpenAI 兼容聊天补全"
@@ -204,6 +292,9 @@ impl DocTextResolver {
             }
             ("application_public_api.native.list_models", DocsLocale::EnUs) => {
                 "List Native model capabilities"
+            }
+            ("application_public_api.native.websocket", DocsLocale::EnUs) => {
+                "Open AI Native bidirectional WebSocket"
             }
             ("application_public_api.openai.chat_completion", DocsLocale::EnUs) => {
                 "Create OpenAI-compatible chat completion"
@@ -247,6 +338,9 @@ impl DocTextResolver {
             ("application_public_api.native.list_models", DocsLocale::ZhHans) => {
                 "读取当前应用活跃发布版本中起始节点声明的模型能力目录。"
             }
+            ("application_public_api.native.websocket", DocsLocale::ZhHans) => {
+                "使用应用 API 密钥升级到 AI Native WebSocket；客户端发送 run.create/cancel/resume/attach，服务端投影与 Native SSE 相同的 Runtime typed events。"
+            }
             ("application_public_api.openai.chat_completion", DocsLocale::ZhHans) => {
                 "将 OpenAI Chat Completions 请求适配为原生公开运行。"
             }
@@ -282,6 +376,9 @@ impl DocTextResolver {
             }
             ("application_public_api.native.list_models", DocsLocale::EnUs) => {
                 "Lists model capabilities declared by the active published application's start node."
+            }
+            ("application_public_api.native.websocket", DocsLocale::EnUs) => {
+                "Upgrades an Application API key request to AI Native WebSocket. Clients send run.create/cancel/resume/attach and receive the same Runtime typed event semantics as Native SSE."
             }
             ("application_public_api.openai.chat_completion", DocsLocale::EnUs) => {
                 "Adapts an OpenAI Chat Completions request to a Native public run."
@@ -537,9 +634,11 @@ fn category_label(category_id: &str, locale: DocsLocale) -> Option<&'static str>
         (NATIVE_CATEGORY_ID, DocsLocale::ZhHans) => Some("应用原生 API"),
         (OPENAI_CATEGORY_ID, DocsLocale::ZhHans) => Some("OpenAI 兼容 API"),
         (ANTHROPIC_CATEGORY_ID, DocsLocale::ZhHans) => Some("Anthropic 兼容 API"),
+        (ASSISTANT_CATEGORY_ID, DocsLocale::ZhHans) => Some("浏览器 Session Assistant API"),
         (NATIVE_CATEGORY_ID, DocsLocale::EnUs) => Some("Application Native API"),
         (OPENAI_CATEGORY_ID, DocsLocale::EnUs) => Some("OpenAI Compatible API"),
         (ANTHROPIC_CATEGORY_ID, DocsLocale::EnUs) => Some("Anthropic Compatible API"),
+        (ASSISTANT_CATEGORY_ID, DocsLocale::EnUs) => Some("Browser Session Assistant API"),
         _ => None,
     }
 }
@@ -640,6 +739,16 @@ fn operation_openapi_spec(operation: &PublicOperation, locale: DocsLocale) -> Va
     }
     if let Some(request_body) = operation_request_body(operation, &docs) {
         spec_object.insert("requestBody".to_string(), request_body);
+    }
+    if operation.id == "applicationNativeRunsWebSocket" {
+        spec_object.insert(
+            "x-1flowbase-websocket".to_string(),
+            json!({
+                "subprotocol": "1flowbase.native.v1",
+                "client_messages": ["run.create", "run.cancel", "run.resume", "run.attach"],
+                "server_messages": ["run.accepted", "run.started", "reasoning.delta", "message.delta", "workflow.event", "required_action", "run.completed", "run.failed", "run.cancelled", "error"]
+            }),
+        );
     }
     spec
 }
@@ -762,6 +871,16 @@ static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
         doc_key: "application_public_api.native.create_run",
         request_body: Some(native_create_run_request_body),
         responses: native_create_run_responses,
+        notes: OperationNotes::CategoryLimitations,
+    },
+    PublicOperation {
+        id: "applicationNativeRunsWebSocket",
+        method: "GET",
+        path: "/api/agent/v1/runs/websocket",
+        category_id: NATIVE_CATEGORY_ID,
+        doc_key: "application_public_api.native.websocket",
+        request_body: None,
+        responses: native_websocket_responses,
         notes: OperationNotes::CategoryLimitations,
     },
     PublicOperation {
