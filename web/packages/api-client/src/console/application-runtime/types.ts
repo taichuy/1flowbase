@@ -961,6 +961,23 @@ export interface ConsoleAnswerPresentation {
   source_output_key?: string;
 }
 
+export interface ConsoleContextSnapshot {
+  input_tokens: number;
+  effective_context_window?: number | null;
+  remaining_tokens?: number | null;
+  measurement: {
+    method:
+      | 'upstream_api'
+      | 'model_tokenizer'
+      | 'provider_estimate'
+      | 'generic_estimate'
+      | 'fallback_zero';
+    accuracy: 'exact' | 'estimated';
+    coverage: 'complete' | 'partial';
+    unknown_block_count: number;
+  };
+}
+
 export type ConsoleFlowDebugStreamEvent =
   | {
       type: 'flow_accepted';
@@ -1040,6 +1057,21 @@ export type ConsoleFlowDebugStreamEvent =
       delta_index?: number | null;
       content_type?: 'text' | 'reasoning' | null;
       presentation?: ConsoleAnswerPresentation;
+    }
+  | {
+      type: 'context_snapshot';
+      node_run_id?: string | null;
+      node_id: string;
+      input_tokens: number;
+      effective_context_window?: number | null;
+      remaining_tokens?: number | null;
+      measurement: ConsoleContextSnapshot['measurement'];
+      run_id?: string;
+      event_id?: string;
+      sequence?: number;
+      created_at?: string;
+      delta_index?: number | null;
+      content_type?: 'text' | 'reasoning' | null;
     }
   | {
       type: 'usage_snapshot';

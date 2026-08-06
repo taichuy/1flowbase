@@ -348,6 +348,36 @@ pub fn usage_snapshot(
     }
 }
 
+pub fn context_snapshot(
+    node_id: &str,
+    node_run_id: Uuid,
+    estimate: &plugin_framework::provider_contract::ProviderCountTokensResult,
+    effective_context_window: Option<u64>,
+) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: "context_snapshot".to_string(),
+        source: RuntimeEventSource::Runtime,
+        durability: RuntimeEventDurability::DurableRequired,
+        persist_required: true,
+        trace_visible: false,
+        payload: json!({
+            "type": "context_snapshot",
+            "node_run_id": node_run_id,
+            "node_id": node_id,
+            "input_tokens": estimate.input_tokens,
+            "effective_context_window": effective_context_window,
+            "remaining_tokens": effective_context_window
+                .map(|window| window.saturating_sub(estimate.input_tokens)),
+            "measurement": {
+                "method": estimate.method,
+                "accuracy": "estimated",
+                "coverage": estimate.coverage,
+                "unknown_block_count": estimate.unknown_block_count,
+            },
+        }),
+    }
+}
+
 pub fn provider_native_event(
     node_id: &str,
     node_run_id: Uuid,

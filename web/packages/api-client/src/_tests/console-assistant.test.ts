@@ -158,14 +158,25 @@ describe('console assistant client', () => {
             payload: { status: 'queued' }
           },
           {
-            type: 'text_delta',
-            event_type: 'text_delta',
+            type: 'context_snapshot',
+            event_type: 'context_snapshot',
             event_id: 'run-1:2',
             run_id: 'run-1',
             sequence: 2,
             created_at: '2026-08-06T00:00:01Z',
-            text: 'Hel',
-            payload: { node_id: 'answer', text: 'Hel' }
+            payload: {
+              node_id: 'llm',
+              node_run_id: 'node-run-1',
+              input_tokens: 321,
+              effective_context_window: 128000,
+              remaining_tokens: 127679,
+              measurement: {
+                method: 'generic_estimate',
+                accuracy: 'estimated',
+                coverage: 'complete',
+                unknown_block_count: 0
+              }
+            }
           },
           {
             type: 'text_delta',
@@ -174,16 +185,26 @@ describe('console assistant client', () => {
             run_id: 'run-1',
             sequence: 3,
             created_at: '2026-08-06T00:00:02Z',
+            text: 'Hel',
+            payload: { node_id: 'answer', text: 'Hel' }
+          },
+          {
+            type: 'text_delta',
+            event_type: 'text_delta',
+            event_id: 'run-1:4',
+            run_id: 'run-1',
+            sequence: 4,
+            created_at: '2026-08-06T00:00:03Z',
             text: 'lo',
             payload: { node_id: 'answer', text: 'lo' }
           },
           {
             type: 'flow_finished',
             event_type: 'flow_finished',
-            event_id: 'run-1:4',
+            event_id: 'run-1:5',
             run_id: 'run-1',
-            sequence: 4,
-            created_at: '2026-08-06T00:00:03Z',
+            sequence: 5,
+            created_at: '2026-08-06T00:00:04Z',
             payload: { status: 'succeeded', output: { answer: 'Hello' } }
           }
         ]) {
@@ -213,6 +234,18 @@ describe('console assistant client', () => {
         csrfToken: 'csrf-token'
       })
     );
+    expect(
+      onEvent.mock.calls
+        .map(([event]) => event)
+        .find((event) => event.type === 'context_snapshot')
+    ).toMatchObject({
+      input_tokens: 321,
+      effective_context_window: 128000,
+      measurement: {
+        method: 'generic_estimate',
+        accuracy: 'estimated'
+      }
+    });
     expect(
       onEvent.mock.calls
         .map(([event]) => event)

@@ -250,6 +250,45 @@ function normalizeFromEnvelope(
     };
   }
 
+  if (
+    eventType === 'context_snapshot' &&
+    typeof payload.input_tokens === 'number' &&
+    Number.isFinite(payload.input_tokens) &&
+    isRecord(payload.measurement) &&
+    isContextMeasurementMethod(payload.measurement.method) &&
+    (payload.measurement.accuracy === 'exact' ||
+      payload.measurement.accuracy === 'estimated') &&
+    (payload.measurement.coverage === 'complete' ||
+      payload.measurement.coverage === 'partial') &&
+    typeof payload.measurement.unknown_block_count === 'number'
+  ) {
+    return {
+      ...base,
+      type: 'context_snapshot',
+      run_id: base.run_id,
+      node_run_id:
+        base.node_run_id ?? normalizeNullableString(payload.node_run_id),
+      node_id: nodeId,
+      input_tokens: payload.input_tokens,
+      effective_context_window:
+        payload.effective_context_window === null ||
+        typeof payload.effective_context_window === 'number'
+          ? payload.effective_context_window
+          : undefined,
+      remaining_tokens:
+        payload.remaining_tokens === null ||
+        typeof payload.remaining_tokens === 'number'
+          ? payload.remaining_tokens
+          : undefined,
+      measurement: {
+        method: payload.measurement.method,
+        accuracy: payload.measurement.accuracy,
+        coverage: payload.measurement.coverage,
+        unknown_block_count: payload.measurement.unknown_block_count
+      }
+    };
+  }
+
   if (eventType === 'assistant_tool_call_started') {
     return {
       ...base,
@@ -388,6 +427,7 @@ function isKnownStreamEventType(
     type === 'node_finished' ||
     type === 'text_delta' ||
     type === 'reasoning_delta' ||
+    type === 'context_snapshot' ||
     type === 'usage_snapshot' ||
     type === 'assistant_tool_call_started' ||
     type === 'assistant_tool_call_finished' ||
@@ -400,6 +440,23 @@ function isKnownStreamEventType(
     type === 'heartbeat' ||
     type === 'replay_expired' ||
     type === 'replay_gap'
+  );
+}
+
+function isContextMeasurementMethod(
+  value: unknown
+): value is
+  | 'upstream_api'
+  | 'model_tokenizer'
+  | 'provider_estimate'
+  | 'generic_estimate'
+  | 'fallback_zero' {
+  return (
+    value === 'upstream_api' ||
+    value === 'model_tokenizer' ||
+    value === 'provider_estimate' ||
+    value === 'generic_estimate' ||
+    value === 'fallback_zero'
   );
 }
 

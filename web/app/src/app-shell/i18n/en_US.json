@@ -3,6 +3,8 @@
     "console_navigation_load_failed": "Console navigation failed to load",
     "console_navigation_loading": "Loading console navigation",
     "assistant": "AI assistant",
+    "assistant_context_estimated": "AI Gateway estimate",
+    "assistant_context_exact": "AI Gateway exact count",
     "assistant_context_remaining": "{{value1}}% used ({{value2}} tokens remaining)",
     "assistant_context_total": "{{value1}} tokens used of {{value2}} tokens",
     "assistant_context_unavailable": "Context usage is unavailable",

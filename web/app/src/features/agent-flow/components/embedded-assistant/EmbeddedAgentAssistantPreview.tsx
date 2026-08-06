@@ -163,8 +163,11 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.reasoning_effort ??
     selectedModel?.default_reasoning_effort ??
     selectedModel?.reasoning_efforts[0];
-  const contextWindow = selectedModel?.context_window ?? null;
-  const contextTokenUsage = session.contextTokenUsage;
+  const contextWindow =
+    session.contextSnapshot?.effective_context_window ??
+    selectedModel?.context_window ??
+    null;
+  const contextTokenUsage = session.contextSnapshot?.input_tokens ?? null;
   const measuredContextTokenUsage = contextTokenUsage ?? 0;
   const contextUsagePercent =
     contextWindow && contextWindow > 0
@@ -338,6 +341,15 @@ export function EmbeddedAgentAssistantPreview({
                               {i18nText(
                                 'appShell',
                                 'auto.assistant_context_usage'
+                              )}
+                            </span>
+                            <span>
+                              {i18nText(
+                                'appShell',
+                                session.contextSnapshot?.measurement
+                                  .accuracy === 'exact'
+                                  ? 'auto.assistant_context_exact'
+                                  : 'auto.assistant_context_estimated'
                               )}
                             </span>
                             <span>
