@@ -35,6 +35,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
+import * as runtimeApi from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
@@ -104,6 +105,7 @@ describe('EmbeddedAgentAssistant', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -225,6 +227,66 @@ describe('EmbeddedAgentAssistant', () => {
     });
     expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();
     expect(await screen.findByText('Assistant reply')).toBeInTheDocument();
+  });
+
+  test('issue 1601 does not poll snapshots while WebSocket is healthy and calibrates once at terminal', async () => {
+    const snapshot = vi
+      .spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot')
+      .mockRejectedValue(new Error('optional calibration unavailable'));
+    let finishWebSocket: (() => void) | null = null;
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-live',
+          status: 'queued'
+        });
+        await new Promise<void>((resolve) => {
+          finishWebSocket = () => {
+            handlers.onEvent({
+              type: 'flow_finished',
+              run_id: 'run-live',
+              status: 'succeeded',
+              output: { answer: 'done' }
+            });
+            resolve();
+          };
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.change(composer, { target: { value: 'Keep streaming' } });
+    fireEvent.click(sendButton);
+
+    await waitFor(() =>
+      expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledTimes(1)
+    );
+    expect(snapshot).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishWebSocket?.();
+    });
+    await waitFor(() =>
+      expect(snapshot).toHaveBeenCalledWith('flow-1', 'run-live')
+    );
+    expect(snapshot).toHaveBeenCalledTimes(1);
   });
 
   test('issue 1601 falls back to Assistant SSE only before any WebSocket event', async () => {

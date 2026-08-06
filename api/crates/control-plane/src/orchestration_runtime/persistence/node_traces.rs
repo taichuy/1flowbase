@@ -89,30 +89,36 @@ where
             },
         )
         .await?;
-        let next_node_started_at = outcome
-            .node_traces
-            .get(index + 1)
-            .and_then(|next_trace| prepared_node_runs?.get(&next_trace.node_id))
-            .map(|node_run| node_run.started_at);
-        let completed_at = trace_finished_at(trace)
-            .or(next_node_started_at)
-            .unwrap_or_else(OffsetDateTime::now_utc)
-            .max(started_at);
-        let (status, finished_at) = match waiting_node_id {
-            Some((waiting_id, waiting_status)) if waiting_id == trace.node_id => {
-                if waiting_status == domain::NodeRunStatus::Failed {
-                    (waiting_status, Some(completed_at))
-                } else {
-                    (waiting_status, None)
+        let completed_live = node_run.status != domain::NodeRunStatus::Running;
+        let (status, finished_at) = if completed_live {
+            (node_run.status, node_run.finished_at)
+        } else {
+            let next_node_started_at = outcome
+                .node_traces
+                .get(index + 1)
+                .and_then(|next_trace| prepared_node_runs?.get(&next_trace.node_id))
+                .map(|node_run| node_run.started_at);
+            let completed_at = trace_finished_at(trace)
+                .or(next_node_started_at)
+                .unwrap_or_else(OffsetDateTime::now_utc)
+                .max(started_at);
+            let transition = match waiting_node_id {
+                Some((waiting_id, waiting_status)) if waiting_id == trace.node_id => {
+                    if waiting_status == domain::NodeRunStatus::Failed {
+                        (waiting_status, Some(completed_at))
+                    } else {
+                        (waiting_status, None)
+                    }
                 }
-            }
-            _ => (domain::NodeRunStatus::Succeeded, Some(completed_at)),
+                _ => (domain::NodeRunStatus::Succeeded, Some(completed_at)),
+            };
+            ensure_node_run_transition(
+                domain::NodeRunStatus::Running,
+                transition.0,
+                "persist_flow_debug_node_trace",
+            )?;
+            transition
         };
-        ensure_node_run_transition(
-            domain::NodeRunStatus::Running,
-            status,
-            "persist_flow_debug_node_trace",
-        )?;
         let mut debug_payload = trace.debug_payload.clone();
         if trace.node_type == "llm" {
             let refs = persist_llm_context_observability(
@@ -146,14 +152,16 @@ where
                 finished_at,
             })
             .await?;
-        let node_finished_event = debug_stream_events::node_finished(&node_run);
-        runtime_event_persister::persist_runtime_event_payload(
-            repository,
-            flow_run_id,
-            &node_finished_event,
-        )
-        .await?;
-        stream_events.push(node_finished_event);
+        if !completed_live {
+            let node_finished_event = debug_stream_events::node_finished(&node_run);
+            runtime_event_persister::persist_runtime_event_payload(
+                repository,
+                flow_run_id,
+                &node_finished_event,
+            )
+            .await?;
+            stream_events.push(node_finished_event);
+        }
         append_provider_stream_events(
             repository,
             flow_run_id,

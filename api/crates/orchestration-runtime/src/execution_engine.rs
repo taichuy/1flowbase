@@ -226,6 +226,10 @@ pub(crate) fn resolved_native_sql(resolved_inputs: &Map<String, Value>) -> Resul
 #[async_trait]
 pub trait ExecutionLifecycle: Send + Sync {
     async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
+
+    async fn complete_node(&self, _trace: &NodeExecutionTrace) -> Result<()> {
+        Ok(())
+    }
 }
 
 struct NoopExecutionLifecycle;
@@ -235,6 +239,16 @@ impl ExecutionLifecycle for NoopExecutionLifecycle {
     async fn begin_node(&self, _node: &CompiledNode, _input_payload: &Value) -> Result<()> {
         Ok(())
     }
+}
+
+async fn complete_latest_node_trace(
+    lifecycle: &dyn ExecutionLifecycle,
+    node_traces: &[NodeExecutionTrace],
+) -> Result<()> {
+    let trace = node_traces
+        .last()
+        .ok_or_else(|| anyhow!("node execution completed without a trace"))?;
+    lifecycle.complete_node(trace).await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -610,6 +624,7 @@ where
                         debug_payload: json!({}),
                         provider_events: Vec::new(),
                     });
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     return Ok(FlowDebugExecutionOutcome {
                         stop_reason: ExecutionStopReason::Failed(NodeExecutionFailure {
                             node_id: node.node_id.clone(),
@@ -703,6 +718,7 @@ where
                 node_traces.push(trace);
 
                 if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         failed_node_index: index,
@@ -771,6 +787,7 @@ where
                 node_traces.push(trace);
 
                 if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         failed_node_index: index,
@@ -814,6 +831,7 @@ where
                     provider_events: Vec::new(),
                 });
                 if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         failed_node_index: index,
@@ -858,6 +876,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         failed_node_index: index,
@@ -1054,6 +1073,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         failed_node_index: index,
@@ -1096,6 +1116,7 @@ where
                 });
 
                 if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
                     if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
                         plan,
                         failed_node_index: index,
@@ -1136,6 +1157,7 @@ where
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
+                complete_latest_node_trace(lifecycle, &node_traces).await?;
                 return Ok(FlowDebugExecutionOutcome {
                     stop_reason: ExecutionStopReason::Failed(NodeExecutionFailure {
                         node_id: node.node_id.clone(),
@@ -1149,6 +1171,7 @@ where
                 });
             }
         }
+        complete_latest_node_trace(lifecycle, &node_traces).await?;
         // CountTokens and Compact terminate at the LLM node selected by the
         // workflow. Generate-only downstream nodes (for example Answer) must
         // not reinterpret their typed provider terminal as generated text.

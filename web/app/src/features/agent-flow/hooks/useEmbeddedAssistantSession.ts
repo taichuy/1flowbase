@@ -117,8 +117,6 @@ function contextTokenUsageFromTraceItems(items: AgentFlowTraceItem[]) {
   return null;
 }
 
-const ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS = 750;
-
 function isTerminalFlowRunStatus(status: string) {
   return [
     'succeeded',
@@ -195,78 +193,59 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
 
   useEffect(() => cancelActiveStream, [cancelActiveStream]);
 
-  useEffect(() => {
-    if (!applicationId || !activeRunId) {
-      return;
-    }
+  const reconcileRunSnapshot = useCallback(
+    async (
+      runApplicationId: string,
+      runId: string,
+      streamGeneration: number
+    ) => {
+      try {
+        const detail = await fetchApplicationRunDebugSnapshot(
+          runApplicationId,
+          runId
+        );
+        if (streamGenerationRef.current !== streamGeneration) {
+          return;
+        }
 
-    let disposed = false;
-    let pollTimer: number | null = null;
+        const traceItems = reconcileSnapshotTraceWithLiveEvents(
+          mapRunDetailToTrace(detail),
+          liveTraceItemsRef.current
+        );
+        liveTraceItemsRef.current = traceItems;
+        setTraceItems(traceItems);
+        setMessages((current) =>
+          current.map((message) =>
+            message.role === 'assistant' && message.runId === runId
+              ? { ...message, traceSummary: traceItems }
+              : message
+          )
+        );
+        const nextContextTokenUsage =
+          contextTokenUsageFromTraceItems(traceItems);
+        if (nextContextTokenUsage !== null) {
+          setContextTokenUsage(nextContextTokenUsage);
+        }
 
-    const refreshRunSnapshot = () => {
-      void fetchApplicationRunDebugSnapshot(applicationId, activeRunId)
-        .then((detail) => {
-          if (disposed) {
-            return;
-          }
-
-          const traceItems = reconcileSnapshotTraceWithLiveEvents(
-            mapRunDetailToTrace(detail),
-            liveTraceItemsRef.current
+        if (isTerminalFlowRunStatus(detail.flow_run.status)) {
+          const nextStatus = sessionStatusFromTerminalFlowRun(
+            detail.flow_run.status
           );
-          liveTraceItemsRef.current = traceItems;
-          setTraceItems(traceItems);
+          setStatus(nextStatus);
           setMessages((current) =>
             current.map((message) =>
-              message.role === 'assistant' && message.runId === activeRunId
-                ? { ...message, traceSummary: traceItems }
+              message.role === 'assistant' && message.runId === runId
+                ? { ...message, status: nextStatus, traceSummary: traceItems }
                 : message
             )
           );
-          const contextTokenUsage = contextTokenUsageFromTraceItems(traceItems);
-          if (contextTokenUsage !== null) {
-            setContextTokenUsage(contextTokenUsage);
-          }
-
-          if (isTerminalFlowRunStatus(detail.flow_run.status)) {
-            const nextStatus = sessionStatusFromTerminalFlowRun(
-              detail.flow_run.status
-            );
-            setStatus(nextStatus);
-            setMessages((current) =>
-              current.map((message) =>
-                message.role === 'assistant' && message.runId === activeRunId
-                  ? { ...message, status: nextStatus, traceSummary: traceItems }
-                  : message
-              )
-            );
-            return;
-          }
-
-          pollTimer = window.setTimeout(
-            refreshRunSnapshot,
-            ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS
-          );
-        })
-        .catch(() => {
-          if (!disposed) {
-            pollTimer = window.setTimeout(
-              refreshRunSnapshot,
-              ASSISTANT_RUN_SNAPSHOT_POLL_INTERVAL_MS
-            );
-          }
-        });
-    };
-
-    refreshRunSnapshot();
-
-    return () => {
-      disposed = true;
-      if (pollTimer !== null) {
-        window.clearTimeout(pollTimer);
+        }
+      } catch {
+        // The live stream remains authoritative when optional recovery cannot load.
       }
-    };
-  }, [activeRunId, applicationId]);
+    },
+    []
+  );
 
   const setRunContextValue = useCallback(
     (nodeId: string, key: string, value: unknown) => {
@@ -389,6 +368,13 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
               runningMessage.id
             )
           );
+          if (isTerminalEvent(event) && event.run_id) {
+            void reconcileRunSnapshot(
+              applicationId,
+              event.run_id,
+              streamGeneration
+            );
+          }
         }
       };
 
@@ -431,6 +417,13 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
         if (streamGenerationRef.current !== streamGeneration) {
           return;
         }
+        if (activeRunIdRef.current) {
+          await reconcileRunSnapshot(
+            applicationId,
+            activeRunIdRef.current,
+            streamGeneration
+          );
+        }
         const errorMessage =
           error instanceof Error
             ? error.message
@@ -449,7 +442,14 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
         }
       }
     },
-    [applicationId, cancelActiveStream, csrfToken, messages, status]
+    [
+      applicationId,
+      cancelActiveStream,
+      csrfToken,
+      messages,
+      reconcileRunSnapshot,
+      status
+    ]
   );
 
   const stopRun = useCallback(async () => {

@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 
-use crate::ports::{CreateNodeRunInput, OrchestrationRuntimeRepository};
+use crate::ports::{CompleteNodeRunInput, CreateNodeRunInput, OrchestrationRuntimeRepository};
 
 use super::{
     debug_stream_events, ApplicationRunContext, CancelFlowRunCommand, ContinueFlowDebugRunCommand,
@@ -114,6 +114,60 @@ where
                 node_id: node.node_id.clone(),
                 node_run_id: node_run.id,
             });
+
+        Ok(())
+    }
+
+    async fn complete_node(
+        &self,
+        trace: &orchestration_runtime::execution_state::NodeExecutionTrace,
+    ) -> Result<()> {
+        let node_run = self
+            .prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .get(&trace.node_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("node {} completed before it started", trace.node_id))?;
+        let status = if trace.error_payload.is_some() {
+            domain::NodeRunStatus::Failed
+        } else {
+            domain::NodeRunStatus::Succeeded
+        };
+        super::ensure_node_run_transition(node_run.status, status, "complete_live_debug_node")?;
+        let node_run = self
+            .service
+            .repository
+            .complete_node_run(&CompleteNodeRunInput {
+                node_run_id: node_run.id,
+                status,
+                output_payload: super::persisted_node_output_payload(
+                    &trace.output_payload,
+                    &trace.metrics_payload,
+                    trace.error_payload.as_ref(),
+                    &trace.debug_payload,
+                ),
+                error_payload: trace.error_payload.clone(),
+                metrics_payload: trace.metrics_payload.clone(),
+                debug_payload: trace.debug_payload.clone(),
+                finished_at: OffsetDateTime::now_utc(),
+            })
+            .await?;
+        append_runtime_event(
+            self.service,
+            self.flow_run_id,
+            debug_stream_events::node_finished(&node_run),
+        )
+        .await;
+        self.prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .insert(trace.node_id.clone(), node_run);
+        *self
+            .flow_execution_context
+            .active_node
+            .lock()
+            .map_err(|_| anyhow::anyhow!("active runtime node lock is poisoned"))? = None;
 
         Ok(())
     }

@@ -19,6 +19,71 @@ fn streaming_deltas_request_history_without_requiring_ephemeral_delivery() {
     }
 }
 
+#[tokio::test]
+async fn completed_nodes_finish_before_the_next_slow_node_returns() {
+    let service = OrchestrationRuntimeService::for_tests_with_provider_delay(
+        std::time::Duration::from_millis(250),
+    );
+    let seeded = service
+        .seed_application_with_flow("Live node completion")
+        .await;
+    let stream = Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+    let execution = service.start_flow_debug_run(StartFlowDebugRunCommand {
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        input_payload: json!({ "node-start": { "query": "hello" } }),
+        document_snapshot: None,
+        debug_session_id: None,
+    });
+    tokio::pin!(execution);
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let events = stream.events();
+            let started = events
+                .iter()
+                .enumerate()
+                .filter(|(_, event)| event.event_type == "node_started")
+                .collect::<Vec<_>>();
+            if let [first, second, ..] = started.as_slice() {
+                let first_node_run_id = first.1.node_run_id;
+                assert!(events[first.0 + 1..second.0].iter().any(|event| {
+                    event.event_type == "node_finished"
+                        && event.node_run_id == first_node_run_id
+                        && event.payload["status"] == "succeeded"
+                }));
+                break;
+            }
+
+            tokio::select! {
+                result = &mut execution => panic!("flow completed before live node ordering could be observed: {result:?}"),
+                _ = tokio::time::sleep(std::time::Duration::from_millis(5)) => {}
+            }
+        }
+    })
+    .await
+    .expect("a completed node should be visible while the Provider node is still running");
+
+    let detail = execution.await.unwrap();
+    let finished_node_run_ids = stream
+        .events()
+        .into_iter()
+        .filter(|event| event.event_type == "node_finished")
+        .filter_map(|event| event.node_run_id)
+        .collect::<Vec<_>>();
+    let unique_finished_node_run_ids = finished_node_run_ids
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        finished_node_run_ids.len(),
+        unique_finished_node_run_ids.len(),
+        "terminal persistence must not emit duplicate node_finished events"
+    );
+    assert_eq!(unique_finished_node_run_ids.len(), detail.node_runs.len());
+}
+
 #[derive(Default)]
 struct OpenTestRuntimeEventStream {
     events: Mutex<Vec<RuntimeEventEnvelope>>,
