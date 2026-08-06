@@ -30,7 +30,7 @@ use control_plane::mcp_management::{
 };
 use control_plane::{
     application_public_api::published_workflow_operation::build_published_workflow_operations,
-    ports::{ApplicationPublicationRepository, AuthRepository},
+    ports::ApplicationPublicationRepository,
 };
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};

@@ -307,6 +307,7 @@ fn build_interface_arguments(
 mod server_binding_tests {
     use super::*;
     use domain::mcp_management::{McpInterfaceCatalogSource, McpRiskLevel};
+    use serde_json::json;
 
     #[test]
     fn ac_002_server_workspace_binding_cannot_be_overridden_by_mcp_arguments() {

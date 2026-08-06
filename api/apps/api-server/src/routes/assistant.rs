@@ -128,6 +128,7 @@ pub struct AssistantRunResponse {
 struct PreparedAssistantExecution {
     application_id: Uuid,
     actor_user_id: Uuid,
+    actor: domain::ActorContext,
     flow_run_id: Uuid,
     catalog: domain::McpCatalogSnapshot,
     selected_mcp_instance_ids: Vec<String>,
@@ -540,6 +541,7 @@ async fn prepare_assistant_execution(
     Ok(PreparedAssistantExecution {
         application_id,
         actor_user_id: context.user.id,
+        actor: context.actor.clone(),
         flow_run_id: flow_run.id,
         catalog,
         selected_mcp_instance_ids,
@@ -624,7 +626,7 @@ async fn assistant_callback_tool_results(
             &execution.selected_mcp_instance_ids,
             state,
             &execution.request_headers,
-            execution.actor_user_id,
+            &execution.actor,
             call,
         )
         .await
@@ -790,7 +792,7 @@ async fn assistant_tool_result(
     selected_instance_ids: &[String],
     state: &Arc<ApiState>,
     headers: &HeaderMap,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     call: &Value,
 ) -> Result<Value, ApiError> {
     let id = call.get("id").and_then(Value::as_str).ok_or(
@@ -836,8 +838,7 @@ async fn assistant_tool_result(
     };
     let result = match &tool.execution_target {
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-            let interface =
-                bindable_mcp_interface(state.as_ref(), actor_user_id, interface_id).await;
+            let interface = bindable_mcp_interface(state.as_ref(), actor, interface_id).await;
             match interface {
                 Ok(interface) => match debug_execute::execute(
                     state.clone(),
@@ -872,8 +873,8 @@ async fn assistant_tool_result(
             let service = McpManagementService::new(state.store.clone());
             let upstream = async {
                 let availability = service
-                    .upstream_proxy_availability(
-                        actor_user_id,
+                    .upstream_proxy_availability_for_actor(
+                        actor,
                         *upstream_connection_id,
                         remote_tool_name,
                     )
@@ -882,11 +883,11 @@ async fn assistant_tool_result(
                     anyhow::bail!("upstream tool unavailable: {}", availability.as_str());
                 }
                 let connection = service
-                    .get_upstream_connection(actor_user_id, *upstream_connection_id)
+                    .get_upstream_connection_for_actor(actor, *upstream_connection_id)
                     .await?;
                 let secret = service
-                    .upstream_secret_for_execution(
-                        actor_user_id,
+                    .upstream_secret_for_actor(
+                        actor,
                         *upstream_connection_id,
                         &state.provider_secret_master_key,
                     )

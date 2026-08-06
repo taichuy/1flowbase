@@ -3,7 +3,6 @@ use axum::{
     http::{Request, StatusCode},
 };
 use serde_json::{json, Value};
-use sqlx::Executor;
 use tower::ServiceExt;
 
 use crate::_tests::support::{

@@ -667,7 +667,7 @@ async fn import_official_bundle(
         if is_reconciled {
             service
                 .record_extension_bundle_import(
-                    &context.actor,
+                    context.user.id,
                     extension_installation_id,
                     &report.status,
                 )
