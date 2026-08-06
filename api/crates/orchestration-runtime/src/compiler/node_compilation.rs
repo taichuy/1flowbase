@@ -124,8 +124,8 @@ fn validate_variable_aggregator_contract(
     {
         bail!("node {node_id} variable_aggregator bindings.candidates must be selector_list");
     }
-    if !outputs.iter().any(|output| output.key == "value") {
-        bail!("node {node_id} variable_aggregator must declare public output value");
+    if outputs.len() != 1 || outputs[0].key != "value" {
+        bail!("node {node_id} variable_aggregator must declare exactly one public output value");
     }
     Ok(())
 }

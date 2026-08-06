@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Map;
 
 fn variable_aggregator_plan() -> CompiledPlan {
     let start = CompiledNode {

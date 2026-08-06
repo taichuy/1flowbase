@@ -184,11 +184,7 @@ fn execution_contract_rejects_unsupported_node_type_missing_from_legacy_issues()
     assert!(error.to_string().contains("knowledge_retrieval"));
 }
 
-// Root AC-001/006: compiler retains ordered selector candidates and their dependencies.
-#[test]
-fn compile_variable_aggregator_preserves_candidate_order_and_dependencies() {
-    let flow_id = Uuid::now_v7();
-    let mut document = sample_document(flow_id);
+fn set_variable_aggregator_fixture(document: &mut Value, outputs: Value) {
     document["graph"]["nodes"][1] = json!({
         "id": "node-aggregator",
         "type": "variable_aggregator",
@@ -208,9 +204,20 @@ fn compile_variable_aggregator_preserves_candidate_order_and_dependencies() {
                 ]
             }
         },
-        "outputs": [{ "key": "value", "title": "Value", "valueType": "any" }]
+        "outputs": outputs
     });
     document["graph"]["edges"][0]["target"] = json!("node-aggregator");
+}
+
+// Root AC-001/006: compiler retains ordered selector candidates and their dependencies.
+#[test]
+fn compile_variable_aggregator_preserves_candidate_order_and_dependencies() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    set_variable_aggregator_fixture(
+        &mut document,
+        json!([{ "key": "value", "title": "Value", "valueType": "any" }]),
+    );
 
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
         .expect("variable aggregator should compile");
@@ -240,6 +247,26 @@ fn compile_variable_aggregator_preserves_candidate_order_and_dependencies() {
                 .iter()
                 .position(|id| id == "node-aggregator")
     );
+}
+
+#[test]
+fn compile_rejects_variable_aggregator_with_extra_public_output() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    set_variable_aggregator_fixture(
+        &mut document,
+        json!([
+            { "key": "value", "title": "Value", "valueType": "any" },
+            { "key": "extra", "title": "Extra", "valueType": "string" }
+        ]),
+    );
+
+    let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect_err("variable aggregator must reject extra public outputs");
+
+    assert!(error
+        .to_string()
+        .contains("must declare exactly one public output value"));
 }
 
 #[test]
