@@ -161,6 +161,16 @@ function remapBinding(
         ...binding,
         value: binding.value.map((selector) => remapSelector(selector, idMap))
       };
+    case 'variable_groups':
+      return {
+        ...binding,
+        value: binding.value.map((group) => ({
+          ...group,
+          candidates: group.candidates.map((selector) =>
+            remapSelector(selector, idMap)
+          )
+        }))
+      };
     case 'prompt_messages':
       return {
         ...binding,

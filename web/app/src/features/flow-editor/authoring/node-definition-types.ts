@@ -28,6 +28,7 @@ export type NodeEditorKind =
   | 'number'
   | 'selector'
   | 'selector_list'
+  | 'variable_groups'
   | 'templated_text'
   | 'named_bindings'
   | 'templated_named_bindings'

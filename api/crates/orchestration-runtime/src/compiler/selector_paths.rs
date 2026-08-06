@@ -47,6 +47,22 @@ pub(super) fn extract_selector_paths(kind: &str, raw_value: &Value) -> Result<Ve
         }
         "selector" => Ok(vec![selector_path(raw_value)?]),
         "selector_list" => selector_path_list(raw_value),
+        "variable_groups" => {
+            let binding = crate::compiled_plan::CompiledBinding {
+                i18n_text_ref: None,
+                kind: kind.to_string(),
+                raw_value: raw_value.clone(),
+                selector_paths: Vec::new(),
+            };
+            Ok(
+                crate::compiler::variable_aggregator_contract::variable_aggregator_groups(
+                    &binding,
+                )?
+                .into_iter()
+                .flat_map(|group| group.candidates)
+                .collect(),
+            )
+        }
         "named_bindings" => {
             let entries = raw_value
                 .as_array()

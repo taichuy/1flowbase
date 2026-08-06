@@ -7,8 +7,8 @@ use uuid::Uuid;
 use crate::{
     errors::ControlPlaneError,
     ports::{
-        ApplicationJsDependencySelectionRepository, CacheStore, ModelProviderRepository,
-        NodeContributionRepository, PluginRepository,
+        ApplicationJsDependencySelectionRepository, ApplicationRepository, CacheStore,
+        ModelProviderRepository, NodeContributionRepository, PluginRepository,
     },
 };
 
@@ -123,6 +123,7 @@ where
             .collect(),
         node_contributions,
         js_dependencies: BTreeMap::new(),
+        run_level_variables: Vec::new(),
     })
 }
 
@@ -302,7 +303,8 @@ where
     R: ModelProviderRepository
         + NodeContributionRepository
         + PluginRepository
-        + ApplicationJsDependencySelectionRepository,
+        + ApplicationJsDependencySelectionRepository
+        + ApplicationRepository,
 {
     build_application_compile_context_with_cache(repository, workspace_id, application_id, None)
         .await
@@ -318,10 +320,23 @@ where
     R: ModelProviderRepository
         + NodeContributionRepository
         + PluginRepository
-        + ApplicationJsDependencySelectionRepository,
+        + ApplicationJsDependencySelectionRepository
+        + ApplicationRepository,
 {
     let mut context =
         build_compile_context_with_cache(repository, workspace_id, cache_store).await?;
+    let application = repository
+        .get_application(workspace_id, application_id)
+        .await?
+        .ok_or(ControlPlaneError::NotFound("application"))?;
+    let environment_variables = repository
+        .list_application_environment_variables(workspace_id, application_id)
+        .await?;
+    context.run_level_variables = application_run_level_variables(
+        application.application_type,
+        application.workflow_trigger_type,
+        &environment_variables,
+    );
     context.js_dependencies = repository
         .list_application_js_dependency_selections(workspace_id, application_id)
         .await?
@@ -343,6 +358,56 @@ where
         })
         .collect();
     Ok(context)
+}
+
+fn application_run_level_variables(
+    application_type: domain::ApplicationType,
+    workflow_trigger_type: Option<domain::WorkflowTriggerType>,
+    environment_variables: &[domain::ApplicationEnvironmentVariable],
+) -> Vec<orchestration_runtime::compiler::FlowCompileRunLevelVariable> {
+    let mut declarations = match application_type {
+        domain::ApplicationType::AgentFlow => vec![
+            run_level_variable("sys", "conversation_id", "string"),
+            run_level_variable("sys", "dialog_count", "number"),
+            run_level_variable("sys", "user_id", "string"),
+            run_level_variable("sys", "application_id", "string"),
+            run_level_variable("sys", "workflow_id", "string"),
+            run_level_variable("sys", "workflow_run_id", "string"),
+            run_level_variable("sys", "model_parameters", "json"),
+            run_level_variable("sys", "protocol_context", "json"),
+        ],
+        domain::ApplicationType::Workflow => vec![
+            run_level_variable("sys", "application_id", "string"),
+            run_level_variable("sys", "workflow_id", "string"),
+            run_level_variable("sys", "workflow_run_id", "string"),
+        ],
+    };
+    declarations.extend(
+        environment_variables
+            .iter()
+            .map(|variable| run_level_variable("env", &variable.name, &variable.value_type)),
+    );
+    if application_type == domain::ApplicationType::Workflow {
+        if let Some(trigger_type) = workflow_trigger_type {
+            declarations.push(run_level_variable("trigger", "type", "string"));
+            if trigger_type == domain::WorkflowTriggerType::Schedule {
+                declarations.push(run_level_variable("trigger", "scheduled_at", "string"));
+                declarations.push(run_level_variable("trigger", "timezone", "string"));
+            }
+        }
+    }
+    declarations
+}
+
+fn run_level_variable(
+    namespace: &str,
+    name: &str,
+    value_type: &str,
+) -> orchestration_runtime::compiler::FlowCompileRunLevelVariable {
+    orchestration_runtime::compiler::FlowCompileRunLevelVariable {
+        selector: vec![namespace.to_string(), name.to_string()],
+        value_type: value_type.to_string(),
+    }
 }
 
 pub(super) fn ensure_compiled_plan_runnable(
@@ -603,7 +668,9 @@ mod tests {
     use crate::{
         errors::ControlPlaneError,
         ports::{
-            ApplicationJsDependencySelectionRepository, ModelProviderRepository,
+            ApplicationEnvironmentVariableInput, ApplicationJsDependencySelectionRepository,
+            CreateApplicationInput, ModelProviderRepository,
+            ReplaceApplicationEnvironmentVariablesInput,
             ReplaceApplicationJsDependencySelectionInput,
         },
     };
@@ -854,7 +921,40 @@ mod tests {
             super::super::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(
                 vec![],
             );
-        let application_id = Uuid::now_v7();
+        let application = ApplicationRepository::create_application(
+            &repository,
+            &CreateApplicationInput {
+                actor_user_id: Uuid::nil(),
+                workspace_id: Uuid::nil(),
+                application_type: domain::ApplicationType::AgentFlow,
+                workflow_trigger_type: None,
+                workflow_trigger_config: None,
+                name: "Compile Context".to_string(),
+                description: String::new(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            },
+        )
+        .await
+        .expect("application should be stored");
+        let application_id = application.id;
+        ApplicationRepository::replace_application_environment_variables(
+            &repository,
+            &ReplaceApplicationEnvironmentVariablesInput {
+                actor_user_id: Uuid::nil(),
+                workspace_id: Uuid::nil(),
+                application_id,
+                variables: vec![ApplicationEnvironmentVariableInput {
+                    name: "Items".to_string(),
+                    value_type: "array[object]".to_string(),
+                    value: json!([]),
+                    description: String::new(),
+                }],
+            },
+        )
+        .await
+        .expect("environment variable should be stored");
 
         ApplicationJsDependencySelectionRepository::replace_application_js_dependency_selection(
             &repository,
@@ -895,6 +995,68 @@ mod tests {
         assert_eq!(dependency.artifact_path, "artifacts/zod-3.24.0.backend.mjs");
         assert_eq!(dependency.artifact_hash, "sha256-zod-3.24.0");
         assert_eq!(dependency.integrity, "sha256-zod-3.24.0");
+        assert!(context.run_level_variables.iter().any(|declaration| {
+            declaration.selector == ["env", "Items"].map(str::to_string)
+                && declaration.value_type == "array[object]"
+        }));
+        assert!(context.run_level_variables.iter().any(|declaration| {
+            declaration.selector == ["sys", "user_id"].map(str::to_string)
+                && declaration.value_type == "string"
+        }));
+    }
+
+    #[test]
+    fn application_compile_context_maps_backend_run_level_type_truth() {
+        let environment_variables = vec![domain::ApplicationEnvironmentVariable {
+            application_id: Uuid::nil(),
+            name: "Items".to_string(),
+            value_type: "array[object]".to_string(),
+            value: json!([]),
+            description: String::new(),
+            updated_at: time::OffsetDateTime::UNIX_EPOCH,
+        }];
+
+        let agent = application_run_level_variables(
+            domain::ApplicationType::AgentFlow,
+            None,
+            &environment_variables,
+        );
+        assert!(agent.iter().any(|declaration| {
+            declaration.selector == ["sys", "user_id"].map(str::to_string)
+                && declaration.value_type == "string"
+        }));
+        assert!(agent.iter().any(|declaration| {
+            declaration.selector == ["sys", "dialog_count"].map(str::to_string)
+                && declaration.value_type == "number"
+        }));
+        assert!(agent.iter().any(|declaration| {
+            declaration.selector == ["env", "Items"].map(str::to_string)
+                && declaration.value_type == "array[object]"
+        }));
+        assert!(!agent.iter().any(
+            |declaration| declaration.selector.first().map(String::as_str) == Some("trigger")
+        ));
+
+        let workflow = application_run_level_variables(
+            domain::ApplicationType::Workflow,
+            Some(domain::WorkflowTriggerType::Schedule),
+            &environment_variables,
+        );
+        for selector in [
+            ["sys", "workflow_run_id"],
+            ["trigger", "type"],
+            ["trigger", "scheduled_at"],
+            ["trigger", "timezone"],
+            ["env", "Items"],
+        ] {
+            assert!(workflow.iter().any(|declaration| {
+                declaration.selector == selector.map(str::to_string)
+                    && !declaration.value_type.is_empty()
+            }));
+        }
+        assert!(!workflow
+            .iter()
+            .any(|declaration| { declaration.selector == ["sys", "user_id"].map(str::to_string) }));
     }
 
     #[tokio::test]

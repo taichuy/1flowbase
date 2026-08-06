@@ -701,6 +701,18 @@
     "loading_sql_editor": "Loading SQL editor",
     "variable_aggregator": "Variable Aggregator",
     "variable_aggregator_description": "Return the first available value from the ordered candidate variables",
-    "variable_aggregator_candidates": "Candidate variables (highest priority first)"
+    "variable_aggregator_candidates": "Variable groups",
+    "add_variable_group": "Add variable group",
+    "delete_variable_group": "Delete variable group {{value1}}",
+    "add_candidate": "Add candidate",
+    "delete_candidate": "Delete candidate",
+    "move_candidate_up": "Move candidate up",
+    "move_candidate_down": "Move candidate down",
+    "duplicate_variable_group": "Duplicate variable group",
+    "variable_group_keys_must_unique": "Variable group keys must be unique.",
+    "variable_group_candidate_incompatible": "Incompatible candidate type",
+    "variable_group_candidate_type_mismatch": "Select a declared {{value1}} output. The existing candidate is preserved until you replace it.",
+    "variable_group_outputs_out_of_sync": "Variable group outputs are out of sync",
+    "variable_group_outputs_must_match_groups": "Materialized outputs must match variable groups in key, type, and order."
   }
 }

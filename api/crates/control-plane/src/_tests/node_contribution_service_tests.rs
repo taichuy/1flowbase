@@ -388,16 +388,20 @@ async fn ac_005_ac_006_ac_007_variable_aggregator_is_shared_with_the_exact_publi
         assert_eq!(aggregator.field_contract.input_fields.len(), 1);
         assert_eq!(
             aggregator.field_contract.input_fields[0].key,
-            "bindings.candidates"
+            "bindings.groups"
         );
         assert!(aggregator.field_contract.input_fields[0].required);
         assert_eq!(
             aggregator.field_contract.input_fields[0].value_types,
-            vec!["selector_list"]
+            vec!["variable_groups"]
         );
         assert_eq!(aggregator.field_contract.output_fields.len(), 1);
-        assert_eq!(aggregator.field_contract.output_fields[0].key, "value");
+        assert_eq!(aggregator.field_contract.output_fields[0].key, "outputs[]");
         assert!(aggregator.field_contract.output_fields[0].required);
+        assert_eq!(
+            aggregator.field_contract.output_fields[0].value_types,
+            vec!["array"]
+        );
     }
 }
 

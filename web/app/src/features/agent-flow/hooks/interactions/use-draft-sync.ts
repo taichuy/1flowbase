@@ -8,6 +8,11 @@ import { useEffect, useRef } from 'react';
 import { useAuthStore } from '../../../../state/auth-store';
 import { restoreVersion, saveDraft } from '../../api/orchestration';
 import { buildDraftSaveInput } from '../../lib/draft-save';
+import {
+  isVariableAggregatorCandidateTypeMismatchIssue,
+  validateDocument
+} from '../../lib/validate-document';
+import type { AgentFlowEnvironmentVariable } from '../../lib/variables/application-environment-variables';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   selectLastSavedDocument,
@@ -24,6 +29,7 @@ interface UseDraftSyncOptions {
   ) => Promise<ConsoleApplicationOrchestrationState>;
   getCurrentDocument?: () => FlowAuthoringDocument;
   getLastSavedDocument?: () => FlowAuthoringDocument;
+  environmentVariables?: AgentFlowEnvironmentVariable[];
 }
 
 export function useDraftSync({
@@ -31,7 +37,8 @@ export function useDraftSync({
   saveDraftOverride,
   restoreVersionOverride,
   getCurrentDocument,
-  getLastSavedDocument
+  getLastSavedDocument,
+  environmentVariables = []
 }: UseDraftSyncOptions) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
@@ -68,13 +75,23 @@ export function useDraftSync({
       return false;
     }
 
+    const currentDocument = getCurrentDocument
+      ? getCurrentDocument()
+      : workingDocument;
+    const blocksVariableAggregatorSave = validateDocument(
+      currentDocument,
+      null,
+      environmentVariables
+    ).some(isVariableAggregatorCandidateTypeMismatchIssue);
+
+    if (blocksVariableAggregatorSave) {
+      return false;
+    }
+
     saveInFlightRef.current = true;
     setAutosaveStatus('saving');
 
     try {
-      const currentDocument = getCurrentDocument
-        ? getCurrentDocument()
-        : workingDocument;
       const currentLastSavedDocument = getLastSavedDocument
         ? getLastSavedDocument()
         : lastSavedDocument;

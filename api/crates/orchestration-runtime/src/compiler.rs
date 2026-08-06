@@ -18,6 +18,7 @@ mod code_runtime_config;
 mod node_compilation;
 mod selector_paths;
 mod topology;
+pub(crate) mod variable_aggregator_contract;
 
 pub use node_compilation::js_dependency_lookup_key;
 pub use topology::FlowCompiler;
@@ -48,6 +49,13 @@ pub struct FlowCompileContext {
     pub model_routing_policies: BTreeMap<(String, String), FlowCompileModelRoutingPolicy>,
     pub node_contributions: BTreeMap<String, FlowCompileNodeContribution>,
     pub js_dependencies: BTreeMap<String, FlowCompileJsDependency>,
+    pub run_level_variables: Vec<FlowCompileRunLevelVariable>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowCompileRunLevelVariable {
+    pub selector: Vec<String>,
+    pub value_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

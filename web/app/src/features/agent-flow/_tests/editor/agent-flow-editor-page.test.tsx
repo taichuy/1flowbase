@@ -43,6 +43,8 @@ import * as applicationsApi from '../../../applications/api/applications';
 import * as publicApi from '../../../applications/api/public-api';
 import { VersionHistoryPanel } from '../../components/history/VersionHistoryPanel';
 import { AgentFlowEditorShell } from '../../components/editor/AgentFlowEditorShell';
+import { createNodeDocument } from '../../lib/document/node-factory';
+import { i18nText } from '../../../../shared/i18n/text';
 import { NODE_DETAIL_DEFAULT_WIDTH } from '../../lib/detail-panel-width';
 import { AgentFlowEditorPage } from '../../pages/AgentFlowEditorPage';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
@@ -107,6 +109,39 @@ function createInitialState(
   };
 }
 
+function createIncompatibleVariableAggregatorDocument() {
+  const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+  const aggregator = createNodeDocument(
+    'variable_aggregator',
+    'node-variable-aggregator'
+  );
+
+  aggregator.bindings.groups = {
+    kind: 'variable_groups',
+    value: [
+      {
+        key: 'group1',
+        valueType: 'number',
+        candidates: [['node-llm', 'text']]
+      }
+    ]
+  };
+  aggregator.outputs = [
+    { key: 'group1', title: 'group1', valueType: 'number' }
+  ];
+  document.graph.nodes.push(aggregator);
+  document.graph.edges.push({
+    id: 'edge-llm-variable-aggregator',
+    source: 'node-llm',
+    target: aggregator.id,
+    sourceHandle: null,
+    targetHandle: null,
+    containerId: null,
+    points: []
+  });
+
+  return document;
+}
 
 const readyNodeCatalog = createApplicationNodeCatalog([
   createPluginCatalogNode()
@@ -675,6 +710,29 @@ describe('AgentFlowEditorShell', () => {
       );
     });
   }, 20_000);
+
+  test('AC-011 disables manual save for an incompatible Variable Aggregator candidate', () => {
+    const document = createIncompatibleVariableAggregatorDocument();
+    const saveDraftOverride = vi.fn(async (input) =>
+      createInitialState(input.document)
+    );
+
+    renderShell(
+      <AgentFlowEditorShell
+        applicationId="app-1"
+        applicationName="Support Agent"
+        initialState={createInitialState(document)}
+        saveDraftOverride={saveDraftOverride}
+      />
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.save')
+      })
+    ).toBeDisabled();
+    expect(saveDraftOverride).not.toHaveBeenCalled();
+  });
 
   test('opens the selected issue target and focuses the node field', async () => {
     renderShell(

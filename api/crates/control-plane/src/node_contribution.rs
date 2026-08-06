@@ -378,18 +378,8 @@ fn builtin_field_contract(node_type: &str) -> ApplicationNodeFieldContract {
         },
         "variable_aggregator" => ApplicationNodeFieldContract {
             config_fields: Vec::new(),
-            input_fields: vec![field(
-                "bindings.candidates",
-                true,
-                &["selector_list"],
-                &[],
-            )],
-            output_fields: vec![field(
-                "value",
-                true,
-                &["string", "number", "boolean", "object", "array"],
-                &[],
-            )],
+            input_fields: vec![field("bindings.groups", true, &["variable_groups"], &[])],
+            output_fields: vec![field("outputs[]", true, &["array"], &[])],
         },
         _ => ApplicationNodeFieldContract {
             config_fields: vec![field("config", true, &["object"], &[])],

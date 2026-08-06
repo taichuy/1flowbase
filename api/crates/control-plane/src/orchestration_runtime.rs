@@ -625,7 +625,7 @@ where
         application_id: Uuid,
     ) -> Result<orchestration_runtime::compiler::FlowCompileContext>
     where
-        R: ApplicationJsDependencySelectionRepository,
+        R: ApplicationJsDependencySelectionRepository + ApplicationRepository,
     {
         compile_context::build_application_compile_context_with_cache(
             &self.repository,
