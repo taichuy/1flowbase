@@ -91,6 +91,7 @@ describe('EmbeddedAgentAssistant', () => {
           {
             id: 'gpt-5.4',
             name: 'GPT-5.4',
+            context_window: 100000,
             reasoning_efforts: ['low', 'high'],
             default_reasoning_effort: 'high'
           }
@@ -255,6 +256,90 @@ describe('EmbeddedAgentAssistant', () => {
     });
     expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();
     expect(await screen.findByText('Assistant reply')).toBeInTheDocument();
+  });
+
+  test('issue 1601 projects canonical nested usage into a visible context indicator', async () => {
+    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockRejectedValue(
+      new Error('optional calibration unavailable')
+    );
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-context',
+          status: 'queued'
+        });
+        handlers.onEvent({
+          type: 'node_finished',
+          run_id: 'run-context',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          status: 'succeeded',
+          metrics_payload: {
+            usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 }
+          }
+        });
+        handlers.onEvent({
+          type: 'flow_finished',
+          run_id: 'run-context',
+          status: 'succeeded',
+          output: { answer: 'Context updated' }
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    const initialContextProgress = document.querySelector(
+      '.embedded-agent-assistant-preview__context-progress'
+    );
+    expect(initialContextProgress).toBeInTheDocument();
+    fireEvent.mouseEnter(initialContextProgress as HTMLElement);
+    expect(
+      await screen.findByText(
+        i18nText('appShell', 'auto.assistant_context_unavailable')
+      )
+    ).toBeInTheDocument();
+    fireEvent.mouseLeave(initialContextProgress as HTMLElement);
+    fireEvent.change(composer, { target: { value: 'Measure context' } });
+    fireEvent.click(sendButton);
+
+    const contextProgress = await waitFor(() => {
+      const element = document.querySelector(
+        '.embedded-agent-assistant-preview__context-progress'
+      );
+      expect(element).toBeInTheDocument();
+      return element as HTMLElement;
+    });
+    fireEvent.mouseEnter(contextProgress);
+
+    expect(
+      await screen.findByText(
+        i18nText('appShell', 'auto.assistant_context_total', {
+          value1: '100',
+          value2: '100K'
+        })
+      )
+    ).toBeInTheDocument();
+    expect(contextProgress.querySelector('.ant-progress')).toHaveAttribute(
+      'aria-valuenow',
+      '1'
+    );
   });
 
   test('issue 1601 does not poll snapshots while WebSocket is healthy and calibrates once at terminal', async () => {

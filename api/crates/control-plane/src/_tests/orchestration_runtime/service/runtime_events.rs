@@ -1072,6 +1072,14 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         .await
         .unwrap();
 
+    let live_usage = stream
+        .events()
+        .into_iter()
+        .find(|event| event.event_type == "usage_snapshot")
+        .expect("typed provider usage should be projected to the live runtime stream");
+    assert_eq!(live_usage.payload["usage"]["input_tokens"], json!(10));
+    assert_eq!(live_usage.payload["usage"]["total_tokens"], json!(15));
+
     let runtime_event_types = service
         .list_runtime_events(detail.flow_run.id, 0)
         .await

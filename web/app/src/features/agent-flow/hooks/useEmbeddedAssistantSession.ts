@@ -80,7 +80,14 @@ function contextTokenUsageFromSnapshot(usage: unknown) {
   }
 
   const usageRecord = usage as Record<string, unknown>;
-  const inputTokens = usageRecord.input_tokens ?? usageRecord.total_tokens;
+  const canonicalUsage = usageRecord.usage;
+  const tokenRecord =
+    canonicalUsage &&
+    typeof canonicalUsage === 'object' &&
+    !Array.isArray(canonicalUsage)
+      ? (canonicalUsage as Record<string, unknown>)
+      : usageRecord;
+  const inputTokens = tokenRecord.input_tokens ?? tokenRecord.total_tokens;
   const tokenCount =
     typeof inputTokens === 'number' && Number.isFinite(inputTokens)
       ? inputTokens
