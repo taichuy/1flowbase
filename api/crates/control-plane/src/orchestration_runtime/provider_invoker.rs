@@ -204,6 +204,24 @@ where
         );
 
         let canonical_tool_registry = input.tools.clone();
+        let effective_context_window = input
+            .model_parameters
+            .get("requested_context_window")
+            .and_then(Value::as_u64)
+            .or_else(|| {
+                instance
+                    .configured_models
+                    .iter()
+                    .find(|model| model.model_id == runtime.model)
+                    .and_then(|model| model.context_window_override_tokens)
+            })
+            .or_else(|| {
+                package
+                    .predefined_models
+                    .iter()
+                    .find(|model| model.model_id == runtime.model)
+                    .and_then(|model| model.context_window)
+            });
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
@@ -220,6 +238,51 @@ where
                 node_run_id: self.active_node_run_id?,
             })
         });
+        if let (Some(active_node), Some(stream), Some(flow_run_id)) = (
+            active_node.as_ref(),
+            self.runtime_event_stream.as_ref(),
+            self.flow_run_id,
+        ) {
+            match estimate_provider_count_tokens(&input) {
+                Ok(estimate) => {
+                    let mut context_snapshot = debug_stream_events::context_snapshot(
+                        &active_node.node_id,
+                        active_node.node_run_id,
+                        &estimate,
+                        effective_context_window,
+                    );
+                    match runtime_event_persister::persist_runtime_event_payload(
+                        &self.repository,
+                        flow_run_id,
+                        &context_snapshot,
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            context_snapshot.persist_required = false;
+                            context_snapshot.durability = RuntimeEventDurability::Ephemeral;
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                flow_run_id = %flow_run_id,
+                                node_id = %active_node.node_id,
+                                error = %error,
+                                "failed to persist AI Gateway context snapshot"
+                            );
+                        }
+                    }
+                    append_provider_runtime_event(stream, flow_run_id, context_snapshot).await;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        flow_run_id = %flow_run_id,
+                        node_id = %active_node.node_id,
+                        error = %error,
+                        "AI Gateway context estimate unavailable"
+                    );
+                }
+            }
+        }
         let presentation_source_node_id = input.trace_context.get("node_id").cloned();
         let live_provider_events = if let Some(RuntimeActiveNode {
             node_id,

@@ -1072,9 +1072,34 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
         .await
         .unwrap();
 
-    let live_usage = stream
-        .events()
-        .into_iter()
+    let live_events = stream.events();
+    let context_index = live_events
+        .iter()
+        .position(|event| event.event_type == "context_snapshot")
+        .expect("AI Gateway should project canonical context before Provider invocation");
+    let usage_index = live_events
+        .iter()
+        .position(|event| event.event_type == "usage_snapshot")
+        .expect("Provider usage should remain available for billing observability");
+    assert!(context_index < usage_index);
+    let context_snapshot = &live_events[context_index];
+    assert_eq!(context_snapshot.source, RuntimeEventSource::Runtime);
+    assert!(context_snapshot.payload["input_tokens"].as_u64().unwrap() > 0);
+    assert_eq!(
+        context_snapshot.payload["effective_context_window"],
+        json!(128_000)
+    );
+    assert_eq!(
+        context_snapshot.payload["measurement"]["method"],
+        json!("generic_estimate")
+    );
+    assert_eq!(
+        context_snapshot.payload["measurement"]["accuracy"],
+        json!("estimated")
+    );
+
+    let live_usage = live_events
+        .iter()
         .find(|event| event.event_type == "usage_snapshot")
         .expect("typed provider usage should be projected to the live runtime stream");
     assert_eq!(live_usage.payload["usage"]["input_tokens"], json!(10));
@@ -1101,6 +1126,12 @@ async fn fast_stream_provider_events_are_durably_persisted_to_runtime_observabil
             .iter()
             .any(|event_type| event_type == "usage_snapshot"),
         "provider usage snapshots should still be written to durable runtime_events: {runtime_event_types:?}"
+    );
+    assert!(
+        runtime_event_types
+            .iter()
+            .any(|event_type| event_type == "context_snapshot"),
+        "AI Gateway context snapshots should be recoverable from durable runtime_events: {runtime_event_types:?}"
     );
     assert!(
         runtime_event_types.iter().any(|event_type| event_type == "finish"),

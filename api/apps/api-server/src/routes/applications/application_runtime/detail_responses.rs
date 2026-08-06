@@ -296,6 +296,40 @@ fn flow_run_can_expose_answer_snapshot(status: &domain::FlowRunStatus) -> bool {
     )
 }
 
+fn to_context_snapshot_response(
+    runtime_events: &[domain::RuntimeEventRecord],
+) -> Option<ContextSnapshotResponse> {
+    let event = runtime_events
+        .iter()
+        .filter(|event| event.event_type == "context_snapshot")
+        .max_by_key(|event| event.sequence)?;
+    let payload = event.payload.as_object()?;
+    let measurement = payload.get("measurement")?.as_object()?;
+
+    Some(ContextSnapshotResponse {
+        event_type: "context_snapshot".to_string(),
+        event_id: event.id.to_string(),
+        run_id: event.flow_run_id.to_string(),
+        node_run_id: event.node_run_id.map(|value| value.to_string()),
+        node_id: payload.get("node_id")?.as_str()?.to_string(),
+        sequence: event.sequence,
+        input_tokens: payload.get("input_tokens")?.as_u64()?,
+        effective_context_window: payload
+            .get("effective_context_window")
+            .and_then(serde_json::Value::as_u64),
+        remaining_tokens: payload
+            .get("remaining_tokens")
+            .and_then(serde_json::Value::as_u64),
+        measurement: ContextSnapshotMeasurementResponse {
+            method: measurement.get("method")?.as_str()?.to_string(),
+            accuracy: measurement.get("accuracy")?.as_str()?.to_string(),
+            coverage: measurement.get("coverage")?.as_str()?.to_string(),
+            unknown_block_count: measurement.get("unknown_block_count")?.as_u64()?,
+        },
+        created_at: format_time(event.created_at),
+    })
+}
+
 fn to_application_run_detail_response(
     application: &domain::ApplicationRecord,
     detail: domain::ApplicationRunDetail,
@@ -401,6 +435,7 @@ fn to_application_run_detail_response(
         detail: typed_detail,
         flow_run,
         answer_snapshot,
+        context_snapshot: None,
         node_runs,
         checkpoints,
         callback_tasks,

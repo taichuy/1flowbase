@@ -258,10 +258,32 @@ describe('EmbeddedAgentAssistant', () => {
     expect(await screen.findByText('Assistant reply')).toBeInTheDocument();
   });
 
-  test('issue 1601 projects canonical nested usage into a visible context indicator', async () => {
-    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockRejectedValue(
-      new Error('optional calibration unavailable')
-    );
+  test('issue 1601 drives context from AI Gateway snapshots instead of Provider usage', async () => {
+    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockResolvedValue({
+      flow_run: { status: 'succeeded' },
+      node_runs: [],
+      checkpoints: [],
+      callback_tasks: [],
+      events: [],
+      context_snapshot: {
+        type: 'context_snapshot',
+        event_id: 'event-context-terminal',
+        run_id: 'run-context',
+        node_run_id: 'node-run-llm',
+        node_id: 'node-llm',
+        sequence: 9,
+        input_tokens: 321,
+        effective_context_window: 100000,
+        remaining_tokens: 99679,
+        measurement: {
+          method: 'generic_estimate',
+          accuracy: 'estimated',
+          coverage: 'complete',
+          unknown_block_count: 0
+        },
+        created_at: '2026-08-06T00:00:00Z'
+      }
+    } as never);
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -270,13 +292,43 @@ describe('EmbeddedAgentAssistant', () => {
           status: 'queued'
         });
         handlers.onEvent({
+          type: 'context_snapshot',
+          run_id: 'run-context',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          input_tokens: 100,
+          effective_context_window: 100000,
+          remaining_tokens: 99900,
+          measurement: {
+            method: 'generic_estimate',
+            accuracy: 'estimated',
+            coverage: 'complete',
+            unknown_block_count: 0
+          }
+        });
+        handlers.onEvent({
+          type: 'usage_snapshot',
+          run_id: 'run-context',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          usage: {
+            input_tokens: 80000,
+            output_tokens: 50,
+            total_tokens: 80050
+          }
+        });
+        handlers.onEvent({
           type: 'node_finished',
           run_id: 'run-context',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
           status: 'succeeded',
           metrics_payload: {
-            usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 }
+            usage: {
+              input_tokens: 90000,
+              output_tokens: 50,
+              total_tokens: 90050
+            }
           }
         });
         handlers.onEvent({
@@ -331,9 +383,14 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       await screen.findByText(
         i18nText('appShell', 'auto.assistant_context_total', {
-          value1: '100',
+          value1: '321',
           value2: '100K'
         })
+      )
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        i18nText('appShell', 'auto.assistant_context_estimated')
       )
     ).toBeInTheDocument();
     expect(contextProgress.querySelector('.ant-progress')).toHaveAttribute(

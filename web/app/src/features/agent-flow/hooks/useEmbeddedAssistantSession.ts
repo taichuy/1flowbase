@@ -3,6 +3,7 @@ import {
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
   type ConsoleAssistantWebSocketControl,
+  type ConsoleContextSnapshot,
   type ConsoleFlowDebugStreamEvent,
   type ConsoleFlowDebugStreamHandlers
 } from '@1flowbase/api-client';
@@ -74,56 +75,6 @@ function isTerminalEvent(event: ConsoleFlowDebugStreamEvent) {
   );
 }
 
-function contextTokenUsageFromSnapshot(usage: unknown) {
-  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) {
-    return null;
-  }
-
-  const usageRecord = usage as Record<string, unknown>;
-  const canonicalUsage = usageRecord.usage;
-  const tokenRecord =
-    canonicalUsage &&
-    typeof canonicalUsage === 'object' &&
-    !Array.isArray(canonicalUsage)
-      ? (canonicalUsage as Record<string, unknown>)
-      : usageRecord;
-  const inputTokens = tokenRecord.input_tokens ?? tokenRecord.total_tokens;
-  const tokenCount =
-    typeof inputTokens === 'number' && Number.isFinite(inputTokens)
-      ? inputTokens
-      : null;
-
-  return tokenCount === null ? null : Math.max(0, Math.round(tokenCount));
-}
-
-function contextTokenUsageFromEvent(event: ConsoleFlowDebugStreamEvent) {
-  if (event.type === 'usage_snapshot') {
-    return contextTokenUsageFromSnapshot(event.usage);
-  }
-
-  if (event.type === 'node_finished') {
-    return (
-      contextTokenUsageFromSnapshot(event.metrics_payload) ??
-      contextTokenUsageFromSnapshot(event.output_payload)
-    );
-  }
-
-  return null;
-}
-
-function contextTokenUsageFromTraceItems(items: AgentFlowTraceItem[]) {
-  for (const item of [...items].reverse()) {
-    const contextTokenUsage =
-      contextTokenUsageFromSnapshot(item.metricsPayload) ??
-      contextTokenUsageFromSnapshot(item.outputPayload);
-    if (contextTokenUsage !== null) {
-      return contextTokenUsage;
-    }
-  }
-
-  return null;
-}
-
 function isTerminalFlowRunStatus(status: string) {
   return [
     'succeeded',
@@ -157,9 +108,8 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
   const [stopping, setStopping] = useState(false);
   const [messages, setMessages] = useState<AgentFlowDebugMessage[]>([]);
   const [traceItems, setTraceItems] = useState<AgentFlowTraceItem[]>([]);
-  const [contextTokenUsage, setContextTokenUsage] = useState<number | null>(
-    null
-  );
+  const [contextSnapshot, setContextSnapshot] =
+    useState<ConsoleContextSnapshot | null>(null);
   const [runContext, setRunContext] = useState(() =>
     createRunContext(applicationId)
   );
@@ -190,7 +140,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     setMessages([]);
     setTraceItems([]);
     liveTraceItemsRef.current = [];
-    setContextTokenUsage(null);
+    setContextSnapshot(null);
     setRunContext(createRunContext(applicationId));
   }, [applicationId, cancelActiveStream]);
 
@@ -228,10 +178,9 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
               : message
           )
         );
-        const nextContextTokenUsage =
-          contextTokenUsageFromTraceItems(traceItems);
-        if (nextContextTokenUsage !== null) {
-          setContextTokenUsage(nextContextTokenUsage);
+        const nextContextSnapshot = detail.context_snapshot ?? null;
+        if (nextContextSnapshot !== null) {
+          setContextSnapshot(nextContextSnapshot);
         }
 
         if (isTerminalFlowRunStatus(detail.flow_run.status)) {
@@ -354,9 +303,8 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
             setTraceItems(liveTraceItemsRef.current);
           }
 
-          const contextTokenUsage = contextTokenUsageFromEvent(event);
-          if (contextTokenUsage !== null) {
-            setContextTokenUsage(contextTokenUsage);
+          if (event.type === 'context_snapshot') {
+            setContextSnapshot(event);
           }
 
           streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
@@ -546,7 +494,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     stopping,
     messages,
     traceItems,
-    contextTokenUsage,
+    contextSnapshot,
     runContext,
     activeRunId,
     clearSession,
