@@ -115,7 +115,10 @@ function isMissingRequiredField(
     case 'selector':
       return binding.value.length === 0;
     case 'selector_list':
-      return binding.value.length === 0;
+      return (
+        binding.value.length === 0 ||
+        binding.value.some((selector) => !selectorHasRequiredInput(selector))
+      );
     case 'data_model_query':
       return false;
     case 'prompt_messages':

@@ -22,6 +22,7 @@ export type BuiltinFlowNodeType =
   | 'data_model_update'
   | 'data_model_delete'
   | 'sql'
+  | 'variable_aggregator'
   | 'variable_assigner'
   | 'parameter_extractor'
   | 'iteration'

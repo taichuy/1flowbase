@@ -65,6 +65,7 @@ const NODE_TYPE_ICONS: Record<string, ReactNode> = {
   data_model_update: createElement(DatabaseOutlined),
   data_model_delete: createElement(DatabaseOutlined),
   sql: createElement(DatabaseOutlined),
+  variable_aggregator: createElement(MergeCellsOutlined),
   variable_assigner: createElement(EditOutlined),
   iteration: createElement(SyncOutlined),
   loop: createElement(ReloadOutlined),

@@ -698,6 +698,9 @@
     "data_source": "Data source",
     "sql_statement": "SQL statement",
     "sql_results": "SQL results",
-    "loading_sql_editor": "Loading SQL editor"
+    "loading_sql_editor": "Loading SQL editor",
+    "variable_aggregator": "Variable Aggregator",
+    "variable_aggregator_description": "Return the first available value from the ordered candidate variables",
+    "variable_aggregator_candidates": "Candidate variables (highest priority first)"
   }
 }

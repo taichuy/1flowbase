@@ -81,6 +81,13 @@ export const nodeDefinitionMeta: NodeDefinitionMetaMap = {
     summary: i18nText('agentFlow', 'auto.execute_native_sql'),
     helpHref: '/docs/agentflow/nodes/sql'
   },
+  variable_aggregator: {
+    summary: i18nText(
+      'agentFlow',
+      'auto.variable_aggregator_description'
+    ),
+    helpHref: '/docs/agentflow/nodes/variable-aggregator'
+  },
   variable_assigner: {
     summary: i18nText(
       'agentFlow',

@@ -698,6 +698,9 @@
     "data_source": "数据源",
     "sql_statement": "SQL 语句",
     "sql_results": "SQL 结果",
-    "loading_sql_editor": "正在加载 SQL 编辑器"
+    "loading_sql_editor": "正在加载 SQL 编辑器",
+    "variable_aggregator": "变量聚合器",
+    "variable_aggregator_description": "按照候选变量顺序返回第一个可用值",
+    "variable_aggregator_candidates": "候选变量（优先级从高到低）"
   }
 }
