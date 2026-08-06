@@ -4,7 +4,7 @@ use control_plane::ports::{
     AppendTerminalIfMissingAndCloseOutcome, RuntimeEventClosure, RuntimeEventStreamPolicy,
     RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn streaming_deltas_request_history_without_requiring_ephemeral_delivery() {
