@@ -5,7 +5,7 @@ import {
   screen,
   waitFor
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   getConsoleAssistantSettings,
@@ -37,6 +37,17 @@ import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
 describe('EmbeddedAgentAssistant', () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class IntersectionObserver {
+        disconnect() {}
+        observe() {}
+        takeRecords() {
+          return [];
+        }
+        unobserve() {}
+      }
+    );
     resetAuthStore();
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-token',
@@ -87,6 +98,10 @@ describe('EmbeddedAgentAssistant', () => {
     startConsoleAssistantRunStream.mockReset();
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   test('AC-001 opens the Agent Flow Preview console instead of a hand-written drawer', async () => {
     render(
       <AppProviders>
@@ -119,9 +134,7 @@ describe('EmbeddedAgentAssistant', () => {
         .map((element) => element.getAttribute('aria-label'))
     ).toEqual(expect.arrayContaining([expect.any(String)]));
     expect(
-      screen.getByRole('combobox', {
-        name: i18nText('appShell', 'auto.assistant_model')
-      })
+      screen.getByRole('button', { name: /GPT-5\.4/u })
     ).toBeInTheDocument();
 
     const settings = screen.getByRole('button', {

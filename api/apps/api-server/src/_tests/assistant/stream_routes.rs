@@ -239,7 +239,7 @@ async fn issue_1601_assistant_websocket_ticket_enforces_session_csrf_origin_and_
         )
         .await
         .unwrap();
-    assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+    assert_eq!(missing_csrf.status(), StatusCode::UNAUTHORIZED);
 
     let missing_origin = app
         .clone()
