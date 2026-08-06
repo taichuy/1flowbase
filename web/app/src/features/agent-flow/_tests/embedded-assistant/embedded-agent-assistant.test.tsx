@@ -268,6 +268,114 @@ describe('EmbeddedAgentAssistant', () => {
     expect(await screen.findByText('Assistant reply')).toBeInTheDocument();
   });
 
+  test('AC-006 loads a truncated workflow payload from the selected assistant flow', async () => {
+    const loadArtifacts = vi
+      .spyOn(runtimeApi, 'fetchRuntimeDebugArtifacts')
+      .mockResolvedValue({
+        artifacts: [
+          {
+            artifact_ref: 'artifact-input',
+            content_type: 'application/json',
+            value: { tools: [{ name: 'full tool definition' }] }
+          }
+        ]
+      });
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-artifact',
+          status: 'queued'
+        });
+        handlers.onEvent({
+          type: 'node_started',
+          run_id: 'run-artifact',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          node_type: 'llm',
+          title: 'LLM',
+          input_payload: {
+            tools: {
+              __runtime_debug_artifact: true,
+              is_truncated: true,
+              original_size_bytes: 8192,
+              preview_size_bytes: 256,
+              content_type: 'application/json',
+              artifact_ref: 'artifact-input',
+              preview: '[{\"name\":\"preview tool\"}]'
+            }
+          }
+        });
+        handlers.onEvent({
+          type: 'node_finished',
+          run_id: 'run-artifact',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          status: 'succeeded',
+          debug_payload: {
+            llm_rounds: [
+              {
+                round_index: 0,
+                assistant: {
+                  tool_calls: [
+                    { id: 'call-tools', name: 'list_available_tools' }
+                  ]
+                }
+              }
+            ]
+          }
+        });
+        handlers.onEvent({
+          type: 'flow_finished',
+          run_id: 'run-artifact',
+          status: 'succeeded',
+          output: { answer: 'Tool list ready' }
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    fireEvent.change(composer, { target: { value: 'List available tools' } });
+    fireEvent.click(sendButton);
+
+    const inputPayload = await screen.findByRole('button', {
+      name: i18nText('agentFlow', 'auto.input')
+    });
+    fireEvent.click(inputPayload);
+
+    const loadFullValue = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.load_full_value')
+    });
+    expect(loadFullValue).toBeEnabled();
+    fireEvent.click(loadFullValue);
+
+    await waitFor(() =>
+      expect(loadArtifacts).toHaveBeenCalledWith('flow-1', ['artifact-input'])
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('输入 JSON')).toHaveTextContent(
+        'full tool definition'
+      )
+    );
+  });
+
   test('issue 1601 drives context from AI Gateway snapshots instead of Provider usage', async () => {
     vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockResolvedValue({
       flow_run: { status: 'succeeded' },

@@ -20,6 +20,10 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
+import {
+  fetchRuntimeDebugArtifact,
+  fetchRuntimeDebugArtifacts
+} from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { useAuthStore } from '../../../../state/auth-store';
 import { WindowWorkspaceWindow } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
@@ -155,6 +159,7 @@ export function EmbeddedAgentAssistantPreview({
   const selectedFlow = settings?.published_agent_flows.find(
     (flow) => flow.application_id === settings.preference.application_id
   );
+  const applicationId = settings?.preference.application_id ?? null;
   const selectedModel =
     settings?.run_capabilities.models.find(
       (model) => model.id === settings.preference.model
@@ -482,6 +487,18 @@ export function EmbeddedAgentAssistantPreview({
               void session.closeSession();
               onClose();
             }}
+            onLoadArtifact={
+              applicationId
+                ? (artifactRef) =>
+                    fetchRuntimeDebugArtifact(applicationId, artifactRef)
+                : undefined
+            }
+            onLoadArtifacts={
+              applicationId
+                ? (artifactRefs) =>
+                    fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
+                : undefined
+            }
             onStopRun={() => {
               void session.stopRun();
             }}
