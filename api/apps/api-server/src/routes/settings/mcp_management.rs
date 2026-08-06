@@ -294,8 +294,8 @@ pub async fn get_mcp_catalog(
 ) -> Result<Json<ApiSuccess<McpCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let service = McpManagementService::new(state.store.clone());
-    let snapshot = service.read_workspace_catalog(context.user.id).await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let snapshot = service.read_catalog_for_actor(&context.actor).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(to_catalog_response(
         snapshot,
         &operations,
@@ -312,7 +312,7 @@ pub async fn list_mcp_interface_capabilities(
     McpManagementService::new(state.store.clone())
         .authorize_interface_catalog_view(context.user.id)
         .await?;
-    let mut entries = mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+    let mut entries = mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     if query.bindable_only.unwrap_or(false) {
         entries.retain(|entry| entry.bindable);
     }
@@ -330,8 +330,8 @@ pub async fn list_mcp_items(
     let context = require_session(&state, &headers).await?;
     let service = McpManagementService::new(state.store.clone());
     let items = service
-        .list_items(
-            context.user.id,
+        .list_items_for_actor(
+            &context.actor,
             query.instance_id.as_deref(),
             query.path.as_deref(),
             query.path_regex.as_deref(),
@@ -344,7 +344,7 @@ pub async fn list_mcp_items(
         control_plane::errors::ControlPlaneError::InvalidInput("instance_id"),
     )?;
     let discovery_policy = service
-        .get_instance_discovery_policy(context.user.id, instance_id)
+        .get_instance_discovery_policy_for_actor(&context.actor, instance_id)
         .await?;
     let return_fields = list_response_field_set(&discovery_policy.list_return_fields)?;
     Ok(Json(ApiSuccess::new(
@@ -362,9 +362,9 @@ pub async fn export_mcp_catalog(
 ) -> Result<Json<ApiSuccess<McpExportPackageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let export = McpManagementService::new(state.store.clone())
-        .export_workspace_catalog(context.user.id)
+        .export_catalog_for_actor(&context.actor)
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(to_export_response(
         export,
         &operations,
@@ -378,7 +378,7 @@ pub async fn list_mcp_instances(
 ) -> Result<Json<ApiSuccess<Vec<McpInstanceResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let snapshot = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(context.user.id)
+        .read_catalog_for_actor(&context.actor)
         .await?;
     Ok(Json(ApiSuccess::new(
         snapshot
@@ -525,14 +525,13 @@ pub async fn list_mcp_tools(
 ) -> Result<Json<ApiSuccess<Vec<McpToolResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let snapshot = McpManagementService::new(state.store.clone())
-        .read_workspace_catalog(context.user.id)
+        .read_catalog_for_actor(&context.actor)
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     let mut tools = Vec::with_capacity(snapshot.tools.len());
     for record in snapshot.tools {
         tools.push(
-            to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations)
-                .await?,
+            to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations).await?,
         );
     }
     Ok(Json(ApiSuccess::new(tools)))
@@ -548,7 +547,7 @@ pub async fn create_mcp_tool(
     require_csrf(&headers, &context)?;
     let interface_id = interface_target_id(&body.execution_target)?;
     let interface_entry =
-        bindable_mcp_interface(state.as_ref(), context.user.id, interface_id).await?;
+        bindable_mcp_interface(state.as_ref(), &context.actor, interface_id).await?;
     let operation = interface_operation(&interface_entry);
     let record = McpManagementService::new(state.store.clone())
         .create_tool(to_create_tool_command(
@@ -577,9 +576,9 @@ pub async fn get_mcp_tool(
     let record = McpManagementService::new(state.store.clone())
         .get_tool(context.user.id, &tool_id)
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(
-        to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations).await?,
+        to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations).await?,
     )))
 }
 
@@ -595,7 +594,7 @@ pub async fn update_mcp_tool(
     match &body.execution_target {
         McpToolExecutionTargetDto::InterfaceWrapper { interface_id } => {
             let interface_entry =
-                bindable_mcp_interface(state.as_ref(), context.user.id, interface_id).await?;
+                bindable_mcp_interface(state.as_ref(), &context.actor, interface_id).await?;
             let operation = interface_operation(&interface_entry);
             let record = McpManagementService::new(state.store.clone())
                 .update_tool(to_update_tool_command(
@@ -630,9 +629,9 @@ pub async fn update_mcp_tool(
                     status: parse_tool_status(&body.status)?,
                 })
                 .await?;
-            let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+            let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
             Ok(Json(ApiSuccess::new(
-                to_tool_response_for_actor(state.as_ref(), context.user.id, record, &operations)
+                to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations)
                     .await?,
             )))
         }
@@ -667,7 +666,7 @@ pub async fn refresh_mcp_tool_description(
             tool_id,
         })
         .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), context.user.id).await?;
+    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(to_tool_response(record, &operations))))
 }
 
@@ -700,7 +699,7 @@ pub async fn execute_mcp_debug(
         .authorize_debug_execute(context.user.id)
         .await?;
     let interface_entry =
-        bindable_mcp_interface(state.as_ref(), context.user.id, &body.interface_id).await?;
+        bindable_mcp_interface(state.as_ref(), &context.actor, &body.interface_id).await?;
 
     match debug_execute::execute(state, headers, interface_entry, body).await {
         Ok(result) => Ok(Json(ApiSuccess::new(result)).into_response()),

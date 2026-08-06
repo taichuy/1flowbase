@@ -3,10 +3,11 @@ use axum::{
     http::{Request, StatusCode},
 };
 use serde_json::{json, Value};
+use sqlx::Executor;
 use tower::ServiceExt;
 
 use crate::_tests::support::{
-    login_and_capture_cookie, test_api_state_with_database_url, test_app,
+    login_and_capture_cookie, seed_workspace, test_api_state_with_database_url, test_app,
 };
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -38,17 +39,83 @@ async fn create_api_key(app: &axum::Router, cookie: &str, csrf: &str) -> String 
 }
 
 async fn create_mcp_instance(app: &axum::Router, cookie: &str, csrf: &str) {
+    create_named_mcp_instance(app, cookie, csrf, "taichuy").await;
+}
+
+async fn create_named_mcp_instance(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    instance_id: &str,
+) {
     let response = app.clone().oneshot(Request::builder()
         .method("POST").uri("/api/console/mcp/instances")
         .header("cookie", cookie).header("x-csrf-token", csrf)
         .header("content-type", "application/json")
-        .body(Body::from(json!({"instance_id":"taichuy","name":"1flowbase","description_short":null,"status":"enabled","default_entry_path":"/"}).to_string())).unwrap()).await.unwrap();
+        .body(Body::from(json!({"instance_id":instance_id,"name":instance_id,"description_short":null,"status":"enabled","default_entry_path":"/"}).to_string())).unwrap()).await.unwrap();
     assert_eq!(
         response.status(),
         StatusCode::CREATED,
         "{}",
         response_json(response).await
     );
+}
+
+#[tokio::test]
+async fn ac_003_protocol_uses_api_key_actor_workspace_and_rejects_cross_workspace_instance() {
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state);
+    let secondary_workspace_id = seed_workspace(&database_url, "MCP credential workspace").await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_named_mcp_instance(&app, &cookie, &csrf, "bootstrap-only").await;
+
+    let switch_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/session/actions/switch-workspace")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"workspace_id":secondary_workspace_id}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(switch_response.status(), StatusCode::OK);
+    let secondary_csrf = response_json(switch_response).await["data"]["csrf_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    create_mcp_instance(&app, &cookie, &secondary_csrf).await;
+    let secondary_token = create_api_key(&app, &cookie, &secondary_csrf).await;
+
+    let scoped = call_mcp(
+        &app,
+        &secondary_token,
+        json!({"jsonrpc":"2.0","id":101,"method":"initialize","params":{}}),
+    )
+    .await;
+    assert_eq!(scoped["result"]["serverInfo"]["name"], json!("taichuy"));
+
+    let mismatch = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/mcp/bootstrap-only")
+                .header("authorization", format!("Bearer {secondary_token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"jsonrpc":"2.0","id":102,"method":"initialize","params":{}}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(mismatch.status(), StatusCode::NOT_FOUND);
 }
 
 async fn create_interface_tool_and_binding(
@@ -967,6 +1034,61 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
     let serialized = target_failure.to_string();
     assert!(!serialized.contains("change-me"));
     assert!(!serialized.contains("resource not found"));
+}
+
+#[tokio::test]
+async fn ac_004_frontstage_tool_migration_binds_all_six_workspace_parameters_to_the_server() {
+    const TOOL_IDS: [&str; 6] = [
+        "frontstage_update_page_metadata",
+        "list_pages",
+        "create_tab",
+        "list_tabs",
+        "get_page_detail",
+        "create_page",
+    ];
+    const MIGRATION_SQL: &str = include_str!(
+        "../../../../crates/storage-durable/postgres/migrations/20260806120000_bind_frontstage_mcp_tools_to_instance_workspace.sql"
+    );
+    let (state, database_url) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state);
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    for tool_id in TOOL_IDS {
+        create_interface_tool_and_binding(
+            &app,
+            &cookie,
+            &csrf,
+            tool_id,
+            "list_frontstage_pages",
+            json!({"mappings":[{
+                "interface_param":"workspace_id",
+                "mcp_param":"workspace_id",
+                "required":true
+            }]}),
+        )
+        .await;
+    }
+
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    sqlx::raw_sql(MIGRATION_SQL).execute(&pool).await.unwrap();
+    let mappings = sqlx::query_as::<_, (String, Value)>(
+        "select tool_id, input_mapping from mcp_tools where tool_id = any($1) order by tool_id",
+    )
+    .bind(TOOL_IDS.as_slice())
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(mappings.len(), TOOL_IDS.len());
+    for (tool_id, input_mapping) in mappings {
+        let workspace_mapping = &input_mapping["mappings"][0];
+        assert_eq!(
+            workspace_mapping["source"],
+            json!({"kind":"server_binding","binding":"workspace_id"}),
+            "{tool_id}"
+        );
+        assert!(workspace_mapping.get("mcp_param").is_none(), "{tool_id}");
+    }
 }
 
 #[test]

@@ -334,7 +334,7 @@ pub(crate) async fn preview_library_bundle(
         .await?;
     let package = parse_downloaded_bundle(bytes).await?;
     let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let preview = McpManagementService::new(state.store.clone())
         .preview_bundle(PreviewMcpBundleCommand {
             actor_user_id: context.user.id,
@@ -380,7 +380,7 @@ pub(crate) async fn import_library_bundle(
         .await?;
     let package = parse_downloaded_bundle(bytes).await?;
     let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let report = McpManagementService::new(state.store.clone())
         .import_bundle(ImportMcpBundleCommand {
             actor_user_id: context.user.id,
@@ -557,7 +557,7 @@ async fn preview_official_bundle(
     require_csrf(&headers, &context)?;
     let source = load_mcp_bundle_source(&state, body).await?;
     let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let preview = McpManagementService::new(state.store.clone())
         .preview_bundle(PreviewMcpBundleCommand {
             actor_user_id: context.user.id,
@@ -607,7 +607,7 @@ async fn import_official_bundle(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let integrity_override = match &body {
         McpBundleSourceBody::InstalledExtension(selector) => selector
             .integrity_override
@@ -667,7 +667,7 @@ async fn import_official_bundle(
         if is_reconciled {
             service
                 .record_extension_bundle_import(
-                    context.user.id,
+                    &context.actor,
                     extension_installation_id,
                     &report.status,
                 )
@@ -838,7 +838,7 @@ async fn export_instance_bundle(
             McpInstanceBundleExportKind::OfficialBuiltin {
                 interface_catalog: super::mcp_interface_catalog_entries(
                     state.as_ref(),
-                    context.user.id,
+                    &context.actor,
                 )
                 .await?,
             }
@@ -915,7 +915,7 @@ async fn preview_uploaded_bundle(
     require_csrf(&headers, &context)?;
     let package = read_bundle_package(&mut multipart).await?;
     let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let preview = McpManagementService::new(state.store.clone())
         .preview_bundle(PreviewMcpBundleCommand {
             actor_user_id: context.user.id,
@@ -936,7 +936,7 @@ async fn import_uploaded_bundle(
     require_csrf(&headers, &context)?;
     let package = read_bundle_package(&mut multipart).await?;
     let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), context.user.id).await?;
+        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let report = McpManagementService::new(state.store.clone())
         .import_bundle(ImportMcpBundleCommand {
             actor_user_id: context.user.id,

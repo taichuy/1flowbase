@@ -218,6 +218,15 @@ where
         connection_id: Uuid,
     ) -> Result<domain::McpUpstreamConnectionRecord> {
         let actor = self.authorize_view(actor_user_id).await?;
+        self.get_upstream_connection_for_actor(&actor, connection_id)
+            .await
+    }
+
+    pub async fn get_upstream_connection_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        connection_id: Uuid,
+    ) -> Result<domain::McpUpstreamConnectionRecord> {
         self.repository
             .get_mcp_upstream_connection(actor.current_workspace_id, connection_id)
             .await?
@@ -362,6 +371,16 @@ where
         master_key: &str,
     ) -> Result<Option<serde_json::Value>> {
         let actor = self.authorize_view(actor_user_id).await?;
+        self.upstream_secret_for_actor(&actor, connection_id, master_key)
+            .await
+    }
+
+    pub async fn upstream_secret_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        connection_id: Uuid,
+        master_key: &str,
+    ) -> Result<Option<serde_json::Value>> {
         self.repository
             .get_mcp_upstream_secret(actor.current_workspace_id, connection_id, master_key)
             .await
@@ -374,6 +393,16 @@ where
         remote_tool_name: &str,
     ) -> Result<domain::McpToolAvailabilityStatus> {
         let actor = self.authorize_view(actor_user_id).await?;
+        self.upstream_proxy_availability_for_actor(&actor, connection_id, remote_tool_name)
+            .await
+    }
+
+    pub async fn upstream_proxy_availability_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        connection_id: Uuid,
+        remote_tool_name: &str,
+    ) -> Result<domain::McpToolAvailabilityStatus> {
         let Some(connection) = self
             .repository
             .get_mcp_upstream_connection(actor.current_workspace_id, connection_id)
@@ -576,6 +605,13 @@ where
         actor_user_id: Uuid,
     ) -> Result<domain::McpCatalogSnapshot> {
         let actor = self.authorize_view(actor_user_id).await?;
+        self.read_catalog_for_actor(&actor).await
+    }
+
+    pub async fn read_catalog_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<domain::McpCatalogSnapshot> {
         let workspace_id = actor.current_workspace_id;
         let instances = self.repository.list_mcp_instances(workspace_id).await?;
         let instance_record_ids = instances
@@ -1041,6 +1077,15 @@ where
         instance_id: &str,
     ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
         let actor = self.authorize_view(actor_user_id).await?;
+        self.get_instance_discovery_policy_for_actor(&actor, instance_id)
+            .await
+    }
+
+    pub async fn get_instance_discovery_policy_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        instance_id: &str,
+    ) -> Result<domain::McpInstanceDiscoveryPolicyRecord> {
         let instance = self
             .repository
             .get_mcp_instance(actor.current_workspace_id, instance_id)
@@ -1111,6 +1156,29 @@ where
         limit: Option<usize>,
     ) -> Result<Vec<domain::McpListItemSummary>> {
         let actor = self.authorize_view(actor_user_id).await?;
+        self.list_items_for_actor(
+            &actor,
+            instance_id,
+            path,
+            path_regex,
+            keywords,
+            depth,
+            limit,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_items_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        instance_id: Option<&str>,
+        path: Option<&str>,
+        path_regex: Option<&str>,
+        keywords: Option<&[String]>,
+        depth: Option<i32>,
+        limit: Option<usize>,
+    ) -> Result<Vec<domain::McpListItemSummary>> {
         let workspace_id = actor.current_workspace_id;
         let instance = match instance_id {
             Some(instance_id) => {
@@ -1256,7 +1324,15 @@ where
         &self,
         actor_user_id: Uuid,
     ) -> Result<domain::McpExportPackage> {
-        let snapshot = self.read_workspace_catalog(actor_user_id).await?;
+        let actor = self.authorize_view(actor_user_id).await?;
+        self.export_catalog_for_actor(&actor).await
+    }
+
+    pub async fn export_catalog_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<domain::McpExportPackage> {
+        let snapshot = self.read_catalog_for_actor(actor).await?;
         Ok(domain::McpExportPackage {
             instances: snapshot.instances,
             groups: snapshot.groups,

@@ -8,15 +8,18 @@ struct ParameterMapping<'a> {
 }
 
 pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> Value {
-    let mappings = input_mapping
-        .get("mappings")
-        .and_then(Value::as_array)
+    let configured_mappings = input_mapping.get("mappings").and_then(Value::as_array);
+    let mappings = configured_mappings
         .into_iter()
         .flatten()
         .filter_map(parameter_mapping)
         .collect::<Vec<_>>();
     if mappings.is_empty() {
-        return parameter_schema.clone();
+        return if configured_mappings.is_some_and(|mappings| !mappings.is_empty()) {
+            object_schema()
+        } else {
+            parameter_schema.clone()
+        };
     }
 
     let mut mapped_schema = object_schema();
@@ -45,8 +48,22 @@ pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> 
 
 fn parameter_mapping(value: &Value) -> Option<ParameterMapping<'_>> {
     let value = value.as_object()?;
+    if value
+        .get("source")
+        .and_then(|source| source.get("kind"))
+        .and_then(Value::as_str)
+        == Some("server_binding")
+    {
+        return None;
+    }
     let interface_param = value.get("interface_param")?.as_str()?.trim();
-    let mcp_param = value.get("mcp_param")?.as_str()?.trim();
+    let mcp_param = value
+        .get("source")
+        .filter(|source| source.get("kind").and_then(Value::as_str) == Some("mcp_argument"))
+        .and_then(|source| source.get("path"))
+        .or_else(|| value.get("mcp_param"))?
+        .as_str()?
+        .trim();
     if interface_param.is_empty() || mcp_param.is_empty() {
         return None;
     }
@@ -63,6 +80,29 @@ fn parameter_mapping(value: &Value) -> Option<ParameterMapping<'_>> {
             .and_then(Value::as_bool)
             .unwrap_or(false),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ac_001_mapped_schema_omits_server_bound_workspace_id() {
+        let schema = mapped_schema(
+            &json!({
+                "type":"object",
+                "properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"},"page_id":{"type":"string"}}}}
+            }),
+            &json!({"mappings":[
+                {"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true},
+                {"interface_param":"page_id","mcp_param":"page_id","required":true}
+            ]}),
+        );
+
+        assert!(schema.pointer("/properties/workspace_id").is_none());
+        assert!(schema.pointer("/properties/page_id").is_some());
+        assert_eq!(schema["required"], json!(["page_id"]));
+    }
 }
 
 fn source_field_schema(

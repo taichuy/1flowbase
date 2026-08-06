@@ -3,12 +3,8 @@ use crate::openapi_interface::OpenApiCapabilitySource;
 
 pub(super) async fn mcp_interface_catalog_entries(
     state: &ApiState,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
 ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
-    let actor = state
-        .store
-        .load_actor_context_for_user(actor_user_id)
-        .await?;
     let mut entries = build_openapi_capability_catalog(state, actor.current_workspace_id)
         .await?
         .into_iter()
@@ -105,10 +101,10 @@ pub(super) fn mcp_interface_entry_from_capability(
 
 pub(crate) async fn bindable_mcp_interface(
     state: &ApiState,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     interface_id: &str,
 ) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
-    let entry = mcp_interface_catalog_entries(state, actor_user_id)
+    let entry = mcp_interface_catalog_entries(state, actor)
         .await?
         .into_iter()
         .find(|entry| entry.interface_id == interface_id)
@@ -125,9 +121,9 @@ pub(crate) async fn bindable_mcp_interface(
 
 pub(super) async fn mcp_interface_operation_map(
     state: &ApiState,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
 ) -> Result<HashMap<String, String>, ApiError> {
-    Ok(mcp_interface_catalog_entries(state, actor_user_id)
+    Ok(mcp_interface_catalog_entries(state, actor)
         .await?
         .into_iter()
         .map(|entry| {
