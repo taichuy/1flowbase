@@ -21,6 +21,7 @@ import {
   createFrontstageUnavailableBlockContext
 } from '../../lib/native-trusted-block-react-adapter';
 import {
+  createFrontstageNativeReactModuleRegistry,
   createFrontstageNativeTrustedBlockModuleMap,
   createFrontstageNativeTrustedBlockRuntimeFactory,
   getFrontstageNativeTrustedBlockRuntimeCompatibility
@@ -60,6 +61,34 @@ function createBlockRoot(): HTMLDivElement {
 }
 
 describe('frontstage native trusted block runtime factory', () => {
+  test('AC-001 accepts a host component contract independently of the installed package version', () => {
+    expect(() =>
+      createFrontstageNativeReactModuleRegistry([
+        {
+          module_source: 'antd',
+          module_version: '5.29.3',
+          binding: 'host',
+          assets: [],
+          exports: ['Button']
+        }
+      ])
+    ).not.toThrow();
+  });
+
+  test('AC-002 rejects a host component contract when a required export is unavailable', () => {
+    expect(() =>
+      createFrontstageNativeReactModuleRegistry([
+        {
+          module_source: 'antd',
+          module_version: 'component-contract-1',
+          binding: 'host',
+          assets: [],
+          exports: ['RemovedComponent']
+        }
+      ])
+    ).toThrow(/Host component contract exports do not match: antd/u);
+  });
+
   test('exposes a serializable host compatibility manifest for injected modules', () => {
     const manifest = getFrontstageNativeTrustedBlockRuntimeCompatibility();
 

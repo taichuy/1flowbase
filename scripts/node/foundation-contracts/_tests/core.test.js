@@ -25,6 +25,15 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
     assert.deepEqual(plan.selectedFoundations, [foundation]);
   }
 
+  for (const nativeReactHostContractFile of [
+    'web/app/package.json',
+    'web/pnpm-lock.yaml',
+    'api/plugins/capability-plugins/1flowbase/manifest.yaml',
+  ]) {
+    const plan = buildFoundationPlan({ changedFiles: [nativeReactHostContractFile] });
+    assert.deepEqual(plan.selectedFoundations, ['native-react']);
+  }
+
   const legalPlan = buildFoundationPlan({
     changedFiles: [
       'docs/quality-gates.md',

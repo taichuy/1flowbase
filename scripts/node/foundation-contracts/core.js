@@ -80,6 +80,8 @@ const FOUNDATION_DEFINITIONS = {
       }
       return /^web\/packages\/(?:page-runtime|block-sdk)\/src\/.*\.(?:ts|tsx)$/u.test(filePath)
         || /^web\/app\/src\/(?:features\/frontstage|shared\/code-block)\/.*\.(?:ts|tsx)$/u.test(filePath)
+        || /^web\/(?:app\/package\.json|pnpm-lock\.yaml)$/u.test(filePath)
+        || filePath === 'api/plugins/capability-plugins/1flowbase/manifest.yaml'
         || /^scripts\/node\/docker-deploy\/.*native-react/u.test(filePath);
     },
     fast: [

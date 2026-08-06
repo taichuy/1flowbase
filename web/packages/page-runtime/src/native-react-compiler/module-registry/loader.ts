@@ -104,7 +104,7 @@ export function createNativeReactModuleRegistry({
       throw registryError(
         'invalid_dependency_lock',
         `dependencyLock.${registration.module_source}`,
-        `Host ABI module is unavailable: ${registration.module_source}.`
+        `Host component contract module is unavailable: ${registration.module_source}.`
       );
     }
     if (
@@ -117,7 +117,7 @@ export function createNativeReactModuleRegistry({
       throw registryError(
         'invalid_dependency_lock',
         `dependencyLock.${registration.module_source}.exports`,
-        `Host ABI module exports do not match: ${registration.module_source}.`
+        `Host component contract exports do not match: ${registration.module_source}.`
       );
     }
     if (
@@ -485,7 +485,7 @@ async function validateHostModule(
     throw registryError(
       'module_not_registered',
       `modules.${registration.module_source}`,
-      `Host ABI module is unavailable: ${registration.module_source}.`
+      `Host component contract module is unavailable: ${registration.module_source}.`
     );
   }
   for (const exportName of registration.exports) {
@@ -493,7 +493,7 @@ async function validateHostModule(
       throw registryError(
         'module_export_missing',
         `modules.${registration.module_source}.exports.${exportName}`,
-        `Host ABI export is missing: ${registration.module_source}.${exportName}.`
+        `Host component contract export is missing: ${registration.module_source}.${exportName}.`
       );
     }
   }
