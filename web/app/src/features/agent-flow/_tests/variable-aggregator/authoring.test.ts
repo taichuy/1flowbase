@@ -91,7 +91,7 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     expect(getAgentFlowNodeTypeIcon('variable_aggregator')).not.toBeNull();
   });
 
-  test('AC-009 atomically saves group truth and materializes ordered outputs', () => {
+  test('AC-010 atomically saves group truth and materializes same-name ordered outputs', () => {
     const initialDocument = appendAggregator(
       createDefaultAgentFlowDocument({ flowId: 'agent-flow-aggregator' })
     );
@@ -190,7 +190,7 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     expect(copy?.outputs).toEqual(source.outputs);
   });
 
-  test('AC-010 rejects empty and incompatible candidates without legacy compatibility', () => {
+  test('AC-011 rejects empty and incompatible candidates without legacy compatibility', () => {
     const document = appendAggregator(
       createDefaultAgentFlowDocument({ flowId: 'validate-aggregator' })
     );
@@ -202,25 +202,19 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       throw new Error('Variable Aggregator fixture is missing');
     }
 
-    const mismatchIssue = validateDocument(document).find((issue) =>
-      isVariableAggregatorCandidateTypeMismatchIssue(issue)
-    );
-
-    expect(mismatchIssue?.id).toMatch(
-      new RegExp(`^${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:`)
-    );
-
-    aggregator.bindings.groups = {
-      kind: 'variable_groups',
-      value: [{ key: 'group1', valueType: 'string', candidates: [[]] }]
-    };
+    const emptyCandidateIssues = validateDocument(document);
 
     expect(
-      validateDocument(document).some(
+      emptyCandidateIssues.some(
         (issue) =>
           issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
       )
     ).toBe(true);
+    expect(
+      emptyCandidateIssues.some((issue) =>
+        isVariableAggregatorCandidateTypeMismatchIssue(issue)
+      )
+    ).toBe(false);
 
     aggregator.bindings.groups = {
       kind: 'variable_groups',
@@ -233,12 +227,13 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       ]
     };
 
-    expect(
-      validateDocument(document).some(
-        (issue) =>
-          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
-      )
-    ).toBe(true);
+    const mismatchIssue = validateDocument(document).find((issue) =>
+      isVariableAggregatorCandidateTypeMismatchIssue(issue)
+    );
+
+    expect(mismatchIssue?.id).toMatch(
+      new RegExp(`^${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:`)
+    );
 
     aggregator.bindings.groups = {
       kind: 'variable_groups',

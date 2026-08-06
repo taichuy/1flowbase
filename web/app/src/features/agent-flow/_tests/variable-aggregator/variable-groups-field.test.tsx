@@ -64,7 +64,7 @@ function Harness({ initial }: { initial: FlowVariableGroupDocument[] }) {
 }
 
 describe('VariableGroupsField', () => {
-  test('AC-008 AC-009 keeps immutable group keys and allocates max groupN plus one', () => {
+  test('AC-010 keeps immutable group keys and allocates max groupN plus one', () => {
     render(
       <Harness
         initial={[
@@ -88,7 +88,7 @@ describe('VariableGroupsField', () => {
     expect(screen.getByTestId('groups-value')).toHaveTextContent('group4');
   });
 
-  test('AC-010 preserves an incompatible selector on type change and reports its row error', () => {
+  test('AC-011 preserves an incompatible selector on type change and reports its row error', () => {
     render(
       <Harness
         initial={[
@@ -129,15 +129,20 @@ describe('VariableGroupsField', () => {
     ).toBeInTheDocument();
   });
 
-  test('AC-010 filters selector menus by declared type and maps array wildcard declarations', () => {
+  test('AC-011 filters selector menus by declared type and maps array wildcard declarations', async () => {
     const { rerender } = render(
       <Harness
         initial={[{ key: 'group1', valueType: 'string', candidates: [[]] }]}
       />
     );
 
-    fireEvent.mouseDown(screen.getByLabelText('Groups-group1-1'));
-    expect(screen.getByText('text')).toBeInTheDocument();
+    const stringSelector = screen.getByRole('combobox', {
+      name: 'Groups-group1-1'
+    });
+    fireEvent.click(stringSelector);
+    expect(stringSelector).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(await screen.findByText('Source'));
+    expect(await screen.findByText('text')).toBeInTheDocument();
     expect(screen.queryByText('count')).toBeNull();
     expect(screen.queryByText('payload')).toBeNull();
 
@@ -147,8 +152,15 @@ describe('VariableGroupsField', () => {
         initial={[{ key: 'group1', valueType: 'array', candidates: [[]] }]}
       />
     );
-    fireEvent.mouseDown(screen.getByLabelText('Groups-group1-1'));
-    expect(screen.getByText('items')).toBeInTheDocument();
+    const arraySelector = screen.getByRole('combobox', {
+      name: 'Groups-group1-1'
+    });
+    fireEvent.click(arraySelector);
+    expect(arraySelector).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(await screen.findByText('Source'));
+    expect(await screen.findByText('items')).toBeInTheDocument();
+    expect(screen.queryByText('count')).toBeNull();
+    expect(screen.queryByText('payload')).toBeNull();
   });
 
   test('AC-011 keeps at least one group and one candidate while exposing ordered row controls', () => {

@@ -254,6 +254,7 @@ export function VariableGroupsField({
         );
       })}
       <Button
+        aria-label={i18nText('agentFlow', 'auto.add_variable_group')}
         block
         icon={<PlusOutlined />}
         type="dashed"
