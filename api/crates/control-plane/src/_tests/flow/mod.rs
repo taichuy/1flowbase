@@ -416,6 +416,65 @@ async fn preview_agent_flow_template_marks_unsupported_node_type_as_unresolved_n
 }
 
 #[tokio::test]
+async fn ac_006_preview_agent_flow_template_recognizes_variable_aggregator_as_builtin() {
+    let owner_id = Uuid::now_v7();
+    let service = FlowService::for_tests();
+    let application = service
+        .seed_application_for_actor(owner_id, "Variable Aggregator Template")
+        .await
+        .unwrap();
+    let mut template = service
+        .export_agent_flow_template(owner_id, application.id)
+        .await
+        .unwrap();
+    template.flow_document["graph"]["nodes"][1] = json!({
+        "id": "node-llm",
+        "type": "variable_aggregator",
+        "alias": "Variable Aggregator",
+        "description": "",
+        "containerId": null,
+        "position": { "x": 360, "y": 220 },
+        "configVersion": 1,
+        "config": {},
+        "bindings": {
+            "candidates": {
+                "kind": "selector_list",
+                "value": [["node-start", "query"], ["node-start", "inputs"]]
+            }
+        },
+        "outputs": [{ "name": "value" }]
+    });
+
+    let preview = service
+        .preview_agent_flow_template(PreviewAgentFlowTemplateCommand {
+            actor_user_id: owner_id,
+            template,
+            resources: AgentFlowTemplateResourceSnapshot::default(),
+        })
+        .await
+        .unwrap();
+    let dependency = preview
+        .dependencies
+        .iter()
+        .find(|dependency| {
+            dependency.dependency.node_type.as_deref() == Some("variable_aggregator")
+        })
+        .expect("variable aggregator must be emitted as a builtin dependency");
+
+    assert!(preview.unresolved_nodes.is_empty());
+    assert_eq!(dependency.dependency.kind, "builtin_node");
+    assert_eq!(dependency.status, "ready");
+    assert_eq!(
+        preview.document["graph"]["nodes"][1]["bindings"]["candidates"]["kind"],
+        "selector_list"
+    );
+    assert_eq!(
+        preview.document["graph"]["nodes"][1]["outputs"],
+        json!([{ "name": "value" }])
+    );
+}
+
+#[tokio::test]
 async fn preview_agent_flow_template_rejects_dangling_edge_target() {
     let owner_id = Uuid::now_v7();
     let service = FlowService::for_tests();

@@ -7,7 +7,8 @@ use control_plane::{
     frontend_block_catalog::{FrontendBlockCatalogService, ListFrontendBlockCatalogQuery},
     js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery},
     node_contribution::{
-        ApplicationNodeAuthoringStatus, ApplicationNodeCatalogService, ListApplicationNodesQuery,
+        ApplicationNodeAuthoringStatus, ApplicationNodeCatalogService,
+        ApplicationNodeRuntimeStatus, ApplicationNodeSourceKind, ListApplicationNodesQuery,
     },
     ports::{
         AuthRepository, FrontendBlockCatalogRepository, JsDependencyRepository,
@@ -344,6 +345,58 @@ async fn ac_001_application_node_catalog_distinguishes_published_and_hidden_buil
             ApplicationNodeAuthoringStatus::Published,
             "{published_type} must remain published",
         );
+    }
+}
+
+#[tokio::test]
+async fn ac_005_ac_006_variable_aggregator_is_shared_with_the_exact_public_contract() {
+    for application_type in [
+        domain::ApplicationType::AgentFlow,
+        domain::ApplicationType::Workflow,
+    ] {
+        let workspace_id = Uuid::now_v7();
+        let repository = MemoryNodeContributionRepository::new(
+            actor_with_permissions(workspace_id, &[]),
+            Vec::new(),
+        )
+        .with_console_operation("other.node-contributions", "node_contributions.view");
+
+        let view = ApplicationNodeCatalogService::new(repository)
+            .list_application_nodes(ListApplicationNodesQuery {
+                actor_user_id: Uuid::now_v7(),
+                application_type,
+            })
+            .await
+            .unwrap();
+        let aggregator = view
+            .nodes
+            .iter()
+            .find(|node| node.node_type == "variable_aggregator")
+            .expect("variable aggregator must be shared by both application catalogs");
+
+        assert_eq!(aggregator.source_kind, ApplicationNodeSourceKind::Builtin);
+        assert_eq!(
+            aggregator.authoring_status,
+            ApplicationNodeAuthoringStatus::Published
+        );
+        assert_eq!(
+            aggregator.runtime_status,
+            ApplicationNodeRuntimeStatus::Ready
+        );
+        assert!(aggregator.field_contract.config_fields.is_empty());
+        assert_eq!(aggregator.field_contract.input_fields.len(), 1);
+        assert_eq!(
+            aggregator.field_contract.input_fields[0].key,
+            "bindings.candidates"
+        );
+        assert!(aggregator.field_contract.input_fields[0].required);
+        assert_eq!(
+            aggregator.field_contract.input_fields[0].value_types,
+            vec!["selector_list"]
+        );
+        assert_eq!(aggregator.field_contract.output_fields.len(), 1);
+        assert_eq!(aggregator.field_contract.output_fields[0].key, "value");
+        assert!(aggregator.field_contract.output_fields[0].required);
     }
 }
 

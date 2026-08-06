@@ -179,6 +179,7 @@ const SHARED_PROCESSING_NODES: &[BuiltinNodeSpec] = &[
     published_ready("data_model_delete", "Data Model Delete", "data"),
     published_ready("sql", "SQL", "data"),
     published_ready("variable_assigner", "Variable Assigner", "data"),
+    published_ready("variable_aggregator", "Variable Aggregator", "data"),
     hidden_unavailable("parameter_extractor", "Parameter Extractor", "data"),
     hidden_unavailable("iteration", "Iteration", "control"),
     hidden_unavailable("loop", "Loop", "control"),
@@ -374,6 +375,21 @@ fn builtin_field_contract(node_type: &str) -> ApplicationNodeFieldContract {
             )],
             input_fields: vec![field("bindings.sql", true, &["templated_text"], &[])],
             output_fields: vec![field("outputs[]", false, &["array"], &[])],
+        },
+        "variable_aggregator" => ApplicationNodeFieldContract {
+            config_fields: Vec::new(),
+            input_fields: vec![field(
+                "bindings.candidates",
+                true,
+                &["selector_list"],
+                &[],
+            )],
+            output_fields: vec![field(
+                "value",
+                true,
+                &["string", "number", "boolean", "object", "array"],
+                &[],
+            )],
         },
         _ => ApplicationNodeFieldContract {
             config_fields: vec![field("config", true, &["object"], &[])],

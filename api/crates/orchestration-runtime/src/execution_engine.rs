@@ -62,6 +62,7 @@ mod node_failure_policy;
 mod run_input;
 #[cfg(test)]
 mod tests;
+pub(crate) mod variable_aggregator;
 mod variable_assignment;
 mod visible_internal_llm_tools;
 
@@ -87,6 +88,7 @@ use node_failure_policy::{apply_node_error_policy, NodeErrorPolicyApplication};
 pub(crate) use run_input::materialize_start_builtin_defaults;
 pub use run_input::{normalize_plan_variable_pool, ExecutionRuntimeContext};
 use run_input::{start_node_execution_input, synchronize_runtime_global_variables};
+use variable_aggregator::{execute_variable_aggregator_node, variable_aggregator_input_payload};
 pub(crate) use variable_assignment::execute_variable_assignment_node;
 use visible_internal_llm_tools::*;
 
@@ -601,7 +603,11 @@ where
         }
 
         let (resolved_inputs, answer_binding_error_payload) =
-            match resolve_node_inputs(node, &variable_pool) {
+            match if node.node_type == "variable_aggregator" {
+                variable_aggregator_input_payload(node)
+            } else {
+                resolve_node_inputs(node, &variable_pool)
+            } {
                 Ok(inputs) => (inputs, None),
                 Err(_) if node.node_type == "answer" => {
                     let resolution = resolve_answer_node_inputs(node, &variable_pool);
@@ -942,6 +948,49 @@ where
                     debug_payload: json!({}),
                     provider_events: Vec::new(),
                 });
+            }
+            "variable_aggregator" => {
+                let execution = execute_variable_aggregator_node(node, &variable_pool)?;
+                node_traces.push(NodeExecutionTrace {
+                    node_id: node.node_id.clone(),
+                    node_type: node.node_type.clone(),
+                    node_alias: node.alias.clone(),
+                    input_payload: Value::Object(execution.input_payload),
+                    output_payload: execution.output_payload.clone(),
+                    error_payload: execution.error_payload.clone(),
+                    metrics_payload: json!({ "preview_mode": true }),
+                    debug_payload: execution.debug_payload,
+                    provider_events: Vec::new(),
+                });
+
+                if let Some(error_payload) = execution.error_payload {
+                    complete_latest_node_trace(lifecycle, &node_traces).await?;
+                    if let Some(failure) = apply_node_error_policy(NodeErrorPolicyApplication {
+                        plan,
+                        failed_node_index: index,
+                        active_node_ids: &mut active_node_ids,
+                        variable_pool: &mut variable_pool,
+                        pending_failure: &mut pending_failure,
+                        node,
+                        output_payload: &execution.output_payload,
+                        error_payload,
+                        failure_projection: LlmFailureProjection::NoNodeOutput,
+                    })? {
+                        return Ok(FlowDebugExecutionOutcome {
+                            stop_reason: ExecutionStopReason::Failed(failure),
+                            variable_pool,
+                            checkpoint_snapshot: None,
+                            operation_terminal: None,
+                            node_traces,
+                        });
+                    }
+                    continue;
+                }
+
+                variable_pool.insert(
+                    node.node_id.clone(),
+                    project_node_variable_payload(node, &execution.output_payload)?,
+                );
             }
             "template_transform" | "answer" | "tool_result" => {
                 let output_key = first_output_key(node);

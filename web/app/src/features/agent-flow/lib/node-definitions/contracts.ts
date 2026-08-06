@@ -897,6 +897,47 @@ function createVariableAssignerContract(): NodeRuntimeUiContract {
   });
 }
 
+function createVariableAggregatorContract(): NodeRuntimeUiContract {
+  const outputs = [
+    {
+      key: 'value',
+      title: i18nText('agentFlow', 'auto.value'),
+      valueType: 'unknown'
+    }
+  ];
+
+  return createNodeRuntimeContract({
+    type: 'variable_aggregator',
+    title: i18nText('agentFlow', 'auto.variable_aggregator'),
+    description: i18nText(
+      'agentFlow',
+      'auto.variable_aggregator_description'
+    ),
+    category: 'data',
+    config: {},
+    bindings: {
+      candidates: {
+        kind: 'selector_list',
+        value: []
+      }
+    },
+    outputs,
+    panelSections: [
+      basicsPanelSection,
+      panelSection('inputs', i18nText('agentFlow', 'auto.input'), [
+        panelField({
+          key: 'bindings.candidates',
+          title: i18nText('agentFlow', 'auto.variable_aggregator_candidates'),
+          renderer: 'selector_list',
+          valueType: 'array',
+          required: true
+        })
+      ]),
+      outputsPanelSection(outputs)
+    ]
+  });
+}
+
 function createParameterExtractorContract(): NodeRuntimeUiContract {
   const outputs = [
     {
@@ -1158,6 +1199,7 @@ export const builtinNodeRuntimeContractTypes = [
   'data_model_update',
   'data_model_delete',
   'sql',
+  'variable_aggregator',
   'variable_assigner',
   'parameter_extractor',
   'iteration',
@@ -1192,6 +1234,7 @@ export const BUILTIN_NODE_RUNTIME_CONTRACTS: Record<
   data_model_update: createDataModelContract('data_model_update'),
   data_model_delete: createDataModelContract('data_model_delete'),
   sql: createSqlContract(),
+  variable_aggregator: createVariableAggregatorContract(),
   variable_assigner: createVariableAssignerContract(),
   parameter_extractor: createParameterExtractorContract(),
   iteration: createIterationContract(),

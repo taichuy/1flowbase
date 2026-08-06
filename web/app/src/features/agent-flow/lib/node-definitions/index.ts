@@ -20,6 +20,7 @@ import { startNodeDefinition } from './nodes/start';
 import { templateTransformNodeDefinition } from './nodes/template-transform';
 import { toolNodeDefinition } from './nodes/tool';
 import { toolResultNodeDefinition } from './nodes/tool-result';
+import { variableAggregatorNodeDefinition } from './nodes/variable-aggregator';
 import { variableAssignerNodeDefinition } from './nodes/variable-assigner';
 import { pluginNodeDefinition } from '../plugin-node-definitions';
 import type { InspectorSectionKey, NodeDefinitionMap } from './types';
@@ -48,6 +49,7 @@ export const nodeDefinitions: NodeDefinitionMap = {
   tool_result: toolResultNodeDefinition,
   ...dataModelNodeDefinitions,
   sql: sqlNodeDefinition,
+  variable_aggregator: variableAggregatorNodeDefinition,
   variable_assigner: variableAssignerNodeDefinition,
   parameter_extractor: parameterExtractorNodeDefinition,
   iteration: iterationNodeDefinition,

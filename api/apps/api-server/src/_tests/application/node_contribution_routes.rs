@@ -419,6 +419,33 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
     assert_eq!(unavailable["runtime_status"], "unavailable");
     assert_eq!(unavailable["authoring_status"], "hidden");
 
+    // Root AC-005/006: the shared catalog publishes one exact variable aggregator contract.
+    let agent_flow_aggregator = agent_flow_nodes
+        .iter()
+        .find(|entry| entry["node_type"] == "variable_aggregator")
+        .expect("Agent Flow catalog must publish the variable aggregator");
+    assert_eq!(agent_flow_aggregator["source_kind"], "builtin");
+    assert_eq!(agent_flow_aggregator["authoring_status"], "published");
+    assert_eq!(agent_flow_aggregator["runtime_status"], "ready");
+    assert_eq!(
+        agent_flow_aggregator["field_contract"],
+        json!({
+            "config_fields": [],
+            "input_fields": [{
+                "key": "bindings.candidates",
+                "required": true,
+                "value_types": ["selector_list"],
+                "allowed_values": []
+            }],
+            "output_fields": [{
+                "key": "value",
+                "required": true,
+                "value_types": ["string", "number", "boolean", "object", "array"],
+                "allowed_values": []
+            }]
+        })
+    );
+
     let plugin = agent_flow_nodes
         .iter()
         .find(|entry| entry["source_kind"] == "plugin")
@@ -483,6 +510,14 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
     assert!(workflow_nodes
         .iter()
         .any(|entry| entry["node_type"] == "sql"));
+    let workflow_aggregator = workflow_nodes
+        .iter()
+        .find(|entry| entry["node_type"] == "variable_aggregator")
+        .expect("Workflow catalog must publish the shared variable aggregator");
+    assert_eq!(
+        workflow_aggregator["field_contract"],
+        agent_flow_aggregator["field_contract"]
+    );
 
     // AC-003: Workflow Start exposes the exact persisted flow-document field vocabulary.
     let workflow_start = workflow_nodes

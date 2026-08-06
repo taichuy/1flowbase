@@ -45,6 +45,7 @@ const EXECUTABLE_NODE_TYPES: &[&str] = &[
     "data_model_delete",
     "sql",
     "variable_assigner",
+    "variable_aggregator",
     "human_input",
     "plugin_node",
     "unresolved_node",

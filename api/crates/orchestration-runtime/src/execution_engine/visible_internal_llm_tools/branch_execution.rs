@@ -193,7 +193,11 @@ where
                 }
             }
         }
-        let resolved_inputs = match resolve_node_inputs(node, &variable_pool) {
+        let resolved_inputs = match if node.node_type == "variable_aggregator" {
+            variable_aggregator_input_payload(node)
+        } else {
+            resolve_node_inputs(node, &variable_pool)
+        } {
             Ok(inputs) => inputs,
             Err(error) => {
                 let error_payload = visible_internal_llm_tool_node_error(
@@ -507,6 +511,20 @@ where
                 execute_variable_assignment_node(node, resolved_inputs, variable_pool)?,
             ),
         ))),
+        "variable_aggregator" => {
+            let execution = execute_variable_aggregator_node(node, variable_pool)?;
+            if let Some(error_payload) = execution.error_payload {
+                return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
+            }
+            Ok(VisibleInternalLlmToolNodeExecution::Completed(Box::new(
+                VisibleInternalLlmToolNodeOutput {
+                    input_payload: Value::Object(execution.input_payload),
+                    output_payload: execution.output_payload,
+                    metrics_payload: None,
+                    debug_payload: Some(execution.debug_payload),
+                },
+            )))
+        }
         unsupported => Ok(VisibleInternalLlmToolNodeExecution::Failed(json!({
             "message": format!("visible internal LLM tool branch node type {unsupported} is not supported"),
         }))),

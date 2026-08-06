@@ -31,6 +31,7 @@ const BUILTIN_NODE_TYPES: &[&str] = &[
     "data_model_update",
     "data_model_delete",
     "variable_assigner",
+    "variable_aggregator",
     "human_input",
 ];
 

@@ -19,6 +19,88 @@ pub(super) fn visible_internal_llm_tool_plan_with_result() -> CompiledPlan {
     plan
 }
 
+pub(super) fn visible_internal_llm_tool_plan_with_variable_aggregator() -> CompiledPlan {
+    let mut plan = visible_internal_llm_tool_plan();
+    plan.topological_order.insert(
+        plan.topological_order
+            .iter()
+            .position(|node_id| node_id == "node-tool-result")
+            .expect("tool result should be ordered"),
+        "node-aggregator".to_string(),
+    );
+    plan.nodes
+        .get_mut("node-mounted-llm")
+        .expect("mounted llm should exist")
+        .downstream_node_ids = vec!["node-aggregator".to_string()];
+    let tool_result = plan
+        .nodes
+        .get_mut("node-tool-result")
+        .expect("tool result should exist");
+    tool_result.dependency_node_ids = vec!["node-aggregator".to_string()];
+    tool_result.bindings = BTreeMap::from([(
+        "result_template".to_string(),
+        CompiledBinding {
+            i18n_text_ref: None,
+            kind: "templated_text".to_string(),
+            selector_paths: vec![vec!["node-aggregator".to_string(), "value".to_string()]],
+            raw_value: json!("aggregated: {{ node-aggregator.value }}"),
+        },
+    )]);
+    plan.nodes.insert(
+        "node-aggregator".to_string(),
+        CompiledNode {
+            node_id: "node-aggregator".to_string(),
+            node_type: "variable_aggregator".to_string(),
+            alias: "Mounted first available".to_string(),
+            container_id: None,
+            dependency_node_ids: vec!["node-mounted-llm".to_string()],
+            downstream_node_ids: vec!["node-tool-result".to_string()],
+            bindings: BTreeMap::from([(
+                "candidates".to_string(),
+                CompiledBinding {
+                    i18n_text_ref: None,
+                    kind: "selector_list".to_string(),
+                    raw_value: json!([["node-missing", "value"], ["node-mounted-llm", "text"]]),
+                    selector_paths: vec![
+                        vec!["node-missing".to_string(), "value".to_string()],
+                        vec!["node-mounted-llm".to_string(), "text".to_string()],
+                    ],
+                },
+            )]),
+            outputs: vec![CompiledOutput {
+                key: "value".to_string(),
+                title: "Value".to_string(),
+                value_type: "any".to_string(),
+                selector: vec!["value".to_string()],
+                json_schema: None,
+            }],
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        },
+    );
+    plan.edges
+        .retain(|edge| edge.edge_id != "edge-mounted-tool-result");
+    plan.edges.extend([
+        CompiledEdge {
+            edge_id: "edge-mounted-aggregator".to_string(),
+            source: "node-mounted-llm".to_string(),
+            target: "node-aggregator".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+        CompiledEdge {
+            edge_id: "edge-aggregator-tool-result".to_string(),
+            source: "node-aggregator".to_string(),
+            target: "node-tool-result".to_string(),
+            source_handle: None,
+            target_handle: None,
+        },
+    ]);
+    plan
+}
+
 pub(super) fn visible_internal_llm_tool_plan() -> CompiledPlan {
     let mut plan = llm_answer_plan();
     plan.topological_order = vec![
