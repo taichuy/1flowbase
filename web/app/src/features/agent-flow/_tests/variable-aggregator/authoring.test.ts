@@ -10,7 +10,11 @@ import { createNodeDocument } from '../../lib/document/node-factory';
 import { duplicateNodeSubgraph } from '../../lib/document/transforms/duplicate';
 import { getAgentFlowNodeTypeIcon } from '../../lib/node-type-icons';
 import { getBuiltinNodeRuntimeContract } from '../../lib/node-definitions/contracts';
-import { validateDocument } from '../../lib/validate-document';
+import {
+  isVariableAggregatorCandidateTypeMismatchIssue,
+  validateDocument,
+  VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE
+} from '../../lib/validate-document';
 import { listVisibleSelectorOptions } from '../../lib/selector-options';
 import { createAgentFlowNodeSchemaAdapter } from '../../schema/node-schema-adapter';
 import { resolveAgentFlowNodeSchema } from '../../schema/node-schema-registry';
@@ -107,7 +111,7 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       value: [
         ...STRING_GROUPS,
         {
-          key: 'group3',
+          key: 'group2',
           valueType: 'array',
           candidates: [['node-start', 'files']]
         }
@@ -123,7 +127,7 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       value: [
         ...STRING_GROUPS,
         {
-          key: 'group3',
+          key: 'group2',
           valueType: 'array',
           candidates: [['node-start', 'files']]
         }
@@ -131,8 +135,15 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     });
     expect(savedNode?.outputs).toEqual([
       { key: 'group1', title: 'group1', valueType: 'string' },
-      { key: 'group3', title: 'group3', valueType: 'array' }
+      { key: 'group2', title: 'group2', valueType: 'array' }
     ]);
+    expect(
+      validateDocument(savedDocument).filter(
+        (issue) =>
+          issue.nodeId === savedNode?.id &&
+          issue.fieldKey === 'config.output_contract'
+      )
+    ).toEqual([]);
   });
 
   test('AC-011 duplicates group candidates independently and remaps internal selectors', () => {
@@ -191,12 +202,13 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       throw new Error('Variable Aggregator fixture is missing');
     }
 
-    expect(
-      validateDocument(document).some(
-        (issue) =>
-          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
-      )
-    ).toBe(true);
+    const mismatchIssue = validateDocument(document).find((issue) =>
+      isVariableAggregatorCandidateTypeMismatchIssue(issue)
+    );
+
+    expect(mismatchIssue?.id).toMatch(
+      new RegExp(`^${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:`)
+    );
 
     aggregator.bindings.groups = {
       kind: 'variable_groups',
@@ -234,9 +246,8 @@ describe('Variable Aggregator shared authoring fixtures', () => {
     };
 
     expect(
-      validateDocument(document).filter(
-        (issue) =>
-          issue.nodeId === aggregator.id && issue.fieldKey === 'bindings.groups'
+      validateDocument(document).filter((issue) =>
+        isVariableAggregatorCandidateTypeMismatchIssue(issue)
       )
     ).toEqual([]);
   });

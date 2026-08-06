@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 
 import { useDraftSync } from '../../hooks/interactions/use-draft-sync';
+import { createNodeDocument } from '../../lib/document/node-factory';
 import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
@@ -27,6 +28,38 @@ function createInitialState(
   };
 }
 
+function createVariableAggregatorDocument(valueType: 'string' | 'number') {
+  const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+  const aggregator = createNodeDocument(
+    'variable_aggregator',
+    'node-variable-aggregator'
+  );
+
+  aggregator.bindings.groups = {
+    kind: 'variable_groups',
+    value: [
+      {
+        key: 'group1',
+        valueType,
+        candidates: [['node-llm', 'text']]
+      }
+    ]
+  };
+  aggregator.outputs = [{ key: 'group1', title: 'group1', valueType }];
+  document.graph.nodes.push(aggregator);
+  document.graph.edges.push({
+    id: 'edge-llm-variable-aggregator',
+    source: 'node-llm',
+    target: aggregator.id,
+    sourceHandle: null,
+    targetHandle: null,
+    containerId: null,
+    points: []
+  });
+
+  return document;
+}
+
 beforeEach(() => {
   resetAuthStore();
   useAuthStore.setState({
@@ -40,6 +73,98 @@ afterEach(() => {
 });
 
 describe('useDraftSync', () => {
+  test('AC-011 blocks manual save for an incompatible Variable Aggregator candidate', async () => {
+    const currentDocument = createVariableAggregatorDocument('number');
+    const saveDraftOverride = vi.fn(async (input) =>
+      createInitialState(input.document)
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useDraftSync({
+          applicationId: 'app-1',
+          saveDraftOverride,
+          getCurrentDocument: () => currentDocument
+        }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      expect(await result.current.saveNow()).toBe(false);
+    });
+
+    expect(saveDraftOverride).not.toHaveBeenCalled();
+  });
+
+  test('AC-011 blocks autosave for an incompatible Variable Aggregator candidate', async () => {
+    vi.useFakeTimers();
+    const currentDocument = createVariableAggregatorDocument('number');
+    const saveDraftOverride = vi.fn(async (input) =>
+      createInitialState(input.document)
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        draftSync: useDraftSync({
+          applicationId: 'app-1',
+          saveDraftOverride
+        }),
+        setWorkingDocument: useAgentFlowEditorStore(
+          (state) => state.setWorkingDocument
+        )
+      }),
+      { wrapper }
+    );
+
+    act(() => {
+      result.current.setWorkingDocument(currentDocument);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    expect(saveDraftOverride).not.toHaveBeenCalled();
+  });
+
+  test('AC-011 keeps a compatible Variable Aggregator group saveable', async () => {
+    const currentDocument = createVariableAggregatorDocument('string');
+    const saveDraftOverride = vi.fn(async (input) => ({
+      ...createInitialState(input.document),
+      draft: {
+        ...createInitialState(input.document).draft,
+        document: input.document
+      }
+    }));
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useDraftSync({
+          applicationId: 'app-1',
+          saveDraftOverride,
+          getCurrentDocument: () => currentDocument
+        }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      expect(await result.current.saveNow()).toBe(true);
+    });
+
+    expect(saveDraftOverride).toHaveBeenCalledOnce();
+  });
+
   test('restores server draft and clears transient editor state', async () => {
     const restoreVersionOverride = vi.fn().mockResolvedValue({
       ...createInitialState({

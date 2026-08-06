@@ -67,6 +67,17 @@ import { validateAuthoringDocument } from '../../flow-editor/authoring/validatio
 
 export type { AgentFlowIssue } from './validation/issues';
 
+export const VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE =
+  'variable_aggregator_candidate_type_mismatch';
+
+export function isVariableAggregatorCandidateTypeMismatchIssue(
+  issue: AgentFlowIssue
+) {
+  return issue.id.startsWith(
+    `${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:`
+  );
+}
+
 function isMissingRequiredField(
   node: FlowNodeDocument,
   fieldKey: string
@@ -359,7 +370,7 @@ function validateVariableAggregatorGroups(
     );
   }
 
-  for (const group of binding.value) {
+  for (const [groupIndex, group] of binding.value.entries()) {
     if (seenGroupKeys.has(group.key)) {
       pushFieldIssue(
         issues,
@@ -371,7 +382,7 @@ function validateVariableAggregatorGroups(
     }
     seenGroupKeys.add(group.key);
 
-    for (const selector of group.candidates) {
+    for (const [candidateIndex, selector] of group.candidates.entries()) {
       if (!selectorHasRequiredInput(selector)) {
         continue;
       }
@@ -386,15 +397,23 @@ function validateVariableAggregatorGroups(
         : selectedOption?.valueType;
 
       if (selectedOption && declaredType !== group.valueType) {
-        pushFieldIssue(
-          issues,
-          node,
-          'bindings.groups',
-          i18nText('agentFlow', 'auto.variable_group_candidate_incompatible'),
-          i18nText('agentFlow', 'auto.variable_group_candidate_type_mismatch', {
-            value1: group.valueType
-          })
-        );
+        issues.push({
+          id: `${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:${node.id}:${groupIndex}:${candidateIndex}`,
+          scope: 'field',
+          level: 'error',
+          nodeId: node.id,
+          sectionKey: 'inputs',
+          fieldKey: 'bindings.groups',
+          title: i18nText(
+            'agentFlow',
+            'auto.variable_group_candidate_incompatible'
+          ),
+          message: i18nText(
+            'agentFlow',
+            'auto.variable_group_candidate_type_mismatch',
+            { value1: group.valueType }
+          )
+        });
       }
     }
   }
@@ -589,6 +608,10 @@ function getAllowedPublicOutputKeysForNode(
   }
 
   if (node.type === 'code') {
+    return new Set(node.outputs.map((output) => output.key));
+  }
+
+  if (node.type === 'variable_aggregator') {
     return new Set(node.outputs.map((output) => output.key));
   }
 

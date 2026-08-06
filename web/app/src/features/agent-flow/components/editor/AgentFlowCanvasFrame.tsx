@@ -52,7 +52,10 @@ import {
   modelProviderOptionsQueryKey
 } from '../../api/model-provider-options';
 import { clampNodeDetailWidth } from '../../lib/detail-panel-width';
-import { validateDocument } from '../../lib/validate-document';
+import {
+  isVariableAggregatorCandidateTypeMismatchIssue,
+  validateDocument
+} from '../../lib/validate-document';
 import { buildNodePickerOptions } from '../../lib/plugin-node-definitions';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
@@ -330,7 +333,8 @@ export function AgentFlowCanvasFrame({
         documentRef.current,
         viewportGetterRef.current?.() ?? viewportSnapshotRef.current
       ),
-    getLastSavedDocument: () => lastSavedDocumentRef.current
+    getLastSavedDocument: () => lastSavedDocumentRef.current,
+    environmentVariables
   });
   const debugSession = useAgentFlowDebugSession({
     applicationId,
@@ -365,6 +369,9 @@ export function AgentFlowCanvasFrame({
       modelProviderOptionsQuery.data,
       modelProviderOptionsQuery.isSuccess
     ]
+  );
+  const variableAggregatorSaveBlocked = issues.some(
+    isVariableAggregatorCandidateTypeMismatchIssue
   );
   const activeContainerId = activeContainerPath.at(-1) ?? null;
   const detailActions = useNodeDetailActions();
@@ -868,7 +875,9 @@ export function AgentFlowCanvasFrame({
         onSaveDraft={() => {
           void draftSync.saveNow();
         }}
-        saveDisabled={autosaveStatus === 'saving'}
+        saveDisabled={
+          autosaveStatus === 'saving' || variableAggregatorSaveBlocked
+        }
         saveLoading={autosaveStatus === 'saving'}
         onOpenDebugConsole={openDebugConsole}
         onExportTemplate={() => exportTemplateMutation.mutate()}

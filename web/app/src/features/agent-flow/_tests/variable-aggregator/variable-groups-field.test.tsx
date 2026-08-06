@@ -6,6 +6,7 @@ import type { FlowVariableGroupDocument } from '@1flowbase/flow-schema';
 
 import { VariableGroupsField } from '../../components/bindings/VariableGroupsField';
 import type { FlowSelectorOption } from '../../lib/selector-options';
+import { i18nText } from '../../../../shared/i18n/text';
 
 const OPTIONS: FlowSelectorOption[] = [
   {
@@ -78,7 +79,11 @@ describe('VariableGroupsField', () => {
     );
 
     expect(screen.queryByRole('textbox', { name: /group1/i })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '添加变量组' }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.add_variable_group')
+      })
+    );
 
     expect(screen.getByTestId('groups-value')).toHaveTextContent('group4');
   });
@@ -96,17 +101,31 @@ describe('VariableGroupsField', () => {
       />
     );
 
-    fireEvent.mouseDown(screen.getByLabelText('Groups-group1-类型'));
-    expect(screen.getByText('boolean')).toBeInTheDocument();
-    expect(screen.getByText('object')).toBeInTheDocument();
-    expect(screen.getByText('array')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('number'));
+    fireEvent.mouseDown(
+      screen.getByLabelText(
+        `Groups-group1-${i18nText('agentFlow', 'auto.type')}`
+      )
+    );
+    expect(
+      screen.getByText(i18nText('agentFlow', 'auto.boolean'))
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(i18nText('agentFlow', 'auto.object'))
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(i18nText('agentFlow', 'auto.array'))
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText(i18nText('agentFlow', 'auto.number')));
 
     expect(screen.getByTestId('groups-value')).toHaveTextContent(
       'node-source","text'
     );
     expect(
-      screen.getByText(/现有候选变量会保留，直到你替换它/)
+      screen.getByText(
+        i18nText('agentFlow', 'auto.variable_group_candidate_type_mismatch', {
+          value1: 'number'
+        })
+      )
     ).toBeInTheDocument();
   });
 
@@ -149,14 +168,26 @@ describe('VariableGroupsField', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: '删除变量组 group1' })
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.delete_variable_group', {
+          value1: 'group1'
+        })
+      })
     ).toBeDisabled();
     fireEvent.click(
-      screen.getAllByRole('button', { name: '下移候选变量' })[0]!
+      screen.getAllByRole('button', {
+        name: i18nText('agentFlow', 'auto.move_candidate_down')
+      })[0]!
     );
     fireEvent.click(
-      screen.getAllByRole('button', { name: '删除候选变量' })[0]!
+      screen.getAllByRole('button', {
+        name: i18nText('agentFlow', 'auto.delete_candidate')
+      })[0]!
     );
-    expect(screen.getByRole('button', { name: '删除候选变量' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.delete_candidate')
+      })
+    ).toBeDisabled();
   });
 });
