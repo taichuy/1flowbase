@@ -1,6 +1,7 @@
 import {
   createDefaultAgentFlowDocument,
-  type FlowAuthoringDocument
+  type FlowAuthoringDocument,
+  type FlowNodeDocument
 } from '@1flowbase/flow-schema';
 import { describe, expect, test } from 'vitest';
 
@@ -274,6 +275,367 @@ describe('Variable Aggregator shared authoring fixtures', () => {
           option.valueType === 'string'
       )
     ).toBe(true);
+  });
+
+  test('AC-017/020 preserves invalid intermediate references then atomically renames the exhaustive selector inventory', () => {
+    const initialDocument = appendAggregator(
+      createDefaultAgentFlowDocument({ flowId: 'rename-aggregator' })
+    );
+    const aggregator = initialDocument.graph.nodes.find(
+      (node) => node.id === 'node-variable-aggregator'
+    );
+
+    if (!aggregator) {
+      throw new Error('Variable Aggregator fixture is missing');
+    }
+
+    aggregator.bindings.groups = {
+      kind: 'variable_groups',
+      value: STRING_GROUPS
+    };
+    aggregator.outputs = [
+      {
+        key: 'group1',
+        title: 'group1',
+        valueType: 'string',
+        selector: [aggregator.id, 'group1']
+      }
+    ];
+
+    const inventoryNode: FlowNodeDocument = {
+      ...createNodeDocument('code', 'node-selector-inventory'),
+      config: {
+        protocol_context: {
+          kind: 'selector',
+          value: [aggregator.id, 'group1', 'protocol-tail']
+        }
+      },
+      bindings: {
+        template: {
+          kind: 'templated_text',
+          value: `{{${aggregator.id}.group1.template-tail}} {{${aggregator.id}.other_group}} {{node-other.group1}}`
+        },
+        selector: {
+          kind: 'selector',
+          value: [aggregator.id, 'group1', 'selector-tail']
+        },
+        selector_list: {
+          kind: 'selector_list',
+          value: [
+            [aggregator.id, 'group1', 'list-tail'],
+            [aggregator.id, 'other_group', 'same-node-unrelated-tail'],
+            ['node-other', 'group1']
+          ]
+        },
+        groups: {
+          kind: 'variable_groups',
+          value: [
+            {
+              key: 'downstream',
+              valueType: 'string',
+              candidates: [[aggregator.id, 'group1', 'candidate-tail']]
+            }
+          ]
+        },
+        messages: {
+          kind: 'prompt_messages',
+          value: [
+            {
+              id: 'message-1',
+              role: 'user',
+              content: {
+                kind: 'templated_text',
+                value: `Use {{${aggregator.id}.group1.prompt-tail}}.`
+              }
+            }
+          ]
+        },
+        named: {
+          kind: 'named_bindings',
+          value: [
+            {
+              name: 'canonical_selector',
+              value: {
+                kind: 'selector',
+                selector: [aggregator.id, 'group1', 'named-tail']
+              }
+            },
+            {
+              name: 'canonical_template',
+              value: {
+                kind: 'templated_text',
+                value: `{{${aggregator.id}.group1.named-template-tail}}`
+              }
+            },
+            {
+              name: 'legacy_selector',
+              selector: [aggregator.id, 'group1', 'legacy-tail']
+            },
+            {
+              name: 'legacy_template',
+              content: {
+                kind: 'templated_text',
+                value: `{{${aggregator.id}.group1.legacy-template-tail}}`
+              }
+            }
+          ]
+        },
+        conditions: {
+          kind: 'condition_group',
+          value: {
+            operator: 'and',
+            conditions: [
+              {
+                left: [aggregator.id, 'group1', 'left-tail'],
+                comparator: 'equals',
+                right: {
+                  kind: 'selector',
+                  selector: [aggregator.id, 'group1', 'right-tail']
+                }
+              },
+              {
+                operator: 'or',
+                conditions: [
+                  {
+                    left: [aggregator.id, 'group1', 'nested-tail'],
+                    comparator: 'exists'
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        branches: {
+          kind: 'if_else_branches',
+          value: {
+            branches: [
+              {
+                id: 'if-1',
+                kind: 'if',
+                title: 'If',
+                sourceHandle: 'if-1',
+                condition: {
+                  operator: 'and',
+                  conditions: [
+                    {
+                      left: [aggregator.id, 'group1', 'branch-tail'],
+                      comparator: 'exists'
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        writes: {
+          kind: 'state_write',
+          value: [
+            {
+              path: ['conversation', 'target'],
+              operator: 'set',
+              source: [aggregator.id, 'group1', 'source-tail']
+            },
+            {
+              path: ['conversation', 'selector'],
+              operator: 'set',
+              value: {
+                kind: 'selector',
+                selector: [aggregator.id, 'group1', 'write-tail']
+              }
+            },
+            {
+              path: ['conversation', 'template'],
+              operator: 'set',
+              value: {
+                kind: 'templated_text',
+                value: `{{${aggregator.id}.group1.write-template-tail}}`
+              }
+            }
+          ]
+        },
+        query: {
+          kind: 'data_model_query',
+          value: {
+            filters: [
+              {
+                field_code: 'status',
+                operator: 'eq',
+                value: {
+                  kind: 'selector',
+                  selector: [aggregator.id, 'group1', 'filter-tail']
+                }
+              }
+            ],
+            sorts: [],
+            expand_relations: [],
+            page: {
+              kind: 'selector',
+              selector: [aggregator.id, 'group1', 'page-tail']
+            },
+            page_size: {
+              kind: 'selector',
+              selector: [aggregator.id, 'group1', 'page-size-tail']
+            }
+          }
+        }
+      },
+      outputs: [
+        {
+          key: 'result',
+          title: 'result',
+          valueType: 'string',
+          selector: [aggregator.id, 'group1', 'output-tail']
+        }
+      ]
+    };
+    const selectorAnswer = {
+      ...createNodeDocument('answer', 'node-answer-selector'),
+      bindings: {
+        answer_template: {
+          kind: 'selector' as const,
+          value: [aggregator.id, 'group1', 'answer-tail']
+        }
+      }
+    };
+    const templateAnswer = {
+      ...createNodeDocument('answer', 'node-answer-template'),
+      bindings: {
+        answer_template: {
+          kind: 'templated_text' as const,
+          value: `{{${aggregator.id}.group1.answer-template-tail}}`
+        }
+      }
+    };
+    initialDocument.graph.nodes.push(
+      inventoryNode,
+      selectorAnswer,
+      templateAnswer
+    );
+    initialDocument.graph.edges.push({
+      id: 'edge-aggregator-inventory',
+      source: aggregator.id,
+      target: inventoryNode.id,
+      sourceHandle: 'group1',
+      targetHandle: null,
+      containerId: null,
+      points: []
+    });
+
+    let savedDocument = initialDocument;
+    const adapter = createAgentFlowNodeSchemaAdapter({
+      document: initialDocument,
+      nodeId: aggregator.id,
+      setWorkingDocument(update) {
+        savedDocument =
+          typeof update === 'function' ? update(savedDocument) : update;
+      },
+      dispatch() {}
+    });
+
+    adapter.setValue('bindings.groups', {
+      kind: 'variable_groups',
+      value: [{ ...STRING_GROUPS[0], key: 'bad-key' }]
+    });
+
+    const invalidAggregator = savedDocument.graph.nodes.find(
+      (node) => node.id === aggregator.id
+    );
+    expect(invalidAggregator?.bindings.groups).toMatchObject({
+      value: [{ key: 'bad-key' }]
+    });
+    expect(invalidAggregator?.outputs[0]?.key).toBe('group1');
+    expect(
+      savedDocument.graph.nodes.find((node) => node.id === inventoryNode.id)
+        ?.bindings
+    ).toBe(inventoryNode.bindings);
+    const invalidIssueIds = validateDocument(savedDocument)
+      .filter(isVariableAggregatorCandidateTypeMismatchIssue)
+      .map((issue) => issue.id);
+    expect(invalidIssueIds).toEqual([
+      `variable_aggregator_group_key_invalid:${aggregator.id}:0`
+    ]);
+    expect(
+      validateDocument(savedDocument)
+        .filter(isVariableAggregatorCandidateTypeMismatchIssue)
+        .map((issue) => issue.id)
+    ).toEqual(invalidIssueIds);
+
+    adapter.setValue('bindings.groups', {
+      kind: 'variable_groups',
+      value: [{ ...STRING_GROUPS[0], key: 'renamed_group' }]
+    });
+
+    const renamedAggregator = savedDocument.graph.nodes.find(
+      (node) => node.id === aggregator.id
+    );
+    const renamedInventory = savedDocument.graph.nodes.find(
+      (node) => node.id === inventoryNode.id
+    );
+    const serializedBindings = JSON.stringify(renamedInventory?.bindings);
+    expect(renamedAggregator?.bindings.groups).toMatchObject({
+      value: [{ key: 'renamed_group' }]
+    });
+    expect(renamedAggregator?.outputs).toEqual([
+      { key: 'renamed_group', title: 'renamed_group', valueType: 'string' }
+    ]);
+    expect(serializedBindings).not.toContain(`${aggregator.id}.group1`);
+    expect(serializedBindings).not.toContain(`\"${aggregator.id}\",\"group1\"`);
+    expect(serializedBindings).toContain('renamed_group');
+    expect(serializedBindings).toContain(`{{${aggregator.id}.other_group}}`);
+    expect(serializedBindings).toContain(
+      `\"${aggregator.id}\",\"other_group\",\"same-node-unrelated-tail\"`
+    );
+    for (const tail of [
+      'template-tail',
+      'selector-tail',
+      'list-tail',
+      'candidate-tail',
+      'prompt-tail',
+      'named-tail',
+      'named-template-tail',
+      'legacy-tail',
+      'legacy-template-tail',
+      'left-tail',
+      'right-tail',
+      'nested-tail',
+      'branch-tail',
+      'source-tail',
+      'write-tail',
+      'write-template-tail',
+      'filter-tail',
+      'page-tail',
+      'page-size-tail',
+      'same-node-unrelated-tail'
+    ]) {
+      expect(serializedBindings).toContain(tail);
+    }
+    expect(serializedBindings).toContain('node-other');
+    expect(renamedInventory?.config.protocol_context).toEqual({
+      kind: 'selector',
+      value: [aggregator.id, 'renamed_group', 'protocol-tail']
+    });
+    expect(renamedInventory?.outputs[0]?.selector).toEqual([
+      aggregator.id,
+      'group1',
+      'output-tail'
+    ]);
+    expect(
+      savedDocument.graph.nodes.find((node) => node.id === selectorAnswer.id)
+        ?.bindings.answer_template
+    ).toMatchObject({
+      value: [aggregator.id, 'renamed_group', 'answer-tail']
+    });
+    expect(
+      savedDocument.graph.nodes.find((node) => node.id === templateAnswer.id)
+        ?.bindings.answer_template
+    ).toMatchObject({
+      value: `{{${aggregator.id}.renamed_group.answer-template-tail}}`
+    });
+    expect(
+      savedDocument.graph.edges.find(
+        (edge) => edge.id === 'edge-aggregator-inventory'
+      )?.sourceHandle
+    ).toBe('group1');
   });
 
   test('AC-015 exposes the registered builtin without legacy candidates/value fields', () => {

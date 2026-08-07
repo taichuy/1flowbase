@@ -1,4 +1,5 @@
 import {
+  validatePublicOutputKey,
   type FlowAuthoringDocument,
   type FlowBinding,
   type FlowNodeDocument,
@@ -16,6 +17,8 @@ import { getDirectDownstreamNodes } from '../lib/document/relations';
 import { listVisibleSelectorOptions } from '../lib/selector-options';
 import type { LlmVisibleInternalTool } from '../lib/llm-node-config';
 import { getNodeDefinitionMeta } from '../lib/node-definitions';
+import { isOutputVariableKeyAllowed } from '../lib/output-contract/variable-key';
+import { transformDocumentSelectorReferences } from '../lib/document/transforms/selector-references';
 import { getBuiltinNodeRuntimeContract } from '../lib/node-definitions/contracts';
 import { parseHttpRequestUrlParts } from '../lib/http-request/url';
 import type { AgentFlowEnvironmentVariable } from '../lib/variables/application-environment-variables';
@@ -171,6 +174,82 @@ function deriveVariableGroupOutputs(
     title: group.key,
     valueType: group.valueType
   }));
+}
+
+function variableGroupKeysAreValid(groups: FlowVariableGroupDocument[]) {
+  const keys = new Set<string>();
+
+  for (const group of groups) {
+    if (
+      !isOutputVariableKeyAllowed(group.key) ||
+      !validatePublicOutputKey(group.key).ok ||
+      keys.has(group.key)
+    ) {
+      return false;
+    }
+
+    keys.add(group.key);
+  }
+
+  return true;
+}
+
+function updateVariableAggregatorGroupsField({
+  document,
+  nodeId,
+  binding
+}: {
+  document: FlowAuthoringDocument;
+  nodeId: string;
+  binding: Extract<FlowBinding, { kind: 'variable_groups' }>;
+}) {
+  const currentNode = getNode(document, nodeId);
+  const nextDocument = updateNodeField(document, {
+    nodeId,
+    fieldKey: 'bindings.groups',
+    value: binding
+  });
+
+  if (!variableGroupKeysAreValid(binding.value)) {
+    return nextDocument;
+  }
+
+  const renameByOldKey = new Map<string, string>();
+
+  if (currentNode.outputs.length === binding.value.length) {
+    for (const [index, group] of binding.value.entries()) {
+      const oldKey = currentNode.outputs[index]?.key;
+
+      if (oldKey && oldKey !== group.key) {
+        renameByOldKey.set(oldKey, group.key);
+      }
+    }
+  }
+
+  const materializedDocument = replaceNodeOutputs(
+    nextDocument,
+    nodeId,
+    deriveVariableGroupOutputs(binding.value)
+  );
+
+  if (renameByOldKey.size === 0) {
+    return materializedDocument;
+  }
+
+  return transformDocumentSelectorReferences(
+    materializedDocument,
+    (selector) => {
+      if (selector[0] !== nodeId || selector.length < 2) {
+        return selector;
+      }
+
+      const renamedKey = renameByOldKey.get(selector[1] ?? '');
+
+      return renamedKey
+        ? [selector[0], renamedKey, ...selector.slice(2)]
+        : selector;
+    }
+  );
 }
 
 function updateVariableAssignerOperationsField({
@@ -358,15 +437,11 @@ export function createAgentFlowNodeSchemaAdapter({
         >;
 
         setWorkingDocument((currentDocument) =>
-          replaceNodeOutputs(
-            updateNodeField(currentDocument, {
-              nodeId,
-              fieldKey: path,
-              value: binding
-            }),
+          updateVariableAggregatorGroupsField({
+            document: currentDocument,
             nodeId,
-            deriveVariableGroupOutputs(binding.value)
-          )
+            binding
+          })
         );
 
         return;

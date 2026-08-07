@@ -64,7 +64,7 @@ function Harness({ initial }: { initial: FlowVariableGroupDocument[] }) {
 }
 
 describe('VariableGroupsField', () => {
-  test('AC-010 keeps immutable group keys and allocates max groupN plus one', () => {
+  test('AC-016 edits a legal group key and allocates max groupN plus one', () => {
     render(
       <Harness
         initial={[
@@ -78,7 +78,15 @@ describe('VariableGroupsField', () => {
       />
     );
 
-    expect(screen.queryByRole('textbox', { name: /group1/i })).toBeNull();
+    fireEvent.change(
+      screen.getByRole('textbox', {
+        name: i18nText('agentFlow', 'auto.variable_group_key', { value1: 1 })
+      }),
+      { target: { value: 'renamed_group' } }
+    );
+    expect(screen.getByTestId('groups-value')).toHaveTextContent(
+      'renamed_group'
+    );
     fireEvent.click(
       screen.getByRole('button', {
         name: i18nText('agentFlow', 'auto.add_variable_group')
@@ -86,6 +94,73 @@ describe('VariableGroupsField', () => {
     );
 
     expect(screen.getByTestId('groups-value')).toHaveTextContent('group4');
+  });
+
+  test.each([
+    ['', 'auto.variable_group_key_required'],
+    ['bad-key', 'auto.variable_group_key_format_message'],
+    ['__reserved', 'auto.variable_group_key_reserved_message']
+  ] as const)(
+    'AC-016 keeps invalid intermediate key %j visible with an inline error',
+    (key, messageKey) => {
+      render(
+        <Harness
+          initial={[
+            {
+              key: 'group1',
+              valueType: 'string',
+              candidates: [['node-source', 'text']]
+            }
+          ]}
+        />
+      );
+
+      fireEvent.change(
+        screen.getByRole('textbox', {
+          name: i18nText('agentFlow', 'auto.variable_group_key', { value1: 1 })
+        }),
+        { target: { value: key } }
+      );
+
+      expect(screen.getByTestId('groups-value')).toHaveTextContent(
+        `\"key\":\"${key}\"`
+      );
+      expect(
+        screen.getByText(i18nText('agentFlow', messageKey))
+      ).toBeInTheDocument();
+    }
+  );
+
+  test('AC-016 reports duplicate group keys on both edited rows', () => {
+    render(
+      <Harness
+        initial={[
+          {
+            key: 'group1',
+            valueType: 'string',
+            candidates: [['node-source', 'text']]
+          },
+          {
+            key: 'group2',
+            valueType: 'string',
+            candidates: [['node-source', 'text']]
+          }
+        ]}
+      />
+    );
+
+    fireEvent.change(
+      screen.getByRole('textbox', {
+        name: i18nText('agentFlow', 'auto.variable_group_key', { value1: 2 })
+      }),
+      { target: { value: 'group1' } }
+    );
+
+    expect(
+      screen.getAllByText(
+        i18nText('agentFlow', 'auto.variable_group_keys_must_unique')
+      )
+    ).toHaveLength(2);
   });
 
   test('AC-011 preserves an incompatible selector on type change and reports its row error', () => {

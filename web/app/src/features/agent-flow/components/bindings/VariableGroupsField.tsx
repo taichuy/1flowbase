@@ -8,9 +8,11 @@ import type {
   FlowVariableGroupDocument,
   FlowVariableGroupValueType
 } from '@1flowbase/flow-schema';
-import { Button, Card, Flex, Select, Space, Typography } from 'antd';
+import { validatePublicOutputKey } from '@1flowbase/flow-schema';
+import { Button, Card, Flex, Input, Select, Space, Typography } from 'antd';
 
 import type { FlowSelectorOption } from '../../lib/selector-options';
+import { isOutputVariableKeyAllowed } from '../../lib/output-contract/variable-key';
 import { i18nText } from '../../../../shared/i18n/text';
 import { SelectorField } from './SelectorField';
 
@@ -63,6 +65,29 @@ function nextGroupKey(groups: FlowVariableGroupDocument[]) {
   return `group${maxSuffix + 1}`;
 }
 
+function getGroupKeyError(
+  groups: FlowVariableGroupDocument[],
+  group: FlowVariableGroupDocument
+) {
+  if (group.key.length === 0) {
+    return i18nText('agentFlow', 'auto.variable_group_key_required');
+  }
+
+  if (!isOutputVariableKeyAllowed(group.key)) {
+    return i18nText('agentFlow', 'auto.variable_group_key_format_message');
+  }
+
+  if (!validatePublicOutputKey(group.key).ok) {
+    return i18nText('agentFlow', 'auto.variable_group_key_reserved_message');
+  }
+
+  if (groups.filter((candidate) => candidate.key === group.key).length > 1) {
+    return i18nText('agentFlow', 'auto.variable_group_keys_must_unique');
+  }
+
+  return null;
+}
+
 function replaceGroup(
   groups: FlowVariableGroupDocument[],
   index: number,
@@ -103,12 +128,32 @@ export function VariableGroupsField({
     <Flex vertical gap="small" data-testid="variable-groups-field">
       {value.map((group, groupIndex) => {
         const selectorOptions = compatibleOptions(options, group.valueType);
+        const keyError = getGroupKeyError(value, group);
 
         return (
           <Card
-            key={group.key}
+            key={`variable-group-${groupIndex}`}
             size="small"
-            title={<Typography.Text>{group.key}</Typography.Text>}
+            title={
+              <Flex vertical gap={4}>
+                <Input
+                  aria-label={i18nText('agentFlow', 'auto.variable_group_key', {
+                    value1: groupIndex + 1
+                  })}
+                  status={keyError ? 'error' : undefined}
+                  value={group.key}
+                  onChange={(event) =>
+                    updateGroup(groupIndex, {
+                      ...group,
+                      key: event.target.value
+                    })
+                  }
+                />
+                {keyError ? (
+                  <Typography.Text type="danger">{keyError}</Typography.Text>
+                ) : null}
+              </Flex>
+            }
             extra={
               <Space size="small">
                 <Select

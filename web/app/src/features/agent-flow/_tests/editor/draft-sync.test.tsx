@@ -60,6 +60,28 @@ function createVariableAggregatorDocument(valueType: 'string' | 'number') {
   return document;
 }
 
+function createVariableAggregatorDocumentWithInvalidKeys(keys: string[]) {
+  const document = createVariableAggregatorDocument('string');
+  const aggregator = document.graph.nodes.find(
+    (node) => node.id === 'node-variable-aggregator'
+  );
+
+  if (!aggregator) {
+    throw new Error('Variable Aggregator fixture is missing');
+  }
+
+  aggregator.bindings.groups = {
+    kind: 'variable_groups',
+    value: keys.map((key) => ({
+      key,
+      valueType: 'string',
+      candidates: [['node-llm', 'text']]
+    }))
+  };
+
+  return document;
+}
+
 beforeEach(() => {
   resetAuthStore();
   useAuthStore.setState({
@@ -163,6 +185,71 @@ describe('useDraftSync', () => {
     });
 
     expect(saveDraftOverride).toHaveBeenCalledOnce();
+  });
+
+  test('AC-017 blocks manual save while a Variable Aggregator key is invalid', async () => {
+    const currentDocument = createVariableAggregatorDocumentWithInvalidKeys([
+      'bad-key'
+    ]);
+    const saveDraftOverride = vi.fn(async (input) =>
+      createInitialState(input.document)
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useDraftSync({
+          applicationId: 'app-1',
+          saveDraftOverride,
+          getCurrentDocument: () => currentDocument
+        }),
+      { wrapper }
+    );
+
+    await act(async () => {
+      expect(await result.current.saveNow()).toBe(false);
+    });
+    expect(saveDraftOverride).not.toHaveBeenCalled();
+  });
+
+  test('AC-017 blocks autosave while Variable Aggregator keys are duplicated', async () => {
+    vi.useFakeTimers();
+    const currentDocument = createVariableAggregatorDocumentWithInvalidKeys([
+      'group1',
+      'group1'
+    ]);
+    const saveDraftOverride = vi.fn(async (input) =>
+      createInitialState(input.document)
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        {children}
+      </AgentFlowEditorStoreProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        draftSync: useDraftSync({
+          applicationId: 'app-1',
+          saveDraftOverride
+        }),
+        setWorkingDocument: useAgentFlowEditorStore(
+          (state) => state.setWorkingDocument
+        )
+      }),
+      { wrapper }
+    );
+
+    act(() => {
+      result.current.setWorkingDocument(currentDocument);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    expect(saveDraftOverride).not.toHaveBeenCalled();
   });
 
   test('restores server draft and clears transient editor state', async () => {
