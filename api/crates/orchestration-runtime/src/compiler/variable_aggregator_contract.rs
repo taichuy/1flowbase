@@ -46,8 +46,15 @@ pub(crate) fn variable_aggregator_groups(
         let key = group.get("key").and_then(Value::as_str).ok_or_else(|| {
             anyhow!("variable_aggregator group {group_index} key must be a string")
         })?;
-        if key.trim().is_empty() || !keys.insert(key) {
-            bail!("variable_aggregator group keys must be unique and nonempty");
+        if key.trim().is_empty()
+            || !key
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            || !keys.insert(key)
+        {
+            bail!(
+                "variable_aggregator group keys must be unique, nonempty, and contain only ASCII letters, digits, or underscores"
+            );
         }
         let value_type = group
             .get("valueType")
