@@ -1,6 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import type { FlowVariableGroupDocument } from '@1flowbase/flow-schema';
 
@@ -9,6 +15,15 @@ import type { FlowSelectorOption } from '../../lib/selector-options';
 import { i18nText } from '../../../../shared/i18n/text';
 
 const OPTIONS: FlowSelectorOption[] = [
+  {
+    nodeId: 'node-source',
+    nodeLabel: 'Source',
+    outputKey: 'summary',
+    outputLabel: 'summary',
+    valueType: 'string',
+    value: ['node-source', 'summary'],
+    displayLabel: 'Source/summary'
+  },
   {
     nodeId: 'node-source',
     nodeLabel: 'Source',
@@ -61,6 +76,32 @@ function Harness({ initial }: { initial: FlowVariableGroupDocument[] }) {
       <output data-testid="groups-value">{JSON.stringify(groups)}</output>
     </>
   );
+}
+
+function mockCandidateRowRects() {
+  document
+    .querySelectorAll<HTMLElement>('.agent-flow-variable-groups__row')
+    .forEach((row, index) => {
+      vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: index * 48,
+        top: index * 48,
+        right: 320,
+        bottom: (index + 1) * 48,
+        left: 0,
+        width: 320,
+        height: 48,
+        toJSON: () => ({})
+      });
+    });
+}
+
+async function moveCandidateDownByKeyboard(handle: HTMLElement) {
+  handle.focus();
+  fireEvent.keyDown(handle, { key: ' ', code: 'Space' });
+  await waitFor(() => expect(handle).toHaveAttribute('aria-pressed', 'true'));
+  fireEvent.keyDown(handle, { key: 'ArrowDown', code: 'ArrowDown' });
+  fireEvent.keyDown(handle, { key: ' ', code: 'Space' });
 }
 
 describe('VariableGroupsField', () => {
@@ -238,7 +279,72 @@ describe('VariableGroupsField', () => {
     expect(screen.queryByText('payload')).toBeNull();
   });
 
-  test('AC-011 keeps at least one group and one candidate while exposing ordered row controls', () => {
+  test('AC-018 persists exact candidate order through the accessible keyboard drag handle', async () => {
+    render(
+      <Harness
+        initial={[
+          {
+            key: 'group1',
+            valueType: 'string',
+            candidates: [
+              ['node-source', 'text'],
+              ['node-source', 'summary'],
+              []
+            ]
+          }
+        ]}
+      />
+    );
+    mockCandidateRowRects();
+
+    await moveCandidateDownByKeyboard(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.reorder_candidate', { value1: 1 })
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('groups-value')).toHaveTextContent(
+        '"candidates":[["node-source","summary"],["node-source","text"],[]]'
+      )
+    );
+  });
+
+  test('AC-018 uses editor-local row ids when duplicate selectors are reordered', async () => {
+    render(
+      <Harness
+        initial={[
+          {
+            key: 'group1',
+            valueType: 'string',
+            candidates: [
+              ['node-source', 'text'],
+              ['node-source', 'text'],
+              ['node-source', 'summary']
+            ]
+          }
+        ]}
+      />
+    );
+    mockCandidateRowRects();
+
+    await moveCandidateDownByKeyboard(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.reorder_candidate', { value1: 2 })
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('groups-value')).toHaveTextContent(
+        '"candidates":[["node-source","text"],["node-source","summary"],["node-source","text"]]'
+      )
+    );
+    expect(screen.getByTestId('groups-value')).not.toHaveTextContent(
+      'candidate-'
+    );
+  });
+
+  test('AC-019/020 uses semantic sections without nested cards or move buttons', () => {
     render(
       <Harness
         initial={[
@@ -261,13 +367,27 @@ describe('VariableGroupsField', () => {
         })
       })
     ).toBeDisabled();
+    const field = screen.getByTestId('variable-groups-field');
+    const groupSection = within(field).getByRole('region', {
+      name: 'Groups 1'
+    });
+
+    expect(groupSection).toHaveClass('agent-flow-variable-groups__item');
+    expect(field.querySelector('.ant-card')).toBeNull();
+    expect(field.querySelector('.anticon-arrow-up')).toBeNull();
+    expect(field.querySelector('.anticon-arrow-down')).toBeNull();
+    expect(
+      within(field).getByRole('button', {
+        name: i18nText('agentFlow', 'auto.reorder_candidate', { value1: 1 })
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(field).getByRole('button', {
+        name: i18nText('agentFlow', 'auto.reorder_candidate', { value1: 2 })
+      })
+    ).toBeInTheDocument();
     fireEvent.click(
-      screen.getAllByRole('button', {
-        name: i18nText('agentFlow', 'auto.move_candidate_down')
-      })[0]!
-    );
-    fireEvent.click(
-      screen.getAllByRole('button', {
+      within(field).getAllByRole('button', {
         name: i18nText('agentFlow', 'auto.delete_candidate')
       })[0]!
     );

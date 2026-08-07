@@ -294,6 +294,187 @@
     ]
   },
   {
+    "id": "component.variable-groups.regular",
+    "kind": "component",
+    "title": "Variable Groups Regular Inspector",
+    "viewport": {
+      "width": 560,
+      "height": 800
+    },
+    "impactFiles": [
+      "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx",
+      "web/app/src/features/agent-flow/components/editor/styles/inspector.css",
+      "web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx",
+      "web/app/src/style-boundary/renderers.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "variable-groups-regular-dock",
+        "selector": ".style-boundary-variable-groups-scene",
+        "propertyAssertions": [
+          {
+            "property": "width",
+            "expected": "420px"
+          }
+        ]
+      },
+      {
+        "id": "variable-groups-root",
+        "selector": ".agent-flow-variable-groups",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "variable-group-item",
+        "selector": ".agent-flow-variable-groups__item",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "variable-group-row",
+        "selector": ".agent-flow-variable-groups__row",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "regular-groups-within-dock",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups",
+        "containerSelector": ".style-boundary-variable-groups-scene"
+      },
+      {
+        "id": "regular-header-within-group",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups__header",
+        "containerSelector": ".agent-flow-variable-groups__item"
+      },
+      {
+        "id": "regular-row-within-group",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups__row",
+        "containerSelector": ".agent-flow-variable-groups__item"
+      },
+      {
+        "id": "regular-add-group-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".agent-flow-variable-groups__add-group"
+      }
+    ]
+  },
+  {
+    "id": "component.variable-groups.compact",
+    "kind": "component",
+    "title": "Variable Groups Compact Inspector",
+    "viewport": {
+      "width": 440,
+      "height": 800
+    },
+    "impactFiles": [
+      "web/app/src/features/agent-flow/components/bindings/VariableGroupsField.tsx",
+      "web/app/src/features/agent-flow/components/editor/styles/inspector.css",
+      "web/app/src/features/agent-flow/schema/agent-flow-field-renderers.tsx",
+      "web/app/src/style-boundary/renderers.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "variable-groups-compact-dock",
+        "selector": ".style-boundary-variable-groups-scene",
+        "propertyAssertions": [
+          {
+            "property": "width",
+            "expected": "300px"
+          }
+        ]
+      },
+      {
+        "id": "compact-variable-groups-root",
+        "selector": ".agent-flow-variable-groups",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "compact-variable-group-header",
+        "selector": ".agent-flow-variable-groups__header",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "compact-variable-group-row",
+        "selector": ".agent-flow-variable-groups__row",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "compact-groups-within-dock",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups",
+        "containerSelector": ".style-boundary-variable-groups-scene"
+      },
+      {
+        "id": "compact-key-within-group",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups__header-key",
+        "containerSelector": ".agent-flow-variable-groups__item"
+      },
+      {
+        "id": "compact-type-within-group",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups__header-type",
+        "containerSelector": ".agent-flow-variable-groups__item"
+      },
+      {
+        "id": "compact-delete-within-group",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups__header-delete",
+        "containerSelector": ".agent-flow-variable-groups__item"
+      },
+      {
+        "id": "compact-row-within-group",
+        "type": "within_container",
+        "subjectSelector": ".agent-flow-variable-groups__row",
+        "containerSelector": ".agent-flow-variable-groups__item"
+      },
+      {
+        "id": "compact-add-candidate-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".agent-flow-variable-groups__add-candidate"
+      },
+      {
+        "id": "compact-add-group-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".agent-flow-variable-groups__add-group"
+      }
+    ]
+  },
+  {
     "id": "component.agent-flow-node-detail",
     "kind": "component",
     "title": "Agent Flow Node Detail",

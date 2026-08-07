@@ -875,6 +875,125 @@
   font-weight: 650;
 }
 
+.agent-flow-variable-groups {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-flow-variable-groups__item {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e4eadf;
+  border-radius: 8px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.agent-flow-variable-groups__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 104px) 28px;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-flow-variable-groups__header-key {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-flow-variable-groups__header-key .ant-typography,
+.agent-flow-variable-groups__selector .ant-typography {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-flow-variable-groups__header-type.ant-select,
+.agent-flow-variable-groups__header-key > .ant-input,
+.agent-flow-variable-groups__selector > .ant-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-flow-variable-groups__header-delete.ant-btn,
+.agent-flow-variable-groups__delete-candidate.ant-btn,
+.agent-flow-variable-groups__drag-handle.ant-btn {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.agent-flow-variable-groups__candidates {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-flow-variable-groups__row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px;
+  border: 1px solid #edf1ea;
+  border-radius: 6px;
+  background: #f8faf7;
+  box-sizing: border-box;
+}
+
+.agent-flow-variable-groups__selector {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-flow-variable-groups__drag-handle.ant-btn {
+  color: #7b8982;
+  cursor: grab;
+  touch-action: none;
+}
+
+.agent-flow-variable-groups__drag-handle.ant-btn[aria-pressed='true'] {
+  cursor: grabbing;
+}
+
+.agent-flow-variable-groups__add-candidate.ant-btn,
+.agent-flow-variable-groups__add-group.ant-btn {
+  width: 100%;
+}
+
+.agent-flow-editor__detail-dock[data-layout='compact']
+  .agent-flow-variable-groups__header {
+  grid-template-columns: minmax(0, 1fr) 28px;
+}
+
+.agent-flow-editor__detail-dock[data-layout='compact']
+  .agent-flow-variable-groups__header-key {
+  grid-column: 1 / -1;
+}
+
+.agent-flow-editor__detail-dock[data-layout='compact']
+  .agent-flow-variable-groups__header-type {
+  grid-column: 1;
+}
+
+.agent-flow-editor__detail-dock[data-layout='compact']
+  .agent-flow-variable-groups__header-delete {
+  grid-column: 2;
+  justify-self: end;
+}
+
 .agent-flow-templated-binding-list {
   display: grid;
   gap: 10px;
