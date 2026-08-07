@@ -72,6 +72,7 @@ async fn handle_mcp_request(
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "mcp_instance",
         ))?;
+    let scope = virtual_ui::VirtualMcpScope::single(instance_id);
 
     let result = match request.method.as_str() {
         "initialize" => {
@@ -88,7 +89,9 @@ async fn handle_mcp_request(
                 },
             ));
         }
-        "tools/list" => json!({"tools": virtual_ui::meta_tools()}),
+        "tools/list" => json!({"tools": virtual_ui::meta_tools(
+            scope.path_regex_enabled(&catalog)
+        )}),
         "tools/call" => {
             let Some(name) = request.params.get("name").and_then(Value::as_str) else {
                 return Ok(jsonrpc_error(request.id, -32602, "Invalid name"));
@@ -98,7 +101,6 @@ async fn handle_mcp_request(
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            let scope = virtual_ui::VirtualMcpScope::single(instance_id);
             match virtual_ui::dispatch(
                 &state,
                 &headers,

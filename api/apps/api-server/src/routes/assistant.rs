@@ -498,7 +498,10 @@ async fn prepare_assistant_execution(
     let execution = assistant_execution(&preference)?;
     let mcp_scope = VirtualMcpScope::selected(&catalog, &preference.mcp_instance_ids);
     let mut inputs = NativeObject::default();
-    inputs.insert_value("tools", Value::Array(assistant_provider_tools()));
+    inputs.insert_value(
+        "tools",
+        Value::Array(assistant_provider_tools(&catalog, &mcp_scope)),
+    );
     let flow_run = ApplicationPublishedRunService::new(state.store.clone())
         .create_assistant_run(CreateAssistantRunCommand {
             actor_user_id: context.user.id,
@@ -690,8 +693,11 @@ async fn append_assistant_tool_call_event(
     }
 }
 
-fn assistant_provider_tools() -> Vec<Value> {
-    virtual_ui::provider_tools()
+fn assistant_provider_tools(
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+) -> Vec<Value> {
+    virtual_ui::provider_tools(catalog, scope)
 }
 
 async fn assistant_tool_result(
@@ -1071,7 +1077,7 @@ mod tests {
             created_at: now,
             updated_at: now,
         };
-        let _catalog = domain::McpCatalogSnapshot {
+        let catalog = domain::McpCatalogSnapshot {
             instances: vec![instance],
             groups: vec![
                 group(Uuid::from_u128(13), "/one"),
@@ -1085,7 +1091,8 @@ mod tests {
             discovery_policies: Vec::new(),
         };
 
-        let provider_tools = assistant_provider_tools();
+        let scope = VirtualMcpScope::selected(&catalog, &["catalog".to_string()]);
+        let provider_tools = assistant_provider_tools(&catalog, &scope);
 
         assert_eq!(provider_tools.len(), 4);
         assert_eq!(
@@ -1107,6 +1114,9 @@ mod tests {
                 .to_string()
                 .contains("workspace_id")
         }));
+        assert!(provider_tools[0]["function"]["parameters"]["properties"]
+            .get("path_regex")
+            .is_none());
     }
 
     #[test]

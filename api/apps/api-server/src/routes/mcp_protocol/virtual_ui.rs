@@ -76,6 +76,23 @@ impl VirtualMcpScope {
     fn contains(&self, instance: &domain::McpInstanceRecord) -> bool {
         self.instance_ids.contains(&instance.instance_id)
     }
+
+    pub(crate) fn path_regex_enabled(&self, catalog: &domain::McpCatalogSnapshot) -> bool {
+        let mut selected_instances = catalog
+            .instances
+            .iter()
+            .filter(|instance| self.contains(instance));
+        let Some(first) = selected_instances.next() else {
+            return false;
+        };
+        std::iter::once(first)
+            .chain(selected_instances)
+            .all(|instance| {
+                catalog.discovery_policies.iter().any(|policy| {
+                    policy.instance_record_id == instance.id && policy.list_regex_enabled
+                })
+            })
+    }
 }
 
 pub(crate) enum VirtualToolOutcome {
@@ -105,7 +122,31 @@ impl VirtualToolOutcome {
     }
 }
 
-pub(crate) fn meta_tools() -> [Value; 4] {
+pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
+    let mut list_properties = serde_json::Map::from_iter([
+        (
+            "path".to_string(),
+            json!({"type": "string", "minLength": 1}),
+        ),
+        (
+            "keywords".to_string(),
+            json!({"type": "array", "items": {"type": "string"}}),
+        ),
+        (
+            "depth".to_string(),
+            json!({"type": "integer", "minimum": 0}),
+        ),
+        (
+            "limit".to_string(),
+            json!({"type": "integer", "minimum": 1}),
+        ),
+    ]);
+    if path_regex_enabled {
+        list_properties.insert(
+            "path_regex".to_string(),
+            json!({"type": "string", "minLength": 1}),
+        );
+    }
     [
         json!({
             "name": MCP_LIST,
@@ -113,13 +154,7 @@ pub(crate) fn meta_tools() -> [Value; 4] {
             "description": "Browse the selected MCP instances by path before requesting full tool details.",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "path": {"type": "string", "minLength": 1},
-                    "keywords": {"type": "array", "items": {"type": "string"}},
-                    "depth": {"type": "integer", "minimum": 0},
-                    "path_regex": {"type": "string", "minLength": 1},
-                    "limit": {"type": "integer", "minimum": 1}
-                },
+                "properties": list_properties,
                 "additionalProperties": false
             }
         }),
@@ -177,8 +212,11 @@ pub(crate) fn meta_tools() -> [Value; 4] {
     ]
 }
 
-pub(crate) fn provider_tools() -> Vec<Value> {
-    meta_tools()
+pub(crate) fn provider_tools(
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+) -> Vec<Value> {
+    meta_tools(scope.path_regex_enabled(catalog))
         .into_iter()
         .map(|tool| {
             json!({
