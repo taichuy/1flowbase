@@ -1,5 +1,5 @@
 import { BookOutlined, CloseOutlined } from '@ant-design/icons';
-import { Button, Divider, Space } from 'antd';
+import { Button, Divider, Space, Tooltip } from 'antd';
 
 import type { CanvasNodeSchema } from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
 import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
@@ -88,13 +88,15 @@ export function NodeDetailHeader({
             />
           ) : null}
           {definitionMeta?.helpHref ? (
-            <Button
-              aria-label={i18nText("agentFlow", "auto.help_documentation")}
-              href={definitionMeta.helpHref}
-              icon={<BookOutlined />}
-              target="_blank"
-              type="text"
-            />
+            <Tooltip title={i18nText('agentFlow', 'auto.documentation')}>
+              <Button
+                aria-label={i18nText('agentFlow', 'auto.help_documentation')}
+                href={definitionMeta.helpHref}
+                icon={<BookOutlined />}
+                target="_blank"
+                type="text"
+              />
+            </Tooltip>
           ) : null}
           <NodeActionMenu
             onLocate={detailActions.locateSelectedNode}

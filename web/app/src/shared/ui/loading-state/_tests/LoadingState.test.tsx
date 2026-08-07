@@ -11,6 +11,14 @@ describe('LoadingState', () => {
     expect(screen.getByText('thinking')).toBeInTheDocument();
   });
 
+  test('uses the large circular loading indicator', () => {
+    render(<LoadingState />);
+
+    expect(document.querySelector('.anticon-loading')).toHaveStyle({
+      fontSize: '48px'
+    });
+  });
+
   test('supports fullscreen and compact layout variants', () => {
     render(<LoadingState fullscreen compact />);
 
