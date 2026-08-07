@@ -17,7 +17,6 @@
     "assistant_run_failed": "The assistant run failed. Check the application run logs.",
     "assistant_settings": "Assistant settings",
     "assistant_new_conversation": "New conversation",
-    "assistant_untitled_conversation": "New conversation",
     "documentation": "Documentation",
     "enter_design_mode": "Enter design mode",
     "exit_design_mode": "Exit design mode",

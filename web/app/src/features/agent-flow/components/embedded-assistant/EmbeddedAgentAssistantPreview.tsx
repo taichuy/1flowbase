@@ -601,12 +601,12 @@ export function EmbeddedAgentAssistantPreview({
                 group: assistantConversationGroup(item.updated_at),
                 key: assistantConversationKey(item),
                 label:
-                  item.title ??
-                  (item.conversation_id
-                    ? i18nText(
-                        'appShell',
-                        'auto.assistant_untitled_conversation'
-                      )
+                    item.title ??
+                    (item.conversation_id
+                      ? i18nText(
+                          'appShell',
+                          'auto.assistant_new_conversation'
+                        )
                     : i18nText('appShell', 'auto.assistant_legacy_snapshot'))
               }))}
               onActiveChange={(key) => {
