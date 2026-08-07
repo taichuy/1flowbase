@@ -24,7 +24,13 @@ import {
   Tooltip,
   type MenuProps
 } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent
+} from 'react';
 import { createPortal } from 'react-dom';
 
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
@@ -57,6 +63,9 @@ function hasChangedPreference(
 }
 
 const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
+const ASSISTANT_HISTORY_DEFAULT_WIDTH = 280;
+const ASSISTANT_HISTORY_MIN_WIDTH = 180;
+const ASSISTANT_CONVERSATION_MIN_WIDTH = 220;
 
 function assistantConversationKey(item: {
   conversation_id: string | null;
@@ -109,6 +118,12 @@ export function EmbeddedAgentAssistantPreview({
     useState<ConsoleAssistantConversationPage | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const [historyWidth, setHistoryWidth] = useState(
+    ASSISTANT_HISTORY_DEFAULT_WIDTH
+  );
+  const [isResizingHistory, setIsResizingHistory] = useState(false);
+  const historyResizeCleanupRef = useRef<(() => void) | null>(null);
+  const historyLayoutRef = useRef<HTMLDivElement | null>(null);
   const [form] = Form.useForm<ConsoleAssistantPreference>();
   const {
     activate,
@@ -258,8 +273,19 @@ export function EmbeddedAgentAssistantPreview({
   const assistantWindowZIndex = 1050 + (windowEntry?.z_index ?? 0);
   const assistantSettingsModalZIndex = 1100 + (windowEntry?.z_index ?? 0);
 
-  function openHistory() {
-    setHistoryOpen(true);
+  function assistantHistoryMaxWidth() {
+    const layoutWidth =
+      historyLayoutRef.current?.getBoundingClientRect().width ||
+      windowEntry?.rect.width ||
+      ASSISTANT_HISTORY_MIN_WIDTH + ASSISTANT_CONVERSATION_MIN_WIDTH;
+    return Math.max(
+      ASSISTANT_HISTORY_MIN_WIDTH,
+      layoutWidth - ASSISTANT_CONVERSATION_MIN_WIDTH
+    );
+  }
+
+  function toggleHistory() {
+    setHistoryOpen((current) => !current);
   }
 
   function closeHistory() {
@@ -329,6 +355,56 @@ export function EmbeddedAgentAssistantPreview({
       toggleMaximized(ASSISTANT_WINDOW_ID, getWindowWorkspaceViewport());
     }
   }, [mobile, toggleMaximized, windowEntry]);
+
+  useEffect(() => () => historyResizeCleanupRef.current?.(), []);
+
+  useEffect(() => {
+    if (!historyOpen || mobile) {
+      return;
+    }
+    setHistoryWidth((current) => Math.min(current, assistantHistoryMaxWidth()));
+  }, [historyOpen, mobile, windowEntry?.rect.width]);
+
+  function startHistoryResize(event: ReactMouseEvent<HTMLDivElement>) {
+    if (mobile) {
+      return;
+    }
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = historyWidth;
+    const maxWidth = assistantHistoryMaxWidth();
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    historyResizeCleanupRef.current?.();
+    setIsResizingHistory(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      setHistoryWidth(
+        Math.min(
+          Math.max(
+            ASSISTANT_HISTORY_MIN_WIDTH,
+            startWidth + moveEvent.clientX - startX
+          ),
+          maxWidth
+        )
+      );
+    };
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', cleanup);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      historyResizeCleanupRef.current = null;
+      setIsResizingHistory(false);
+    };
+
+    historyResizeCleanupRef.current = cleanup;
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', cleanup);
+  }
 
   async function saveSettings() {
     if (!csrfToken) {
@@ -405,123 +481,141 @@ export function EmbeddedAgentAssistantPreview({
           <div
             className="embedded-agent-assistant-preview__layout"
             data-history-open={historyOpen}
+            ref={historyLayoutRef}
           >
             {historyOpen ? (
               <aside
                 aria-label={i18nText('appShell', 'auto.assistant_history')}
                 className="embedded-agent-assistant-preview__history"
+                data-resizing={isResizingHistory ? 'true' : 'false'}
                 data-testid="embedded-agent-assistant-history"
+                style={mobile ? undefined : { width: `${historyWidth}px` }}
               >
-                <div className="embedded-agent-assistant-preview__history-header">
-                  <span className="embedded-agent-assistant-preview__history-title">
-                    {i18nText('appShell', 'auto.assistant_history')}
-                  </span>
-                  <Button
-                    aria-label={i18nText('agentFlow', 'auto.close', {
-                      value1: i18nText('appShell', 'auto.assistant_history')
-                    })}
-                    icon={<CloseOutlined />}
-                    size="small"
-                    type="text"
-                    onClick={closeHistory}
-                  />
-                </div>
-                <div className="embedded-agent-assistant-preview__history-body">
-                  <Conversations
-                    activeKey={
-                      session.conversationId
-                        ? `conversation:${session.conversationId}`
-                        : session.legacyFlowRunId
-                          ? `legacy:${session.legacyFlowRunId}`
-                          : undefined
-                    }
-                    creation={{
-                      align: 'start',
-                      disabled: !session.canChangeConversation,
-                      icon: <PlusOutlined />,
-                      label: i18nText(
-                        'appShell',
-                        'auto.assistant_new_conversation'
-                      ),
-                      onClick: () => {
-                        void session.startNewConversation().then((created) => {
-                          if (created) {
-                            closeHistory();
-                          }
-                        });
-                      }
-                    }}
-                    groupable
-                    items={historyPage?.items.map((item) => ({
-                      disabled:
-                        !session.canChangeConversation || historyLoading,
-                      group: assistantConversationGroup(item.updated_at),
-                      key: assistantConversationKey(item),
-                      label:
-                        item.title ??
-                        (item.conversation_id
-                          ? i18nText(
-                              'appShell',
-                              'auto.assistant_new_conversation'
-                            )
-                          : i18nText(
-                              'appShell',
-                              'auto.assistant_legacy_snapshot'
-                            ))
-                    }))}
-                    onActiveChange={(key) => {
-                      const item = historyPage?.items.find(
-                        (candidate) =>
-                          assistantConversationKey(candidate) === key
-                      );
-                      if (!item) {
-                        return;
-                      }
-                      void session
-                        .restoreConversation({
-                          conversationId: item.conversation_id,
-                          legacyFlowRunId: item.legacy_flow_run_id
-                        })
-                        .then((restored) => {
-                          if (restored && item.conversation_id) {
-                            closeHistory();
-                          }
-                        });
-                    }}
-                  />
-                  {session.legacyFlowRunId ? (
+                <div className="embedded-agent-assistant-preview__history-content">
+                  <div className="embedded-agent-assistant-preview__history-header">
+                    <span className="embedded-agent-assistant-preview__history-title">
+                      {i18nText('appShell', 'auto.assistant_history')}
+                    </span>
                     <Button
-                      block
-                      disabled={!session.canChangeConversation}
-                      onClick={() => {
+                      aria-label={i18nText('agentFlow', 'auto.close', {
+                        value1: i18nText('appShell', 'auto.assistant_history')
+                      })}
+                      icon={<CloseOutlined />}
+                      size="small"
+                      type="text"
+                      onClick={closeHistory}
+                    />
+                  </div>
+                  <div className="embedded-agent-assistant-preview__history-body">
+                    <Conversations
+                      activeKey={
+                        session.conversationId
+                          ? `conversation:${session.conversationId}`
+                          : session.legacyFlowRunId
+                            ? `legacy:${session.legacyFlowRunId}`
+                            : undefined
+                      }
+                      creation={{
+                        align: 'start',
+                        disabled: !session.canChangeConversation,
+                        icon: <PlusOutlined />,
+                        label: i18nText(
+                          'appShell',
+                          'auto.assistant_new_conversation'
+                        ),
+                        onClick: () => {
+                          void session
+                            .startNewConversation()
+                            .then((created) => {
+                              if (created) {
+                                closeHistory();
+                              }
+                            });
+                        }
+                      }}
+                      groupable
+                      items={historyPage?.items.map((item) => ({
+                        disabled:
+                          !session.canChangeConversation || historyLoading,
+                        group: assistantConversationGroup(item.updated_at),
+                        key: assistantConversationKey(item),
+                        label:
+                          item.title ??
+                          (item.conversation_id
+                            ? i18nText(
+                                'appShell',
+                                'auto.assistant_new_conversation'
+                              )
+                            : i18nText(
+                                'appShell',
+                                'auto.assistant_legacy_snapshot'
+                              ))
+                      }))}
+                      onActiveChange={(key) => {
+                        const item = historyPage?.items.find(
+                          (candidate) =>
+                            assistantConversationKey(candidate) === key
+                        );
+                        if (!item) {
+                          return;
+                        }
                         void session
-                          .startNewConversation(
-                            session.legacyFlowRunId ?? undefined
-                          )
-                          .then((created) => {
-                            if (created) {
+                          .restoreConversation({
+                            conversationId: item.conversation_id,
+                            legacyFlowRunId: item.legacy_flow_run_id
+                          })
+                          .then((restored) => {
+                            if (restored && item.conversation_id) {
                               closeHistory();
                             }
                           });
                       }}
-                    >
-                      {i18nText(
-                        'appShell',
-                        'auto.assistant_continue_legacy_snapshot'
-                      )}
-                    </Button>
-                  ) : null}
-                  {historyPage &&
-                  historyPage.items.length < historyPage.total ? (
-                    <Button
-                      block
-                      disabled={historyLoading}
-                      onClick={() => void loadHistory(historyPage.page + 1)}
-                    >
-                      {i18nText('appShell', 'auto.assistant_load_more')}
-                    </Button>
-                  ) : null}
+                    />
+                    {session.legacyFlowRunId ? (
+                      <Button
+                        block
+                        disabled={!session.canChangeConversation}
+                        onClick={() => {
+                          void session
+                            .startNewConversation(
+                              session.legacyFlowRunId ?? undefined
+                            )
+                            .then((created) => {
+                              if (created) {
+                                closeHistory();
+                              }
+                            });
+                        }}
+                      >
+                        {i18nText(
+                          'appShell',
+                          'auto.assistant_continue_legacy_snapshot'
+                        )}
+                      </Button>
+                    ) : null}
+                    {historyPage &&
+                    historyPage.items.length < historyPage.total ? (
+                      <Button
+                        block
+                        disabled={historyLoading}
+                        onClick={() => void loadHistory(historyPage.page + 1)}
+                      >
+                        {i18nText('appShell', 'auto.assistant_load_more')}
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
+                <div
+                  aria-label={`${i18nText(
+                    'appShell',
+                    'auto.assistant_history'
+                  )} width`}
+                  aria-orientation="vertical"
+                  className="embedded-agent-assistant-preview__history-resize"
+                  data-testid="embedded-agent-assistant-history-resize"
+                  role="separator"
+                  onMouseDown={startHistoryResize}
+                />
               </aside>
             ) : null}
             <div
@@ -659,7 +753,7 @@ export function EmbeddedAgentAssistantPreview({
                       icon={<HistoryOutlined />}
                       size="small"
                       type="text"
-                      onClick={openHistory}
+                      onClick={toggleHistory}
                     />
                     <Button
                       aria-label={i18nText(

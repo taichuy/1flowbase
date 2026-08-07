@@ -316,13 +316,16 @@ describe('EmbeddedAgentAssistant', () => {
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).not.toBe(0);
 
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: i18nText('agentFlow', 'auto.close', {
-          value1: i18nText('appShell', 'auto.assistant_history')
-        })
-      })
+    const resizeHandle = screen.getByTestId(
+      'embedded-agent-assistant-history-resize'
     );
+    fireEvent.mouseDown(resizeHandle, { clientX: 280 });
+    fireEvent.mouseMove(window, { clientX: 340 });
+    expect(historySidebar).toHaveStyle({ width: '340px' });
+    fireEvent.mouseUp(window);
+    expect(historySidebar).toHaveAttribute('data-resizing', 'false');
+
+    fireEvent.click(history);
     await waitFor(() =>
       expect(
         screen.queryByTestId('embedded-agent-assistant-history')
