@@ -155,7 +155,7 @@ function drawerTitle(title: string, subtitle?: string) {
   }
 
   return (
-    <Space className="schema-form-drawer__title" direction="vertical" size={0}>
+    <Space className="schema-form-drawer__title" orientation="vertical" size={0}>
       <span>{title}</span>
       <span className="schema-form-drawer__subtitle">{subtitle}</span>
     </Space>
@@ -368,12 +368,12 @@ export function SchemaFormDrawer({
       {statusMessages.map((statusMessage) => (
         <Alert
           key={statusMessage.key}
-          message={statusMessage.message}
+          title={statusMessage.message}
           showIcon
           type={statusMessage.type}
         />
       ))}
-      {submitError ? <Alert message={submitError} showIcon type="error" /> : null}
+      {submitError ? <Alert title={submitError} showIcon type="error" /> : null}
       <Form<SchemaFormValues>
         disabled={disabled}
         form={form}
@@ -431,13 +431,13 @@ export function SchemaFormDrawer({
   return (
     <Drawer
       className="schema-form-drawer"
-      destroyOnClose
+      destroyOnHidden
       footer={footer}
       open={open}
       placement="right"
       rootClassName={rootClassName}
       title={drawerTitle(title, subtitle)}
-      width={width}
+      size={width}
       onClose={confirmClose}
     >
       {body}

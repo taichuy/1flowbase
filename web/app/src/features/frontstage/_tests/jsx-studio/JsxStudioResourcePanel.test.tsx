@@ -1,12 +1,12 @@
 import {
-  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
-import { message } from 'antd';
+import { App } from 'antd';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type {
@@ -126,8 +126,7 @@ const surfaceComponent = {
   module_source: '@1flowbase/native-components',
   module_version: '1.0.0',
   browser_asset: {
-    sha256:
-      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   },
   export_name: 'Surface',
@@ -162,6 +161,10 @@ const createSaveBlockMock = () =>
     .fn<(nextBlock: FrontstageBlockInstance) => Promise<boolean | void>>()
     .mockResolvedValue(true);
 
+function renderWithApp(children: ReactNode) {
+  return render(<App>{children}</App>);
+}
+
 function renderInterfacePanel({
   codeSource = '',
   interfacePathPrefixes,
@@ -173,7 +176,7 @@ function renderInterfacePanel({
   onInsertCode?: ReturnType<typeof createInsertCodeMock>;
   onSaveBlock?: ReturnType<typeof createSaveBlockMock>;
 } = {}) {
-  render(
+  renderWithApp(
     <JsxStudioResourcePanel
       block={block}
       codeSource={codeSource}
@@ -191,9 +194,6 @@ function renderInterfacePanel({
 
 async function settleGlobalMessage(text: string) {
   expect(await screen.findByText(text)).toBeInTheDocument();
-  await act(async () => {
-    message.destroy();
-  });
 }
 
 describe('TSX Studio interface connector', () => {
@@ -251,14 +251,12 @@ describe('TSX Studio interface connector', () => {
     ).toHaveBeenLastCalledWith(
       'workspace-1',
       expect.objectContaining({
-        path_prefixes: [
-          '/api/public/',
-          '/api/console/settings/auth-center/'
-        ]
+        path_prefixes: ['/api/public/', '/api/console/settings/auth-center/']
       })
     );
-    expect(screen.getByRole('textbox', { name: '搜索接口路径' }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: '搜索接口路径' })
+    ).toBeInTheDocument();
   });
 
   test('searches paths, loads one detail, and inserts code without saving a binding', async () => {
@@ -430,7 +428,7 @@ describe('TSX Studio insertion descriptors', () => {
 
   test('AC-001 describes a context reference instead of assuming a global ctx', () => {
     const onInsertCode = createInsertCodeMock();
-    render(
+    renderWithApp(
       <JsxStudioResourcePanel
         block={block}
         codeSource=""
@@ -454,7 +452,7 @@ describe('TSX Studio insertion descriptors', () => {
 
   test('AC-022 and AC-023 render registered variables as label, reference, and insert columns', () => {
     const onInsertCode = createInsertCodeMock();
-    render(
+    renderWithApp(
       <JsxStudioResourcePanel
         block={block}
         codeSource=""
@@ -481,9 +479,15 @@ describe('TSX Studio insertion descriptors', () => {
       />
     );
 
-    expect(screen.getAllByRole('columnheader', { name: '标签' })).toHaveLength(2);
-    expect(screen.getAllByRole('columnheader', { name: '变量' })).toHaveLength(2);
-    expect(screen.getAllByRole('columnheader', { name: '操作' })).toHaveLength(2);
+    expect(screen.getAllByRole('columnheader', { name: '标签' })).toHaveLength(
+      2
+    );
+    expect(screen.getAllByRole('columnheader', { name: '变量' })).toHaveLength(
+      2
+    );
+    expect(screen.getAllByRole('columnheader', { name: '操作' })).toHaveLength(
+      2
+    );
     const configurationGroup = screen.getByRole('region', {
       name: '配置变量'
     });
@@ -505,7 +509,7 @@ describe('TSX Studio insertion descriptors', () => {
   });
 
   test('AC-024 renders an unavailable state instead of Frontstage defaults', () => {
-    render(
+    renderWithApp(
       <JsxStudioResourcePanel
         block={block}
         codeSource=""
@@ -525,7 +529,7 @@ describe('TSX Studio insertion descriptors', () => {
 
   test('D2-AC-002 renders three columns, inserts the registered React snippet, and copies the on-demand API', async () => {
     const onInsertCode = createInsertCodeMock();
-    render(
+    renderWithApp(
       <JsxStudioResourcePanel
         block={block}
         codeSource=""
@@ -591,7 +595,7 @@ describe('TSX Studio insertion descriptors', () => {
         error: null
       }
     );
-    render(
+    renderWithApp(
       <JsxStudioResourcePanel
         block={block}
         codeSource=""

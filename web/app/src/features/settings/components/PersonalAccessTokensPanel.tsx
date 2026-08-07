@@ -12,7 +12,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
   type TableProps
 } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
@@ -64,6 +64,7 @@ function formatLastUsedAt(value: string | null) {
 }
 
 export function PersonalAccessTokensPanel() {
+  const { message } = App.useApp();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const actor = useAuthStore((state) => state.actor);
@@ -199,7 +200,7 @@ export function PersonalAccessTokensPanel() {
     } catch {
       message.error(i18nText('settings', 'auto.copy_failed_manual'));
     }
-  }, [createdToken?.token]);
+  }, [createdToken?.token, message]);
 
   const sectionStatus = useMemo(
     () => (
@@ -301,10 +302,7 @@ export function PersonalAccessTokensPanel() {
   );
 
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-      status={sectionStatus}
-    >
+    <SettingsSectionSurface heightMode="fill" status={sectionStatus}>
       <Table<SettingsPersonalAccessToken>
         rowKey="id"
         loading={tokensQuery.isLoading}
@@ -399,7 +397,7 @@ export function PersonalAccessTokensPanel() {
         destroyOnHidden
       >
         <Space
-          direction="vertical"
+          orientation="vertical"
           className="personal-access-tokens-panel__created-token-modal"
         >
           <Typography.Text>

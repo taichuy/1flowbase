@@ -101,7 +101,7 @@ export function NodeDetailHeader({
             onCopy={detailActions.duplicateSelectedNode}
             onDelete={detailActions.deleteSelectedNode}
           />
-          <Divider type="vertical" className="agent-flow-node-detail__divider" />
+          <Divider orientation="vertical" className="agent-flow-node-detail__divider" />
           <Button
             aria-label={i18nText("agentFlow", "auto.close_node_details")}
             icon={<CloseOutlined />}

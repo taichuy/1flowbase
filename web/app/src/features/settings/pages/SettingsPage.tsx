@@ -129,7 +129,7 @@ export function SettingsPage({
           <Alert
             type="error"
             showIcon
-            message={t('auto.settings_navigation_load_failed')}
+            title={t('auto.settings_navigation_load_failed')}
           />
         }
       >

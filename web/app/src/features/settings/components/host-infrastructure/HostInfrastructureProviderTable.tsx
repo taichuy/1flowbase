@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { Button, Space, Table, Tag, Typography, message } from 'antd';
+import { Button, Space, Table, Tag, Typography, App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import type { SettingsHostInfrastructureProviderConfig } from '../../api/host-infrastructure';
@@ -18,15 +18,17 @@ export function HostInfrastructureProviderTable({
 }) {
   const [selectedProvider, setSelectedProvider] =
     useState<SettingsHostInfrastructureProviderConfig | null>(null);
-  const [messageApi, contextHolder] = message.useMessage();
-  const columns = useMemo<ColumnsType<SettingsHostInfrastructureProviderConfig>>(
+  const { message: messageApi } = App.useApp();
+  const columns = useMemo<
+    ColumnsType<SettingsHostInfrastructureProviderConfig>
+  >(
     () => [
       {
         title: 'Provider',
         dataIndex: 'display_name',
         key: 'provider',
         render: (_, provider) => (
-          <Space direction="vertical" size={2}>
+          <Space orientation="vertical" size={2}>
             <Typography.Text strong>{provider.display_name}</Typography.Text>
             <Typography.Text type="secondary">
               {provider.extension_id} / {provider.provider_code}
@@ -63,7 +65,11 @@ export function HostInfrastructureProviderTable({
         dataIndex: 'restart_required',
         key: 'restart_required',
         render: (required: boolean) =>
-          required ? <Tag color="gold">{i18nText("settings", "auto.take_effect_restart")}</Tag> : null
+          required ? (
+            <Tag color="gold">
+              {i18nText('settings', 'auto.take_effect_restart')}
+            </Tag>
+          ) : null
       },
       {
         title: '',
@@ -71,7 +77,8 @@ export function HostInfrastructureProviderTable({
         width: 96,
         render: (_, provider) => (
           <Button type="link" onClick={() => setSelectedProvider(provider)}>
-            {i18nText("settings", "auto.configuration_alt")}</Button>
+            {i18nText('settings', 'auto.configuration_alt')}
+          </Button>
         )
       }
     ],
@@ -80,7 +87,6 @@ export function HostInfrastructureProviderTable({
 
   return (
     <>
-      {contextHolder}
       <Table
         rowKey={(provider) =>
           `${provider.installation_id}:${provider.provider_code}:${provider.config_ref}`
@@ -96,7 +102,12 @@ export function HostInfrastructureProviderTable({
           canManage={canManage}
           open
           onSaved={() => {
-            messageApi.success(i18nText("settings", "auto.saved_take_effect_restarting_api_server"));
+            messageApi.success(
+              i18nText(
+                'settings',
+                'auto.saved_take_effect_restarting_api_server'
+              )
+            );
           }}
           onClose={() => setSelectedProvider(null)}
         />

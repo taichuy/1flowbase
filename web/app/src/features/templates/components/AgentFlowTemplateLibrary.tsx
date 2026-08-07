@@ -6,13 +6,12 @@ import {
   Descriptions,
   Drawer,
   Empty,
-  List,
   Modal,
   Space,
   Table,
   Tag,
   Typography,
-  message,
+  App,
   type TableProps
 } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +27,7 @@ import {
   type InstalledAgentFlowFamily
 } from '../api/templates';
 import './agent-flow-template-library.css';
+import '../../../shared/ui/structured-list/structured-list.css';
 
 type InstalledVersion = InstalledAgentFlowFamily['installed_versions'][number];
 
@@ -37,7 +37,7 @@ export function AgentFlowTemplateLibrary() {
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const queryClient = useQueryClient();
-  const [messageApi, messageContextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const [selectedFamily, setSelectedFamily] =
     useState<InstalledAgentFlowFamily | null>(null);
@@ -105,7 +105,7 @@ export function AgentFlowTemplateLibrary() {
       title: t('auto.template_info'),
       key: 'template',
       render: (_, family) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{family.artifact_id}</Typography.Text>
           <Typography.Text type="secondary">
             {family.catalog_id}
@@ -168,7 +168,6 @@ export function AgentFlowTemplateLibrary() {
 
   return (
     <div className="agent-flow-template-library">
-      {messageContextHolder}
       {modalContextHolder}
       {installedQuery.isError ? (
         <Empty description={t('auto.catalog_load_failed')}>
@@ -198,11 +197,11 @@ export function AgentFlowTemplateLibrary() {
       <Drawer
         open={Boolean(selectedFamily)}
         title={selectedFamily?.artifact_id}
-        width={640}
+        size={640}
         onClose={() => setSelectedFamily(null)}
       >
         {selectedFamily ? (
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label={t('auto.template_id')}>
                 {selectedFamily.catalog_id}
@@ -213,70 +212,69 @@ export function AgentFlowTemplateLibrary() {
                 )?.version ?? '—'}
               </Descriptions.Item>
             </Descriptions>
-            <List
-              bordered
-              dataSource={selectedFamily.installed_versions}
-              renderItem={(version) => (
-                <List.Item
-                  aria-label={`${version.version}${
-                    version.is_current ? ` ${t('auto.current')}` : ''
-                  }`}
-                  actions={[
-                    <Button
-                      key="import"
-                      type="link"
-                      disabled={!canCreate || pendingInstallationId !== null}
-                      onClick={() => setImportInstallationId(version.id)}
-                    >
-                      {t('auto.import_this_version')}
-                    </Button>,
-                    <Button
-                      key="current"
-                      type="link"
-                      disabled={
-                        version.is_current ||
-                        (pendingInstallationId !== null &&
-                          pendingInstallationId !== version.id)
-                      }
-                      loading={pendingInstallationId === version.id}
-                      onClick={() => {
-                        setPendingInstallationId(version.id);
-                        selectMutation.mutate(version.id);
-                      }}
-                    >
-                      {version.is_current
-                        ? t('auto.current')
-                        : t('auto.set_current')}
-                    </Button>,
-                    <Button
-                      key="delete"
-                      type="link"
-                      danger
-                      disabled={
-                        pendingInstallationId !== null &&
-                        pendingInstallationId !== version.id
-                      }
-                      loading={pendingInstallationId === version.id}
-                      onClick={() => confirmDelete(version)}
-                    >
-                      {t('auto.delete')}
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
+            <div className="structured-list structured-list--bordered">
+              <ul className="structured-list__items">
+                {selectedFamily.installed_versions.map((version) => (
+                  <li
+                    aria-label={`${version.version}${
+                      version.is_current ? ` ${t('auto.current')}` : ''
+                    }`}
+                    className="structured-list__item"
+                    key={version.id}
+                  >
+                    <div className="structured-list__meta">
                       <Space>
                         <Typography.Text>{version.version}</Typography.Text>
                         {version.is_current ? (
                           <Tag color="success">{t('auto.current')}</Tag>
                         ) : null}
                       </Space>
-                    }
-                    description={version.source_kind}
-                  />
-                </List.Item>
-              )}
-            />
+                      <Typography.Text type="secondary">
+                        {version.source_kind}
+                      </Typography.Text>
+                    </div>
+                    <div className="structured-list__actions">
+                      <Button
+                        type="link"
+                        disabled={!canCreate || pendingInstallationId !== null}
+                        onClick={() => setImportInstallationId(version.id)}
+                      >
+                        {t('auto.import_this_version')}
+                      </Button>
+                      <Button
+                        type="link"
+                        disabled={
+                          version.is_current ||
+                          (pendingInstallationId !== null &&
+                            pendingInstallationId !== version.id)
+                        }
+                        loading={pendingInstallationId === version.id}
+                        onClick={() => {
+                          setPendingInstallationId(version.id);
+                          selectMutation.mutate(version.id);
+                        }}
+                      >
+                        {version.is_current
+                          ? t('auto.current')
+                          : t('auto.set_current')}
+                      </Button>
+                      <Button
+                        type="link"
+                        danger
+                        disabled={
+                          pendingInstallationId !== null &&
+                          pendingInstallationId !== version.id
+                        }
+                        loading={pendingInstallationId === version.id}
+                        onClick={() => confirmDelete(version)}
+                      >
+                        {t('auto.delete')}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </Space>
         ) : null}
       </Drawer>

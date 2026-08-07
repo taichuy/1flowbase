@@ -693,7 +693,7 @@ function ModelProviderInstanceDrawerContent({
   return (
     <Drawer
       open={open}
-      width={560}
+      size={560}
       zIndex={1100}
       title={title}
       onClose={onClose}
@@ -807,7 +807,7 @@ function ModelProviderInstanceDrawerContent({
                 <span>{i18nText("settings", "auto.model_configuration")}</span>
               </div>
               <div className="model-provider-drawer__card-body">
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Space orientation="vertical" size={16} style={{ width: '100%' }}>
                   <Flex align="center" gap={12} style={{ width: '100%' }}>
                     <div style={{ flex: 1 }}>
                       <CachedModelSelect

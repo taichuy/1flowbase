@@ -366,7 +366,7 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           className="agent-flow-model-settings__notice"
           type="error"
           showIcon
-          message={i18nText(
+          title={i18nText(
             'agentFlow',
             'auto.model_supplier_list_failed_load'
           )}
@@ -377,7 +377,7 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           className="agent-flow-model-settings__notice"
           type="error"
           showIcon
-          message={i18nText(
+          title={i18nText(
             'agentFlow',
             'auto.model_provider_referenced_node_unavailable'
           )}
@@ -388,7 +388,7 @@ export function LlmModelField({ adapter, block }: SchemaFieldRendererProps) {
           className="agent-flow-model-settings__notice"
           type="error"
           showIcon
-          message={i18nText(
+          title={i18nText(
             'agentFlow',
             'auto.model_referenced_node_supplier_s_valid_model_list'
           )}

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { ApiReferenceReact } from '@scalar/api-reference-react';
 import '@scalar/api-reference-react/style.css';
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
-import { message, Result, Select, Spin, Typography } from 'antd';
+import { App, Result, Select, Spin, Typography } from 'antd';
 
 import './api-docs-explorer.css';
 import { ApiDocsOperationListPane } from './ApiDocsOperationListPane';
@@ -191,6 +191,7 @@ export function ApiDocsExplorer<TAuthenticationSnapshot = unknown>({
   toolbarPortalId,
   authentication
 }: ApiDocsExplorerProps<TAuthenticationSnapshot>) {
+  const { message } = App.useApp();
   const [operationSearch, setOperationSearch] = useState('');
   const [toolbarPortalElement, setToolbarPortalElement] =
     useState<HTMLElement | null>(null);

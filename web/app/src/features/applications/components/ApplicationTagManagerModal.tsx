@@ -108,7 +108,7 @@ export function ApplicationTagManagerModal({
                 >
                   <Space size={6}>
                     <span>{tag.name}</span>
-                    <Tag bordered={false}>{tag.application_count}</Tag>
+                    <Tag variant="filled">{tag.application_count}</Tag>
                   </Space>
                 </Checkbox>
               ))}

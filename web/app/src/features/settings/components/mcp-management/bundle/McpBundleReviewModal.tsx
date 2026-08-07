@@ -1,15 +1,7 @@
-import {
-  Alert,
-  Descriptions,
-  List,
-  Modal,
-  Space,
-  Spin,
-  Table,
-  Tag
-} from 'antd';
+import { Alert, Descriptions, Modal, Space, Spin, Table, Tag } from 'antd';
 
 import { i18nText } from '../../../../../shared/i18n/text';
+import '../../../../../shared/ui/structured-list/structured-list.css';
 import type {
   SettingsMcpBundleImportReport,
   SettingsMcpBundlePreview
@@ -158,26 +150,31 @@ export function McpBundleReviewModal({
       {loading ? (
         <Spin />
       ) : review ? (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           {integrityWarnings.length > 0 ? (
             <Alert
               showIcon
               type="warning"
-              message={
-                <List
-                  size="small"
-                  dataSource={integrityWarnings}
-                  renderItem={(message) => <List.Item>{message}</List.Item>}
-                />
+              title={
+                <ul className="structured-list__items structured-list--small">
+                  {integrityWarnings.map((message, index) => (
+                    <li
+                      className="structured-list__item"
+                      key={`${message}-${index}`}
+                    >
+                      {message}
+                    </li>
+                  ))}
+                </ul>
               }
             />
           ) : null}
-          {warning ? <Alert showIcon type="warning" message={warning} /> : null}
+          {warning ? <Alert showIcon type="warning" title={warning} /> : null}
           {!imported ? (
             <Alert
               showIcon
               type="info"
-              message={i18nText(
+              title={i18nText(
                 'settingsMcpManagement',
                 'auto.mcp_bundle_overwrite_notice'
               )}
@@ -187,20 +184,18 @@ export function McpBundleReviewModal({
             <Alert
               showIcon
               type="warning"
-              message={i18nText(
+              title={i18nText(
                 'settingsMcpManagement',
                 'auto.mcp_bundle_shared_tool_impact'
               )}
               description={
-                <List
-                  size="small"
-                  dataSource={review.shared_tool_impacts}
-                  renderItem={(impact) => (
-                    <List.Item>
+                <ul className="structured-list__items structured-list--small">
+                  {review.shared_tool_impacts.map((impact) => (
+                    <li className="structured-list__item" key={impact.tool_id}>
                       {impact.tool_id}: {impact.instance_ids.join(', ')}
-                    </List.Item>
-                  )}
-                />
+                    </li>
+                  ))}
+                </ul>
               }
             />
           ) : null}
@@ -213,7 +208,7 @@ export function McpBundleReviewModal({
                   ? 'success'
                   : 'warning'
               }
-              message={
+              title={
                 importReport?.status === 'already_applied'
                   ? i18nText(
                       'settingsMcpManagement',

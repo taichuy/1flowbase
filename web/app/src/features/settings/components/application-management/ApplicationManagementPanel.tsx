@@ -11,7 +11,7 @@ import {
   Dropdown,
   Flex,
   Input,
-  message,
+  App,
   Modal,
   Select,
   Space,
@@ -123,7 +123,7 @@ export function ApplicationManagementPanel() {
   const me = useAuthStore((state) => state.me);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
-  const [messageApi, messageContextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const [routeState, setRouteState] = useState(
     readApplicationManagementRouteState
@@ -837,7 +837,6 @@ export function ApplicationManagementPanel() {
         </form>
       }
     >
-      {messageContextHolder}
       {modalContextHolder}
       <div className="application-management-panel__table-region">
         <DataTable<SettingsApplicationManagementItem>

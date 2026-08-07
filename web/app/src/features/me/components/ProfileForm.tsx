@@ -185,7 +185,7 @@ export function ProfileForm({
       <Drawer
         forceRender
         title={t('profile.drawer.title')}
-        width={400}
+        size={400}
         onClose={handleDrawerClose}
         open={drawerVisible}
         extra={
@@ -198,7 +198,7 @@ export function ProfileForm({
         }
       >
         {errorMessage ? (
-          <Alert type="error" message={errorMessage} showIcon style={{ marginBottom: 24 }} />
+          <Alert type="error" title={errorMessage} showIcon style={{ marginBottom: 24 }} />
         ) : null}
 
         <Form<ProfileFormValues>

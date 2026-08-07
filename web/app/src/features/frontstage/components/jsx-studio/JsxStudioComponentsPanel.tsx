@@ -1,5 +1,14 @@
 import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
-import { Alert, Button, Empty, Input, Space, Table, Typography, message } from 'antd';
+import {
+  Alert,
+  Button,
+  Empty,
+  Input,
+  Space,
+  Table,
+  Typography,
+  App
+} from 'antd';
 import { useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
@@ -20,6 +29,7 @@ export function JsxStudioComponentsPanel({
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   workspaceId: string;
 }) {
+  const { message } = App.useApp();
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
   const [copyingId, setCopyingId] = useState<string | null>(null);
@@ -44,9 +54,7 @@ export function JsxStudioComponentsPanel({
       await copyTextToClipboard(component.api_documentation);
       message.success(i18nText('frontstage', 'auto.component_api_copied'));
     } catch {
-      message.warning(
-        i18nText('frontstage', 'auto.copy_component_api_failed')
-      );
+      message.warning(i18nText('frontstage', 'auto.copy_component_api_failed'));
     } finally {
       setCopyingId(null);
     }
@@ -74,10 +82,7 @@ export function JsxStudioComponentsPanel({
           <Alert
             type="error"
             showIcon
-            message={i18nText(
-              'frontstage',
-              'auto.component_catalog_load_failed'
-            )}
+            title={i18nText('frontstage', 'auto.component_catalog_load_failed')}
           />
         ) : null}
         <Table<ConsoleFrontstageComponentCapabilitySummary>

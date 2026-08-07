@@ -650,7 +650,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const renderPageTreeErrorBanner = hasPageTreeLoadError ? (
     <Alert
       style={{ marginBottom: 12 }}
-      message={i18nText('frontstage', 'auto.page_tree_load_failed')}
+      title={i18nText('frontstage', 'auto.page_tree_load_failed')}
       description={i18nText('frontstage', 'auto.page_tree_load_failed_recover')}
       type="error"
       showIcon
@@ -819,7 +819,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       {canEnterDesignMode && isDesignMode && pageContentSaveError ? (
         <Alert
           style={{ marginBottom: 12 }}
-          message={i18nText('frontstage', 'auto.block_save_failed')}
+          title={i18nText('frontstage', 'auto.block_save_failed')}
           description={pageContentSaveError}
           type="error"
           showIcon

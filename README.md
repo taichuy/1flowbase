@@ -1,7 +1,7 @@
 # 1flowbase
 
 <p align="center">
-  <img src="docs/assets/logo_index_en.png" alt="1flowbase Logo">
+  <img src="web/app/public/icon.svg" alt="1flowbase Logo" width="120" height="120">
 </p>
 
 <p align="center">
@@ -26,29 +26,27 @@
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
 
-> **Build full-stack agent-native applications on four open-source foundations: an AI Gateway, an MCP Gateway, a built-in Application Backend, and Native React frontend blocks.**
+> 1flowbase is a self-hosted AI gateway for individuals and enterprises: on top of protocol translation, dispatch, and detailed chat logs, it ships with a built-in Application Backend and Native React frontend blocks that help you combine AI with your business data. Most importantly, all of it can be operated and managed by your Agent through MCP.
 
-1flowbase gives local agents, model clients, external systems, and people independent ways to use the same self-hosted application platform. A local agent can connect only to the MCP Gateway to build and operate applications with its existing model setup. Connecting that client to the AI Gateway is optional and adds compatible model endpoints, multi-model workflows, and detailed execution traces.
+1flowbase lets an Agent take over the entire application through MCP — whether orchestrating and publishing an AI gateway, generating backend application endpoints, or building native React interfaces.
 
 ```text
-Local agents     -> MCP Gateway         -> discover / configure / build / operate
-Model clients    -> AI Gateway          -> compatible endpoints / model workflows / traces
-External systems -> Application Backend -> generated CRUD APIs / custom workflow APIs
-People           -> React blocks        -> interactive application UI
+Local Agent        -> MCP Gateway         -> discover / configure / build / operate
+Model clients      -> AI Gateway          -> compatible endpoints / model workflows / traces
+External systems   -> Application Backend -> generated CRUD APIs / custom workflow APIs
+People             -> React blocks        -> interactive application UI
 
-Use any foundation independently, or combine them around one 1flowbase application.
+The four foundations can be used independently, or combined around the same 1flowbase application.
 ```
 
 | Foundation | What it provides |
 |---|---|
 | **AI Gateway** | Translate and dispatch OpenAI Responses, Chat Completions, and Claude Messages traffic; route models and publish observable workflows as virtual models |
-| **MCP Gateway** | Turn 1flowbase capabilities into progressively discoverable tools; organize tools, mappings, groups, bindings, policies, upstream MCP connections, and reusable bundles |
-| **Application Backend** | Define Data Models that materialize PostgreSQL tables, fields, indexes, and relations; generate governed CRUD APIs and publish custom workflow-powered endpoints |
+| **MCP Gateway** | Project 1flowbase capabilities into progressively discoverable tools; manage Tools, mappings, Groups, Bindings, policies, upstream MCP connections, and reusable Bundles |
+| **Application Backend** | Define Data Models that materialize PostgreSQL tables, fields, indexes, and relations; automatically generate governed CRUD APIs and publish custom endpoints powered by Workflows |
 | **Native React frontend blocks** | Build responsive application interfaces with standard React/TSX and CSS, controlled component imports, data binding, and Shadow DOM isolation |
 
-For example, a local agent can use MCP to create `Customer` and `Ticket` Data Models, assemble a workflow-backed `/api/ex/tickets/escalate` operation, and build the React interface. External systems call the generated backend APIs, while people work in the interface. If the same local agent also points its model endpoint at the AI Gateway, it gains published virtual models with routing, model composition, and full logs; the application does not depend on that optional connection.
-
-![Workflow Editor Preview](docs/assets/workflow_editor_preview_tool.png)
+For example, a local Agent can create `Customer` and `Ticket` Data Models through MCP, assemble a workflow-backed `/api/ex/tickets/escalate` endpoint, and build the React interface. External systems call the generated backend APIs, while people work directly in the interface. If the same local Agent also points its model endpoint at the AI Gateway, it gains virtual models with routing, model composition, and full logs; the application itself does not depend on this optional connection.
 
 ---
 
@@ -56,7 +54,7 @@ For example, a local agent can use MCP to create `Customer` and `Ticket` Data Mo
 
 ### Let an agent build and operate a 1flowbase application
 
-The MCP Gateway projects platform capabilities into an agent-oriented virtual UI. An agent can progressively discover the relevant domain, inspect a tool contract, call it, verify the resulting state, and continue building without requiring a new hard-coded frontend flow for every task.
+The MCP Gateway projects platform capabilities into an agent-oriented virtual UI. An agent can progressively discover the relevant domain, inspect a tool contract, make a call, verify the resulting state, and continue building — no hard-coded frontend flow needed for each new task.
 
 ```text
 Agent
@@ -69,7 +67,7 @@ Agent
 
 ### Create a ready-to-use application backend
 
-Define a Data Model in 1flowbase and publish it. The platform materializes the PostgreSQL schema and exposes model-aware List, Get, Create, Update, and Delete APIs with generated OpenAPI contracts. Use Workflow Extensions when CRUD is not enough and publish custom business operations under `/api/ex/{slug}`.
+Define and publish a Data Model in 1flowbase, and the platform materializes the PostgreSQL schema and generates model-aware List, Get, Create, Update, and Delete APIs with OpenAPI contracts. When standard CRUD is not enough, use a Workflow Extension to define business logic and publish it as a custom endpoint under `/api/ex/{slug}`.
 
 ```text
 Data Model definition
@@ -77,13 +75,13 @@ Data Model definition
   -> generated CRUD runtime APIs + OpenAPI
 
 Workflow
-  -> custom input and output contract
-  -> published /api/ex/{slug} operation
+  -> custom input/output contract
+  -> published /api/ex/{slug} endpoint
 ```
 
 ### Build the human interface with Native React blocks
 
-Write frontend blocks with standard React/TSX, Hooks, events, and CSS. 1flowbase compiles and mounts each block in an isolated Shadow DOM runtime, while controlled catalogs and context contracts expose the platform capabilities the block is allowed to use.
+Frontend blocks use standard React/TSX, Hooks, events, and CSS directly. 1flowbase compiles and mounts each block in an isolated Shadow DOM runtime, exposing the platform capabilities the block is allowed to use through controlled catalogs and context contracts.
 
 ```tsx
 export default function StatusCard({ ctx }) {
@@ -96,7 +94,7 @@ export default function StatusCard({ ctx }) {
 
 ### Add vision to text-first coding models
 
-Keep GLM-5.2, DeepSeek, or another strong text coding model as the main planner, then let 1flowbase route screenshots, UI images, charts, and PDF pages to a mounted vision model.
+Keep GLM-5.2, DeepSeek V4, or another strong text-based coding model in charge of planning and writing code, and let 1flowbase route screenshots, UI images, charts, and PDF pages to a mounted vision model.
 
 ```text
 Claude Code
@@ -112,7 +110,7 @@ Guide: [Make GLM-5.2 See Images in Claude Code with 1flowbase](https://github.co
 
 ### Publish a Fusion-style multi-model reviewer
 
-1flowbase includes a `fusion` template. Your client calls one model name; 1flowbase asks several branch models, runs a synthesis model, returns the final answer, and keeps every branch visible.
+1flowbase ships with a `fusion` template. The client calls a single model name; 1flowbase queries multiple branch models in the background, invokes a synthesis model, returns the final answer, and keeps the execution record of every branch.
 
 ```text
 User request
@@ -129,7 +127,7 @@ Guide: [Fusion-Style Workflows: Publish a Multi-Model Panel as an Observable Vir
 
 ### Publish workflow-backed model APIs
 
-Build the workflow once, then expose it through common model APIs:
+Build the workflow once, then serve it through common model protocols:
 
 | Protocol | API path | Typical usage |
 |---|---:|---|
@@ -163,9 +161,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 
 ## Run From Source
 
-Use this path when you want to develop 1flowbase itself.
+This path is for developing 1flowbase itself.
 
-Requirements: Node.js `>= 24.0.0`, pnpm, latest stable Rust, and Docker for local middleware.
+Requirements: Node.js `>= 24.0.0`, pnpm, the latest stable Rust, and Docker for local middleware.
 
 ```bash
 git clone https://github.com/taichuy/1flowbase.git
@@ -209,172 +207,63 @@ node scripts/node/dev-up.js stop
 node scripts/node/dev-up.js restart
 ```
 
-See [scripts/README.md](scripts/README.md) for more options.
-
----
-
-## Where 1flowbase Fits
-
-1flowbase is not just a model proxy, a bag of MCP servers, or another chat UI.
-
-| Tool category | What it usually does | How 1flowbase is different |
-|---|---|---|
-| LLM gateway / model router | routes one request to one provider or model | composes multiple model and tool nodes into one workflow-backed virtual model |
-| MCP server / gateway | exposes or aggregates tools for agents | exposes the 1flowbase application control plane while also connecting and governing upstream MCP tools |
-| Backend-as-a-Service / backend builder | provides tables and generic CRUD endpoints | materializes governed PostgreSQL Data Models and combines generated CRUD with workflow-powered custom APIs |
-| AI workflow builder | builds an AI app or workflow | exposes the workflow through model APIs and makes the surrounding application operable through MCP |
-| Agent application framework | helps developers code agent graphs and interfaces | combines a visual runtime, agent-facing control plane, protocol publishing, and Native React application surfaces |
-| Observability / cost tracker | shows token or spend totals | connects cost to workflow nodes, model calls, tool callbacks, and trace logs |
-
-```text
-Model serving plane: AI Gateway (optional for external clients)
-Agent control plane: MCP Gateway
-Data and API plane: Application Backend
-Human experience plane: Native React frontend blocks
-
-1flowbase provides all four foundations in one self-hosted platform.
-```
-
----
-
-## Feature Preview
-
-### Publish as OpenAI-compatible API
-
-![Publish OpenAI API](docs/assets/api_endpoint_publish_1.jpeg)
-
-### Publish as Claude-compatible Messages API
-
-![Publish Claude API](docs/assets/api_endpoint_publish_2.jpeg)
-
-### Customize exposed model information
-
-![Custom Model Settings](docs/assets/custom_model_settings.jpeg)
-
-### Use in local AI agent clients
-
-Call a published workflow from compatible clients that support custom model endpoints.
-
-![Claude Code Terminal Usage](docs/assets/claude_code_terminal_usage.png)
-
-### Inspect execution logs
-
-Trace model requests, node inputs and outputs, tool callbacks, response content, latency, and errors.
-
-![Detailed Execution Logs](docs/assets/detailed_execution_logs.jpeg)
-
-### View tool callback traces
-
-![Tool Callback Trace Logs](docs/assets/tool_callback_trace_logs.png)
-
-### Track token consumption
-
-![Token Consumption Dashboard](docs/assets/token_consumption_dashboard.jpeg)
+See [scripts/README.md](scripts/README.md) for more configuration options.
 
 ---
 
 ## Common Use Cases
 
-### Make a text coding model understand screenshots
+### Have an agent build and continuously manage an internal application
 
 ```text
-Screenshot / UI mockup / chart
-  -> vision tool
-  -> structured visual context
-  -> strong coding model
-  -> patch, plan, or explanation
+Local or external Agent
+  -> MCP Gateway
+  -> create Data Models and relations
+  -> publish CRUD and Workflow Extension APIs
+  -> assemble Native React blocks
+  -> inspect and continuously evolve the running application
 ```
 
-Useful for UI reconstruction, frontend debugging, visual regression analysis, chart reading, PDF page understanding, and design-to-code workflows.
+This is the primary full-stack path formed by the four foundations: the agent operates the control plane through MCP, the Application Backend handles data and APIs, and Native React blocks provide the human interface. The AI Gateway is connected on demand only when the application also needs to serve governed model endpoints externally.
 
-### Build a Fusion-style reviewer
+### Deliver an application backend without assembling a separate backend stack
 
 ```text
-Architecture proposal
-  -> cheap broad reviewer
-  -> strong reasoning reviewer
-  -> provider-diverse reviewer
-  -> synthesis model
-  -> final recommendation
+Data Model
+  -> PostgreSQL table / columns / indexes / relations
+  -> generated CRUD runtime and OpenAPI
+  -> custom business logic via Workflow Extension APIs
 ```
 
-Useful for architecture review, research synthesis, code review, document review, and high-stakes agent decisions.
+Ideal for internal tools, management systems, operations dashboards, agent memory storage, content systems, and small-to-medium product backends.
 
-### Control cost with model cascading
+### Add custom human interfaces to agent-managed data
 
 ```text
-Simple classification -> small model
-Formatting -> small model
-Complex reasoning -> strong model
-Final verification -> verifier node
+Data Model / custom APIs
+  -> Native React blocks
+  -> search, filters, forms, actions, and responsive layouts
 ```
 
-### Guarantee output structure
+The task planning board is a real example: the native React interface reads and updates records directly through the Data Model API, without a separate frontend-backend stack.
 
-Use verifiers, JSON Schema validation, and formatter nodes before returning the final result. This is useful for JSON outputs, API responses, tool call parameters, code patches, document generation, and automated task results.
-
-### Build a programmable upstream model for agents
+### Publish a programmable upstream model for AI clients
 
 ```text
-Code generation -> test / lint check -> reviewer node -> fix node -> final patch
+External AI clients
+  -> optional AI Gateway
+  -> protocol translation
+  -> model and tool workflows
+  -> logs, traces, token usage, and final responses
 ```
 
-The client calls one model name while 1flowbase runs your workflow behind it.
-
----
-
-## Current Status
-
-### Implemented
-
-- [x] visual workflow editor
-- [x] multi-node workflow orchestration
-- [x] virtual model endpoint publishing
-- [x] OpenAI Responses protocol support
-- [x] OpenAI Chat Completions protocol support
-- [x] Claude-compatible Messages protocol support
-- [x] streaming response support
-- [x] mounted LLM tools for multimodal and branch-model workflows
-- [x] `fusion` workflow template
-- [x] execution logs
-- [x] tool callback traces inside 1flowbase workflows
-- [x] application-level token consumption statistics
-- [x] prompt and model configuration version history
-- [x] MCP Gateway with progressive `mcp_list`, `mcp_get`, and `mcp_call` discovery
-- [x] MCP tool, mapping, group, binding, discovery policy, and upstream connection management
-- [x] reusable MCP bundle import, export, validation, and local library flows
-- [x] dynamic Data Models that materialize PostgreSQL tables, fields, indexes, and relations
-- [x] generated Data Model CRUD runtime APIs and OpenAPI contracts
-- [x] custom Workflow Extension APIs published under `/api/ex/{slug}`
-- [x] Native React/TSX frontend blocks with Hooks, CSS, events, and Shadow DOM isolation
-- [x] controlled frontend component catalog, code studio, responsive context, and data binding
-
-### Enhancing
-
-- [ ] deeper local agent conversation collection
-- [ ] session search and playback
-- [ ] Token Bill of Materials by prompt, history, tool definitions, command outputs, media inputs, and nodes
-- [ ] abnormal cost detection and optimization suggestions
-- [ ] session export and Recall Pack generation
-- [ ] more Claude Code / Codex / OpenCode / Cline / Continue templates
-- [ ] broader agent-ready MCP Virtual UI coverage across product domains
-- [ ] more end-to-end application recipes combining MCP management, Application Backend, frontend blocks, and optional AI Gateway serving
-
-### Planned
-
-- [ ] broader low-code authoring on top of the four application foundations
-- [ ] team workspace and multi-tenant management
-- [ ] permissions, approval, audit, and cost governance
-- [ ] support for more local AI agent clients
-- [ ] template market and workflow recipe ecosystem
-
-> The four foundations are implemented and usable today. They are composable rather than mandatory stages: an external agent can use the MCP Gateway without routing its model traffic through the AI Gateway. Broader low-code authoring, team governance, and the template ecosystem are still evolving.
+The client calls a single model name, and 1flowbase can run cross-provider workflows behind it. Suitable for multimodal enhancement, Fusion-style review, model cascading, structured output validation, and programmable coding model flows.
 
 ---
 
 ## Transparency and Security
 
-1flowbase is designed for transparent, self-hosted AI workflow execution.
+1flowbase is committed to providing a transparent, self-hosted environment for AI workflow execution.
 
 Recommended principles:
 
@@ -383,10 +272,9 @@ Recommended principles:
 - auditable node calls
 - traceable token usage
 - configurable log retention
-- sensitive data masking
 - explicit model and workflow configuration
 
-1flowbase does not advocate stealthy model replacement. Published endpoints should be configured intentionally, observed clearly, and governed by the project owner.
+1flowbase does not advocate silently replacing models without the user's knowledge. Every published endpoint should be clearly configured, observed, and governed by the project owner.
 
 ---
 
@@ -414,13 +302,13 @@ scripts/      Development, testing, verification, and debugging scripts
 
 ## Contributing
 
-Contributions are welcome. Before submitting a pull request, run:
+Community contributions are very welcome. Before submitting a pull request, run the following verification script:
 
 ```bash
 node scripts/node/verify.js repo
 ```
 
-Project guidelines:
+Project development guidelines:
 
 - [AGENTS.md](AGENTS.md)
 - [web/AGENTS.md](web/AGENTS.md)
@@ -440,24 +328,9 @@ Project guidelines:
 
 ---
 
-## OpenAI Build Week
-
-### Built with Codex and GPT-5.6
-
-Codex was used to:
-- redesign MCP configuration workflows
-- implement and review Rust backend changes
-- improve React components
-- debug integration issues
-
-GPT-5.6 was used for:
-- designing agent workflows
-- validating MCP capability patterns
-- improving architecture decisions
-
 ## License
 
-This project is licensed under [Apache-2.0](LICENSE).
+This project is licensed under the [Apache-2.0](LICENSE) open-source license.
 
 ---
 
@@ -473,8 +346,6 @@ This project is licensed under [Apache-2.0](LICENSE).
 
 ## Star History
 
-## Star History
-
 <a href="https://www.star-history.com/?type=date&repos=taichuy%2F1flowbase">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=taichuy/1flowbase&type=date&theme=dark&legend=top-left&sealed_token=FqLzVSU8-9DxFglG-qgV59WwozJJfOHYwvjWNeVtnDP8OJ8r8BwvdLCIloKkdrLXWJqUEaD9xkVSr0RkCvzGaIxDYXYX2Zz53ikx7xZkZckNqgevZkOi1A" />
@@ -487,7 +358,7 @@ This project is licensed under [Apache-2.0](LICENSE).
 
 <div align="center">
 
-**If you want agents to build and operate self-hosted applications across AI, MCP, backend, and React surfaces, give 1flowbase a star.**
+**If you want agents to build and operate self-hosted applications across AI, MCP, Application Backend, and React surfaces, give 1flowbase a star.**
 
 [Report Bug](https://github.com/taichuy/1flowbase/issues) · [Request Feature](https://github.com/taichuy/1flowbase/issues)
 

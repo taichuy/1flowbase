@@ -4,7 +4,7 @@ import {
   DragOutlined,
   MenuOutlined
 } from '@ant-design/icons';
-import { App as AntdApp, Button, Divider, Tooltip, message } from 'antd';
+import { App as AntdApp, Button, Divider, Tooltip } from 'antd';
 import type { FC, MouseEvent } from 'react';
 import { useState } from 'react';
 
@@ -27,6 +27,7 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
   isVisible,
   disabled = false
 }) => {
+  const { message } = AntdApp.useApp();
   const { modal } = AntdApp.useApp();
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
@@ -82,10 +83,7 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
           }}
         />
         {isMoreMenuOpen ? (
-          <div
-            className="frontstage-block-hover-actions__menu"
-            role="menu"
-          >
+          <div className="frontstage-block-hover-actions__menu" role="menu">
             <Button
               block
               type="text"

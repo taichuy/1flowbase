@@ -45,7 +45,7 @@ export function DataSourceResourcesPanel({
       title: i18nText('settings', 'auto.remote_resources'),
       key: 'display_name',
       render: (_, resource) => (
-        <Space direction="vertical" size={2}>
+        <Space orientation="vertical" size={2}>
           <Typography.Text strong>{resource.display_name}</Typography.Text>
           <Typography.Text type="secondary">
             <code className="data-model-panel__code-badge">

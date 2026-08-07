@@ -121,10 +121,10 @@ export function HostInfrastructureProviderDrawer({
     <>
       <Drawer
         title={provider ? i18nText("settings", "auto.configuration", { value1: provider.display_name }) : i18nText("settings", "auto.provider_configuration")}
-        width={520}
+        size={520}
         open={open}
         onClose={onClose}
-        destroyOnClose
+        destroyOnHidden
         extra={
           <Space>
             <Button
@@ -139,7 +139,7 @@ export function HostInfrastructureProviderDrawer({
         }
       >
         {provider ? (
-          <Space direction="vertical" size={16} className="host-infrastructure-drawer">
+          <Space orientation="vertical" size={16} className="host-infrastructure-drawer">
             <Descriptions size="small" column={1}>
               <Descriptions.Item label="Extension">
                 {provider.extension_id}

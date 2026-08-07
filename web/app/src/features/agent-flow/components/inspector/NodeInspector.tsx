@@ -297,7 +297,7 @@ export function NodeInspector({
                             {childBlock.label}
                             {labelTag ? (
                               <Tag
-                                bordered={false}
+                                variant="filled"
                                 className="agent-flow-editor__inspector-field-label-tag"
                               >
                                 {labelTag}

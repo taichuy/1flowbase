@@ -1,6 +1,6 @@
 import { UploadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Modal, Space, message } from 'antd';
+import { App, Button, Modal, Space } from 'antd';
 import { useCallback, useRef, useState } from 'react';
 
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -21,6 +21,7 @@ import { downloadMcpBundle } from './mcp-bundle-download';
 import { McpTemplateLibrary } from './McpTemplateLibrary';
 
 export function McpBundleActions({ canManage }: { canManage: boolean }) {
+  const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -102,7 +103,7 @@ export function McpBundleActions({ canManage }: { canManage: boolean }) {
         footer={null}
         onCancel={() => setSourceOpen(false)}
       >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Button
             block
             icon={<UploadOutlined />}

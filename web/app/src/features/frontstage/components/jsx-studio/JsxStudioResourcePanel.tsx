@@ -11,7 +11,7 @@ import {
   Table,
   Tag,
   Typography,
-  message
+  App
 } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
@@ -135,6 +135,7 @@ function InterfaceConnectorPanel({
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
 }) {
+  const { message } = App.useApp();
   const pageSize = 10;
   const [pendingInterfaceId, setPendingInterfaceId] = useState<string | null>(
     null
@@ -258,7 +259,7 @@ function InterfaceConnectorPanel({
           <Alert
             type="error"
             showIcon
-            message={i18nText(
+            title={i18nText(
               'frontstage',
               'auto.capability_catalog_load_failed'
             )}
@@ -692,6 +693,7 @@ function ConfigurationPanel({
   block: FrontstageBlockInstance;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }) {
+  const { message } = App.useApp();
   const [title, setTitle] = useState(readString(block.props.title));
   const [description, setDescription] = useState(
     readString(block.props.description)
@@ -849,7 +851,7 @@ function ResourceHeading({
   title: string;
 }) {
   return (
-    <Space direction="vertical" size={2}>
+    <Space orientation="vertical" size={2}>
       <Typography.Text strong>{title}</Typography.Text>
       <Typography.Text type="secondary">{description}</Typography.Text>
     </Space>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { message } from 'antd';
+import { App } from 'antd';
 
 import {
   importInstalledApplicationExtension,
@@ -27,6 +27,7 @@ export function InstalledAgentFlowImportFlow({
   onClose: () => void;
   onImported: (applicationId: string) => Promise<void>;
 }) {
+  const { message } = App.useApp();
   const [preview, setPreview] = useState<AgentFlowTemplatePreview | null>(null);
   const [name, setName] = useState('');
   const [integrityWarnings, setIntegrityWarnings] = useState<string[]>([]);
@@ -69,7 +70,7 @@ export function InstalledAgentFlowImportFlow({
     return () => {
       cancelled = true;
     };
-  }, [installationId, onClose]);
+  }, [installationId, message, onClose]);
 
   async function importAgentFlow() {
     if (!installationId || !preview) return;

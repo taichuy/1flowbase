@@ -276,7 +276,7 @@ function InputMappingInterfaceSection({
   return (
     <Space
       className="mcp-input-mapping-editor__stack"
-      direction="vertical"
+      orientation="vertical"
       size="middle"
     >
       <Flex justify="flex-end">
@@ -386,7 +386,7 @@ function InputMappingLayerSection({
   return (
     <Space
       className="mcp-input-mapping-editor__stack"
-      direction="vertical"
+      orientation="vertical"
       size="middle"
     >
       <Flex
@@ -496,7 +496,7 @@ function InputMappingJsonSection({
   onUpdateJsonText: (nextText: string) => void;
 }) {
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <InlineJsonCodeEditor
         ariaLabel="input_mapping JSON"
         className="mcp-input-mapping-editor__json"

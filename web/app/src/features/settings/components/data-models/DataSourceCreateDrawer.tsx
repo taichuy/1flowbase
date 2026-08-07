@@ -119,7 +119,7 @@ export function DataSourceCreateDrawer({
     <Drawer
       title={i18nText('settings', 'auto.add_data_source')}
       open={open}
-      width={520}
+      size={520}
       onClose={onClose}
       extra={
         <Button
@@ -137,7 +137,7 @@ export function DataSourceCreateDrawer({
           <Alert
             type="error"
             showIcon
-            message={errorMessage}
+            title={errorMessage}
             style={{ marginBottom: 16 }}
           />
         ) : null}

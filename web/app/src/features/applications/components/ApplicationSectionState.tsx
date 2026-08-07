@@ -19,7 +19,7 @@ export function ApplicationSectionState({
 
   if (sectionKey === 'orchestration') {
     return (
-      <Space direction="vertical" size="middle">
+      <Space orientation="vertical" size="middle">
         <Typography.Title level={4}>{t('auto.orchestration')}</Typography.Title>
         <Typography.Paragraph>
           {t('auto.orchestration_section_description')}</Typography.Paragraph>
@@ -60,7 +60,7 @@ export function ApplicationSectionState({
 
   if (sectionKey === 'api') {
     return (
-      <Space direction="vertical" size="middle">
+      <Space orientation="vertical" size="middle">
         <Typography.Title level={4}>{t('auto.api')}</Typography.Title>
         <Typography.Paragraph>
           {t('auto.public_api_section_description')}</Typography.Paragraph>
@@ -103,7 +103,7 @@ export function ApplicationSectionState({
 
   if (sectionKey === 'monitoring') {
     return (
-      <Space direction="vertical" size="middle">
+      <Space orientation="vertical" size="middle">
         <Typography.Title level={4}>{t('auto.monitoring')}</Typography.Title>
         <Typography.Paragraph>
           {t('auto.monitoring_section_description')}</Typography.Paragraph>

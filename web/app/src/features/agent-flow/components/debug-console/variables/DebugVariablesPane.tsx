@@ -198,7 +198,7 @@ export function DebugVariablesPane({
       >
         <Collapse
           defaultActiveKey={defaultGroupKeys}
-          expandIconPosition="end"
+          expandIconPlacement="end"
           className="agent-flow-editor__debug-variables-collapse"
           ghost
           size="small"

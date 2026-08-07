@@ -23,7 +23,7 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
+  App,
   type TableColumnsType
 } from 'antd';
 import { useMemo, useState } from 'react';
@@ -263,6 +263,7 @@ export function ThirdPartyMcpTab({
   canManage: boolean;
   onImported: () => void;
 }) {
+  const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
   const [form] = Form.useForm<ConnectionFormValues>();
@@ -678,12 +679,16 @@ export function ThirdPartyMcpTab({
   }
   if (connectionsQuery.isError || !connectionsQuery.data) {
     return (
-      <Alert type="error" message={text('upstream_connections_load_failed')} />
+      <Alert type="error" title={text('upstream_connections_load_failed')} />
     );
   }
 
   return (
-    <Space direction="vertical" size="middle" className="mcp-management__stack">
+    <Space
+      orientation="vertical"
+      size="middle"
+      className="mcp-management__stack"
+    >
       <Flex justify="flex-end">
         <Button
           aria-label={text('upstream_new_connection')}
@@ -868,7 +873,7 @@ export function ThirdPartyMcpTab({
         {testMutation.isError ? (
           <Alert
             type="error"
-            message={
+            title={
               testMutation.error instanceof Error
                 ? testMutation.error.message
                 : String(testMutation.error)
@@ -877,13 +882,13 @@ export function ThirdPartyMcpTab({
         ) : null}
         {testMutation.data ? (
           <Space
-            direction="vertical"
+            orientation="vertical"
             size="middle"
             className="mcp-management__stack"
           >
             <Alert
               type={testMutation.data.ok ? 'success' : 'error'}
-              message={
+              title={
                 testMutation.data.ok
                   ? text('upstream_connection_test_success')
                   : testMutation.data.error
@@ -923,7 +928,7 @@ export function ThirdPartyMcpTab({
         {discoverMutation.isError ? (
           <Alert
             type="error"
-            message={
+            title={
               discoverMutation.error instanceof Error
                 ? discoverMutation.error.message
                 : String(discoverMutation.error)
@@ -932,7 +937,7 @@ export function ThirdPartyMcpTab({
         ) : null}
         {discoverMutation.data ? (
           <Space
-            direction="vertical"
+            orientation="vertical"
             size="middle"
             className="mcp-management__stack"
           >

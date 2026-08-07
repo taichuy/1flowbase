@@ -319,7 +319,9 @@ export function ApplicationFormModal({
     <FixedHeightModal
       open={open}
       title={
-        isEdit ? t('auto.edit_application_information') : t('auto.new_application')
+        isEdit
+          ? t('auto.edit_application_information')
+          : t('auto.new_application')
       }
       destroyOnHidden
       footer={
@@ -350,7 +352,7 @@ export function ApplicationFormModal({
             <Alert
               type="error"
               showIcon
-              message={
+              title={
                 isEdit
                   ? t('auto.save_failed')
                   : t('auto.create_application_failed')
@@ -373,7 +375,7 @@ export function ApplicationFormModal({
           ) : (
             <Form.Item label={t('auto.type')} name="application_type">
               <Radio.Group>
-                <Space direction="vertical" size="small">
+                <Space orientation="vertical" size="small">
                   {(catalogQuery.data?.types ?? []).map((option) => (
                     <Radio key={option.value} value={option.value}>
                       {option.label}
@@ -497,16 +499,33 @@ export function ApplicationFormModal({
             ) : (
               <>
                 <Form.Item
+                  htmlFor="extension_subpath"
                   label={t('auto.extension_subpath')}
-                  name="extension_subpath"
-                  rules={[
-                    {
-                      required: true,
-                      message: t('auto.extension_subpath_required')
-                    }
-                  ]}
+                  required
                 >
-                  <Input addonBefore="/api/ex/" placeholder="orders/create" />
+                  <Space.Compact block>
+                    <Input
+                      aria-label="/api/ex/"
+                      readOnly
+                      value="/api/ex/"
+                      style={{ width: 88 }}
+                    />
+                    <Form.Item
+                      name="extension_subpath"
+                      noStyle
+                      rules={[
+                        {
+                          required: true,
+                          message: t('auto.extension_subpath_required')
+                        }
+                      ]}
+                    >
+                      <Input
+                        id="extension_subpath"
+                        placeholder="orders/create"
+                      />
+                    </Form.Item>
+                  </Space.Compact>
                 </Form.Item>
                 <Form.Item
                   label={t('auto.http_method')}
@@ -547,7 +566,7 @@ export function ApplicationFormModal({
                 <Alert
                   type="info"
                   showIcon
-                  message={t('auto.schedule_disabled_hint')}
+                  title={t('auto.schedule_disabled_hint')}
                 />
               )}
               <Form.Item
@@ -609,7 +628,7 @@ export function ApplicationFormModal({
             <Alert
               type="error"
               showIcon
-              message={t('auto.trigger_load_failed')}
+              title={t('auto.trigger_load_failed')}
             />
           ) : null}
 

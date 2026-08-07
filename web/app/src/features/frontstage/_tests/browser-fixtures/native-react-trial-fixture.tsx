@@ -1,4 +1,3 @@
-import '@ant-design/v5-patch-for-react-19';
 import { Button, ConfigProvider, Select } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { EChart } from '@1flowbase/charts';

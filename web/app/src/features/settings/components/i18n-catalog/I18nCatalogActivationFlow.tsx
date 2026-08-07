@@ -1,15 +1,7 @@
-import {
-  Alert,
-  Descriptions,
-  List,
-  Modal,
-  Space,
-  Spin,
-  Typography,
-  message
-} from 'antd';
+import { Alert, Descriptions, Modal, Space, Spin, Typography, App } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../../../../shared/ui/structured-list/structured-list.css';
 
 import {
   activateSettingsI18nCatalogUpdate,
@@ -63,6 +55,7 @@ export function I18nCatalogActivationFlow({
   onClose: () => void;
   onActivated: () => Promise<void>;
 }) {
+  const { message } = App.useApp();
   const { t } = useTranslation('settings');
   const [review, setReview] = useState<I18nCatalogActivationReview | null>(
     null
@@ -136,7 +129,7 @@ export function I18nCatalogActivationFlow({
     return () => {
       cancelled = true;
     };
-  }, [installationId, onClose, sourceKind]);
+  }, [installationId, message, onClose, sourceKind]);
 
   async function activateCatalog() {
     if (!review || !csrfToken) return;
@@ -180,19 +173,24 @@ export function I18nCatalogActivationFlow({
       onOk={() => void activateCatalog()}
     >
       {review ? (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           {review.integrityWarnings.length > 0 ? (
-            <List
-              size="small"
-              dataSource={review.integrityWarnings}
-              renderItem={(warning) => <List.Item>{warning.message}</List.Item>}
-            />
+            <ul className="structured-list__items structured-list--small">
+              {review.integrityWarnings.map((warning, index) => (
+                <li
+                  className="structured-list__item"
+                  key={`${warning.message}-${index}`}
+                >
+                  {warning.message}
+                </li>
+              ))}
+            </ul>
           ) : null}
           {review.kind === 'official' && review.updateStatus === 'current' ? (
             <Alert
               showIcon
               type="success"
-              message={t('auto.translation_catalog_is_current')}
+              title={t('auto.translation_catalog_is_current')}
             />
           ) : null}
           <Descriptions size="small" column={1} bordered>

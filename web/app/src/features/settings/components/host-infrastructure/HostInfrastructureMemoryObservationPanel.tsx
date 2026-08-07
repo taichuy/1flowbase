@@ -506,11 +506,11 @@ export function HostInfrastructureMemoryObservationPanel({
 
   if (overviewQuery.isError) {
     return (
-      <Space direction="vertical" size={16} className="host-memory-panel">
+      <Space orientation="vertical" size={16} className="host-memory-panel">
         <Alert
           type="error"
           showIcon
-          message={i18nText('settings', 'auto.memory_watch_connection_failed')}
+          title={i18nText('settings', 'auto.memory_watch_connection_failed')}
           description={i18nText(
             'settings',
             'auto.unable_read_host_infrastructure_memory_observation_api_server'
@@ -528,7 +528,7 @@ export function HostInfrastructureMemoryObservationPanel({
   }
 
   return (
-    <Space direction="vertical" size={16} className="host-memory-panel">
+    <Space orientation="vertical" size={16} className="host-memory-panel">
       <div className="host-memory-panel__toolbar">
         <Space size={[8, 8]} wrap>
           <Tag color="blue">
@@ -580,7 +580,7 @@ export function HostInfrastructureMemoryObservationPanel({
         <Alert
           type="info"
           showIcon
-          message={i18nText('settings', 'auto.view_displays_metadata')}
+          title={i18nText('settings', 'auto.view_displays_metadata')}
           description={i18nText(
             'settings',
             'auto.reveal_value_requires_infrastructure_manage_permissions_reveal_value_capability_contract'
@@ -648,7 +648,7 @@ export function HostInfrastructureMemoryObservationPanel({
                             <Alert
                               type="warning"
                               showIcon
-                              message={i18nText(
+                              title={i18nText(
                                 'settings',
                                 'auto.contract_support_tree_inspection'
                               )}
@@ -657,7 +657,7 @@ export function HostInfrastructureMemoryObservationPanel({
                             <Alert
                               type="error"
                               showIcon
-                              message={i18nText(
+                              title={i18nText(
                                 'settings',
                                 'auto.memory_tree_loading_failed'
                               )}
@@ -758,7 +758,7 @@ export function HostInfrastructureMemoryObservationPanel({
                           }}
                         >
                           <div className="host-memory-panel__entries-header">
-                            <Space direction="vertical" size={2}>
+                            <Space orientation="vertical" size={2}>
                               <Typography.Text strong>
                                 {i18nText('settings', 'auto.entries')}
                               </Typography.Text>
@@ -803,7 +803,7 @@ export function HostInfrastructureMemoryObservationPanel({
                             <Alert
                               type="error"
                               showIcon
-                              message={i18nText(
+                              title={i18nText(
                                 'settings',
                                 'auto.memory_entry_connection_failed'
                               )}
@@ -900,14 +900,14 @@ export function HostInfrastructureMemoryObservationPanel({
 
       <Drawer
         title={i18nText('settings', 'auto.entry_metadata')}
-        width={640}
+        size={640}
         open={Boolean(metadataEntry)}
         onClose={() => setMetadataEntry(null)}
-        destroyOnClose
+        destroyOnHidden
       >
         {metadataEntry ? (
           <Space
-            direction="vertical"
+            orientation="vertical"
             size={16}
             className="host-memory-panel__drawer"
           >
@@ -953,14 +953,14 @@ export function HostInfrastructureMemoryObservationPanel({
 
       <Drawer
         title={i18nText('settings', 'auto.entry_value')}
-        width={640}
+        size={640}
         open={Boolean(revealedEntry)}
         onClose={() => setRevealedEntry(null)}
-        destroyOnClose
+        destroyOnHidden
       >
         {revealedEntry ? (
           <Space
-            direction="vertical"
+            orientation="vertical"
             size={16}
             className="host-memory-panel__drawer"
           >
@@ -1003,11 +1003,11 @@ export function HostInfrastructureMemoryObservationPanel({
                 )}
               />
             ) : revealedEntry.value_preview ? (
-              <Space direction="vertical" size={8}>
+              <Space orientation="vertical" size={8}>
                 <Alert
                   type="info"
                   showIcon
-                  message={i18nText('settings', 'auto.preview')}
+                  title={i18nText('settings', 'auto.preview')}
                   description={`${formatBytes(
                     revealedEntry.preview_size_bytes
                   )} ${i18nText('settings', 'auto.of')} ${formatBytes(revealedEntry.full_value_size_bytes)}`}
@@ -1028,7 +1028,7 @@ export function HostInfrastructureMemoryObservationPanel({
               <Alert
                 type="warning"
                 showIcon
-                message={i18nText('settings', 'auto.value_too_large')}
+                title={i18nText('settings', 'auto.value_too_large')}
                 description={`${formatBytes(
                   revealedEntry.full_value_size_bytes
                 )} ${i18nText('settings', 'auto.exceeds_full_reveal_limit')}`}
