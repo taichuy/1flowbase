@@ -51,8 +51,22 @@ import * as runtimeApi from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
+interface WindowDimensionSpy {
+  mockRestore(): void;
+  mockReturnValue(value: number): void;
+}
+
 describe('EmbeddedAgentAssistant', () => {
+  let innerHeightSpy: WindowDimensionSpy | undefined;
+  let innerWidthSpy: WindowDimensionSpy | undefined;
+
   beforeEach(() => {
+    innerHeightSpy = vi
+      .spyOn(window, 'innerHeight', 'get')
+      .mockReturnValue(900);
+    innerWidthSpy = vi
+      .spyOn(window, 'innerWidth', 'get')
+      .mockReturnValue(1280);
     vi.stubGlobal(
       'IntersectionObserver',
       class IntersectionObserver {
@@ -153,6 +167,10 @@ describe('EmbeddedAgentAssistant', () => {
   });
 
   afterEach(() => {
+    innerHeightSpy?.mockRestore();
+    innerHeightSpy = undefined;
+    innerWidthSpy?.mockRestore();
+    innerWidthSpy = undefined;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -261,6 +279,85 @@ describe('EmbeddedAgentAssistant', () => {
         'csrf-token'
       )
     );
+  });
+
+  test('AC-005 moves the assistant left and opens history on its outer right side', async () => {
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+
+    const history = await screen.findByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_history')
+    });
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    ) as HTMLElement;
+    const initialLeft = Number.parseFloat(assistantWindow.style.left);
+
+    fireEvent.click(history);
+
+    await waitFor(() =>
+      expect(Number.parseFloat(assistantWindow.style.left)).toBeLessThan(
+        initialLeft
+      )
+    );
+    const historyDrawer = document.querySelector(
+      '.embedded-agent-assistant-preview__history'
+    ) as HTMLElement;
+    expect(historyDrawer.closest('.ant-drawer')).toHaveClass(
+      'ant-drawer-right'
+    );
+
+    fireEvent.click(
+      historyDrawer.querySelector('.ant-drawer-close') as HTMLElement
+    );
+    await waitFor(() =>
+      expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft)
+    );
+  });
+
+  test('AC-005 uses a full-screen history overlay when the viewport is narrow', async () => {
+    innerWidthSpy?.mockReturnValue(640);
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+
+    const history = await screen.findByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_history')
+    });
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    ) as HTMLElement;
+    const initialLeft = assistantWindow.style.left;
+    fireEvent.click(history);
+
+    const historyDrawer = await waitFor(() => {
+      const drawer = document.querySelector(
+        '.embedded-agent-assistant-preview__history'
+      ) as HTMLElement;
+      expect(drawer.closest('.ant-drawer')).toHaveClass('ant-drawer-right');
+      return drawer;
+    });
+    expect(
+      historyDrawer.closest('.ant-drawer')?.querySelector(
+        '.ant-drawer-content-wrapper'
+      )
+    ).toHaveStyle({ width: '100%' });
+    expect(assistantWindow.style.left).toBe(initialLeft);
   });
 
   test('AC-004 explicitly continues a legacy snapshot without mutating it', async () => {

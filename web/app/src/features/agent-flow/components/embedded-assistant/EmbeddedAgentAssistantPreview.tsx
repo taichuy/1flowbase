@@ -24,7 +24,7 @@ import {
   Tooltip,
   type MenuProps
 } from 'antd';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
@@ -57,6 +57,8 @@ function hasChangedPreference(
 }
 
 const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
+const ASSISTANT_HISTORY_WIDTH = 280;
+const ASSISTANT_HISTORY_GAP = 8;
 
 function assistantConversationKey(item: {
   conversation_id: string | null;
@@ -88,6 +90,21 @@ function initialAssistantWindowRect(): WindowWorkspaceRect {
   };
 }
 
+function assistantHistoryOutwardShift(
+  rect: WindowWorkspaceRect,
+  viewport = getWindowWorkspaceViewport()
+): number | null {
+  const shift = Math.max(
+    0,
+    rect.left +
+      rect.width +
+      ASSISTANT_HISTORY_GAP +
+      ASSISTANT_HISTORY_WIDTH -
+      (viewport.left + viewport.width)
+  );
+  return rect.left - shift >= viewport.left + 8 ? shift : null;
+}
+
 export function EmbeddedAgentAssistantPreview({
   open,
   onClose
@@ -109,6 +126,7 @@ export function EmbeddedAgentAssistantPreview({
     useState<ConsoleAssistantConversationPage | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const historyShiftRef = useRef(0);
   const [form] = Form.useForm<ConsoleAssistantPreference>();
   const {
     activate,
@@ -126,11 +144,13 @@ export function EmbeddedAgentAssistantPreview({
     setSettings(null);
     setSettingsOpen(false);
     setHistoryOpen(false);
+    historyShiftRef.current = 0;
     setHistoryPage(null);
   }, [workspaceId]);
 
   useEffect(() => {
     if (!open) {
+      historyShiftRef.current = 0;
       close(ASSISTANT_WINDOW_ID);
       return;
     }
@@ -257,6 +277,39 @@ export function EmbeddedAgentAssistantPreview({
   );
   const assistantWindowZIndex = 1050 + (windowEntry?.z_index ?? 0);
   const assistantSettingsModalZIndex = 1100 + (windowEntry?.z_index ?? 0);
+  const historyOverlay =
+    mobile ||
+    !windowEntry ||
+    assistantHistoryOutwardShift(windowEntry.rect) === null;
+
+  function openHistory() {
+    if (!windowEntry || historyOpen) {
+      return;
+    }
+    const shift = mobile
+      ? null
+      : assistantHistoryOutwardShift(windowEntry.rect);
+    historyShiftRef.current = shift ?? 0;
+    if (shift) {
+      setRect(ASSISTANT_WINDOW_ID, {
+        ...windowEntry.rect,
+        left: windowEntry.rect.left - shift
+      });
+    }
+    setHistoryOpen(true);
+  }
+
+  function closeHistory() {
+    const shift = historyShiftRef.current;
+    if (shift && windowEntry) {
+      setRect(ASSISTANT_WINDOW_ID, {
+        ...windowEntry.rect,
+        left: windowEntry.rect.left + shift
+      });
+    }
+    historyShiftRef.current = 0;
+    setHistoryOpen(false);
+  }
   const runtimePreferenceMenuItems: MenuProps['items'] = settings
     ? [
         {
@@ -520,7 +573,7 @@ export function EmbeddedAgentAssistantPreview({
                   icon={<HistoryOutlined />}
                   size="small"
                   type="text"
-                  onClick={() => setHistoryOpen(true)}
+                  onClick={openHistory}
                 />
                 <Button
                   aria-label={i18nText('appShell', 'auto.assistant_settings')}
@@ -566,13 +619,18 @@ export function EmbeddedAgentAssistantPreview({
           />
           <Drawer
             className="embedded-agent-assistant-preview__history"
-            getContainer={false}
-            mask={mobile}
+            getContainer={() => document.body}
+            mask={historyOverlay}
             open={historyOpen}
-            placement="left"
+            placement="right"
             title={i18nText('appShell', 'auto.assistant_history')}
-            width={mobile ? '100%' : 280}
-            onClose={() => setHistoryOpen(false)}
+            width={historyOverlay ? '100%' : ASSISTANT_HISTORY_WIDTH}
+            zIndex={
+              historyOverlay
+                ? assistantWindowZIndex + 50
+                : assistantWindowZIndex
+            }
+            onClose={closeHistory}
           >
             <Conversations
               activeKey={
@@ -590,7 +648,7 @@ export function EmbeddedAgentAssistantPreview({
                 onClick: () => {
                   void session.startNewConversation().then((created) => {
                     if (created) {
-                      setHistoryOpen(false);
+                      closeHistory();
                     }
                   });
                 }
@@ -623,7 +681,7 @@ export function EmbeddedAgentAssistantPreview({
                   })
                   .then((restored) => {
                     if (restored && item.conversation_id) {
-                      setHistoryOpen(false);
+                      closeHistory();
                     }
                   });
               }}
@@ -637,7 +695,7 @@ export function EmbeddedAgentAssistantPreview({
                     .startNewConversation(session.legacyFlowRunId ?? undefined)
                     .then((created) => {
                       if (created) {
-                        setHistoryOpen(false);
+                        closeHistory();
                       }
                     });
                 }}
