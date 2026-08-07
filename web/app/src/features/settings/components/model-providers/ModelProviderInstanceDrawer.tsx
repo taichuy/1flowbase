@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AutoComplete,
   Button,
-  Drawer,
   Empty,
   Flex,
   Form,
@@ -29,6 +28,7 @@ import type {
   PreviewSettingsModelProviderModelsResponse
 } from '../../api/model-providers';
 import { CollapseShell } from '../../../../shared/ui/collapse-shell/CollapseShell';
+import { ResizableDrawer } from '../../../../shared/ui/resizable-drawer/ResizableDrawer';
 import { CachedModelSelect } from './CachedModelSelect';
 import {
   MODEL_CONTEXT_WINDOW_PRESET_OPTIONS,
@@ -691,13 +691,16 @@ function ModelProviderInstanceDrawerContent({
   }
 
   return (
-    <Drawer
+    <ResizableDrawer
+      defaultWidth={560}
+      maxWidth={1200}
+      minWidth={480}
       open={open}
-      size={560}
       zIndex={1100}
       title={title}
       onClose={onClose}
-      destroyOnHidden
+      destroyOnClose
+      resizeLabel="调整供应商抽屉宽度"
       footer={
         <div style={{ textAlign: 'right' }}>
           <Space>
@@ -997,6 +1000,6 @@ function ModelProviderInstanceDrawerContent({
           <Typography.Text type="secondary">{i18nText("settings", "auto.currently_provider_catalog_available")}</Typography.Text>
         )}
       </Form>
-    </Drawer>
+    </ResizableDrawer>
   );
 }

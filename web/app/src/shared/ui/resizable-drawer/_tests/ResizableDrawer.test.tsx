@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -11,17 +11,49 @@ vi.mock('antd', async () => {
     ...actual,
     Drawer: ({
       children,
+      defaultSize,
+      maxSize,
+      resizable,
       rootClassName,
+      size,
+      styles,
       title,
-      width
+      zIndex
     }: {
       children?: ReactNode;
+      defaultSize?: number | string;
+      maxSize?: number;
+      resizable?: boolean | { onResize?: (size: number) => void };
       rootClassName?: string;
+      size?: number | string;
+      styles?: {
+        dragger?: React.CSSProperties;
+        wrapper?: React.CSSProperties;
+      };
       title?: ReactNode;
-      width?: number | string;
+      zIndex?: number;
     }) => (
-      <section className={rootClassName}>
-        <div className="ant-drawer-content-wrapper" style={{ width }}>
+      <section
+        className={rootClassName}
+        data-default-size={defaultSize}
+        data-dragger-left={styles?.dragger?.left}
+        data-dragger-width={styles?.dragger?.width}
+        data-max-size={maxSize}
+        data-min-width={styles?.wrapper?.minWidth}
+        data-resizable={Boolean(resizable)}
+        data-z-index={zIndex}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof resizable === 'object') {
+              resizable.onResize?.(920);
+            }
+          }}
+        >
+          模拟原生拖拽
+        </button>
+        <div className="ant-drawer-content-wrapper" style={{ width: size }}>
           <div>{title}</div>
           {children}
         </div>
@@ -31,13 +63,8 @@ vi.mock('antd', async () => {
 });
 
 describe('ResizableDrawer', () => {
-  test('owns accessible mouse and keyboard width resizing for shared drawers', async () => {
-    let animationFrameCallback: FrameRequestCallback | null = null;
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-      animationFrameCallback = callback;
-      return 41;
-    });
-
+  test('delegates pointer resizing to Ant Design while retaining shared width constraints', () => {
+    const requestAnimationFrame = vi.spyOn(window, 'requestAnimationFrame');
     const { container } = render(
       <ResizableDrawer
         open
@@ -58,13 +85,20 @@ describe('ResizableDrawer', () => {
     const wrapper = container.querySelector<HTMLElement>(
       '.ant-drawer-content-wrapper'
     );
+    const drawer = container.querySelector<HTMLElement>('.resizable-drawer');
 
     expect(wrapper).toHaveStyle({ width: '840px' });
-    fireEvent.mouseDown(handle, { clientX: 500 });
-    fireEvent.mouseMove(document, { clientX: 420 });
-    await act(async () => animationFrameCallback?.(performance.now()));
-    fireEvent.mouseUp(document);
+    expect(drawer).toHaveAttribute('data-resizable', 'true');
+    expect(drawer).toHaveAttribute('data-default-size', '840');
+    expect(drawer).toHaveAttribute('data-min-width', 'min(640px, 100vw)');
+    expect(drawer).toHaveAttribute('data-max-size', '1200');
+    expect(drawer).toHaveAttribute('data-dragger-width', '16');
+    expect(drawer).toHaveAttribute('data-dragger-left', '-8');
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟原生拖拽' }));
     expect(wrapper).toHaveStyle({ width: '920px' });
+    expect(handle).toHaveAttribute('aria-valuenow', '920');
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
 
     fireEvent.keyDown(handle, { key: 'Home' });
     expect(handle).toHaveAttribute('aria-valuenow', '640');

@@ -3,33 +3,27 @@
   min-height: 100%;
 }
 
-.resizable-drawer__resize-handle {
+.resizable-drawer__keyboard-resize-handle {
   position: absolute;
   top: -24px;
   bottom: -24px;
-  left: -28px;
+  left: -32px;
   z-index: 2;
-  width: 8px;
-  cursor: col-resize;
+  width: 16px;
+  pointer-events: none;
 }
 
-.resizable-drawer__resize-handle::after {
+.resizable-drawer__keyboard-resize-handle::after {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 3px;
+  left: 7px;
   width: 2px;
   content: "";
   background: transparent;
   transition: background-color 160ms ease;
 }
 
-.resizable-drawer__resize-handle:hover::after,
-.resizable-drawer__resize-handle:focus-visible::after {
+.resizable-drawer__keyboard-resize-handle:focus-visible::after {
   background: var(--color-primary);
-}
-
-.resizable-drawer--resizing {
-  cursor: col-resize;
-  user-select: none;
 }

@@ -54,6 +54,40 @@ describe('model-context-window helpers', () => {
 });
 
 describe('ModelProviderInstanceDrawer', () => {
+  test('uses the shared resizable drawer with the provider width range', async () => {
+    render(
+      <ModelProviderInstanceDrawer
+        open
+        mode="create"
+        catalogEntry={modelProviderCatalogEntries[0]}
+        instance={null}
+        cachedModelCatalog={null}
+        defaultIncludedInMain={true}
+        submitting={false}
+        onClose={() => undefined}
+        onSubmit={async () => undefined}
+        onPreviewModels={async () => ({
+          models: [],
+          preview_token: 'preview-1',
+          expires_at: '2026-04-22T12:00:00Z'
+        })}
+        onRevealSecret={async () => 'super-secret'}
+      />
+    );
+
+    expect(
+      await screen.findByRole('separator', { name: '调整供应商抽屉宽度' })
+    ).toHaveAttribute('aria-valuenow', '560');
+    expect(screen.getByRole('separator', { name: '调整供应商抽屉宽度' })).toHaveAttribute(
+      'aria-valuemin',
+      '480'
+    );
+    expect(screen.getByRole('separator', { name: '调整供应商抽屉宽度' })).toHaveAttribute(
+      'aria-valuemax',
+      '1200'
+    );
+  });
+
   test(
     'renders enum config fields as selects and submits the schema default',
     { timeout: 15000 },
