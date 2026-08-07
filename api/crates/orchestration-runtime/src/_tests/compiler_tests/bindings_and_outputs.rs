@@ -301,7 +301,7 @@ fn compile_rejects_variable_aggregator_outputs_that_diverge_from_groups() {
         .contains("invalid variable_aggregator output contract"));
 }
 
-// Root AC-012/013/014: legacy, malformed, unsupported, and topology-incompatible contracts fail closed.
+// Root AC-012/013/014/016/020: malformed and unsupported group contracts fail closed.
 #[test]
 fn compile_rejects_invalid_variable_aggregator_group_contracts() {
     let invalid_groups = [
@@ -327,6 +327,72 @@ fn compile_rejects_invalid_variable_aggregator_group_contracts() {
         FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
             .expect_err("invalid variable group contract must be rejected");
     }
+}
+
+// Root AC-016/020: group keys use the public output variable format and remain unique/nonempty.
+#[test]
+fn compile_rejects_invalid_variable_aggregator_group_keys() {
+    let invalid_keys = ["", "   ", "bad-key", "has space", "变量"];
+
+    for key in invalid_keys {
+        let flow_id = Uuid::now_v7();
+        let mut document = sample_document(flow_id);
+        set_variable_aggregator_fixture(
+            &mut document,
+            json!([{ "key": key, "valueType": "string", "candidates": [["node-start", "query"]] }]),
+            json!([{ "key": key, "title": key, "valueType": "string" }]),
+        );
+
+        let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+            .expect_err("invalid variable aggregator group key must be rejected");
+        assert!(
+            format!("{error:#}").contains(
+                "group keys must be unique, nonempty, and contain only ASCII letters, digits, or underscores"
+            ),
+            "key {key:?} failed with an unrelated error: {error:#}"
+        );
+    }
+
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    set_variable_aggregator_fixture(
+        &mut document,
+        json!([
+            { "key": "duplicate", "valueType": "string", "candidates": [["node-start", "query"]] },
+            { "key": "duplicate", "valueType": "string", "candidates": [["node-start", "query"]] }
+        ]),
+        json!([
+            { "key": "duplicate", "title": "duplicate", "valueType": "string" },
+            { "key": "duplicate", "title": "duplicate", "valueType": "string" }
+        ]),
+    );
+
+    let error = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect_err("duplicate variable aggregator group keys must be rejected");
+    assert!(format!("{error:#}").contains("group keys must be unique"));
+}
+
+// Root AC-016/020: every ASCII alphanumeric/underscore position accepted by the UI also compiles.
+#[test]
+fn compile_accepts_variable_aggregator_group_keys_in_public_output_format() {
+    let flow_id = Uuid::now_v7();
+    let mut document = sample_document(flow_id);
+    set_variable_aggregator_fixture(
+        &mut document,
+        json!([
+            { "key": "Alpha1", "valueType": "string", "candidates": [["node-start", "query"]] },
+            { "key": "_value", "valueType": "string", "candidates": [["node-start", "query"]] },
+            { "key": "9lives", "valueType": "string", "candidates": [["node-start", "query"]] }
+        ]),
+        json!([
+            { "key": "Alpha1", "title": "Alpha1", "valueType": "string" },
+            { "key": "_value", "title": "_value", "valueType": "string" },
+            { "key": "9lives", "title": "9lives", "valueType": "string" }
+        ]),
+    );
+
+    FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context())
+        .expect("public output format variable aggregator group keys should compile");
 }
 
 #[test]

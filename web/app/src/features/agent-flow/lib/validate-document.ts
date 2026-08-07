@@ -69,12 +69,17 @@ export type { AgentFlowIssue } from './validation/issues';
 
 export const VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE =
   'variable_aggregator_candidate_type_mismatch';
+export const VARIABLE_AGGREGATOR_GROUP_KEY_INVALID_ISSUE_CODE =
+  'variable_aggregator_group_key_invalid';
 
 export function isVariableAggregatorCandidateTypeMismatchIssue(
   issue: AgentFlowIssue
 ) {
-  return issue.id.startsWith(
-    `${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:`
+  return (
+    issue.id.startsWith(
+      `${VARIABLE_AGGREGATOR_CANDIDATE_TYPE_MISMATCH_ISSUE_CODE}:`
+    ) ||
+    issue.id.startsWith(`${VARIABLE_AGGREGATOR_GROUP_KEY_INVALID_ISSUE_CODE}:`)
   );
 }
 
@@ -138,7 +143,6 @@ function isMissingRequiredField(
         binding.value.length === 0 ||
         binding.value.some(
           (group) =>
-            group.key.trim().length === 0 ||
             group.candidates.length === 0 ||
             group.candidates.some(
               (selector) => !selectorHasRequiredInput(selector)
@@ -347,7 +351,31 @@ function validateVariableAggregatorGroups(
     environmentVariables,
     workflowTriggerContext
   );
-  const seenGroupKeys = new Set<string>();
+  const groupKeyCounts = new Map<string, number>();
+
+  for (const group of binding.value) {
+    groupKeyCounts.set(group.key, (groupKeyCounts.get(group.key) ?? 0) + 1);
+  }
+
+  const groupKeyMessages = binding.value.map((group) => {
+    if (group.key.length === 0) {
+      return i18nText('agentFlow', 'auto.variable_group_key_required');
+    }
+
+    if (!isOutputVariableKeyAllowed(group.key)) {
+      return i18nText('agentFlow', 'auto.variable_group_key_format_message');
+    }
+
+    if (!validatePublicOutputKey(group.key).ok) {
+      return i18nText('agentFlow', 'auto.variable_group_key_reserved_message');
+    }
+
+    if ((groupKeyCounts.get(group.key) ?? 0) > 1) {
+      return i18nText('agentFlow', 'auto.variable_group_keys_must_unique');
+    }
+
+    return null;
+  });
   const outputsMatchGroups =
     node.outputs.length === binding.value.length &&
     binding.value.every((group, index) => {
@@ -360,7 +388,10 @@ function validateVariableAggregatorGroups(
       );
     });
 
-  if (!outputsMatchGroups) {
+  if (
+    groupKeyMessages.every((message) => message === null) &&
+    !outputsMatchGroups
+  ) {
     pushFieldIssue(
       issues,
       node,
@@ -371,16 +402,20 @@ function validateVariableAggregatorGroups(
   }
 
   for (const [groupIndex, group] of binding.value.entries()) {
-    if (seenGroupKeys.has(group.key)) {
-      pushFieldIssue(
-        issues,
-        node,
-        'bindings.groups',
-        i18nText('agentFlow', 'auto.duplicate_variable_group'),
-        i18nText('agentFlow', 'auto.variable_group_keys_must_unique')
-      );
+    const groupKeyMessage = groupKeyMessages[groupIndex];
+
+    if (groupKeyMessage) {
+      issues.push({
+        id: `${VARIABLE_AGGREGATOR_GROUP_KEY_INVALID_ISSUE_CODE}:${node.id}:${groupIndex}`,
+        scope: 'field',
+        level: 'error',
+        nodeId: node.id,
+        sectionKey: 'inputs',
+        fieldKey: 'bindings.groups',
+        title: i18nText('agentFlow', 'auto.variable_group_key_invalid'),
+        message: groupKeyMessage
+      });
     }
-    seenGroupKeys.add(group.key);
 
     for (const [candidateIndex, selector] of group.candidates.entries()) {
       if (!selectorHasRequiredInput(selector)) {
