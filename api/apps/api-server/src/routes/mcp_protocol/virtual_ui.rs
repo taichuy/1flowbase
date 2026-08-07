@@ -114,10 +114,10 @@ pub(crate) fn meta_tools() -> [Value; 4] {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "minLength": 1},
                     "keywords": {"type": "array", "items": {"type": "string"}},
                     "depth": {"type": "integer", "minimum": 0},
-                    "path_regex": {"type": "string"},
+                    "path_regex": {"type": "string", "minLength": 1},
                     "limit": {"type": "integer", "minimum": 1}
                 },
                 "additionalProperties": false
@@ -221,8 +221,14 @@ async fn list(
     scope: &VirtualMcpScope,
     arguments: &Value,
 ) -> Result<VirtualToolOutcome, ApiError> {
-    let path = arguments.get("path").and_then(Value::as_str);
-    let path_regex = arguments.get("path_regex").and_then(Value::as_str);
+    let optional_string = |field| {
+        arguments
+            .get(field)
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+    };
+    let path = optional_string("path");
+    let path_regex = optional_string("path_regex");
     let keywords = arguments
         .get("keywords")
         .and_then(Value::as_array)

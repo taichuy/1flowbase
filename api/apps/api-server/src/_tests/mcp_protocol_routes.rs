@@ -450,7 +450,7 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
             "method":"tools/call",
             "params":{
                 "name":"mcp_list",
-                "arguments":{"path":"/","keywords":["runtime","topology"],"depth":1,"limit":10}
+                "arguments":{"path":"/","keywords":["runtime","topology"],"path_regex":"","depth":1,"limit":10}
             }
         }),
     )
