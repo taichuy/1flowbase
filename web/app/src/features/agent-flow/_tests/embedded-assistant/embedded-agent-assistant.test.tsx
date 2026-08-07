@@ -321,6 +321,81 @@ describe('EmbeddedAgentAssistant', () => {
     );
   });
 
+  test('AC-006 prevents a live run from switching or clearing the current conversation', async () => {
+    let finishWebSocket: (() => void) | null = null;
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-live-history',
+          status: 'queued'
+        });
+        await new Promise<void>((resolve) => {
+          finishWebSocket = () => {
+            handlers.onEvent({
+              type: 'flow_finished',
+              run_id: 'run-live-history',
+              status: 'succeeded',
+              output: { answer: 'Finished without switching conversations.' }
+            });
+            resolve();
+          };
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    fireEvent.change(composer, { target: { value: 'Keep this conversation' } });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.send_debug_message')
+      })
+    );
+    await waitFor(() =>
+      expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledTimes(1)
+    );
+    createConsoleAssistantConversation.mockClear();
+
+    expect(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.clear_preview')
+      })
+    ).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: new RegExp(
+          i18nText('appShell', 'auto.assistant_new_conversation'),
+          'u'
+        )
+      })
+    );
+    expect(createConsoleAssistantConversation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('First conversation'));
+    expect(getConsoleAssistantConversationMessages).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishWebSocket?.();
+    });
+  });
+
   test('AC-005 toggles the AI preview and its trigger highlight together', async () => {
     render(
       <AppProviders>
@@ -642,15 +717,9 @@ describe('EmbeddedAgentAssistant', () => {
     );
     expect(initialContextProgress).toBeInTheDocument();
     fireEvent.mouseEnter(initialContextProgress as HTMLElement);
+    expect(await screen.findByText('剩余：100%')).toBeInTheDocument();
     expect(
-      await screen.findByText(
-        '剩余：100%'
-      )
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        '最大上下文 100K，已用 0'
-      )
+      await screen.findByText('最大上下文 100K，已用 0')
     ).toBeInTheDocument();
     fireEvent.mouseLeave(initialContextProgress as HTMLElement);
     fireEvent.change(composer, { target: { value: 'Measure context' } });
@@ -666,15 +735,9 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.mouseEnter(contextProgress);
 
     expect(
-      await screen.findByText(
-        '最大上下文 100K，已用 321'
-      )
+      await screen.findByText('最大上下文 100K，已用 321')
     ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        '剩余：99.7%'
-      )
-    ).toBeInTheDocument();
+    expect(await screen.findByText('剩余：99.7%')).toBeInTheDocument();
     expect(contextProgress.querySelector('.ant-progress')).toHaveAttribute(
       'aria-valuenow',
       '1'
