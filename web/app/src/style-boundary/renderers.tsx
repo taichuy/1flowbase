@@ -5,6 +5,8 @@ import { AppRouterProvider } from '../app/router';
 import { AppShellFrame } from '../app-shell/AppShellFrame';
 import { createAccountMenuItems } from '../app-shell/account-menu-items';
 import { AgentFlowEditorShell } from '../features/agent-flow/components/editor/AgentFlowEditorShell';
+import { VariableGroupsField } from '../features/agent-flow/components/bindings/VariableGroupsField';
+import type { FlowSelectorOption } from '../features/agent-flow/lib/selector-options';
 import { EmbeddedAgentAssistantPreview } from '../features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview';
 import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPage';
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
@@ -64,7 +66,59 @@ function renderRouterScene(
   return <AppRouterProvider />;
 }
 
+const variableGroupSelectorOptions: FlowSelectorOption[] = [
+  {
+    nodeId: 'node-source',
+    nodeLabel: 'Source',
+    outputKey: 'text',
+    outputLabel: 'text',
+    valueType: 'string',
+    value: ['node-source', 'text'],
+    displayLabel: 'Source/text'
+  }
+];
+
+function renderVariableGroupsScene(
+  width: 420 | 300,
+  layout: 'regular' | 'compact'
+) {
+  return (
+    <div
+      className="agent-flow-editor__detail-dock style-boundary-variable-groups-scene"
+      data-layout={layout}
+      style={{
+        display: 'grid',
+        height: 'auto',
+        inset: 'auto',
+        minHeight: 0,
+        position: 'relative',
+        width
+      }}
+    >
+      <VariableGroupsField
+        ariaLabel="Variable groups"
+        options={variableGroupSelectorOptions}
+        value={[
+          {
+            key: 'primary_group',
+            valueType: 'string',
+            candidates: [
+              ['node-source', 'text'],
+              ['node-source', 'text']
+            ]
+          }
+        ]}
+        onChange={() => undefined}
+      />
+    </div>
+  );
+}
+
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'component.variable-groups.regular': () =>
+    renderVariableGroupsScene(420, 'regular'),
+  'component.variable-groups.compact': () =>
+    renderVariableGroupsScene(300, 'compact'),
   'component.agent-flow-node-detail': () => {
     seedStyleBoundaryAuth();
     seedStyleBoundaryApplicationFetch();

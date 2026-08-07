@@ -4,6 +4,8 @@ import { formatNodeVariableLabel } from './variables/variable-labels';
 export const TEMPLATE_SELECTOR_REGEX =
   /{{\s*([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)\s*}}/g;
 
+export type SelectorReferenceTransform = (selector: string[]) => string[];
+
 function isSameSelector(left: string[], right: string[]) {
   return (
     left.length === right.length &&
@@ -54,7 +56,9 @@ export function getTemplateSelectorLabel(
   selector: string[],
   options: FlowSelectorOption[]
 ) {
-  const matchedOption = options.find((option) => isSameSelector(option.value, selector));
+  const matchedOption = options.find((option) =>
+    isSameSelector(option.value, selector)
+  );
 
   return matchedOption
     ? matchedOption.displayLabel
@@ -63,15 +67,18 @@ export function getTemplateSelectorLabel(
 
 export function remapTemplateSelectorTokens(
   value: string,
-  idMap: Map<string, string>
+  remap: ReadonlyMap<string, string> | SelectorReferenceTransform
 ) {
   return value.replace(
     TEMPLATE_SELECTOR_REGEX,
     (_match, selectorPath: string) => {
       const selector = selectorPath.split('.');
-      const [nodeId, ...rest] = selector;
+      const remappedSelector =
+        typeof remap === 'function'
+          ? remap(selector)
+          : [remap.get(selector[0] ?? '') ?? selector[0], ...selector.slice(1)];
 
-      return createTemplateSelectorToken([idMap.get(nodeId) ?? nodeId, ...rest]);
+      return createTemplateSelectorToken(remappedSelector);
     }
   );
 }

@@ -5,7 +5,8 @@ import type {
 
 import {
   parseTemplateSelectorTokens,
-  remapTemplateSelectorTokens
+  remapTemplateSelectorTokens,
+  type SelectorReferenceTransform
 } from './template-binding';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,17 +96,9 @@ export function extractNamedBindingSelectors(entries: NamedBindingEntry[]) {
   return entries.flatMap(extractNamedBindingEntrySelectors);
 }
 
-function remapSelector(selector: string[], idMap: Map<string, string>) {
-  if (selector.length === 0 || !idMap.has(selector[0])) {
-    return selector;
-  }
-
-  return [idMap.get(selector[0])!, ...selector.slice(1)];
-}
-
 function remapExpression(
   expression: NamedBindingExpression | undefined,
-  idMap: Map<string, string>
+  transformSelector: SelectorReferenceTransform
 ) {
   if (!expression) {
     return expression;
@@ -114,14 +107,14 @@ function remapExpression(
   if (expression.kind === 'selector') {
     return {
       ...expression,
-      selector: remapSelector(expression.selector, idMap)
+      selector: transformSelector(expression.selector)
     };
   }
 
   if (expression.kind === 'templated_text') {
     return {
       ...expression,
-      value: remapTemplateSelectorTokens(expression.value, idMap)
+      value: remapTemplateSelectorTokens(expression.value, transformSelector)
     };
   }
 
@@ -130,17 +123,20 @@ function remapExpression(
 
 export function remapNamedBindingEntry(
   entry: NamedBindingEntry,
-  idMap: Map<string, string>
+  transformSelector: SelectorReferenceTransform
 ): NamedBindingEntry {
   return {
     ...entry,
-    value: remapExpression(entry.value, idMap),
-    selector: entry.selector ? remapSelector(entry.selector, idMap) : undefined,
+    value: remapExpression(entry.value, transformSelector),
+    selector: entry.selector ? transformSelector(entry.selector) : undefined,
     content:
       entry.content?.kind === 'templated_text'
         ? {
             ...entry.content,
-            value: remapTemplateSelectorTokens(entry.content.value, idMap)
+            value: remapTemplateSelectorTokens(
+              entry.content.value,
+              transformSelector
+            )
           }
         : entry.content
   };
