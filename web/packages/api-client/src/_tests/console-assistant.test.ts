@@ -1,7 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  createConsoleAssistantConversation,
+  getConsoleAssistantConversationMessages,
   getConsoleAssistantSettings,
+  getConsoleAssistantLegacySnapshotMessages,
+  listConsoleAssistantConversations,
   startConsoleAssistantRun,
   startConsoleAssistantRunStream,
   startConsoleAssistantRunWebSocket,
@@ -47,6 +51,44 @@ describe('console assistant client', () => {
       path: '/api/console/assistant/runs',
       method: 'POST',
       csrfToken: 'csrf-token'
+    });
+  });
+
+  test('issue 1608 uses the dedicated assistant conversation contract', async () => {
+    await expect(
+      createConsoleAssistantConversation(
+        {
+          application_id: 'application-1',
+          seed_legacy_flow_run_id: 'legacy-run-1'
+        },
+        'csrf-token'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/assistant/conversations',
+      method: 'POST',
+      csrfToken: 'csrf-token',
+      body: {
+        application_id: 'application-1',
+        seed_legacy_flow_run_id: 'legacy-run-1'
+      }
+    });
+    await expect(
+      listConsoleAssistantConversations('application-1', {
+        page: 2,
+        pageSize: 5
+      })
+    ).resolves.toMatchObject({
+      path: '/api/console/assistant/conversations?application_id=application-1&page=2&page_size=5'
+    });
+    await expect(
+      getConsoleAssistantConversationMessages('application-1', 'conversation-1')
+    ).resolves.toMatchObject({
+      path: '/api/console/assistant/conversations/conversation-1/messages?application_id=application-1'
+    });
+    await expect(
+      getConsoleAssistantLegacySnapshotMessages('application-1', 'run-1')
+    ).resolves.toMatchObject({
+      path: '/api/console/assistant/legacy-runs/run-1/messages?application_id=application-1'
     });
   });
 

@@ -1,13 +1,21 @@
 import {
   getConsoleAssistantSettings,
+  listConsoleAssistantConversations,
   updateConsoleAssistantSettings,
+  type ConsoleAssistantConversationPage,
   type ConsoleAssistantPreference,
   type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
-import { CheckOutlined, SettingOutlined } from '@ant-design/icons';
-import { Sender } from '@ant-design/x';
+import {
+  CheckOutlined,
+  HistoryOutlined,
+  PlusOutlined,
+  SettingOutlined
+} from '@ant-design/icons';
+import { Conversations, Sender } from '@ant-design/x';
 import {
   Button,
+  Drawer,
   Dropdown,
   Form,
   Modal,
@@ -16,7 +24,7 @@ import {
   Tooltip,
   type MenuProps
 } from 'antd';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
@@ -50,6 +58,25 @@ function hasChangedPreference(
 
 const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
 
+function assistantConversationKey(item: {
+  conversation_id: string | null;
+  legacy_flow_run_id: string | null;
+}) {
+  return item.conversation_id
+    ? `conversation:${item.conversation_id}`
+    : `legacy:${item.legacy_flow_run_id}`;
+}
+
+function assistantConversationGroup(updatedAt: string) {
+  const date = new Date(updatedAt);
+  return Number.isNaN(date.getTime())
+    ? i18nText('appShell', 'auto.assistant_history')
+    : new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric'
+      }).format(date);
+}
+
 function initialAssistantWindowRect(): WindowWorkspaceRect {
   const viewport = getWindowWorkspaceViewport();
   const width = Math.min(560, Math.max(400, viewport.width - 32));
@@ -76,6 +103,10 @@ export function EmbeddedAgentAssistantPreview({
     null
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] =
+    useState<ConsoleAssistantConversationPage | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [form] = Form.useForm<ConsoleAssistantPreference>();
@@ -94,6 +125,8 @@ export function EmbeddedAgentAssistantPreview({
   useEffect(() => {
     setSettings(null);
     setSettingsOpen(false);
+    setHistoryOpen(false);
+    setHistoryPage(null);
   }, [workspaceId]);
 
   useEffect(() => {
@@ -160,6 +193,38 @@ export function EmbeddedAgentAssistantPreview({
     (flow) => flow.application_id === settings.preference.application_id
   );
   const applicationId = settings?.preference.application_id ?? null;
+
+  const loadHistory = useCallback(
+    async (page = 1) => {
+      if (!applicationId) {
+        return;
+      }
+      setHistoryLoading(true);
+      try {
+        const next = await listConsoleAssistantConversations(applicationId, {
+          page,
+          pageSize: 20
+        });
+        setHistoryPage((current) =>
+          page === 1
+            ? next
+            : {
+                ...next,
+                items: [...(current?.items ?? []), ...next.items]
+              }
+        );
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [applicationId]
+  );
+
+  useEffect(() => {
+    if (historyOpen) {
+      void loadHistory();
+    }
+  }, [historyOpen, loadHistory]);
   const selectedModel =
     settings?.run_capabilities.models.find(
       (model) => model.id === settings.preference.model
@@ -330,6 +395,7 @@ export function EmbeddedAgentAssistantPreview({
           onRectChange={(rect) => setRect(ASSISTANT_WINDOW_ID, rect)}
         >
           <AgentFlowDebugConsole
+            clearDisabled={!session.canChangeConversation}
             composerFooterActions={
               settings?.run_capabilities.model_selection_enabled ? (
                 <>
@@ -447,15 +513,25 @@ export function EmbeddedAgentAssistantPreview({
               ) : null
             }
             headerActions={
-              <Button
-                aria-label={i18nText('appShell', 'auto.assistant_settings')}
-                disabled={!settings}
-                loading={!settings}
-                size="small"
-                type="text"
-                icon={<SettingOutlined />}
-                onClick={() => setSettingsOpen(true)}
-              />
+              <>
+                <Button
+                  aria-label={i18nText('appShell', 'auto.assistant_history')}
+                  disabled={!settings}
+                  icon={<HistoryOutlined />}
+                  size="small"
+                  type="text"
+                  onClick={() => setHistoryOpen(true)}
+                />
+                <Button
+                  aria-label={i18nText('appShell', 'auto.assistant_settings')}
+                  disabled={!settings}
+                  loading={!settings}
+                  size="small"
+                  type="text"
+                  icon={<SettingOutlined />}
+                  onClick={() => setSettingsOpen(true)}
+                />
+              </>
             }
             messages={session.messages}
             runContext={session.runContext}
@@ -488,6 +564,100 @@ export function EmbeddedAgentAssistantPreview({
               void session.submitPrompt(prompt);
             }}
           />
+          <Drawer
+            className="embedded-agent-assistant-preview__history"
+            getContainer={false}
+            mask={mobile}
+            open={historyOpen}
+            placement="left"
+            title={i18nText('appShell', 'auto.assistant_history')}
+            width={mobile ? '100%' : 280}
+            onClose={() => setHistoryOpen(false)}
+          >
+            <Conversations
+              activeKey={
+                session.conversationId
+                  ? `conversation:${session.conversationId}`
+                  : session.legacyFlowRunId
+                    ? `legacy:${session.legacyFlowRunId}`
+                    : undefined
+              }
+              creation={{
+                align: 'start',
+                disabled: !session.canChangeConversation,
+                icon: <PlusOutlined />,
+                label: i18nText('appShell', 'auto.assistant_new_conversation'),
+                onClick: () => {
+                  void session.startNewConversation().then((created) => {
+                    if (created) {
+                      setHistoryOpen(false);
+                    }
+                  });
+                }
+              }}
+              groupable
+              items={historyPage?.items.map((item) => ({
+                disabled: !session.canChangeConversation || historyLoading,
+                group: assistantConversationGroup(item.updated_at),
+                key: assistantConversationKey(item),
+                label:
+                  item.title ??
+                  (item.conversation_id
+                    ? i18nText(
+                        'appShell',
+                        'auto.assistant_untitled_conversation'
+                      )
+                    : i18nText('appShell', 'auto.assistant_legacy_snapshot'))
+              }))}
+              onActiveChange={(key) => {
+                const item = historyPage?.items.find(
+                  (candidate) => assistantConversationKey(candidate) === key
+                );
+                if (!item) {
+                  return;
+                }
+                void session
+                  .restoreConversation({
+                    conversationId: item.conversation_id,
+                    legacyFlowRunId: item.legacy_flow_run_id
+                  })
+                  .then((restored) => {
+                    if (restored && item.conversation_id) {
+                      setHistoryOpen(false);
+                    }
+                  });
+              }}
+            />
+            {session.legacyFlowRunId ? (
+              <Button
+                block
+                disabled={!session.canChangeConversation}
+                onClick={() => {
+                  void session
+                    .startNewConversation(session.legacyFlowRunId ?? undefined)
+                    .then((created) => {
+                      if (created) {
+                        setHistoryOpen(false);
+                      }
+                    });
+                }}
+              >
+                {i18nText(
+                  'appShell',
+                  'auto.assistant_continue_legacy_snapshot'
+                )}
+              </Button>
+            ) : null}
+            {historyPage && historyPage.items.length < historyPage.total ? (
+              <Button
+                block
+                disabled={historyLoading}
+                onClick={() => void loadHistory(historyPage.page + 1)}
+              >
+                {i18nText('appShell', 'auto.assistant_load_more')}
+              </Button>
+            ) : null}
+          </Drawer>
         </WindowWorkspaceWindow>
       ) : null}
       <Modal

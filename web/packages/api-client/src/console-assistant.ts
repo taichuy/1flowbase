@@ -35,9 +35,46 @@ export interface ConsoleAssistantSettings {
 
 export interface StartConsoleAssistantRunInput {
   application_id: string;
+  conversation_id?: string;
   query: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   title?: string;
+}
+
+export interface ConsoleAssistantConversation {
+  conversation_id: string;
+  application_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateConsoleAssistantConversationInput {
+  application_id: string;
+  seed_legacy_flow_run_id?: string;
+}
+
+export interface ConsoleAssistantConversationSummary {
+  conversation_id: string | null;
+  legacy_flow_run_id: string | null;
+  latest_flow_run_id: string | null;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConsoleAssistantConversationPage {
+  items: ConsoleAssistantConversationSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ConsoleAssistantConversationMessage {
+  id: string;
+  flow_run_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
 }
 
 interface ConsoleAssistantWebSocketTicket {
@@ -75,6 +112,52 @@ export function updateConsoleAssistantSettings(
     method: 'PATCH',
     body: preference,
     csrfToken
+  });
+}
+
+export function createConsoleAssistantConversation(
+  body: CreateConsoleAssistantConversationInput,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleAssistantConversation>({
+    path: '/api/console/assistant/conversations',
+    method: 'POST',
+    body,
+    csrfToken
+  });
+}
+
+export function listConsoleAssistantConversations(
+  applicationId: string,
+  input: { page?: number; pageSize?: number } = {}
+) {
+  const search = new URLSearchParams({
+    application_id: applicationId,
+    page: String(input.page ?? 1),
+    page_size: String(input.pageSize ?? 20)
+  });
+  return apiFetch<ConsoleAssistantConversationPage>({
+    path: `/api/console/assistant/conversations?${search.toString()}`
+  });
+}
+
+export function getConsoleAssistantConversationMessages(
+  applicationId: string,
+  conversationId: string
+) {
+  const search = new URLSearchParams({ application_id: applicationId });
+  return apiFetch<ConsoleAssistantConversationMessage[]>({
+    path: `/api/console/assistant/conversations/${conversationId}/messages?${search.toString()}`
+  });
+}
+
+export function getConsoleAssistantLegacySnapshotMessages(
+  applicationId: string,
+  flowRunId: string
+) {
+  const search = new URLSearchParams({ application_id: applicationId });
+  return apiFetch<ConsoleAssistantConversationMessage[]>({
+    path: `/api/console/assistant/legacy-runs/${flowRunId}/messages?${search.toString()}`
   });
 }
 

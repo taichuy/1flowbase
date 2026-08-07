@@ -205,6 +205,140 @@ async fn assistant_stream_starts_a_published_session_run_and_emits_flow_accepted
 }
 
 #[tokio::test]
+async fn issue_1608_assistant_conversations_are_stable_and_listed_for_the_session_principal() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_published_agent_flow(&app, &cookie, &csrf).await;
+    select_assistant_application(&app, &cookie, &csrf, &application_id).await;
+
+    let first_conversation_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/assistant/conversations")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "application_id": application_id }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first_conversation_response.status(), StatusCode::CREATED);
+    let first_conversation_id = response_json(first_conversation_response).await["data"]
+        ["conversation_id"]
+        .as_str()
+        .expect("new assistant conversation receives a stable conversation_id")
+        .to_string();
+
+    let second_conversation_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/assistant/conversations")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "application_id": application_id }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_conversation_response.status(), StatusCode::CREATED);
+    let second_conversation_id = response_json(second_conversation_response).await["data"]
+        ["conversation_id"]
+        .as_str()
+        .expect("second assistant conversation receives a stable conversation_id")
+        .to_string();
+    assert_ne!(first_conversation_id, second_conversation_id);
+
+    let continued_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/assistant/runs/stream")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("accept", "text/event-stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_id": application_id,
+                        "conversation_id": first_conversation_id,
+                        "query": "continue the first conversation",
+                        "history": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(continued_response.status(), StatusCode::OK);
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/console/assistant/conversations?application_id={application_id}&page=1&page_size=20"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let listed = response_json(list_response).await;
+    assert_eq!(listed["data"]["total"], 2);
+    let conversation_ids = listed["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["conversation_id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(conversation_ids.contains(&first_conversation_id.as_str()));
+    assert!(conversation_ids.contains(&second_conversation_id.as_str()));
+
+    let missing_conversation_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/assistant/runs/stream")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("accept", "text/event-stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_id": application_id,
+                        "conversation_id": uuid::Uuid::now_v7(),
+                        "query": "must not join another conversation",
+                        "history": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        missing_conversation_response.status(),
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
 async fn issue_1601_assistant_websocket_ticket_enforces_session_csrf_origin_and_application() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

@@ -781,6 +781,7 @@ async fn seed_run_conversation_flow_run(
             started_at,
             api_key_id: None,
             publication_version_id: Some(Uuid::now_v7()),
+            assistant_conversation_id: None,
             external_user: Some("customer-1".to_string()),
             external_conversation_id: Some(debug_session_id.to_string()),
             external_trace_id: None,

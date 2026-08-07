@@ -39,7 +39,9 @@ pub use native_results::{
 };
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
-    CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
+    AssistantConversationMessage, AssistantConversationPage, AssistantConversationRecord,
+    AssistantConversationSummary, CancelPublishedFlowRunInput, CreateAssistantConversationInput,
+    CreatePublishedFlowRunResult, ListAssistantConversationsInput,
     ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
     PublishedRunStreamState,
 };
@@ -62,6 +64,7 @@ pub struct CreateAssistantRunCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub application_id: Uuid,
+    pub assistant_conversation_id: Option<Uuid>,
     pub request: NativeRunRequest,
 }
 
@@ -162,6 +165,7 @@ where
                 started_at,
                 api_key_id: None,
                 publication_version_id: Some(publication.id),
+                assistant_conversation_id: command.assistant_conversation_id,
                 external_user: None,
                 external_conversation_id: None,
                 external_trace_id: None,
@@ -288,6 +292,7 @@ where
                 started_at,
                 api_key_id: Some(actor.api_key_id),
                 publication_version_id: Some(publication.id),
+                assistant_conversation_id: None,
                 external_user: metadata
                     .get("external_user")
                     .and_then(Value::as_str)

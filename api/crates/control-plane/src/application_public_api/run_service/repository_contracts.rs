@@ -12,6 +12,63 @@ pub struct CreatePublishedFlowRunResult {
     pub created: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateAssistantConversationInput {
+    pub conversation_id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub actor_user_id: Uuid,
+    /// A read-only legacy run that seeds this new conversation without changing
+    /// the legacy run or copying its messages into a second ledger.
+    pub seed_legacy_flow_run_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistantConversationRecord {
+    pub conversation_id: Uuid,
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub created_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListAssistantConversationsInput {
+    pub workspace_id: Uuid,
+    pub application_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistantConversationSummary {
+    pub conversation_id: Option<Uuid>,
+    pub legacy_flow_run_id: Option<Uuid>,
+    pub latest_flow_run_id: Option<Uuid>,
+    pub title: Option<String>,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistantConversationPage {
+    pub items: Vec<AssistantConversationSummary>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistantConversationMessage {
+    pub id: String,
+    pub flow_run_id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub created_at: OffsetDateTime,
+}
+
 #[async_trait]
 pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
     async fn create_published_flow_run(
@@ -30,6 +87,55 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
         &self,
         input: &crate::ports::AppendRunEventInput,
     ) -> Result<domain::RunEventRecord>;
+
+    async fn create_assistant_conversation(
+        &self,
+        input: &CreateAssistantConversationInput,
+    ) -> Result<AssistantConversationRecord> {
+        let _ = input;
+        anyhow::bail!("create_assistant_conversation not implemented")
+    }
+
+    async fn get_assistant_conversation(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Option<AssistantConversationRecord>> {
+        let _ = (workspace_id, application_id, actor_user_id, conversation_id);
+        anyhow::bail!("get_assistant_conversation not implemented")
+    }
+
+    async fn list_assistant_conversations(
+        &self,
+        input: &ListAssistantConversationsInput,
+    ) -> Result<AssistantConversationPage> {
+        let _ = input;
+        anyhow::bail!("list_assistant_conversations not implemented")
+    }
+
+    async fn list_assistant_conversation_messages(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Vec<AssistantConversationMessage>> {
+        let _ = (workspace_id, application_id, actor_user_id, conversation_id);
+        anyhow::bail!("list_assistant_conversation_messages not implemented")
+    }
+
+    async fn list_assistant_legacy_snapshot_messages(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<AssistantConversationMessage>> {
+        let _ = (workspace_id, application_id, actor_user_id, flow_run_id);
+        anyhow::bail!("list_assistant_legacy_snapshot_messages not implemented")
+    }
 }
 
 #[derive(Debug, Clone)]

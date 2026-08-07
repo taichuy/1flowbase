@@ -1,7 +1,11 @@
 import {
   cancelConsoleFlowRun,
+  createConsoleAssistantConversation,
+  getConsoleAssistantConversationMessages,
+  getConsoleAssistantLegacySnapshotMessages,
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
+  type ConsoleAssistantConversationMessage,
   type ConsoleAssistantWebSocketControl,
   type ConsoleContextSnapshot,
   type ConsoleFlowDebugStreamEvent,
@@ -102,6 +106,26 @@ function sessionStatusFromTerminalFlowRun(
   }
 }
 
+function hasActiveAssistantRun(status: AgentFlowDebugSessionStatus) {
+  return ['running', 'waiting_callback', 'waiting_human'].includes(status);
+}
+
+function restoredMessages(
+  items: ConsoleAssistantConversationMessage[]
+): AgentFlowDebugMessage[] {
+  return items.map((item) => ({
+    id: item.id,
+    role: item.role,
+    content: item.content,
+    status: 'completed',
+    runId: item.flow_run_id,
+    detailRunId: item.flow_run_id,
+    canOpenDetail: true,
+    rawOutput: null,
+    traceSummary: []
+  }));
+}
+
 export function useEmbeddedAssistantSession(applicationId: string | null) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [status, setStatus] = useState<AgentFlowDebugSessionStatus>('idle');
@@ -114,8 +138,13 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     createRunContext(applicationId)
   );
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [legacyFlowRunId, setLegacyFlowRunId] = useState<string | null>(null);
+  const [restoringHistory, setRestoringHistory] = useState(false);
   const activeRunIdRef = useRef<string | null>(null);
   const activeApplicationIdRef = useRef<string | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
+  const legacyFlowRunIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
   const websocketControlRef = useRef<ConsoleAssistantWebSocketControl | null>(
     null
@@ -130,10 +159,28 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     websocketControlRef.current = null;
   }, []);
 
-  const clearSession = useCallback(() => {
+  const setCurrentConversation = useCallback(
+    (nextConversationId: string | null) => {
+      conversationIdRef.current = nextConversationId;
+      setConversationId(nextConversationId);
+    },
+    []
+  );
+
+  const setCurrentLegacySnapshot = useCallback(
+    (nextFlowRunId: string | null) => {
+      legacyFlowRunIdRef.current = nextFlowRunId;
+      setLegacyFlowRunId(nextFlowRunId);
+    },
+    []
+  );
+
+  const resetSession = useCallback(() => {
     cancelActiveStream();
     activeRunIdRef.current = null;
     activeApplicationIdRef.current = null;
+    setCurrentConversation(null);
+    setCurrentLegacySnapshot(null);
     setActiveRunId(null);
     setStatus('idle');
     setStopping(false);
@@ -142,13 +189,135 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     liveTraceItemsRef.current = [];
     setContextSnapshot(null);
     setRunContext(createRunContext(applicationId));
-  }, [applicationId, cancelActiveStream]);
+  }, [
+    applicationId,
+    cancelActiveStream,
+    setCurrentConversation,
+    setCurrentLegacySnapshot
+  ]);
 
   useEffect(() => {
-    clearSession();
-  }, [clearSession]);
+    resetSession();
+  }, [resetSession]);
 
   useEffect(() => cancelActiveStream, [cancelActiveStream]);
+
+  const clearSession = useCallback(() => {
+    if (hasActiveAssistantRun(status)) {
+      return;
+    }
+    resetSession();
+  }, [resetSession, status]);
+
+  const restoreConversation = useCallback(
+    async (target: {
+      conversationId?: string | null;
+      legacyFlowRunId?: string | null;
+    }) => {
+      if (
+        !applicationId ||
+        hasActiveAssistantRun(status) ||
+        (!target.conversationId && !target.legacyFlowRunId)
+      ) {
+        return false;
+      }
+
+      cancelActiveStream();
+      const generation = streamGenerationRef.current;
+      setRestoringHistory(true);
+      try {
+        const history = target.conversationId
+          ? await getConsoleAssistantConversationMessages(
+              applicationId,
+              target.conversationId
+            )
+          : await getConsoleAssistantLegacySnapshotMessages(
+              applicationId,
+              target.legacyFlowRunId as string
+            );
+        if (streamGenerationRef.current !== generation) {
+          return false;
+        }
+        activeRunIdRef.current = null;
+        activeApplicationIdRef.current = null;
+        setActiveRunId(null);
+        setCurrentConversation(target.conversationId ?? null);
+        setCurrentLegacySnapshot(target.legacyFlowRunId ?? null);
+        setStatus('idle');
+        setStopping(false);
+        setMessages(restoredMessages(history));
+        setTraceItems([]);
+        liveTraceItemsRef.current = [];
+        setContextSnapshot(null);
+        setRunContext(createRunContext(applicationId));
+        return true;
+      } finally {
+        if (streamGenerationRef.current === generation) {
+          setRestoringHistory(false);
+        }
+      }
+    },
+    [
+      applicationId,
+      cancelActiveStream,
+      setCurrentConversation,
+      setCurrentLegacySnapshot,
+      status
+    ]
+  );
+
+  const startNewConversation = useCallback(
+    async (seedLegacyFlowRunId?: string) => {
+      if (!applicationId || !csrfToken || hasActiveAssistantRun(status)) {
+        return false;
+      }
+
+      cancelActiveStream();
+      const generation = streamGenerationRef.current;
+      setRestoringHistory(true);
+      try {
+        const conversation = await createConsoleAssistantConversation(
+          {
+            application_id: applicationId,
+            ...(seedLegacyFlowRunId
+              ? { seed_legacy_flow_run_id: seedLegacyFlowRunId }
+              : {})
+          },
+          csrfToken
+        );
+        if (streamGenerationRef.current !== generation) {
+          return false;
+        }
+        activeRunIdRef.current = null;
+        activeApplicationIdRef.current = null;
+        setActiveRunId(null);
+        setCurrentConversation(conversation.conversation_id);
+        setCurrentLegacySnapshot(null);
+        setStatus('idle');
+        setStopping(false);
+        if (!seedLegacyFlowRunId) {
+          setMessages([]);
+        }
+        setTraceItems([]);
+        liveTraceItemsRef.current = [];
+        setContextSnapshot(null);
+        setRunContext(createRunContext(applicationId));
+        return true;
+      } finally {
+        if (streamGenerationRef.current === generation) {
+          setRestoringHistory(false);
+        }
+      }
+    },
+    [
+      applicationId,
+      cancelActiveStream,
+      csrfToken,
+      setCurrentConversation,
+      setCurrentLegacySnapshot,
+      status
+    ]
+  );
 
   const reconcileRunSnapshot = useCallback(
     async (
@@ -230,6 +399,28 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
         return;
       }
 
+      cancelActiveStream();
+      const streamGeneration = streamGenerationRef.current;
+      let targetConversationId = conversationIdRef.current;
+      if (!targetConversationId) {
+        const seedLegacyFlowRunId = legacyFlowRunIdRef.current;
+        const conversation = await createConsoleAssistantConversation(
+          {
+            application_id: applicationId,
+            ...(seedLegacyFlowRunId
+              ? { seed_legacy_flow_run_id: seedLegacyFlowRunId }
+              : {})
+          },
+          csrfToken
+        );
+        if (streamGenerationRef.current !== streamGeneration) {
+          return;
+        }
+        targetConversationId = conversation.conversation_id;
+        setCurrentConversation(targetConversationId);
+        setCurrentLegacySnapshot(null);
+      }
+
       const history = messages.reduce<
         Array<{ role: 'user' | 'assistant'; content: string }>
       >((entries, message) => {
@@ -242,14 +433,11 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
         return entries;
       }, []);
       const runningMessage = createRunningAssistantMessage();
-      const streamGeneration = streamGenerationRef.current + 1;
       let streamAssistantMessage = runningMessage;
       let receivedTerminal = false;
       let receivedAnyEvent = false;
       const seenEventKeys = new Set<string>();
 
-      cancelActiveStream();
-      streamGenerationRef.current = streamGeneration;
       activeApplicationIdRef.current = applicationId;
       setStatus('running');
       setStopping(false);
@@ -336,7 +524,12 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       try {
         try {
           await startConsoleAssistantRunWebSocket(
-            { application_id: applicationId, query, history },
+            {
+              application_id: applicationId,
+              conversation_id: targetConversationId,
+              query,
+              history
+            },
             csrfToken,
             handlers,
             {
@@ -354,7 +547,12 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
           }
           websocketControlRef.current = null;
           await startConsoleAssistantRunStream(
-            { application_id: applicationId, query, history },
+            {
+              application_id: applicationId,
+              conversation_id: targetConversationId,
+              query,
+              history
+            },
             csrfToken,
             handlers
           );
@@ -403,6 +601,8 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       csrfToken,
       messages,
       reconcileRunSnapshot,
+      setCurrentConversation,
+      setCurrentLegacySnapshot,
       status
     ]
   );
@@ -497,9 +697,15 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
     contextSnapshot,
     runContext,
     activeRunId,
+    conversationId,
+    legacyFlowRunId,
+    restoringHistory,
+    canChangeConversation: !hasActiveAssistantRun(status),
     clearSession,
     closeSession,
+    restoreConversation,
     setRunContextValue,
+    startNewConversation,
     submitPrompt,
     stopRun
   };

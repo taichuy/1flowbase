@@ -91,6 +91,7 @@ impl PgControlPlaneStore {
                 input_payload,
                 api_key_id,
                 publication_version_id,
+                assistant_conversation_id,
                 external_user,
                 external_conversation_id,
                 external_trace_id,
@@ -102,7 +103,7 @@ impl PgControlPlaneStore {
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19,
-                $20, $21, $22, $23
+                $20, $21, $22, $23, $24
             )
             returning
                 id,
@@ -150,6 +151,7 @@ impl PgControlPlaneStore {
         .bind(&input.input_payload)
         .bind(input.api_key_id)
         .bind(input.publication_version_id)
+        .bind(input.assistant_conversation_id)
         .bind(input.external_user.as_deref())
         .bind(input.external_conversation_id.as_deref())
         .bind(input.external_trace_id.as_deref())
@@ -162,6 +164,15 @@ impl PgControlPlaneStore {
         .await?;
 
         let flow_run = map_flow_run_record(row)?;
+        if let Some(conversation_id) = input.assistant_conversation_id {
+            sqlx::query(
+                "update assistant_conversations set updated_at = $2 where conversation_id = $1",
+            )
+            .bind(conversation_id)
+            .bind(flow_run.started_at)
+            .execute(self.pool())
+            .await?;
+        }
         if matches!(
             flow_run.run_mode,
             domain::FlowRunMode::PublishedApiRun
@@ -204,6 +215,7 @@ impl PgControlPlaneStore {
                 input_payload,
                 api_key_id,
                 publication_version_id,
+                assistant_conversation_id,
                 external_user,
                 external_conversation_id,
                 external_trace_id,
@@ -215,7 +227,7 @@ impl PgControlPlaneStore {
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19,
-                $20, $21, $22, $23
+                $20, $21, $22, $23, $24
             )
             on conflict {conflict_target} do nothing
             returning
@@ -265,6 +277,7 @@ impl PgControlPlaneStore {
             .bind(&input.input_payload)
             .bind(input.api_key_id)
             .bind(input.publication_version_id)
+            .bind(input.assistant_conversation_id)
             .bind(input.external_user.as_deref())
             .bind(input.external_conversation_id.as_deref())
             .bind(input.external_trace_id.as_deref())
@@ -297,6 +310,15 @@ impl PgControlPlaneStore {
             (flow_run, false)
         };
         if created {
+            if let Some(conversation_id) = input.assistant_conversation_id {
+                sqlx::query(
+                    "update assistant_conversations set updated_at = $2 where conversation_id = $1",
+                )
+                .bind(conversation_id)
+                .bind(flow_run.started_at)
+                .execute(self.pool())
+                .await?;
+            }
             self.upsert_application_run_log_summary_for_flow_run(&flow_run)
                 .await?;
         }

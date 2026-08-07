@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use axum::{
-    extract::State,
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::sse::{KeepAlive, Sse},
     Json,
@@ -13,8 +13,9 @@ use control_plane::{
         native::{NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest},
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::{
-            native_result_from_run_detail, ApplicationPublishedRunService,
-            CreateAssistantRunCommand,
+            native_result_from_run_detail, ApplicationPublishedFlowRunRepository,
+            ApplicationPublishedRunService, CreateAssistantConversationInput,
+            CreateAssistantRunCommand, ListAssistantConversationsInput,
         },
     },
     mcp_management::McpManagementService,
@@ -103,6 +104,8 @@ pub struct AssistantSettingsResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct StartAssistantRunBody {
     pub application_id: Uuid,
+    #[serde(default)]
+    pub conversation_id: Option<Uuid>,
     pub query: String,
     #[serde(default)]
     pub history: Vec<Value>,
@@ -114,14 +117,70 @@ pub struct StartAssistantRunBody {
 pub struct AssistantRunResponse {
     pub id: Uuid,
     pub application_id: Uuid,
+    pub conversation_id: Uuid,
     pub status: String,
     pub answer: Option<String>,
     pub output_payload: Value,
     pub error_payload: Option<Value>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateAssistantConversationBody {
+    pub application_id: Uuid,
+    #[serde(default)]
+    pub seed_legacy_flow_run_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssistantConversationResponse {
+    pub conversation_id: Uuid,
+    pub application_id: Uuid,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListAssistantConversationsQuery {
+    pub application_id: Uuid,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssistantConversationSummaryResponse {
+    pub conversation_id: Option<Uuid>,
+    pub legacy_flow_run_id: Option<Uuid>,
+    pub latest_flow_run_id: Option<Uuid>,
+    pub title: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssistantConversationPageResponse {
+    pub items: Vec<AssistantConversationSummaryResponse>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssistantConversationMessagesQuery {
+    pub application_id: Uuid,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssistantConversationMessageResponse {
+    pub id: String,
+    pub flow_run_id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
 struct PreparedAssistantExecution {
     application_id: Uuid,
+    conversation_id: Uuid,
     actor_user_id: Uuid,
     actor: domain::ActorContext,
     flow_run_id: Uuid,
@@ -138,6 +197,18 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/assistant/settings",
             console_get(get_settings, Authenticated).patch(update_settings, Authenticated),
         )
+        .route(
+            "/assistant/conversations",
+            console_get(list_conversations, Authenticated).post(create_conversation, Authenticated),
+        )
+        .route(
+            "/assistant/conversations/{conversation_id}/messages",
+            console_get(get_conversation_messages, Authenticated),
+        )
+        .route(
+            "/assistant/legacy-runs/{flow_run_id}/messages",
+            console_get(get_legacy_snapshot_messages, Authenticated),
+        )
         .route("/assistant/runs", console_post(start_run, Authenticated))
         .route(
             "/assistant/runs/stream",
@@ -151,6 +222,210 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/assistant/runs/websocket",
             console_get(websocket::upgrade, Authenticated),
         )
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/assistant/conversations",
+    operation_id = "assistant_create_conversation",
+    summary = "Create an embedded assistant conversation",
+    description = "Creates a server-owned assistant conversation for the current Cookie session, workspace, and selected Agent Flow application.",
+    request_body = CreateAssistantConversationBody,
+    responses((status = 201, body = AssistantConversationResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn create_conversation(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateAssistantConversationBody>,
+) -> Result<
+    (
+        axum::http::StatusCode,
+        Json<ApiSuccess<AssistantConversationResponse>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
+    require_csrf(&headers, &context)?;
+    assistant_preference_for_target(&state, &context, body.application_id).await?;
+    if let Some(legacy_flow_run_id) = body.seed_legacy_flow_run_id {
+        let seed_messages = state
+            .store
+            .list_assistant_legacy_snapshot_messages(
+                context.actor.current_workspace_id,
+                body.application_id,
+                context.user.id,
+                legacy_flow_run_id,
+            )
+            .await?;
+        if seed_messages.is_empty() {
+            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                "assistant_legacy_snapshot",
+            )
+            .into());
+        }
+    }
+    let conversation = state
+        .store
+        .create_assistant_conversation(&CreateAssistantConversationInput {
+            conversation_id: Uuid::now_v7(),
+            workspace_id: context.actor.current_workspace_id,
+            application_id: body.application_id,
+            actor_user_id: context.user.id,
+            seed_legacy_flow_run_id: body.seed_legacy_flow_run_id,
+        })
+        .await?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(ApiSuccess::new(assistant_conversation_response(
+            conversation,
+        ))),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/assistant/conversations",
+    operation_id = "assistant_list_conversations",
+    summary = "List embedded assistant conversations",
+    description = "Lists the current Cookie session user's embedded assistant conversations and legacy single-run snapshots for one selected Agent Flow application.",
+    params(("application_id" = Uuid, Query), ("page" = Option<i64>, Query), ("page_size" = Option<i64>, Query)),
+    responses((status = 200, body = AssistantConversationPageResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_conversations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<ListAssistantConversationsQuery>,
+) -> Result<Json<ApiSuccess<AssistantConversationPageResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
+    assistant_preference_for_target(&state, &context, query.application_id).await?;
+    let page = state
+        .store
+        .list_assistant_conversations(&ListAssistantConversationsInput {
+            workspace_id: context.actor.current_workspace_id,
+            application_id: query.application_id,
+            actor_user_id: context.user.id,
+            page: query.page.unwrap_or(1),
+            page_size: query.page_size.unwrap_or(20),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(AssistantConversationPageResponse {
+        items: page
+            .items
+            .into_iter()
+            .map(|item| AssistantConversationSummaryResponse {
+                conversation_id: item.conversation_id,
+                legacy_flow_run_id: item.legacy_flow_run_id,
+                latest_flow_run_id: item.latest_flow_run_id,
+                title: item.title,
+                created_at: rfc3339(item.created_at),
+                updated_at: rfc3339(item.updated_at),
+            })
+            .collect(),
+        total: page.total,
+        page: page.page,
+        page_size: page.page_size,
+    })))
+}
+
+fn assistant_conversation_response(
+    conversation: control_plane::application_public_api::run_service::AssistantConversationRecord,
+) -> AssistantConversationResponse {
+    AssistantConversationResponse {
+        conversation_id: conversation.conversation_id,
+        application_id: conversation.application_id,
+        created_at: rfc3339(conversation.created_at),
+        updated_at: rfc3339(conversation.updated_at),
+    }
+}
+
+fn assistant_conversation_message_response(
+    message: control_plane::application_public_api::run_service::AssistantConversationMessage,
+) -> AssistantConversationMessageResponse {
+    AssistantConversationMessageResponse {
+        id: message.id,
+        flow_run_id: message.flow_run_id,
+        role: message.role,
+        content: message.content,
+        created_at: rfc3339(message.created_at),
+    }
+}
+
+fn rfc3339(value: time::OffsetDateTime) -> String {
+    value
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("Rfc3339 is a valid fixed formatter")
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/assistant/conversations/{conversation_id}/messages",
+    operation_id = "assistant_get_conversation_messages",
+    summary = "Read embedded assistant conversation messages",
+    description = "Reads visible messages in one server-owned embedded assistant conversation after workspace, user, and application filtering.",
+    params(("conversation_id" = Uuid, Path), ("application_id" = Uuid, Query)),
+    responses((status = 200, body = [AssistantConversationMessageResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn get_conversation_messages(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(conversation_id): Path<Uuid>,
+    Query(query): Query<AssistantConversationMessagesQuery>,
+) -> Result<Json<ApiSuccess<Vec<AssistantConversationMessageResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
+    assistant_preference_for_target(&state, &context, query.application_id).await?;
+    let messages = state
+        .store
+        .list_assistant_conversation_messages(
+            context.actor.current_workspace_id,
+            query.application_id,
+            context.user.id,
+            conversation_id,
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        messages
+            .into_iter()
+            .map(assistant_conversation_message_response)
+            .collect(),
+    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/assistant/legacy-runs/{flow_run_id}/messages",
+    operation_id = "assistant_get_legacy_snapshot_messages",
+    summary = "Read embedded assistant legacy snapshot messages",
+    description = "Reads the visible messages for one pre-conversation embedded assistant run as an immutable legacy snapshot.",
+    params(("flow_run_id" = Uuid, Path), ("application_id" = Uuid, Query)),
+    responses((status = 200, body = [AssistantConversationMessageResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn get_legacy_snapshot_messages(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(flow_run_id): Path<Uuid>,
+    Query(query): Query<AssistantConversationMessagesQuery>,
+) -> Result<Json<ApiSuccess<Vec<AssistantConversationMessageResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
+    assistant_preference_for_target(&state, &context, query.application_id).await?;
+    let messages = state
+        .store
+        .list_assistant_legacy_snapshot_messages(
+            context.actor.current_workspace_id,
+            query.application_id,
+            context.user.id,
+            flow_run_id,
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        messages
+            .into_iter()
+            .map(assistant_conversation_message_response)
+            .collect(),
+    )))
 }
 
 #[utoipa::path(
@@ -305,6 +580,7 @@ pub async fn start_run(
     Ok(Json(ApiSuccess::new(AssistantRunResponse {
         id: detail.flow_run.id,
         application_id: execution.application_id,
+        conversation_id: execution.conversation_id,
         status: detail.flow_run.status.as_str().to_string(),
         answer: native_result.answer,
         output_payload: detail.flow_run.output_payload,
@@ -492,6 +768,40 @@ async fn prepare_assistant_execution(
     }
     let application_id = body.application_id;
     let preference = assistant_preference_for_target(state, context, application_id).await?;
+    let assistant_conversation_id = match body.conversation_id {
+        Some(conversation_id) => {
+            if state
+                .store
+                .get_assistant_conversation(
+                    context.actor.current_workspace_id,
+                    application_id,
+                    context.user.id,
+                    conversation_id,
+                )
+                .await?
+                .is_none()
+            {
+                return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                    "assistant_conversation",
+                )
+                .into());
+            }
+            conversation_id
+        }
+        None => {
+            state
+                .store
+                .create_assistant_conversation(&CreateAssistantConversationInput {
+                    conversation_id: Uuid::now_v7(),
+                    workspace_id: context.actor.current_workspace_id,
+                    application_id,
+                    actor_user_id: context.user.id,
+                    seed_legacy_flow_run_id: None,
+                })
+                .await?
+                .conversation_id
+        }
+    };
     let catalog = McpManagementService::new(state.store.clone())
         .read_catalog_for_actor(&context.actor)
         .await?;
@@ -507,6 +817,7 @@ async fn prepare_assistant_execution(
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
             application_id,
+            assistant_conversation_id: Some(assistant_conversation_id),
             request: NativeRunRequest {
                 query: body.query,
                 system: Vec::new(),
@@ -532,6 +843,7 @@ async fn prepare_assistant_execution(
 
     Ok(PreparedAssistantExecution {
         application_id,
+        conversation_id: assistant_conversation_id,
         actor_user_id: context.user.id,
         actor: context.actor.clone(),
         flow_run_id: flow_run.id,

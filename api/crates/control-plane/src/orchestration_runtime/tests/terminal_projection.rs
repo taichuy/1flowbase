@@ -25,6 +25,7 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
             started_at: now,
             api_key_id: None,
             publication_version_id: None,
+            assistant_conversation_id: None,
             external_user: None,
             external_conversation_id: None,
             external_trace_id: None,

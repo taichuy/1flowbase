@@ -19,6 +19,7 @@ export function AgentFlowDebugConsole({
   closeLabel,
   composerFooterActions,
   composerUiOnly = false,
+  clearDisabled = false,
   headerActions,
   logActionRunId,
   messages,
@@ -44,6 +45,7 @@ export function AgentFlowDebugConsole({
   closeLabel?: string;
   composerFooterActions?: ReactNode;
   composerUiOnly?: boolean;
+  clearDisabled?: boolean;
   headerActions?: ReactNode;
   logActionRunId?: string | null;
   messages: AgentFlowDebugMessage[];
@@ -95,7 +97,7 @@ export function AgentFlowDebugConsole({
             {showClearAction ? (
               <Button
                 aria-label={i18nText('agentFlow', 'auto.clear_preview')}
-                disabled={messages.length === 0}
+                disabled={clearDisabled || messages.length === 0}
                 icon={<ReloadOutlined />}
                 size="small"
                 type="text"

@@ -70,6 +70,10 @@
   color: var(--text-secondary);
 }
 
+.embedded-agent-assistant-preview__history .ant-drawer-content {
+  background: var(--bg-elevated);
+}
+
 .embedded-agent-assistant-preview__runtime-menu-row,
 .embedded-agent-assistant-preview__runtime-menu-option {
   display: flex;

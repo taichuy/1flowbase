@@ -9,13 +9,21 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   cancelConsoleFlowRun,
+  createConsoleAssistantConversation,
+  getConsoleAssistantConversationMessages,
+  getConsoleAssistantLegacySnapshotMessages,
   getConsoleAssistantSettings,
+  listConsoleAssistantConversations,
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
   updateConsoleAssistantSettings
 } = vi.hoisted(() => ({
   cancelConsoleFlowRun: vi.fn(),
+  createConsoleAssistantConversation: vi.fn(),
+  getConsoleAssistantConversationMessages: vi.fn(),
+  getConsoleAssistantLegacySnapshotMessages: vi.fn(),
   getConsoleAssistantSettings: vi.fn(),
+  listConsoleAssistantConversations: vi.fn(),
   startConsoleAssistantRunWebSocket: vi.fn(),
   startConsoleAssistantRunStream: vi.fn(),
   updateConsoleAssistantSettings: vi.fn()
@@ -26,7 +34,11 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   return {
     ...actual,
     cancelConsoleFlowRun,
+    createConsoleAssistantConversation,
+    getConsoleAssistantConversationMessages,
+    getConsoleAssistantLegacySnapshotMessages,
     getConsoleAssistantSettings,
+    listConsoleAssistantConversations,
     startConsoleAssistantRunWebSocket,
     startConsoleAssistantRunStream,
     updateConsoleAssistantSettings
@@ -99,6 +111,41 @@ describe('EmbeddedAgentAssistant', () => {
       }
     });
     updateConsoleAssistantSettings.mockReset();
+    createConsoleAssistantConversation.mockReset();
+    createConsoleAssistantConversation.mockResolvedValue({
+      conversation_id: 'conversation-new',
+      application_id: 'flow-1',
+      created_at: '2026-08-07T00:00:00Z',
+      updated_at: '2026-08-07T00:00:00Z'
+    });
+    getConsoleAssistantConversationMessages.mockReset();
+    getConsoleAssistantConversationMessages.mockResolvedValue([]);
+    getConsoleAssistantLegacySnapshotMessages.mockReset();
+    getConsoleAssistantLegacySnapshotMessages.mockResolvedValue([
+      {
+        id: 'legacy-run:user',
+        flow_run_id: 'legacy-run',
+        role: 'user',
+        content: 'Legacy question',
+        created_at: '2026-08-06T00:00:00Z'
+      }
+    ]);
+    listConsoleAssistantConversations.mockReset();
+    listConsoleAssistantConversations.mockResolvedValue({
+      items: [
+        {
+          conversation_id: 'conversation-1',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-1',
+          title: 'First conversation',
+          created_at: '2026-08-07T00:00:00Z',
+          updated_at: '2026-08-07T00:00:00Z'
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
     cancelConsoleFlowRun.mockReset();
     cancelConsoleFlowRun.mockResolvedValue(undefined);
     startConsoleAssistantRunWebSocket.mockReset();
@@ -166,6 +213,111 @@ describe('EmbeddedAgentAssistant', () => {
     ) as HTMLElement;
     expect(Number(settingsModalLayer.style.zIndex)).toBeGreaterThan(
       Number(assistantWindow.style.zIndex)
+    );
+  });
+
+  test('AC-005 opens Conversations history, restores a selection, and creates a new conversation', async () => {
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+
+    const history = await screen.findByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_history')
+    });
+    fireEvent.click(history);
+    expect(await screen.findByText('First conversation')).toBeInTheDocument();
+    expect(listConsoleAssistantConversations).toHaveBeenCalledWith('flow-1', {
+      page: 1,
+      pageSize: 20
+    });
+
+    fireEvent.click(screen.getByText('First conversation'));
+    await waitFor(() =>
+      expect(getConsoleAssistantConversationMessages).toHaveBeenCalledWith(
+        'flow-1',
+        'conversation-1'
+      )
+    );
+
+    fireEvent.click(history);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(
+          i18nText('appShell', 'auto.assistant_new_conversation'),
+          'u'
+        )
+      })
+    );
+    await waitFor(() =>
+      expect(createConsoleAssistantConversation).toHaveBeenCalledWith(
+        { application_id: 'flow-1' },
+        'csrf-token'
+      )
+    );
+  });
+
+  test('AC-004 explicitly continues a legacy snapshot without mutating it', async () => {
+    listConsoleAssistantConversations.mockResolvedValueOnce({
+      items: [
+        {
+          conversation_id: null,
+          legacy_flow_run_id: 'legacy-run',
+          latest_flow_run_id: 'legacy-run',
+          title: 'Legacy snapshot',
+          created_at: '2026-08-06T00:00:00Z',
+          updated_at: '2026-08-06T00:00:00Z'
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+    fireEvent.click(await screen.findByText('Legacy snapshot'));
+
+    await waitFor(() =>
+      expect(getConsoleAssistantLegacySnapshotMessages).toHaveBeenCalledWith(
+        'flow-1',
+        'legacy-run'
+      )
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_continue_legacy_snapshot')
+      })
+    );
+
+    await waitFor(() =>
+      expect(createConsoleAssistantConversation).toHaveBeenCalledWith(
+        {
+          application_id: 'flow-1',
+          seed_legacy_flow_run_id: 'legacy-run'
+        },
+        'csrf-token'
+      )
     );
   });
 
@@ -265,6 +417,7 @@ describe('EmbeddedAgentAssistant', () => {
       expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
         {
           application_id: 'flow-1',
+          conversation_id: 'conversation-new',
           query: 'Summarize this',
           history: []
         },
@@ -635,6 +788,7 @@ describe('EmbeddedAgentAssistant', () => {
       expect(startConsoleAssistantRunStream).toHaveBeenCalledWith(
         {
           application_id: 'flow-1',
+          conversation_id: 'conversation-new',
           query: 'Fallback please',
           history: []
         },

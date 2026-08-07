@@ -23,6 +23,7 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
             started_at: now,
             api_key_id: None,
             publication_version_id: None,
+            assistant_conversation_id: None,
             external_user: None,
             external_conversation_id: None,
             external_trace_id: None,

@@ -539,6 +539,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
                 started_at: time::OffsetDateTime::now_utc(),
                 api_key_id: Some(Uuid::now_v7()),
                 publication_version_id: Some(Uuid::now_v7()),
+                assistant_conversation_id: None,
                 external_user: None,
                 external_conversation_id: None,
                 external_trace_id: None,

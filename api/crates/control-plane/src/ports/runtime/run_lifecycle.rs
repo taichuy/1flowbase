@@ -34,6 +34,9 @@ pub struct CreateFlowRunInput {
     pub started_at: OffsetDateTime,
     pub api_key_id: Option<Uuid>,
     pub publication_version_id: Option<Uuid>,
+    /// Internal console-only identity. It is intentionally distinct from the
+    /// public API's `external_conversation_id` contract.
+    pub assistant_conversation_id: Option<Uuid>,
     pub external_user: Option<String>,
     pub external_conversation_id: Option<String>,
     pub external_trace_id: Option<String>,

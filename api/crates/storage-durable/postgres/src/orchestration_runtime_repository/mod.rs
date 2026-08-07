@@ -64,6 +64,7 @@ use sequencing::*;
 include!("event_methods.rs");
 include!("artifact_methods.rs");
 include!("application_run_log_methods.rs");
+include!("application_run_logs/assistant_conversation_methods.rs");
 include!("application_run_logs/run_conversation_message_item_methods.rs");
 include!("application_run_trace_projection_methods.rs");
 include!("application_run_monitoring_methods.rs");
@@ -798,6 +799,76 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         input: &AppendRunEventInput,
     ) -> Result<domain::RunEventRecord> {
         PgControlPlaneStore::append_run_event(self, input).await
+    }
+
+    async fn create_assistant_conversation(
+        &self,
+        input: &control_plane::application_public_api::run_service::CreateAssistantConversationInput,
+    ) -> Result<control_plane::application_public_api::run_service::AssistantConversationRecord>
+    {
+        PgControlPlaneStore::create_assistant_conversation(self, input).await
+    }
+
+    async fn get_assistant_conversation(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<
+        Option<control_plane::application_public_api::run_service::AssistantConversationRecord>,
+    > {
+        PgControlPlaneStore::get_assistant_conversation(
+            self,
+            workspace_id,
+            application_id,
+            actor_user_id,
+            conversation_id,
+        )
+        .await
+    }
+
+    async fn list_assistant_conversations(
+        &self,
+        input: &control_plane::application_public_api::run_service::ListAssistantConversationsInput,
+    ) -> Result<control_plane::application_public_api::run_service::AssistantConversationPage> {
+        PgControlPlaneStore::list_assistant_conversations(self, input).await
+    }
+
+    async fn list_assistant_conversation_messages(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>>
+    {
+        PgControlPlaneStore::list_assistant_conversation_messages(
+            self,
+            workspace_id,
+            application_id,
+            actor_user_id,
+            conversation_id,
+        )
+        .await
+    }
+
+    async fn list_assistant_legacy_snapshot_messages(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>>
+    {
+        PgControlPlaneStore::list_assistant_legacy_snapshot_messages(
+            self,
+            workspace_id,
+            application_id,
+            actor_user_id,
+            flow_run_id,
+        )
+        .await
     }
 }
 

@@ -137,6 +137,7 @@ where
                 started_at: command.trigger.started_at(),
                 api_key_id: command.trigger.api_key_id(),
                 publication_version_id: Some(publication.id),
+                assistant_conversation_id: None,
                 external_user: None,
                 external_conversation_id: None,
                 external_trace_id: Some(command.trigger.external_trace_id()),
