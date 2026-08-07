@@ -8,6 +8,7 @@ import {
 } from '@1flowbase/api-client';
 import {
   CheckOutlined,
+  CloseOutlined,
   HistoryOutlined,
   PlusOutlined,
   SettingOutlined
@@ -15,7 +16,6 @@ import {
 import { Conversations, Sender } from '@ant-design/x';
 import {
   Button,
-  Drawer,
   Dropdown,
   Form,
   Modal,
@@ -24,7 +24,7 @@ import {
   Tooltip,
   type MenuProps
 } from 'antd';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
@@ -57,8 +57,6 @@ function hasChangedPreference(
 }
 
 const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
-const ASSISTANT_HISTORY_WIDTH = 280;
-const ASSISTANT_HISTORY_GAP = 8;
 
 function assistantConversationKey(item: {
   conversation_id: string | null;
@@ -90,21 +88,6 @@ function initialAssistantWindowRect(): WindowWorkspaceRect {
   };
 }
 
-function assistantHistoryOutwardShift(
-  rect: WindowWorkspaceRect,
-  viewport = getWindowWorkspaceViewport()
-): number | null {
-  const shift = Math.max(
-    0,
-    rect.left +
-      rect.width +
-      ASSISTANT_HISTORY_GAP +
-      ASSISTANT_HISTORY_WIDTH -
-      (viewport.left + viewport.width)
-  );
-  return rect.left - shift >= viewport.left + 8 ? shift : null;
-}
-
 export function EmbeddedAgentAssistantPreview({
   open,
   onClose
@@ -126,7 +109,6 @@ export function EmbeddedAgentAssistantPreview({
     useState<ConsoleAssistantConversationPage | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobile, setMobile] = useState(false);
-  const historyShiftRef = useRef(0);
   const [form] = Form.useForm<ConsoleAssistantPreference>();
   const {
     activate,
@@ -144,13 +126,11 @@ export function EmbeddedAgentAssistantPreview({
     setSettings(null);
     setSettingsOpen(false);
     setHistoryOpen(false);
-    historyShiftRef.current = 0;
     setHistoryPage(null);
   }, [workspaceId]);
 
   useEffect(() => {
     if (!open) {
-      historyShiftRef.current = 0;
       close(ASSISTANT_WINDOW_ID);
       return;
     }
@@ -277,37 +257,12 @@ export function EmbeddedAgentAssistantPreview({
   );
   const assistantWindowZIndex = 1050 + (windowEntry?.z_index ?? 0);
   const assistantSettingsModalZIndex = 1100 + (windowEntry?.z_index ?? 0);
-  const historyOverlay =
-    mobile ||
-    !windowEntry ||
-    assistantHistoryOutwardShift(windowEntry.rect) === null;
 
   function openHistory() {
-    if (!windowEntry || historyOpen) {
-      return;
-    }
-    const shift = mobile
-      ? null
-      : assistantHistoryOutwardShift(windowEntry.rect);
-    historyShiftRef.current = shift ?? 0;
-    if (shift) {
-      setRect(ASSISTANT_WINDOW_ID, {
-        ...windowEntry.rect,
-        left: windowEntry.rect.left - shift
-      });
-    }
     setHistoryOpen(true);
   }
 
   function closeHistory() {
-    const shift = historyShiftRef.current;
-    if (shift && windowEntry) {
-      setRect(ASSISTANT_WINDOW_ID, {
-        ...windowEntry.rect,
-        left: windowEntry.rect.left + shift
-      });
-    }
-    historyShiftRef.current = 0;
     setHistoryOpen(false);
   }
   const runtimePreferenceMenuItems: MenuProps['items'] = settings
@@ -447,275 +402,312 @@ export function EmbeddedAgentAssistantPreview({
           onActivate={() => activate(ASSISTANT_WINDOW_ID)}
           onRectChange={(rect) => setRect(ASSISTANT_WINDOW_ID, rect)}
         >
-          <AgentFlowDebugConsole
-            clearDisabled={!session.canChangeConversation}
-            composerFooterActions={
-              settings?.run_capabilities.model_selection_enabled ? (
-                <>
-                  {contextWindow ? (
-                    <Tooltip
-                      color="#ffffff"
-                      styles={{
-                        container: {
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: '0.5rem',
-                          boxShadow: 'var(--shadow-float)',
-                          padding: '0.5rem 0.625rem'
-                        }
-                      }}
-                      title={
-                        <span className="embedded-agent-assistant-preview__context-tooltip">
-                          <span>
-                            {i18nText(
-                              'appShell',
-                              'auto.assistant_context_remaining_percent',
-                              {
-                                value1: remainingContextPercent
-                              }
-                            )}
-                          </span>
-                          <span className="embedded-agent-assistant-preview__context-tooltip-total">
-                            {i18nText(
-                              'appShell',
-                              'auto.assistant_context_total',
-                              {
-                                value2:
-                                  formatLlmTokenCount(contextWindow) ?? '0',
-                                value1:
-                                  formatLlmTokenCount(contextTokenUsage) ?? '0'
-                              }
-                            )}
-                          </span>
-                        </span>
-                      }
-                    >
-                      <span className="embedded-agent-assistant-preview__context-progress">
-                        <Progress
-                          percent={contextVisualPercent}
-                          showInfo={false}
-                          size={18}
-                          trailColor="var(--border-default)"
-                          type="circle"
-                        />
-                      </span>
-                    </Tooltip>
-                  ) : null}
-                  <Dropdown
-                    overlayStyle={{ zIndex: 1100 + windowEntry.z_index }}
-                    placement="topLeft"
-                    trigger={['click']}
-                    menu={{
-                      items: runtimePreferenceMenuItems,
-                      onClick: ({ key }) => {
-                        const selection = String(key);
-                        if (selection === 'reset-defaults') {
-                          void updateRuntimePreference({
-                            model: null,
-                            reasoning_effort: null
-                          });
-                          return;
-                        }
-                        if (selection.startsWith('model:')) {
-                          const modelId = selection.slice('model:'.length);
-                          const model = settings.run_capabilities.models.find(
-                            (candidate) => candidate.id === modelId
-                          );
-                          if (model) {
-                            void updateRuntimePreference({
-                              model: model.id,
-                              reasoning_effort:
-                                model.default_reasoning_effort ?? null
-                            });
+          <div
+            className="embedded-agent-assistant-preview__layout"
+            data-history-open={historyOpen}
+          >
+            {historyOpen ? (
+              <aside
+                aria-label={i18nText('appShell', 'auto.assistant_history')}
+                className="embedded-agent-assistant-preview__history"
+                data-testid="embedded-agent-assistant-history"
+              >
+                <div className="embedded-agent-assistant-preview__history-header">
+                  <span className="embedded-agent-assistant-preview__history-title">
+                    {i18nText('appShell', 'auto.assistant_history')}
+                  </span>
+                  <Button
+                    aria-label={i18nText('agentFlow', 'auto.close', {
+                      value1: i18nText('appShell', 'auto.assistant_history')
+                    })}
+                    icon={<CloseOutlined />}
+                    size="small"
+                    type="text"
+                    onClick={closeHistory}
+                  />
+                </div>
+                <div className="embedded-agent-assistant-preview__history-body">
+                  <Conversations
+                    activeKey={
+                      session.conversationId
+                        ? `conversation:${session.conversationId}`
+                        : session.legacyFlowRunId
+                          ? `legacy:${session.legacyFlowRunId}`
+                          : undefined
+                    }
+                    creation={{
+                      align: 'start',
+                      disabled: !session.canChangeConversation,
+                      icon: <PlusOutlined />,
+                      label: i18nText(
+                        'appShell',
+                        'auto.assistant_new_conversation'
+                      ),
+                      onClick: () => {
+                        void session.startNewConversation().then((created) => {
+                          if (created) {
+                            closeHistory();
                           }
-                          return;
-                        }
-                        if (selection.startsWith('reasoning-effort:')) {
-                          const reasoning_effort = selection.slice(
-                            'reasoning-effort:'.length
-                          );
-                          if (
-                            selectedModel?.reasoning_efforts.includes(
-                              reasoning_effort
-                            )
-                          ) {
-                            void updateRuntimePreference({
-                              model: selectedModel.id,
-                              reasoning_effort
-                            });
-                          }
-                        }
+                        });
                       }
                     }}
-                  >
-                    <Sender.Switch
-                      rootClassName="embedded-agent-assistant-preview__runtime-preferences"
-                      value={false}
-                    >
-                      <span>
-                        {selectedModel?.name ?? selectedModel?.id ?? '-'}
-                      </span>
-                      {settings.run_capabilities.reasoning_effort_enabled &&
-                      selectedReasoningEffort ? (
-                        <span className="embedded-agent-assistant-preview__runtime-preferences-effort">
-                          {selectedReasoningEffort}
-                        </span>
-                      ) : null}
-                    </Sender.Switch>
-                  </Dropdown>
-                </>
-              ) : null
-            }
-            headerActions={
-              <>
-                <Button
-                  aria-label={i18nText('appShell', 'auto.assistant_history')}
-                  disabled={!settings}
-                  icon={<HistoryOutlined />}
-                  size="small"
-                  type="text"
-                  onClick={openHistory}
-                />
-                <Button
-                  aria-label={i18nText('appShell', 'auto.assistant_settings')}
-                  disabled={!settings}
-                  loading={!settings}
-                  size="small"
-                  type="text"
-                  icon={<SettingOutlined />}
-                  onClick={() => setSettingsOpen(true)}
-                />
-              </>
-            }
-            messages={session.messages}
-            runContext={session.runContext}
-            status={session.status}
-            stopping={session.stopping}
-            subtitle={selectedFlow?.name}
-            title={i18nText('appShell', 'auto.assistant')}
-            onChangeRunContextValue={session.setRunContextValue}
-            onClearSession={session.clearSession}
-            onClose={() => {
-              void session.closeSession();
-              onClose();
-            }}
-            onLoadArtifact={
-              applicationId
-                ? (artifactRef) =>
-                    fetchRuntimeDebugArtifact(applicationId, artifactRef)
-                : undefined
-            }
-            onLoadArtifacts={
-              applicationId
-                ? (artifactRefs) =>
-                    fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
-                : undefined
-            }
-            onStopRun={() => {
-              void session.stopRun();
-            }}
-            onSubmitPrompt={(prompt) => {
-              void session.submitPrompt(prompt);
-            }}
-          />
-          <Drawer
-            className="embedded-agent-assistant-preview__history"
-            getContainer={() => document.body}
-            mask={historyOverlay}
-            open={historyOpen}
-            placement="right"
-            title={i18nText('appShell', 'auto.assistant_history')}
-            width={historyOverlay ? '100%' : ASSISTANT_HISTORY_WIDTH}
-            zIndex={
-              historyOverlay
-                ? assistantWindowZIndex + 50
-                : assistantWindowZIndex
-            }
-            onClose={closeHistory}
-          >
-            <Conversations
-              activeKey={
-                session.conversationId
-                  ? `conversation:${session.conversationId}`
-                  : session.legacyFlowRunId
-                    ? `legacy:${session.legacyFlowRunId}`
-                    : undefined
-              }
-              creation={{
-                align: 'start',
-                disabled: !session.canChangeConversation,
-                icon: <PlusOutlined />,
-                label: i18nText('appShell', 'auto.assistant_new_conversation'),
-                onClick: () => {
-                  void session.startNewConversation().then((created) => {
-                    if (created) {
-                      closeHistory();
-                    }
-                  });
-                }
-              }}
-              groupable
-              items={historyPage?.items.map((item) => ({
-                disabled: !session.canChangeConversation || historyLoading,
-                group: assistantConversationGroup(item.updated_at),
-                key: assistantConversationKey(item),
-                label:
-                    item.title ??
-                    (item.conversation_id
-                      ? i18nText(
-                          'appShell',
-                          'auto.assistant_new_conversation'
-                        )
-                    : i18nText('appShell', 'auto.assistant_legacy_snapshot'))
-              }))}
-              onActiveChange={(key) => {
-                const item = historyPage?.items.find(
-                  (candidate) => assistantConversationKey(candidate) === key
-                );
-                if (!item) {
-                  return;
-                }
-                void session
-                  .restoreConversation({
-                    conversationId: item.conversation_id,
-                    legacyFlowRunId: item.legacy_flow_run_id
-                  })
-                  .then((restored) => {
-                    if (restored && item.conversation_id) {
-                      closeHistory();
-                    }
-                  });
-              }}
-            />
-            {session.legacyFlowRunId ? (
-              <Button
-                block
-                disabled={!session.canChangeConversation}
-                onClick={() => {
-                  void session
-                    .startNewConversation(session.legacyFlowRunId ?? undefined)
-                    .then((created) => {
-                      if (created) {
-                        closeHistory();
+                    groupable
+                    items={historyPage?.items.map((item) => ({
+                      disabled:
+                        !session.canChangeConversation || historyLoading,
+                      group: assistantConversationGroup(item.updated_at),
+                      key: assistantConversationKey(item),
+                      label:
+                        item.title ??
+                        (item.conversation_id
+                          ? i18nText(
+                              'appShell',
+                              'auto.assistant_new_conversation'
+                            )
+                          : i18nText(
+                              'appShell',
+                              'auto.assistant_legacy_snapshot'
+                            ))
+                    }))}
+                    onActiveChange={(key) => {
+                      const item = historyPage?.items.find(
+                        (candidate) =>
+                          assistantConversationKey(candidate) === key
+                      );
+                      if (!item) {
+                        return;
                       }
-                    });
+                      void session
+                        .restoreConversation({
+                          conversationId: item.conversation_id,
+                          legacyFlowRunId: item.legacy_flow_run_id
+                        })
+                        .then((restored) => {
+                          if (restored && item.conversation_id) {
+                            closeHistory();
+                          }
+                        });
+                    }}
+                  />
+                  {session.legacyFlowRunId ? (
+                    <Button
+                      block
+                      disabled={!session.canChangeConversation}
+                      onClick={() => {
+                        void session
+                          .startNewConversation(
+                            session.legacyFlowRunId ?? undefined
+                          )
+                          .then((created) => {
+                            if (created) {
+                              closeHistory();
+                            }
+                          });
+                      }}
+                    >
+                      {i18nText(
+                        'appShell',
+                        'auto.assistant_continue_legacy_snapshot'
+                      )}
+                    </Button>
+                  ) : null}
+                  {historyPage &&
+                  historyPage.items.length < historyPage.total ? (
+                    <Button
+                      block
+                      disabled={historyLoading}
+                      onClick={() => void loadHistory(historyPage.page + 1)}
+                    >
+                      {i18nText('appShell', 'auto.assistant_load_more')}
+                    </Button>
+                  ) : null}
+                </div>
+              </aside>
+            ) : null}
+            <div
+              className="embedded-agent-assistant-preview__conversation"
+              hidden={mobile && historyOpen}
+            >
+              <AgentFlowDebugConsole
+                clearDisabled={!session.canChangeConversation}
+                composerFooterActions={
+                  settings?.run_capabilities.model_selection_enabled ? (
+                    <>
+                      {contextWindow ? (
+                        <Tooltip
+                          color="#ffffff"
+                          styles={{
+                            container: {
+                              border: '1px solid var(--border-subtle)',
+                              borderRadius: '0.5rem',
+                              boxShadow: 'var(--shadow-float)',
+                              padding: '0.5rem 0.625rem'
+                            }
+                          }}
+                          title={
+                            <span className="embedded-agent-assistant-preview__context-tooltip">
+                              <span>
+                                {i18nText(
+                                  'appShell',
+                                  'auto.assistant_context_remaining_percent',
+                                  {
+                                    value1: remainingContextPercent
+                                  }
+                                )}
+                              </span>
+                              <span className="embedded-agent-assistant-preview__context-tooltip-total">
+                                {i18nText(
+                                  'appShell',
+                                  'auto.assistant_context_total',
+                                  {
+                                    value2:
+                                      formatLlmTokenCount(contextWindow) ?? '0',
+                                    value1:
+                                      formatLlmTokenCount(contextTokenUsage) ??
+                                      '0'
+                                  }
+                                )}
+                              </span>
+                            </span>
+                          }
+                        >
+                          <span className="embedded-agent-assistant-preview__context-progress">
+                            <Progress
+                              percent={contextVisualPercent}
+                              showInfo={false}
+                              size={18}
+                              trailColor="var(--border-default)"
+                              type="circle"
+                            />
+                          </span>
+                        </Tooltip>
+                      ) : null}
+                      <Dropdown
+                        overlayStyle={{ zIndex: 1100 + windowEntry.z_index }}
+                        placement="topLeft"
+                        trigger={['click']}
+                        menu={{
+                          items: runtimePreferenceMenuItems,
+                          onClick: ({ key }) => {
+                            const selection = String(key);
+                            if (selection === 'reset-defaults') {
+                              void updateRuntimePreference({
+                                model: null,
+                                reasoning_effort: null
+                              });
+                              return;
+                            }
+                            if (selection.startsWith('model:')) {
+                              const modelId = selection.slice('model:'.length);
+                              const model =
+                                settings.run_capabilities.models.find(
+                                  (candidate) => candidate.id === modelId
+                                );
+                              if (model) {
+                                void updateRuntimePreference({
+                                  model: model.id,
+                                  reasoning_effort:
+                                    model.default_reasoning_effort ?? null
+                                });
+                              }
+                              return;
+                            }
+                            if (selection.startsWith('reasoning-effort:')) {
+                              const reasoning_effort = selection.slice(
+                                'reasoning-effort:'.length
+                              );
+                              if (
+                                selectedModel?.reasoning_efforts.includes(
+                                  reasoning_effort
+                                )
+                              ) {
+                                void updateRuntimePreference({
+                                  model: selectedModel.id,
+                                  reasoning_effort
+                                });
+                              }
+                            }
+                          }
+                        }}
+                      >
+                        <Sender.Switch
+                          rootClassName="embedded-agent-assistant-preview__runtime-preferences"
+                          value={false}
+                        >
+                          <span>
+                            {selectedModel?.name ?? selectedModel?.id ?? '-'}
+                          </span>
+                          {settings.run_capabilities.reasoning_effort_enabled &&
+                          selectedReasoningEffort ? (
+                            <span className="embedded-agent-assistant-preview__runtime-preferences-effort">
+                              {selectedReasoningEffort}
+                            </span>
+                          ) : null}
+                        </Sender.Switch>
+                      </Dropdown>
+                    </>
+                  ) : null
+                }
+                headerActions={
+                  <>
+                    <Button
+                      aria-label={i18nText(
+                        'appShell',
+                        'auto.assistant_history'
+                      )}
+                      disabled={!settings}
+                      icon={<HistoryOutlined />}
+                      size="small"
+                      type="text"
+                      onClick={openHistory}
+                    />
+                    <Button
+                      aria-label={i18nText(
+                        'appShell',
+                        'auto.assistant_settings'
+                      )}
+                      disabled={!settings}
+                      loading={!settings}
+                      size="small"
+                      type="text"
+                      icon={<SettingOutlined />}
+                      onClick={() => setSettingsOpen(true)}
+                    />
+                  </>
+                }
+                messages={session.messages}
+                runContext={session.runContext}
+                status={session.status}
+                stopping={session.stopping}
+                subtitle={selectedFlow?.name}
+                title={i18nText('appShell', 'auto.assistant')}
+                onChangeRunContextValue={session.setRunContextValue}
+                onClearSession={session.clearSession}
+                onClose={() => {
+                  void session.closeSession();
+                  onClose();
                 }}
-              >
-                {i18nText(
-                  'appShell',
-                  'auto.assistant_continue_legacy_snapshot'
-                )}
-              </Button>
-            ) : null}
-            {historyPage && historyPage.items.length < historyPage.total ? (
-              <Button
-                block
-                disabled={historyLoading}
-                onClick={() => void loadHistory(historyPage.page + 1)}
-              >
-                {i18nText('appShell', 'auto.assistant_load_more')}
-              </Button>
-            ) : null}
-          </Drawer>
+                onLoadArtifact={
+                  applicationId
+                    ? (artifactRef) =>
+                        fetchRuntimeDebugArtifact(applicationId, artifactRef)
+                    : undefined
+                }
+                onLoadArtifacts={
+                  applicationId
+                    ? (artifactRefs) =>
+                        fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
+                    : undefined
+                }
+                onStopRun={() => {
+                  void session.stopRun();
+                }}
+                onSubmitPrompt={(prompt) => {
+                  void session.submitPrompt(prompt);
+                }}
+              />
+            </div>
+          </div>
         </WindowWorkspaceWindow>
       ) : null}
       <Modal

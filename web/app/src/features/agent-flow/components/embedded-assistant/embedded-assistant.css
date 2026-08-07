@@ -7,17 +7,35 @@
 }
 
 .embedded-agent-assistant-preview__body,
+.embedded-agent-assistant-preview__layout,
+.embedded-agent-assistant-preview__conversation,
 .embedded-agent-assistant-preview .agent-flow-editor__debug-console {
+  display: flex;
   height: 100%;
   min-width: 0;
+}
+
+.embedded-agent-assistant-preview__layout {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 1.125rem;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+}
+
+.embedded-agent-assistant-preview__conversation {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Keep the assistant visually aligned with the console's warm emerald theme
  * without changing the reusable Agent Flow debug console. */
 .embedded-agent-assistant-preview .agent-flow-editor__dock-panel {
-  border-color: var(--border-default);
+  border: 0;
+  border-radius: 0;
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-float);
+  box-shadow: none;
 }
 
 .embedded-agent-assistant-preview .agent-flow-editor__dock-panel-body,
@@ -38,7 +56,8 @@
   box-shadow: none !important;
 }
 
-.embedded-agent-assistant-preview__runtime-preferences .ant-sender-switch-content.ant-btn {
+.embedded-agent-assistant-preview__runtime-preferences
+  .ant-sender-switch-content.ant-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -70,7 +89,62 @@
   color: var(--text-secondary);
 }
 
-.embedded-agent-assistant-preview__history .ant-drawer-content {
+.embedded-agent-assistant-preview__history {
+  display: flex;
+  flex: 0 1 17.5rem;
+  flex-direction: column;
+  width: min(17.5rem, 44%);
+  min-width: 0;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.embedded-agent-assistant-preview__history-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.embedded-agent-assistant-preview__history-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-agent-assistant-preview__history-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.embedded-agent-assistant-preview__history-body .ant-conversations {
+  min-width: 0;
+}
+
+.embedded-agent-assistant-preview__history-body .ant-conversations-list {
+  min-width: 0;
+}
+
+.embedded-agent-assistant-preview__history-body .ant-conversations-item {
+  min-width: 0;
+}
+
+.embedded-agent-assistant-preview__history-body .ant-conversations-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-agent-assistant-preview__history-body .ant-conversations-item-group {
   background: var(--bg-elevated);
 }
 
@@ -94,27 +168,32 @@
   color: var(--color-primary);
 }
 
-.embedded-agent-assistant-preview .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb {
+.embedded-agent-assistant-preview
+  .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb {
   border-color: var(--bg-elevated);
   background: var(--scrollbar-thumb);
 }
 
-.embedded-agent-assistant-preview .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb:hover {
+.embedded-agent-assistant-preview
+  .agent-flow-editor__debug-messages::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
 
-.embedded-agent-assistant-preview .agent-flow-editor__debug-message--system
+.embedded-agent-assistant-preview
+  .agent-flow-editor__debug-message--system
   .agent-flow-editor__debug-message-main {
   border-color: var(--border-default);
   background: var(--bg-page);
 }
 
-.embedded-agent-assistant-preview .agent-flow-editor__debug-message--system
+.embedded-agent-assistant-preview
+  .agent-flow-editor__debug-message--system
   .agent-flow-editor__debug-message-content.ant-typography {
   color: var(--text-secondary);
 }
 
-.embedded-agent-assistant-preview .agent-flow-editor__debug-message--user
+.embedded-agent-assistant-preview
+  .agent-flow-editor__debug-message--user
   .agent-flow-editor__debug-message-content.ant-typography {
   background: var(--bg-hover);
   color: var(--text-primary);
@@ -123,5 +202,10 @@
 @media (max-width: 640px) {
   .embedded-agent-assistant-preview {
     inset: 0;
+  }
+
+  .embedded-agent-assistant-preview__history {
+    flex: 1;
+    border-right: 0;
   }
 }
