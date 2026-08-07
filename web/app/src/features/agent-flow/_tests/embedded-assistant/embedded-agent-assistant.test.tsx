@@ -148,8 +148,8 @@ describe('EmbeddedAgentAssistant', () => {
     const settings = screen.getByRole('button', {
       name: i18nText('appShell', 'auto.assistant_settings')
     });
-    expect(settings).toHaveTextContent('AI');
-    expect(settings.querySelector('.anticon-setting')).toBeNull();
+    expect(settings).toHaveTextContent('');
+    expect(settings.querySelector('.anticon-setting')).toBeInTheDocument();
 
     await waitFor(() => expect(settings).not.toBeDisabled());
     await act(async () => {
@@ -158,6 +158,15 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       await screen.findByText(i18nText('appShell', 'auto.assistant_settings'))
     ).toBeInTheDocument();
+    const settingsModalLayer = document.querySelector(
+      '.ant-modal-wrap'
+    ) as HTMLElement;
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    ) as HTMLElement;
+    expect(Number(settingsModalLayer.style.zIndex)).toBeGreaterThan(
+      Number(assistantWindow.style.zIndex)
+    );
   });
 
   test('AC-005 toggles the AI preview and its trigger highlight together', async () => {
@@ -482,7 +491,12 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.mouseEnter(initialContextProgress as HTMLElement);
     expect(
       await screen.findByText(
-        i18nText('appShell', 'auto.assistant_context_unavailable')
+        '剩余：100%'
+      )
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        '最大上下文 100K，已用 0'
       )
     ).toBeInTheDocument();
     fireEvent.mouseLeave(initialContextProgress as HTMLElement);
@@ -500,15 +514,12 @@ describe('EmbeddedAgentAssistant', () => {
 
     expect(
       await screen.findByText(
-        i18nText('appShell', 'auto.assistant_context_total', {
-          value1: '321',
-          value2: '100K'
-        })
+        '最大上下文 100K，已用 321'
       )
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
-        i18nText('appShell', 'auto.assistant_context_estimated')
+        '剩余：99.7%'
       )
     ).toBeInTheDocument();
     expect(contextProgress.querySelector('.ant-progress')).toHaveAttribute(

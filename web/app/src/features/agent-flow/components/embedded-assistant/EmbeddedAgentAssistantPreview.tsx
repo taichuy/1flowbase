@@ -4,7 +4,7 @@ import {
   type ConsoleAssistantPreference,
   type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
-import { CheckOutlined } from '@ant-design/icons';
+import { CheckOutlined, SettingOutlined } from '@ant-design/icons';
 import { Sender } from '@ant-design/x';
 import {
   Button,
@@ -183,13 +183,15 @@ export function EmbeddedAgentAssistantPreview({
       : 0;
   const contextVisualPercent =
     measuredContextTokenUsage > 0 ? Math.max(1, contextUsagePercent) : 0;
-  const remainingContextTokens =
-    contextWindow && contextTokenUsage !== null
-      ? Math.max(0, contextWindow - contextTokenUsage)
-      : null;
+  const remainingContextPercent = Math.max(
+    0,
+    Math.round((100 - contextUsagePercent) * 10) / 10
+  );
   const windowEntry = windowWorkspaceState.windows.find(
     (entry) => entry.id === ASSISTANT_WINDOW_ID
   );
+  const assistantWindowZIndex = 1050 + (windowEntry?.z_index ?? 0);
+  const assistantSettingsModalZIndex = 1100 + (windowEntry?.z_index ?? 0);
   const runtimePreferenceMenuItems: MenuProps['items'] = settings
     ? [
         {
@@ -323,7 +325,7 @@ export function EmbeddedAgentAssistantPreview({
           }
           testId={ASSISTANT_WINDOW_ID}
           title={i18nText('appShell', 'auto.assistant')}
-          zIndex={1050 + windowEntry.z_index}
+          zIndex={assistantWindowZIndex}
           onActivate={() => activate(ASSISTANT_WINDOW_ID)}
           onRectChange={(rect) => setRect(ASSISTANT_WINDOW_ID, rect)}
         >
@@ -333,58 +335,39 @@ export function EmbeddedAgentAssistantPreview({
                 <>
                   {contextWindow ? (
                     <Tooltip
+                      color="#ffffff"
+                      styles={{
+                        container: {
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: '0.5rem',
+                          boxShadow: 'var(--shadow-float)',
+                          padding: '0.5rem 0.625rem'
+                        }
+                      }}
                       title={
-                        contextTokenUsage === null ||
-                        remainingContextTokens === null ? (
-                          i18nText(
-                            'appShell',
-                            'auto.assistant_context_unavailable'
-                          )
-                        ) : (
-                          <span className="embedded-agent-assistant-preview__context-tooltip">
-                            <span>
-                              {i18nText(
-                                'appShell',
-                                'auto.assistant_context_usage'
-                              )}
-                            </span>
-                            <span>
-                              {i18nText(
-                                'appShell',
-                                session.contextSnapshot?.measurement
-                                  .accuracy === 'exact'
-                                  ? 'auto.assistant_context_exact'
-                                  : 'auto.assistant_context_estimated'
-                              )}
-                            </span>
-                            <span>
-                              {i18nText(
-                                'appShell',
-                                'auto.assistant_context_remaining',
-                                {
-                                  value1: contextUsagePercent,
-                                  value2:
-                                    formatLlmTokenCount(
-                                      remainingContextTokens
-                                    ) ?? '0'
-                                }
-                              )}
-                            </span>
-                            <span>
-                              {i18nText(
-                                'appShell',
-                                'auto.assistant_context_total',
-                                {
-                                  value1:
-                                    formatLlmTokenCount(contextTokenUsage) ??
-                                    '0',
-                                  value2:
-                                    formatLlmTokenCount(contextWindow) ?? '0'
-                                }
-                              )}
-                            </span>
+                        <span className="embedded-agent-assistant-preview__context-tooltip">
+                          <span>
+                            {i18nText(
+                              'appShell',
+                              'auto.assistant_context_remaining_percent',
+                              {
+                                value1: remainingContextPercent
+                              }
+                            )}
                           </span>
-                        )
+                          <span className="embedded-agent-assistant-preview__context-tooltip-total">
+                            {i18nText(
+                              'appShell',
+                              'auto.assistant_context_total',
+                              {
+                                value2:
+                                  formatLlmTokenCount(contextWindow) ?? '0',
+                                value1:
+                                  formatLlmTokenCount(contextTokenUsage) ?? '0'
+                              }
+                            )}
+                          </span>
+                        </span>
                       }
                     >
                       <span className="embedded-agent-assistant-preview__context-progress">
@@ -470,10 +453,9 @@ export function EmbeddedAgentAssistantPreview({
                 loading={!settings}
                 size="small"
                 type="text"
+                icon={<SettingOutlined />}
                 onClick={() => setSettingsOpen(true)}
-              >
-                AI
-              </Button>
+              />
             }
             messages={session.messages}
             runContext={session.runContext}
@@ -512,6 +494,7 @@ export function EmbeddedAgentAssistantPreview({
         confirmLoading={saving}
         open={open && settingsOpen}
         title={i18nText('appShell', 'auto.assistant_settings')}
+        zIndex={assistantSettingsModalZIndex}
         onCancel={() => setSettingsOpen(false)}
         onOk={() => void saveSettings()}
       >

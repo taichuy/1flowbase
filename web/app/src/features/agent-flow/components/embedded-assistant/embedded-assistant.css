@@ -60,7 +60,14 @@
 
 .embedded-agent-assistant-preview__context-tooltip {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.125rem;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.embedded-agent-assistant-preview__context-tooltip-total {
+  color: var(--text-secondary);
 }
 
 .embedded-agent-assistant-preview__runtime-menu-row,
