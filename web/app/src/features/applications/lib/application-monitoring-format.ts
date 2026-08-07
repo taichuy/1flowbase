@@ -1,4 +1,4 @@
-import { formatDate, formatDateTime, formatNumber, formatTime as formatClockTime } from '../../../shared/i18n/format';
+import { formatDate, formatDateTime, formatNumber, formatTime as formatClockTime, formatTokenCount } from '../../../shared/i18n/format';
 import { i18nText } from '../../../shared/i18n/text';
 import type { ApplicationRunMonitoringBucket, ApplicationRunMonitoringReport } from '../api/runtime';
 
@@ -36,23 +36,6 @@ function formatInteger(value: number) {
   return formatNumber(value, { maximumFractionDigits: 0 });
 }
 
-function formatTokenAmount(value: number) {
-  const absoluteValue = Math.abs(value);
-  const unit = [
-    { threshold: 1_000_000_000, suffix: 'B' },
-    { threshold: 1_000_000, suffix: 'M' },
-    { threshold: 1_000, suffix: 'K' }
-  ].find((candidate) => absoluteValue >= candidate.threshold);
-
-  if (!unit) {
-    return formatInteger(value);
-  }
-
-  return `${formatNumber(value / unit.threshold, {
-    maximumFractionDigits: 1
-  })}${unit.suffix}`;
-}
-
 function formatDecimal(value: number, digits = 1) {
   return formatNumber(value, {
     maximumFractionDigits: digits,
@@ -76,7 +59,7 @@ function tokenComparisonMetric(report: ApplicationRunMonitoringReport) {
   ) {
     return {
       label: i18nText('applications', 'auto.token_increase_from_empty'),
-      value: formatTokenAmount(report.tokens.total_tokens_sum)
+      value: formatTokenCount(report.tokens.total_tokens_sum)
     };
   }
 
@@ -141,7 +124,6 @@ export {
   formatInteger,
   formatPercent,
   formatTime,
-  formatTokenAmount,
   formatTrendBucket,
   getMonitoringBucket,
   monitoringTimeRangeOptions,

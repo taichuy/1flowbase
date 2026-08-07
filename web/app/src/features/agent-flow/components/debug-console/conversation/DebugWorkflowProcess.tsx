@@ -158,6 +158,7 @@ export function DebugWorkflowProcess({
             <DebugWorkflowNodeDetailContent
               defaultToolsExpanded={(toolCallbackCounts.get(group.key) ?? 0) > 0}
               item={item}
+              payloadDisclosure="after-finished"
               onLoadArtifact={onLoadArtifact}
               onLoadArtifacts={onLoadArtifacts}
             />

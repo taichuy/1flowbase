@@ -22,7 +22,6 @@ const DYNAMIC_PROMPT_MESSAGE_ROLES = LLM_PROMPT_MESSAGE_ROLES.filter(
 interface LlmPromptMessagesFieldProps {
   value: LlmPromptMessage[];
   options: FlowSelectorOption[];
-  integrationContextEnabled?: boolean;
   onChange: (value: LlmPromptMessage[]) => void;
 }
 
@@ -119,13 +118,9 @@ function PromptMessageRoleSelect({
 export function LlmPromptMessagesField({
   value,
   options,
-  integrationContextEnabled = false,
   onChange
 }: LlmPromptMessagesFieldProps) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
-  const [systemExpanded, setSystemExpanded] = useState(
-    () => value[0]?.content.value.trim().length === 0
-  );
   const { systemMessage, dynamicMessages, orderedMessages } =
     normalizeMessageGroups(value);
 
@@ -180,17 +175,9 @@ export function LlmPromptMessagesField({
   function renderPromptMessage(message: LlmPromptMessage, index: number) {
     const isSystemMessage = index === 0 && message.role === 'system';
     const isDraggableMessage = !isSystemMessage;
-    const isSystemCollapsed =
-      isSystemMessage &&
-      integrationContextEnabled &&
-      !systemExpanded &&
-      message.content.value.trim().length > 0;
     const rowClassName = [
       'agent-flow-llm-prompt-messages__row',
       isSystemMessage ? 'agent-flow-llm-prompt-messages__row--fixed' : null,
-      isSystemCollapsed
-        ? 'agent-flow-llm-prompt-messages__row--system-collapsed'
-        : null,
       isDraggableMessage
         ? 'agent-flow-llm-prompt-messages__row--draggable'
         : null
@@ -198,26 +185,6 @@ export function LlmPromptMessagesField({
       .filter(Boolean)
       .join(' ');
     const roleLabel = message.role.toUpperCase();
-
-    if (isSystemCollapsed) {
-      return (
-        <div
-          key={message.id}
-          className={rowClassName}
-          data-testid={`llm-prompt-message-row-${message.id}`}
-        >
-          <Button
-            aria-label="展开本地 SYSTEM"
-            className="agent-flow-llm-prompt-messages__system-summary"
-            size="small"
-            type="text"
-            onClick={() => setSystemExpanded(true)}
-          >
-            本地 SYSTEM
-          </Button>
-        </div>
-      );
-    }
 
     return (
       <div
@@ -250,20 +217,7 @@ export function LlmPromptMessagesField({
               )
             }
             toolbarExtraActions={
-              isSystemMessage ? (
-                integrationContextEnabled &&
-                message.content.value.trim().length > 0 ? (
-                  <Button
-                    aria-label="折叠本地 SYSTEM"
-                    className="agent-flow-templated-text-field__action"
-                    size="small"
-                    type="text"
-                    onClick={() => setSystemExpanded(false)}
-                  >
-                    折叠
-                  </Button>
-                ) : null
-              ) : (
+              isSystemMessage ? null : (
                 <Button
                   aria-label={i18nText("agentFlow", "auto.delete_message", { value1: roleLabel })}
                   className="agent-flow-templated-text-field__action"

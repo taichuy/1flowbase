@@ -36,3 +36,20 @@ export function formatTime(value: string | Date, options?: Intl.DateTimeFormatOp
 export function formatNumber(value: number, options?: Intl.NumberFormatOptions): string {
   return value.toLocaleString(getCurrentIntlLocale(), options);
 }
+
+export function formatTokenCount(value: number): string {
+  const absoluteValue = Math.abs(value);
+  const unit = [
+    { threshold: 1_000_000_000, suffix: 'B' },
+    { threshold: 1_000_000, suffix: 'M' },
+    { threshold: 1_000, suffix: 'K' }
+  ].find((candidate) => absoluteValue >= candidate.threshold);
+
+  if (!unit) {
+    return formatNumber(value, { maximumFractionDigits: 0 });
+  }
+
+  return `${formatNumber(value / unit.threshold, {
+    maximumFractionDigits: 1
+  })}${unit.suffix}`;
+}

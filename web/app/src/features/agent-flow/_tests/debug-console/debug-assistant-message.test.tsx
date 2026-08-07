@@ -118,29 +118,67 @@ describe('DebugAssistantMessage', () => {
     fireEvent.click(workflowToggle);
 
     expect(workflowToggle).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.click(screen.getByRole('button', { name: /LLM/ }));
+    fireEvent.click(screen.getByText('LLM'));
 
-    const inputToggle = screen.getByRole('button', { name: '输入' });
-    expect(inputToggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('输出')).toBeInTheDocument();
-    expect(screen.queryByText('错误')).not.toBeInTheDocument();
-    expect(screen.queryByText('指标')).not.toBeInTheDocument();
-    expect(screen.queryByText('Debug')).not.toBeInTheDocument();
-    expect(screen.getByText(/user_prompt/)).toBeInTheDocument();
-    const outputJson = screen.getByLabelText('输出 JSON');
-    expect(outputJson).toHaveTextContent('退款处理中');
-    expect(outputJson).not.toHaveTextContent('still_running');
-    expect(outputJson).not.toHaveTextContent('total_tokens');
-    expect(screen.queryByLabelText('错误 JSON')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('指标 JSON')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Debug JSON')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('数据处理 JSON')).toHaveTextContent(
-      'response_ref'
+    expect(screen.queryByRole('button', { name: '输入' })).not.toBeInTheDocument();
+    expect(screen.queryByText('输出')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('数据处理 JSON')).not.toBeInTheDocument();
+  });
+
+  test('reveals a node payload as soon as that node finishes while the assistant remains running', () => {
+    const message: AgentFlowDebugMessage = {
+      id: 'assistant-node-finished',
+      role: 'assistant',
+      status: 'running',
+      runId: 'run-1',
+      content: '',
+      rawOutput: null,
+      traceSummary: [
+        {
+          nodeId: 'node-tool',
+          nodeRunId: 'node-run-tool',
+          nodeAlias: 'Tool',
+          nodeType: 'tool',
+          status: 'running',
+          startedAt: '2026-04-25T10:00:00Z',
+          finishedAt: null,
+          durationMs: null,
+          inputPayload: { query: '退款' },
+          outputPayload: { result: 'ok' },
+          errorPayload: null,
+          metricsPayload: {},
+          debugPayload: { request_id: 'request-1' }
+        }
+      ]
+    };
+
+    const { rerender } = render(<DebugAssistantMessage message={message} />);
+
+    fireEvent.click(screen.getByText('Tool'));
+
+    expect(screen.queryByRole('button', { name: '输入' })).not.toBeInTheDocument();
+    expect(screen.queryByText('输出')).not.toBeInTheDocument();
+    expect(screen.queryByText('数据处理')).not.toBeInTheDocument();
+
+    rerender(
+      <DebugAssistantMessage
+        message={{
+          ...message,
+          traceSummary: [
+            {
+              ...message.traceSummary[0]!,
+              status: 'succeeded',
+              finishedAt: '2026-04-25T10:00:01Z',
+              durationMs: 1000
+            }
+          ]
+        }}
+      />
     );
 
-    fireEvent.click(inputToggle);
-
-    expect(inputToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '输入' })).toBeInTheDocument();
+    expect(screen.getByText('输出')).toBeInTheDocument();
+    expect(screen.getByText('数据处理')).toBeInTheDocument();
   });
 
   test('AC-005 renders an arrived answer delta immediately without a client typewriter delay', () => {

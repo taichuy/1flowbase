@@ -11,8 +11,8 @@ keywords:
 match_when:
   - 调整 Agent Flow 运行日志、节点输入输出、debug artifact、Start 节点 sys/env/history/tools 展示或接口 contract 时
 created_at: 2026-05-20 23
-updated_at: 2026-05-21 00
-last_verified_at: 2026-05-21 00
+updated_at: 2026-08-07 22
+last_verified_at: 2026-08-07 22
 decision_policy: verify_before_decision
 scope:
   - api/crates/control-plane/src/orchestration_runtime
@@ -54,3 +54,7 @@ scope:
 - `.agents/skills/backend-development/references/agentflow-runtime-node-payload.md`
 - GitHub issue #355（当前主入口）
 - GitHub issue #343（已 superseded）
+
+## 对话展示时机（2026-08-07 22）
+
+用户确认：仅 Agent Flow 调试对话中的节点三段 payload 按该节点的后端 `finishedAt` 展示；节点运行中或等待回调时不显示，节点完成后立即恢复展示，不等待整条助手消息结束。运行日志和节点详情继续即时展示，避免把对话降噪误扩展为 payload 真值或日志能力变更。

@@ -1090,19 +1090,6 @@
   gap: 0;
 }
 
-.agent-flow-llm-prompt-messages__row--system-collapsed {
-  border: 1px dashed #d0d5dd;
-  border-radius: 6px;
-  background: #f8fafc;
-}
-
-.agent-flow-llm-prompt-messages__system-summary {
-  width: 100%;
-  justify-content: flex-start;
-  color: #475467;
-  font-weight: 600;
-}
-
 .agent-flow-llm-prompt-messages__row--draggable
   .agent-flow-templated-text-field__toolbar {
   padding-left: 0;

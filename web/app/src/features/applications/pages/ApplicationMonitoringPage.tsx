@@ -25,6 +25,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState, type ReactNode } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';
+import { formatTokenCount } from '../../../shared/i18n/format';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import {
   applicationRunMonitoringReportQueryKey,
@@ -47,7 +48,6 @@ import {
   formatInteger,
   formatPercent,
   formatTime,
-  formatTokenAmount,
   getMonitoringBucket,
   monitoringTimeRangeOptions,
   sourceLabel,
@@ -947,7 +947,7 @@ export function ApplicationMonitoringPage({
             <div className="metric-card__content">
               <span className="metric-card__title">{i18nText("applications", "auto.total_tokens_amount")}</span>
               <span className="metric-card__value">
-                {formatTokenAmount(report.tokens.total_tokens_sum)}
+                {formatTokenCount(report.tokens.total_tokens_sum)}
               </span>
             </div>
           </div>
@@ -963,7 +963,7 @@ export function ApplicationMonitoringPage({
               <div className="metric-card__content">
                 <span className="metric-card__title">{metric.title}</span>
                 <span className="metric-card__value">
-                  {formatTokenAmount(metric.value)}
+                  {formatTokenCount(metric.value)}
                 </span>
               </div>
             </div>

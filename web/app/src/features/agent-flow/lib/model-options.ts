@@ -1,5 +1,6 @@
 import type { AgentFlowModelProviderOptions } from '../api/model-provider-options';
 import { i18nText } from '../../../shared/i18n/text';
+import { formatTokenCount } from '../../../shared/i18n/format';
 
 type LocaleAwareOptions = Pick<
   AgentFlowModelProviderOptions,
@@ -74,15 +75,7 @@ export function formatLlmTokenCount(value: number | null | undefined) {
     return null;
   }
 
-  if (value >= 1000000 && value % 1000000 === 0) {
-    return `${value / 1000000}M`;
-  }
-
-  if (value >= 1000 && value % 1000 === 0) {
-    return `${value / 1000}K`;
-  }
-
-  return String(value);
+  return formatTokenCount(value);
 }
 
 export function defaultLlmMaxOutputTokens(contextWindow: number) {

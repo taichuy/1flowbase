@@ -404,16 +404,10 @@ function renderLlmPromptMessagesField({
   adapter,
   block
 }: SchemaFieldRendererProps) {
-  const contextPolicy = getLlmContextPolicy({
-    context_policy: adapter.getValue('config.context_policy')
-  });
   const messages = normalizePromptMessagesBinding(adapter.getValue(block.path));
 
   return (
     <LlmPromptMessagesField
-      integrationContextEnabled={
-        contextPolicy.integration_context === 'enabled'
-      }
       options={getSelectorOptions(adapter)}
       value={messages}
       onChange={(nextValue) =>

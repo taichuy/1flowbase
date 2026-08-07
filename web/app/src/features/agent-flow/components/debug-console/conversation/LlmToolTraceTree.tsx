@@ -219,6 +219,7 @@ export function DebugWorkflowNodeDetailContent({
   item,
   beforePayloadContent,
   defaultToolsExpanded = false,
+  payloadDisclosure = 'immediate',
   onLoadArtifact,
   onLoadArtifacts,
   onLoadToolCallbackDetail
@@ -226,6 +227,7 @@ export function DebugWorkflowNodeDetailContent({
   item: AgentFlowTraceItem;
   beforePayloadContent?: ReactNode;
   defaultToolsExpanded?: boolean;
+  payloadDisclosure?: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onLoadToolCallbackDetail?: (detailRef: string) => Promise<unknown>;
@@ -237,6 +239,7 @@ export function DebugWorkflowNodeDetailContent({
       <LlmToolTraceTree
         debugPayload={item.debugPayload}
         defaultToolsExpanded={defaultToolsExpanded}
+        payloadDisclosure={payloadDisclosure}
         onLoadArtifact={onLoadArtifact}
         onLoadArtifacts={onLoadArtifacts}
         onLoadToolCallbackDetail={onLoadToolCallbackDetail}
@@ -249,14 +252,16 @@ export function DebugWorkflowNodeDetailContent({
         />
       ) : null}
       {beforePayloadContent}
-      <NodeRunPayloadSections
-        defaultCollapsed
-        debugPayload={debugPayload}
-        inputPayload={item.inputPayload}
-        outputPayload={item.outputPayload}
-        onLoadArtifact={onLoadArtifact}
-        onLoadArtifacts={onLoadArtifacts}
-      />
+      {payloadDisclosure === 'immediate' || item.finishedAt !== null ? (
+        <NodeRunPayloadSections
+          defaultCollapsed
+          debugPayload={debugPayload}
+          inputPayload={item.inputPayload}
+          outputPayload={item.outputPayload}
+          onLoadArtifact={onLoadArtifact}
+          onLoadArtifacts={onLoadArtifacts}
+        />
+      ) : null}
     </>
   );
 }
@@ -265,6 +270,7 @@ function LlmToolRouteBranchNode({
   branch,
   callback,
   defaultToolsExpanded,
+  payloadDisclosure,
   index,
   onLoadArtifact,
   onLoadArtifacts
@@ -272,6 +278,7 @@ function LlmToolRouteBranchNode({
   branch: LlmToolRouteBranchSummary | LlmToolRouteBranchTrace;
   callback: LlmToolCallback;
   defaultToolsExpanded: boolean;
+  payloadDisclosure: 'immediate' | 'after-finished';
   index: number;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
@@ -293,6 +300,7 @@ function LlmToolRouteBranchNode({
           <DebugWorkflowNodeDetailContent
             defaultToolsExpanded={defaultToolsExpanded}
             item={branchTraceItem}
+            payloadDisclosure={payloadDisclosure}
             onLoadArtifact={onLoadArtifact}
             onLoadArtifacts={onLoadArtifacts}
           />
@@ -305,11 +313,13 @@ function LlmToolRouteBranchNode({
 function LlmToolRouteNode({
   callback,
   defaultToolsExpanded,
+  payloadDisclosure,
   onLoadArtifact,
   onLoadArtifacts
 }: {
   callback: LlmToolCallback;
   defaultToolsExpanded: boolean;
+  payloadDisclosure: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
@@ -400,6 +410,7 @@ function LlmToolRouteNode({
               branch={branch}
               callback={callback}
               defaultToolsExpanded={defaultToolsExpanded}
+              payloadDisclosure={payloadDisclosure}
               index={index}
               onLoadArtifact={onLoadArtifact}
               onLoadArtifacts={onLoadArtifacts}
@@ -436,6 +447,7 @@ function LlmToolRouteNode({
 function LlmToolCallbackItem({
   callback,
   defaultToolsExpanded,
+  payloadDisclosure,
   expanded,
   loadFailed,
   loading,
@@ -445,6 +457,7 @@ function LlmToolCallbackItem({
 }: {
   callback: LlmToolCallback;
   defaultToolsExpanded: boolean;
+  payloadDisclosure: 'immediate' | 'after-finished';
   expanded: boolean;
   loadFailed: boolean;
   loading: boolean;
@@ -505,6 +518,7 @@ function LlmToolCallbackItem({
                 key={routeTraceNodeKey(callback)}
                 callback={callback}
                 defaultToolsExpanded={defaultToolsExpanded}
+                payloadDisclosure={payloadDisclosure}
                 onLoadArtifact={onLoadArtifact}
                 onLoadArtifacts={onLoadArtifacts}
               />
@@ -698,6 +712,7 @@ export function LlmToolTraceTree(props: {
   debugPayload: unknown;
   debugPayloads?: unknown[];
   defaultToolsExpanded?: boolean;
+  payloadDisclosure?: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onLoadToolCallbackDetail?: (detailRef: string) => Promise<unknown>;
@@ -709,6 +724,7 @@ function LlmToolTraceTreeContent({
   defaultToolsExpanded = false,
   debugPayload,
   debugPayloads,
+  payloadDisclosure = 'immediate',
   onLoadArtifact,
   onLoadArtifacts,
   onLoadToolCallbackDetail
@@ -716,6 +732,7 @@ function LlmToolTraceTreeContent({
   defaultToolsExpanded?: boolean;
   debugPayload: unknown;
   debugPayloads?: unknown[];
+  payloadDisclosure?: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onLoadToolCallbackDetail?: (detailRef: string) => Promise<unknown>;
@@ -884,6 +901,7 @@ function LlmToolTraceTreeContent({
                       key={callback.key}
                       callback={callback}
                       defaultToolsExpanded={defaultToolsExpanded}
+                      payloadDisclosure={payloadDisclosure}
                       expanded={expanded}
                       loadFailed={traceTreeState.failedToolKeys.has(
                         callback.key

@@ -283,7 +283,7 @@ describe('LLM prompt messages field', () => {
     ]);
   });
 
-  test('collapses local system prompt when integration context is enabled', async () => {
+  test('keeps local system prompt editable when integration context is enabled', async () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     document.graph.nodes = document.graph.nodes.map((node) =>
       node.id === 'node-llm'
@@ -335,17 +335,13 @@ describe('LLM prompt messages field', () => {
       </AgentFlowEditorStoreProvider>
     );
 
+    expect(await screen.findByLabelText('SYSTEM 消息内容')).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: '展开本地 SYSTEM' })
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText('SYSTEM 消息内容')).not.toBeInTheDocument();
+      screen.queryByRole('button', { name: '展开本地 SYSTEM' })
+    ).not.toBeInTheDocument();
     expect(promptMessagesFrom(latestDocument)[0]?.content.value).toBe(
       'Keep answers short.'
     );
-
-    fireEvent.click(screen.getByRole('button', { name: '展开本地 SYSTEM' }));
-
-    expect(screen.getByLabelText('SYSTEM 消息内容')).toBeInTheDocument();
     expect(screen.getByText('Keep answers short.')).toBeInTheDocument();
   });
 
@@ -470,10 +466,7 @@ describe('LLM prompt messages field', () => {
       </AgentFlowEditorStoreProvider>
     );
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: '展开本地 SYSTEM' })
-    );
-    expect(screen.getByText('Rules')).toBeInTheDocument();
+    expect(await screen.findByText('Rules')).toBeInTheDocument();
     const rows = screen.getAllByTestId(/llm-prompt-message-row-/);
     expect(rows[0]).toHaveAttribute(
       'data-testid',
