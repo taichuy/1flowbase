@@ -1093,8 +1093,15 @@ mod tests {
                 .iter()
                 .map(|tool| tool["function"]["name"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["mcp.list", "mcp.get", "mcp.result", "mcp.call"]
+            vec!["mcp_list", "mcp_get", "mcp_result", "mcp_call"]
         );
+        assert!(provider_tools
+            .iter()
+            .all(
+                |tool| tool["function"]["name"].as_str().is_some_and(|name| name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')))
+            ));
         assert!(provider_tools.iter().all(|tool| {
             !tool["function"]["parameters"]
                 .to_string()
@@ -1106,7 +1113,7 @@ mod tests {
     fn assistant_mcp_callback_uses_provider_content_without_nested_tool_envelope() {
         let callback = assistant_callback_result(
             "call-1",
-            "mcp.get",
+            "mcp_get",
             VirtualToolOutcome::Success(json!({
                 "content": [{"type": "text", "text": "tool detail"}],
                 "structuredContent": {"tool_id": "lookup"},
@@ -1115,7 +1122,7 @@ mod tests {
         );
 
         assert_eq!(callback["tool_call_id"], json!("call-1"));
-        assert_eq!(callback["name"], json!("mcp.get"));
+        assert_eq!(callback["name"], json!("mcp_get"));
         assert_eq!(
             callback["content"],
             json!([{"type": "text", "text": "tool detail"}])

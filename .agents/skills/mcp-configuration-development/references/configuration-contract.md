@@ -71,9 +71,9 @@ Tool record 是跨 Binding 共享的 Agent contract，Binding alias 只能改显
 接口 wrapper 会依据当前 request Schema 递归物化 `path`、`query`、`body` 中缺失的 required object container。mapping 仍只表达有真实业务含义的 Agent 输入：
 
 - 不为 `mapping.output` 之类必需空对象增加虚假 selector、父容器参数或占位值。
-- 用真实 `mcp.call` 验证请求已经越过 `request_schema` 并到达目标业务边界；保存成功、明确业务拒绝或 `target_interface/http_status` 都可作为到达证据。
+- 用真实 `mcp_call` 验证请求已经越过 `request_schema` 并到达目标业务边界；保存成功、明确业务拒绝或 `target_interface/http_status` 都可作为到达证据。
 - present `""` 与 `null` 必须原样交给 JSON Schema 判断是否合法；只有路径不存在才属于 mapping required 缺失。
-- 若 current `mcp.get` Schema、保存 mapping 与运行结果仍不一致，按运行时缺口停止依赖该 Tool，不用宽松 Schema 或噪音字段绕过。
+- 若 current `mcp_get` Schema、保存 mapping 与运行结果仍不一致，按运行时缺口停止依赖该 Tool，不用宽松 Schema 或噪音字段绕过。
 
 ## Output Mapping
 
@@ -131,9 +131,9 @@ Tool record 是跨 Binding 共享的 Agent contract，Binding alias 只能改显
 维护本轮 created/updated/reused 账本，并按以下顺序装配：
 
 1. 用一个代表性简单 Tool 验证创建或更新链路；
-2. 创建或更新全部 Tool，并逐个 `mcp.get`；
+2. 创建或更新全部 Tool，并逐个 `mcp_get`；
 3. Tool 就绪后创建 Group；
-4. 创建 Binding 并用 `mcp.list` 核对 `children_count`；
+4. 创建 Binding 并用 `mcp_list` 核对 `children_count`；
 5. 最后调整 discovery policy 并执行真实调用。
 
 中途停止时，不保留没有可调用 Tool 的空 Group、语义不兼容的复用 Binding 或无消费者的新 Tool。只回滚本轮创建且确认无其他消费者的记录；已有记录和并发变化不得擅自恢复旧值。

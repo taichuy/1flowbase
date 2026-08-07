@@ -11,7 +11,7 @@ const FOUNDATION_IDS = [
   'application-backend',
   'native-react',
 ];
-const MCP_CORE_OPERATIONS = ['mcp.list', 'mcp.get', 'mcp.call'];
+const MCP_CORE_OPERATIONS = ['mcp_list', 'mcp_get', 'mcp_call'];
 
 const FOUNDATION_DEFINITIONS = {
   'ai-gateway': {

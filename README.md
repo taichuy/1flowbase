@@ -60,9 +60,9 @@ The MCP Gateway projects platform capabilities into an agent-oriented virtual UI
 
 ```text
 Agent
-  -> mcp.list: discover applications and capabilities
-  -> mcp.get: inspect the next tool contract
-  -> mcp.call: create, configure, run, and publish
+  -> mcp_list: discover applications and capabilities
+  -> mcp_get: inspect the next tool contract
+  -> mcp_call: create, configure, run, and publish
   -> inspect state / traces
   -> iterate
 ```
@@ -340,7 +340,7 @@ The client calls one model name while 1flowbase runs your workflow behind it.
 - [x] tool callback traces inside 1flowbase workflows
 - [x] application-level token consumption statistics
 - [x] prompt and model configuration version history
-- [x] MCP Gateway with progressive `mcp.list`, `mcp.get`, and `mcp.call` discovery
+- [x] MCP Gateway with progressive `mcp_list`, `mcp_get`, and `mcp_call` discovery
 - [x] MCP tool, mapping, group, binding, discovery policy, and upstream connection management
 - [x] reusable MCP bundle import, export, validation, and local library flows
 - [x] dynamic Data Models that materialize PostgreSQL tables, fields, indexes, and relations

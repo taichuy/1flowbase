@@ -15,7 +15,7 @@
 4.`test-driven-development`：功能、缺陷、重构或行为变化可用自动化测试覆盖时，在实现前使用。
 5.`qa-evaluation`：进入自检、验收、回归、交付或质量评估阶段时使用，输出证据驱动的 QA 结论。
 6.`github-solution-research`：具体工程问题可能已有 GitHub 开源证据或方案时使用；搜索 issue、PR、repo、code，比较候选项目并提炼本地适配与验证计划。
-7.`mcp-configuration-development`：从当前前后端源码构建、修复和审计 MCP Virtual UI 配置，完成 Tool、mapping、Group、Binding、discovery policy 与 `mcp.list/get/call` 验证；不用于修改 MCP 运行时代码或决定产品语义。
+7.`mcp-configuration-development`：从当前前后端源码构建、修复和审计 MCP Virtual UI 配置，完成 Tool、mapping、Group、Binding、discovery policy 与 `mcp_list/get/call` 验证；不用于修改 MCP 运行时代码或决定产品语义。
 
 # 质量控制
 1.进入自检、验收、回归或交付阶段时，使用skill `qa-evaluation`；

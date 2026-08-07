@@ -43,6 +43,6 @@
 ## Acceptance Focus
 
 - 关键词和路径探索只暴露有证据的 canonical 入口。
-- `mcp.get` 不再包含重复长说明，mapped input Schema 使用 Agent-facing 参数。
-- `mcp.call` 仍执行同一个后端 contract。
+- `mcp_get` 不再包含重复长说明，mapped input Schema 使用 Agent-facing 参数。
+- `mcp_call` 仍执行同一个后端 contract。
 - Group `children_count` 与修复后的可见子项实时一致。

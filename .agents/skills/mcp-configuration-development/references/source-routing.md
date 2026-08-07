@@ -11,8 +11,8 @@
 | 执行后得到什么 | response DTO、domain result、测试 | GUI 成功态与结果展示 |
 | 权限、风险、状态限制 | interface descriptor、permission code、domain rules | route middleware、失败测试 |
 | 当前已经配置什么 | MCP catalog/API/管理界面读模型 | 实例、Group、Tool、Binding、policy 分项读取 |
-| Agent 实际能看到什么 | `mcp.list`、`mcp.get` | 协议路由与运行时测试 |
-| Agent 实际能否调用 | `mcp.call` | 后端持久化结果或可观察副作用 |
+| Agent 实际能看到什么 | `mcp_list`、`mcp_get` | 协议路由与运行时测试 |
+| Agent 实际能否调用 | `mcp_call` | 后端持久化结果或可观察副作用 |
 | MCP 调用失败 | JSON-RPC `category`、`field`、`http_status` | 本地结构化日志、失败 Tool、interface 与阶段 |
 
 ## Search Strategy

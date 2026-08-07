@@ -60,9 +60,9 @@ MCP Gateway 把平台能力投影为面向 Agent 的虚拟 UI。Agent 可以渐�
 
 ```text
 Agent
-  -> mcp.list：发现应用与能力
-  -> mcp.get：读取下一步 Tool 契约
-  -> mcp.call：创建、配置、运行与发布
+  -> mcp_list：发现应用与能力
+  -> mcp_get：读取下一步 Tool 契约
+  -> mcp_call：创建、配置、运行与发布
   -> 检查状态 / Trace
   -> 继续迭代
 ```
@@ -241,7 +241,7 @@ Agent 控制平面：MCP Gateway
 
 ### 1. MCP Gateway：把应用控制面交给 Agent
 
-本地或外部 Agent 可以通过 MCP 连接 1flowbase，并使用 `mcp.list`、`mcp.get`、`mcp.call` 渐进发现和操作应用、工作流、Data Model、前端以及 MCP 管理能力。
+本地或外部 Agent 可以通过 MCP 连接 1flowbase，并使用 `mcp_list`、`mcp_get`、`mcp_call` 渐进发现和操作应用、工作流、Data Model、前端以及 MCP 管理能力。
 
 MCP 连接可以独立工作。Agent **不需要**把自己的模型流量接入 AI Gateway。
 
@@ -342,7 +342,7 @@ Data Model / 自定义 API
 - [x] 1flowbase 工作流内部的工具回调 Trace
 - [x] 应用级 Token 消耗统计
 - [x] Prompt 与模型配置版本历史管理
-- [x] 支持渐进式 `mcp.list`、`mcp.get` 与 `mcp.call` 发现的 MCP Gateway
+- [x] 支持渐进式 `mcp_list`、`mcp_get` 与 `mcp_call` 发现的 MCP Gateway
 - [x] MCP Tool、mapping、Group、Binding、发现策略与上游连接管理
 - [x] 可复用 MCP Bundle 导入、导出、校验与本地 Library 流程
 - [x] 动态 Data Model 物化 PostgreSQL 表、字段、索引和关系

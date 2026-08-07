@@ -44,6 +44,6 @@ Agent  → MCP Group → Tool     → 后端执行
 ## Discovery Behavior
 
 - 默认入口应能让未知应用结构的 Agent 看到主要领域。
-- `mcp.list` 返回简短结果与 `children_count`，用于决定是否继续下钻。
+- `mcp_list` 返回简短结果与 `children_count`，用于决定是否继续下钻。
 - 关键词搜索补充路径探索，但不能替代清晰的 canonical path。
-- `mcp.get` 才承载完整 Tool contract；不要把所有细节堆进列表描述。
+- `mcp_get` 才承载完整 Tool contract；不要把所有细节堆进列表描述。

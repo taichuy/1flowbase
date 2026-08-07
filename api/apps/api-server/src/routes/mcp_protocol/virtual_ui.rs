@@ -17,6 +17,32 @@ use crate::{
     },
 };
 
+const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
+const MCP_GET: &str = portable_meta_tool_name("mcp_get");
+const MCP_RESULT: &str = portable_meta_tool_name("mcp_result");
+const MCP_CALL: &str = portable_meta_tool_name("mcp_call");
+
+const fn portable_meta_tool_name(name: &'static str) -> &'static str {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > 64 {
+        panic!("meta tool names must contain between 1 and 64 bytes");
+    }
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        let portable = (byte >= b'a' && byte <= b'z')
+            || (byte >= b'A' && byte <= b'Z')
+            || (byte >= b'0' && byte <= b'9')
+            || byte == b'_'
+            || byte == b'-';
+        if !portable {
+            panic!("meta tool names must use portable function-name characters");
+        }
+        index += 1;
+    }
+    name
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct VirtualMcpScope {
     instance_ids: Vec<String>,
@@ -82,7 +108,7 @@ impl VirtualToolOutcome {
 pub(crate) fn meta_tools() -> [Value; 4] {
     [
         json!({
-            "name": "mcp.list",
+            "name": MCP_LIST,
             "title": "Browse MCP directory",
             "description": "Browse the selected MCP instances by path before requesting full tool details.",
             "inputSchema": {
@@ -98,7 +124,7 @@ pub(crate) fn meta_tools() -> [Value; 4] {
             }
         }),
         json!({
-            "name": "mcp.get",
+            "name": MCP_GET,
             "title": "Get MCP tool details",
             "description": "Get the current description, schemas, risk information, and des_id for a visible tool before calling it.",
             "inputSchema": {
@@ -109,7 +135,7 @@ pub(crate) fn meta_tools() -> [Value; 4] {
             }
         }),
         json!({
-            "name": "mcp.result",
+            "name": MCP_RESULT,
             "title": "Continue MCP result detail",
             "description": "Read a cached page of result detail. Missing detail never authorizes retrying the original operation.",
             "inputSchema": {
@@ -128,9 +154,9 @@ pub(crate) fn meta_tools() -> [Value; 4] {
             }
         }),
         json!({
-            "name": "mcp.call",
+            "name": MCP_CALL,
             "title": "Call MCP tool",
-            "description": "Call a visible tool after mcp.get. Supply the current des_id when the tool requires description validation.",
+            "description": "Call a visible tool after mcp_get. Supply the current des_id when the tool requires description validation.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -177,10 +203,10 @@ pub(crate) async fn dispatch(
     arguments: Value,
 ) -> Result<VirtualToolOutcome, ApiError> {
     match name {
-        "mcp.list" => list(state, actor, scope, &arguments).await,
-        "mcp.get" => Ok(get(catalog, scope, &arguments)),
-        "mcp.result" => result(state, actor, &arguments).await,
-        "mcp.call" => call(state, headers, actor, catalog, scope, &arguments).await,
+        MCP_LIST => list(state, actor, scope, &arguments).await,
+        MCP_GET => Ok(get(catalog, scope, &arguments)),
+        MCP_RESULT => result(state, actor, &arguments).await,
+        MCP_CALL => call(state, headers, actor, catalog, scope, &arguments).await,
         _ => Ok(VirtualToolOutcome::Error {
             code: -32601,
             message: "Tool not found",
@@ -561,6 +587,12 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[should_panic(expected = "portable function-name characters")]
+    fn assistant_mcp_meta_tool_definition_rejects_non_portable_function_name() {
+        portable_meta_tool_name("mcp.list");
+    }
 
     fn catalog_with_server_bound_workspace() -> domain::McpCatalogSnapshot {
         let now = time::OffsetDateTime::UNIX_EPOCH;

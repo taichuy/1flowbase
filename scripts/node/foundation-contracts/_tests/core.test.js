@@ -50,12 +50,12 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
   assert.equal(providerSettingsPlan.selectedFoundations.includes('application-backend'), false);
 });
 
-test('AC-002 keeps mcp.result outside the core operations and only adds continuation evidence on risk', () => {
+test('AC-002 keeps mcp_result outside the core operations and only adds continuation evidence on risk', () => {
   assert.doesNotThrow(() => validatePackInventory());
 
   assert.throws(
-    () => validatePackInventory({ mcpCoreOperations: ['mcp.list', 'mcp.get', 'mcp.result', 'mcp.call'] }),
-    /mcp\.list -> mcp\.get -> mcp\.call/u,
+    () => validatePackInventory({ mcpCoreOperations: ['mcp_list', 'mcp_get', 'mcp_result', 'mcp_call'] }),
+    /mcp_list -> mcp_get -> mcp_call/u,
   );
 
   const corePlan = buildFoundationPlan({

@@ -1307,7 +1307,7 @@ describe('McpManagementPanel', () => {
 
     clickSegmentedOption(dialog, 'debug');
     expect(
-      within(dialog).queryByText('mcp.get(tool_id)')
+      within(dialog).queryByText('mcp_get(tool_id)')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByText('audit_policy')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));

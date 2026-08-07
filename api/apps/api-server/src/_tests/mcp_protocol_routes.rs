@@ -215,7 +215,7 @@ fn assert_meta_tools(payload: &Value) {
             .iter()
             .map(|tool| tool["name"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        vec!["mcp.list", "mcp.get", "mcp.result", "mcp.call"]
+        vec!["mcp_list", "mcp_get", "mcp_result", "mcp_call"]
     );
     assert!(tools
         .iter()
@@ -449,7 +449,7 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
             "id":4,
             "method":"tools/call",
             "params":{
-                "name":"mcp.list",
+                "name":"mcp_list",
                 "arguments":{"path":"/","keywords":["runtime","topology"],"depth":1,"limit":10}
             }
         }),
@@ -480,7 +480,7 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
             "jsonrpc":"2.0",
             "id":5,
             "method":"tools/call",
-            "params":{"name":"mcp.get","arguments":{"tool_id":"runtime_profile"}}
+            "params":{"name":"mcp_get","arguments":{"tool_id":"runtime_profile"}}
         }),
     )
     .await;
@@ -506,6 +506,19 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
     .await;
     assert_eq!(direct_call_payload["error"]["code"], json!(-32601));
 
+    let legacy_dotted_name_payload = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":61,
+            "method":"tools/call",
+            "params":{"name":"mcp.list","arguments":{}}
+        }),
+    )
+    .await;
+    assert_eq!(legacy_dotted_name_payload["error"]["code"], json!(-32601));
+
     let call_payload = call_mcp(
         &app,
         &token,
@@ -514,7 +527,7 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
             "id":7,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{"tool_id":"runtime_profile","arguments":{}}
             }
         }),
@@ -539,7 +552,7 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
             "jsonrpc":"2.0",
             "id":8,
             "method":"tools/call",
-            "params":{"name":"mcp.get","arguments":{"tool_id":"not_visible"}}
+            "params":{"name":"mcp_get","arguments":{"tool_id":"not_visible"}}
         }),
     )
     .await;
@@ -636,7 +649,7 @@ async fn mcp_get_projects_input_mapping_into_agent_schema() {
             "id":9,
             "method":"tools/call",
             "params":{
-                "name":"mcp.get",
+                "name":"mcp_get",
                 "arguments":{"tool_id":"mapped_interface_catalog"}
             }
         }),
@@ -742,7 +755,7 @@ async fn mcp_call_routes_large_interface_catalog_with_boolean_schemas_to_continu
             "id": 9,
             "method": "tools/call",
             "params": {
-                "name": "mcp.call",
+                "name": "mcp_call",
                 "arguments": { "tool_id": "interface_catalog", "arguments": {} }
             }
         }),
@@ -842,7 +855,7 @@ async fn mcp_call_rejects_stale_or_missing_required_des_id() {
                 "id":id,
                 "method":"tools/call",
                 "params":{
-                    "name":"mcp.call",
+                    "name":"mcp_call",
                     "arguments":{
                         "tool_id":"runtime_profile_guarded",
                         "des_id":des_id,
@@ -881,7 +894,7 @@ async fn mcp_call_get_catalog_preserves_discovery_policy_fields_via_continuation
             "id":20,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{"tool_id":"catalog_snapshot","arguments":{}}
             }
         }),
@@ -908,7 +921,7 @@ async fn mcp_call_get_catalog_preserves_discovery_policy_fields_via_continuation
                 "id":id,
                 "method":"tools/call",
                 "params":{
-                    "name":"mcp.result",
+                    "name":"mcp_result",
                     "arguments":continuation_arguments
                 }
             }),
@@ -975,7 +988,7 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
             "id":21,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{
                     "tool_id":"publish_probe",
                     "arguments":{
@@ -1007,7 +1020,7 @@ async fn mcp_call_classifies_interface_argument_and_target_failures() {
             "id":22,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{
                     "tool_id":"publish_probe",
                     "arguments":{
@@ -1161,7 +1174,7 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
             "id":30,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{
                     "tool_id":"catalog_continuation",
                     "arguments":{},
@@ -1187,7 +1200,7 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
             "id":31,
             "method":"tools/call",
             "params":{
-                "name":"mcp.result",
+                "name":"mcp_result",
                 "arguments":{
                     "result_ref":result_ref,
                     "max_inline_chars":1000
@@ -1218,7 +1231,7 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
             "id":311,
             "method":"tools/call",
             "params":{
-                "name":"mcp.result",
+                "name":"mcp_result",
                 "arguments":{
                     "result_ref":result_ref,
                     "cursor":next_cursor,
@@ -1248,7 +1261,7 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
             "id":32,
             "method":"tools/call",
             "params":{
-                "name":"mcp.result",
+                "name":"mcp_result",
                 "arguments":{"result_ref":result_ref}
             }
         }),
@@ -1297,7 +1310,7 @@ async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without
             "id":39,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{
                     "tool_id":"create_instance_once",
                     "arguments":{
@@ -1331,7 +1344,7 @@ async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without
             "id":40,
             "method":"tools/call",
             "params":{
-                "name":"mcp.call",
+                "name":"mcp_call",
                 "arguments":{
                     "tool_id":"create_instance_once",
                     "arguments":{
@@ -1387,7 +1400,7 @@ async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without
             "id":41,
             "method":"tools/call",
             "params":{
-                "name":"mcp.result",
+                "name":"mcp_result",
                 "arguments":{"result_ref":receipt_id}
             }
         }),

@@ -26,7 +26,7 @@
 
 ## Acceptance Focus
 
-- `mcp.list` 只出现一个 canonical 查询能力。
-- `mcp.get` 的参数名和 description 足以构造调用。
-- `mcp.call` 返回与后端 contract 一致的会话信息。
+- `mcp_list` 只出现一个 canonical 查询能力。
+- `mcp_get` 的参数名和 description 足以构造调用。
+- `mcp_call` 返回与后端 contract 一致的会话信息。
 - 相同 GUI 组件职责没有造成重复 Tool 或无意义的非空 `full_description`。

@@ -45,7 +45,7 @@ Callable = ApiKey ∧ InstanceEnabled ∧ Visible ∧ ToolEnabled
 ```
 
 - `Callable ⇒ GetVisible ⇒ ListDiscoverable`，三入口不可各自漂移。
-- `mcp.list -> mcp.get -> mcp.call` 是核心主链；`mcp.result` 只续取 detail。
+- `mcp_list -> mcp_get -> mcp_call` 是核心主链；`mcp_result` 只续取 detail。
 - write succeeded 后 detail cache 不可用，不得提示重试原写操作；durable receipt 保留 outcome。
 
 ### Application Backend

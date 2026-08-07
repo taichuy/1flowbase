@@ -16,11 +16,11 @@
 | 基座 | Fast evidence 主要拦截 | Full evidence 延后项 |
 | --- | --- | --- |
 | AI Gateway | 协议投影、状态协议和主仓 workflow contract 漂移 | Provider 实包、并发、完整 transport、paired SHA |
-| MCP Gateway | `mcp.list -> mcp.get -> mcp.call`、ACL、mapping 与调用契约漂移 | Bundle、上游 MCP、存储与完整大结果矩阵 |
+| MCP Gateway | `mcp_list -> mcp_get -> mcp_call`、ACL、mapping 与调用契约漂移 | Bundle、上游 MCP、存储与完整大结果矩阵 |
 | Application Backend | Data Model 定义、runtime API、scope/ACL 的快速契约漂移 | migration/reconcile、物理 schema、metadata preservation、coverage |
 | Native React | 标准 Component、compiler/runtime ABI、dependency lock、capability、ShadowRoot 与 host ABI | 全页面、浏览器、移动端、缓存和视觉回归 |
 
-`mcp.result` 是大结果或 durable receipt 的内部续取证据，不属于核心三入口；只有 result delivery / receipt 风险被命中时才追加 continuation pack。
+`mcp_result` 是大结果或 durable receipt 的内部续取证据，不属于核心三入口；只有 result delivery / receipt 风险被命中时才追加 continuation pack。
 
 `frontstage-governance-hygiene` 只结算页面树、可见性、存储约束与 settings registry 边界；它不结算 Native React Component、compiler/runtime ABI、dependency lock、capability guard 或 runtime conformance。
 
@@ -41,7 +41,7 @@
 
 路由 fixture 必须覆盖四个基座正例，以及 docs-only、locale-only、无关 CSS 等合法反例。规则变更还必须证明：
 
-- 把 `mcp.result` 放进核心三入口会失败；
+- 把 `mcp_result` 放进核心三入口会失败；
 - warning-only receipt 仍 passed，error/blocker 才 failed；
 - receipt 缺 candidate SHA 或 selected component 会失败；
 - AI full workflow 不恢复成 every-PR 90-minute gate。

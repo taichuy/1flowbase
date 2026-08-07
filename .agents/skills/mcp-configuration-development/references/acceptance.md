@@ -27,7 +27,7 @@
 - 无需结果投影的 Tool 使用 `output_mapping == {}`，没有把 `result_schema` 复制为 mapping。
 - Group 与 Binding 引用有效，启用、可见与排序状态符合目标。
 - 没有写入或配置 `children_count`。
-- 必需容器对象已通过真实 `mcp.call` 证明能由当前 request Schema 与 interface wrapper 自动物化，没有用 mapping 虚假占位值绕过 Schema。
+- 必需容器对象已通过真实 `mcp_call` 证明能由当前 request Schema 与 interface wrapper 自动物化，没有用 mapping 虚假占位值绕过 Schema。
 - 已发布能力只有在存在可绑定 operation 与可验证认证 contract 时才配置 invocation Tool；否则明确记录缺口。
 - 本轮停止或失败后不存在无 Tool 的空 Group、错误复用 Binding 或无消费者新 Tool。
 - 本轮变更账本只包含 MCP Instance、Tool、Group、Binding、mapping 与 discovery policy 配置；没有由本轮配置任务引入 `web/`、i18n、业务 catalog、DTO / OpenAPI、migration、协议或运行时代码变更。
@@ -38,10 +38,10 @@
 
 按 Agent 的真实顺序保留请求和关键响应证据：
 
-1. `mcp.list` 从默认入口或上级路径找到目标 Group/Tool。
-2. `mcp.list` 的 Group `children_count` 与启用子 Group、可见 Binding 和启用 Tool 一致。
-3. `mcp.get` 返回正确的 short/full description、mapped input Schema、result Schema、risk 和 description validation 信息。
-4. `mcp.call` 使用 `mcp.get` 返回的 contract 成功执行，并验证可观察结果。
+1. `mcp_list` 从默认入口或上级路径找到目标 Group/Tool。
+2. `mcp_list` 的 Group `children_count` 与启用子 Group、可见 Binding 和启用 Tool 一致。
+3. `mcp_get` 返回正确的 short/full description、mapped input Schema、result Schema、risk 和 description validation 信息。
+4. `mcp_call` 使用 `mcp_get` 返回的 contract 成功执行，并验证可观察结果。
 5. 至少验证一个关键失败边界，例如缺失必填参数、非法状态、无权限、错误稳定标识或错误 `des_id`。
 6. 涉及模型节点时，从成功 run/trace 核对实际 provider、model 与 protocol；保存或编译成功不能替代执行证据。
 7. 涉及低代码运行页面时，在用户授权的本地环境执行真实浏览器 CRUD 与写后刷新；只有持久化 document/code 证据时，视觉与交互结论标记为未验证。
