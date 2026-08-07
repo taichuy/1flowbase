@@ -1,7 +1,7 @@
 # 1flowbase
 
 <p align="center">
-  <img src="../assets/logo_index_cn.png" alt="1flowbase Logo">
+  <img src="../../web/app/public/icon.svg" alt="1flowbase Logo" width="120" height="120">
 </p>
 
 <p align="center">
@@ -26,9 +26,9 @@
   <a href="https://x.com/Tacihu2021" target="_blank">Twitter</a>
 </p>
 
-> **基于四大开源基座构建完整的 Agent-Native 应用：AI Gateway、MCP Gateway、内置应用后端与 Native React 前端区块。**
+> 1flowbase 是一个面向个人与企业的自托管 AI 网关：在协议转换、分发与详细聊天日志之上，内置应用后端与 Native React 前端区块，帮你把 AI 与业务数据结合起来。更重要的是，这一切都能通过 MCP 交给你的 Agent 来操作和管理。
 
-1flowbase 让本地 Agent、模型客户端、外部系统和人通过相互独立的入口使用同一个自托管应用平台。本地 Agent 可以只连接 MCP Gateway，继续使用自己已有的模型配置来搭建和操作应用；是否再连接 AI Gateway 是可选项，连接后可以获得兼容模型接口、多模型工作流与详细执行 Trace。
+1flowbase 允许 Agent 通过 MCP 接管整个应用：无论是编排与发布 AI 网关，还是生成后端应用接口，或是搭建原生 React 交互界面。
 
 ```text
 本地 Agent -> MCP Gateway -> 发现 / 配置 / 搭建 / 操作
@@ -48,7 +48,6 @@
 
 例如，本地 Agent 可以通过 MCP 创建 `Customer` 与 `Ticket` Data Model，搭建由 Workflow 支撑的 `/api/ex/tickets/escalate` 接口，并构建 React 界面。外部系统调用自动生成的后端 API，人直接在界面中工作。如果同一个本地 Agent 还把模型端点指向 AI Gateway，就能获得带路由、模型组合和完整日志的虚拟模型；应用本身不依赖这个可选连接。
 
-![最新多模型工作流编辑器](../assets/multi-model-workflow-editor.png)
 
 ---
 
@@ -96,7 +95,7 @@ export default function StatusCard({ ctx }) {
 
 ### 给文本优先 Coding Model 增加视觉能力
 
-让 GLM-5.2、DeepSeek 或其他强文本 Coding Model 继续负责规划和写代码，由 1flowbase 把截图、UI 图片、图表和 PDF 页面路由给挂载的视觉模型。
+让 GLM-5.2、DeepSeek V4 或其他强文本 Coding Model 继续负责规划和写代码，由 1flowbase 把截图、UI 图片、图表和 PDF 页面路由给挂载的视觉模型。
 
 ```text
 Claude Code
@@ -213,68 +212,6 @@ node scripts/node/dev-up.js restart
 
 ---
 
-## 1flowbase 适合放在哪里
-
-1flowbase 不只是模型代理、MCP Server 集合或又一个聊天界面。
-
-| 工具类别 | 常见功能与定位 | 1flowbase 的不同之处 |
-|---|---|---|
-| LLM 网关 / 模型路由器 | 将外部模型流量路由到不同供应商 | 对外提供 OpenAI / Anthropic 兼容接口，并在背后组合模型、工作流与详细执行记录 |
-| MCP Server / Gateway | 向 Agent 暴露或聚合工具 | 暴露 1flowbase 应用控制面，同时连接并治理上游 MCP 工具 |
-| Backend-as-a-Service / 后端构建器 | 提供数据表和通用 CRUD 接口 | 物化受治理的 PostgreSQL Data Model，并把自动 CRUD 与 Workflow 自定义 API 组合在同一平台 |
-| AI 工作流构建器 | 构建 AI 应用或流程工作流 | 通过模型 API 暴露工作流，并让 Agent 通过 MCP 操作外围应用 |
-| Agent 应用框架 | 帮助开发者编写 Agent 图与交互界面 | 组合可视化运行时、Agent 控制面、协议发布和 Native React 应用界面 |
-| 可观测性 / 成本追踪工具 | 统计 Token 消耗量或账单总额 | 将成本精确关联至工作流节点、模型调用、工具回调和 Trace |
-
-```text
-模型服务平面：AI Gateway（供外部客户端按需使用）
-Agent 控制平面：MCP Gateway
-数据与 API 平面：应用后端
-人机体验平面：Native React 前端区块
-
-1flowbase 在一个自托管平台中提供四大基座。
-```
-
----
-
-## 功能预览
-
-### 1. MCP Gateway：把应用控制面交给 Agent
-
-本地或外部 Agent 可以通过 MCP 连接 1flowbase，并使用 `mcp.list`、`mcp.get`、`mcp.call` 渐进发现和操作应用、工作流、Data Model、前端以及 MCP 管理能力。
-
-MCP 连接可以独立工作。Agent **不需要**把自己的模型流量接入 AI Gateway。
-
-![MCP Gateway 应用控制面](../assets/mcp-gateway-control-plane.png)
-
-### 2. 应用后端：完成数据建模并直接获得可用 API
-
-直接在 1flowbase 中创建 Data Model。后端会物化 PostgreSQL 表、字段、索引和关系，并提供受治理的 CRUD 运行时 API 与 OpenAPI 契约。
-
-![应用后端 Data Model](../assets/application-backend-data-models.png)
-
-当自动 CRUD 不足以承载业务逻辑时，可以把工作流发布为 `/api/ex/{slug}` 下的同步或异步扩展接口。
-
-![Workflow Extension API](../assets/workflow-extension-api.png)
-
-### 3. Native React 区块：构建面向用户的应用界面
-
-使用原生 React/TSX 区块构建交互页面。区块可以使用 Hooks、CSS、事件、响应式上下文、受控组件以及 Data Model / API 数据绑定，并在隔离的前端运行时中执行。
-
-![由 Data Model API 驱动的 Native React 任务看板](../assets/native-react-task-board.png)
-
-### 4. AI Gateway：向外部客户端提供组合后的模型能力
-
-把 Agent Flow 发布为原生、OpenAI 兼容或 Anthropic 兼容 API。外部客户端可以按需接入 AI Gateway，获得协议转换、模型组合、API 凭据以及详细的请求与执行记录。
-
-![AI Gateway 协议与接口目录](../assets/ai-gateway-api-catalog.png)
-
-一个对外模型接口背后，可以通过可视化运行时跨供应商分支调用模型、使用工具、校验结果并汇总最终响应。
-
-![多模型工作流编辑器](../assets/multi-model-workflow-editor.png)
-
----
-
 ## 典型应用场景
 
 ### 让 Agent 搭建并持续管理内部应用
@@ -325,55 +262,6 @@ Data Model / 自定义 API
 
 ---
 
-## 当前状态
-
-### 已实现
-
-- [x] 可视化工作流编辑器
-- [x] 多节点工作流编排
-- [x] 虚拟模型接口发布
-- [x] 支持 OpenAI Responses 协议
-- [x] 支持 OpenAI Chat Completions 协议
-- [x] 支持 Claude 兼容 Messages 协议
-- [x] 支持流式响应
-- [x] 面向多模态和分支模型工作流的挂载 LLM 工具
-- [x] `fusion` 工作流模板
-- [x] 执行日志
-- [x] 1flowbase 工作流内部的工具回调 Trace
-- [x] 应用级 Token 消耗统计
-- [x] Prompt 与模型配置版本历史管理
-- [x] 支持渐进式 `mcp.list`、`mcp.get` 与 `mcp.call` 发现的 MCP Gateway
-- [x] MCP Tool、mapping、Group、Binding、发现策略与上游连接管理
-- [x] 可复用 MCP Bundle 导入、导出、校验与本地 Library 流程
-- [x] 动态 Data Model 物化 PostgreSQL 表、字段、索引和关系
-- [x] 自动生成 Data Model CRUD 运行时 API 与 OpenAPI 契约
-- [x] 在 `/api/ex/{slug}` 下发布自定义 Workflow Extension API
-- [x] 支持 Hooks、CSS、事件和 Shadow DOM 隔离的 Native React/TSX 前端区块
-- [x] 受控前端组件目录、代码 Studio、响应式上下文与数据绑定
-
-### 持续增强中
-
-- [ ] 更深度的本地 Agent 对话收集
-- [ ] 会话搜索与回放
-- [ ] Token 物料清单：按 Prompt、历史上下文、工具定义、命令输出、媒体输入和节点拆解用量
-- [ ] 异常成本检测与优化建议
-- [ ] 会话导出和 Recall Pack 生成
-- [ ] 更多 Claude Code / Codex / OpenCode / Cline / Continue 模板
-- [ ] 覆盖更多产品领域的 Agent-Ready MCP Virtual UI
-- [ ] 组合 MCP 管理、应用后端、前端区块与可选 AI Gateway 服务的更多端到端应用 Recipe
-
-### 长期规划中
-
-- [ ] 在四大应用基座之上扩展更完整的低代码创作能力
-- [ ] 团队协作空间与多租户管理
-- [ ] 权限、审批、审计与成本治理机制
-- [ ] 适配更多本地 AI Agent 客户端
-- [ ] 模板市场与工作流 Recipes 生态
-
-> 四大基座目前都已实现并可用，但它们是可组合能力，不是强制串行阶段：外部 Agent 可以只使用 MCP Gateway，而不把模型流量接入 AI Gateway。更完整的低代码创作、团队治理和模板生态仍在持续演进。
-
----
-
 ## 透明性与安全
 
 1flowbase 致力于提供透明、自托管的 AI 工作流运行环境。
@@ -385,7 +273,6 @@ Data Model / 自定义 API
 - 可审计的节点调用
 - 可追踪的 Token 消耗
 - 可配置的日志保留周期
-- 敏感数据脱敏过滤
 - 显式的模型与工作流配置
 
 1flowbase 不提倡在用户不知情的情况下隐式替换模型。发布的每一个接口都应当由项目所有者清晰配置、观测和治理。
