@@ -109,6 +109,8 @@ function sourceLabel(source: string) {
   switch (source) {
     case 'agent_flow_api':
       return i18nText('applications', 'auto.invocation_source_agent_flow_api');
+    case 'assistant':
+      return i18nText('applications', 'auto.invocation_source_assistant');
     case 'workflow_http':
       return i18nText('applications', 'auto.invocation_source_workflow_http');
     case 'workflow_schedule':

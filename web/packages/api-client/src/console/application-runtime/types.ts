@@ -2,12 +2,14 @@ export type ConsoleFlowRunMode =
   | 'debug_node_preview'
   | 'debug_flow_run'
   | 'published_api_run'
+  | 'assistant_execution'
   | 'workflow_http_run'
   | 'workflow_schedule_run';
 
 export type ConsoleFlowRunExecutionStage = 'debug' | 'published';
 export type ConsoleFlowRunInvocationSource =
   | 'agent_flow_api'
+  | 'assistant'
   | 'workflow_http'
   | 'workflow_schedule'
   | 'debug';

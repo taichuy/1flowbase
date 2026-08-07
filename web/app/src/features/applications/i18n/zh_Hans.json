@@ -171,6 +171,7 @@
     "execution_stage_debug": "调试",
     "invocation_source": "调用来源",
     "invocation_source_agent_flow_api": "AgentFlow API",
+    "invocation_source_assistant": "助手",
     "invocation_source_workflow_http": "Workflow HTTP",
     "invocation_source_workflow_schedule": "Workflow 定时任务",
     "invocation_source_debug": "调试调用",
