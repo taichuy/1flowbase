@@ -298,13 +298,21 @@ describe('EmbeddedAgentAssistant', () => {
       'embedded-agent-assistant-preview'
     ) as HTMLElement;
     const initialLeft = Number.parseFloat(assistantWindow.style.left);
+    const initialWidth = Number.parseFloat(assistantWindow.style.width);
 
     fireEvent.click(history);
 
     const historySidebar = await screen.findByTestId(
       'embedded-agent-assistant-history'
     );
-    expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft);
+    await waitFor(() =>
+      expect(Number.parseFloat(assistantWindow.style.left)).toBeLessThan(
+        initialLeft
+      )
+    );
+    expect(Number.parseFloat(assistantWindow.style.width)).toBeGreaterThan(
+      initialWidth
+    );
     expect(historySidebar).toHaveAttribute(
       'aria-label',
       i18nText('appShell', 'auto.assistant_history')
@@ -322,6 +330,9 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.mouseDown(resizeHandle, { clientX: 280 });
     fireEvent.mouseMove(window, { clientX: 340 });
     expect(historySidebar).toHaveStyle({ width: '340px' });
+    expect(Number.parseFloat(assistantWindow.style.width)).toBe(
+      initialWidth + 340 + 12
+    );
     fireEvent.mouseUp(window);
     expect(historySidebar).toHaveAttribute('data-resizing', 'false');
 
@@ -331,6 +342,8 @@ describe('EmbeddedAgentAssistant', () => {
         screen.queryByTestId('embedded-agent-assistant-history')
       ).not.toBeInTheDocument()
     );
+    expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft);
+    expect(Number.parseFloat(assistantWindow.style.width)).toBe(initialWidth);
   });
 
   test('AC-005 uses the assistant-owned history view without moving it on narrow screens', async () => {

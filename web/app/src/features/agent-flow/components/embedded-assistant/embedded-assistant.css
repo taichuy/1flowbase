@@ -104,6 +104,12 @@
   min-width: 0;
 }
 
+.embedded-agent-assistant-preview__layout[data-history-full='true']
+  .embedded-agent-assistant-preview__history {
+  flex: 1;
+  width: 100%;
+}
+
 .embedded-agent-assistant-preview__history-resize {
   position: relative;
   flex: 0 0 12px;
