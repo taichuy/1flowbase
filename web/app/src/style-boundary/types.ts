@@ -38,6 +38,13 @@ export type StyleBoundaryRelationshipAssertion =
       id: string;
       type: 'fully_visible';
       subjectSelector: string;
+    }
+  | {
+      id: string;
+      type: 'fills_container_bottom';
+      subjectSelector: string;
+      containerSelector: string;
+      maxBottomGap: number;
     };
 
 export interface StyleBoundaryManifestScene {

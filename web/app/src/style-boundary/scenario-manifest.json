@@ -910,6 +910,13 @@
         "id": "model-provider-actions-fully-visible",
         "type": "fully_visible",
         "subjectSelector": ".model-provider-panel__catalog-table .model-provider-panel__catalog-actions"
+      },
+      {
+        "id": "model-provider-panel-fills-tab-body",
+        "type": "fills_container_bottom",
+        "subjectSelector": ".settings-section-surface",
+        "containerSelector": ".model-provider-settings-tabs",
+        "maxBottomGap": 4
       }
     ]
   },

@@ -374,7 +374,7 @@ test('formatBoundaryFailure labels style boundary regressions explicitly', () =>
   );
 });
 
-test('collectRelationshipViolations detects no_overlap, within_container, min_gap, and fully_visible regressions', () => {
+test('collectRelationshipViolations detects no_overlap, within_container, min_gap, fully_visible, and fills_container_bottom regressions', () => {
   const assertions = [
     {
       id: 'left-vs-sidebar',
@@ -400,6 +400,13 @@ test('collectRelationshipViolations detects no_overlap, within_container, min_ga
       id: 'actions-visible',
       type: 'fully_visible',
       subjectSelector: '.actions'
+    },
+    {
+      id: 'panel-fills-tab-body',
+      type: 'fills_container_bottom',
+      subjectSelector: '.panel',
+      containerSelector: '.tab-body',
+      maxBottomGap: 4
     }
   ];
   const measurements = {
@@ -416,6 +423,14 @@ test('collectRelationshipViolations detects no_overlap, within_container, min_ga
       rect: { left: 260, top: 20, right: 340, bottom: 60, width: 80, height: 40 },
       withinViewport: true,
       visibleSamples: [true, false, true, true, true]
+    },
+    '.panel': {
+      exists: true,
+      rect: { left: 0, top: 0, right: 300, bottom: 420, width: 300, height: 420 }
+    },
+    '.tab-body': {
+      exists: true,
+      rect: { left: 0, top: 0, right: 300, bottom: 576, width: 300, height: 576 }
     }
   };
 
@@ -429,7 +444,12 @@ test('collectRelationshipViolations detects no_overlap, within_container, min_ga
       { id: 'left-vs-sidebar', type: 'no_overlap', actual: 'overlap' },
       { id: 'actions-within-left', type: 'within_container', actual: 'outside_container' },
       { id: 'left-gap-sidebar', type: 'min_gap', actual: 'gap_too_small' },
-      { id: 'actions-visible', type: 'fully_visible', actual: 'partially_occluded' }
+      { id: 'actions-visible', type: 'fully_visible', actual: 'partially_occluded' },
+      {
+        id: 'panel-fills-tab-body',
+        type: 'fills_container_bottom',
+        actual: 'bottom_gap_out_of_range'
+      }
     ]
   );
 });

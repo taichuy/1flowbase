@@ -605,6 +605,38 @@ function collectRelationshipViolations(assertions = [], measurements = {}) {
       ];
     }
 
+    if (assertion.type === 'fills_container_bottom') {
+      const container = measurements[assertion.containerSelector];
+      const containerRect = container?.rect;
+
+      if (!container?.exists || !containerRect) {
+        return [getMissingMeasurementViolation(assertion, 'container')];
+      }
+
+      const bottomGap = containerRect.bottom - subjectRect.bottom;
+      const subjectStartsWithinContainer = subjectRect.top >= containerRect.top;
+
+      if (
+        subjectStartsWithinContainer &&
+        bottomGap >= 0 &&
+        bottomGap <= assertion.maxBottomGap
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          assertionId: assertion.id,
+          type: assertion.type,
+          actual: 'bottom_gap_out_of_range',
+          details: `expected=0..${assertion.maxBottomGap} actual=${bottomGap}`,
+          subjectSelector: assertion.subjectSelector,
+          referenceSelector: null,
+          containerSelector: assertion.containerSelector,
+        },
+      ];
+    }
+
     if (assertion.type === 'min_gap') {
       const reference = measurements[assertion.referenceSelector];
       const referenceRect = reference?.rect;

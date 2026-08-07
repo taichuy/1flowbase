@@ -5,15 +5,14 @@
   min-height: 0;
 }
 
-.model-provider-settings-tabs > .ant-tabs-content-holder {
+.model-provider-settings-tabs > .ant-tabs-body-holder,
+.model-provider-settings-tabs .ant-tabs-body,
+.model-provider-settings-tabs .ant-tabs-content {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
-}
-
-.model-provider-settings-tabs > .ant-tabs-content-holder > .ant-tabs-content {
-  height: 100%;
-  min-height: 0;
 }
 
 .model-provider-settings-tabs .ant-tabs-tabpane {

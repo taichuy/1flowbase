@@ -496,7 +496,7 @@ describe('ModelProvidersPage - layout and style', () => {
     expect(cssSource).toContain('@media (max-width: 768px)');
   });
 
-  test('keeps request log height owned by the model provider tabs', () => {
+  test('keeps model provider tab bodies filling their available height', () => {
     const tabsSource = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -520,8 +520,8 @@ describe('ModelProvidersPage - layout and style', () => {
     );
 
     expect(tabsSource).toContain('className="model-provider-settings-tabs"');
-    expect(tabsCssSource).toContain(
-      '.model-provider-settings-tabs > .ant-tabs-content-holder'
+    expect(tabsCssSource).toMatch(
+      /\.model-provider-settings-tabs > \.ant-tabs-body-holder,[\s\S]*?\.model-provider-settings-tabs \.ant-tabs-body,[\s\S]*?\.model-provider-settings-tabs \.ant-tabs-content\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/u
     );
     expect(tabsCssSource).toContain(
       '.model-provider-settings-tabs .ant-tabs-tabpane'
