@@ -441,6 +441,9 @@ describe('application shell routing', () => {
       within(sectionNavigation).getByRole('link', { name: '监控' })
     ).toHaveAttribute('href', '/applications/app-1/monitoring');
     expect(
+      within(sectionNavigation).getByRole('link', { name: '统计' })
+    ).toHaveAttribute('href', '/applications/app-1/statistics');
+    expect(
       within(sectionNavigation).getByRole('link', { name: 'API' })
     ).toHaveAttribute('href', '/applications/app-1/api');
   });

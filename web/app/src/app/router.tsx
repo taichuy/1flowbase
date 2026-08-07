@@ -204,6 +204,22 @@ const applicationMonitoringRoute = createRoute({
   }
 });
 
+const applicationStatisticsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/applications/$applicationId/statistics',
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { applicationId } = applicationStatisticsRoute.useParams();
+
+    return (
+      <ApplicationSectionRoute
+        applicationId={applicationId}
+        requestedSectionKey="statistics"
+      />
+    );
+  }
+});
+
 const templatesRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/templates',
@@ -588,6 +604,7 @@ const routeTree = rootRoute.addChildren([
     applicationApiRoute,
     applicationLogsRoute,
     applicationMonitoringRoute,
+    applicationStatisticsRoute,
     // Keep embedded apps hidden because the roadmap is distant and may change.
     templatesRoute,
     settingsIndexRoute,

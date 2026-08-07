@@ -49,6 +49,11 @@ const ApplicationMonitoringPage = lazy(() =>
     default: module.ApplicationMonitoringPage
   }))
 );
+const ApplicationStatisticsPage = lazy(() =>
+  import('./ApplicationStatisticsPage').then((module) => ({
+    default: module.ApplicationStatisticsPage
+  }))
+);
 
 function ApplicationSectionFallback() {
   return <LoadingState compact />;
@@ -142,6 +147,10 @@ export function ApplicationDetailPage({
     ) : requestedSectionKey === 'monitoring' ? (
       <ApplicationSectionBoundary>
         <ApplicationMonitoringPage applicationId={applicationId} />
+      </ApplicationSectionBoundary>
+    ) : requestedSectionKey === 'statistics' ? (
+      <ApplicationSectionBoundary>
+        <ApplicationStatisticsPage applicationId={applicationId} />
       </ApplicationSectionBoundary>
     ) : (
       <ApplicationSectionState

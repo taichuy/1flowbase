@@ -182,6 +182,7 @@
     "principal_scheduler": "Scheduler",
     "past_twenty_four_hours": "past 24 hours",
     "monitoring": "Monitor",
+    "statistics": "Statistics",
     "keyword_search": "keyword search",
     "application_list_load_failed": "Application list loading failed",
     "authorized_account": "Authorized account",

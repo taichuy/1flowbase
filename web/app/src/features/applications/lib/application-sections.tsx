@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import {
   ApiOutlined,
+  BarChartOutlined,
   DeploymentUnitOutlined,
   FundOutlined,
   UnorderedListOutlined
@@ -10,7 +11,12 @@ import type { ConsoleApplicationDetail } from '@1flowbase/api-client';
 
 import type { SectionNavItem } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 
-export type ApplicationSectionKey = 'orchestration' | 'api' | 'logs' | 'monitoring';
+export type ApplicationSectionKey =
+  | 'orchestration'
+  | 'api'
+  | 'logs'
+  | 'monitoring'
+  | 'statistics';
 
 const SECTION_DEFINITIONS: Array<{
   key: ApplicationSectionKey;
@@ -36,6 +42,11 @@ const SECTION_DEFINITIONS: Array<{
     key: 'monitoring',
     labelKey: 'auto.monitoring',
     icon: <FundOutlined />
+  },
+  {
+    key: 'statistics',
+    labelKey: 'auto.statistics',
+    icon: <BarChartOutlined />
   }
 ];
 

@@ -259,7 +259,7 @@ export function ModelProviderInstancesModal({
       <FixedHeightModal
         open={open}
         width={960}
-        height="min(860px, calc(100vh - 96px))"
+        height="min(700px, calc(100vh - 120px))"
         title={title}
         onCancel={onClose}
         footer={null}

@@ -67,6 +67,7 @@ import { AppProviders } from '../../../app/AppProviders';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { resetAuthStore } from '../../../state/auth-store';
 import { ApplicationMonitoringPage } from '../pages/ApplicationMonitoringPage';
+import { ApplicationStatisticsPage } from '../pages/ApplicationStatisticsPage';
 
 function monitoringReport() {
   return {
@@ -378,7 +379,7 @@ function runtimeActivity() {
   };
 }
 
-describe('ApplicationMonitoringPage', () => {
+describe('ApplicationStatisticsPage', () => {
   beforeEach(async () => {
     window.localStorage.setItem('1flowbase.ui.locale_preference', 'en_US');
     await appI18n.changeLanguage('en_US');
@@ -396,7 +397,7 @@ describe('ApplicationMonitoringPage', () => {
   test('renders backend aggregated monitoring report and charts', async () => {
     render(
       <AppProviders>
-        <ApplicationMonitoringPage applicationId="app-1" />
+        <ApplicationStatisticsPage applicationId="app-1" />
       </AppProviders>
     );
 
@@ -407,9 +408,6 @@ describe('ApplicationMonitoringPage', () => {
       screen.getByRole('button', { name: 'Running statistical caliber' })
     ).toBeInTheDocument();
     expect(screen.getByText('openai-responses-v1')).toBeInTheDocument();
-    expect(screen.getByText('Runtime activity')).toBeInTheDocument();
-    expect(screen.getByText('Slow')).toBeInTheDocument();
-    expect(screen.getByText('5m failure rate')).toBeInTheDocument();
     expect(screen.getByText('New tokens')).toBeInTheDocument();
     expect(screen.getAllByText('5.6K').length).toBeGreaterThan(0);
     expect(screen.getByText('Input tokens')).toBeInTheDocument();
@@ -419,22 +417,6 @@ describe('ApplicationMonitoringPage', () => {
     expect(screen.getByText('Cache-hit tokens')).toBeInTheDocument();
     expect(screen.getByText('900')).toBeInTheDocument();
     expect(screen.queryByText('+560,000.0%')).not.toBeInTheDocument();
-    const runtimeActivityPosition = screen
-      .getByText('Runtime activity')
-      .compareDocumentPosition(
-        screen.getByRole('radio', { name: 'past 7 days' })
-      );
-    expect(runtimeActivityPosition & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    );
-    expect(
-      screen.getByRole('button', { name: 'Runtime activity' })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('Current service instance realtime data')
-    ).not.toBeInTheDocument();
-    expect(screen.getByText('SSE')).toBeInTheDocument();
-    expect(screen.getByText('Model requests')).toBeInTheDocument();
     expect(screen.getByText('customer-1')).toBeInTheDocument();
     expect(screen.getByText('Customer API')).toBeInTheDocument();
     expect(screen.getByText('Assistant')).toBeInTheDocument();
@@ -468,6 +450,19 @@ describe('ApplicationMonitoringPage', () => {
     expect(tokenTrendOption.series[3]).not.toHaveProperty('stack');
   });
 
+  test('keeps realtime activity in the monitoring section', async () => {
+    render(
+      <AppProviders>
+        <ApplicationMonitoringPage applicationId="app-1" />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('Runtime activity')).toBeInTheDocument();
+    expect(await screen.findByText('Slow')).toBeInTheDocument();
+    expect(screen.getByText('5m failure rate')).toBeInTheDocument();
+    expect(screen.queryByText('Total runs')).not.toBeInTheDocument();
+  });
+
   test('formats token metric cards with K M B suffixes', async () => {
     runtimeApi.fetchApplicationRunMonitoringReport.mockResolvedValue({
       ...monitoringReport(),
@@ -487,7 +482,7 @@ describe('ApplicationMonitoringPage', () => {
 
     render(
       <AppProviders>
-        <ApplicationMonitoringPage applicationId="app-1" />
+        <ApplicationStatisticsPage applicationId="app-1" />
       </AppProviders>
     );
 
@@ -507,7 +502,7 @@ describe('ApplicationMonitoringPage', () => {
   test('refreshes the report when time range changes', async () => {
     render(
       <AppProviders>
-        <ApplicationMonitoringPage applicationId="app-1" />
+        <ApplicationStatisticsPage applicationId="app-1" />
       </AppProviders>
     );
 
@@ -522,7 +517,6 @@ describe('ApplicationMonitoringPage', () => {
         bucket: 'day'
       });
     });
-    expect(runtimeApi.fetchApplicationRuntimeActivity).toHaveBeenCalledTimes(1);
   });
 
   test('formats token trend buckets as hours for the past 24 hours range', async () => {
@@ -532,7 +526,7 @@ describe('ApplicationMonitoringPage', () => {
 
     render(
       <AppProviders>
-        <ApplicationMonitoringPage applicationId="app-1" />
+        <ApplicationStatisticsPage applicationId="app-1" />
       </AppProviders>
     );
 

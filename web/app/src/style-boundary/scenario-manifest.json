@@ -990,6 +990,7 @@
       "web/app/src/features/settings/components/host-infrastructure/HostInfrastructureProviderTable.tsx",
       "web/app/src/features/settings/components/host-infrastructure/host-infrastructure-panel.css",
       "web/app/src/features/settings/components/model-providers/ModelProviderCatalogPanel.tsx",
+      "web/app/src/features/settings/components/model-providers/ModelProviderInstancesModal.tsx",
       "web/app/src/features/settings/components/model-providers/ModelProviderInstancesTable.tsx",
       "web/app/src/features/settings/components/model-providers/ModelProviderInstanceDrawer.tsx",
       "web/app/src/features/settings/components/model-providers/OfficialPluginInstallPanel.tsx",

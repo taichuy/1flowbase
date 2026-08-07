@@ -43,7 +43,7 @@ export function SectionPageLayout({
   const screens = Grid.useBreakpoint();
   const visibleItems = navItems.filter((item) => item.visible !== false);
   const compactMode = !screens.lg;
-  const compactVariant = visibleItems.length <= 4 ? 'tabs' : 'drawer';
+  const compactVariant = visibleItems.length <= 5 ? 'tabs' : 'drawer';
   const hasSidebarContent = Boolean(sidebarContent);
   const hasSidebar = visibleItems.length > 0 || hasSidebarContent;
   const layoutClassName = [
