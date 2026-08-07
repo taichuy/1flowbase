@@ -375,6 +375,44 @@ describe('EmbeddedAgentAssistant', () => {
     expect(assistantWindow.style.left).toBe(initialLeft);
   });
 
+  test('AC-005 switches an open history sidebar to the full assistant view after a narrow resize', async () => {
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+    await screen.findByTestId('embedded-agent-assistant-history');
+
+    innerWidthSpy?.mockReturnValue(640);
+    fireEvent(window, new Event('resize'));
+
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    );
+    await waitFor(() =>
+      expect(
+        assistantWindow.querySelector(
+          '.embedded-agent-assistant-preview__layout'
+        )
+      ).toHaveAttribute('data-history-full', 'true')
+    );
+    expect(
+      assistantWindow.querySelector(
+        '.embedded-agent-assistant-preview__conversation'
+      )
+    ).toHaveAttribute('hidden');
+  });
+
   test('AC-004 explicitly continues a legacy snapshot without mutating it', async () => {
     listConsoleAssistantConversations.mockResolvedValueOnce({
       items: [

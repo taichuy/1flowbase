@@ -443,6 +443,23 @@ export function EmbeddedAgentAssistantPreview({
     }
   }, [mobile, toggleMaximized, windowEntry]);
 
+  useEffect(() => {
+    if (!historyOpen) {
+      return;
+    }
+    const rect = assistantWindowRectRef.current;
+    const chatWidth = rect ? rect.width - assistantHistoryOccupiedWidth() : 0;
+    if (
+      !mobile &&
+      !historyFullView &&
+      chatWidth >= ASSISTANT_CONVERSATION_MIN_WIDTH
+    ) {
+      return;
+    }
+    historyExpansionSideRef.current = null;
+    setHistoryFullView(true);
+  }, [historyFullView, historyOpen, mobile, windowEntry?.rect.width]);
+
   useEffect(() => () => historyResizeCleanupRef.current?.(), []);
 
   function startHistoryResize(event: ReactMouseEvent<HTMLDivElement>) {
