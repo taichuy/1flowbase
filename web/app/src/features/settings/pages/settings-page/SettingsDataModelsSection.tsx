@@ -7,15 +7,7 @@ import {
   CloudServerOutlined,
   HomeOutlined
 } from '@ant-design/icons';
-import {
-  Alert,
-  Breadcrumb,
-  Button,
-  Flex,
-  Tag,
-  Typography,
-  message
-} from 'antd';
+import { Alert, Breadcrumb, Button, Flex, Tag, Typography, App } from 'antd';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
@@ -105,7 +97,7 @@ export function SettingsDataModelsSection({
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [messageApi, contextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(
     readSourceIdFromLocation
@@ -196,11 +188,7 @@ export function SettingsDataModelsSection({
       setSelectedSourceId(null);
       writeSourceIdToLocation(null);
     }
-  }, [
-    dataSourcesQuery.isLoading,
-    selectedSourceId,
-    sources
-  ]);
+  }, [dataSourcesQuery.isLoading, selectedSourceId, sources]);
 
   const openSourceManager = (sourceId: string) => {
     setSelectedSourceId(sourceId);
@@ -336,7 +324,7 @@ export function SettingsDataModelsSection({
       return updateSettingsDataModel(model.id, input, csrfToken);
     },
     onSuccess: async () => {
-      messageApi.success(i18nText("settings", "auto.data_model_saved"));
+      messageApi.success(i18nText('settings', 'auto.data_model_saved'));
       if (effectiveSourceId) {
         await queryClient.invalidateQueries({
           queryKey: settingsDataModelsQueryKey(effectiveSourceId)
@@ -353,7 +341,7 @@ export function SettingsDataModelsSection({
       return createSettingsDataModel(input, csrfToken);
     },
     onSuccess: async (model) => {
-      messageApi.success(i18nText("settings", "auto.data_model_created"));
+      messageApi.success(i18nText('settings', 'auto.data_model_created'));
       setSelectedModelId(model.id);
       if (effectiveSourceId) {
         await queryClient.invalidateQueries({
@@ -371,7 +359,7 @@ export function SettingsDataModelsSection({
       return deleteSettingsDataModel(model.id, csrfToken);
     },
     onSuccess: async (_result, model) => {
-      messageApi.success(i18nText("settings", "auto.data_model_deleted"));
+      messageApi.success(i18nText('settings', 'auto.data_model_deleted'));
       if (selectedModelId === model.id) {
         setSelectedModelId(null);
       }
@@ -400,7 +388,7 @@ export function SettingsDataModelsSection({
       return createSettingsDataModelField(model.id, input, csrfToken);
     },
     onSuccess: async () => {
-      messageApi.success(i18nText("settings", "auto.field_created"));
+      messageApi.success(i18nText('settings', 'auto.field_created'));
       if (effectiveSourceId) {
         await queryClient.invalidateQueries({
           queryKey: settingsDataModelsQueryKey(effectiveSourceId)
@@ -425,7 +413,7 @@ export function SettingsDataModelsSection({
       return updateSettingsDataModelField(model.id, field.id, input, csrfToken);
     },
     onSuccess: async () => {
-      messageApi.success(i18nText("settings", "auto.field_saved"));
+      messageApi.success(i18nText('settings', 'auto.field_saved'));
       if (effectiveSourceId) {
         await queryClient.invalidateQueries({
           queryKey: settingsDataModelsQueryKey(effectiveSourceId)
@@ -448,7 +436,7 @@ export function SettingsDataModelsSection({
       return deleteSettingsDataModelField(model.id, field.id, csrfToken);
     },
     onSuccess: async () => {
-      messageApi.success(i18nText("settings", "auto.field_deleted"));
+      messageApi.success(i18nText('settings', 'auto.field_deleted'));
       if (effectiveSourceId) {
         await queryClient.invalidateQueries({
           queryKey: settingsDataModelsQueryKey(effectiveSourceId)
@@ -508,11 +496,10 @@ export function SettingsDataModelsSection({
       heightMode="fill"
       status={
         errorMessage ? (
-          <Alert type="error" showIcon message={errorMessage} />
+          <Alert type="error" showIcon title={errorMessage} />
         ) : null
       }
     >
-      {contextHolder}
       <div className="data-model-panel">
         {selectedSource ? (
           <Flex vertical gap={16} className="data-model-panel__models">
@@ -527,7 +514,8 @@ export function SettingsDataModelsSection({
                         className="data-model-panel__breadcrumb-link"
                         onClick={closeSourceManager}
                       >
-                        {i18nText("settings", "auto.data_source_management")}</Button>
+                        {i18nText('settings', 'auto.data_source_management')}
+                      </Button>
                     )
                   },
                   { title: selectedSource.display_name }
@@ -541,7 +529,7 @@ export function SettingsDataModelsSection({
                 wrap="wrap"
               >
                 <Button
-                  aria-label={i18nText("settings", "auto.back")}
+                  aria-label={i18nText('settings', 'auto.back')}
                   className="data-model-panel__back-button"
                   icon={<ArrowLeftOutlined aria-hidden="true" />}
                   onClick={closeSourceManager}
@@ -570,7 +558,7 @@ export function SettingsDataModelsSection({
                   style={{ borderRadius: 12, margin: 0 }}
                 >
                   {selectedSource.status === 'ready'
-                    ? i18nText("settings", "auto.ready")
+                    ? i18nText('settings', 'auto.ready')
                     : selectedSource.status}
                 </Tag>
                 {selectedRuntimeExtensionDataSource ? (
@@ -581,7 +569,6 @@ export function SettingsDataModelsSection({
                   </Typography.Text>
                 ) : null}
               </Flex>
-
             </div>
             {selectedRuntimeExtensionDataSource ? (
               <DataSourceResourcesPanel
@@ -592,8 +579,8 @@ export function SettingsDataModelsSection({
                 discovering={discoverResourcesMutation.isPending}
                 previewingResourceKey={
                   previewResourceMutation.isPending
-                    ? (previewResourceMutation.variables?.resource.resource_key ??
-                      null)
+                    ? (previewResourceMutation.variables?.resource
+                        .resource_key ?? null)
                     : null
                 }
                 mappingResourceKey={
@@ -660,7 +647,11 @@ export function SettingsDataModelsSection({
 
             <DataModelDetailDrawer
               title={
-                editingModel ? i18nText("settings", "auto.edit_item", { value1: editingModel.title }) : i18nText("settings", "auto.edit_data_model")
+                editingModel
+                  ? i18nText('settings', 'auto.edit_item', {
+                      value1: editingModel.title
+                    })
+                  : i18nText('settings', 'auto.edit_data_model')
               }
               open={Boolean(editingModel)}
               onClose={() => setEditingModelId(null)}

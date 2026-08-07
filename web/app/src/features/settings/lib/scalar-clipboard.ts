@@ -1,4 +1,4 @@
-import { message } from 'antd';
+import type { MessageInstance } from 'antd/es/message/interface';
 import { i18nText } from '../../../shared/i18n/text';
 
 type FlowseClipboard = Clipboard & {
@@ -8,6 +8,7 @@ type FlowseClipboard = Clipboard & {
 
 const scalarOperationPathPattern =
   /(?:^|\/)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE)\/(.+)$/i;
+let activeMessage: MessageInstance | null = null;
 
 export function normalizeScalarClipboardText(text: string): string {
   const hashMatch = text.match(/#(.+)$/);
@@ -44,9 +45,9 @@ async function copyTextWithExecCommand(text: string) {
       throw new Error('Copy command failed');
     }
 
-    message.success(i18nText("settings", "auto.copied") + text);
+    activeMessage?.success(i18nText('settings', 'auto.copied') + text);
   } catch (err) {
-    message.error(i18nText("settings", "auto.copy_failed_manual"));
+    activeMessage?.error(i18nText('settings', 'auto.copy_failed_manual'));
     console.error('Copy failed:', err);
     throw err;
   } finally {
@@ -54,9 +55,13 @@ async function copyTextWithExecCommand(text: string) {
   }
 }
 
-export function installScalarClipboardPatch() {
+export function installScalarClipboardPatch(message: MessageInstance) {
+  activeMessage = message;
+
   if (typeof navigator === 'undefined') {
-    return;
+    return () => {
+      if (activeMessage === message) activeMessage = null;
+    };
   }
 
   const clipboard = (navigator.clipboard ?? {
@@ -71,7 +76,9 @@ export function installScalarClipboardPatch() {
   }
 
   if (clipboard.__flowbaseScalarPatched__) {
-    return;
+    return () => {
+      if (activeMessage === message) activeMessage = null;
+    };
   }
 
   const originalWriteText =
@@ -83,4 +90,8 @@ export function installScalarClipboardPatch() {
     originalWriteText(normalizeScalarClipboardText(text));
   clipboard.__flowbaseOriginalWriteText__ = originalWriteText;
   clipboard.__flowbaseScalarPatched__ = true;
+
+  return () => {
+    if (activeMessage === message) activeMessage = null;
+  };
 }

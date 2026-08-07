@@ -679,7 +679,7 @@ export function MemoryStatsOverviewPane({
         dataIndex: 'label',
         key: 'label',
         render: (label: string, item) => (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Typography.Text strong>{label}</Typography.Text>
             <Typography.Text type="secondary">
               {item.contract_code}
@@ -723,13 +723,13 @@ export function MemoryStatsOverviewPane({
       <Alert
         type="warning"
         showIcon
-        message={i18nText('settings', 'auto.statistics_loading_failed')}
+        title={i18nText('settings', 'auto.statistics_loading_failed')}
       />
     );
   }
 
   return (
-    <Space direction="vertical" size={16} className="host-memory-panel__stats">
+    <Space orientation="vertical" size={16} className="host-memory-panel__stats">
       <div className="host-memory-panel__stats-report">
         <div className="host-memory-panel__stats-report-header">
           <Typography.Text strong>

@@ -12,7 +12,7 @@ function renderStatusTag(status: string) {
         <Tag
           className="model-provider-panel__instance-status-tag"
           color="green"
-          bordered={false}
+          variant="filled"
         >
           ready
         </Tag>
@@ -22,14 +22,14 @@ function renderStatusTag(status: string) {
         <Tag
           className="model-provider-panel__instance-status-tag"
           color="red"
-          bordered={false}
+          variant="filled"
         >
           invalid
         </Tag>
       );
     case 'disabled':
       return (
-        <Tag className="model-provider-panel__instance-status-tag" bordered={false}>
+        <Tag className="model-provider-panel__instance-status-tag" variant="filled">
           disabled
         </Tag>
       );
@@ -38,7 +38,7 @@ function renderStatusTag(status: string) {
         <Tag
           className="model-provider-panel__instance-status-tag"
           color="gold"
-          bordered={false}
+          variant="filled"
         >
           {status}
         </Tag>

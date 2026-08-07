@@ -99,7 +99,7 @@ function PromptMessageRoleSelect({
         onClick: ({ key }) => onChange(key as LlmPromptMessageRole),
         selectedKeys: [value]
       }}
-      overlayClassName="agent-flow-llm-prompt-messages__role-dropdown"
+      classNames={{ root: 'agent-flow-llm-prompt-messages__role-dropdown' }}
       placement="bottomLeft"
       trigger={['click']}
     >

@@ -97,7 +97,7 @@ export function McpProxyToolDebugPanel({
   };
 
   return (
-    <Space direction="vertical" size="middle" className="mcp-management__stack">
+    <Space orientation="vertical" size="middle" className="mcp-management__stack">
       {inputMapping.mappings.map((mapping) => (
         <Form.Item
           key={mapping.local_path}
@@ -119,7 +119,7 @@ export function McpProxyToolDebugPanel({
       <Button type="primary" loading={running} onClick={() => void run()}>
         {text('proxy_run_debug')}
       </Button>
-      {error ? <Alert type="error" message={error} /> : null}
+      {error ? <Alert type="error" title={error} /> : null}
       {result ? (
         <div className="mcp-management__proxy-debug-results">
           <JsonPreviewBlock

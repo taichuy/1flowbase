@@ -427,7 +427,7 @@ export function RoleDataPolicySection({
         dataIndex: 'title',
         key: 'title',
         render: (_value, model) => (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Typography.Text>{model.title}</Typography.Text>
             <Typography.Text type="secondary">{model.code}</Typography.Text>
           </Space>
@@ -490,7 +490,7 @@ export function RoleDataPolicySection({
           replaceDataPolicyMutation.mutate();
         }}
       >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         {section === 'default-policy' ? (
           <section aria-label={i18nText("settings", "auto.default_policy")}>
             <Typography.Title level={5} style={{ marginTop: 0 }}>

@@ -23,14 +23,14 @@ export function ChangePasswordForm({
   const [form] = Form.useForm<ChangePasswordValues>();
 
   return (
-    <Space className={className} direction="vertical" size="large">
+    <Space className={className} orientation="vertical" size="large">
       <div>
         <Typography.Title level={3}>{i18nText("me", "auto.security_settings")}</Typography.Title>
         <Typography.Paragraph>
           {i18nText("me", "auto.password_update_notice")}</Typography.Paragraph>
       </div>
 
-      {errorMessage ? <Alert type="error" message={errorMessage} showIcon /> : null}
+      {errorMessage ? <Alert type="error" title={errorMessage} showIcon /> : null}
 
       <Form<ChangePasswordValues>
         form={form}

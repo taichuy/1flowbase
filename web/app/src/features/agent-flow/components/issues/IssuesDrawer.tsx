@@ -1,7 +1,8 @@
-import { Button, Drawer, List, Space, Tag, Typography } from 'antd';
+import { Button, Drawer, Space, Tag, Typography } from 'antd';
 
 import type { AgentFlowIssue } from '../../lib/validate-document';
 import { i18nText } from '../../../../shared/i18n/text';
+import '../../../../shared/ui/structured-list/structured-list.css';
 
 interface IssuesDrawerProps {
   open: boolean;
@@ -22,29 +23,40 @@ export function IssuesDrawer({
       open={open}
       placement="right"
       title="Issues"
-      width={360}
+      size={360}
       onClose={onClose}
     >
-      <List
-        dataSource={issues}
-        locale={{ emptyText: i18nText("agentFlow", "auto.static_issues_draft") }}
-        renderItem={(issue) => (
-          <List.Item>
-            <Space direction="vertical" size={4}>
-              <Button type="link" onClick={() => onSelectIssue(issue)}>
-                {issue.title}
-              </Button>
-              <Space size={8}>
-                <Tag color={issue.level === 'error' ? 'red' : 'gold'}>
-                  {issue.level === 'error' ? i18nText("agentFlow", "auto.error") : i18nText("agentFlow", "auto.warning")}
-                </Tag>
-                {issue.sectionKey ? <Tag>{issue.sectionKey}</Tag> : null}
+      {issues.length > 0 ? (
+        <ul className="structured-list__items">
+          {issues.map((issue, index) => (
+            <li
+              className="structured-list__item"
+              key={`${issue.sectionKey ?? 'issue'}-${index}`}
+            >
+              <Space orientation="vertical" size={4}>
+                <Button type="link" onClick={() => onSelectIssue(issue)}>
+                  {issue.title}
+                </Button>
+                <Space size={8}>
+                  <Tag color={issue.level === 'error' ? 'red' : 'gold'}>
+                    {issue.level === 'error'
+                      ? i18nText('agentFlow', 'auto.error')
+                      : i18nText('agentFlow', 'auto.warning')}
+                  </Tag>
+                  {issue.sectionKey ? <Tag>{issue.sectionKey}</Tag> : null}
+                </Space>
+                <Typography.Text type="secondary">
+                  {issue.message}
+                </Typography.Text>
               </Space>
-              <Typography.Text type="secondary">{issue.message}</Typography.Text>
-            </Space>
-          </List.Item>
-        )}
-      />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="structured-list__empty">
+          {i18nText('agentFlow', 'auto.static_issues_draft')}
+        </div>
+      )}
     </Drawer>
   );
 }

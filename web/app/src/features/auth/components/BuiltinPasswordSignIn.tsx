@@ -43,7 +43,7 @@ export function BuiltinPasswordSignIn({
   return (
     <Space
       data-testid="builtin-password-sign-in"
-      direction="vertical"
+      orientation="vertical"
       size="middle"
       style={{ width: '100%' }}
     >
@@ -63,7 +63,7 @@ export function BuiltinPasswordSignIn({
         <Alert
           type="error"
           showIcon
-          message={t('sign_in.fallback_authentication_failed')}
+          title={t('sign_in.fallback_authentication_failed')}
         />
       ) : null}
       <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>

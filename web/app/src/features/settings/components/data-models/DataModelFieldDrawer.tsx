@@ -573,7 +573,7 @@ export function DataModelFieldDrawer({
       <Drawer
         title={mode === 'create' ? i18nText("settings", "auto.add_new_field") : i18nText("settings", "auto.edit_field")}
         open={open}
-        width={560}
+        size={560}
         onClose={onClose}
         extra={
           <Space>

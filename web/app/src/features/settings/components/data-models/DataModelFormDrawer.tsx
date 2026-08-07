@@ -100,7 +100,7 @@ export function DataModelFormDrawer({
           : i18nText('settings', 'auto.edit_data_model')
       }
       open={open}
-      width={520}
+      size={520}
       onClose={onClose}
       extra={
         <Button

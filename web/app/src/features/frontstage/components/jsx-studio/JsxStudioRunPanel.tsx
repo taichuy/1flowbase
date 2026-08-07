@@ -312,7 +312,7 @@ export function JsxStudioRunPanel({
 
   const failed = snapshot?.status === 'failed';
   const preview = (
-    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="small" style={{ width: '100%' }}>
       <div
         ref={setPreviewRoot}
         data-testid="native-react-studio-preview-root"
@@ -342,7 +342,7 @@ export function JsxStudioRunPanel({
         <Alert
           type="error"
           showIcon
-          message={i18nText('frontstage', 'auto.run_failed')}
+          title={i18nText('frontstage', 'auto.run_failed')}
           action={
             <Button size="small" onClick={() => void retry()}>
               {i18nText('frontstage', 'auto.retry')}

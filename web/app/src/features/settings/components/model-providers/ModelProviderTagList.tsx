@@ -17,7 +17,7 @@ export function ModelProviderTagList({
       {modelIds.map((modelId) => (
         <Tag
           key={modelId}
-          bordered={false}
+          variant="filled"
           className="model-provider-panel__model-tag"
         >
           {modelId}

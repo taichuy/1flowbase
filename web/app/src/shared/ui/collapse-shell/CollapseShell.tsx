@@ -49,7 +49,7 @@ export function CollapseShell({
       activeKey={activeKey}
       defaultActiveKey={defaultActiveKey}
       destroyOnHidden={destroyOnHidden}
-      expandIconPosition={expandIconPosition}
+      expandIconPlacement={expandIconPosition}
       onChange={onChange}
       items={items.map((item) => ({
         key: item.key,

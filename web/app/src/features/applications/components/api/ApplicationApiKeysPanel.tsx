@@ -178,7 +178,7 @@ export function ApplicationApiKeysPanel({
           footer={null}
           onCancel={() => setListOpen(false)}
         >
-          <Space direction="vertical" size={16} className="application-api-key-list-modal">
+          <Space orientation="vertical" size={16} className="application-api-key-list-modal">
             <div className="application-api-panel__header">
               <Typography.Text type="secondary">
                 {t('auto.created')}{keys.length} {t('auto.key_count_suffix')}</Typography.Text>
@@ -229,7 +229,7 @@ export function ApplicationApiKeysPanel({
               {t('auto.copy')}</Button>
           ]}
         >
-          <Space direction="vertical" className="application-api-token-modal">
+          <Space orientation="vertical" className="application-api-token-modal">
             <Typography.Text>{t('auto.full_token_shown_once')}</Typography.Text>
             <Typography.Text type="secondary">
               {t('auto.full_token_hidden_after_close')}</Typography.Text>
@@ -294,7 +294,7 @@ export function ApplicationApiKeysPanel({
             {t('auto.copy')}</Button>
         ]}
       >
-        <Space direction="vertical" className="application-api-token-modal">
+        <Space orientation="vertical" className="application-api-token-modal">
           <Typography.Text>{t('auto.full_token_shown_once')}</Typography.Text>
           <Typography.Text type="secondary">
             {t('auto.full_token_hidden_after_close')}</Typography.Text>

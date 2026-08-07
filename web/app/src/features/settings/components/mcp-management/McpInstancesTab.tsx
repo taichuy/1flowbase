@@ -1,6 +1,7 @@
 import { FolderOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  App,
   Button,
   Flex,
   Form,
@@ -9,8 +10,7 @@ import {
   Space,
   Switch,
   Tag,
-  Typography,
-  message
+  Typography
 } from 'antd';
 import {
   useCallback,
@@ -106,6 +106,7 @@ export function McpInstancesTab({
   canManage: boolean;
   catalog: ConsoleMcpCatalog;
 }) {
+  const { message } = App.useApp();
   const csrfToken = useCsrfToken();
   const queryClient = useQueryClient();
   const exportDefaults = useQuery({
@@ -704,7 +705,7 @@ export function McpInstancesTab({
     : undefined;
 
   return (
-    <Space direction="vertical" size="middle" className="mcp-management__stack">
+    <Space orientation="vertical" size="middle" className="mcp-management__stack">
       <McpInstanceTable
         onCreate={() => {
           setEditingInstance(null);
@@ -1125,7 +1126,9 @@ export function McpInstancesTab({
                   >
                     <Input />
                   </Form.Item>
-                  <Form.Item name="path" hidden rules={[{ required: true }]} />
+                  <Form.Item name="path" hidden rules={[{ required: true }]}>
+                    <Input />
+                  </Form.Item>
                   <Form.Item
                     id="path"
                     label={i18nText(
@@ -1269,7 +1272,9 @@ export function McpInstancesTab({
                     name="group_path"
                     hidden
                     rules={[{ required: true }]}
-                  />
+                  >
+                    <Input />
+                  </Form.Item>
                   <Form.Item
                     id="group_path"
                     label={i18nText('settings', 'auto.mount_path')}

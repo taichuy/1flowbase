@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
+import { App } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -102,7 +103,9 @@ function renderPage() {
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppI18nProvider>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <App>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </App>
     </AppI18nProvider>
   );
   return render(<TemplatesPage />, { wrapper });
@@ -250,11 +253,12 @@ describe('installed Agent Flow template library', () => {
         applicationsApi.previewInstalledApplicationExtension
       ).toHaveBeenCalledWith('installation-version-2');
     });
-    const importTitle = (await screen.findAllByText('导入应用压缩包')).find(
-      (element) => element.closest('[role="dialog"]')
-    );
-    const importDialog = importTitle?.closest('[role="dialog"]') ?? null;
+    const importNameInput = await screen.findByDisplayValue('Fusion 1');
+    const importDialog = importNameInput.closest('[role="dialog"]');
     expect(importDialog).not.toBeNull();
+    expect(
+      within(importDialog as HTMLElement).getByText('导入')
+    ).toBeInTheDocument();
     expect(
       within(importDialog as HTMLElement).getByDisplayValue('Fusion 1')
     ).toBeInTheDocument();

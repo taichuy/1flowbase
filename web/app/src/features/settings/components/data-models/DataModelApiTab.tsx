@@ -323,7 +323,7 @@ export function DataModelApiTab({
           <Alert
             type="warning"
             showIcon
-            message={i18nText('settings', 'auto.openapi_contract_load_failed')}
+            title={i18nText('settings', 'auto.openapi_contract_load_failed')}
           />
         ) : null}
         {model.fields.length === 0 ? (

@@ -279,7 +279,7 @@ function OfficialPluginInstallConfirmContent({
           <Alert
             type="warning"
             showIcon
-            message={i18nText(
+            title={i18nText(
               'settings',
               'auto.host_version_below_minimum_warning'
             )}
@@ -666,7 +666,7 @@ export function OfficialPluginInstallPanel({
         <Alert
           type="warning"
           showIcon
-          message={i18nText('settings', 'auto.official_supplier_catalog_stale')}
+          title={i18nText('settings', 'auto.official_supplier_catalog_stale')}
         />
       ) : null}
 
@@ -674,7 +674,7 @@ export function OfficialPluginInstallPanel({
         <Alert
           type="error"
           showIcon
-          message={catalogErrorMessage}
+          title={catalogErrorMessage}
           action={
             <Button size="small" onClick={onRetryCatalog}>
               {i18nText('settings', 'auto.reload_official_supplier_catalog')}

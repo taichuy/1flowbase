@@ -56,11 +56,11 @@ export function WorkflowExtensionApiPage({
   const operation = publication?.operation ?? null;
 
   if (mappingQuery.isError) {
-    return <Alert type="error" showIcon message={t('auto.trigger_load_failed')} />;
+    return <Alert type="error" showIcon title={t('auto.trigger_load_failed')} />;
   }
 
   return (
-    <Space direction="vertical" size="large" className="application-api-page">
+    <Space orientation="vertical" size="large" className="application-api-page">
       <Space wrap>
         <Typography.Title level={4} style={{ margin: 0 }}>
           {t('auto.workflow_extension_api')}

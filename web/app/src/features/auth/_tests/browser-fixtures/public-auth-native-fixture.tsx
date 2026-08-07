@@ -28,7 +28,7 @@ const source = `
     return <Space
       data-testid="public-auth-native-content"
       data-local-count={localCount}
-      direction="vertical"
+      orientation="vertical"
       size="middle"
       style={{ width: '100%' }}
     >
@@ -39,7 +39,7 @@ const source = `
           {mode === 'sign_in' ? 'Sign in' : 'Create an account'}
         </span>
       </h2>
-      {error ? <Alert type="error" showIcon message={error} /> : null}
+      {error ? <Alert type="error" showIcon title={error} /> : null}
       <form onSubmit={(event) => { event.preventDefault(); void submit({}); }}>
         <label>Account or email<Input autoComplete="username" /></label>
         {mode === 'sign_up' ? (

@@ -70,7 +70,7 @@ export function McpProxyMappingEditor({
   };
 
   return (
-    <Space direction="vertical" size="small" className="mcp-management__stack">
+    <Space orientation="vertical" size="small" className="mcp-management__stack">
       <Flex gap={8} align="center">
         <Typography.Text strong>
           {direction === 'input'

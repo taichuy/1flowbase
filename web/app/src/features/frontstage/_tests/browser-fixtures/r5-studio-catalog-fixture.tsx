@@ -1,5 +1,3 @@
-import '@ant-design/v5-patch-for-react-19';
-
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 import {
   validateNativeTrustedBlockSource,

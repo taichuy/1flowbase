@@ -46,7 +46,7 @@ export function ApplicationRunResumeCard({
     return (
       <div>
         <Typography.Title level={5}>{i18nText("applications", "auto.continue_execution")}</Typography.Title>
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <Typography.Text>
             {(latestCheckpoint.external_ref_payload?.prompt as string | undefined) ??
               i18nText("applications", "auto.manual_input_required")}
@@ -75,7 +75,7 @@ export function ApplicationRunResumeCard({
     return (
       <div>
         <Typography.Title level={5}>{i18nText("applications", "auto.callback_backfill")}</Typography.Title>
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <Typography.Text>{pendingCallback.callback_kind}</Typography.Text>
           <Input.TextArea
             aria-label={i18nText("applications", "auto.callback_response")}

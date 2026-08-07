@@ -35,7 +35,7 @@ export function SystemVariablesPanel({ onClose }: SystemVariablesPanelProps) {
           >
             <div className="agent-flow-editor__system-variable-main">
               <Typography.Text code>{variable.title}</Typography.Text>
-              <Tag bordered={false}>{variable.valueType}</Tag>
+              <Tag variant="filled">{variable.valueType}</Tag>
             </div>
             <Typography.Text type="secondary">
               {variable.description}

@@ -384,7 +384,7 @@ export function LlmParameterForm({
   }
 
   if (providerOptionsQuery.isError) {
-    return <Alert type="error" showIcon message={i18nText("agentFlow", "auto.parameter_schema_failed_load")} />;
+    return <Alert type="error" showIcon title={i18nText("agentFlow", "auto.parameter_schema_failed_load")} />;
   }
 
   if (!modelProvider.model_id) {
@@ -401,7 +401,7 @@ export function LlmParameterForm({
       <Alert
         type="warning"
         showIcon
-        message={i18nText("agentFlow", "auto.model_provider_unavailable_parameter_form_rendered")}
+        title={i18nText("agentFlow", "auto.model_provider_unavailable_parameter_form_rendered")}
       />
     );
   }
@@ -411,7 +411,7 @@ export function LlmParameterForm({
       <Alert
         type="warning"
         showIcon
-        message={i18nText("agentFlow", "auto.model_unavailable_parameter_form_rendered")}
+        title={i18nText("agentFlow", "auto.model_unavailable_parameter_form_rendered")}
       />
     );
   }

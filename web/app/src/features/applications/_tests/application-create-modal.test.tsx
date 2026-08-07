@@ -111,7 +111,9 @@ describe('ApplicationFormModal create intent', () => {
 
     fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
     expect(screen.queryByText('后端扩展触发描述')).not.toBeInTheDocument();
-    expect(screen.getByText('/api/ex/')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('textbox', { name: '/api/ex/' })
+    ).toHaveValue('/api/ex/');
     expect(screen.queryByText('访问策略')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '接口子路径' }), {
       target: { value: 'orders/create' }
@@ -154,7 +156,7 @@ describe('ApplicationFormModal create intent', () => {
     );
 
     fireEvent.click(await screen.findByRole('radio', { name: /Workflow/i }));
-    const triggerTypeSelect = screen.getByRole('combobox', {
+    const triggerTypeSelect = await screen.findByRole('combobox', {
       name: '触发方式'
     });
     fireEvent.mouseDown(triggerTypeSelect);

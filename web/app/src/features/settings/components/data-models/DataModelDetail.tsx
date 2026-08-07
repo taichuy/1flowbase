@@ -123,7 +123,7 @@ export function DataModelDetail({
         const canUpdatePresentation =
           field.capabilities.can_update_presentation_metadata;
         return (
-          <Space direction="vertical" size={2}>
+          <Space orientation="vertical" size={2}>
             <Space size={8}>
               <button
                 type="button"

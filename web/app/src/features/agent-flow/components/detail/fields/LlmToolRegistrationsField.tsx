@@ -1,14 +1,6 @@
 import type { FlowNodeDocument } from '@1flowbase/flow-schema';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import {
-  Button,
-  Checkbox,
-  Input,
-  List,
-  Select,
-  Switch,
-  Typography
-} from 'antd';
+import { Button, Checkbox, Input, Select, Switch, Typography } from 'antd';
 import { useReducer, useRef } from 'react';
 
 import type { SchemaFieldRendererProps } from '../../../../../shared/schema-ui/v1/registry/create-renderer-registry';
@@ -27,6 +19,7 @@ import {
 } from '../../../lib/llm-node-config';
 import { parseJsonSchemaInput } from '../../../lib/output-contract/schema';
 import { i18nText } from '../../../../../shared/i18n/text';
+import '../../../../../shared/ui/structured-list/structured-list.css';
 import { FloatingSettingsPanel } from '../FloatingSettingsPanel';
 import {
   JsonSchemaInlineEditor,
@@ -1092,55 +1085,58 @@ export function LlmToolRegistrationsField({
         </div>
       </div>
       {enabled ? (
-        <List
-          aria-label={i18nText('agentFlow', 'auto.tool_registration')}
-          bordered
-          dataSource={tools}
-          locale={{
-            emptyText: i18nText('agentFlow', 'auto.no_tool_registrations')
-          }}
-          renderItem={(tool, index) => {
-            const toolName = tool.tool_name || createToolName(index);
+        <div className="structured-list structured-list--bordered structured-list--small">
+          {tools.length > 0 ? (
+            <ul
+              aria-label={i18nText('agentFlow', 'auto.tool_registration')}
+              className="structured-list__items"
+            >
+              {tools.map((tool, index) => {
+                const toolName = tool.tool_name || createToolName(index);
 
-            return (
-              <List.Item
-                actions={[
-                  <Button
-                    aria-label={i18nText('agentFlow', 'auto.edit', {
-                      value1: toolName
-                    })}
-                    icon={<EditOutlined />}
-                    key="edit"
-                    size="small"
-                    type="text"
-                    onClick={(event) =>
-                      openToolEditor(index, tool, event.currentTarget)
-                    }
-                  />,
-                  <Button
-                    aria-label={i18nText('agentFlow', 'auto.delete_item', {
-                      value1: toolName
-                    })}
-                    danger
-                    icon={<DeleteOutlined />}
-                    key="delete"
-                    size="small"
-                    type="text"
-                    onClick={() =>
-                      updateTools(
-                        tools.filter((_, toolIndex) => toolIndex !== index)
-                      )
-                    }
-                  />
-                ]}
-              >
-                {toolName}
-              </List.Item>
-            );
-          }}
-          rowKey={(tool) => tool.connector_id || tool.tool_name}
-          size="small"
-        />
+                return (
+                  <li
+                    className="structured-list__item"
+                    key={tool.connector_id || tool.tool_name || index}
+                  >
+                    <span className="structured-list__content">{toolName}</span>
+                    <span className="structured-list__actions">
+                      <Button
+                        aria-label={i18nText('agentFlow', 'auto.edit', {
+                          value1: toolName
+                        })}
+                        icon={<EditOutlined />}
+                        size="small"
+                        type="text"
+                        onClick={(event) =>
+                          openToolEditor(index, tool, event.currentTarget)
+                        }
+                      />
+                      <Button
+                        aria-label={i18nText('agentFlow', 'auto.delete_item', {
+                          value1: toolName
+                        })}
+                        danger
+                        icon={<DeleteOutlined />}
+                        size="small"
+                        type="text"
+                        onClick={() =>
+                          updateTools(
+                            tools.filter((_, toolIndex) => toolIndex !== index)
+                          )
+                        }
+                      />
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="structured-list__empty">
+              {i18nText('agentFlow', 'auto.no_tool_registrations')}
+            </div>
+          )}
+        </div>
       ) : null}
       <FloatingSettingsPanel
         className="agent-flow-llm-tool-registration-panel"

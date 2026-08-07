@@ -18,7 +18,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
   type TableProps
 } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
@@ -99,7 +99,7 @@ export function McpTemplateLibrary({
 }) {
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
-  const [messageApi, messageContextHolder] = message.useMessage();
+  const { message: messageApi } = App.useApp();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [importSource, setImportSource] =
     useState<McpBundleImportSource | null>(null);
@@ -504,7 +504,6 @@ export function McpTemplateLibrary({
 
   return (
     <div className={`mcp-template-library mcp-template-library--${variant}`}>
-      {messageContextHolder}
       <Flex justify="space-between" align="center" gap={12} wrap>
         <Typography.Text type="secondary">
           {i18nText(
@@ -528,7 +527,7 @@ export function McpTemplateLibrary({
         <Alert
           showIcon
           type="warning"
-          message={i18nText(
+          title={i18nText(
             'settingsMcpManagement',
             'auto.mcp_template_remote_unavailable'
           )}
@@ -538,7 +537,7 @@ export function McpTemplateLibrary({
         <Alert
           showIcon
           type="error"
-          message={
+          title={
             libraryQuery.error instanceof Error
               ? libraryQuery.error.message
               : String(libraryQuery.error)
@@ -556,7 +555,7 @@ export function McpTemplateLibrary({
       <Drawer
         open={Boolean(selected)}
         title={selected ? bundleKey(selected) : undefined}
-        width={variant === 'compact' ? 760 : 900}
+        size={variant === 'compact' ? 760 : 900}
         onClose={() => setSelectedKey(null)}
       >
         {selected ? (

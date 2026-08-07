@@ -1116,7 +1116,7 @@ export function ApplicationLogsPage({
             </Button>
           }
           description={t('auto.logs_load_failed_description')}
-          message={t('auto.logs_load_failed')}
+          title={t('auto.logs_load_failed')}
           showIcon
           type="error"
         />

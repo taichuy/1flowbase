@@ -124,11 +124,11 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
           zIndex: 10
         }}
       >
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="large" style={{ width: '100%' }}>
           {loginInstances.length > 1 && !selectedLoginInstance ? (
             <Space
               className="auth-sign-in-selector"
-              direction="vertical"
+              orientation="vertical"
               size={12}
               style={{ width: '100%' }}
             >

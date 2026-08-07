@@ -166,7 +166,7 @@ export function BlockRendererError({
       role="alert"
       type="error"
       showIcon
-      message="Block UI schema is invalid"
+      title="Block UI schema is invalid"
       description={
         firstError
           ? `${firstError.code}: ${firstError.path} ${firstError.message}`
@@ -247,7 +247,7 @@ function renderNode(node: BlockUiSchemaNode, context: RenderContext): ReactNode 
         <AntdAlert
           key={key}
           type={readAlertType(props.type)}
-          message={readRenderable(props.message)}
+          title={readRenderable(props.message)}
           description={readRenderable(props.description)}
           showIcon={readBoolean(props.showIcon)}
           style={style}

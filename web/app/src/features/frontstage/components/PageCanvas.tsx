@@ -281,7 +281,7 @@ function NativeRuntimeSlotSurface({
         <Alert
           type="error"
           showIcon
-          message={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+          title={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
           description={
             preparation.status === 'failed'
               ? preparation.error.message
@@ -550,7 +550,7 @@ function RenderPlanSlot({
           <Alert
             type="error"
             showIcon
-            message={rendererVersionError.message}
+            title={rendererVersionError.message}
             description={rendererVersionError.description}
           />
         </div>
@@ -752,7 +752,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           padding: 12
         }}
       >
-        <Space direction="vertical" size={4}>
+        <Space orientation="vertical" size={4}>
           <Typography.Text strong>
             {i18nText('frontstage', 'auto.page_content_loading')}
           </Typography.Text>
@@ -773,7 +773,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
       <Alert
         type="error"
         showIcon
-        message={i18nText('frontstage', 'auto.page_content_load_failed')}
+        title={i18nText('frontstage', 'auto.page_content_load_failed')}
         description={i18nText('frontstage', 'auto.network_retry')}
         action={
           onRetry ? (
@@ -791,7 +791,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   }
 
   return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={12} style={{ width: '100%' }}>
       {showTitle ? (
         <Typography.Title level={4} style={{ margin: 0 }}>
           {formatPageTitle(content)}

@@ -227,7 +227,7 @@ export function PublicAuthBlock({
   }, [prepare]);
 
   return (
-    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="small" style={{ width: '100%' }}>
       <div
         ref={setRenderRoot}
         data-testid="native-react-public-auth-root"

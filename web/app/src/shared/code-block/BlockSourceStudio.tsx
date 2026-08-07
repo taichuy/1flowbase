@@ -251,7 +251,7 @@ function BlockSourceStudioWindow({
             <div className="frontstage-jsx-studio__editor-notice">
               {editorNotice}
               {errorMessage ? (
-                <Alert message={errorMessage} showIcon type="error" />
+                <Alert title={errorMessage} showIcon type="error" />
               ) : null}
             </div>
             <div className="frontstage-jsx-studio__monaco">
