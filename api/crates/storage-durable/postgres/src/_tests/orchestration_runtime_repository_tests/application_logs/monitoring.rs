@@ -591,6 +591,55 @@ async fn application_run_monitoring_compares_tokens_with_previous_window() {
 }
 
 #[tokio::test]
+async fn monitoring_source_breakdown_includes_assistant_execution() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-08-07 16:00:00 UTC);
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::AssistantExecution,
+        None,
+    )
+    .await;
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+        &store,
+        &UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({ "answer": "done" }),
+            error_payload: None,
+            finished_at: Some(started_at + Duration::seconds(1)),
+        },
+    )
+    .await
+    .unwrap();
+
+    let report =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
+            &store,
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: Some(started_at - Duration::seconds(1)),
+                started_to: Some(started_at + Duration::seconds(2)),
+                bucket: "hour".to_string(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(report.overview.total_count, 1);
+    assert_eq!(report.sources.len(), 1);
+    assert_eq!(report.sources[0].invocation_source, "assistant");
+}
+
+#[tokio::test]
 async fn application_run_monitoring_report_aggregates_terminal_log_summaries_by_started_at() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();

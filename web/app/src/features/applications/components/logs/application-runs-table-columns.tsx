@@ -54,6 +54,8 @@ function invocationSourceLabel(
   switch (value) {
     case 'agent_flow_api':
       return t('auto.invocation_source_agent_flow_api');
+    case 'assistant':
+      return t('auto.invocation_source_assistant');
     case 'workflow_http':
       return t('auto.invocation_source_workflow_http');
     case 'workflow_schedule':

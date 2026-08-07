@@ -171,6 +171,7 @@
     "execution_stage_debug": "Debug",
     "invocation_source": "Invocation source",
     "invocation_source_agent_flow_api": "AgentFlow API",
+    "invocation_source_assistant": "Assistant",
     "invocation_source_workflow_http": "Workflow HTTP",
     "invocation_source_workflow_schedule": "Workflow Schedule",
     "invocation_source_debug": "Debug invocation",

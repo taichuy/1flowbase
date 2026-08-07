@@ -180,6 +180,12 @@ function monitoringReport() {
         request_count: 2,
         success_rate: 1,
         total_tokens: 1000
+      },
+      {
+        invocation_source: 'assistant',
+        request_count: 1,
+        success_rate: 1,
+        total_tokens: 600
       }
     ],
     authorized_accounts: [
@@ -431,6 +437,7 @@ describe('ApplicationMonitoringPage', () => {
     expect(screen.getByText('Model requests')).toBeInTheDocument();
     expect(screen.getByText('customer-1')).toBeInTheDocument();
     expect(screen.getByText('Customer API')).toBeInTheDocument();
+    expect(screen.getByText('Assistant')).toBeInTheDocument();
     expect(screen.getAllByText('最慢运行').length).toBeGreaterThan(0);
     expect(echartsMock.chart.setOption).toHaveBeenCalled();
     const tokenTrendOption = echartsMock.chart.setOption.mock.calls[0]?.[0];

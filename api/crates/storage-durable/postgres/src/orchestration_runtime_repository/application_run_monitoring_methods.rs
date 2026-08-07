@@ -501,6 +501,7 @@ impl PgControlPlaneStore {
                 select
                     case run_mode
                         when 'published_api_run' then 'agent_flow_api'
+                        when 'assistant_execution' then 'assistant'
                         when 'workflow_http_run' then 'workflow_http'
                         when 'workflow_schedule_run' then 'workflow_schedule'
                         when 'debug_node_preview' then 'debug'
