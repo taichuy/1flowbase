@@ -42,7 +42,8 @@ impl PgControlPlaneStore {
         let is_terminal = is_terminal_application_run_log_status(flow_run.status);
         let mut tx = self.pool().begin().await?;
 
-        Self::upsert_visible_application_run_log_summary_projection(&mut tx, flow_run).await?;
+        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, flow_run)
+            .await?;
         if is_terminal {
             Self::ensure_application_run_conversation_message_items_projection(&mut tx, flow_run)
                 .await?;
@@ -60,36 +61,15 @@ impl PgControlPlaneStore {
         Ok(())
     }
 
-    async fn upsert_visible_application_run_log_summary_projection(
+    async fn upsert_application_run_log_summary_projection_for_flow_run(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run: &domain::FlowRunRecord,
     ) -> Result<()> {
-        if is_anthropic_claude_code_internal_run(flow_run) {
-            Self::delete_application_run_log_summary_projection(tx, flow_run.id).await?;
-            return Ok(());
-        }
-
         let display_title = control_plane::flow_run_title::display_flow_run_title(
             &flow_run.title,
             &flow_run.input_payload,
         );
         Self::upsert_application_run_log_summary_projection(tx, flow_run, &display_title).await
-    }
-
-    async fn delete_application_run_log_summary_projection(
-        tx: &mut sqlx::Transaction<'_, Postgres>,
-        flow_run_id: Uuid,
-    ) -> Result<()> {
-        sqlx::query(
-            r#"
-            delete from application_run_log_summaries
-            where flow_run_id = $1
-            "#,
-        )
-        .bind(flow_run_id)
-        .execute(&mut **tx)
-        .await?;
-        Ok(())
     }
 
     async fn upsert_application_run_log_summary_projection(
@@ -535,18 +515,14 @@ impl PgControlPlaneStore {
             input.sort_by.as_deref(),
             input.sort_order.as_deref(),
         );
-        let visible_filter =
-            visible_application_run_log_summary_filter_sql("application_run_log_summaries");
-
-        let total = sqlx::query_scalar::<_, i64>(&format!(
+        let total = sqlx::query_scalar::<_, i64>(
             r#"
             select count(*)::bigint
             from application_run_log_summaries
             where application_id = $1
               and ($2::timestamptz is null or created_at >= $2)
-              and {visible_filter}
             "#,
-        ))
+        )
         .bind(application_id)
         .bind(created_after)
         .fetch_one(self.pool())
@@ -581,12 +557,10 @@ impl PgControlPlaneStore {
             from application_run_log_summaries
             where application_id = $1
               and ($2::timestamptz is null or created_at >= $2)
-              and {visible_filter}
             order by {order_by}
             limit $3 offset $4
             "#,
-            order_by = order_by,
-            visible_filter = visible_filter
+            order_by = order_by
         ))
         .bind(application_id)
         .bind(created_after)
@@ -618,28 +592,6 @@ impl PgControlPlaneStore {
         })
     }
 
-}
-
-fn visible_application_run_log_summary_filter_sql(summary_table: &str) -> String {
-    let hidden_internal_run_filter = hidden_anthropic_claude_code_internal_run_sql("runs");
-    format!(
-        r#"
-        not exists (
-            select 1
-            from flow_runs runs
-            where runs.id = {summary_table}.flow_run_id
-              and ({hidden_internal_run_filter})
-        )
-        and exists (
-            select 1
-            from flow_runs runs
-            left join run_archive_import_jobs import_jobs on import_jobs.id = runs.import_job_id
-            where runs.id = {summary_table}.flow_run_id
-              and (runs.import_job_id is null or import_jobs.status = 'succeeded')
-        )
-        "#,
-        hidden_internal_run_filter = hidden_internal_run_filter
-    )
 }
 
 #[derive(Debug)]

@@ -793,8 +793,6 @@ fn normalize_application_run_monitoring_bucket(input: &str) -> &'static str {
 }
 
 fn application_run_monitoring_logs_query(select_sql: &str) -> String {
-    let visible_filter =
-        visible_application_run_log_summary_filter_sql("application_run_log_summaries");
     format!(
         r#"
         with monitoring_logs as (
@@ -804,7 +802,6 @@ fn application_run_monitoring_logs_query(select_sql: &str) -> String {
               and ($2::timestamptz is null or started_at >= $2)
               and ($3::timestamptz is null or started_at < $3)
               and status in ('succeeded', 'incomplete', 'failed', 'cancelled')
-              and {visible_filter}
         )
         {select_sql}
         "#

@@ -755,7 +755,7 @@ async fn application_run_detail_stitches_prior_conversation_tool_trace() {
 }
 
 #[tokio::test]
-async fn application_run_detail_hides_failed_imported_stitched_sources_and_boundaries() {
+async fn failed_imported_runs_stay_in_logs_and_monitoring_but_not_stitched_detail() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -878,6 +878,50 @@ async fn application_run_detail_hides_failed_imported_stitched_sources_and_bound
         .collect::<Vec<_>>();
 
     assert_eq!(stitched_source_ids, vec![visible_prior.id]);
+
+    let logs =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_logs_page(
+            &store,
+            seeded.application_id,
+            ListApplicationRunsPageInput {
+                page: 1,
+                page_size: 20,
+                created_after: Some(visible_started_at - Duration::seconds(1)),
+                sort_by: Some("created_at".to_string()),
+                sort_order: Some("asc".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+    let log_ids = logs
+        .items
+        .iter()
+        .map(|summary| summary.run.id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        log_ids,
+        vec![
+            visible_prior.id,
+            hidden_boundary.id,
+            hidden_prior.id,
+            current_run.id
+        ]
+    );
+
+    let report =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
+            &store,
+            seeded.application_id,
+            GetApplicationRunMonitoringReportInput {
+                started_from: Some(visible_started_at - Duration::seconds(1)),
+                started_to: Some(current_started_at + Duration::seconds(2)),
+                bucket: "hour".to_string(),
+                slow_run_threshold_ms: 30_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(report.overview.total_count, 4);
 }
 
 #[tokio::test]

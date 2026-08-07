@@ -792,7 +792,8 @@ impl PgControlPlaneStore {
         .await?;
 
         let flow_run = map_flow_run_record(row)?;
-        Self::upsert_visible_application_run_log_summary_projection(&mut tx, &flow_run).await?;
+        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
+            .await?;
         if is_terminal_application_run_log_status(flow_run.status) {
             Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
                 .await?;
@@ -871,7 +872,8 @@ impl PgControlPlaneStore {
 
         if let Some(row) = row {
             let flow_run = map_flow_run_record(row)?;
-            Self::upsert_visible_application_run_log_summary_projection(&mut tx, &flow_run).await?;
+            Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
+                .await?;
             if is_terminal_application_run_log_status(flow_run.status) {
                 Self::replace_application_run_conversation_message_items_projection(
                     &mut tx, &flow_run,
@@ -982,7 +984,8 @@ impl PgControlPlaneStore {
         };
 
         let flow_run = map_flow_run_record(row)?;
-        Self::upsert_visible_application_run_log_summary_projection(&mut tx, &flow_run).await?;
+        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
+            .await?;
         Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)
             .await?;
 
