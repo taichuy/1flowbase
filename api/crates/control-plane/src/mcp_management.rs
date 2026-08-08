@@ -5,7 +5,12 @@ use rand_core::{OsRng, RngCore};
 use regex::Regex;
 use uuid::Uuid;
 
+mod llm_registration;
 mod upstream_contract;
+pub use llm_registration::{
+    mcp_llm_instance_registration, mcp_llm_registrations, McpLlmOperation, McpLlmRegistration,
+    McpLlmRegistrationSource,
+};
 use upstream_contract::{
     proxy_input_mapping, proxy_output_mapping, proxy_tool_id, validate_proxy_mapping_contract,
     validate_upstream_endpoint, validate_upstream_header_name,

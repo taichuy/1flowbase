@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
@@ -24,7 +24,7 @@ use control_plane::{
         spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{OrchestrationRuntimeRepository, RuntimeEventPayload, RuntimeEventStreamPolicy},
+    ports::{OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
     profile::{ProfileService, UpdateMeMetaCommand},
 };
 use domain::mcp_management::McpInstanceStatus;
@@ -36,6 +36,8 @@ use uuid::Uuid;
 
 pub(crate) mod websocket;
 
+#[cfg(test)]
+use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -48,7 +50,7 @@ use crate::{
         application_public_api::native::api_provider_runtime,
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
         debug_run_stream,
-        mcp_protocol::virtual_ui::{self, VirtualMcpScope, VirtualToolOutcome},
+        mcp_protocol::virtual_ui,
     },
 };
 
@@ -181,11 +183,9 @@ pub struct AssistantConversationMessageResponse {
 struct PreparedAssistantExecution {
     application_id: Uuid,
     conversation_id: Uuid,
-    actor_user_id: Uuid,
     actor: domain::ActorContext,
     flow_run_id: Uuid,
-    catalog: domain::McpCatalogSnapshot,
-    mcp_scope: VirtualMcpScope,
+    mcp_instance_ids: Vec<String>,
     request_headers: HeaderMap,
 }
 
@@ -533,6 +533,15 @@ pub async fn start_run(
     context.cookie_session()?;
     require_csrf(&headers, &context)?;
     let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
+    let mcp_runtime_invoker = Arc::new(
+        virtual_ui::ApiMcpRuntimeToolInvoker::new(
+            state.clone(),
+            execution.request_headers.clone(),
+            execution.actor.clone(),
+            execution.mcp_instance_ids.clone(),
+        )
+        .await?,
+    );
     let runtime = OrchestrationRuntimeService::new(
         state.store.clone(),
         api_provider_runtime(&state),
@@ -544,38 +553,16 @@ pub async fn start_run(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue());
-    let mut detail = runtime
+    let detail = runtime
         .start_published_flow_run(StartPublishedFlowRunCommand {
             application_id: execution.application_id,
             flow_run_id: execution.flow_run_id,
             provider_transport_slot: None,
         })
         .await?;
-    while detail.flow_run.status == domain::FlowRunStatus::WaitingCallback {
-        let callback = detail
-            .callback_tasks
-            .iter()
-            .find(|task| {
-                task.status == domain::CallbackTaskStatus::Pending
-                    && task.callback_kind == "llm_tool_calls"
-            })
-            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                "assistant_callback",
-            ))?;
-        let tool_results = assistant_callback_tool_results(&state, &execution, callback).await?;
-        detail = runtime
-            .complete_callback_task(
-                control_plane::orchestration_runtime::CompleteCallbackTaskCommand {
-                    actor_user_id: execution.actor_user_id,
-                    application_id: execution.application_id,
-                    callback_task_id: callback.id,
-                    response_payload: json!({"tool_results": tool_results}),
-                },
-            )
-            .await?;
-    }
     let native_result = native_result_from_run_detail(&detail, json!({}));
     Ok(Json(ApiSuccess::new(AssistantRunResponse {
         id: detail.flow_run.id,
@@ -649,6 +636,15 @@ async fn launch_assistant_execution(
         .append(run_id, debug_stream_events::heartbeat())
         .await?;
 
+    let mcp_runtime_invoker = Arc::new(
+        virtual_ui::ApiMcpRuntimeToolInvoker::new(
+            state.clone(),
+            execution.request_headers.clone(),
+            execution.actor.clone(),
+            execution.mcp_instance_ids.clone(),
+        )
+        .await?,
+    );
     let background_state = state;
     tokio::spawn(async move {
         let runtime = OrchestrationRuntimeService::new(
@@ -662,42 +658,18 @@ async fn launch_assistant_execution(
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
         let result = async {
-            let mut detail = runtime
+            let detail = runtime
                 .start_published_flow_run(StartPublishedFlowRunCommand {
                     application_id: execution.application_id,
                     flow_run_id: execution.flow_run_id,
                     provider_transport_slot: None,
                 })
                 .await?;
-            while detail.flow_run.status == domain::FlowRunStatus::WaitingCallback {
-                let callback = detail
-                    .callback_tasks
-                    .iter()
-                    .find(|task| {
-                        task.status == domain::CallbackTaskStatus::Pending
-                            && task.callback_kind == "llm_tool_calls"
-                    })
-                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "assistant_callback",
-                    ))?;
-                let tool_results =
-                    assistant_callback_tool_results(&background_state, &execution, callback)
-                        .await?;
-                detail = runtime
-                    .complete_callback_task(
-                        control_plane::orchestration_runtime::CompleteCallbackTaskCommand {
-                            actor_user_id: execution.actor_user_id,
-                            application_id: execution.application_id,
-                            callback_task_id: callback.id,
-                            response_payload: json!({"tool_results": tool_results}),
-                        },
-                    )
-                    .await?;
-            }
             Ok::<domain::ApplicationRunDetail, ApiError>(detail)
         }
         .await;
@@ -802,16 +774,8 @@ async fn prepare_assistant_execution(
                 .conversation_id
         }
     };
-    let catalog = McpManagementService::new(state.store.clone())
-        .read_catalog_for_actor(&context.actor)
-        .await?;
     let execution = assistant_execution(&preference)?;
-    let mcp_scope = VirtualMcpScope::selected(&catalog, &preference.mcp_instance_ids);
-    let mut inputs = NativeObject::default();
-    inputs.insert_value(
-        "tools",
-        Value::Array(assistant_provider_tools(&catalog, &mcp_scope)),
-    );
+    let inputs = NativeObject::default();
     let flow_run = ApplicationPublishedRunService::new(state.store.clone())
         .create_assistant_run(CreateAssistantRunCommand {
             actor_user_id: context.user.id,
@@ -844,11 +808,9 @@ async fn prepare_assistant_execution(
     Ok(PreparedAssistantExecution {
         application_id,
         conversation_id: assistant_conversation_id,
-        actor_user_id: context.user.id,
         actor: context.actor.clone(),
         flow_run_id: flow_run.id,
-        catalog,
-        mcp_scope,
+        mcp_instance_ids: preference.mcp_instance_ids,
         request_headers: headers.clone(),
     })
 }
@@ -891,184 +853,6 @@ fn assistant_execution(preference: &AssistantPreferenceBody) -> Result<NativeExe
         }
     }))
     .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("reasoning_effort").into())
-}
-
-async fn assistant_callback_tool_results(
-    state: &Arc<ApiState>,
-    execution: &PreparedAssistantExecution,
-    callback: &domain::CallbackTaskRecord,
-) -> Result<Vec<Value>, ApiError> {
-    let calls = callback
-        .request_payload
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-            "assistant_callback",
-        ))?;
-    let mut tool_results = Vec::with_capacity(calls.len());
-    for call in calls {
-        let tool_call_id = call.get("id").and_then(Value::as_str).ok_or(
-            control_plane::errors::ControlPlaneError::InvalidInput("assistant_callback"),
-        )?;
-        let tool_name = call.get("name").and_then(Value::as_str).unwrap_or("Tool");
-        let trace_call = call.clone();
-        let started_at = Instant::now();
-        append_assistant_tool_call_event(
-            state,
-            execution,
-            debug_stream_events::assistant_tool_call_started(
-                execution.flow_run_id,
-                callback.node_run_id,
-                "assistant",
-                trace_call.clone(),
-            ),
-        )
-        .await;
-
-        let tool_result = match assistant_tool_result(
-            state,
-            &execution.request_headers,
-            &execution.actor,
-            &execution.catalog,
-            &execution.mcp_scope,
-            call,
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(error) => {
-                append_assistant_tool_call_event(
-                    state,
-                    execution,
-                    debug_stream_events::assistant_tool_call_finished(
-                        execution.flow_run_id,
-                        callback.node_run_id,
-                        "assistant",
-                        trace_call.clone(),
-                        json!({
-                            "tool_call_id": tool_call_id,
-                            "name": tool_name,
-                            "content": error.0.to_string(),
-                            "is_error": true,
-                        }),
-                        started_at
-                            .elapsed()
-                            .as_millis()
-                            .try_into()
-                            .unwrap_or(u64::MAX),
-                    ),
-                )
-                .await;
-                return Err(error);
-            }
-        };
-        append_assistant_tool_call_event(
-            state,
-            execution,
-            debug_stream_events::assistant_tool_call_finished(
-                execution.flow_run_id,
-                callback.node_run_id,
-                "assistant",
-                trace_call,
-                tool_result.clone(),
-                started_at
-                    .elapsed()
-                    .as_millis()
-                    .try_into()
-                    .unwrap_or(u64::MAX),
-            ),
-        )
-        .await;
-        tool_results.push(tool_result);
-    }
-    Ok(tool_results)
-}
-
-async fn append_assistant_tool_call_event(
-    state: &Arc<ApiState>,
-    execution: &PreparedAssistantExecution,
-    event: RuntimeEventPayload,
-) {
-    let event_type = event.event_type.clone();
-    if let Err(error) = state
-        .runtime_event_stream
-        .append(execution.flow_run_id, event)
-        .await
-    {
-        tracing::warn!(
-            application_id = %execution.application_id,
-            flow_run_id = %execution.flow_run_id,
-            event_type = %event_type,
-            error = %error,
-            "assistant tool lifecycle event append failed"
-        );
-    }
-}
-
-fn assistant_provider_tools(
-    catalog: &domain::McpCatalogSnapshot,
-    scope: &VirtualMcpScope,
-) -> Vec<Value> {
-    virtual_ui::provider_tools(catalog, scope)
-}
-
-async fn assistant_tool_result(
-    state: &Arc<ApiState>,
-    headers: &HeaderMap,
-    actor: &domain::ActorContext,
-    catalog: &domain::McpCatalogSnapshot,
-    scope: &VirtualMcpScope,
-    call: &Value,
-) -> Result<Value, ApiError> {
-    let id = call.get("id").and_then(Value::as_str).ok_or(
-        control_plane::errors::ControlPlaneError::InvalidInput("assistant_callback"),
-    )?;
-    let name = call.get("name").and_then(Value::as_str).unwrap_or_default();
-    let arguments = match call.get("arguments") {
-        Some(Value::String(value)) => match serde_json::from_str(value) {
-            Ok(arguments) => arguments,
-            Err(_) => {
-                return Ok(json!({
-                    "tool_call_id": id,
-                    "name": name,
-                    "content": "Tool arguments must be valid JSON",
-                    "is_error": true
-                }));
-            }
-        },
-        Some(value) => value.clone(),
-        None => json!({}),
-    };
-    let outcome =
-        virtual_ui::dispatch(state, headers, actor, catalog, scope, name, arguments).await?;
-    Ok(assistant_callback_result(id, name, outcome))
-}
-
-fn assistant_callback_result(id: &str, name: &str, outcome: VirtualToolOutcome) -> Value {
-    let (content, is_error) = match outcome {
-        VirtualToolOutcome::Success(result) => {
-            let is_error = result
-                .get("isError")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let content = result.get("content").cloned().unwrap_or(result);
-            (content, is_error)
-        }
-        VirtualToolOutcome::Error {
-            code,
-            message,
-            data,
-        } => (
-            json!({"code": code, "message": message, "data": data}),
-            true,
-        ),
-    };
-    json!({
-        "tool_call_id": id,
-        "name": name,
-        "content": content,
-        "is_error": is_error
-    })
 }
 
 async fn available_targets(
@@ -1404,7 +1188,7 @@ mod tests {
         };
 
         let scope = VirtualMcpScope::selected(&catalog, &["catalog".to_string()]);
-        let provider_tools = assistant_provider_tools(&catalog, &scope);
+        let provider_tools = virtual_ui::provider_tools(&catalog, &scope);
 
         assert_eq!(provider_tools.len(), 4);
         assert_eq!(
@@ -1412,7 +1196,12 @@ mod tests {
                 .iter()
                 .map(|tool| tool["function"]["name"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["mcp_list", "mcp_get", "mcp_result", "mcp_call"]
+            vec![
+                "catalog_mcp_list",
+                "catalog_mcp_get",
+                "catalog_mcp_result",
+                "catalog_mcp_call"
+            ]
         );
         assert!(provider_tools
             .iter()
@@ -1429,27 +1218,5 @@ mod tests {
         assert!(provider_tools[0]["function"]["parameters"]["properties"]
             .get("path_regex")
             .is_none());
-    }
-
-    #[test]
-    fn assistant_mcp_callback_uses_provider_content_without_nested_tool_envelope() {
-        let callback = assistant_callback_result(
-            "call-1",
-            "mcp_get",
-            VirtualToolOutcome::Success(json!({
-                "content": [{"type": "text", "text": "tool detail"}],
-                "structuredContent": {"tool_id": "lookup"},
-                "isError": false
-            })),
-        );
-
-        assert_eq!(callback["tool_call_id"], json!("call-1"));
-        assert_eq!(callback["name"], json!("mcp_get"));
-        assert_eq!(
-            callback["content"],
-            json!([{"type": "text", "text": "tool detail"}])
-        );
-        assert_eq!(callback["is_error"], json!(false));
-        assert!(callback["content"].get("content").is_none());
     }
 }

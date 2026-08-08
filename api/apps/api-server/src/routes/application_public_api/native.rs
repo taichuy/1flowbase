@@ -58,6 +58,7 @@ use crate::{
             sse, stream_terminal_fallback::recover_missing_stream_terminal_winner,
         },
         files::UploadedFileResponse,
+        mcp_protocol::virtual_ui,
     },
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
@@ -67,6 +68,36 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
     )
+}
+
+pub(crate) async fn public_mcp_runtime_invoker(
+    state: &Arc<ApiState>,
+    bearer_token: &str,
+) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, NativeApiError> {
+    let api_actor = ApplicationApiKeyService::new(state.store.clone())
+        .authenticate_bearer_token(bearer_token)
+        .await
+        .map_err(service_error)?;
+    let actor =
+        AuthRepository::load_actor_context_for_user(&state.store, api_actor.creator_user_id)
+            .await
+            .map_err(service_error)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::AUTHORIZATION,
+        format!("Bearer {bearer_token}").parse().map_err(|_| {
+            NativeApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "not_authenticated",
+                "invalid application API key",
+            )
+        })?,
+    );
+    Ok(Arc::new(
+        virtual_ui::ApiMcpRuntimeToolInvoker::new(state.clone(), headers, actor, Vec::new())
+            .await
+            .map_err(|error| service_error(error.0))?,
+    ))
 }
 
 pub(crate) async fn stage_client_protocol_context(
@@ -518,6 +549,7 @@ pub(crate) async fn execute_blocking_native_run_with_provider_transport(
         run.application_id,
         ApplicationActivityKind::ApplicationExecution,
     );
+    let mcp_runtime_invoker = public_mcp_runtime_invoker(&state, &bearer_token).await?;
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
         api_provider_runtime(&state),
@@ -529,6 +561,7 @@ pub(crate) async fn execute_blocking_native_run_with_provider_transport(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_provider_transport_store(state.infrastructure.provider_transport_store());
@@ -673,7 +706,7 @@ pub async fn create_native_run(
         .start(run.application_id, ApplicationActivityKind::HttpRequest);
 
     if response_mode.as_deref() == Some("streaming") {
-        return start_native_run_stream(state, run, include_workflow_events).await;
+        return start_native_run_stream(state, bearer_token, run, include_workflow_events).await;
     }
 
     if response_mode.as_deref().unwrap_or("blocking") == "blocking" {
@@ -720,9 +753,11 @@ pub(crate) fn include_workflow_event_visibility(
 
 async fn start_native_run_stream(
     state: Arc<ApiState>,
+    bearer_token: String,
     run: NativeRunResult,
     include_workflow_events: sse::IncludeWorkflowEvents,
 ) -> Result<Response, NativeApiError> {
+    let mcp_runtime_invoker = public_mcp_runtime_invoker(&state, &bearer_token).await?;
     state
         .runtime_event_stream
         .open_run(
@@ -760,6 +795,7 @@ async fn start_native_run_stream(
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
         .with_provider_transport_store(background_state.infrastructure.provider_transport_store())
@@ -886,6 +922,7 @@ pub async fn resume_native_run(
     Json(body): Json<ResumeNativeRunBody>,
 ) -> Result<Response, NativeApiError> {
     let bearer_token = bearer_token(&headers)?;
+    let mcp_runtime_invoker = public_mcp_runtime_invoker(&state, &bearer_token).await?;
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
         api_provider_runtime(&state),
@@ -897,6 +934,7 @@ pub async fn resume_native_run(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_provider_transport_store(state.infrastructure.provider_transport_store())

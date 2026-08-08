@@ -344,6 +344,7 @@ function createLlmContract(): NodeRuntimeUiContract {
       protocol_context: cloneJsonValue(DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE),
       visible_internal_llm_tools_enabled: false,
       visible_internal_llm_tools: [],
+      mcp_instance_ids: [],
       response_format: {
         mode: 'text'
       }
@@ -377,6 +378,12 @@ function createLlmContract(): NodeRuntimeUiContract {
           title: i18nText('agentFlow', 'auto.mount_tools'),
           renderer: 'llm_tool_registrations',
           valueType: 'boolean'
+        }),
+        panelField({
+          key: 'config.mcp_instance_ids',
+          title: i18nText('agentFlow', 'auto.mount_mcp_instances'),
+          renderer: 'llm_mcp_instances',
+          valueType: 'array'
         }),
         panelField({
           key: 'config.context_policy',
@@ -909,10 +916,7 @@ function createVariableAggregatorContract(): NodeRuntimeUiContract {
   return createNodeRuntimeContract({
     type: 'variable_aggregator',
     title: i18nText('agentFlow', 'auto.variable_aggregator'),
-    description: i18nText(
-      'agentFlow',
-      'auto.variable_aggregator_description'
-    ),
+    description: i18nText('agentFlow', 'auto.variable_aggregator_description'),
     category: 'control',
     config: {},
     bindings: {

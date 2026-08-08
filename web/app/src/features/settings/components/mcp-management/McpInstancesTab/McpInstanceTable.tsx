@@ -87,6 +87,22 @@ export function McpInstanceTable({
       )
     },
     {
+      title: i18nText('settingsMcpManagement', 'auto.llm_tool_registration'),
+      dataIndex: 'llm_tool_registration',
+      render: (registration: ConsoleMcpInstance['llm_tool_registration']) => (
+        <Tooltip title={registration.tools.map((tool) => tool.name).join('\n')}>
+          <Typography.Text
+            code
+            copyable={{
+              text: registration.tools.map((tool) => tool.name).join('\n')
+            }}
+          >
+            {registration.prefix}
+          </Typography.Text>
+        </Tooltip>
+      )
+    },
+    {
       title: i18nText('settings', 'auto.operation'),
       render: (_, record) => (
         <Space>

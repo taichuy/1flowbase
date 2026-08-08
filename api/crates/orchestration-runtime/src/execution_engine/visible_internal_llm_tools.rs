@@ -4,7 +4,7 @@ mod branch_execution;
 mod callback_state;
 mod media_context;
 mod panel_execution;
-mod payloads;
+pub(super) mod payloads;
 mod registry;
 mod types;
 use self::branch_execution::{

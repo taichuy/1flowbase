@@ -89,6 +89,7 @@ export const DEFAULT_LLM_RESPONSE_FORMAT: LlmNodeResponseFormat = {
 
 export const DEFAULT_LLM_VISIBLE_INTERNAL_TOOLS_ENABLED = false;
 export const DEFAULT_LLM_VISIBLE_INTERNAL_TOOLS: LlmVisibleInternalTool[] = [];
+export const DEFAULT_LLM_MCP_INSTANCE_IDS: string[] = [];
 export const DEFAULT_LLM_INTERNAL_LLM_NODE_POLICY: LlmInternalLlmNodePolicy =
   'forbidden';
 export const DEFAULT_LLM_EXTERNAL_TOOL_POLICY: LlmExternalToolPolicy =
@@ -355,6 +356,18 @@ export function getLlmVisibleInternalToolsEnabled(
   config: Record<string, unknown>
 ): boolean {
   return config.visible_internal_llm_tools_enabled === true;
+}
+
+export function getLlmMcpInstanceIds(
+  config: Record<string, unknown>
+): string[] {
+  if (!Array.isArray(config.mcp_instance_ids)) {
+    return DEFAULT_LLM_MCP_INSTANCE_IDS;
+  }
+
+  return config.mcp_instance_ids.filter(
+    (value): value is string => typeof value === 'string' && value.length > 0
+  );
 }
 
 export function getLlmToolInternalLlmNodePolicy(

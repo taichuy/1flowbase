@@ -36,7 +36,7 @@ pub(super) fn visible_internal_llm_tool_output_text(output_payload: &Value) -> S
         .unwrap_or_default()
 }
 
-pub(super) fn output_tool_calls(output_payload: &Value) -> Option<Vec<Value>> {
+pub(crate) fn output_tool_calls(output_payload: &Value) -> Option<Vec<Value>> {
     output_payload
         .get("tool_calls")
         .and_then(Value::as_array)
@@ -378,7 +378,7 @@ pub(super) fn visible_internal_llm_tool_failure(
     Ok(execution)
 }
 
-pub(super) fn tool_call_id(tool_call: &Value) -> String {
+pub(crate) fn tool_call_id(tool_call: &Value) -> String {
     tool_call
         .get("id")
         .and_then(Value::as_str)

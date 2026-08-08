@@ -12,6 +12,15 @@ export interface ConsoleMcpInstance {
   updated_by: string;
   created_at: string;
   updated_at: string;
+  llm_tool_registration: ConsoleMcpLlmToolRegistration;
+}
+
+export interface ConsoleMcpLlmToolRegistration {
+  prefix: string;
+  tools: Array<{
+    operation: 'list' | 'get' | 'result' | 'call';
+    name: string;
+  }>;
 }
 
 export interface ConsoleMcpClientCredential {

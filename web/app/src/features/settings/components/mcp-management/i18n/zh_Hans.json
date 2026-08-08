@@ -205,6 +205,7 @@
     "proxy_local_arguments": "本地 arguments",
     "proxy_remote_arguments": "远端 arguments",
     "proxy_upstream_result": "第三方原始结果",
-    "proxy_mapped_result": "本地映射结果"
+    "proxy_mapped_result": "本地映射结果",
+    "llm_tool_registration": "大语言模型工具"
   }
 }

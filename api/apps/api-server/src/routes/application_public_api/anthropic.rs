@@ -250,7 +250,7 @@ pub async fn create_message(
     let run = create_native_run(state.clone(), bearer_token.clone(), request).await?;
 
     if response_mode.as_deref() == Some("streaming") {
-        return compat_sse::start_anthropic_run_stream(state, run, model)
+        return compat_sse::start_anthropic_run_stream(state, bearer_token, run, model)
             .await
             .map_err(Into::into);
     }
@@ -440,6 +440,8 @@ async fn execute_anthropic_tool_resume(
     state: Arc<ApiState>,
     command: ResumePublishedCallbackCommand,
 ) -> Result<NativeRunResult, AnthropicRouteError> {
+    let mcp_runtime_invoker =
+        native::public_mcp_runtime_invoker(&state, &command.bearer_token).await?;
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -451,6 +453,7 @@ async fn execute_anthropic_tool_resume(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_provider_transport_store(state.infrastructure.provider_transport_store())

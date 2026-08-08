@@ -53,6 +53,7 @@ use crate::{
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,
     },
+    routes::mcp_protocol::virtual_ui,
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 

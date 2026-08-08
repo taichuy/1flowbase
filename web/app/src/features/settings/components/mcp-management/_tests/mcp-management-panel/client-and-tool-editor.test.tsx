@@ -391,7 +391,16 @@ function renderPanelWithMountedTool({
               created_by: 'user-1',
               updated_by: 'user-1',
               created_at: '2026-07-06T00:00:00Z',
-              updated_at: '2026-07-06T00:00:00Z'
+              updated_at: '2026-07-06T00:00:00Z',
+              llm_tool_registration: {
+                prefix: 'ops_mcp',
+                tools: [
+                  { operation: 'list', name: 'ops_mcp_mcp_list' },
+                  { operation: 'get', name: 'ops_mcp_mcp_get' },
+                  { operation: 'result', name: 'ops_mcp_mcp_result' },
+                  { operation: 'call', name: 'ops_mcp_mcp_call' }
+                ]
+              }
             }
           ],
           groups: includeGroup

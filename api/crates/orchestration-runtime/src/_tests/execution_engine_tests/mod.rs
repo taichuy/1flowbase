@@ -30,6 +30,7 @@ use crate::{
         CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
         ExecutionRuntimeContext, LlmRoutingCounterStore, NativeSqlInvocationOutput,
         ProviderInvocationOutput, ProviderInvoker, ResolvedProviderRoute,
+        RuntimeInternalToolInvoker, RuntimeInternalToolOutput, RuntimeInternalToolRegistration,
     },
     execution_state::{
         compact_operation_receipt_from_traces, count_tokens_receipt_from_traces,

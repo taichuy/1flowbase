@@ -32,7 +32,7 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
-        native::{service_error, NativeApiError},
+        native::{self, service_error, NativeApiError},
         stream_terminal_fallback::{
             durable_canonical_partial_runtime_events_from_native_run,
             durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
@@ -82,17 +82,20 @@ pub(crate) struct PreparedCompatibleTurn {
     initial_run: NativeRunResult,
     action: CompatibleTurnAction,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    bearer_token: String,
 }
 
 impl PreparedCompatibleTurn {
     pub(crate) fn start(
         initial_run: NativeRunResult,
         provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+        bearer_token: String,
     ) -> Self {
         Self {
             initial_run,
             action: CompatibleTurnAction::Start,
             provider_transport_slot,
+            bearer_token,
         }
     }
 
@@ -100,10 +103,12 @@ impl PreparedCompatibleTurn {
         initial_run: NativeRunResult,
         command: ResumePublishedCallbackCommand,
     ) -> Self {
+        let bearer_token = command.bearer_token.clone();
         Self {
             initial_run,
             action: CompatibleTurnAction::Resume(command),
             provider_transport_slot: None,
+            bearer_token,
         }
     }
 }
@@ -257,6 +262,8 @@ pub(crate) async fn prepare_compatible_resume(
     state: Arc<ApiState>,
     command: ResumePublishedCallbackCommand,
 ) -> Result<CompatibleResumeAdmission, NativeApiError> {
+    let mcp_runtime_invoker =
+        native::public_mcp_runtime_invoker(&state, &command.bearer_token).await?;
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -268,6 +275,7 @@ pub(crate) async fn prepare_compatible_resume(
         state.provider_install_root.clone(),
     )
     .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
     .with_llm_routing_counter_store(state.infrastructure.cache_store())
     .with_provider_request_log_queue(state.infrastructure.task_queue())
     .with_runtime_event_stream(state.runtime_event_stream.clone());
@@ -389,6 +397,7 @@ fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Optio
 
 pub(crate) async fn start_openai_run_stream(
     state: Arc<ApiState>,
+    bearer_token: String,
     run: NativeRunResult,
     model: String,
 ) -> Result<Response, NativeApiError> {
@@ -398,6 +407,7 @@ pub(crate) async fn start_openai_run_stream(
         run,
         CompatibleTurnAction::Start,
         None,
+        bearer_token,
         CompatibleProtocolProjection::OpenAiChat(mapper),
     )
     .await
@@ -405,6 +415,7 @@ pub(crate) async fn start_openai_run_stream(
 
 pub(crate) async fn start_openai_response_stream(
     state: Arc<ApiState>,
+    bearer_token: String,
     run: NativeRunResult,
     model: String,
     previous_response_id: Option<String>,
@@ -416,6 +427,7 @@ pub(crate) async fn start_openai_response_stream(
         run,
         CompatibleTurnAction::Start,
         provider_transport_slot,
+        bearer_token,
         CompatibleProtocolProjection::OpenAiResponses(mapper),
     )
     .await
@@ -457,12 +469,14 @@ pub(crate) async fn start_openai_chat_resume_stream(
     chat_completion_id: String,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
+    let bearer_token = command.bearer_token.clone();
     let mapper = OpenAiChatStreamMapper::new(model, chat_completion_id);
     start_compatible_turn_stream(
         state,
         run,
         CompatibleTurnAction::Resume(command),
         None,
+        bearer_token,
         CompatibleProtocolProjection::OpenAiChat(mapper),
     )
     .await
@@ -475,12 +489,14 @@ pub(crate) async fn start_openai_response_resume_stream(
     previous_response_id: Option<String>,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
+    let bearer_token = command.bearer_token.clone();
     let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
     start_compatible_turn_stream(
         state,
         run,
         CompatibleTurnAction::Resume(command),
         None,
+        bearer_token,
         CompatibleProtocolProjection::OpenAiResponses(mapper),
     )
     .await
@@ -488,6 +504,7 @@ pub(crate) async fn start_openai_response_resume_stream(
 
 pub(crate) async fn start_anthropic_run_stream(
     state: Arc<ApiState>,
+    bearer_token: String,
     run: NativeRunResult,
     model: String,
 ) -> Result<Response, NativeApiError> {
@@ -497,6 +514,7 @@ pub(crate) async fn start_anthropic_run_stream(
         run,
         CompatibleTurnAction::Start,
         None,
+        bearer_token,
         CompatibleProtocolProjection::AnthropicMessages(mapper),
     )
     .await
@@ -508,11 +526,13 @@ pub(crate) async fn start_anthropic_resume_stream(
     model: String,
     command: ResumePublishedCallbackCommand,
 ) -> Result<Response, NativeApiError> {
+    let bearer_token = command.bearer_token.clone();
     start_compatible_turn_stream(
         state,
         run,
         CompatibleTurnAction::Resume(command),
         None,
+        bearer_token,
         CompatibleProtocolProjection::AnthropicMessages(AnthropicStreamMapper::new(model)),
     )
     .await
@@ -534,6 +554,7 @@ async fn start_compatible_turn_stream(
     run: NativeRunResult,
     action: CompatibleTurnAction,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    bearer_token: String,
     mut projection: CompatibleProtocolProjection,
 ) -> Result<Response, NativeApiError> {
     let sse_projection = projection.name();
@@ -543,6 +564,7 @@ async fn start_compatible_turn_stream(
             initial_run: run,
             action,
             provider_transport_slot,
+            bearer_token,
         },
     )
     .await?;
@@ -669,7 +691,9 @@ async fn open_compatible_turn(
         initial_run,
         action,
         provider_transport_slot,
+        bearer_token,
     } = prepared;
+    let mcp_runtime_invoker = native::public_mcp_runtime_invoker(&state, &bearer_token).await?;
     let turn_action = action.name();
     if let Err(error) = state
         .runtime_event_stream
@@ -731,6 +755,7 @@ async fn open_compatible_turn(
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
         .with_provider_transport_store(background_state.infrastructure.provider_transport_store())

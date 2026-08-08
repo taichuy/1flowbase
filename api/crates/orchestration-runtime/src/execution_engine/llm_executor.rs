@@ -1,3 +1,4 @@
+use super::visible_internal_llm_tools::payloads::{output_tool_calls, tool_call_id};
 use super::*;
 
 pub async fn execute_llm_node<I>(
@@ -12,16 +13,139 @@ pub async fn execute_llm_node<I>(
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
 {
-    execute_llm_node_with_visible_internal_tools(
-        plan,
-        node,
-        resolved_inputs,
-        rendered_templates,
-        variable_pool,
-        runtime_context,
-        invoker,
+    let registrations = runtime_context.runtime_internal_tool_registrations(node);
+    if registrations.is_empty() {
+        return execute_llm_node_with_visible_internal_tools(
+            plan,
+            node,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await;
+    }
+    let internal_invoker = runtime_context
+        .runtime_internal_tool_invoker
+        .as_ref()
+        .ok_or_else(|| anyhow!("runtime internal tool registrations have no invoker"))?;
+    let mut llm_variable_pool = variable_pool.clone();
+    let mut internal_events = Vec::new();
+
+    for _ in 0..8 {
+        let mut execution = execute_llm_node_with_visible_internal_tools(
+            plan,
+            node,
+            resolved_inputs,
+            rendered_templates,
+            &mut llm_variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await?;
+        if execution.error_payload.is_some() {
+            return Ok(execution);
+        }
+        let Some(tool_calls) = output_tool_calls(&execution.output_payload) else {
+            attach_runtime_internal_tool_events(&mut execution, &internal_events);
+            return Ok(execution);
+        };
+        let internal_calls = tool_calls
+            .iter()
+            .filter_map(|call| {
+                let name = call
+                    .get("name")
+                    .or_else(|| {
+                        call.get("function")
+                            .and_then(|function| function.get("name"))
+                    })
+                    .and_then(Value::as_str)?;
+                registrations
+                    .iter()
+                    .find(|registration| registration.provider_name == name)
+                    .map(|registration| (call.clone(), registration.clone()))
+            })
+            .collect::<Vec<_>>();
+        if internal_calls.is_empty() {
+            return Ok(execution);
+        }
+        let mut callback_wait = execution.pending_callback.take().ok_or_else(|| {
+            anyhow!(
+                "runtime internal tool call is missing callback checkpoint for {}",
+                node.node_id
+            )
+        })?;
+        llm_variable_pool = std::mem::take(&mut callback_wait.checkpoint_variable_pool);
+        let internal_ids = internal_calls
+            .iter()
+            .map(|(call, _)| tool_call_id(call))
+            .collect::<BTreeSet<_>>();
+        let external_calls = tool_calls
+            .iter()
+            .filter(|call| !internal_ids.contains(&tool_call_id(call)))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut results = Vec::with_capacity(internal_calls.len());
+        for (call, registration) in &internal_calls {
+            let arguments = call
+                .get("arguments")
+                .or_else(|| {
+                    call.get("function")
+                        .and_then(|function| function.get("arguments"))
+                })
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            let arguments = match arguments {
+                Value::String(value) => serde_json::from_str(&value).unwrap_or_else(|_| json!({})),
+                value => value,
+            };
+            let output = internal_invoker
+                .invoke_runtime_internal_tool(node, registration, arguments)
+                .await?;
+            internal_events.push(output.event);
+            results.push(json!({
+                "tool_call_id": tool_call_id(call),
+                "name": registration.provider_name,
+                "content": output.content,
+                "is_error": output.is_error,
+            }));
+        }
+        apply_mixed_llm_tool_callback_results(
+            &mut llm_variable_pool,
+            &node.node_id,
+            &results,
+            &external_calls,
+        )?;
+        if !external_calls.is_empty() {
+            refresh_llm_tool_callback_wait_from_checkpoint(&mut callback_wait, llm_variable_pool)?;
+            if let Some(output) = execution.output_payload.as_object_mut() {
+                output.insert("tool_calls".to_string(), Value::Array(external_calls));
+            }
+            execution.pending_callback = Some(callback_wait);
+            attach_runtime_internal_tool_events(&mut execution, &internal_events);
+            return Ok(execution);
+        }
+    }
+
+    bail!(
+        "runtime internal tool round limit exceeded for {}",
+        node.node_id
     )
-    .await
+}
+
+fn attach_runtime_internal_tool_events(execution: &mut LlmNodeExecution, events: &[Value]) {
+    if events.is_empty() {
+        return;
+    }
+    let debug = execution
+        .debug_payload
+        .as_object_mut()
+        .expect("LLM debug payload is canonical object");
+    debug.insert(
+        "runtime_internal_tool_events".to_string(),
+        Value::Array(events.to_vec()),
+    );
 }
 
 pub(crate) async fn execute_llm_node_provider_round<I>(

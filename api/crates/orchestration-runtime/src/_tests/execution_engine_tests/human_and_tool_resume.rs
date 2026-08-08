@@ -883,3 +883,117 @@ async fn resume_llm_tool_results_rejects_missing_tool_results() {
         .to_string()
         .contains("missing tool result for call_time"));
 }
+#[derive(Default)]
+struct StubRuntimeInternalToolInvoker {
+    calls: Mutex<Vec<Value>>,
+}
+
+#[async_trait]
+impl RuntimeInternalToolInvoker for StubRuntimeInternalToolInvoker {
+    fn registrations_for_node(&self, _node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
+        vec![RuntimeInternalToolRegistration {
+            registration_id: "catalog|call".to_string(),
+            provider_name: "catalog_mcp_call".to_string(),
+            provider_tool: json!({
+                "type": "function",
+                "function": {
+                    "name": "catalog_mcp_call",
+                    "description": "call catalog",
+                    "parameters": {"type": "object"}
+                }
+            }),
+            owner: json!({"instance_id": "catalog", "operation": "call"}),
+        }]
+    }
+
+    async fn invoke_runtime_internal_tool(
+        &self,
+        node: &CompiledNode,
+        registration: &RuntimeInternalToolRegistration,
+        arguments: Value,
+    ) -> Result<RuntimeInternalToolOutput> {
+        self.calls.lock().unwrap().push(arguments);
+        Ok(RuntimeInternalToolOutput {
+            content: json!({"content": [{"type": "text", "text": "catalog result"}]}),
+            is_error: false,
+            event: json!({
+                "event_type": "mcp_runtime_tool_call_completed",
+                "node_id": node.node_id,
+                "provider_name": registration.provider_name,
+            }),
+        })
+    }
+}
+
+#[tokio::test]
+async fn runtime_internal_tool_executes_inline_and_continues_llm() {
+    let plan = llm_answer_plan();
+    let (provider, captured_inputs) = sequential_tool_invoker(vec![
+        tool_call_response(vec![ProviderToolCall {
+            id: "call_mcp".to_string(),
+            name: "catalog_mcp_call".to_string(),
+            arguments: json!({"tool_id": "lookup", "arguments": {"id": 1}}),
+            provider_metadata: json!({}),
+        }]),
+        final_llm_response("done"),
+    ]);
+    let internal = Arc::new(StubRuntimeInternalToolInvoker::default());
+    let input = json!({"node-start": {"query": "lookup"}});
+    let variable_pool = input.as_object().unwrap().clone();
+    let context = ExecutionRuntimeContext::from_plan_input(&plan, &variable_pool)
+        .unwrap()
+        .with_runtime_internal_tool_invoker(internal.clone());
+
+    let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &provider)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    assert_eq!(internal.calls.lock().unwrap().len(), 1);
+    let inputs = captured_inputs.lock().unwrap();
+    assert_eq!(inputs.len(), 2);
+    assert!(inputs[0]
+        .tools
+        .iter()
+        .any(|tool| tool["function"]["name"] == json!("catalog_mcp_call")));
+}
+
+#[tokio::test]
+async fn runtime_internal_tool_mixed_round_exposes_only_external_callback() {
+    let plan = llm_answer_plan();
+    let (provider, _) = sequential_tool_invoker(vec![tool_call_response(vec![
+        ProviderToolCall {
+            id: "call_mcp".to_string(),
+            name: "catalog_mcp_call".to_string(),
+            arguments: json!({"tool_id": "lookup", "arguments": {}}),
+            provider_metadata: json!({}),
+        },
+        ProviderToolCall {
+            id: "call_external".to_string(),
+            name: "external_weather".to_string(),
+            arguments: json!({"city": "Shanghai"}),
+            provider_metadata: json!({}),
+        },
+    ])]);
+    let internal = Arc::new(StubRuntimeInternalToolInvoker::default());
+    let input = json!({"node-start": {"query": "mixed"}});
+    let context =
+        ExecutionRuntimeContext::from_plan_input(&plan, &input.as_object().unwrap().clone())
+            .unwrap()
+            .with_runtime_internal_tool_invoker(internal.clone());
+
+    let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &provider)
+        .await
+        .unwrap();
+
+    let ExecutionStopReason::WaitingCallback(pending) = outcome.stop_reason else {
+        panic!("mixed round should wait for external callback");
+    };
+    let calls = pending.request_payload["tool_calls"].as_array().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0]["id"], json!("call_external"));
+    assert_eq!(internal.calls.lock().unwrap().len(), 1);
+}

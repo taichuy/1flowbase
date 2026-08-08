@@ -40,6 +40,7 @@ import { CodeSourceField } from '../components/detail/fields/CodeSourceField';
 import { DataModelField } from '../components/detail/fields/DataModelField';
 import { DataSourceField } from '../components/detail/fields/sql/DataSourceField';
 import { LlmModelField } from '../components/detail/fields/LlmModelField';
+import { LlmMcpInstancesField } from '../components/detail/fields/LlmMcpInstancesField';
 import { LlmToolRegistrationsField } from '../components/detail/fields/LlmToolRegistrationsField';
 import { LlmPromptMessagesField } from '../components/detail/fields/LlmPromptMessagesField';
 import { LlmResponseFormatField } from '../components/detail/fields/LlmResponseFormatField';
@@ -1025,6 +1026,7 @@ export const agentFlowFieldRenderers = {
   code_source: renderCodeSourceField,
   sql_source: renderSqlSourceField,
   llm_model: LlmModelField,
+  llm_mcp_instances: LlmMcpInstancesField,
   llm_context_policy: renderLlmContextPolicyField,
   llm_external_reasoning_policy: renderLlmExternalReasoningPolicyField,
   llm_tool_registrations: LlmToolRegistrationsField,

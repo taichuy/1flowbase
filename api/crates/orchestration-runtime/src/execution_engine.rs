@@ -177,6 +177,33 @@ pub trait ProviderInvoker: Send + Sync {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RuntimeInternalToolRegistration {
+    pub registration_id: String,
+    pub provider_name: String,
+    pub provider_tool: Value,
+    pub owner: Value,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RuntimeInternalToolOutput {
+    pub content: Value,
+    pub is_error: bool,
+    pub event: Value,
+}
+
+#[async_trait]
+pub trait RuntimeInternalToolInvoker: Send + Sync {
+    fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration>;
+
+    async fn invoke_runtime_internal_tool(
+        &self,
+        node: &CompiledNode,
+        registration: &RuntimeInternalToolRegistration,
+        arguments: Value,
+    ) -> Result<RuntimeInternalToolOutput>;
+}
+
 #[async_trait]
 pub trait LlmRoutingCounterStore: Send + Sync {
     async fn increment_counter(

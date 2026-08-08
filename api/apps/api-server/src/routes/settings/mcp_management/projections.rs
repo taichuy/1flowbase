@@ -55,6 +55,21 @@ pub(super) fn to_export_response(
 }
 
 pub(super) fn to_instance_response(record: domain::McpInstanceRecord) -> McpInstanceResponse {
+    let registrations =
+        control_plane::mcp_management::mcp_llm_instance_registration(&record.instance_id);
+    let llm_tool_registration = McpLlmToolRegistrationResponse {
+        prefix: registrations
+            .first()
+            .map(|item| item.prefix.clone())
+            .unwrap_or_default(),
+        tools: registrations
+            .into_iter()
+            .map(|item| McpLlmToolNameResponse {
+                operation: item.operation.as_str().to_string(),
+                name: item.provider_name,
+            })
+            .collect(),
+    };
     McpInstanceResponse {
         id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
@@ -67,6 +82,7 @@ pub(super) fn to_instance_response(record: domain::McpInstanceRecord) -> McpInst
         updated_by: record.updated_by.to_string(),
         created_at: record.created_at.to_string(),
         updated_at: record.updated_at.to_string(),
+        llm_tool_registration,
     }
 }
 
