@@ -471,6 +471,36 @@ describe('NodeInspector core', () => {
     expect(screen.getByText('暂无工具注册')).toBeInTheDocument();
   });
 
+  test('AC-011 renders MCP mounts as one embedded collection field', async () => {
+    const state = createInitialState();
+    const llmNodeConfig = getLlmNodeConfig(state.draft.document);
+
+    llmNodeConfig.mcp_instance_ids = ['missing-instance'];
+
+    renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state}>
+        <SelectionSeed nodeId="node-llm" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    const mcpMountField = await screen.findByTestId(
+      'inspector-field-config.mcp_instance_ids'
+    );
+
+    expect(within(mcpMountField).getAllByText('挂载 MCP')).toHaveLength(1);
+    expect(
+      within(mcpMountField).getByTestId('agent-flow-mcp-instances-toolbar')
+    ).toBeInTheDocument();
+    expect(
+      within(mcpMountField).getByText('missing-instance')
+    ).toBeInTheDocument();
+    expect(
+      within(mcpMountField).queryByRole('combobox')
+    ).not.toBeInTheDocument();
+    expect(within(mcpMountField).queryByRole('switch')).not.toBeInTheDocument();
+  });
+
   test('keeps Fusion mounted tools from saving inherited external tools', async () => {
     const state = createInitialState();
     let latestDocument = state.draft.document;

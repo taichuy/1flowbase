@@ -44,6 +44,7 @@ function hasEmbeddedLabel(renderer: string) {
     renderer === 'output_contract_definition' ||
     renderer === 'start_input_fields' ||
     renderer === 'start_model_list' ||
+    renderer === 'llm_mcp_instances' ||
     renderer === 'llm_tool_registrations'
   );
 }
