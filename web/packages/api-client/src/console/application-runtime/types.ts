@@ -194,14 +194,6 @@ export interface ConsoleApplicationRunMonitoringAuthorizedAccountUsage {
   failed_count: number;
 }
 
-export interface ConsoleApplicationRunMonitoringExternalUserUsage {
-  external_user: string | null;
-  request_count: number;
-  total_tokens: number;
-  avg_duration_ms: number;
-  failed_count: number;
-}
-
 export interface ConsoleApplicationRunMonitoringApiKeyUsage {
   api_key_id: string;
   api_key_name_snapshot: string | null;
@@ -242,7 +234,6 @@ export interface ConsoleApplicationRunMonitoringReport {
   protocols: ConsoleApplicationRunMonitoringProtocolBreakdown[];
   sources: ConsoleApplicationRunMonitoringSourceBreakdown[];
   authorized_accounts: ConsoleApplicationRunMonitoringAuthorizedAccountUsage[];
-  external_users: ConsoleApplicationRunMonitoringExternalUserUsage[];
   api_keys: ConsoleApplicationRunMonitoringApiKeyUsage[];
   external_conversations: ConsoleApplicationRunMonitoringExternalConversationUsage[];
   slowest_runs: ConsoleApplicationRunMonitoringRunRank[];

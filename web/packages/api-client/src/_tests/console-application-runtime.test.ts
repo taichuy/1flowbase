@@ -1072,7 +1072,6 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"te
             protocols: [],
             sources: [],
             authorized_accounts: [],
-            external_users: [],
             api_keys: [],
             external_conversations: [],
             slowest_runs: [],

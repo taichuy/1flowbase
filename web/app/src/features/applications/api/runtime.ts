@@ -28,7 +28,6 @@ import {
   type ConsoleApplicationRunMonitoringAuthorizedAccountUsage,
   type ConsoleApplicationRunMonitoringBucket,
   type ConsoleApplicationRunMonitoringExternalConversationUsage,
-  type ConsoleApplicationRunMonitoringExternalUserUsage,
   type ConsoleApplicationRunMonitoringProtocolBreakdown,
   type ConsoleApplicationRunMonitoringReport,
   type ConsoleApplicationRunOverview,
@@ -112,8 +111,6 @@ export type ApplicationRunMonitoringAuthorizedAccountUsage =
   ConsoleApplicationRunMonitoringAuthorizedAccountUsage;
 export type ApplicationRunMonitoringExternalConversationUsage =
   ConsoleApplicationRunMonitoringExternalConversationUsage;
-export type ApplicationRunMonitoringExternalUserUsage =
-  ConsoleApplicationRunMonitoringExternalUserUsage;
 export type ApplicationRunMonitoringProtocolBreakdown =
   ConsoleApplicationRunMonitoringProtocolBreakdown;
 export type ApplicationRunMonitoringRunRank =

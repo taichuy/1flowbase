@@ -51,7 +51,6 @@
     "delete_application_content_suffix": "”相关的编排、草稿、运行记录和标签绑定。",
     "not_bound": "未绑定",
     "not_generated": "未生成",
-    "external_users": "外部用户",
     "total_tokens_amount": "Token 总量",
     "manage_tags": "管理标签",
     "tool_callback": "工具回调",

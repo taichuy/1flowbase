@@ -33,7 +33,6 @@ import {
   type ApplicationRunMonitoringApiKeyUsage,
   type ApplicationRunMonitoringAuthorizedAccountUsage,
   type ApplicationRunMonitoringExternalConversationUsage,
-  type ApplicationRunMonitoringExternalUserUsage,
   type ApplicationRunMonitoringProtocolBreakdown,
   type ApplicationRunMonitoringRunRank,
   type ApplicationRunMonitoringSourceBreakdown,
@@ -721,24 +720,6 @@ export function ApplicationStatisticsPage({
     [report]
   );
 
-  const maxExtUserRequests = useMemo(
-    () =>
-      report
-        ? Math.max(
-            1,
-            ...report.external_users.map((item) => item.request_count)
-          )
-        : 1,
-    [report]
-  );
-  const maxExtUserTokens = useMemo(
-    () =>
-      report
-        ? Math.max(1, ...report.external_users.map((item) => item.total_tokens))
-        : 1,
-    [report]
-  );
-
   const maxApiKeyRequests = useMemo(
     () =>
       report
@@ -1083,18 +1064,6 @@ export function ApplicationStatisticsPage({
             )}
             dataSource={report.authorized_accounts}
             rowKey={(record) => record.authorized_account ?? 'unknown'}
-          />
-        </MonitoringPanel>
-        <MonitoringPanel title={i18nText("applications", "auto.external_users")}>
-          <MonitoringTable<ApplicationRunMonitoringExternalUserUsage>
-            columns={usageColumns(
-              i18nText("applications", "auto.external_users"),
-              'external_user',
-              maxExtUserRequests,
-              maxExtUserTokens
-            )}
-            dataSource={report.external_users}
-            rowKey={(record) => record.external_user ?? 'unknown'}
           />
         </MonitoringPanel>
         <MonitoringPanel title="API Key">

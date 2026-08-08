@@ -57,7 +57,6 @@ pub struct ApplicationRunMonitoringReportResponse {
     pub protocols: Vec<ApplicationRunMonitoringProtocolBreakdownResponse>,
     pub sources: Vec<ApplicationRunMonitoringSourceBreakdownResponse>,
     pub authorized_accounts: Vec<ApplicationRunMonitoringAuthorizedAccountUsageResponse>,
-    pub external_users: Vec<ApplicationRunMonitoringExternalUserUsageResponse>,
     pub api_keys: Vec<ApplicationRunMonitoringApiKeyUsageResponse>,
     pub external_conversations: Vec<ApplicationRunMonitoringExternalConversationUsageResponse>,
     pub slowest_runs: Vec<ApplicationRunMonitoringRunRankResponse>,
@@ -154,15 +153,6 @@ pub struct ApplicationRunMonitoringSourceBreakdownResponse {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ApplicationRunMonitoringAuthorizedAccountUsageResponse {
     pub authorized_account: Option<String>,
-    pub request_count: i64,
-    pub total_tokens: i64,
-    pub avg_duration_ms: f64,
-    pub failed_count: i64,
-}
-
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ApplicationRunMonitoringExternalUserUsageResponse {
-    pub external_user: Option<String>,
     pub request_count: i64,
     pub total_tokens: i64,
     pub avg_duration_ms: f64,
@@ -422,17 +412,6 @@ fn to_report_response(
                     failed_count: usage.failed_count,
                 },
             )
-            .collect(),
-        external_users: report
-            .external_users
-            .into_iter()
-            .map(|usage| ApplicationRunMonitoringExternalUserUsageResponse {
-                external_user: usage.external_user,
-                request_count: usage.request_count,
-                total_tokens: usage.total_tokens,
-                avg_duration_ms: usage.avg_duration_ms,
-                failed_count: usage.failed_count,
-            })
             .collect(),
         api_keys: report
             .api_keys

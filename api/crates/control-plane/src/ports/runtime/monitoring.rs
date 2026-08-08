@@ -20,7 +20,6 @@ pub struct ApplicationRunMonitoringReport {
     pub protocols: Vec<ApplicationRunMonitoringProtocolBreakdown>,
     pub sources: Vec<ApplicationRunMonitoringSourceBreakdown>,
     pub authorized_accounts: Vec<ApplicationRunMonitoringAuthorizedAccountUsage>,
-    pub external_users: Vec<ApplicationRunMonitoringExternalUserUsage>,
     pub api_keys: Vec<ApplicationRunMonitoringApiKeyUsage>,
     pub external_conversations: Vec<ApplicationRunMonitoringExternalConversationUsage>,
     pub slowest_runs: Vec<ApplicationRunMonitoringRunRank>,
@@ -117,15 +116,6 @@ pub struct ApplicationRunMonitoringSourceBreakdown {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplicationRunMonitoringAuthorizedAccountUsage {
     pub authorized_account: Option<String>,
-    pub request_count: i64,
-    pub total_tokens: i64,
-    pub avg_duration_ms: f64,
-    pub failed_count: i64,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ApplicationRunMonitoringExternalUserUsage {
-    pub external_user: Option<String>,
     pub request_count: i64,
     pub total_tokens: i64,
     pub avg_duration_ms: f64,

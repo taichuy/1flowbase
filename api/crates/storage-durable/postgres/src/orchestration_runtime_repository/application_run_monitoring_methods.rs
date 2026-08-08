@@ -78,9 +78,6 @@ impl PgControlPlaneStore {
                 started_to,
             )
             .await?;
-        let external_users = self
-            .application_run_monitoring_external_users(application_id, started_from, started_to)
-            .await?;
         let api_keys = self
             .application_run_monitoring_api_keys(application_id, started_from, started_to)
             .await?;
@@ -120,7 +117,6 @@ impl PgControlPlaneStore {
             protocols,
             sources,
             authorized_accounts,
-            external_users,
             api_keys,
             external_conversations,
             slowest_runs,
@@ -569,33 +565,6 @@ impl PgControlPlaneStore {
             .collect())
     }
 
-    async fn application_run_monitoring_external_users(
-        &self,
-        application_id: Uuid,
-        started_from: Option<OffsetDateTime>,
-        started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringExternalUserUsage>> {
-        let rows = self
-            .application_run_monitoring_nullable_text_usage(
-                application_id,
-                started_from,
-                started_to,
-                "external_user",
-            )
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|row| control_plane::ports::ApplicationRunMonitoringExternalUserUsage {
-                external_user: row.dimension_value,
-                request_count: row.request_count,
-                total_tokens: row.total_tokens,
-                avg_duration_ms: row.avg_duration_ms,
-                failed_count: row.failed_count,
-            })
-            .collect())
-    }
-
     async fn application_run_monitoring_external_conversations(
         &self,
         application_id: Uuid,
@@ -634,7 +603,6 @@ impl PgControlPlaneStore {
     ) -> Result<Vec<ApplicationRunMonitoringTextUsageRow>> {
         let field = match field {
             "authorized_account" => "authorized_account",
-            "external_user" => "external_user",
             "external_conversation_id" => "external_conversation_id",
             _ => return Err(anyhow!("unsupported monitoring usage field: {field}")),
         };

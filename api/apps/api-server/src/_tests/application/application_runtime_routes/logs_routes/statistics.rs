@@ -334,6 +334,10 @@ async fn application_runtime_routes_monitoring_non_positive_window_uses_default(
         default_payload["data"]["overview"]["total_count"].as_i64(),
         Some(1)
     );
+    assert!(
+        default_payload["data"].get("external_users").is_none(),
+        "monitoring report must not expose external user usage"
+    );
 
     let extended_payload = get_console_json(
         &app,

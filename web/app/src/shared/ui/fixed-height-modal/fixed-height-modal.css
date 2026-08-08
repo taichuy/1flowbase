@@ -1,4 +1,4 @@
-.fixed-height-modal .ant-modal-content {
+.fixed-height-modal > .ant-modal-container {
   display: flex;
   height: var(
     --fixed-height-modal-content-height,

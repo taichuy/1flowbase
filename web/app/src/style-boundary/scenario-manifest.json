@@ -956,6 +956,8 @@
       "web/app/src/shared/ui/section-page-layout/section-page-layout.css",
       "web/app/src/shared/ui/scrollable-surface/ScrollableSurface.tsx",
       "web/app/src/shared/ui/scrollable-surface/scrollable-surface.css",
+      "web/app/src/shared/ui/fixed-height-modal/FixedHeightModal.tsx",
+      "web/app/src/shared/ui/fixed-height-modal/fixed-height-modal.css",
       "web/app/src/features/settings/pages/SettingsPage.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsEmptyState.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsAuthCenterSection.tsx",

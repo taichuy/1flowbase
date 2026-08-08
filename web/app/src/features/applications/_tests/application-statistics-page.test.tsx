@@ -198,15 +198,6 @@ function monitoringReport() {
         failed_count: 0
       }
     ],
-    external_users: [
-      {
-        external_user: 'customer-1',
-        request_count: 5,
-        total_tokens: 3000,
-        avg_duration_ms: 3200,
-        failed_count: 2
-      }
-    ],
     api_keys: [
       {
         api_key_id: 'key-1',
@@ -412,12 +403,12 @@ describe('ApplicationStatisticsPage', () => {
     expect(screen.getAllByText('5.6K').length).toBeGreaterThan(0);
     expect(screen.getByText('Input tokens')).toBeInTheDocument();
     expect(screen.getByText('4.2K')).toBeInTheDocument();
+    expect(screen.queryByText('external users')).not.toBeInTheDocument();
     expect(screen.getByText('Output tokens')).toBeInTheDocument();
     expect(screen.getByText('1.4K')).toBeInTheDocument();
     expect(screen.getByText('Cache-hit tokens')).toBeInTheDocument();
     expect(screen.getByText('900')).toBeInTheDocument();
     expect(screen.queryByText('+560,000.0%')).not.toBeInTheDocument();
-    expect(screen.getByText('customer-1')).toBeInTheDocument();
     expect(screen.getByText('Customer API')).toBeInTheDocument();
     expect(screen.getByText('Assistant')).toBeInTheDocument();
     expect(screen.getAllByText('最慢运行').length).toBeGreaterThan(0);

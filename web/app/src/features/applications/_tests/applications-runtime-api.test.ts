@@ -128,7 +128,6 @@ vi.mock('@1flowbase/api-client', () => ({
     protocols: [],
     sources: [],
     authorized_accounts: [],
-    external_users: [],
     api_keys: [],
     external_conversations: [],
     slowest_runs: [],

@@ -546,12 +546,18 @@ describe('ModelProvidersPage - layout and style', () => {
     );
     expect(cssSource).toContain('.model-provider-panel__instances-tabs');
     expect(cssSource).toContain(
-      '.model-provider-panel__instances-tabs .ant-tabs-tabpane'
+      '.model-provider-panel__instances-tabs > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content-active'
     );
     expect(cssSource).toContain('overflow-y: auto;');
     expect(cssSource).toContain('min-height: 0;');
     expect(cssSource).toMatch(
-      /\.model-provider-panel__instances-tabs \.ant-tabs-tabpane\s*\{[^}]*height:\s*100%;[^}]*overflow-y:\s*auto;/s
+      /\.model-provider-panel__instances-tabs > \.ant-tabs-body-holder > \.ant-tabs-body > \.ant-tabs-content-active\s*\{[^}]*height:\s*100%;[^}]*overflow-y:\s*auto;/s
+    );
+    expect(cssSource).not.toMatch(
+      /\.model-provider-panel__instances-tabs > \.ant-tabs-body-holder > \.ant-tabs-body > \.ant-tabs-content\s*\{[^}]*display:\s*flex;/s
+    );
+    expect(cssSource).not.toMatch(
+      /\.model-provider-panel__instances-tabs > \.ant-tabs-body-holder > \.ant-tabs-body\s*\{[^}]*display:\s*flex;/s
     );
   });
 });

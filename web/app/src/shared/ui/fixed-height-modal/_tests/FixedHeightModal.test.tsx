@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { render, screen } from '@testing-library/react';
 import { type CSSProperties, type ReactNode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
@@ -43,6 +46,17 @@ vi.mock('antd', async () => {
 });
 
 describe('FixedHeightModal', () => {
+  test('AC-001 constrains the current Ant Design modal container slot', () => {
+    const cssSource = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../fixed-height-modal.css'),
+      'utf8'
+    );
+
+    expect(cssSource).toContain(
+      '.fixed-height-modal > .ant-modal-container'
+    );
+  });
+
   test('centralizes fixed modal shell sizing and scroll body structure', () => {
     const footer = <button type="button">保存</button>;
 
