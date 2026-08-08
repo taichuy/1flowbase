@@ -22,6 +22,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 type InstallState = 'idle' | 'installing' | 'success' | 'failed';
 const BELOW_MINIMUM_HOST_VERSION = 'below_minimum_host_version';
+const UPDATE_STATUS_UNKNOWN = 'update_status_unknown';
 
 function isBelowMinimumHostVersion(entry: SettingsOfficialPluginCatalogEntry) {
   return entry.compatibility_status === BELOW_MINIMUM_HOST_VERSION;
@@ -161,6 +162,10 @@ function OfficialPluginTagLabel({ tag }: { tag: string }) {
     return i18nText('settings', 'auto.host_version_risk');
   }
 
+  if (tag === UPDATE_STATUS_UNKNOWN) {
+    return i18nText('settings', 'auto.update_check_failed');
+  }
+
   if (tag === 'hybrid' || tag === 'dynamic' || tag === 'static') {
     return (
       <span className="model-provider-panel__tag-label">
@@ -203,9 +208,11 @@ function getStatusTags(
   if (family) {
     tags.push(family.current_version);
     tags.push(
-      family.has_update && family.latest_version
-        ? family.latest_version
-        : 'latest'
+      family.latest_version === null
+        ? UPDATE_STATUS_UNKNOWN
+        : family.has_update
+          ? family.latest_version
+          : 'latest'
     );
     if (isBelowMinimumHostVersion(entry)) {
       tags.push(BELOW_MINIMUM_HOST_VERSION);
@@ -410,13 +417,15 @@ function OfficialPluginCard({
   const upgrading = upgradingProviderCode === entry.provider_code;
   const belowMinimumHostVersion = isBelowMinimumHostVersion(entry);
   const buttonLabel = family
-    ? family.has_update
-      ? upgrading
-        ? i18nText('settings', 'auto.upgrading')
-        : belowMinimumHostVersion
-          ? i18nText('settings', 'auto.still_update')
-          : i18nText('settings', 'auto.upgrade_latest_version')
-      : i18nText('settings', 'auto.currently_latest_version')
+    ? family.latest_version === null
+      ? i18nText('settings', 'auto.update_check_failed')
+      : family.has_update
+        ? upgrading
+          ? i18nText('settings', 'auto.upgrading')
+          : belowMinimumHostVersion
+            ? i18nText('settings', 'auto.still_update')
+            : i18nText('settings', 'auto.upgrade_latest_version')
+        : i18nText('settings', 'auto.currently_latest_version')
     : getInstallButtonLabel(entry, installState, activePluginId);
   const buttonDisabled = family ? !family.has_update : installed;
   const installCompatibilityOverride = belowMinimumHostVersion

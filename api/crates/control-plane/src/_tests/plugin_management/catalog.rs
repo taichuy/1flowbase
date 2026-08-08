@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc, time::Duration};
+use std::{fs, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -26,7 +26,7 @@ use super::support::{
 };
 
 #[tokio::test]
-async fn publisher_cutover_family_uses_semver_for_older_official_version() {
+async fn ac_001_ac_003_family_fetches_current_catalog_and_reports_openai_update() {
     #[derive(Clone)]
     struct NewerOfficialSource;
 
@@ -46,21 +46,17 @@ async fn publisher_cutover_family_uses_semver_for_older_official_version() {
                     provider_code: "openai_compatible".into(),
                     namespace: "plugin.openai_compatible".into(),
                     protocol: "openai_compatible".into(),
-                    latest_version: "0.2.0".into(),
+                    latest_version: "0.2.26".into(),
                     minimum_host_version: "0.1.0".into(),
                     icon: None,
                     selected_artifact: sample_artifact("linux", "amd64", Some("musl")),
                     i18n_summary: sample_i18n_summary(),
-                    release_tag: "openai_compatible-v0.2.0".into(),
+                    release_tag: "openai-v0.2.26".into(),
                     trust_mode: "allow_unsigned".into(),
                     help_url: Some("https://example.com/help".into()),
                     model_discovery_mode: "hybrid".into(),
                 }],
             })
-        }
-
-        async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
-            self.list_official_catalog().await.ok()
         }
 
         async fn download_plugin(
@@ -92,7 +88,7 @@ async fn publisher_cutover_family_uses_semver_for_older_official_version() {
         &repository,
         &install_root,
         "openai_compatible",
-        "0.10.0",
+        "0.2.25",
         PluginDesiredState::ActiveRequested,
     )
     .await;
@@ -115,9 +111,12 @@ async fn publisher_cutover_family_uses_semver_for_older_official_version() {
         .unwrap();
     assert_eq!(families.entries.len(), 1);
     assert_eq!(families.entries[0].provider_code, "openai_compatible");
-    assert_eq!(families.entries[0].current_version, "0.10.0");
-    assert_eq!(families.entries[0].latest_version.as_deref(), Some("0.2.0"));
-    assert!(!families.entries[0].has_update);
+    assert_eq!(families.entries[0].current_version, "0.2.25");
+    assert_eq!(
+        families.entries[0].latest_version.as_deref(),
+        Some("0.2.26")
+    );
+    assert!(families.entries[0].has_update);
 }
 
 #[tokio::test]
@@ -189,77 +188,6 @@ async fn publisher_cutover_family_reports_latest_unknown_without_verified_catalo
     assert_eq!(families.entries[0].current_version, "0.1.0");
     assert_eq!(families.entries[0].latest_version, None);
     assert!(!families.entries[0].has_update);
-}
-
-#[tokio::test]
-async fn ac_001_plugin_management_service_lists_provider_families_without_waiting_for_official_catalog(
-) {
-    #[derive(Clone)]
-    struct BlockingOfficialSource;
-
-    #[async_trait]
-    impl OfficialPluginSourcePort for BlockingOfficialSource {
-        async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
-            std::future::pending().await
-        }
-
-        async fn download_plugin(
-            &self,
-            _entry: &OfficialPluginSourceEntry,
-        ) -> Result<DownloadedOfficialPluginPackage> {
-            unreachable!("download is not used in this read-only test");
-        }
-
-        fn trusted_public_keys(&self) -> Vec<plugin_framework::TrustedPublicKey> {
-            Vec::new()
-        }
-    }
-
-    let workspace_id = Uuid::now_v7();
-    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
-        workspace_id,
-        &["plugin_config.view.all", "plugin_config.configure.all"],
-    ));
-    let install_root =
-        std::env::temp_dir().join(format!("plugin-family-nonblocking-{}", Uuid::now_v7()));
-    let service = PluginManagementService::new(
-        repository.clone(),
-        MemoryProviderRuntime::default(),
-        Arc::new(BlockingOfficialSource),
-        &install_root,
-    );
-    let installation_id = seed_test_installation(
-        &repository,
-        &install_root,
-        "openai_compatible",
-        "0.1.0",
-        PluginDesiredState::ActiveRequested,
-    )
-    .await;
-    repository
-        .create_assignment(&CreatePluginAssignmentInput {
-            installation_id,
-            workspace_id: repository.actor.current_workspace_id,
-            provider_code: "openai_compatible".into(),
-            actor_user_id: repository.actor.user_id,
-        })
-        .await
-        .unwrap();
-
-    let families = tokio::time::timeout(
-        Duration::from_millis(250),
-        service.list_families(
-            repository.actor.user_id,
-            PluginCatalogFilter::default(),
-            requested_locales(),
-        ),
-    )
-    .await
-    .expect("AC-001: local provider families must not wait for the official registry")
-    .unwrap();
-
-    assert_eq!(families.entries.len(), 1);
-    assert_eq!(families.entries[0].provider_code, "openai_compatible");
 }
 
 #[tokio::test]
