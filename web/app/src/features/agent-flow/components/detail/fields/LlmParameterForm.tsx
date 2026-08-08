@@ -357,6 +357,38 @@ export function LlmParameterForm({
   const parameterForm = selectedProvider?.parameterForm ?? null;
   const contextWindow = selectedModel?.effectiveContextWindow ?? null;
 
+  useEffect(() => {
+    if (!parameterForm) {
+      return;
+    }
+
+    const fieldsToNormalize = parameterForm.fields.filter(
+      (field) =>
+        field.send_mode === 'always' &&
+        parameters.items[field.key]?.enabled !== true
+    );
+
+    if (fieldsToNormalize.length === 0) {
+      return;
+    }
+
+    updateParameters(adapter, {
+      schema_version: parameterForm.schema_version,
+      items: {
+        ...parameters.items,
+        ...Object.fromEntries(
+          fieldsToNormalize.map((field) => [
+            field.key,
+            {
+              enabled: true,
+              value: getLlmParameterDefaultValue(field)
+            }
+          ])
+        )
+      }
+    });
+  }, [adapter, parameterForm, parameters]);
+
   const groupedFields = useMemo(() => {
     if (!parameterForm) {
       return [];
@@ -487,7 +519,11 @@ export function LlmParameterForm({
                         <Switch
                           checked={
                             alwaysEnabled
-                              ? Boolean(value ?? defaultValue)
+                              ? Boolean(
+                                  parameters.items[field.key]?.enabled === true
+                                    ? value
+                                    : defaultValue
+                                )
                               : enabled
                           }
                           onChange={(checked) =>
