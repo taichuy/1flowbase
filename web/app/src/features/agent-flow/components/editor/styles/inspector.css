@@ -341,6 +341,44 @@
   flex: none;
 }
 
+.agent-flow-mcp-instances {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+}
+
+.agent-flow-mcp-instances__toolbar {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-flow-mcp-instances__label.ant-typography {
+  min-width: 0;
+  color: #1f3326;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.agent-flow-mcp-instances__actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-left: auto;
+}
+
+.agent-flow-mcp-instances__add.ant-btn {
+  flex: none;
+}
+
+.agent-flow-mcp-instances__status.ant-tag {
+  flex: none;
+  margin-inline: 8px 0;
+}
+
 .agent-flow-llm-tool-registration-panel .agent-flow-model-settings__panel-body {
   display: flex;
   flex-direction: column;

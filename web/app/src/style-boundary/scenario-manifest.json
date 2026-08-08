@@ -574,6 +574,7 @@
       "web/app/src/features/agent-flow/components/detail/tabs/NodeConfigTab.tsx",
       "web/app/src/features/agent-flow/components/detail/tabs/NodeLastRunTab.tsx",
       "web/app/src/features/agent-flow/components/detail/fields/LlmModelField.tsx",
+      "web/app/src/features/agent-flow/components/detail/fields/LlmMcpInstancesField.tsx",
       "web/app/src/features/agent-flow/components/detail/fields/LlmPromptMessagesField.tsx",
       "web/app/src/features/agent-flow/components/detail/fields/OutputContractDefinitionField.tsx",
       "web/app/src/features/agent-flow/components/detail/last-run/NodeRunSummaryCard.tsx",
