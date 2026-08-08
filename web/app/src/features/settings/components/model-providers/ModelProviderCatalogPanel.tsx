@@ -143,10 +143,15 @@ export function ModelProviderCatalogPanel({
                           title={
                             entry.has_update
                               ? undefined
-                              : i18nText(
-                                  'settings',
-                                  'auto.currently_latest_version'
-                                )
+                              : entry.latest_version === null
+                                ? i18nText(
+                                    'settings',
+                                    'auto.update_check_failed'
+                                  )
+                                : i18nText(
+                                    'settings',
+                                    'auto.currently_latest_version'
+                                  )
                           }
                         >
                           <span>

@@ -834,14 +834,22 @@ where
             .repository
             .list_assignments(actor.current_workspace_id)
             .await?;
-        // Families are a local inventory read. Only an already verified catalog snapshot may
-        // enrich update truth; this path never starts remote I/O or consumes a second cache.
-        let official_entries = self
-            .official_source
-            .cached_official_catalog()
-            .await
-            .map(|snapshot| snapshot.entries)
-            .unwrap_or_default();
+        // Update truth comes from the same current official catalog used by install and upgrade.
+        // A verified cached snapshot is only a resilience fallback when that source is unavailable.
+        let official_entries = match self.official_source.list_official_catalog().await {
+            Ok(snapshot) => snapshot.entries,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "official plugin catalog unavailable while resolving family updates; using verified cache"
+                );
+                self.official_source
+                    .cached_official_catalog()
+                    .await
+                    .map(|snapshot| snapshot.entries)
+                    .unwrap_or_default()
+            }
+        };
         let official_latest_by_provider = normalize_official_entries(official_entries)
             .into_iter()
             .map(|entry| (entry.provider_code, entry.latest_version))

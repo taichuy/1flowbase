@@ -542,6 +542,81 @@ describe('ModelProvidersPage - catalog and family version', () => {
     });
   }, 20000);
 
+  test('AC-002 shows unknown update status instead of marking an unresolved family latest', async () => {
+    authenticateAsModelProviderManager();
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValue([
+      {
+        provider_code: 'openai_compatible',
+        display_name: 'OpenAI Compatible',
+        protocol: 'openai_compatible',
+        help_url: 'https://platform.openai.com/docs/api-reference',
+        default_base_url: 'https://api.openai.com/v1',
+        model_discovery_mode: 'hybrid',
+        current_installation_id: 'installation-1',
+        current_version: '0.1.0',
+        current_local_artifact: {
+          node_id: 'test-node',
+          installation_id: 'installation-1',
+          local_version: '0.1.0',
+          local_checksum: null,
+          installed_path: '/tmp/plugins/openai_compatible/0.1.0',
+          artifact_status: 'ready',
+          runtime_status: 'inactive',
+          checked_at: '2026-04-18T10:00:00Z',
+          last_error: null
+        },
+        latest_version: null,
+        has_update: false,
+        installed_versions: [
+          {
+            installation_id: 'installation-1',
+            plugin_version: '0.1.0',
+            source_kind: 'official_registry',
+            trust_level: 'verified_official',
+            created_at: '2026-04-18T09:00:00Z',
+            is_current: true
+          }
+        ]
+      }
+    ]);
+    pluginsApi.fetchSettingsOfficialPluginCatalog.mockResolvedValue({
+      source_kind: 'official_registry',
+      source_label: '官方源',
+      registry_url: 'https://official.example.com/official-registry.json',
+      entries: [
+        {
+          plugin_id: '1flowbase.openai_compatible',
+          provider_code: 'openai_compatible',
+          display_name: 'OpenAI Compatible',
+          protocol: 'openai_compatible',
+          latest_version: '0.2.0',
+          help_url: 'https://platform.openai.com/docs/api-reference',
+          model_discovery_mode: 'hybrid',
+          install_status: 'assigned'
+        }
+      ]
+    });
+
+    const view = renderApp('/settings/model-providers');
+
+    const officialCard = await waitFor(
+      () => {
+        const card = view.container.querySelector<HTMLElement>(
+          '.model-provider-panel__official-card'
+        );
+        expect(card).not.toBeNull();
+        return card!;
+      },
+      { timeout: 10_000 }
+    );
+    expect(officialCard).toHaveTextContent('0.1.0');
+    expect(officialCard).toHaveTextContent('无法确定更新状态');
+    expect(officialCard).not.toHaveTextContent('latest');
+    expect(
+      within(officialCard).getByRole('button', { name: '无法确定更新状态' })
+    ).toBeDisabled();
+  });
+
   test('AC-003 keeps official catalog failures local, friendly, and retryable', async () => {
     authenticateAsModelProviderManager();
     const gatewayBody =
