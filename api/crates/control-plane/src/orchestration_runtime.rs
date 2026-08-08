@@ -350,6 +350,8 @@ pub struct OrchestrationRuntimeService<R, H> {
     provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     api_node_id: Option<String>,
     provider_install_root: Option<PathBuf>,
+    runtime_internal_tool_invoker:
+        Option<Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>>,
 }
 
 pub(super) struct ApplicationRunContext {
@@ -391,6 +393,7 @@ where
             provider_transport_store: None,
             api_node_id: None,
             provider_install_root: None,
+            runtime_internal_tool_invoker: None,
         }
     }
 
@@ -409,6 +412,14 @@ where
         registry: Arc<storage_object::FileStorageDriverRegistry>,
     ) -> Self {
         self.file_storage_registry = Some(registry);
+        self
+    }
+
+    pub fn with_runtime_internal_tool_invoker(
+        mut self,
+        invoker: Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+    ) -> Self {
+        self.runtime_internal_tool_invoker = Some(invoker);
         self
     }
 
@@ -447,8 +458,12 @@ where
                 plan,
                 variable_pool,
             )?;
-        Ok(match &self.llm_routing_counter_store {
+        let context = match &self.llm_routing_counter_store {
             Some(store) => context.with_llm_routing_counter_store(store.clone()),
+            None => context,
+        };
+        Ok(match &self.runtime_internal_tool_invoker {
+            Some(invoker) => context.with_runtime_internal_tool_invoker(invoker.clone()),
             None => context,
         })
     }

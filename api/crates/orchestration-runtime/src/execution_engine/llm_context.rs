@@ -708,6 +708,12 @@ pub(super) fn provider_tools(
         variable_pool,
         runtime_context,
     );
+    tools.extend(
+        runtime_context
+            .runtime_internal_tool_registrations(node)
+            .into_iter()
+            .map(|registration| registration.provider_tool),
+    );
     if !media_route_has_returned_to_main(node, resolved_inputs, variable_pool) {
         tools.extend(visible_internal_llm_provider_tools(node));
     }
@@ -792,18 +798,42 @@ fn external_provider_tools(
 }
 
 fn merge_external_provider_tools(mut configured: Vec<Value>, mounted: &[Value]) -> Vec<Value> {
-    let mut names = configured
-        .iter()
-        .filter_map(provider_tool_name)
-        .collect::<HashSet<_>>();
-    for tool in mounted {
-        let name = provider_tool_name(tool);
-        if name.is_some_and(|name| !names.insert(name)) {
+    let mut names = HashSet::new();
+    for (index, tool) in configured.iter_mut().enumerate() {
+        let Some(name) = provider_tool_name(tool) else {
+            continue;
+        };
+        if names.insert(name.clone()) {
             continue;
         }
-        configured.push(tool.clone());
+        let suffix = format!("_configured_{index}");
+        let keep = 64usize.saturating_sub(suffix.len());
+        let qualified = format!("{}{suffix}", &name[..name.len().min(keep)]);
+        set_provider_tool_name(tool, &qualified);
+        names.insert(qualified);
+    }
+    for (index, tool) in mounted.iter().enumerate() {
+        let mut tool = tool.clone();
+        if let Some(name) = provider_tool_name(&tool) {
+            if !names.insert(name.clone()) {
+                let suffix = format!("_run_{index}");
+                let keep = 64usize.saturating_sub(suffix.len());
+                let qualified = format!("{}{suffix}", &name[..name.len().min(keep)]);
+                set_provider_tool_name(&mut tool, &qualified);
+                names.insert(qualified);
+            }
+        }
+        configured.push(tool);
     }
     configured
+}
+
+fn set_provider_tool_name(tool: &mut Value, name: &str) {
+    if let Some(function) = tool.get_mut("function").and_then(Value::as_object_mut) {
+        function.insert("name".to_string(), Value::String(name.to_string()));
+    } else if let Some(object) = tool.as_object_mut() {
+        object.insert("name".to_string(), Value::String(name.to_string()));
+    }
 }
 
 fn provider_tool_name(tool: &Value) -> Option<String> {
@@ -982,11 +1012,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mounted_tools_extend_node_tools_without_duplicate_names() {
-        let configured = vec![json!({
-            "type": "function",
-            "function": { "name": "search" }
-        })];
+    fn mounted_tools_preserve_duplicate_occurrences_with_source_qualified_names() {
+        let configured = vec![
+            json!({"type": "function", "function": { "name": "search" }}),
+            json!({"type": "function", "function": { "name": "search" }}),
+        ];
         let mounted = vec![
             json!({"type": "function", "function": { "name": "search" }}),
             json!({"type": "function", "function": { "name": "mcp_catalog" }}),
@@ -994,10 +1024,18 @@ mod tests {
 
         let merged = merge_external_provider_tools(configured, &mounted);
 
-        assert_eq!(merged.len(), 2);
+        assert_eq!(merged.len(), 4);
         assert_eq!(provider_tool_name(&merged[0]).as_deref(), Some("search"));
         assert_eq!(
             provider_tool_name(&merged[1]).as_deref(),
+            Some("search_configured_1")
+        );
+        assert_eq!(
+            provider_tool_name(&merged[2]).as_deref(),
+            Some("search_run_0")
+        );
+        assert_eq!(
+            provider_tool_name(&merged[3]).as_deref(),
             Some("mcp_catalog")
         );
     }

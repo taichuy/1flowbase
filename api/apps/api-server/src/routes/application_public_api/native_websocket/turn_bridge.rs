@@ -199,7 +199,7 @@ impl NativeTurnBridge {
             .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
         let stream = start_compatible_typed_turn_stream(
             self.state.clone(),
-            PreparedCompatibleTurn::start(run, None),
+            PreparedCompatibleTurn::start(run, None, self.authorization.bearer_token.clone()),
         )
         .await?;
         self.project_stream(request_id, visibility, stream, frames)

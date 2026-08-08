@@ -39,7 +39,16 @@ export const styleBoundaryMcpCatalog = {
       created_by: 'user-1',
       updated_by: 'user-1',
       created_at: '2026-06-21T00:00:00Z',
-      updated_at: '2026-06-21T00:00:00Z'
+      updated_at: '2026-06-21T00:00:00Z',
+      llm_tool_registration: {
+        prefix: 'workspace_ops',
+        tools: [
+          { operation: 'list', name: 'workspace_ops_mcp_list' },
+          { operation: 'get', name: 'workspace_ops_mcp_get' },
+          { operation: 'result', name: 'workspace_ops_mcp_result' },
+          { operation: 'call', name: 'workspace_ops_mcp_call' }
+        ]
+      }
     }
   ],
   groups: [

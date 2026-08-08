@@ -27,6 +27,7 @@
     "static_issues_draft": "There are no static issues with the current draft",
     "llm_parameters": "LLM parameters",
     "mount_tools": "Mount LLM",
+    "mount_mcp_instances": "Mount MCP instances",
     "input_parameters": "Input parameters",
     "tool_preconditions": "Pre-intercept",
     "tool_preconditions_json": "Pre-intercept JSON",

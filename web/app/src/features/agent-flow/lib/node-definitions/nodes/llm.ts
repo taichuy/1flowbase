@@ -26,6 +26,11 @@ export const llmNodeDefinition: NodeDefinition = {
           editor: 'llm_tool_registrations'
         },
         {
+          key: 'config.mcp_instance_ids',
+          label: i18nText('agentFlow', 'auto.mount_mcp_instances'),
+          editor: 'llm_mcp_instances'
+        },
+        {
           key: 'config.context_policy',
           label: '上下文',
           editor: 'llm_context_policy'

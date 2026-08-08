@@ -27,6 +27,7 @@
     "static_issues_draft": "当前草稿没有静态问题",
     "llm_parameters": "LLM 参数",
     "mount_tools": "挂载 LLM",
+    "mount_mcp_instances": "挂载 MCP",
     "input_parameters": "输入参数",
     "tool_preconditions": "前置拦截",
     "tool_preconditions_json": "前置拦截 JSON",

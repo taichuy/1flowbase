@@ -17,6 +17,7 @@ pub struct ExecutionRuntimeContext {
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
+    pub(super) runtime_internal_tool_invoker: Option<Arc<dyn RuntimeInternalToolInvoker>>,
 }
 
 #[derive(Clone, Default)]
@@ -51,6 +52,7 @@ impl ExecutionRuntimeContext {
             llm_routing_counter_store: None,
             http_response_file_persister: None,
             provider_invocation_capabilities: BTreeSet::new(),
+            runtime_internal_tool_invoker: None,
         })
     }
 
@@ -80,6 +82,57 @@ impl ExecutionRuntimeContext {
     ) -> Self {
         self.provider_invocation_capabilities.insert(capability);
         self
+    }
+
+    pub fn with_runtime_internal_tool_invoker(
+        mut self,
+        invoker: Arc<dyn RuntimeInternalToolInvoker>,
+    ) -> Self {
+        self.runtime_internal_tool_invoker = Some(invoker);
+        self
+    }
+
+    pub(super) fn runtime_internal_tool_registrations(
+        &self,
+        node: &CompiledNode,
+    ) -> Vec<RuntimeInternalToolRegistration> {
+        let mut registrations = self
+            .runtime_internal_tool_invoker
+            .as_ref()
+            .map(|invoker| invoker.registrations_for_node(node))
+            .unwrap_or_default();
+        let mut occupied = self
+            .tools
+            .iter()
+            .filter_map(runtime_provider_tool_name)
+            .collect::<BTreeSet<_>>();
+        occupied.extend(
+            node.config
+                .get("tools")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(runtime_provider_tool_name),
+        );
+        for registration in &mut registrations {
+            if occupied.insert(registration.provider_name.clone()) {
+                continue;
+            }
+            let qualified = qualified_runtime_internal_tool_name(
+                &registration.provider_name,
+                &registration.registration_id,
+            );
+            registration.provider_name = qualified.clone();
+            if let Some(function) = registration
+                .provider_tool
+                .get_mut("function")
+                .and_then(Value::as_object_mut)
+            {
+                function.insert("name".to_string(), Value::String(qualified.clone()));
+            }
+            occupied.insert(qualified);
+        }
+        registrations
     }
 
     pub fn with_protocol_context(mut self, protocol_context: ProtocolContextEnvelope) -> Self {
@@ -143,6 +196,23 @@ impl ExecutionRuntimeContext {
             .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
         store.increment_counter(key, 1, ttl).await
     }
+}
+
+fn runtime_provider_tool_name(tool: &Value) -> Option<String> {
+    tool.get("function")
+        .and_then(|function| function.get("name"))
+        .or_else(|| tool.get("name"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn qualified_runtime_internal_tool_name(base: &str, registration_id: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    registration_id.hash(&mut hasher);
+    let suffix = format!("_{:010x}", hasher.finish() & 0xffffffffff);
+    let keep = 64usize.saturating_sub(suffix.len());
+    format!("{}{suffix}", &base[..base.len().min(keep)])
 }
 
 fn ai_native_operation_from_variable_pool(

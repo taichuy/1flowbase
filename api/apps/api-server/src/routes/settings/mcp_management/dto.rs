@@ -13,6 +13,19 @@ pub struct McpInstanceResponse {
     pub updated_by: String,
     pub created_at: String,
     pub updated_at: String,
+    pub llm_tool_registration: McpLlmToolRegistrationResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpLlmToolRegistrationResponse {
+    pub prefix: String,
+    pub tools: Vec<McpLlmToolNameResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpLlmToolNameResponse {
+    pub operation: String,
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

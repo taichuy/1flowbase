@@ -9,6 +9,7 @@ import {
   DEFAULT_LLM_EXTERNAL_MODEL_PARAMETER_POLICY,
   DEFAULT_LLM_VISIBLE_INTERNAL_TOOLS_ENABLED,
   DEFAULT_LLM_VISIBLE_INTERNAL_TOOLS,
+  DEFAULT_LLM_MCP_INSTANCE_IDS,
   getLlmContextPolicy,
   getLlmExternalReasoningPolicy,
   getLlmExternalModelParameterPolicy,
@@ -18,6 +19,7 @@ import {
   getLlmProtocolContextReference,
   getLlmVisibleInternalToolsEnabled,
   getLlmVisibleInternalTools,
+  getLlmMcpInstanceIds,
   getLlmToolExternalToolPolicy,
   DEFAULT_LLM_EXTERNAL_TOOL_POLICY,
   DEFAULT_LLM_TOOL_MODE,
@@ -25,6 +27,14 @@ import {
 } from '../../lib/llm-node-config';
 
 describe('llm-node-config', () => {
+  test('legacy LLM nodes default to no MCP instances and preserve selected occurrences', () => {
+    expect(getLlmMcpInstanceIds({})).toEqual(DEFAULT_LLM_MCP_INSTANCE_IDS);
+    expect(
+      getLlmMcpInstanceIds({
+        mcp_instance_ids: ['catalog', 'catalog', null, 'ops']
+      })
+    ).toEqual(['catalog', 'catalog', 'ops']);
+  });
   test('getLlmModelProvider only reads the current model_provider contract', () => {
     expect(
       getLlmModelProvider({

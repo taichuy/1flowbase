@@ -1,8 +1,17 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::http::HeaderMap;
-use control_plane::mcp_management::McpManagementService;
+use control_plane::mcp_management::{
+    mcp_llm_registrations, McpLlmOperation, McpLlmRegistrationSource, McpManagementService,
+};
 use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
+use orchestration_runtime::{
+    compiled_plan::CompiledNode,
+    execution_engine::{
+        RuntimeInternalToolInvoker, RuntimeInternalToolOutput, RuntimeInternalToolRegistration,
+    },
+};
 use serde_json::{json, Value};
 
 use super::{input_schema, result_delivery};
@@ -49,18 +58,19 @@ pub(crate) struct VirtualMcpScope {
 }
 
 impl VirtualMcpScope {
+    #[cfg(test)]
     pub(crate) fn selected(
         catalog: &domain::McpCatalogSnapshot,
         selected_instance_ids: &[String],
     ) -> Self {
-        let selected = selected_instance_ids.iter().collect::<HashSet<_>>();
         Self {
-            instance_ids: catalog
-                .instances
+            instance_ids: selected_instance_ids
                 .iter()
-                .filter(|instance| {
-                    instance.status == McpInstanceStatus::Enabled
-                        && selected.contains(&instance.instance_id)
+                .filter_map(|selected_id| {
+                    catalog.instances.iter().find(|instance| {
+                        instance.status == McpInstanceStatus::Enabled
+                            && instance.instance_id == *selected_id
+                    })
                 })
                 .map(|instance| instance.instance_id.clone())
                 .collect(),
@@ -102,6 +112,158 @@ pub(crate) enum VirtualToolOutcome {
         message: &'static str,
         data: Option<Value>,
     },
+}
+
+#[derive(Clone)]
+pub(crate) struct ApiMcpRuntimeToolInvoker {
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    actor: domain::ActorContext,
+    catalog: domain::McpCatalogSnapshot,
+    run_level_instance_ids: Vec<String>,
+}
+
+impl ApiMcpRuntimeToolInvoker {
+    pub(crate) async fn new(
+        state: Arc<ApiState>,
+        headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+    ) -> Result<Self, ApiError> {
+        let catalog = McpManagementService::new(state.store.clone())
+            .read_catalog_for_actor(&actor)
+            .await?;
+        Ok(Self {
+            state,
+            headers,
+            actor,
+            catalog,
+            run_level_instance_ids,
+        })
+    }
+
+    fn selected_occurrences(&self, node: &CompiledNode) -> Vec<(String, McpLlmRegistrationSource)> {
+        let mut occurrences = self
+            .run_level_instance_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| {
+                (
+                    id.clone(),
+                    McpLlmRegistrationSource::new("run", index.to_string()),
+                )
+            })
+            .collect::<Vec<_>>();
+        occurrences.extend(
+            node.config
+                .get("mcp_instance_ids")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .enumerate()
+                .map(|(index, id)| {
+                    (
+                        id.to_string(),
+                        McpLlmRegistrationSource::new("node", format!("{}:{index}", node.node_id)),
+                    )
+                }),
+        );
+        let enabled = self
+            .catalog
+            .instances
+            .iter()
+            .filter(|instance| instance.status == McpInstanceStatus::Enabled)
+            .map(|instance| instance.instance_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        occurrences
+            .into_iter()
+            .filter(|(id, _)| enabled.contains(id.as_str()))
+            .collect()
+    }
+}
+
+#[async_trait]
+impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
+    fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
+        mcp_llm_registrations(&self.selected_occurrences(node))
+            .into_iter()
+            .map(|registration| RuntimeInternalToolRegistration {
+                registration_id: format!(
+                    "{}|{}|{}",
+                    registration.instance_id,
+                    registration.operation.as_str(),
+                    registration.provider_name,
+                ),
+                provider_name: registration.provider_name,
+                provider_tool: registration.provider_tool,
+                owner: json!({
+                    "kind": "mcp_instance",
+                    "instance_id": registration.instance_id,
+                    "operation": registration.operation.as_str(),
+                    "source": registration.source,
+                }),
+            })
+            .collect()
+    }
+
+    async fn invoke_runtime_internal_tool(
+        &self,
+        node: &CompiledNode,
+        registration: &RuntimeInternalToolRegistration,
+        arguments: Value,
+    ) -> anyhow::Result<RuntimeInternalToolOutput> {
+        let instance_id = registration
+            .owner
+            .get("instance_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("MCP runtime registration is missing instance_id"))?;
+        let operation_name = match registration.owner.get("operation").and_then(Value::as_str) {
+            Some("list") => MCP_LIST,
+            Some("get") => MCP_GET,
+            Some("result") => MCP_RESULT,
+            Some("call") => MCP_CALL,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "MCP runtime registration has invalid operation"
+                ))
+            }
+        };
+        let scope = VirtualMcpScope::single(instance_id.to_string());
+        let outcome = dispatch(
+            &self.state,
+            &self.headers,
+            &self.actor,
+            &self.catalog,
+            &scope,
+            operation_name,
+            arguments,
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error.0.to_string()))?;
+        let (content, is_error) = match outcome {
+            VirtualToolOutcome::Success(value) => (value, false),
+            VirtualToolOutcome::Error {
+                code,
+                message,
+                data,
+            } => (
+                json!({"code": code, "message": message, "data": data}),
+                true,
+            ),
+        };
+        Ok(RuntimeInternalToolOutput {
+            content,
+            is_error,
+            event: json!({
+                "event_type": "mcp_runtime_tool_call_completed",
+                "node_id": node.node_id,
+                "provider_name": registration.provider_name,
+                "owner": registration.owner,
+                "is_error": is_error,
+            }),
+        })
+    }
 }
 
 impl VirtualToolOutcome {
@@ -212,22 +374,25 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
     ]
 }
 
+#[cfg(test)]
 pub(crate) fn provider_tools(
-    catalog: &domain::McpCatalogSnapshot,
+    _catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
 ) -> Vec<Value> {
-    meta_tools(scope.path_regex_enabled(catalog))
-        .into_iter()
-        .map(|tool| {
-            json!({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["inputSchema"],
-                }
-            })
+    let occurrences = scope
+        .instance_ids
+        .iter()
+        .enumerate()
+        .map(|(index, instance_id)| {
+            (
+                instance_id.clone(),
+                McpLlmRegistrationSource::new("assistant", index.to_string()),
+            )
         })
+        .collect::<Vec<_>>();
+    mcp_llm_registrations(&occurrences)
+        .into_iter()
+        .map(|registration| registration.provider_tool)
         .collect()
 }
 
@@ -240,11 +405,35 @@ pub(crate) async fn dispatch(
     name: &str,
     arguments: Value,
 ) -> Result<VirtualToolOutcome, ApiError> {
-    match name {
-        MCP_LIST => list(state, actor, scope, &arguments).await,
-        MCP_GET => Ok(get(catalog, scope, &arguments)),
-        MCP_RESULT => result(state, actor, &arguments).await,
-        MCP_CALL => call(state, headers, actor, catalog, scope, &arguments).await,
+    let registrations = mcp_llm_registrations(
+        &scope
+            .instance_ids
+            .iter()
+            .enumerate()
+            .map(|(index, instance_id)| {
+                (
+                    instance_id.clone(),
+                    McpLlmRegistrationSource::new("assistant", index.to_string()),
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+    let registration = registrations.iter().find(|item| item.provider_name == name);
+    let effective_scope = registration
+        .map(|item| VirtualMcpScope::single(item.instance_id.clone()))
+        .unwrap_or_else(|| scope.clone());
+    let operation = registration.map(|item| item.operation);
+    match (name, operation) {
+        (_, Some(McpLlmOperation::List)) => list(state, actor, &effective_scope, &arguments).await,
+        (_, Some(McpLlmOperation::Get)) => Ok(get(catalog, &effective_scope, &arguments)),
+        (_, Some(McpLlmOperation::Result)) => result(state, actor, &arguments).await,
+        (_, Some(McpLlmOperation::Call)) => {
+            call(state, headers, actor, catalog, &effective_scope, &arguments).await
+        }
+        (MCP_LIST, None) => list(state, actor, scope, &arguments).await,
+        (MCP_GET, None) => Ok(get(catalog, scope, &arguments)),
+        (MCP_RESULT, None) => result(state, actor, &arguments).await,
+        (MCP_CALL, None) => call(state, headers, actor, catalog, scope, &arguments).await,
         _ => Ok(VirtualToolOutcome::Error {
             code: -32601,
             message: "Tool not found",
