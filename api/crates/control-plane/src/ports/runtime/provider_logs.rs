@@ -9,6 +9,9 @@ pub struct ProviderRequestLogTask {
     pub flow_run_id: Uuid,
     #[serde(default)]
     pub node_run_id: Option<Uuid>,
+    pub user_id: Uuid,
+    #[serde(default)]
+    pub user_account: Option<String>,
     #[serde(default)]
     pub application_id: Option<Uuid>,
     #[serde(default)]
@@ -63,6 +66,7 @@ pub struct ClearModelProviderRequestLogsBatchResult {
 pub struct ListModelProviderRequestLogsPageInput {
     pub scope_id: Uuid,
     pub flow_run_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
     pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
@@ -79,6 +83,8 @@ pub struct ModelProviderRequestLogRecord {
     pub attempt_id: Uuid,
     pub flow_run_id: Uuid,
     pub node_run_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+    pub user_account: Option<String>,
     pub application_id: Option<Uuid>,
     pub conversation_id: Option<String>,
     pub application_name: String,

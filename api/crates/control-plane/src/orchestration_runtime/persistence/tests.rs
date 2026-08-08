@@ -478,6 +478,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     let attempt_id = Uuid::now_v7();
     let flow_run_id = Uuid::now_v7();
     let node_run_id = Uuid::now_v7();
+    let user_id = Uuid::now_v7();
     let scope_id = Uuid::now_v7();
     let started_at = OffsetDateTime::UNIX_EPOCH;
     let finished_at = started_at + time::Duration::milliseconds(7426);
@@ -499,6 +500,7 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         attempt_id,
         flow_run_id,
         node_run_id,
+        user_id,
         Some(Uuid::nil()),
         Some("conversation-1"),
         "应用快照",
@@ -509,6 +511,8 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
 
     assert_eq!(task.application_name, "应用快照");
     assert_eq!(task.node_run_id, Some(node_run_id));
+    assert_eq!(task.user_id, user_id);
+    assert!(task.user_account.is_none());
     assert_eq!(task.application_id, Some(Uuid::nil()));
     assert_eq!(task.conversation_id.as_deref(), Some("conversation-1"));
     assert_eq!(task.attempt_index, 1);
@@ -541,6 +545,7 @@ fn ac_001_provider_request_log_task_preserves_attempt_reasoning_effort() {
         Uuid::now_v7(),
         Uuid::now_v7(),
         Uuid::now_v7(),
+        Uuid::now_v7(),
         None,
         None,
         "Reasoning projection fixture",
@@ -555,6 +560,7 @@ fn ac_001_provider_request_log_task_preserves_attempt_reasoning_effort() {
 #[test]
 fn provider_request_log_task_accepts_legacy_queue_payload_without_node_run_id_ac_003() {
     let task = super::model_attempts::provider_request_log_task_from_attempt(
+        Uuid::now_v7(),
         Uuid::now_v7(),
         Uuid::now_v7(),
         Uuid::now_v7(),

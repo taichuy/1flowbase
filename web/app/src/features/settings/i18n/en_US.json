@@ -420,6 +420,8 @@
     "model_provider_tab_request_logs": "Request logs",
     "request_log_start_time": "Start time",
     "request_log_application": "Application",
+    "request_log_user_id": "User ID",
+    "request_log_user_account": "User account",
     "request_log_model": "Model",
     "request_log_reasoning_effort": "Reasoning effort",
     "request_log_input_tokens": "Input tokens",

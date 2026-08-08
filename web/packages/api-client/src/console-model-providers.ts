@@ -112,6 +112,8 @@ export type ConsoleModelProviderRequestLogStatus =
 export interface ConsoleModelProviderRequestLog {
   attempt_id: string;
   flow_run_id: string;
+  user_id: string | null;
+  user_account: string | null;
   application_id: string | null;
   conversation_id: string | null;
   application_name: string;
@@ -145,6 +147,7 @@ export interface ConsoleModelProviderRequestLogsPage {
 }
 
 export interface ConsoleModelProviderRequestLogsFilter {
+  user_id?: string;
   application_name?: string;
   provider_instance_id?: string;
   model_id?: string;

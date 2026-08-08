@@ -202,6 +202,7 @@ where
         flow_run.external_conversation_id.as_deref(),
         task_queue,
         flow_run.id,
+        flow_run.created_by,
         Some(flow_span.id),
         outcome,
         prepared_node_runs,

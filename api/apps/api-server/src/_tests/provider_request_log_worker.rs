@@ -20,6 +20,8 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         attempt_id,
         flow_run_id: Uuid::now_v7(),
         node_run_id: Some(Uuid::now_v7()),
+        user_id: Uuid::now_v7(),
+        user_account: Some("worker-user".into()),
         application_id: Some(Uuid::now_v7()),
         conversation_id: Some("conversation-1".into()),
         application_name: "Worker App Snapshot".into(),
@@ -115,6 +117,7 @@ async fn provider_request_log_worker_batches_valid_payloads_and_acks_each_task()
         .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
             scope_id,
             flow_run_id: None,
+            user_id: None,
             application_name: None,
             provider_instance_id: None,
             model_id: None,

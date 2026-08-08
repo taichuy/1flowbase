@@ -420,6 +420,8 @@
     "model_provider_tab_request_logs": "请求日志",
     "request_log_start_time": "开始时间",
     "request_log_application": "应用",
+    "request_log_user_id": "用户 ID",
+    "request_log_user_account": "用户账号",
     "request_log_model": "模型",
     "request_log_reasoning_effort": "推理强度",
     "request_log_input_tokens": "输入 Token",

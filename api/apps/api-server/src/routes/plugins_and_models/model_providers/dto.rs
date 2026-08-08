@@ -345,6 +345,7 @@ pub struct ModelProviderOptionTargetResponse {
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ModelProviderRequestLogsQuery {
     pub flow_run_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
     pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
@@ -362,6 +363,8 @@ pub struct ModelProviderRequestLogResponse {
     pub attempt_id: String,
     pub flow_run_id: String,
     pub node_run_id: Option<String>,
+    pub user_id: Option<String>,
+    pub user_account: Option<String>,
     pub application_id: Option<String>,
     pub conversation_id: Option<String>,
     pub application_name: String,

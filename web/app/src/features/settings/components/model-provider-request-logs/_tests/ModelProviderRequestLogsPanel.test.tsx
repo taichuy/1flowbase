@@ -33,9 +33,11 @@ function renderPanel() {
   return render(
     <App>
       <QueryClientProvider
-        client={new QueryClient({
-          defaultOptions: { queries: { retry: false } }
-        })}
+        client={
+          new QueryClient({
+            defaultOptions: { queries: { retry: false } }
+          })
+        }
       >
         <ModelProviderRequestLogsPanel />
       </QueryClientProvider>
@@ -57,6 +59,8 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
       {
         attempt_id: 'attempt-1',
         flow_run_id: 'run-1',
+        user_id: 'user-1',
+        user_account: 'root',
         application_id: 'application-1',
         conversation_id: 'conversation-1',
         application_name: 'Story Agent',
@@ -100,14 +104,28 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   ).not.toBeNull();
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
+  expect(screen.getByText('root')).toBeInTheDocument();
+  expect(screen.getByText('user-1')).toBeInTheDocument();
   expect(screen.getByText('5.00 s')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: '查看对话' })).toHaveAttribute(
     'href',
     '/applications/application-1/logs?run_id=run-1'
   );
-  expect(screen.getAllByText('1').some((element) => element.tagName === 'TD')).toBe(true);
-});
+  expect(
+    screen.getAllByText('1').some((element) => element.tagName === 'TD')
+  ).toBe(true);
 
+  fireEvent.change(screen.getByRole('textbox', { name: '用户 ID' }), {
+    target: { value: 'user-1' }
+  });
+  await waitFor(() => {
+    const lastFilter =
+      requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(
+        -1
+      )?.[0];
+    expect(lastFilter.user_id).toBe('user-1');
+  });
+});
 
 test('AC-006 does not render a conversation link for legacy rows', async () => {
   requestLogsApi.fetchSettingsModelProviderRequestLogs.mockResolvedValue({
@@ -118,6 +136,8 @@ test('AC-006 does not render a conversation link for legacy rows', async () => {
       {
         attempt_id: 'attempt-legacy',
         flow_run_id: 'run-legacy',
+        user_id: null,
+        user_account: null,
         application_id: null,
         conversation_id: null,
         application_name: 'Legacy App',
@@ -148,7 +168,9 @@ test('AC-006 does not render a conversation link for legacy rows', async () => {
   renderPanel();
 
   expect(await screen.findByText('Legacy App')).toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: '查看对话' })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('link', { name: '查看对话' })
+  ).not.toBeInTheDocument();
 });
 
 test('AC-001 defaults to the past seven days and clears selection when the range changes', async () => {
@@ -161,7 +183,9 @@ test('AC-001 defaults to the past seven days and clears selection when the range
   renderPanel();
 
   await waitFor(() => {
-    expect(requestLogsApi.fetchSettingsModelProviderRequestLogs).toHaveBeenCalled();
+    expect(
+      requestLogsApi.fetchSettingsModelProviderRequestLogs
+    ).toHaveBeenCalled();
   });
   const initialFilter =
     requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls[0][0];
@@ -174,7 +198,9 @@ test('AC-001 defaults to the past seven days and clears selection when the range
   fireEvent.click(await screen.findByText('全部时间'));
   await waitFor(() => {
     const lastFilter =
-      requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(-1)?.[0];
+      requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(
+        -1
+      )?.[0];
     expect(lastFilter.started_after).toBeUndefined();
     expect(lastFilter.page).toBe(1);
   });
@@ -223,16 +249,15 @@ test('AC-002 deletes only selected stable attempt IDs after confirmation', async
   expect(await screen.findByText('Selected App')).toBeInTheDocument();
   const deleteButton = screen.getByRole('button', { name: '删除选中' });
   expect(deleteButton).toBeDisabled();
-  fireEvent.click(screen.getByRole('checkbox', { name: '选择请求日志' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select row 1' }));
   expect(deleteButton).toBeEnabled();
   fireEvent.click(deleteButton);
   fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
 
   await waitFor(() => {
-    expect(requestLogsApi.deleteSettingsModelProviderRequestLogs).toHaveBeenCalledWith(
-      { attempt_ids: ['attempt-1'] },
-      'csrf-123'
-    );
+    expect(
+      requestLogsApi.deleteSettingsModelProviderRequestLogs
+    ).toHaveBeenCalledWith({ attempt_ids: ['attempt-1'] }, 'csrf-123');
   });
 });
 
@@ -247,7 +272,9 @@ test('AC-004 cancellation does not clear filtered request logs', async () => {
 
   fireEvent.click(await screen.findByRole('button', { name: '清空日志' }));
   expect(
-    await screen.findByText('将清空当前工作区的全部请求日志，不受当前筛选影响。')
+    await screen.findByText(
+      '将清空当前工作区的全部请求日志，不受当前筛选影响。'
+    )
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
   expect(
@@ -278,7 +305,9 @@ test('AC-007 stops on a failed clear batch and retries with the opaque continuat
 
   fireEvent.click(await screen.findByRole('button', { name: '清空日志' }));
   fireEvent.click(await screen.findByRole('button', { name: '确认清空' }));
-  expect(await screen.findByText('已删除 500 条，清理已停止')).toBeInTheDocument();
+  expect(
+    await screen.findByText('已删除 500 条，清理已停止')
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '重试清理' }));
 
   await waitFor(() => {

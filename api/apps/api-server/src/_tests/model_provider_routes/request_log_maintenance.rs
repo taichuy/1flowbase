@@ -9,9 +9,9 @@ use uuid::Uuid;
 async fn request_log_route_filters_flow_run_in_workspace_and_returns_node_run_ac_003() {
     let (app, database_url) = test_app_with_database_url().await;
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
-    let workspace_id: Uuid = sqlx::query_scalar(
+    let (workspace_id, user_id): (Uuid, Uuid) = sqlx::query_as(
         r#"
-        select memberships.workspace_id
+        select memberships.workspace_id, users.id
         from workspace_memberships memberships
         join users on users.id = memberships.user_id
         where users.account = 'root'
@@ -29,17 +29,18 @@ async fn request_log_route_filters_flow_run_in_workspace_and_returns_node_run_ac
     sqlx::query(
         r#"
         insert into model_provider_request_logs (
-            id, scope_id, attempt_id, flow_run_id, node_run_id, application_name, attempt_index,
+            id, scope_id, attempt_id, flow_run_id, node_run_id, user_id, user_account,
+            application_name, attempt_index,
             provider_code, protocol, upstream_model_id, status,
             failed_after_first_token, started_at, created_at
         ) values
-            ($1, $2, $1, $3, $4, 'Linked request', 1,
+            ($1, $2, $1, $3, $4, $10, 'root', 'Linked request', 1,
              'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now()),
-            ($5, $2, $5, $3, null, 'Legacy request', 1,
+            ($5, $2, $5, $3, null, $10, 'root', 'Legacy request', 1,
              'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now()),
-            ($6, $2, $6, $7, null, 'Other run', 1,
+            ($6, $2, $6, $7, null, $10, 'root', 'Other run', 1,
              'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now()),
-            ($8, $9, $8, $3, null, 'Other workspace', 1,
+            ($8, $9, $8, $3, null, $10, 'root', 'Other workspace', 1,
              'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now(), now())
         "#,
     )
@@ -52,6 +53,7 @@ async fn request_log_route_filters_flow_run_in_workspace_and_returns_node_run_ac
     .bind(other_flow_run_id)
     .bind(Uuid::now_v7())
     .bind(other_workspace_id)
+    .bind(user_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -61,7 +63,7 @@ async fn request_log_route_filters_flow_run_in_workspace_and_returns_node_run_ac
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/settings/model-providers/request-logs?flow_run_id={flow_run_id}"
+                    "/api/console/settings/model-providers/request-logs?flow_run_id={flow_run_id}&user_id={user_id}"
                 ))
                 .header("cookie", cookie)
                 .body(Body::empty())
@@ -77,6 +79,10 @@ async fn request_log_route_filters_flow_run_in_workspace_and_returns_node_run_ac
     assert!(items
         .iter()
         .all(|item| item["flow_run_id"] == flow_run_id.to_string()));
+    assert!(items
+        .iter()
+        .all(|item| item["user_id"] == user_id.to_string()));
+    assert!(items.iter().all(|item| item["user_account"] == "root"));
     assert!(items
         .iter()
         .any(|item| item["node_run_id"] == node_run_id.to_string()));

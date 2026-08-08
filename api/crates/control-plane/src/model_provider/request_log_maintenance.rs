@@ -26,6 +26,7 @@ pub struct ClearModelProviderRequestLogsBatchCommand {
 pub struct ListModelProviderRequestLogsCommand {
     pub actor: domain::ActorContext,
     pub flow_run_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
     pub application_name: Option<String>,
     pub provider_instance_id: Option<Uuid>,
     pub model_id: Option<String>,
@@ -64,6 +65,7 @@ where
             .list_model_provider_request_logs_page(ListModelProviderRequestLogsPageInput {
                 scope_id: command.actor.current_workspace_id,
                 flow_run_id: command.flow_run_id,
+                user_id: command.user_id,
                 application_name: command.application_name,
                 provider_instance_id: command.provider_instance_id,
                 model_id: command.model_id,

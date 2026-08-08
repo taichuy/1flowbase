@@ -1,4 +1,5 @@
 use super::*;
+use sqlx::Row;
 
 fn request_log(
     scope_id: Uuid,
@@ -12,6 +13,8 @@ fn request_log(
         attempt_id,
         flow_run_id: Uuid::now_v7(),
         node_run_id: None,
+        user_id: Uuid::now_v7(),
+        user_account: Some("runtime-user".into()),
         application_id: Some(Uuid::now_v7()),
         conversation_id: Some("conversation-1".into()),
         application_name: "Runtime App Snapshot".into(),
@@ -44,6 +47,7 @@ fn query(scope_id: Uuid, page: i64, page_size: i64) -> ListModelProviderRequestL
     ListModelProviderRequestLogsPageInput {
         scope_id,
         flow_run_id: None,
+        user_id: None,
         application_name: None,
         provider_instance_id: None,
         model_id: None,
@@ -54,6 +58,60 @@ fn query(scope_id: Uuid, page: i64, page_size: i64) -> ListModelProviderRequestL
         page,
         page_size,
     }
+}
+
+#[tokio::test]
+async fn provider_request_log_user_projection_keeps_legacy_rows_null_and_rejects_partial_pairs() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let scope_id = Uuid::now_v7();
+    let legacy_attempt_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into model_provider_request_logs (
+            id, scope_id, attempt_id, flow_run_id, application_name, attempt_index,
+            provider_code, protocol, upstream_model_id, status,
+            failed_after_first_token, started_at
+        ) values ($1, $2, $3, $4, 'Legacy request', 1,
+            'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now())
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope_id)
+    .bind(legacy_attempt_id)
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let legacy = sqlx::query(
+        "select user_id, user_account from model_provider_request_logs where attempt_id = $1",
+    )
+    .bind(legacy_attempt_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(legacy.get::<Option<Uuid>, _>("user_id").is_none());
+    assert!(legacy.get::<Option<String>, _>("user_account").is_none());
+
+    let partial = sqlx::query(
+        r#"
+        insert into model_provider_request_logs (
+            id, scope_id, attempt_id, flow_run_id, user_id, application_name, attempt_index,
+            provider_code, protocol, upstream_model_id, status,
+            failed_after_first_token, started_at
+        ) values ($1, $2, $3, $4, $5, 'Invalid request', 1,
+            'fixture', 'openai_chat', 'fixture-model', 'succeeded', false, now())
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope_id)
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await;
+    assert!(partial.is_err());
 }
 
 #[tokio::test]
@@ -69,11 +127,19 @@ async fn provider_request_logs_filter_flow_run_within_workspace_and_return_node_
     let scope_id = seeded.workspace_id;
     let other_scope_id = Uuid::now_v7();
     let flow_run_id = flow_run.id;
+    let expected_user_account: String =
+        sqlx::query_scalar("select account from users where id = $1")
+            .bind(seeded.actor_user_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
     let other_flow_run_id = Uuid::now_v7();
     let node_run_id = node_run.id;
     let mut linked = request_log(scope_id, Uuid::now_v7(), at, "succeeded", Some(1));
     linked.flow_run_id = flow_run_id;
     linked.node_run_id = Some(node_run_id);
+    linked.user_id = seeded.actor_user_id;
+    linked.user_account = None;
     let mut legacy = request_log(
         scope_id,
         Uuid::now_v7(),
@@ -120,6 +186,16 @@ async fn provider_request_logs_filter_flow_run_within_workspace_and_return_node_
         .items
         .iter()
         .all(|item| item.flow_run_id == flow_run_id));
+    let linked = page
+        .items
+        .iter()
+        .find(|item| item.node_run_id == Some(node_run_id))
+        .expect("linked request log");
+    assert_eq!(linked.user_id, Some(seeded.actor_user_id));
+    assert_eq!(
+        linked.user_account.as_deref(),
+        Some(expected_user_account.as_str())
+    );
 }
 
 #[tokio::test]
@@ -137,6 +213,7 @@ async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
         .unwrap();
     let mut input = query(scope_id, 1, 20);
     input.provider_instance_id = row.provider_instance_id;
+    input.user_id = Some(row.user_id);
     input.model_id = Some("gpt-5.4-mini".into());
     input.status = Some("empty_response".into());
     input.zero_output_only = true;
@@ -145,6 +222,8 @@ async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
     let page=<PgControlPlaneStore as OrchestrationRuntimeRepository>::list_model_provider_request_logs_page(&store,input).await.unwrap();
     assert_eq!(page.total_count, 1);
     assert_eq!(page.items[0].attempt_id, attempt_id);
+    assert_eq!(page.items[0].user_id, Some(row.user_id));
+    assert_eq!(page.items[0].user_account.as_deref(), Some("runtime-user"));
     assert_eq!(page.items[0].application_id, row.application_id);
     assert_eq!(page.items[0].conversation_id, row.conversation_id);
     assert_eq!(page.items[0].application_name, "Runtime App Snapshot");

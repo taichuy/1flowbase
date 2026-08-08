@@ -97,6 +97,7 @@ describe('console model provider request logs', () => {
   test('AC-001 sends time filters and pagination', async () => {
     await expect(
       listConsoleModelProviderRequestLogs({
+        user_id: 'user-1',
         application_name: 'Story Agent',
         provider_instance_id: 'provider-1',
         model_id: 'gemini-3-flash',
@@ -108,7 +109,7 @@ describe('console model provider request logs', () => {
         page_size: 20
       })
     ).resolves.toMatchObject({
-      path: '/api/console/settings/model-providers/request-logs?application_name=Story+Agent&provider_instance_id=provider-1&model_id=gemini-3-flash&status=empty_response&zero_output_only=true&started_after=2026-07-06T00%3A00%3A00.000Z&started_before=2026-07-13T00%3A00%3A00.000Z&page=2&page_size=20'
+      path: '/api/console/settings/model-providers/request-logs?user_id=user-1&application_name=Story+Agent&provider_instance_id=provider-1&model_id=gemini-3-flash&status=empty_response&zero_output_only=true&started_after=2026-07-06T00%3A00%3A00.000Z&started_before=2026-07-13T00%3A00%3A00.000Z&page=2&page_size=20'
     });
   });
 

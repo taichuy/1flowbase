@@ -86,6 +86,7 @@ export function ModelProviderRequestLogsPanel() {
   const [page, setPage] = useState(1);
   const [timeRange, setTimeRange] =
     useState<RequestLogTimeRange>(DEFAULT_TIME_RANGE);
+  const [userId, setUserId] = useState('');
   const [applicationName, setApplicationName] = useState('');
   const [providerInstanceId, setProviderInstanceId] = useState('');
   const [modelId, setModelId] = useState('');
@@ -95,12 +96,18 @@ export function ModelProviderRequestLogsPanel() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [deletingSelected, setDeletingSelected] = useState(false);
-  const [clearProgress, setClearProgress] = useState<ClearProgress | null>(null);
-  const startedAfter = useMemo(() => startedAfterForRange(timeRange), [timeRange]);
+  const [clearProgress, setClearProgress] = useState<ClearProgress | null>(
+    null
+  );
+  const startedAfter = useMemo(
+    () => startedAfterForRange(timeRange),
+    [timeRange]
+  );
   const filter = useMemo<ConsoleModelProviderRequestLogsFilter>(
     () => ({
       page,
       page_size: PAGE_SIZE,
+      user_id: userId.trim() || undefined,
       application_name: applicationName.trim() || undefined,
       provider_instance_id: providerInstanceId.trim() || undefined,
       model_id: modelId.trim() || undefined,
@@ -115,6 +122,7 @@ export function ModelProviderRequestLogsPanel() {
       providerInstanceId,
       startedAfter,
       status,
+      userId,
       zeroOutputOnly
     ]
   );
@@ -139,6 +147,21 @@ export function ModelProviderRequestLogsPanel() {
         title: i18nText('settings', 'auto.request_log_application'),
         dataIndex: 'application_name',
         width: 160
+      },
+      {
+        key: 'user_account',
+        title: i18nText('settings', 'auto.request_log_user_account'),
+        dataIndex: 'user_account',
+        width: 160,
+        render: (value) => (typeof value === 'string' ? value : '—')
+      },
+      {
+        key: 'user_id',
+        title: i18nText('settings', 'auto.request_log_user_id'),
+        dataIndex: 'user_id',
+        width: 220,
+        ellipsis: true,
+        render: (value) => (typeof value === 'string' ? value : '—')
       },
       {
         title: i18nText('settings', 'auto.status'),
@@ -349,11 +372,17 @@ export function ModelProviderRequestLogsPanel() {
                 value: '28'
               },
               {
-                label: i18nText('settings', 'auto.request_log_past_three_months'),
+                label: i18nText(
+                  'settings',
+                  'auto.request_log_past_three_months'
+                ),
                 value: '90'
               },
               {
-                label: i18nText('settings', 'auto.request_log_past_twelve_months'),
+                label: i18nText(
+                  'settings',
+                  'auto.request_log_past_twelve_months'
+                ),
                 value: '365'
               },
               {
@@ -361,6 +390,16 @@ export function ModelProviderRequestLogsPanel() {
                 value: 'all'
               }
             ]}
+          />
+          <Input
+            aria-label={i18nText('settings', 'auto.request_log_user_id')}
+            placeholder={i18nText('settings', 'auto.request_log_user_id')}
+            value={userId}
+            onChange={(event) => {
+              resetPageAndSelection();
+              setUserId(event.target.value);
+            }}
+            style={{ width: 240 }}
           />
           <Input
             aria-label={i18nText('settings', 'auto.request_log_application')}

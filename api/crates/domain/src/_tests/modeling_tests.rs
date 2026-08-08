@@ -112,6 +112,8 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
         "model_provider_request_logs"
     );
     assert!(request_logs_contract.owns_field_code("attempt_id"));
+    assert!(request_logs_contract.owns_field_code("user_id"));
+    assert!(request_logs_contract.owns_field_code("user_account"));
     assert!(request_logs_contract.owns_field_code("created_at"));
     assert!(
         request_logs_contract
