@@ -188,21 +188,24 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
     fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
         mcp_llm_registrations(&self.selected_occurrences(node))
             .into_iter()
-            .map(|registration| RuntimeInternalToolRegistration {
-                registration_id: format!(
-                    "{}|{}|{}",
-                    registration.instance_id,
-                    registration.operation.as_str(),
-                    registration.provider_name,
-                ),
-                provider_name: registration.provider_name,
-                provider_tool: registration.provider_tool,
-                owner: json!({
-                    "kind": "mcp_instance",
-                    "instance_id": registration.instance_id,
-                    "operation": registration.operation.as_str(),
-                    "source": registration.source,
-                }),
+            .map(|mut registration| {
+                apply_catalog_registration_capabilities(&self.catalog, &mut registration);
+                RuntimeInternalToolRegistration {
+                    registration_id: format!(
+                        "{}|{}|{}",
+                        registration.instance_id,
+                        registration.operation.as_str(),
+                        registration.provider_name,
+                    ),
+                    provider_name: registration.provider_name,
+                    provider_tool: registration.provider_tool,
+                    owner: json!({
+                        "kind": "mcp_instance",
+                        "instance_id": registration.instance_id,
+                        "operation": registration.operation.as_str(),
+                        "source": registration.source,
+                    }),
+                }
             })
             .collect()
     }
@@ -376,7 +379,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
 
 #[cfg(test)]
 pub(crate) fn provider_tools(
-    _catalog: &domain::McpCatalogSnapshot,
+    catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
 ) -> Vec<Value> {
     let occurrences = scope
@@ -392,8 +395,42 @@ pub(crate) fn provider_tools(
         .collect::<Vec<_>>();
     mcp_llm_registrations(&occurrences)
         .into_iter()
-        .map(|registration| registration.provider_tool)
+        .map(|mut registration| {
+            apply_catalog_registration_capabilities(catalog, &mut registration);
+            registration.provider_tool
+        })
         .collect()
+}
+
+fn apply_catalog_registration_capabilities(
+    catalog: &domain::McpCatalogSnapshot,
+    registration: &mut control_plane::mcp_management::McpLlmRegistration,
+) {
+    if registration.operation != McpLlmOperation::List {
+        return;
+    }
+    let regex_enabled = catalog
+        .instances
+        .iter()
+        .find(|instance| instance.instance_id == registration.instance_id)
+        .is_some_and(|instance| {
+            catalog
+                .discovery_policies
+                .iter()
+                .any(|policy| policy.instance_record_id == instance.id && policy.list_regex_enabled)
+        });
+    if regex_enabled {
+        return;
+    }
+    if let Some(properties) = registration
+        .provider_tool
+        .get_mut("function")
+        .and_then(|function| function.get_mut("parameters"))
+        .and_then(|parameters| parameters.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+    {
+        properties.remove("path_regex");
+    }
 }
 
 pub(crate) async fn dispatch(
