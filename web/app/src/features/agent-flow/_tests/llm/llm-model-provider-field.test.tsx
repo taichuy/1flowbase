@@ -984,6 +984,160 @@ describe('LlmModelField', () => {
     ).toBe(4);
   });
 
+  test('AC-001 renders boolean parameters as one inline switch without transport metadata', async () => {
+    const booleanContract = JSON.parse(
+      JSON.stringify(modelProviderOptionsContract)
+    ) as typeof modelProviderOptionsContract;
+    const booleanProvider = booleanContract.providers[0];
+    let latestDocument = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+
+    booleanProvider.parameter_form = {
+      schema_version: '1.0.0',
+      fields: [
+        {
+          key: 'store',
+          label: '存储响应',
+          type: 'boolean',
+          control: 'switch',
+          send_mode: 'always',
+          default_value: true,
+          options: [],
+          visible_when: [],
+          disabled_when: []
+        },
+        {
+          key: 'use_responses_websocket',
+          label: '使用 Responses WebSocket',
+          type: 'boolean',
+          control: 'switch',
+          send_mode: 'always',
+          default_value: false,
+          options: [],
+          visible_when: [],
+          disabled_when: []
+        },
+        {
+          key: 'enable_search',
+          label: '启用搜索',
+          type: 'boolean',
+          control: 'toggle',
+          send_mode: 'optional',
+          enabled_by_default: false,
+          options: [],
+          visible_when: [],
+          disabled_when: []
+        },
+        {
+          key: 'temperature',
+          label: 'Temperature',
+          type: 'number',
+          control: 'slider',
+          send_mode: 'optional',
+          enabled_by_default: false,
+          default_value: 0.7,
+          min: 0,
+          max: 2,
+          step: 0.1,
+          options: [],
+          visible_when: [],
+          disabled_when: []
+        }
+      ]
+    };
+    fetchModelProviderOptionsSpy.mockResolvedValueOnce(booleanContract);
+
+    const state = createInitialState();
+    const llmNode = state.draft.document.graph.nodes.find(
+      (node) => node.id === 'node-llm'
+    );
+
+    if (!llmNode) {
+      throw new Error('expected default LLM node');
+    }
+
+    llmNode.config.model_provider = {
+      provider_code: booleanProvider.provider_code,
+      model_id: primaryProviderFirstModel.model_id,
+      provider_label: booleanProvider.display_name,
+      model_label: primaryProviderFirstModel.display_name
+    };
+    llmNode.config.llm_parameters = {
+      schema_version: '1.0.0',
+      items: {
+        use_responses_websocket: { enabled: true, value: false },
+        enable_search: { enabled: false, value: false },
+        temperature: { enabled: false, value: 0.7 }
+      }
+    };
+
+    renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state}>
+        <DocumentObserver
+          onChange={(document) => {
+            latestDocument = document;
+          }}
+        />
+        <SelectionSeed nodeId="node-llm" />
+        <NodeConfigTab />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    await openModelSettings();
+
+    for (const label of [
+      '存储响应',
+      '使用 Responses WebSocket',
+      '启用搜索'
+    ]) {
+      const row = screen
+        .getByText(label)
+        .closest('.agent-flow-llm-parameter-form__row');
+
+      expect(row?.querySelectorAll('[role="switch"]')).toHaveLength(1);
+      expect(
+        row?.querySelector('.agent-flow-llm-parameter-form__row-control')
+      ).toBeNull();
+    }
+
+    expect(screen.queryByText('始终开启')).not.toBeInTheDocument();
+
+    const temperatureRow = screen
+      .getByText('Temperature')
+      .closest('.agent-flow-llm-parameter-form__row');
+    expect(
+      temperatureRow?.querySelector(
+        '.agent-flow-llm-parameter-form__row-control'
+      )
+    ).not.toBeNull();
+
+    const storeSwitch = screen
+      .getByText('存储响应')
+      .closest('.agent-flow-llm-parameter-form__row')
+      ?.querySelector('[role="switch"]');
+    const searchSwitch = screen
+      .getByText('启用搜索')
+      .closest('.agent-flow-llm-parameter-form__row')
+      ?.querySelector('[role="switch"]');
+
+    expect(storeSwitch).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(storeSwitch as HTMLElement);
+    fireEvent.click(searchSwitch as HTMLElement);
+
+    await waitFor(() => {
+      const updatedNode = latestDocument.graph.nodes.find(
+        (node) => node.id === 'node-llm'
+      );
+
+      expect(updatedNode?.config.llm_parameters).toMatchObject({
+        items: {
+          store: { enabled: true, value: false },
+          use_responses_websocket: { enabled: true, value: false },
+          enable_search: { enabled: true, value: true }
+        }
+      });
+    });
+  });
+
   test('renders effective context and optional max output in the model selector options', async () => {
     const duplicatedModelContract = JSON.parse(
       JSON.stringify(modelProviderOptionsContract)
@@ -1007,7 +1161,7 @@ describe('LlmModelField', () => {
     await openModelDropdown();
 
     expect(await screen.findByLabelText('上下文 256K')).toBeInTheDocument();
-    expect(screen.getAllByText('输出 8192').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('输出 8.2K').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText('上下文 64K')).toBeInTheDocument();
   });
 

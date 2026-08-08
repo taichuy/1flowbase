@@ -440,6 +440,7 @@ export function LlmParameterForm({
           <div className="agent-flow-llm-parameter-form__rows">
             {fields.map((field) => {
               const alwaysEnabled = field.send_mode === 'always';
+              const isBooleanField = field.type === 'boolean';
               const enabled = getFieldEnabled(
                 parameters,
                 field.key,
@@ -482,7 +483,20 @@ export function LlmParameterForm({
                       </span>
                     </div>
                     <div className="agent-flow-llm-parameter-form__row-toggle">
-                      {!alwaysEnabled ? (
+                      {isBooleanField ? (
+                        <Switch
+                          checked={
+                            alwaysEnabled
+                              ? Boolean(value ?? defaultValue)
+                              : enabled
+                          }
+                          onChange={(checked) =>
+                            alwaysEnabled
+                              ? nextParameters(checked)
+                              : nextParameters(checked, checked)
+                          }
+                        />
+                      ) : !alwaysEnabled ? (
                         <Switch
                           checked={enabled}
                           onChange={(checked) =>
@@ -503,15 +517,17 @@ export function LlmParameterForm({
                       )}
                     </div>
                   </div>
-                  <div className="agent-flow-llm-parameter-form__row-control">
-                    {renderFieldControl({
-                      field,
-                      value,
-                      contextWindow,
-                      nextParameters: (nextValue) => nextParameters(nextValue),
-                      restoreDefaultValue: () => nextParameters(defaultValue)
-                    })}
-                  </div>
+                  {!isBooleanField ? (
+                    <div className="agent-flow-llm-parameter-form__row-control">
+                      {renderFieldControl({
+                        field,
+                        value,
+                        contextWindow,
+                        nextParameters: (nextValue) => nextParameters(nextValue),
+                        restoreDefaultValue: () => nextParameters(defaultValue)
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
