@@ -10,6 +10,7 @@ fn fixture_session_with_expiry(expires_at_unix: i64) -> SessionRecord {
         user_id: Uuid::now_v7(),
         tenant_id: Uuid::now_v7(),
         current_workspace_id: Uuid::now_v7(),
+        active_role_code: "member".into(),
         session_version: 1,
         csrf_token: "csrf-1".into(),
         expires_at_unix,

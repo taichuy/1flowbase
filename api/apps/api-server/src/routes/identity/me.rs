@@ -99,8 +99,11 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn to_me_response(profile: control_plane::profile::MeProfile) -> MeResponse {
-    let mut permissions = profile.actor.permissions.into_iter().collect::<Vec<_>>();
+fn to_me_response(
+    profile: control_plane::profile::MeProfile,
+    actor: &domain::ActorContext,
+) -> MeResponse {
+    let mut permissions = actor.permissions.iter().cloned().collect::<Vec<_>>();
     permissions.sort();
 
     MeResponse {
@@ -114,7 +117,7 @@ fn to_me_response(profile: control_plane::profile::MeProfile) -> MeResponse {
         introduction: profile.user.introduction,
         preferred_locale: profile.user.preferred_locale,
         meta: profile.user.meta,
-        effective_display_role: profile.actor.effective_display_role,
+        effective_display_role: actor.effective_display_role.clone(),
         permissions,
     }
 }
@@ -136,7 +139,10 @@ pub async fn get_me(
             context.actor.current_workspace_id,
         )
         .await?;
-    Ok(Json(ApiSuccess::new(to_me_response(profile))))
+    Ok(Json(ApiSuccess::new(to_me_response(
+        profile,
+        &context.actor,
+    ))))
 }
 
 #[utoipa::path(
@@ -171,7 +177,10 @@ pub async fn patch_me(
         })
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_me_response(profile))))
+    Ok(Json(ApiSuccess::new(to_me_response(
+        profile,
+        &context.actor,
+    ))))
 }
 
 #[utoipa::path(
@@ -197,7 +206,10 @@ pub async fn patch_me_meta(
         })
         .await?;
 
-    Ok(Json(ApiSuccess::new(to_me_response(profile))))
+    Ok(Json(ApiSuccess::new(to_me_response(
+        profile,
+        &context.actor,
+    ))))
 }
 
 #[utoipa::path(

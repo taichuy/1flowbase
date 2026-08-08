@@ -28,7 +28,7 @@ pub async fn list_application_runs(
     Query(query): Query<ApplicationRunsQuery>,
 ) -> Result<Json<ApiSuccess<FlowRunSummaryPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_visible(&state, &context.actor, id).await?;
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
     let created_after = application_runs_created_after(&query);
@@ -137,7 +137,7 @@ pub async fn list_application_conversation_messages(
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     let page =
         <MainDurableStore as OrchestrationRuntimeRepository>::list_application_conversation_runs_page(
@@ -197,7 +197,7 @@ pub async fn list_application_run_conversation_messages(
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     let projection_page =
         <MainDurableStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
@@ -447,7 +447,7 @@ pub async fn get_application_run_overview(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_visible(&state, &context.actor, id).await?;
     let detail = load_application_run_detail_for_log_overview(state, id, run_id).await?;
     let response = to_application_run_overview_response(&application, detail);
 
@@ -474,7 +474,7 @@ pub async fn get_application_run_trace_tree(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceTreeResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_visible(&state, &context.actor, id).await?;
     let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
     let flow_run = <MainDurableStore as OrchestrationRuntimeRepository>::get_flow_run(
         &state.store,
@@ -549,7 +549,7 @@ pub async fn get_application_run_trace_node_children(
     Query(query): Query<ApplicationRunTraceNodeChildrenQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeChildrenResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
     let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
     let projection_status = to_trace_projection_status_response(&status);
     let page_size = application_run_trace_children_page_size(query.page_size);
@@ -633,7 +633,7 @@ pub async fn get_application_run_trace_node_content(
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeContentResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
     let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
     let projection_status = to_trace_projection_status_response(&status);
     let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
@@ -707,7 +707,7 @@ pub async fn get_application_run_trace_node_detail(
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
     let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
     let projection_status = to_trace_projection_status_response(&status);
     let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
@@ -867,7 +867,7 @@ pub async fn get_application_run_trace_tool_callback_content(
     Path((id, run_id, trace_node_id, tool_call_id)): Path<(Uuid, Uuid, String, String)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceToolCallbackContentResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
     let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
     let projection_status = to_trace_projection_status_response(&status);
     let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
@@ -928,7 +928,7 @@ pub async fn get_application_run_resume_timeline(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
     let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         id,
@@ -987,7 +987,7 @@ pub async fn get_application_run_node_last_run(
     Path((id, run_id, node_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
@@ -1059,7 +1059,7 @@ pub async fn get_runtime_debug_stream(
     Query(query): Query<RuntimeDebugStreamQuery>,
 ) -> Result<Json<ApiSuccess<RuntimeDebugStreamResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     <MainDurableStore as OrchestrationRuntimeRepository>::get_flow_run(&state.store, id, run_id)
         .await?
@@ -1126,7 +1126,7 @@ pub async fn get_node_last_run(
     Path((id, node_id)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     let last_run = <MainDurableStore as OrchestrationRuntimeRepository>::get_latest_node_run(
         &state.store,

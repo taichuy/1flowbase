@@ -504,8 +504,7 @@ pub trait RoleConsolePolicyMigrationRepository: Send + Sync {
 pub trait RoleConsolePolicyReader: Send + Sync {
     async fn load_role_console_policies_for_user(
         &self,
-        user_id: Uuid,
-        workspace_id: Uuid,
+        actor: &ActorContext,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>>;
 }
 
@@ -556,6 +555,24 @@ pub trait RoleRepository: Send + Sync {
         actor_user_id: Uuid,
     ) -> anyhow::Result<ActorContext>;
     async fn list_roles(&self, workspace_id: Uuid) -> anyhow::Result<Vec<RoleTemplate>>;
+    async fn get_workspace_console_settings_order(
+        &self,
+        _workspace_id: Uuid,
+    ) -> anyhow::Result<WorkspaceConsoleSettingsOrder> {
+        Ok(WorkspaceConsoleSettingsOrder {
+            revision: 0,
+            group_ids: Vec::new(),
+        })
+    }
+    async fn replace_workspace_console_settings_order(
+        &self,
+        input: &ReplaceWorkspaceConsoleSettingsOrderInput,
+    ) -> anyhow::Result<WorkspaceConsoleSettingsOrder> {
+        Ok(WorkspaceConsoleSettingsOrder {
+            revision: input.expected_revision + 1,
+            group_ids: input.group_ids.clone(),
+        })
+    }
     async fn create_team_role(&self, input: &CreateWorkspaceRoleInput) -> anyhow::Result<()>;
     async fn update_team_role(&self, input: &UpdateWorkspaceRoleInput) -> anyhow::Result<()>;
     async fn delete_team_role(
@@ -595,4 +612,18 @@ pub trait RoleRepository: Send + Sync {
         input: &ReplaceRoleDataPolicyInput,
     ) -> anyhow::Result<RoleDataPolicyView>;
     async fn append_audit_log(&self, event: &AuditLogRecord) -> anyhow::Result<()>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceConsoleSettingsOrder {
+    pub revision: i64,
+    pub group_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReplaceWorkspaceConsoleSettingsOrderInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub expected_revision: i64,
+    pub group_ids: Vec<String>,
 }

@@ -56,7 +56,8 @@ const permissionsApi = vi.hoisted(() => ({
     'console-policy-catalog',
     locale
   ]),
-  fetchSettingsConsolePolicyCatalog: vi.fn()
+  fetchSettingsConsolePolicyCatalog: vi.fn(),
+  replaceSettingsConsolePolicyOrder: vi.fn()
 }));
 
 const dataModelsApi = vi.hoisted(() => ({
@@ -75,6 +76,10 @@ import {
   RolePermissionPanel,
   type RolePermissionTab
 } from '../components/RolePermissionPanel';
+import {
+  findReorderIndices,
+  reorderItems
+} from '../components/role-permissions/SortablePolicyTable';
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
@@ -204,6 +209,7 @@ function consolePolicyCatalog(
   return {
     schema_version: '2026-07-15',
     locale,
+    settings_order_revision: 0,
     group_strategy_options: groupStrategyOptions,
     groups,
     resources: []
@@ -345,6 +351,7 @@ describe('RolePermissionPanel', () => {
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
       consolePolicyCatalog([])
     );
+    permissionsApi.replaceSettingsConsolePolicyOrder.mockReset();
     rolesApi.fetchSettingsRoleConsolePolicy.mockResolvedValue({
       role_code: 'member',
       groups: []
@@ -388,6 +395,33 @@ describe('RolePermissionPanel', () => {
     expect(mobileRule).toContain(
       '.role-permission-layout__content {\n    min-width: 0;'
     );
+  });
+
+  test('reorders backend settings by drag source and destination indexes', () => {
+    const first = {
+      kind: 'settings_feature',
+      group_id: 'system.roles',
+      label: '角色',
+      description: '角色设置',
+      operations: []
+    };
+    const second = {
+      kind: 'settings_feature',
+      group_id: 'system.members',
+      label: '成员',
+      description: '成员设置',
+      operations: []
+    };
+    expect(
+      reorderItems([first, second], 0, 1).map((group) => group.group_id)
+    ).toEqual(['system.members', 'system.roles']);
+    expect(
+      findReorderIndices(
+        ['system.roles', 'system.members'],
+        'system.roles',
+        'system.members'
+      )
+    ).toEqual([0, 1]);
   });
 
   test('AC-003/008/009 renders backend-owned Other labels without exposing codes', async () => {
@@ -1064,7 +1098,7 @@ describe('RolePermissionPanel', () => {
     expect(await screen.findByText('工作台')).toBeInTheDocument();
     expect(screen.queryByText(/pgr3083h/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select 工作台' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /工作台/ }));
 
     await waitFor(() => {
       expect(rolesApi.replaceSettingsRoleFrontstageRoutes).toHaveBeenCalledWith(

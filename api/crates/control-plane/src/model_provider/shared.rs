@@ -124,7 +124,7 @@ pub(super) async fn ensure_model_provider_permission(
         } if actor.is_root
             || domain::effective_console_simple_operation(
                 &policy_reader
-                    .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                    .load_role_console_policies_for_user(actor)
                     .await
                     .map_err(|_| ControlPlaneError::PermissionDenied("permission_denied"))?,
                 group,

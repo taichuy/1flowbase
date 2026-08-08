@@ -96,9 +96,15 @@ export interface ConsolePolicyCatalogResource {
 export interface ConsolePolicyCatalog {
   schema_version: string;
   locale: ConsolePolicyCatalogLocale;
+  settings_order_revision: number;
   group_strategy_options: ConsolePolicyCatalogOption<ConsolePolicyStrategy>[];
   groups: ConsolePolicyCatalogGroup[];
   resources: ConsolePolicyCatalogResource[];
+}
+
+export interface ReplaceConsoleSettingsOrderInput {
+  expected_revision: number;
+  group_ids: string[];
 }
 
 export interface ConsoleRoleConsolePolicySimpleOperation {
@@ -280,6 +286,23 @@ export function fetchConsoleRoleConsolePolicyCatalog(
 ): Promise<ConsolePolicyCatalog> {
   return apiFetch<ConsolePolicyCatalog>({
     path: buildConsoleRoleConsolePolicyCatalogPath(locale),
+    baseUrl
+  });
+}
+
+export function replaceConsoleSettingsOrder(
+  input: ReplaceConsoleSettingsOrderInput,
+  csrfToken: string,
+  locale: ConsolePolicyCatalogLocale,
+  baseUrl?: string
+): Promise<ConsolePolicyCatalog> {
+  const params = new URLSearchParams();
+  params.set('locale', locale);
+  return apiFetch<ConsolePolicyCatalog>({
+    path: `/api/console/settings/roles/console-policy-catalog/order?${params.toString()}`,
+    method: 'PUT',
+    body: input,
+    csrfToken,
     baseUrl
   });
 }

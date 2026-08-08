@@ -217,7 +217,7 @@ pub async fn list_member_role_options(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<MemberRoleOptionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let roles = MemberService::new(state.store.clone())
+    let roles = MemberService::new(state.store.for_actor(context.actor.clone()))
         .list_assignable_role_options(context.user.id)
         .await?;
 
@@ -236,7 +236,7 @@ pub async fn list_members(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<MemberResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let members = MemberService::new(state.store.clone())
+    let members = MemberService::new(state.store.for_actor(context.actor.clone()))
         .list_members(context.user.id)
         .await?;
 
@@ -262,7 +262,7 @@ pub async fn create_member(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let user = MemberService::new(state.store.clone())
+    let user = MemberService::new(state.store.for_actor(context.actor.clone()))
         .create_member(CreateMemberCommand {
             actor_user_id: context.user.id,
             account: body.account,
@@ -299,7 +299,7 @@ pub async fn update_member(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let user = MemberService::new(state.store.clone())
+    let user = MemberService::new(state.store.for_actor(context.actor.clone()))
         .update_member(UpdateMemberCommand {
             actor_user_id: context.user.id,
             target_user_id: parse_member_id(&member_id)?,
@@ -328,7 +328,7 @@ pub async fn disable_member(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    MemberService::new(state.store.clone())
+    MemberService::new(state.store.for_actor(context.actor.clone()))
         .disable_member(DisableMemberCommand {
             actor_user_id: context.user.id,
             target_user_id: parse_member_id(&member_id)?,
@@ -352,7 +352,7 @@ pub async fn enable_member(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    MemberService::new(state.store.clone())
+    MemberService::new(state.store.for_actor(context.actor.clone()))
         .enable_member(EnableMemberCommand {
             actor_user_id: context.user.id,
             target_user_id: parse_member_id(&member_id)?,
@@ -376,7 +376,7 @@ pub async fn delete_member(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    MemberService::new(state.store.clone())
+    MemberService::new(state.store.for_actor(context.actor.clone()))
         .delete_member(DeleteMemberCommand {
             actor_user_id: context.user.id,
             target_user_id: parse_member_id(&member_id)?,
@@ -402,7 +402,7 @@ pub async fn reset_member(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    MemberService::new(state.store.clone())
+    MemberService::new(state.store.for_actor(context.actor.clone()))
         .reset_member_password(ResetMemberPasswordCommand {
             actor_user_id: context.user.id,
             target_user_id: parse_member_id(&member_id)?,
@@ -429,7 +429,7 @@ pub async fn replace_member_roles(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    MemberService::new(state.store.clone())
+    MemberService::new(state.store.for_actor(context.actor.clone()))
         .replace_member_roles(ReplaceMemberRolesCommand {
             actor_user_id: context.user.id,
             target_user_id: parse_member_id(&member_id)?,

@@ -14,7 +14,6 @@ use control_plane::{
         GetFrontendComponentCapabilityQuery, GetFrontendModuleAssetQuery,
         ListFrontendComponentCapabilitiesQuery,
     },
-    ports::FrontstagePageRepository,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -137,7 +136,7 @@ pub async fn list_frontstage_component_capabilities(
 ) -> Result<Json<ApiSuccess<FrontstageComponentCapabilityPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&state, context.user.id, workspace_id).await?;
+    require_design_permission(&context.actor, workspace_id)?;
     let page = FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
         .list_component_capabilities(ListFrontendComponentCapabilitiesQuery {
             workspace_id,
@@ -191,7 +190,7 @@ pub async fn get_frontstage_component_capability(
 ) -> Result<Json<ApiSuccess<FrontstageComponentCapabilityResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&state, context.user.id, workspace_id).await?;
+    require_design_permission(&context.actor, workspace_id)?;
     let entry =
         FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
             .get_component_capability(GetFrontendComponentCapabilityQuery {
@@ -229,7 +228,7 @@ pub async fn get_frontstage_component_module_asset(
 ) -> Result<Response<Body>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&state, context.user.id, workspace_id).await?;
+    require_design_permission(&context.actor, workspace_id)?;
     let asset =
         FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
             .get_module_asset(GetFrontendModuleAssetQuery {
@@ -258,15 +257,13 @@ pub async fn get_frontstage_component_module_asset(
     Ok(response)
 }
 
-async fn require_design_permission(
-    state: &ApiState,
-    actor_user_id: Uuid,
+fn require_design_permission(
+    actor: &domain::ActorContext,
     workspace_id: Uuid,
 ) -> Result<(), ApiError> {
-    let actor = state
-        .store
-        .load_actor_context_for_workspace(actor_user_id, workspace_id)
-        .await?;
+    if actor.current_workspace_id != workspace_id {
+        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+    }
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
     }

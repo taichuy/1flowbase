@@ -101,7 +101,7 @@ pub async fn list_application_management(
     let (sort_field, sort_direction) = parse_application_management_sort(query.sort.as_deref())?;
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
-    let page = ApplicationService::new(state.store.clone())
+    let page = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .list_application_management(
             context.user.id,
             ApplicationManagementQuery {

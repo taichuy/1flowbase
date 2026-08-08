@@ -1,4 +1,7 @@
-use control_plane::ports::{AuthRepository, WorkspaceRepository};
+use control_plane::ports::{
+    ApplicationRepository, AuthRepository, ReplaceWorkspaceConsoleSettingsOrderInput,
+    RoleRepository, WorkspaceRepository,
+};
 use domain::SYSTEM_SCOPE_ID;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -139,6 +142,38 @@ async fn bind_role(store: &PgControlPlaneStore, user_id: Uuid, role_id: Uuid) {
     .unwrap();
 }
 
+async fn grant_permission(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    role_id: Uuid,
+    code: &str,
+) {
+    let permission_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into permission_definitions (
+            id, scope_id, resource, action, scope, code, name, introduction
+        ) values ($1, $2, 'test', 'read', 'workspace', $3, $3, '')
+        "#,
+    )
+    .bind(permission_id)
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(code)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "insert into role_permissions (id, role_id, permission_id, scope_id) values ($1, $2, $3, $4)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(role_id)
+    .bind(permission_id)
+    .bind(workspace_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn list_accessible_workspaces_returns_only_memberships_for_non_root() {
     let pool = isolated_database().await.connect().await.unwrap();
@@ -252,4 +287,122 @@ async fn load_actor_context_ignores_display_role_when_role_is_missing_in_target_
     .unwrap();
 
     assert_eq!(actor.effective_display_role, "member");
+}
+
+#[tokio::test]
+async fn load_actor_context_only_grants_permissions_from_the_active_role() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let tenant_id = root_tenant_id(&store).await;
+    let workspace_id = insert_workspace(&store, tenant_id, "Active Role Scope").await;
+    let user_id = Uuid::now_v7();
+    let manager_role = insert_workspace_role(&store, workspace_id, "manager").await;
+    let auditor_role = insert_workspace_role(&store, workspace_id, "auditor").await;
+
+    insert_user(&store, user_id, "active-role-scope", "manager").await;
+    insert_membership(&store, workspace_id, user_id).await;
+    bind_role(&store, user_id, manager_role).await;
+    bind_role(&store, user_id, auditor_role).await;
+    grant_permission(&store, workspace_id, manager_role, "test.read.manager").await;
+    grant_permission(&store, workspace_id, auditor_role, "test.read.auditor").await;
+
+    let actor = AuthRepository::load_actor_context(
+        &store,
+        user_id,
+        tenant_id,
+        workspace_id,
+        Some("manager"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(actor.effective_display_role, "manager");
+    assert!(actor.permissions.contains("test.read.manager"));
+    assert!(!actor.permissions.contains("test.read.auditor"));
+}
+
+#[tokio::test]
+async fn request_bound_store_keeps_the_active_role_inside_legacy_service_actor_loads() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let tenant_id = root_tenant_id(&store).await;
+    let workspace_id = insert_workspace(&store, tenant_id, "Request Bound Active Role").await;
+    let user_id = Uuid::now_v7();
+    let root_role = insert_root_role(&store).await;
+    let manager_role = insert_workspace_role(&store, workspace_id, "manager").await;
+
+    insert_user(&store, user_id, "request-bound-role", "root").await;
+    insert_membership(&store, workspace_id, user_id).await;
+    bind_role(&store, user_id, root_role).await;
+    bind_role(&store, user_id, manager_role).await;
+
+    let manager = AuthRepository::load_actor_context(
+        &store,
+        user_id,
+        tenant_id,
+        workspace_id,
+        Some("manager"),
+    )
+    .await
+    .unwrap();
+    let request_store = store.for_actor(manager);
+    let reloaded = ApplicationRepository::load_actor_context_for_user(&request_store, user_id)
+        .await
+        .unwrap();
+    let accessible = WorkspaceRepository::list_accessible_workspaces(&request_store, user_id)
+        .await
+        .unwrap();
+
+    assert_eq!(reloaded.effective_display_role, "manager");
+    assert!(!reloaded.is_root);
+    assert_eq!(
+        accessible
+            .into_iter()
+            .map(|workspace| workspace.id)
+            .collect::<Vec<_>>(),
+        vec![workspace_id]
+    );
+}
+
+#[tokio::test]
+async fn workspace_console_settings_order_is_durable_and_revision_guarded() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let tenant_id = root_tenant_id(&store).await;
+    let workspace_id = insert_workspace(&store, tenant_id, "Settings Order").await;
+    let user_id = Uuid::now_v7();
+    insert_user(&store, user_id, "settings-order", "member").await;
+
+    let replaced = RoleRepository::replace_workspace_console_settings_order(
+        &store,
+        &ReplaceWorkspaceConsoleSettingsOrderInput {
+            actor_user_id: user_id,
+            workspace_id,
+            expected_revision: 0,
+            group_ids: vec!["system.roles".into(), "system.members".into()],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(replaced.revision, 1);
+
+    let loaded = RoleRepository::get_workspace_console_settings_order(&store, workspace_id)
+        .await
+        .unwrap();
+    assert_eq!(loaded, replaced);
+
+    let stale = RoleRepository::replace_workspace_console_settings_order(
+        &store,
+        &ReplaceWorkspaceConsoleSettingsOrderInput {
+            actor_user_id: user_id,
+            workspace_id,
+            expected_revision: 0,
+            group_ids: vec!["system.members".into(), "system.roles".into()],
+        },
+    )
+    .await;
+    assert!(stale.is_err());
 }

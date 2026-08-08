@@ -325,9 +325,10 @@ pub(super) fn upload_challenge(
 
 async fn install_uploaded_artifact(
     state: &ApiState,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     mut fields: ExtensionUploadFields,
 ) -> Result<Response, ApiError> {
+    let actor_user_id = actor.user_id;
     let file_name = fields
         .file_name
         .take()
@@ -389,7 +390,7 @@ async fn install_uploaded_artifact(
         acknowledged_warnings: value.acknowledged_warnings,
     });
     if artifact.node_plugin {
-        let installed = service(state, "extension_center.install.upload")
+        let installed = service(state, actor, "extension_center.install.upload")
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id,
                 category: artifact.category,
@@ -487,5 +488,5 @@ pub async fn install_uploaded_extension(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let fields = read_extension_upload(&mut multipart).await?;
-    install_uploaded_artifact(&state, context.user.id, fields).await
+    install_uploaded_artifact(&state, &context.actor, fields).await
 }

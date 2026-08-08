@@ -21,7 +21,12 @@ fn member_mapper_preserves_roles_and_status() {
         phone_login_enabled: false,
         status: "active".into(),
         session_version: 1,
-        roles: vec![("member".into(), RoleScopeKind::Workspace, Some(Uuid::nil()))],
+        roles: vec![(
+            "member".into(),
+            "Member".into(),
+            RoleScopeKind::Workspace,
+            Some(Uuid::nil()),
+        )],
     };
 
     let user = PgMemberMapper::to_user_record(row);
@@ -29,4 +34,5 @@ fn member_mapper_preserves_roles_and_status() {
     assert!(matches!(user.status, UserStatus::Active));
     assert_eq!(user.roles.len(), 1);
     assert_eq!(user.roles[0].code, "member");
+    assert_eq!(user.roles[0].name, "Member");
 }

@@ -154,8 +154,7 @@ impl WorkspaceRepository for MemoryWorkspaceRepository {
 impl RoleConsolePolicyReader for MemoryWorkspaceRepository {
     async fn load_role_console_policies_for_user(
         &self,
-        _user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self.console_policies.read().await.clone())
     }
@@ -205,6 +204,7 @@ impl MemoryAuthRepository {
             session_version: 1,
             roles: vec![BoundRole {
                 code: "root".to_string(),
+                name: "Root".to_string(),
                 scope_kind: RoleScopeKind::System,
                 workspace_id: None,
             }],
@@ -231,6 +231,7 @@ impl MemoryAuthRepository {
             session_version: 1,
             roles: vec![BoundRole {
                 code: "member".to_string(),
+                name: "Member".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(Uuid::nil()),
             }],
@@ -455,8 +456,7 @@ impl AuthenticatorSettingsRepository for MemoryAuthRepository {
 impl RoleConsolePolicyReader for MemoryAuthRepository {
     async fn load_role_console_policies_for_user(
         &self,
-        _user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self.console_policies.read().await.clone())
     }

@@ -24,6 +24,8 @@
     "help": "帮助",
     "license_agreement": "许可协议",
     "logout": "退出登录",
+    "current_role": "当前角色",
+    "switch_role_failed": "角色切换失败",
     "official_source": "官方源",
     "profile": "个人资料",
     "settings": "设置",

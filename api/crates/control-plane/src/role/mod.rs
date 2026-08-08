@@ -13,8 +13,9 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateWorkspaceRoleInput, FrontstagePageRepository,
-        ReplaceRoleDataPolicyInput, RoleConsolePolicyReader, RoleDataModelPolicyInput,
-        RoleDataPolicyDefaultsInput, RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
+        ReplaceRoleDataPolicyInput, ReplaceWorkspaceConsoleSettingsOrderInput,
+        RoleConsolePolicyReader, RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput,
+        RoleDataPolicyView, RoleRepository, UpdateWorkspaceRoleInput,
     },
 };
 
@@ -34,6 +35,8 @@ pub use console_policy_validation::{
 const ROLES_CONSOLE_POLICY_CATALOG_VIEW_OPERATION_ID: &str = "roles.console_policy_catalog.view";
 const ROLES_CONSOLE_POLICY_VIEW_OPERATION_ID: &str = "roles.console_policy.view";
 const ROLES_CONSOLE_POLICY_REPLACE_OPERATION_ID: &str = "roles.console_policy.replace";
+const ROLES_CONSOLE_SETTINGS_ORDER_REPLACE_OPERATION_ID: &str =
+    "roles.console_settings_order.replace";
 const ROLES_CREATE_OPERATION_ID: &str = "roles.create";
 const ROLES_DATA_POLICY_REPLACE_OPERATION_ID: &str = "roles.data_policy.replace";
 const ROLES_DATA_POLICY_VIEW_OPERATION_ID: &str = "roles.data_policy.view";
@@ -94,6 +97,13 @@ pub struct ReplaceRoleConsolePolicyCommand {
     pub actor_user_id: Uuid,
     pub role_code: String,
     pub groups: Vec<ConsolePolicyGroupInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReplaceConsoleSettingsOrderCommand {
+    pub actor_user_id: Uuid,
+    pub expected_revision: i64,
+    pub group_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -407,6 +417,7 @@ fn build_console_policy_catalog_for_locale(
     Ok(ConsolePolicyCatalog {
         schema_version: inventory.schema_version.to_string(),
         locale: locale.to_string(),
+        settings_order_revision: 0,
         group_strategy_options,
         groups,
         resources,
@@ -417,6 +428,29 @@ fn validate_complete_console_policy_catalog(
     inventory: &ConsoleOperationCompiledInventory,
 ) -> Result<CompiledConsolePolicyOperationIndex, ControlPlaneError> {
     compiled_console_policy_operations(inventory)
+}
+
+fn apply_console_settings_order(catalog: &mut ConsolePolicyCatalog, stored_group_ids: &[String]) {
+    let stored_positions = stored_group_ids
+        .iter()
+        .enumerate()
+        .map(|(position, group_id)| (group_id.as_str(), position))
+        .collect::<BTreeMap<_, _>>();
+    catalog.groups.sort_by(|left, right| {
+        let left_kind_order = (left.kind == domain::ConsolePolicyGroupKind::Other) as u8;
+        let right_kind_order = (right.kind == domain::ConsolePolicyGroupKind::Other) as u8;
+        left_kind_order.cmp(&right_kind_order).then_with(|| {
+            match (
+                stored_positions.get(left.group_id.as_str()),
+                stored_positions.get(right.group_id.as_str()),
+            ) {
+                (Some(left_position), Some(right_position)) => left_position.cmp(right_position),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => left.group_id.cmp(&right.group_id),
+            }
+        })
+    });
 }
 
 pub struct RoleFrontstageRoutesView {
@@ -493,8 +527,76 @@ where
                 .ok_or(ControlPlaneError::InvalidInput(
                     "console_policy_locale_catalog",
                 ))?;
-        build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)
-            .map_err(Into::into)
+        let mut catalog =
+            build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)?;
+        let order = self
+            .repository
+            .get_workspace_console_settings_order(actor.current_workspace_id)
+            .await?;
+        apply_console_settings_order(&mut catalog, &order.group_ids);
+        catalog.settings_order_revision = order.revision;
+        Ok(catalog)
+    }
+
+    pub async fn replace_console_settings_order(
+        &self,
+        command: ReplaceConsoleSettingsOrderCommand,
+        inventory: &ConsoleOperationCompiledInventory,
+        locale: &str,
+    ) -> Result<ConsolePolicyCatalog> {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(command.actor_user_id)
+            .await?;
+        self.ensure_console_operation(&actor, ROLES_CONSOLE_SETTINGS_ORDER_REPLACE_OPERATION_ID)
+            .await?;
+        let locale_catalog =
+            inventory
+                .locale_catalog
+                .as_ref()
+                .ok_or(ControlPlaneError::InvalidInput(
+                    "console_policy_locale_catalog",
+                ))?;
+        let catalog = build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)?;
+        let valid_group_ids = catalog
+            .groups
+            .iter()
+            .filter(|group| group.kind == domain::ConsolePolicyGroupKind::SettingsFeature)
+            .map(|group| group.group_id.clone())
+            .collect::<BTreeSet<_>>();
+        if command.group_ids.len() != valid_group_ids.len()
+            || command.group_ids.iter().collect::<BTreeSet<_>>().len() != command.group_ids.len()
+            || command
+                .group_ids
+                .iter()
+                .any(|group_id| !valid_group_ids.contains(group_id))
+        {
+            return Err(ControlPlaneError::InvalidInput("console_settings_order").into());
+        }
+        let order = self
+            .repository
+            .replace_workspace_console_settings_order(&ReplaceWorkspaceConsoleSettingsOrderInput {
+                actor_user_id: command.actor_user_id,
+                workspace_id: actor.current_workspace_id,
+                expected_revision: command.expected_revision,
+                group_ids: command.group_ids,
+            })
+            .await?;
+        self.repository
+            .append_audit_log(&audit_log(
+                Some(actor.current_workspace_id),
+                Some(command.actor_user_id),
+                "workspace_console_settings_order",
+                Some(actor.current_workspace_id),
+                "workspace.console_settings_order_replaced",
+                serde_json::json!({
+                    "revision": order.revision,
+                    "group_ids": order.group_ids,
+                }),
+            ))
+            .await?;
+        self.get_console_policy_catalog(command.actor_user_id, inventory, locale)
+            .await
     }
 
     pub async fn get_console_policy(
@@ -796,7 +898,7 @@ where
         }
         let policies = self
             .repository
-            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .load_role_console_policies_for_user(actor)
             .await?;
         let operation_id = domain::ConsoleOperationId::try_from(operation_id)
             .expect("compiled roles operation id must be valid");

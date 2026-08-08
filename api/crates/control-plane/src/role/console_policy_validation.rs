@@ -14,6 +14,7 @@ use super::{ConsolePolicyGroupInput, ConsolePolicyOperationInput};
 pub struct ConsolePolicyCatalog {
     pub schema_version: String,
     pub locale: String,
+    pub settings_order_revision: i64,
     pub group_strategy_options: Vec<ConsolePolicyCatalogOption>,
     pub groups: Vec<ConsolePolicyCatalogGroup>,
     pub resources: Vec<ConsolePolicyCatalogResource>,

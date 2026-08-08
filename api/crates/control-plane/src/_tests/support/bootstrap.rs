@@ -226,6 +226,7 @@ impl BootstrapRepository for MemoryBootstrapRepository {
             session_version: 1,
             roles: vec![BoundRole {
                 code: "root".to_string(),
+                name: "Root".to_string(),
                 scope_kind: RoleScopeKind::System,
                 workspace_id: None,
             }],

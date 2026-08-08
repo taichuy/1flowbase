@@ -641,13 +641,14 @@ async fn load_application_public_docs_context(
             .map(|value| value.to_string())
             .collect(),
     });
-    let application = ApplicationService::new(state.store.clone())
+    let application = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .get_application(context.user.id, application_id)
         .await?;
-    let active_publication = ApplicationPublicationService::new(state.store.clone())
-        .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
-        .await
-        .ok();
+    let active_publication =
+        ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
+            .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
+            .await
+            .ok();
 
     Ok(ApplicationPublicDocsContext {
         application,
@@ -688,7 +689,7 @@ pub async fn list_application_api_keys(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationApiKeyResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let api_keys = ApplicationApiKeyService::new(state.store.clone())
+    let api_keys = ApplicationApiKeyService::new(state.store.for_actor(context.actor.clone()))
         .list_api_keys(ListApplicationApiKeysCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -727,7 +728,7 @@ pub async fn create_application_api_key(
 > {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = ApplicationApiKeyService::new(state.store.clone())
+    let result = ApplicationApiKeyService::new(state.store.for_actor(context.actor.clone()))
         .create_api_key(CreateApplicationApiKeyCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -766,7 +767,7 @@ pub async fn revoke_application_api_key(
 ) -> Result<impl IntoResponse, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ApplicationApiKeyService::new(state.store.clone())
+    ApplicationApiKeyService::new(state.store.for_actor(context.actor.clone()))
         .revoke_api_key(RevokeApplicationApiKeyCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -795,7 +796,7 @@ pub async fn get_application_api_mapping(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationApiMappingBody>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let draft = ApplicationApiMappingService::new(state.store.clone())
+    let draft = ApplicationApiMappingService::new(state.store.for_actor(context.actor.clone()))
         .get_mapping_draft(GetApplicationApiMappingCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -827,7 +828,7 @@ pub async fn replace_application_api_mapping(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mapping = to_mapping_config(body);
-    let draft = ApplicationApiMappingService::new(state.store.clone())
+    let draft = ApplicationApiMappingService::new(state.store.for_actor(context.actor.clone()))
         .replace_mapping_draft(ReplaceApplicationApiMappingCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -857,13 +858,14 @@ pub async fn get_application_api_publication(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationPublicationResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ApplicationService::new(state.store.clone())
+    ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .get_application(context.user.id, application_id)
         .await?;
-    let publication = ApplicationPublicationService::new(state.store.clone())
-        .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
-        .await
-        .map_err(map_publication_not_found)?;
+    let publication =
+        ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
+            .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
+            .await
+            .map_err(map_publication_not_found)?;
 
     Ok(Json(ApiSuccess::new(to_publication_response(publication))))
 }
@@ -892,15 +894,16 @@ pub async fn publish_application_api(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mapping = to_mapping_config(body.mapping);
-    let publication = ApplicationPublicationService::new(state.store.clone())
-        .with_model_routing_cache_store(state.infrastructure.cache_store())
-        .publish_active_version(PublishApplicationCommand {
-            actor_user_id: context.user.id,
-            application_id,
-            mapping,
-            api_enabled: body.api_enabled,
-        })
-        .await?;
+    let publication =
+        ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
+            .with_model_routing_cache_store(state.infrastructure.cache_store())
+            .publish_active_version(PublishApplicationCommand {
+                actor_user_id: context.user.id,
+                application_id,
+                mapping,
+                api_enabled: body.api_enabled,
+            })
+            .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -926,7 +929,7 @@ pub async fn unpublish_application_api(
 ) -> Result<impl IntoResponse, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ApplicationPublicationService::new(state.store.clone())
+    ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
         .unpublish(UnpublishApplicationCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -957,7 +960,7 @@ pub async fn patch_application_api_status(
 ) -> Result<Json<ApiSuccess<ApplicationApiStatusResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    ApplicationPublicationService::new(state.store.clone())
+    ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
         .set_api_enabled(SetApplicationApiEnabledCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -992,7 +995,7 @@ pub async fn get_workflow_schedule_trigger(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Option<WorkflowScheduleTriggerResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let trigger = WorkflowScheduleTriggerService::new(state.store.clone())
+    let trigger = WorkflowScheduleTriggerService::new(state.store.for_actor(context.actor.clone()))
         .get_trigger(GetWorkflowScheduleTriggerCommand {
             actor_user_id: context.user.id,
             application_id,
@@ -1026,7 +1029,7 @@ pub async fn replace_workflow_schedule_trigger(
 ) -> Result<Json<ApiSuccess<WorkflowScheduleTriggerResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let trigger = WorkflowScheduleTriggerService::new(state.store.clone())
+    let trigger = WorkflowScheduleTriggerService::new(state.store.for_actor(context.actor.clone()))
         .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
             actor_user_id: context.user.id,
             application_id,

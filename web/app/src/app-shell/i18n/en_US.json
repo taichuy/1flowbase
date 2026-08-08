@@ -24,6 +24,8 @@
     "help": "help",
     "license_agreement": "License Agreement",
     "logout": "Log out",
+    "current_role": "Current role",
+    "switch_role_failed": "Failed to switch role",
     "official_source": "official source",
     "profile": "personal information",
     "settings": "settings",

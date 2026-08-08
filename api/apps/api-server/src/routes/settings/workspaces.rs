@@ -55,7 +55,7 @@ pub async fn list_workspaces(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<WorkspaceSummaryResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspaces = WorkspaceService::new(state.store.clone())
+    let workspaces = WorkspaceService::new(state.store.for_actor(context.actor.clone()))
         .list_accessible_workspaces(context.user.id)
         .await?;
     let current_workspace_id = context.actor.current_workspace_id;

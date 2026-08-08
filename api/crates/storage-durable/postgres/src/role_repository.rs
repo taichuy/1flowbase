@@ -6,11 +6,12 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput,
-        ReplaceRoleDataPolicyInput, RoleConsolePolicyMigrationCutoverMarker,
-        RoleConsolePolicyMigrationCutoverState, RoleConsolePolicyMigrationGrantInventory,
-        RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository,
-        RoleConsolePolicyMigrationSource, RoleConsolePolicyReader, RoleDataPolicyDefaultsInput,
-        RoleRepository, UpdateWorkspaceRoleInput,
+        ReplaceRoleDataPolicyInput, ReplaceWorkspaceConsoleSettingsOrderInput,
+        RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationCutoverState,
+        RoleConsolePolicyMigrationGrantInventory, RoleConsolePolicyMigrationRehearsalInput,
+        RoleConsolePolicyMigrationRepository, RoleConsolePolicyMigrationSource,
+        RoleConsolePolicyReader, RoleDataPolicyDefaultsInput, RoleRepository,
+        UpdateWorkspaceRoleInput, WorkspaceConsoleSettingsOrder,
     },
     role::console_policy_migration::{
         validate_console_policy_migration_actor_previews, ConsolePolicyMigrationActorPreview,

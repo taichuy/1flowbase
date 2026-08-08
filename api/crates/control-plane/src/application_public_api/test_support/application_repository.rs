@@ -29,8 +29,7 @@ impl ApplicationRepository for ApplicationPublicApiTestRepository {
 
     async fn load_role_console_policies_for_user(
         &self,
-        _actor_user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self
             .inner

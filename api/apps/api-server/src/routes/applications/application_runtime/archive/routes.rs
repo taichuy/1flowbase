@@ -27,7 +27,7 @@ pub(crate) async fn export_application_run_archive(
     let context = require_session(&state, &headers).await?;
     let application = ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsExport,
     )
@@ -76,7 +76,7 @@ pub(crate) async fn export_application_runs_archive(
     require_csrf(&headers, &context)?;
     let application = ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsExport,
     )
@@ -141,7 +141,7 @@ pub(crate) async fn create_run_archive_upload_session(
     require_csrf(&headers, &context)?;
     let application = ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsImport,
     )
@@ -234,7 +234,7 @@ pub(crate) async fn upload_run_archive_chunk(
     require_csrf(&headers, &context)?;
     ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsImport,
     )
@@ -337,7 +337,7 @@ pub(crate) async fn complete_run_archive_upload_session(
     require_csrf(&headers, &context)?;
     let application = ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsImport,
     )
@@ -378,12 +378,12 @@ pub(crate) async fn complete_run_archive_upload_session(
     mark_upload_session_completed(&state, session_id).await?;
     cleanup_run_archive_upload_chunks(&state, session_id).await?;
     let restore_state = state.clone();
-    let restore_actor_user_id = context.actor.user_id;
+    let restore_actor = context.actor.clone();
     tokio::spawn(async move {
         let restore_result = restore_run_archive_v1(
             restore_state.clone(),
             &application,
-            restore_actor_user_id,
+            restore_actor,
             job_id,
             archive,
         )
@@ -430,7 +430,7 @@ pub(crate) async fn get_run_archive_import_job(
     let context = require_session(&state, &headers).await?;
     ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsImport,
     )

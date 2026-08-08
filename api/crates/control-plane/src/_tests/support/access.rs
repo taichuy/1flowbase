@@ -108,6 +108,7 @@ impl MemberRepository for MemoryMemberRepository {
             status: UserStatus::Active,
             session_version: 1,
             roles: vec![BoundRole {
+                name: default_role_code.clone(),
                 code: default_role_code,
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(Uuid::nil()),
@@ -135,6 +136,7 @@ impl MemberRepository for MemoryMemberRepository {
             session_version: 1,
             roles: vec![BoundRole {
                 code: "member".to_string(),
+                name: "Member".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(Uuid::nil()),
             }],
@@ -189,8 +191,7 @@ impl MemberRepository for MemoryMemberRepository {
 impl RoleConsolePolicyReader for MemoryMemberRepository {
     async fn load_role_console_policies_for_user(
         &self,
-        _user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self.console_policies.read().await.clone())
     }
@@ -486,8 +487,7 @@ impl RoleRepository for MemoryRoleRepository {
 impl RoleConsolePolicyReader for MemoryRoleRepository {
     async fn load_role_console_policies_for_user(
         &self,
-        _user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self.actor_console_policies.read().await.clone())
     }
@@ -516,6 +516,7 @@ impl crate::ports::FrontstagePageRepository for MemoryRoleRepository {
         &self,
         _actor_user_id: Uuid,
         _workspace_id: Uuid,
+        _role_code: &str,
     ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
         Ok(Vec::new())
     }

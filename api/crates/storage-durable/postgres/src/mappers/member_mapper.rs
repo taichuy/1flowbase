@@ -19,7 +19,7 @@ pub struct StoredMemberRow {
     pub phone_login_enabled: bool,
     pub status: String,
     pub session_version: i64,
-    pub roles: Vec<(String, RoleScopeKind, Option<Uuid>)>,
+    pub roles: Vec<(String, String, RoleScopeKind, Option<Uuid>)>,
 }
 
 pub struct PgMemberMapper;
@@ -50,8 +50,9 @@ impl PgMemberMapper {
             roles: row
                 .roles
                 .into_iter()
-                .map(|(code, scope_kind, workspace_id)| BoundRole {
+                .map(|(code, name, scope_kind, workspace_id)| BoundRole {
                     code,
+                    name,
                     scope_kind,
                     workspace_id,
                 })

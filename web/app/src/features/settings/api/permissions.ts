@@ -1,6 +1,7 @@
 import {
   fetchConsoleRoleConsolePolicyCatalog,
   listConsolePermissions,
+  replaceConsoleSettingsOrder,
   type ConsolePermission,
   type ConsolePolicyCatalog,
   type ConsolePolicyCatalogLocale
@@ -15,6 +16,19 @@ export function settingsConsolePolicyCatalogQueryKey(
   locale: SettingsConsolePolicyCatalogLocale
 ) {
   return ['settings', 'console-policy-catalog', locale] as const;
+}
+
+export function replaceSettingsConsolePolicyOrder(
+  expectedRevision: number,
+  groupIds: string[],
+  csrfToken: string,
+  locale: SettingsConsolePolicyCatalogLocale
+): Promise<SettingsConsolePolicyCatalog> {
+  return replaceConsoleSettingsOrder(
+    { expected_revision: expectedRevision, group_ids: groupIds },
+    csrfToken,
+    locale
+  );
 }
 
 export function fetchSettingsConsolePolicyCatalog(

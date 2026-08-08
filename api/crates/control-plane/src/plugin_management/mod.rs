@@ -274,7 +274,7 @@ impl<R, H> PluginManagementService<R, H> {
                     return Ok(());
                 }
                 let policies = policy_reader
-                    .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                    .load_role_console_policies_for_user(actor)
                     .await?;
                 if domain::effective_console_simple_operation(&policies, group, operation_id) {
                     Ok(())

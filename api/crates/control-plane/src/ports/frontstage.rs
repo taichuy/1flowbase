@@ -109,6 +109,7 @@ pub trait FrontstagePageRepository: Send + Sync {
         &self,
         actor_user_id: Uuid,
         workspace_id: Uuid,
+        role_code: &str,
     ) -> anyhow::Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>>;
 
     async fn list_frontstage_page_visibility_rules_for_role(

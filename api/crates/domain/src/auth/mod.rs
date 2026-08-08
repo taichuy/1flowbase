@@ -20,6 +20,7 @@ pub enum RoleScopeKind {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BoundRole {
     pub code: String,
+    pub name: String,
     pub scope_kind: RoleScopeKind,
     pub workspace_id: Option<Uuid>,
 }
@@ -61,7 +62,7 @@ impl UserRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActorContext {
     pub user_id: Uuid,
     pub tenant_id: Uuid,
@@ -248,6 +249,7 @@ pub struct SessionRecord {
     pub user_id: Uuid,
     pub tenant_id: Uuid,
     pub current_workspace_id: Uuid,
+    pub active_role_code: String,
     pub session_version: i64,
     pub csrf_token: String,
     pub expires_at_unix: i64,

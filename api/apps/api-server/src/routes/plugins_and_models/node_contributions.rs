@@ -296,7 +296,7 @@ pub async fn list_node_contributions(
     Query(query): Query<NodeContributionQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationNodeCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ApplicationService::new(state.store.clone())
+    let application = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .get_application(context.user.id, query.application_id)
         .await?;
     let catalog = ApplicationNodeCatalogService::new(state.store.clone())

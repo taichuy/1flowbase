@@ -61,10 +61,7 @@ where
         if !command.actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor.user_id,
-                    command.actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&command.actor)
                 .await?;
             let operation_id = domain::ConsoleOperationId::try_from(WORKSPACE_UPDATE_OPERATION_ID)
                 .expect("compiled workspace update operation id must be valid");

@@ -46,7 +46,8 @@ export function AuthBootstrap({ children }: PropsWithChildren) {
         setAuthenticated({
           csrfToken: session.csrf_token,
           actor: session.actor,
-          me
+          me,
+          availableRoles: session.available_roles
         });
       } catch (error) {
         if (cancelled) {

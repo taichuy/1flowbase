@@ -25,7 +25,7 @@ where
         } else {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             resolve_application_console_visibility(&policies, APPLICATIONS_LIST_ROUTE_OPERATION_ID)?
         };
@@ -56,7 +56,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             let operation_id = domain::ConsoleOperationId::try_from(
                 access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
@@ -88,10 +88,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             let operation_id =
                 domain::ConsoleOperationId::try_from(APPLICATIONS_CREATE_ROUTE_OPERATION_ID)
@@ -177,10 +174,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_console_row_scope(
                 &actor,
@@ -236,10 +230,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_console_row_scope(
                 &actor,
@@ -286,7 +277,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_console_simple_operation(
                 &policies,
@@ -315,10 +306,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_console_simple_operation(
                 &policies,
@@ -364,7 +352,7 @@ where
         } else {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             resolve_application_console_visibility(
                 &policies,
@@ -406,7 +394,7 @@ where
             Vec::new()
         } else {
             self.repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?
         };
         ensure_existing_application_non_crud_console_operation(
@@ -453,10 +441,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_console_row_scope(
                 &actor,
@@ -508,7 +493,7 @@ where
         } else {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             resolve_application_console_visibility(
                 &policies,

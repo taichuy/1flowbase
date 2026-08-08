@@ -61,6 +61,8 @@
     "group_order": "Group order",
     "drag_to_adjust_group_order": "Drag instances to reorder them. Round robin rules use this order.",
     "drag_to_sort": "Drag to reorder",
+    "order_updated_successfully": "Order updated successfully",
+    "order_update_failed": "Failed to update order. Refresh and try again.",
     "instance_alt": "Instance",
     "participate_in_group": "Participates in group",
     "participate_in_group_named": "Participates in group: {{value1}}",

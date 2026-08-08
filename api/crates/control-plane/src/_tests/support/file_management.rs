@@ -426,6 +426,7 @@ impl ModelDefinitionRepository for MemoryFileManagementRepository {
         &self,
         _actor_user_id: Uuid,
         _workspace_id: Uuid,
+        _role_code: &str,
         _data_model_id: Uuid,
     ) -> Result<
         Vec<(

@@ -330,8 +330,11 @@ describe('ApiDocsPanel', () => {
         id: 'session-123',
         user_id: 'user-1',
         tenant_id: 'tenant-1',
-        current_workspace_id: 'workspace-1'
+        current_workspace_id: 'workspace-1',
+        active_role_code: 'root'
       },
+      available_roles: [{ code: 'root', name: 'Root', scope_kind: 'system' }],
+      active_role_permissions: [],
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });

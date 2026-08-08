@@ -36,11 +36,13 @@ fn test_user(source_workspace_id: Uuid, target_workspace_id: Uuid) -> UserRecord
         roles: vec![
             BoundRole {
                 code: "admin".to_string(),
+                name: "Admin".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(source_workspace_id),
             },
             BoundRole {
                 code: "member".to_string(),
+                name: "Member".to_string(),
                 scope_kind: RoleScopeKind::Workspace,
                 workspace_id: Some(target_workspace_id),
             },
@@ -54,6 +56,7 @@ fn test_session(user_id: Uuid, tenant_id: Uuid, workspace_id: Uuid) -> SessionRe
         user_id,
         tenant_id,
         current_workspace_id: workspace_id,
+        active_role_code: "member".into(),
         session_version: 7,
         csrf_token: "csrf-before".to_string(),
         expires_at_unix: 1_900_000_000,

@@ -122,8 +122,7 @@ impl ScopedModelDefinitionRepository {
 impl RoleConsolePolicyReader for ScopedModelDefinitionRepository {
     async fn load_role_console_policies_for_user(
         &self,
-        _user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self
             .console_policies
@@ -508,6 +507,7 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
         &self,
         _actor_user_id: Uuid,
         _workspace_id: Uuid,
+        _role_code: &str,
         _data_model_id: Uuid,
     ) -> anyhow::Result<
         Vec<(

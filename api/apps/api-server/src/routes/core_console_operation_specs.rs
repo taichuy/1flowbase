@@ -380,6 +380,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     other("plugins.official_catalog.view", "other.plugins"),
     other("plugins.tasks.view", "other.plugins"),
     settings("roles.console_policy.replace", "system.roles"),
+    settings("roles.console_settings_order.replace", "system.roles"),
     settings("roles.console_policy.view", "system.roles"),
     settings("roles.console_policy_catalog.view", "system.roles"),
     settings("roles.create", "system.roles"),

@@ -675,6 +675,7 @@ where
         user_id: Uuid,
         tenant_id: Uuid,
         current_workspace_id: Uuid,
+        active_role_code: String,
         session_version: i64,
     ) -> Result<SessionRecord> {
         let session = SessionRecord {
@@ -682,6 +683,7 @@ where
             user_id,
             tenant_id,
             current_workspace_id,
+            active_role_code,
             session_version,
             csrf_token: Uuid::now_v7().to_string(),
             expires_at_unix: (OffsetDateTime::now_utc() + time::Duration::days(self.ttl_days))
@@ -757,12 +759,7 @@ where
         let scope = self.repository.default_scope_for_user(user.id).await?;
         let actor = self
             .repository
-            .load_actor_context(
-                user.id,
-                scope.tenant_id,
-                scope.workspace_id,
-                user.default_display_role.as_deref(),
-            )
+            .load_actor_context(user.id, scope.tenant_id, scope.workspace_id, None)
             .await?;
         let session = self
             .issuer
@@ -770,6 +767,7 @@ where
                 user.id,
                 scope.tenant_id,
                 scope.workspace_id,
+                actor.effective_display_role.clone(),
                 user.session_version,
             )
             .await?;
@@ -824,12 +822,7 @@ where
             .await?;
         let actor = self
             .repository
-            .load_actor_context(
-                user.id,
-                scope.tenant_id,
-                scope.workspace_id,
-                user.default_display_role.as_deref(),
-            )
+            .load_actor_context(user.id, scope.tenant_id, scope.workspace_id, None)
             .await?;
         let session = self
             .issuer
@@ -837,6 +830,7 @@ where
                 user.id,
                 scope.tenant_id,
                 scope.workspace_id,
+                actor.effective_display_role.clone(),
                 user.session_version,
             )
             .await?;

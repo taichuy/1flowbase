@@ -1,5 +1,35 @@
 use super::*;
 
+impl PgControlPlaneStore {
+    pub async fn load_console_policy_for_bound_role(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        role_code: &str,
+    ) -> Result<Vec<domain::RoleConsolePolicy>> {
+        let role_id: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            select role.id
+            from user_role_bindings binding
+            join roles role on role.id = binding.role_id
+            where binding.user_id = $1
+              and role.code = $2
+              and (role.scope_kind = 'system' or role.workspace_id = $3)
+            limit 1
+            "#,
+        )
+        .bind(user_id)
+        .bind(role_code)
+        .bind(workspace_id)
+        .fetch_optional(self.pool())
+        .await?;
+        match role_id {
+            Some(role_id) => Ok(vec![role_console_policy_by_id(self.pool(), role_id).await?]),
+            None => Ok(Vec::new()),
+        }
+    }
+}
+
 pub(crate) async fn role_console_policy_by_id(
     pool: &sqlx::PgPool,
     role_id: Uuid,
@@ -141,28 +171,13 @@ pub(super) async fn replace_role_console_policy_rows(
 impl RoleConsolePolicyReader for PgControlPlaneStore {
     async fn load_role_console_policies_for_user(
         &self,
-        user_id: Uuid,
-        workspace_id: Uuid,
+        actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
-        let role_ids: Vec<Uuid> = sqlx::query_scalar(
-            r#"
-            select role.id
-            from user_role_bindings binding
-            join roles role on role.id = binding.role_id
-            where binding.user_id = $1
-              and (role.scope_kind = 'system' or role.workspace_id = $2)
-            order by role.scope_kind asc, role.code asc, role.id asc
-            "#,
+        self.load_console_policy_for_bound_role(
+            actor.user_id,
+            actor.current_workspace_id,
+            &actor.effective_display_role,
         )
-        .bind(user_id)
-        .bind(workspace_id)
-        .fetch_all(self.pool())
-        .await?;
-
-        let mut policies = Vec::with_capacity(role_ids.len());
-        for role_id in role_ids {
-            policies.push(role_console_policy_by_id(self.pool(), role_id).await?);
-        }
-        Ok(policies)
+        .await
     }
 }

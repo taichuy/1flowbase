@@ -30,7 +30,7 @@ pub async fn export_application_run_trace_dump(
     let context = require_session(&state, &headers).await?;
     let application = ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsExport,
     )
@@ -79,7 +79,7 @@ pub async fn export_application_runs_zip(
     require_csrf(&headers, &context)?;
     let application = ensure_application_non_crud_operation(
         &state,
-        context.user.id,
+        &context.actor,
         id,
         ApplicationNonCrudConsoleOperation::LogsExport,
     )

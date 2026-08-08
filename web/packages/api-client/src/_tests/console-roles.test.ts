@@ -90,6 +90,7 @@ describe('console roles client', () => {
     const catalog: ConsolePolicyCatalog = {
       schema_version: '2026-07-15',
       locale: 'en_US',
+      settings_order_revision: 0,
       group_strategy_options: [
         { value: 'full', label: 'Full', description: 'All operations' },
         { value: 'custom', label: 'Custom', description: 'Explicit operations' }

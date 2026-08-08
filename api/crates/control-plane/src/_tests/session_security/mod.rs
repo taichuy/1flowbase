@@ -27,6 +27,7 @@ fn test_user() -> UserRecord {
         session_version: 1,
         roles: vec![BoundRole {
             code: "root".to_string(),
+            name: "Root".to_string(),
             scope_kind: RoleScopeKind::System,
             workspace_id: None,
         }],
@@ -39,6 +40,7 @@ fn test_session(user_id: Uuid) -> SessionRecord {
         user_id,
         tenant_id: Uuid::nil(),
         current_workspace_id: Uuid::nil(),
+        active_role_code: "member".into(),
         session_version: 1,
         csrf_token: "csrf-token".to_string(),
         expires_at_unix: 1_800_000_000,

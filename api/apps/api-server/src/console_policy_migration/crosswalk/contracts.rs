@@ -273,6 +273,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "roles.console_policy.replace",
             "roles.console_policy.view",
             "roles.console_policy_catalog.view",
+            "roles.console_settings_order.replace",
             "roles.create",
             "roles.data_model_options.list",
             "roles.data_policy.replace",
@@ -316,6 +317,7 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.replace",
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
+    "roles.console_settings_order.replace",
 ];
 
 pub(super) const AUTHENTICATED_OPERATION_EVIDENCE: &str =

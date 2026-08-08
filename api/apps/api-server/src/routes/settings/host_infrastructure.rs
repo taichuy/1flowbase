@@ -1047,7 +1047,7 @@ async fn can_manage_registered_operations(
     }
     let policies = state
         .store
-        .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+        .load_role_console_policies_for_user(actor)
         .await?;
     Ok(has_registered_simple_operations(
         &state.console_operation_registry,

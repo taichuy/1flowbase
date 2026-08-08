@@ -36,7 +36,11 @@ impl WorkspaceRepository for PgControlPlaneStore {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<domain::WorkspaceRecord>> {
-        let rows = if is_root_user(self.pool(), user_id).await? {
+        let is_root = match self.request_actor_for_user(user_id)? {
+            Some(actor) => actor.is_root,
+            None => is_root_user(self.pool(), user_id).await?,
+        };
+        let rows = if is_root {
             sqlx::query(
                 r#"
                 select id, tenant_id, name, logo_url, introduction

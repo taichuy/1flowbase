@@ -40,6 +40,97 @@ impl RoleRepository for PgControlPlaneStore {
         Ok(roles)
     }
 
+    async fn get_workspace_console_settings_order(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<WorkspaceConsoleSettingsOrder> {
+        let revision = sqlx::query_scalar::<_, i64>(
+            "select revision from workspace_console_settings_orders where workspace_id = $1",
+        )
+        .bind(workspace_id)
+        .fetch_optional(self.pool())
+        .await?
+        .unwrap_or(0);
+        let group_ids = sqlx::query_scalar::<_, String>(
+            "select group_id from workspace_console_settings_order_items where workspace_id = $1 order by position asc, group_id asc",
+        )
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(WorkspaceConsoleSettingsOrder {
+            revision,
+            group_ids,
+        })
+    }
+
+    async fn replace_workspace_console_settings_order(
+        &self,
+        input: &ReplaceWorkspaceConsoleSettingsOrderInput,
+    ) -> Result<WorkspaceConsoleSettingsOrder> {
+        let normalized = input
+            .group_ids
+            .iter()
+            .map(|group_id| group_id.trim())
+            .filter(|group_id| !group_id.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if normalized.iter().collect::<BTreeSet<_>>().len() != normalized.len() {
+            return Err(ControlPlaneError::InvalidInput("console_settings_order_duplicate").into());
+        }
+
+        let mut tx = self.pool().begin().await?;
+        sqlx::query(
+            r#"
+            insert into workspace_console_settings_orders (workspace_id, revision, updated_by)
+            values ($1, 0, $2)
+            on conflict (workspace_id) do nothing
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.actor_user_id)
+        .execute(&mut *tx)
+        .await?;
+        let current_revision: i64 = sqlx::query_scalar(
+            "select revision from workspace_console_settings_orders where workspace_id = $1 for update",
+        )
+        .bind(input.workspace_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if current_revision != input.expected_revision {
+            return Err(ControlPlaneError::Conflict("console_settings_order_revision").into());
+        }
+
+        sqlx::query("delete from workspace_console_settings_order_items where workspace_id = $1")
+            .bind(input.workspace_id)
+            .execute(&mut *tx)
+            .await?;
+        for (position, group_id) in normalized.iter().enumerate() {
+            sqlx::query(
+                "insert into workspace_console_settings_order_items (workspace_id, group_id, position) values ($1, $2, $3)",
+            )
+            .bind(input.workspace_id)
+            .bind(group_id)
+            .bind(position as i32)
+            .execute(&mut *tx)
+            .await?;
+        }
+        let revision = current_revision + 1;
+        sqlx::query(
+            "update workspace_console_settings_orders set revision = $2, updated_by = $3, updated_at = now() where workspace_id = $1",
+        )
+        .bind(input.workspace_id)
+        .bind(revision)
+        .bind(input.actor_user_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        Ok(WorkspaceConsoleSettingsOrder {
+            revision,
+            group_ids: normalized,
+        })
+    }
+
     async fn create_team_role(&self, input: &CreateWorkspaceRoleInput) -> Result<()> {
         if find_role_by_code(self.pool(), input.workspace_id, &input.code)
             .await?

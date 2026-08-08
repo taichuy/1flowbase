@@ -5,6 +5,7 @@ import {
   fetchPublicLoginInstances as requestFetchPublicLoginInstances,
   getDefaultApiBaseUrl,
   signInWithPassword as requestSignInWithPassword,
+  switchConsoleSessionRole as requestSwitchConsoleSessionRole,
   type ApiBaseUrlLocation,
   type ConsoleMe,
   type ConsoleSessionSnapshot,
@@ -76,4 +77,12 @@ export function signOut(
   baseUrl = getAuthApiBaseUrl()
 ): Promise<void> {
   return requestDeleteConsoleSession(csrfToken, baseUrl);
+}
+
+export function switchActiveRole(
+  roleCode: string,
+  csrfToken: string,
+  baseUrl = getAuthApiBaseUrl()
+): Promise<ConsoleSessionSnapshot> {
+  return requestSwitchConsoleSessionRole(roleCode, csrfToken, baseUrl);
 }

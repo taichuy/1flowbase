@@ -6,7 +6,6 @@ use axum::Json;
 use control_plane::errors::ControlPlaneError;
 use control_plane::frontstage::{FrontstagePageService, GetFrontstagePageDetailCommand};
 use control_plane::model_definition::ModelDefinitionService;
-use control_plane::ports::FrontstagePageRepository;
 use control_plane::resource_action::{ActionDefinition, ResourceActionKernel};
 use control_plane::resource_crud::parse_resource_filter_expr;
 use runtime_core::runtime_acl::RuntimeDataAction;
@@ -117,7 +116,7 @@ async fn resolve_data_capability_context(
     input: FrontstageCapabilityInput,
 ) -> Result<DataCapabilityContext, anyhow::Error> {
     // Re-check tab visibility on every dispatch: the tab is the capability scope.
-    FrontstagePageService::new(state.store.clone())
+    FrontstagePageService::for_actor(state.store.clone(), input.actor.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: input.actor_user_id,
             workspace_id: input.workspace_id,
@@ -125,10 +124,7 @@ async fn resolve_data_capability_context(
             tab_reference: input.tab_id.to_string(),
         })
         .await?;
-    let actor = state
-        .store
-        .load_actor_context_for_workspace(input.actor_user_id, input.workspace_id)
-        .await?;
+    let actor = input.actor;
     Ok(DataCapabilityContext {
         actor,
         params: parse_capability_params(input.params)?,
@@ -528,10 +524,9 @@ pub async fn list_frontstage_data_capabilities(
 ) -> Result<Json<ApiSuccess<FrontstageDataCapabilitiesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    state
-        .store
-        .load_actor_context_for_workspace(context.user.id, workspace_id)
-        .await?;
+    if context.actor.current_workspace_id != workspace_id {
+        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+    }
     let models = state
         .runtime_engine
         .registry()

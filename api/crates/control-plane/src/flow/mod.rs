@@ -146,7 +146,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_existing_application_non_crud_console_operation(
                 &actor,
@@ -256,7 +256,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_existing_application_non_crud_console_operation(
                 &actor,
@@ -301,10 +301,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_non_crud_creation_operation(
                 &actor,
@@ -581,15 +578,9 @@ impl ApplicationRepository for InMemoryFlowRepository {
 
     async fn load_role_console_policies_for_user(
         &self,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
+        actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
-        ApplicationRepository::load_role_console_policies_for_user(
-            &self.applications,
-            actor_user_id,
-            workspace_id,
-        )
-        .await
+        ApplicationRepository::load_role_console_policies_for_user(&self.applications, actor).await
     }
 
     async fn list_applications(

@@ -144,10 +144,7 @@ where
             Vec::new()
         } else {
             self.repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?
         };
         let mut authorized_applications = Vec::with_capacity(command.application_ids.len());
@@ -320,10 +317,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_non_crud_creation_operation(
                 &actor,

@@ -18,11 +18,52 @@ use crate::mappers::role_mapper::StoredRoleRow;
 #[derive(Clone)]
 pub struct PgControlPlaneStore {
     pool: PgPool,
+    actor_override: Option<ActorContext>,
 }
 
 impl PgControlPlaneStore {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            actor_override: None,
+        }
+    }
+
+    pub fn for_actor(&self, actor: ActorContext) -> Self {
+        Self {
+            pool: self.pool.clone(),
+            actor_override: Some(actor),
+        }
+    }
+
+    pub(crate) fn actor_override(
+        &self,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        role_code: Option<&str>,
+    ) -> Result<Option<ActorContext>> {
+        let Some(actor) = &self.actor_override else {
+            return Ok(None);
+        };
+        if actor.user_id != user_id
+            || actor.tenant_id != tenant_id
+            || actor.current_workspace_id != workspace_id
+            || role_code.is_some_and(|role_code| actor.effective_display_role != role_code)
+        {
+            return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+        }
+        Ok(Some(actor.clone()))
+    }
+
+    pub(crate) fn request_actor_for_user(&self, user_id: Uuid) -> Result<Option<ActorContext>> {
+        let Some(actor) = &self.actor_override else {
+            return Ok(None);
+        };
+        if actor.user_id != user_id {
+            return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+        }
+        Ok(Some(actor.clone()))
     }
 
     pub fn pool(&self) -> &PgPool {

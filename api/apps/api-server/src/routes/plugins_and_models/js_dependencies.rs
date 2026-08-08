@@ -85,7 +85,7 @@ pub async fn list_js_dependencies(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<JsDependencyCatalogEntryResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let entries = JsDependencyService::new(state.store.clone())
+    let entries = JsDependencyService::new(state.store.for_actor(context.actor.clone()))
         .list_workspace_js_dependencies(ListWorkspaceJsDependenciesQuery {
             actor_user_id: context.user.id,
         })

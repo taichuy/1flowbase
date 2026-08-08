@@ -107,6 +107,7 @@ pub async fn read_provider_icon(
     let context = require_session(&state, &headers).await?;
     let source = super::service(
         &state,
+        &context.actor,
         "other.model-providers",
         "model_providers.icons.view",
     )

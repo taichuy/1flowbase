@@ -58,6 +58,12 @@ import { SettingsSectionSurface } from './SettingsSectionSurface';
 import { i18nText } from '../../../shared/i18n/text';
 import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../shared/i18n/locales';
 import { RoleDataPolicySection } from './role-permissions/RoleDataPolicySection';
+import {
+  PolicyDragHandle,
+  SortablePolicyRow,
+  SortablePolicyTable
+} from './role-permissions/SortablePolicyTable';
+import { useConsoleSettingsOrder } from './role-permissions/useConsoleSettingsOrder';
 import './role-permissions/role-permission-panel.css';
 
 const CONSOLE_POLICY_TAB = 'console-policy';
@@ -78,6 +84,7 @@ type ConsolePolicyCatalogOperation =
   ConsolePolicyCatalogGroup['operations'][number];
 type ConsolePolicyGroup = SettingsRoleConsolePolicy['groups'][number];
 type ConsolePolicyOperation = ConsolePolicyGroup['operations'][number];
+
 type ConsolePolicyRowOperation = Extract<
   ConsolePolicyOperation,
   { kind: 'row' }
@@ -353,6 +360,15 @@ export function RolePermissionPanel({
     }
   });
 
+  const consoleSettingsOrder = useConsoleSettingsOrder({
+    canManageRoles,
+    csrfToken,
+    locale: consolePolicyCatalogLocale,
+    catalog: consolePolicyCatalogQuery.data,
+    queryClient,
+    messageApi
+  });
+
   const replaceFrontstageRoutesMutation = useMutation({
     scope: {
       id: `settings-role-frontstage-routes:${selectedRoleCode ?? 'none'}`
@@ -575,127 +591,151 @@ export function RolePermissionPanel({
 
     const renderConsolePolicyTable = (
       kind: ConsolePolicyCatalogGroup['kind']
-    ) => (
-      <Table
-        rowKey="display_key"
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        dataSource={policyTableRows(kind)}
-        columns={[
-          {
-            title: i18nText('settings', 'auto.backend_setting'),
-            key: 'backend-setting',
-            render: (
-              _: unknown,
-              row: ReturnType<typeof policyTableRows>[number]
-            ) => (
-              <Space orientation="vertical" size={0}>
-                <Typography.Text strong>
-                  {row.catalogGroup.label}
-                </Typography.Text>
-                {row.catalogGroup.description ? (
-                  <Typography.Text type="secondary">
-                    {row.catalogGroup.description}
-                  </Typography.Text>
-                ) : null}
-              </Space>
-            )
-          },
-          {
-            title: i18nText('settings', 'auto.enabled'),
-            key: 'authorization-enabled',
-            width: 100,
-            render: (
-              _: unknown,
-              row: ReturnType<typeof policyTableRows>[number]
-            ) => (
-              <Switch
-                aria-label={`${row.catalogGroup.label} ${i18nText('settings', 'auto.enabled')}`}
-                checked={row.policyGroup.enabled}
-                disabled={
-                  !canManageRoles ||
-                  !selectedRole?.is_editable ||
-                  replaceConsolePolicyMutation.isPending
-                }
-                onChange={(enabled) =>
-                  saveConsolePolicyGroups(
-                    replaceConsolePolicyGroup(consolePolicyGroups, {
-                      ...row.policyGroup,
-                      enabled
-                    })
-                  )
-                }
-              />
-            )
-          },
-          {
-            title: i18nText('settings', 'auto.authorization_policy'),
-            key: 'authorization-policy',
-            width: 180,
-            render: (
-              _: unknown,
-              row: ReturnType<typeof policyTableRows>[number]
-            ) => (
-              <Select
-                aria-label={`${row.catalogGroup.label} ${i18nText(
-                  'settings',
-                  'auto.authorization_policy'
-                )}`}
-                value={row.policyGroup.strategy}
-                disabled={
-                  !canManageRoles ||
-                  !selectedRole?.is_editable ||
-                  replaceConsolePolicyMutation.isPending
-                }
-                options={groupStrategyOptions.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                  title: option.label
-                }))}
-                style={{ width: 160 }}
-                onChange={(strategy: ConsolePolicyGroup['strategy']) => {
-                  if (strategy === 'custom') {
-                    openConsolePolicyDetail(row.catalogGroup, true);
-                    return;
-                  }
-
-                  saveConsolePolicyGroups(
-                    replaceConsolePolicyGroup(consolePolicyGroups, {
-                      ...row.policyGroup,
-                      strategy
-                    })
-                  );
-                }}
-              />
-            )
-          },
-          {
-            title: i18nText('settings', 'auto.operation'),
-            key: 'policy-detail',
-            render: (
-              _: unknown,
-              row: ReturnType<typeof policyTableRows>[number]
-            ) => {
-              const canEdit = canManageRoles && selectedRole?.is_editable;
-              return (
-                <Button
-                  type="link"
-                  aria-label={i18nText(
-                    'settings',
-                    'auto.permission_policy_details',
-                    { value1: row.catalogGroup.label }
-                  )}
-                  disabled={!canEdit}
-                  onClick={() => openConsolePolicyDetail(row.catalogGroup)}
-                >
-                  {i18nText('settings', 'auto.permission_policy_details_text')}
-                </Button>
-              );
-            }
+    ) => {
+      const rows = policyTableRows(kind);
+      const table = (
+        <Table
+          rowKey="display_key"
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          dataSource={rows}
+          components={
+            kind === 'settings_feature'
+              ? { body: { row: SortablePolicyRow } }
+              : undefined
           }
-        ]}
-      />
-    );
+          columns={[
+            {
+              title: i18nText('settings', 'auto.backend_setting'),
+              key: 'backend-setting',
+              render: (
+                _: unknown,
+                row: ReturnType<typeof policyTableRows>[number]
+              ) => (
+                <Space align="start">
+                  {kind === 'settings_feature' ? <PolicyDragHandle /> : null}
+                  <Space orientation="vertical" size={0}>
+                    <Typography.Text strong>
+                      {row.catalogGroup.label}
+                    </Typography.Text>
+                    {row.catalogGroup.description ? (
+                      <Typography.Text type="secondary">
+                        {row.catalogGroup.description}
+                      </Typography.Text>
+                    ) : null}
+                  </Space>
+                </Space>
+              )
+            },
+            {
+              title: i18nText('settings', 'auto.enabled'),
+              key: 'authorization-enabled',
+              width: 100,
+              render: (
+                _: unknown,
+                row: ReturnType<typeof policyTableRows>[number]
+              ) => (
+                <Switch
+                  aria-label={`${row.catalogGroup.label} ${i18nText('settings', 'auto.enabled')}`}
+                  checked={row.policyGroup.enabled}
+                  disabled={
+                    !canManageRoles ||
+                    !selectedRole?.is_editable ||
+                    replaceConsolePolicyMutation.isPending
+                  }
+                  onChange={(enabled) =>
+                    saveConsolePolicyGroups(
+                      replaceConsolePolicyGroup(consolePolicyGroups, {
+                        ...row.policyGroup,
+                        enabled
+                      })
+                    )
+                  }
+                />
+              )
+            },
+            {
+              title: i18nText('settings', 'auto.authorization_policy'),
+              key: 'authorization-policy',
+              width: 180,
+              render: (
+                _: unknown,
+                row: ReturnType<typeof policyTableRows>[number]
+              ) => (
+                <Select
+                  aria-label={`${row.catalogGroup.label} ${i18nText(
+                    'settings',
+                    'auto.authorization_policy'
+                  )}`}
+                  value={row.policyGroup.strategy}
+                  disabled={
+                    !canManageRoles ||
+                    !selectedRole?.is_editable ||
+                    replaceConsolePolicyMutation.isPending
+                  }
+                  options={groupStrategyOptions.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                    title: option.label
+                  }))}
+                  style={{ width: 160 }}
+                  onChange={(strategy: ConsolePolicyGroup['strategy']) => {
+                    if (strategy === 'custom') {
+                      openConsolePolicyDetail(row.catalogGroup, true);
+                      return;
+                    }
+
+                    saveConsolePolicyGroups(
+                      replaceConsolePolicyGroup(consolePolicyGroups, {
+                        ...row.policyGroup,
+                        strategy
+                      })
+                    );
+                  }}
+                />
+              )
+            },
+            {
+              title: i18nText('settings', 'auto.operation'),
+              key: 'policy-detail',
+              render: (
+                _: unknown,
+                row: ReturnType<typeof policyTableRows>[number]
+              ) => {
+                const canEdit = canManageRoles && selectedRole?.is_editable;
+                return (
+                  <Button
+                    type="link"
+                    aria-label={i18nText(
+                      'settings',
+                      'auto.permission_policy_details',
+                      { value1: row.catalogGroup.label }
+                    )}
+                    disabled={!canEdit}
+                    onClick={() => openConsolePolicyDetail(row.catalogGroup)}
+                  >
+                    {i18nText(
+                      'settings',
+                      'auto.permission_policy_details_text'
+                    )}
+                  </Button>
+                );
+              }
+            }
+          ]}
+        />
+      );
+      if (kind !== 'settings_feature') return table;
+      const ids = rows.map((row) => String(row.display_key));
+      return (
+        <SortablePolicyTable
+          itemIds={ids}
+          onReorder={consoleSettingsOrder.reorder}
+        >
+          {table}
+        </SortablePolicyTable>
+      );
+    };
 
     const defaultDataPolicyTab = selectedRole
       ? {
@@ -801,6 +841,7 @@ export function RolePermissionPanel({
     consolePolicyCatalogQuery.data,
     backendSettingsTabLabel,
     consolePolicyGroups,
+    consoleSettingsOrder.reorder,
     dataPolicyFormId,
     displayedCheckedRouteIds,
     localCheckedRouteIds,

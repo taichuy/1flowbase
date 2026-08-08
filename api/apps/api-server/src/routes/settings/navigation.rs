@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use access_control::{
     ConsoleNavigation, ConsoleNavigationItem, ConsolePermissionBinding, ConsoleRouteDefinition,
 };
 use axum::{extract::State, http::HeaderMap, Json, Router};
+use control_plane::ports::RoleRepository;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -75,9 +76,50 @@ pub async fn get_console_navigation(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsoleNavigationResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let navigation = state
+    let mut navigation = state
         .console_surface_registry
         .accessible_navigation(&context.actor);
+    let stored_order = state
+        .store
+        .get_workspace_console_settings_order(context.actor.current_workspace_id)
+        .await?;
+    let active_features = state
+        .settings_feature_registry
+        .inventory()
+        .features
+        .iter()
+        .filter(|feature| feature.lifecycle == access_control::SettingsFeatureLifecycle::Active)
+        .collect::<Vec<_>>();
+    let active_ids = active_features
+        .iter()
+        .map(|feature| feature.feature_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut ordered_ids = stored_order
+        .group_ids
+        .iter()
+        .filter(|group_id| active_ids.contains(group_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let missing_ids = active_features
+        .iter()
+        .map(|feature| feature.feature_id.clone())
+        .filter(|feature_id| !ordered_ids.contains(feature_id))
+        .collect::<Vec<_>>();
+    ordered_ids.extend(missing_ids);
+    let route_positions = active_features
+        .iter()
+        .filter_map(|feature| {
+            ordered_ids
+                .iter()
+                .position(|feature_id| feature_id == &feature.feature_id)
+                .map(|position| (feature.console_surface.route_id.as_str(), position as i32))
+        })
+        .collect::<BTreeMap<_, _>>();
+    for item in &mut navigation.navigation_items {
+        if let Some(position) = route_positions.get(item.route_id.as_str()) {
+            item.order = *position;
+        }
+    }
     Ok(Json(ApiSuccess::new(ConsoleNavigationResponse::from(
         navigation,
     ))))

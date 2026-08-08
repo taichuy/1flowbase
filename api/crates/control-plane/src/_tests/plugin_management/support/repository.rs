@@ -225,8 +225,7 @@ impl MemoryPluginManagementRepository {
 impl RoleConsolePolicyReader for MemoryPluginManagementRepository {
     async fn load_role_console_policies_for_user(
         &self,
-        _user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self.console_policies.read().await.clone())
     }

@@ -221,6 +221,7 @@ pub struct DispatchFrontstageActionBody {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct FrontstageCapabilityInput {
     pub(crate) actor_user_id: Uuid,
+    pub(crate) actor: domain::ActorContext,
     pub(crate) workspace_id: Uuid,
     pub(crate) page_id: Uuid,
     pub(crate) tab_id: Uuid,
@@ -394,14 +395,15 @@ fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel,
                     )
                     .into());
                 }
-                let detail = FrontstagePageService::new(state.store.clone())
-                    .get_page_detail(GetFrontstagePageDetailCommand {
-                        actor_user_id: input.actor_user_id,
-                        workspace_id: input.workspace_id,
-                        page_id: input.page_id,
-                        tab_reference: input.tab_id.to_string(),
-                    })
-                    .await?;
+                let detail =
+                    FrontstagePageService::for_actor(state.store.clone(), input.actor.clone())
+                        .get_page_detail(GetFrontstagePageDetailCommand {
+                            actor_user_id: input.actor_user_id,
+                            workspace_id: input.workspace_id,
+                            page_id: input.page_id,
+                            tab_reference: input.tab_id.to_string(),
+                        })
+                        .await?;
                 Ok(serde_json::to_value(to_page_detail_response(detail))?)
             }
         },
@@ -448,15 +450,16 @@ fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel
                             "frontstage_action_params",
                         )
                     })?;
-                let detail = FrontstagePageService::new(state.store.clone())
-                    .save_tab_document(SaveFrontstageTabDocumentCommand {
-                        actor_user_id: input.actor_user_id,
-                        workspace_id: input.workspace_id,
-                        page_id: input.page_id,
-                        tab_id: input.tab_id,
-                        document_payload: body.payload,
-                    })
-                    .await?;
+                let detail =
+                    FrontstagePageService::for_actor(state.store.clone(), input.actor.clone())
+                        .save_tab_document(SaveFrontstageTabDocumentCommand {
+                            actor_user_id: input.actor_user_id,
+                            workspace_id: input.workspace_id,
+                            page_id: input.page_id,
+                            tab_id: input.tab_id,
+                            document_payload: body.payload,
+                        })
+                        .await?;
                 Ok(serde_json::to_value(to_page_detail_response(detail))?)
             }
         },
@@ -477,6 +480,7 @@ pub async fn dispatch_frontstage_query(
             &body.query_id,
             serde_json::to_value(FrontstageCapabilityInput {
                 actor_user_id: context.user.id,
+                actor: context.actor.clone(),
                 workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
                 page_id: parse_uuid(&page_id, "page_id")?,
                 tab_id: parse_uuid(&tab_id, "tab_id")?,
@@ -501,6 +505,7 @@ pub async fn dispatch_frontstage_action(
             &body.action_id,
             serde_json::to_value(FrontstageCapabilityInput {
                 actor_user_id: context.user.id,
+                actor: context.actor.clone(),
                 workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
                 page_id: parse_uuid(&page_id, "page_id")?,
                 tab_id: parse_uuid(&tab_id, "tab_id")?,
@@ -531,7 +536,7 @@ pub async fn list_frontstage_pages(
 ) -> Result<Json<ApiSuccess<Vec<FrontstagePageTreeNodeResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
-    let tree = FrontstagePageService::new(state.store.clone())
+    let tree = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .list_page_tree(context.user.id, workspace_id)
         .await?;
 
@@ -563,7 +568,7 @@ pub async fn create_frontstage_group(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let parent_id = parse_optional_uuid(body.parent_id.as_deref(), "parent_id")?;
 
-    let page = FrontstagePageService::new(state.store.clone())
+    let page = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .create_group(CreateFrontstageGroupCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -606,7 +611,7 @@ pub async fn create_frontstage_page(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let parent_id = parse_optional_uuid(body.parent_id.as_deref(), "parent_id")?;
 
-    let creation = FrontstagePageService::new(state.store.clone())
+    let creation = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .create_page(CreateFrontstagePageCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -667,7 +672,7 @@ pub async fn get_frontstage_page_detail(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    let mut detail = FrontstagePageService::new(state.store.clone())
+    let mut detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -713,7 +718,7 @@ pub async fn update_frontstage_page_title(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    let page = FrontstagePageService::new(state.store.clone())
+    let page = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .update_metadata(UpdateFrontstagePageMetadataCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -761,7 +766,7 @@ pub async fn move_frontstage_page(
     let page_id = parse_uuid(&page_id, "page_id")?;
     let parent_id = parse_optional_uuid(body.parent_id.as_deref(), "parent_id")?;
 
-    let page = FrontstagePageService::new(state.store.clone())
+    let page = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .move_page(MoveFrontstagePageCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -799,7 +804,7 @@ pub async fn delete_frontstage_page(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    FrontstagePageService::new(state.store.clone())
+    FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .delete_page(DeleteFrontstagePageCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -819,7 +824,7 @@ pub async fn list_frontstage_page_tabs(
     let context = require_session(&state, &headers).await?;
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
-    let mut tabs = FrontstagePageService::new(state.store.clone())
+    let mut tabs = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .list_page_tabs(context.user.id, workspace_id, page_id)
         .await?;
     for tab in &mut tabs {
@@ -842,7 +847,7 @@ pub async fn create_frontstage_page_tab(
     require_csrf(&headers, &context)?;
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
-    let tab = FrontstagePageService::new(state.store.clone())
+    let tab = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .create_page_tab(CreateFrontstagePageTabCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -867,7 +872,7 @@ pub async fn update_frontstage_page_tab(
 ) -> Result<Json<ApiSuccess<FrontstagePageTabResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let tab = FrontstagePageService::new(state.store.clone())
+    let tab = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .update_page_tab(UpdateFrontstagePageTabCommand {
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
@@ -888,7 +893,7 @@ pub async fn delete_frontstage_page_tab(
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    FrontstagePageService::new(state.store.clone())
+    FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .delete_page_tab(DeleteFrontstagePageTabCommand {
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
@@ -912,7 +917,7 @@ pub async fn save_frontstage_tab_document(
     let page_id = parse_uuid(&page_id, "page_id")?;
     let tab_id = parse_uuid(&tab_id, "tab_id")?;
 
-    let detail = FrontstagePageService::new(state.store.clone())
+    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .save_tab_document(SaveFrontstageTabDocumentCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -946,7 +951,7 @@ pub async fn create_frontstage_block(
 ) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageDetailResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let detail = FrontstagePageService::new(state.store.clone())
+    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .create_block(CreateFrontstageBlockCommand {
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
@@ -989,7 +994,7 @@ pub async fn get_frontstage_block_code(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    let code = FrontstagePageService::new(state.store.clone())
+    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .get_block_code(GetFrontstageBlockCodeCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -1029,7 +1034,7 @@ pub async fn save_frontstage_block_code(
     let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
-    let code = FrontstagePageService::new(state.store.clone())
+    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .save_block_code(SaveFrontstageBlockCodeCommand {
             actor_user_id: context.user.id,
             workspace_id,

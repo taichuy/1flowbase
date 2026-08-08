@@ -285,6 +285,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         &self,
         actor_user_id: Uuid,
         workspace_id: Uuid,
+        role_code: &str,
     ) -> Result<Vec<domain::frontstage::FrontstagePageVisibilityRuleRecord>> {
         let rows = sqlx::query(
             r#"
@@ -304,6 +305,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                   from user_role_bindings bindings
                   join roles on roles.id = bindings.role_id
                   where bindings.user_id = $1
+                    and roles.code = $3
                     and roles.scope_kind = 'workspace'
                     and roles.workspace_id = $2
               )
@@ -312,6 +314,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         )
         .bind(actor_user_id)
         .bind(workspace_id)
+        .bind(role_code)
         .fetch_all(self.pool())
         .await?;
 

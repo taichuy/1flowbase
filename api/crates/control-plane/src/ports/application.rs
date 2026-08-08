@@ -216,8 +216,7 @@ pub trait ApplicationRepository: Send + Sync {
     ) -> anyhow::Result<domain::ActorContext>;
     async fn load_role_console_policies_for_user(
         &self,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
+        actor: &domain::ActorContext,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>>;
     async fn list_applications(
         &self,

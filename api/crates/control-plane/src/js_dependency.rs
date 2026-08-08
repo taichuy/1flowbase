@@ -60,7 +60,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             let group = domain::ConsolePolicyGroup::other("other.js-dependencies")
                 .expect("compiled JavaScript dependency policy group must be valid");
@@ -103,7 +103,7 @@ where
         } else {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             resolve_application_console_visibility(
                 &policies,
@@ -143,10 +143,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(
-                    command.actor_user_id,
-                    actor.current_workspace_id,
-                )
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_application_console_row_scope(
                 &actor,

@@ -9,9 +9,9 @@ use control_plane::model_definition::ModelDefinitionService;
 use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
 use control_plane::role::{
     ConsolePolicyGroupInput, ConsolePolicyOperationInput, CreateRoleCommand, DeleteRoleCommand,
-    ReplaceRoleConsolePolicyCommand, ReplaceRoleDataPolicyCommand,
-    ReplaceRoleFrontstageRoutesCommand, ReplaceRolePermissionsCommand, RoleService,
-    UpdateRoleCommand,
+    ReplaceConsoleSettingsOrderCommand, ReplaceRoleConsolePolicyCommand,
+    ReplaceRoleDataPolicyCommand, ReplaceRoleFrontstageRoutesCommand,
+    ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -22,7 +22,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_patch, ConsoleRouteAssembly},
+    routes::console_route_assembly::{
+        console_get, console_patch, console_put, ConsoleRouteAssembly,
+    },
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -210,9 +212,16 @@ pub enum ConsoleRoleConsolePolicyOperationBody {
 pub struct ConsolePolicyCatalogResponse {
     pub schema_version: String,
     pub locale: String,
+    pub settings_order_revision: i64,
     pub group_strategy_options: Vec<ConsolePolicyCatalogOptionResponse>,
     pub groups: Vec<ConsolePolicyCatalogGroupResponse>,
     pub resources: Vec<ConsolePolicyCatalogResourceResponse>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReplaceConsoleSettingsOrderBody {
+    pub expected_revision: i64,
+    pub group_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -362,6 +371,7 @@ fn to_console_policy_catalog_response(
     ConsolePolicyCatalogResponse {
         schema_version: catalog.schema_version,
         locale: catalog.locale,
+        settings_order_revision: catalog.settings_order_revision,
         group_strategy_options: catalog
             .group_strategy_options
             .into_iter()
@@ -633,6 +643,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/roles/console-policy-catalog/order",
+            console_put(
+                replace_console_settings_order,
+                ConsoleOperation("roles.console_settings_order.replace".to_string()),
+            ),
+        )
+        .route(
             "/settings/roles/:id",
             console_patch(update_role, ConsoleOperation("roles.update".to_string()))
                 .delete(delete_role, ConsoleOperation("roles.delete".to_string())),
@@ -729,7 +746,7 @@ pub async fn get_console_policy_catalog(
 ) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let mut catalog = RoleService::new(state.store.clone())
+    let mut catalog = RoleService::new(state.store.for_actor(context.actor.clone()))
         .get_console_policy_catalog(
             context.user.id,
             state.console_operation_registry.inventory(),
@@ -738,6 +755,43 @@ pub async fn get_console_policy_catalog(
         .await?;
     resolve_console_policy_catalog_display(&state, &locale, &mut catalog).await?;
 
+    Ok(Json(ApiSuccess::new(to_console_policy_catalog_response(
+        catalog,
+    ))))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/settings/roles/console-policy-catalog/order",
+    request_body = ReplaceConsoleSettingsOrderBody,
+    responses(
+        (status = 200, body = ConsolePolicyCatalogResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 409, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn replace_console_settings_order(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<ReplaceConsoleSettingsOrderBody>,
+) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
+    let mut catalog = RoleService::new(state.store.for_actor(context.actor.clone()))
+        .replace_console_settings_order(
+            ReplaceConsoleSettingsOrderCommand {
+                actor_user_id: context.user.id,
+                expected_revision: body.expected_revision,
+                group_ids: body.group_ids,
+            },
+            state.console_operation_registry.inventory(),
+            locale.as_str(),
+        )
+        .await?;
+    resolve_console_policy_catalog_display(&state, &locale, &mut catalog).await?;
     Ok(Json(ApiSuccess::new(to_console_policy_catalog_response(
         catalog,
     ))))
@@ -760,7 +814,7 @@ pub async fn get_role_console_policy(
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleConsolePolicyResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let policy = RoleService::new(state.store.clone())
+    let policy = RoleService::new(state.store.for_actor(context.actor.clone()))
         .get_console_policy(
             context.user.id,
             &role_code,
@@ -794,7 +848,7 @@ pub async fn replace_role_console_policy(
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    RoleService::new(state.store.clone())
+    RoleService::new(state.store.for_actor(context.actor.clone()))
         .replace_console_policy(
             ReplaceRoleConsolePolicyCommand {
                 actor_user_id: context.user.id,
@@ -906,7 +960,7 @@ pub async fn list_roles(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<RoleResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let roles = RoleService::new(state.store.clone())
+    let roles = RoleService::new(state.store.for_actor(context.actor.clone()))
         .list_roles(context.user.id)
         .await?;
 
@@ -929,7 +983,7 @@ pub async fn create_role(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    RoleService::new(state.store.clone())
+    RoleService::new(state.store.for_actor(context.actor.clone()))
         .create_role(CreateRoleCommand {
             actor_user_id: context.user.id,
             code: body.code.clone(),
@@ -972,7 +1026,7 @@ pub async fn update_role(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    RoleService::new(state.store.clone())
+    RoleService::new(state.store.for_actor(context.actor.clone()))
         .update_role(UpdateRoleCommand {
             actor_user_id: context.user.id,
             role_code,
@@ -1000,7 +1054,7 @@ pub async fn delete_role(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    RoleService::new(state.store.clone())
+    RoleService::new(state.store.for_actor(context.actor.clone()))
         .delete_role(DeleteRoleCommand {
             actor_user_id: context.user.id,
             role_code,
@@ -1022,7 +1076,7 @@ pub async fn get_role_permissions(
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RolePermissionsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let permission_codes = RoleService::new(state.store.clone())
+    let permission_codes = RoleService::new(state.store.for_actor(context.actor.clone()))
         .get_role_permissions(context.user.id, &role_code)
         .await?;
 
@@ -1048,7 +1102,7 @@ pub async fn replace_role_permissions(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    RoleService::new(state.store.clone())
+    RoleService::new(state.store.for_actor(context.actor.clone()))
         .replace_permissions(ReplaceRolePermissionsCommand {
             actor_user_id: context.user.id,
             role_code,
@@ -1123,7 +1177,7 @@ pub async fn get_role_frontstage_routes(
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleFrontstageRoutesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let view = RoleService::new(state.store.clone())
+    let view = RoleService::new(state.store.for_actor(context.actor.clone()))
         .get_frontstage_routes(context.user.id, &role_code)
         .await?;
     Ok(Json(ApiSuccess::new(RoleFrontstageRoutesResponse {
@@ -1142,7 +1196,7 @@ pub async fn replace_role_frontstage_routes(
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    RoleService::new(state.store.clone())
+    RoleService::new(state.store.for_actor(context.actor.clone()))
         .replace_frontstage_routes(ReplaceRoleFrontstageRoutesCommand {
             actor_user_id: context.user.id,
             role_code,
@@ -1165,7 +1219,7 @@ pub async fn get_role_data_policy(
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let policy = RoleService::new(state.store.clone())
+    let policy = RoleService::new(state.store.for_actor(context.actor.clone()))
         .get_role_data_policy(context.user.id, &role_code)
         .await?;
 
@@ -1194,7 +1248,7 @@ pub async fn replace_role_data_policy(
         .into_iter()
         .map(to_model_policy_input)
         .collect::<Result<Vec<_>, _>>()?;
-    let policy = RoleService::new(state.store.clone())
+    let policy = RoleService::new(state.store.for_actor(context.actor.clone()))
         .replace_data_policy(ReplaceRoleDataPolicyCommand {
             actor_user_id: context.user.id,
             role_code,

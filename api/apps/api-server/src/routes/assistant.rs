@@ -451,7 +451,8 @@ pub async fn get_settings(
     );
     let (published_agent_flows, enabled_mcp_instances) =
         available_targets(&state, &context.actor).await?;
-    let run_capabilities = assistant_run_capabilities(&state, preference.application_id).await?;
+    let run_capabilities =
+        assistant_run_capabilities(&state, &context.actor, preference.application_id).await?;
     Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
         preference,
         published_agent_flows,
@@ -508,7 +509,8 @@ pub async fn update_settings(
         .await?;
     let (published_agent_flows, enabled_mcp_instances) =
         available_targets(&state, &context.actor).await?;
-    let run_capabilities = assistant_run_capabilities(&state, preference.application_id).await?;
+    let run_capabilities =
+        assistant_run_capabilities(&state, &context.actor, preference.application_id).await?;
     Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
         preference,
         published_agent_flows,
@@ -833,7 +835,7 @@ async fn assistant_preference_for_target(
         .into());
     }
     validate_preference(state, &context.actor, &preference).await?;
-    ApplicationService::new(state.store.clone())
+    ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .load_application_for_non_crud_console_operation(
             context.user.id,
             application_id,
@@ -865,7 +867,7 @@ async fn available_targets(
     ),
     ApiError,
 > {
-    let applications = ApplicationService::new(state.store.clone())
+    let applications = ApplicationService::new(state.store.for_actor(actor.clone()))
         .list_applications(actor.user_id)
         .await?;
     let mut published_agent_flows = Vec::new();
@@ -873,7 +875,7 @@ async fn available_targets(
         .into_iter()
         .filter(|application| application.application_type == domain::ApplicationType::AgentFlow)
     {
-        if ApplicationPublicationService::new(state.store.clone())
+        if ApplicationPublicationService::new(state.store.for_actor(actor.clone()))
             .load_active_publication(LoadActiveApplicationPublicationCommand {
                 application_id: application.id,
             })
@@ -903,12 +905,13 @@ async fn available_targets(
 
 async fn assistant_run_capabilities(
     state: &Arc<ApiState>,
+    actor: &domain::ActorContext,
     application_id: Option<Uuid>,
 ) -> Result<AssistantRunCapabilities, ApiError> {
     let Some(application_id) = application_id else {
         return Ok(AssistantRunCapabilities::default());
     };
-    let publication = ApplicationPublicationService::new(state.store.clone())
+    let publication = ApplicationPublicationService::new(state.store.for_actor(actor.clone()))
         .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
         .await?;
     let model_selection_enabled = publication.mapping_snapshot.input.model_target.is_some();
@@ -959,7 +962,7 @@ async fn validate_preference(
     preference: &AssistantPreferenceBody,
 ) -> Result<(), ApiError> {
     if let Some(application_id) = preference.application_id {
-        let application = ApplicationService::new(state.store.clone())
+        let application = ApplicationService::new(state.store.for_actor(actor.clone()))
             .get_application(actor.user_id, application_id)
             .await?;
         if application.application_type != domain::ApplicationType::AgentFlow {
@@ -968,7 +971,7 @@ async fn validate_preference(
             )
             .into());
         }
-        let capabilities = assistant_run_capabilities(state, Some(application_id)).await?;
+        let capabilities = assistant_run_capabilities(state, actor, Some(application_id)).await?;
         if let Some(model) = preference.model.as_deref() {
             let selected = capabilities
                 .models

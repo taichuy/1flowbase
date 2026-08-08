@@ -39,7 +39,7 @@ where
         return Ok(());
     }
     let policies = repository
-        .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+        .load_role_console_policies_for_user(actor)
         .await?;
     ensure_application_console_row_scope(
         actor,
@@ -76,7 +76,7 @@ where
         return Ok(true);
     }
     let policies = repository
-        .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+        .load_role_console_policies_for_user(actor)
         .await?;
     Ok(ensure_application_console_row_scope(
         actor,

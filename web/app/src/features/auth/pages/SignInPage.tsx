@@ -7,6 +7,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchCurrentMe,
+  fetchCurrentSession,
   fetchLoginInstances,
   type PublicLoginInstance
 } from '../api/session';
@@ -90,21 +91,20 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
   ]);
 
   const handleAuthenticated = useCallback(
-    async (session: {
+    async (_session: {
       csrf_token: string;
       effective_display_role: string;
       current_workspace_id: string;
     }) => {
-      const me = await fetchCurrentMe();
+      const [me, currentSession] = await Promise.all([
+        fetchCurrentMe(),
+        fetchCurrentSession()
+      ]);
       setAuthenticated({
-        csrfToken: session.csrf_token,
-        actor: {
-          id: me.id,
-          account: me.account,
-          effective_display_role: session.effective_display_role,
-          current_workspace_id: session.current_workspace_id
-        },
-        me
+        csrfToken: currentSession.csrf_token,
+        actor: currentSession.actor,
+        me,
+        availableRoles: currentSession.available_roles
       });
       await navigate({ to: '/' });
     },

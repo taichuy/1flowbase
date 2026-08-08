@@ -272,7 +272,7 @@ where
         }
         let policies = self
             .repository
-            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .load_role_console_policies_for_user(actor)
             .await?;
         ensure_console_simple_operation(&policies, group, operation_id).map_err(Into::into)
     }
@@ -286,7 +286,7 @@ where
         }
         let policies = self
             .repository
-            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .load_role_console_policies_for_user(actor)
             .await?;
         resolve_data_source_instance_visibility(&policies).map_err(Into::into)
     }
@@ -300,7 +300,7 @@ where
         }
         let policies = self
             .repository
-            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .load_role_console_policies_for_user(actor)
             .await?;
         ensure_console_simple_operation(
             &policies,

@@ -63,7 +63,7 @@ pub async fn get_workspace(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<WorkspaceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace = WorkspaceService::new(state.store.clone())
+    let workspace = WorkspaceService::new(state.store.for_actor(context.actor.clone()))
         .get_workspace(context.actor.current_workspace_id)
         .await?;
 
@@ -85,7 +85,7 @@ pub async fn patch_workspace(
     require_csrf(&headers, &context)?;
     let workspace_id = context.actor.current_workspace_id;
 
-    let workspace = WorkspaceService::new(state.store.clone())
+    let workspace = WorkspaceService::new(state.store.for_actor(context.actor.clone()))
         .update_workspace(UpdateWorkspaceCommand {
             actor: context.actor,
             workspace_id,

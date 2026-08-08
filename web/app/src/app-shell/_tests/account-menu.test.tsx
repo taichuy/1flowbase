@@ -39,7 +39,9 @@ function buildMe(overrides: Partial<ConsoleMe> = {}): ConsoleMe {
   };
 }
 
-function menuClick(key: string): Parameters<NonNullable<MenuProps['onClick']>>[0] {
+function menuClick(
+  key: string
+): Parameters<NonNullable<MenuProps['onClick']>>[0] {
   return { key } as Parameters<NonNullable<MenuProps['onClick']>>[0];
 }
 
@@ -55,9 +57,7 @@ describe('createAccountMenuItems', () => {
     const accountItem = items[0];
     const children = accountItem ? Reflect.get(accountItem, 'children') : [];
     const rawChildren =
-      accountItem &&
-      typeof accountItem === 'object' &&
-      Array.isArray(children)
+      accountItem && typeof accountItem === 'object' && Array.isArray(children)
         ? children
         : [];
 
@@ -84,7 +84,41 @@ describe('createAccountMenuItems', () => {
       })
     ).toEqual([
       { key: 'profile', label: '个人资料', hasIcon: true },
+      { key: 'active-role', label: '当前角色', hasIcon: true },
       { key: 'sign-out', label: '退出登录', hasIcon: true }
+    ]);
+  });
+
+  test('marks the active role and exposes the remaining bound roles', () => {
+    const items =
+      createAccountMenuItems(
+        'Root',
+        [
+          { code: 'root', name: 'Root', scope_kind: 'system' },
+          { code: 'manager', name: 'Manager', scope_kind: 'workspace' }
+        ],
+        'root'
+      ) ?? [];
+    const children = Reflect.get(items[0] ?? {}, 'children') as unknown[];
+    const roleItem = children.find(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        Reflect.get(item, 'key') === 'active-role'
+    );
+    const roles = Reflect.get(roleItem ?? {}, 'children') as Array<
+      Record<string, unknown>
+    >;
+
+    expect(
+      roles.map((role) => ({
+        key: role.key,
+        label: role.label,
+        disabled: role.disabled
+      }))
+    ).toEqual([
+      { key: 'role:root', label: 'Root', disabled: true },
+      { key: 'role:manager', label: 'Manager', disabled: false }
     ]);
   });
 });

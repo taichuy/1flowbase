@@ -206,7 +206,7 @@ pub async fn get_application_runtime_activity(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationRuntimeActivitySnapshot>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ApplicationService::new(state.store.clone())
+    ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .get_application(context.user.id, id)
         .await?;
 
@@ -241,7 +241,7 @@ pub async fn get_application_run_monitoring_report(
     Query(query): Query<ApplicationRunMonitoringQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunMonitoringReportResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ApplicationService::new(state.store.clone())
+    ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .get_application(context.user.id, id)
         .await?;
 

@@ -112,10 +112,11 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 pub(super) fn settings_service(
     state: &ApiState,
+    actor: &domain::ActorContext,
     operation_id: &'static str,
 ) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {
     ModelProviderService::for_console_operation(
-        state.store.clone(),
+        state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
         state.provider_secret_master_key.clone(),
         domain::ConsolePolicyGroup::settings_feature("system.model-providers")
@@ -143,9 +144,13 @@ pub async fn list_settings_options(
 ) -> Result<Json<ApiSuccess<ModelProviderOptionsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let options = settings_service(&state, "model_providers.settings_options.view")
-        .options(context.user.id, requested_locales(&locale_meta))
-        .await?;
+    let options = settings_service(
+        &state,
+        &context.actor,
+        "model_providers.settings_options.view",
+    )
+    .options(context.user.id, requested_locales(&locale_meta))
+    .await?;
     Ok(Json(ApiSuccess::new(to_options_view_response(
         locale_meta,
         options,

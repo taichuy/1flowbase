@@ -729,7 +729,7 @@ pub async fn list_applications(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationSummaryResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let applications = ApplicationService::new(state.store.clone())
+    let applications = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .list_applications(context.user.id)
         .await?;
 
@@ -757,7 +757,7 @@ pub async fn get_application_catalog(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ApplicationCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let tags = ApplicationService::new(state.store.clone())
+    let tags = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .list_application_tags(context.user.id)
         .await?;
     let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
@@ -796,7 +796,7 @@ pub async fn create_application(
     let application_type = body.application_type.into_domain();
     let workflow_trigger_type =
         parse_workflow_trigger_type(application_type, body.workflow_trigger_type)?;
-    let created = ApplicationService::new(state.store.clone())
+    let created = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .create_application(CreateApplicationCommand {
             actor_user_id: context.user.id,
             application_type,
@@ -838,7 +838,7 @@ pub async fn create_application_tag(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    let created = ApplicationService::new(state.store.clone())
+    let created = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .create_application_tag(CreateApplicationTagCommand {
             actor_user_id: context.user.id,
             name: body.name,
@@ -870,7 +870,7 @@ pub async fn get_application(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ApplicationService::new(state.store.clone())
+    let application = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .get_application(context.user.id, id)
         .await?;
 
@@ -896,7 +896,7 @@ pub async fn list_application_environment_variables(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let variables = ApplicationService::new(state.store.clone())
+    let variables = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .list_application_environment_variables(context.user.id, id)
         .await?;
 
@@ -942,7 +942,7 @@ pub async fn replace_application_environment_variables(
             description: variable.description,
         })
         .collect();
-    let replaced = ApplicationService::new(state.store.clone())
+    let replaced = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .replace_application_environment_variables(ReplaceApplicationEnvironmentVariablesCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -1068,7 +1068,7 @@ pub async fn patch_application(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let updated = ApplicationService::new(state.store.clone())
+    let updated = ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .update_application(UpdateApplicationCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -1105,7 +1105,7 @@ pub async fn delete_application(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
 
-    ApplicationService::new(state.store.clone())
+    ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .delete_application(DeleteApplicationCommand {
             actor_user_id: context.user.id,
             application_id: id,

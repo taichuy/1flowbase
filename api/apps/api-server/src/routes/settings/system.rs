@@ -354,7 +354,7 @@ pub async fn get_runtime_profile(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<SystemRuntimeProfileResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let access = SystemRuntimeService::new(state.store.clone())
+    let access = SystemRuntimeService::new(state.store.for_actor(context.actor.clone()))
         .authorize_view(context.user.id)
         .await?;
 

@@ -63,8 +63,8 @@ pub async fn get_debug_variable_snapshot(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<DebugVariableSnapshotResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
-    let editor_state = FlowService::new(state.store.clone())
+    ensure_application_visible(&state, &context.actor, id).await?;
+    let editor_state = FlowService::new(state.store.for_actor(context.actor.clone()))
         .get_or_create_editor_state(context.user.id, id)
         .await?;
 

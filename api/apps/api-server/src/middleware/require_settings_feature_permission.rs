@@ -4,7 +4,7 @@ use access_control::{
     ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup, ConsoleRouteAccess,
 };
 use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
-use control_plane::{errors::ControlPlaneError, ports::ApplicationRepository};
+use control_plane::errors::ControlPlaneError;
 use domain::{
     effective_console_row_scope, effective_console_simple_operation, ActorContext,
     ConsoleOperationId, ConsoleOperationRowScope, RoleConsolePolicy,
@@ -90,9 +90,10 @@ pub async fn require_settings_feature_permission(
 
     let policies = state
         .store
-        .load_role_console_policies_for_user(
+        .load_console_policy_for_bound_role(
             context.actor.user_id,
             context.actor.current_workspace_id,
+            &context.actor.effective_display_role,
         )
         .await?;
     if authorize_compiled_console_access(&access, &context.actor, &policies) {

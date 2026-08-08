@@ -61,6 +61,8 @@
     "group_order": "分组顺序",
     "drag_to_adjust_group_order": "拖动实例调整顺序；轮询与重试轮询会按此顺序执行。",
     "drag_to_sort": "拖拽排序",
+    "order_updated_successfully": "顺序已更新",
+    "order_update_failed": "顺序更新失败，请刷新后重试",
     "instance_alt": "实例",
     "participate_in_group": "参与分组",
     "participate_in_group_named": "参与分组 {{value1}}",

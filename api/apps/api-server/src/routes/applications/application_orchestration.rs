@@ -464,10 +464,10 @@ pub async fn preview_installed_application_extension(
 ) -> Result<Json<ApiSuccess<InstalledApplicationExtensionPreviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let (entry, warnings) = installed_application_archive_entry(&state, installation_id).await?;
-    let resources = FlowService::new(state.store.clone())
+    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
         .load_agent_flow_template_resources(context.user.id)
         .await?;
-    let preview = ApplicationArchiveService::new(state.store.clone())
+    let preview = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
         .preview_archive(PreviewApplicationArchiveCommand {
             actor_user_id: context.user.id,
             entry,
@@ -532,10 +532,10 @@ pub async fn import_installed_application_extension(
         )
         .into());
     }
-    let resources = FlowService::new(state.store.clone())
+    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
         .load_agent_flow_template_resources(context.user.id)
         .await?;
-    let imported = ApplicationArchiveService::new(state.store.clone())
+    let imported = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
         .import_archive(ImportApplicationArchiveCommand {
             actor_user_id: context.user.id,
             entry,
@@ -570,10 +570,10 @@ pub async fn preview_application_archive(
 ) -> Result<Json<ApiSuccess<AgentFlowTemplatePreviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let (entry, _, _) = uploaded_application_archive_entry(&mut multipart).await?;
-    let resources = FlowService::new(state.store.clone())
+    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
         .load_agent_flow_template_resources(context.user.id)
         .await?;
-    let preview = ApplicationArchiveService::new(state.store.clone())
+    let preview = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
         .preview_archive(PreviewApplicationArchiveCommand {
             actor_user_id: context.user.id,
             entry,
@@ -610,10 +610,10 @@ pub async fn import_application_archive(
         crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
     let (entry, name, description) = uploaded_application_archive_entry(&mut multipart).await?;
-    let resources = FlowService::new(state.store.clone())
+    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
         .load_agent_flow_template_resources(context.user.id)
         .await?;
-    let imported = ApplicationArchiveService::new(state.store.clone())
+    let imported = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
         .import_archive(ImportApplicationArchiveCommand {
             actor_user_id: context.user.id,
             entry,
@@ -726,7 +726,7 @@ pub async fn export_application_archive(
     let exported_at = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .map_err(|_| ControlPlaneError::InvalidInput("application_archive_exported_at"))?;
-    let package = ApplicationArchiveService::new(state.store.clone())
+    let package = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
         .export_archive(ExportApplicationArchiveCommand {
             actor_user_id: context.user.id,
             application_ids: body.application_ids,
@@ -999,7 +999,7 @@ pub async fn get_orchestration(
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let flow_state = FlowService::new(state.store.clone())
+    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
         .get_or_create_editor_state(context.user.id, id)
         .await?;
 
@@ -1034,7 +1034,7 @@ pub async fn save_draft(
         crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
-    let flow_state = FlowService::new(state.store.clone())
+    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
         .save_draft(SaveFlowDraftCommand {
             actor_user_id: context.user.id,
             application_id: id,
@@ -1073,7 +1073,7 @@ pub async fn restore_version(
         crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
-    let flow_state = FlowService::new(state.store.clone())
+    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
         .restore_version(context.user.id, id, version_id)
         .await?;
 
@@ -1109,7 +1109,7 @@ pub async fn update_version(
         crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
     require_csrf(&headers, &context)?;
 
-    let flow_state = FlowService::new(state.store.clone())
+    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
         .update_version_metadata(UpdateFlowVersionMetadataCommand {
             actor_user_id: context.user.id,
             application_id: id,

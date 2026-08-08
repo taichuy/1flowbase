@@ -312,8 +312,7 @@ impl ApplicationRepository for InMemoryApplicationRepository {
 
     async fn load_role_console_policies_for_user(
         &self,
-        _actor_user_id: Uuid,
-        _workspace_id: Uuid,
+        _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self
             .inner

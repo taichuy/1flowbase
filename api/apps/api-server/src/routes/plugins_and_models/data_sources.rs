@@ -256,7 +256,7 @@ pub async fn list_agent_flow_data_source_options(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<AgentFlowDataSourceOptionResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let options = business_service(&state)
+    let options = business_service(&state, &context.actor)
         .list_native_sql_options(context.user.id, context.actor.current_workspace_id)
         .await?;
     Ok(Json(ApiSuccess::new(
@@ -267,9 +267,12 @@ pub async fn list_agent_flow_data_source_options(
     )))
 }
 
-fn service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
+fn service(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
     DataSourceService::for_data_model_settings(
-        state.store.clone(),
+        state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
         state.provider_secret_master_key.clone(),
     )
@@ -279,9 +282,12 @@ fn service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderR
     )
 }
 
-fn business_service(state: &ApiState) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
+fn business_service(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
     DataSourceService::new(
-        state.store.clone(),
+        state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
         state.provider_secret_master_key.clone(),
     )
@@ -486,7 +492,7 @@ pub async fn list_catalog(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceCatalogResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let entries = service(&state)
+    let entries = service(&state, &context.actor)
         .list_catalog(context.user.id, context.actor.current_workspace_id)
         .await?;
     Ok(Json(ApiSuccess::new(DataSourceCatalogResponse {
@@ -505,7 +511,7 @@ pub async fn list_data_sources(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<DataSourceResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let data_sources = service(&state)
+    let data_sources = service(&state, &context.actor)
         .list_data_sources(context.user.id, context.actor.current_workspace_id)
         .await?;
     Ok(Json(ApiSuccess::new(
@@ -530,7 +536,7 @@ pub async fn create_data_source(
 ) -> Result<(StatusCode, Json<ApiSuccess<DataSourceResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let created = service(&state)
+    let created = service(&state, &context.actor)
         .create_instance(CreateDataSourceInstanceCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -569,7 +575,7 @@ pub async fn update_defaults(
     };
 
     if data_source_id == "main" {
-        let defaults = service(&state)
+        let defaults = service(&state, &context.actor)
             .update_main_data_source_defaults(UpdateMainDataSourceDefaultsCommand {
                 actor_user_id: context.user.id,
                 workspace_id: context.actor.current_workspace_id,
@@ -583,7 +589,7 @@ pub async fn update_defaults(
         ))));
     }
 
-    let instance = service(&state)
+    let instance = service(&state, &context.actor)
         .update_defaults(UpdateDataSourceDefaultsCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -612,7 +618,7 @@ pub async fn validate_data_source(
 ) -> Result<Json<ApiSuccess<ValidateDataSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = service(&state)
+    let result = service(&state, &context.actor)
         .validate_instance(ValidateDataSourceInstanceCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -637,7 +643,7 @@ pub async fn rotate_secret(
 ) -> Result<Json<ApiSuccess<DataSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = business_service(&state)
+    let result = business_service(&state, &context.actor)
         .rotate_secret(RotateDataSourceSecretCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -662,7 +668,7 @@ pub async fn list_resources(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceResourcesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let resources = service(&state)
+    let resources = service(&state, &context.actor)
         .list_resources(
             context.user.id,
             context.actor.current_workspace_id,
@@ -685,7 +691,7 @@ pub async fn discover_resources(
 ) -> Result<Json<ApiSuccess<DataSourceResourcesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let resources = service(&state)
+    let resources = service(&state, &context.actor)
         .discover_resources(DiscoverDataSourceResourcesCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -710,7 +716,7 @@ pub async fn preview_read(
 ) -> Result<Json<ApiSuccess<PreviewDataSourceReadResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = service(&state)
+    let result = service(&state, &context.actor)
         .preview_read(PreviewDataSourceReadCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
@@ -739,7 +745,7 @@ pub async fn map_resource_to_model(
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelDefinitionResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let result = service(&state)
+    let result = service(&state, &context.actor)
         .map_resource_to_model(MapDataSourceResourceToModelCommand {
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,

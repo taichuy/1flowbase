@@ -667,7 +667,7 @@ where
         if !actor.is_root {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(actor_user_id, actor.current_workspace_id)
+                .load_role_console_policies_for_user(&actor)
                 .await?;
             ensure_existing_application_non_crud_console_operation(
                 &actor,

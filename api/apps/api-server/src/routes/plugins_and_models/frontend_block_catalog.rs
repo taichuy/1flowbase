@@ -155,11 +155,14 @@ pub async fn list_frontend_blocks(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FrontendBlockCatalogResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let entries = FrontendBlockCatalogService::new(state.store.clone(), state.api_node_id.clone())
-        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
-            actor_user_id: context.user.id,
-        })
-        .await?;
+    let entries = FrontendBlockCatalogService::new(
+        state.store.for_actor(context.actor.clone()),
+        state.api_node_id.clone(),
+    )
+    .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+        actor_user_id: context.user.id,
+    })
+    .await?;
 
     Ok(Json(ApiSuccess::new(
         entries.entries.into_iter().map(to_response).collect(),

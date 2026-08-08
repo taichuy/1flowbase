@@ -17,7 +17,7 @@ struct ImportedRunFinalUpdate {
 pub(crate) async fn restore_run_archive_v1(
     state: Arc<ApiState>,
     application: &domain::ApplicationRecord,
-    actor_user_id: Uuid,
+    actor: domain::ActorContext,
     job_id: Uuid,
     archive: RunArchiveV1Response,
 ) -> Result<(), ApiError> {
@@ -26,8 +26,8 @@ pub(crate) async fn restore_run_archive_v1(
         return Err(ControlPlaneError::InvalidInput("archive_version").into());
     }
 
-    let editor_state = FlowService::new(state.store.clone())
-        .get_or_create_editor_state(actor_user_id, application.id)
+    let editor_state = FlowService::new(state.store.for_actor(actor.clone()))
+        .get_or_create_editor_state(actor.user_id, application.id)
         .await?;
     let mut run_mappings = Vec::with_capacity(archive.entries.len());
     let mut final_run_updates = Vec::with_capacity(archive.entries.len());
@@ -93,7 +93,7 @@ pub(crate) async fn restore_run_archive_v1(
                 .bind(editor_state.draft.updated_at)
                 .bind(compiled_plan_payload)
                 .bind(application.workspace_id)
-                .bind(actor_user_id)
+                .bind(actor.user_id)
                 .execute(&mut *tx)
                 .await?;
                 compiled_plan_id
@@ -152,7 +152,7 @@ pub(crate) async fn restore_run_archive_v1(
         .bind(source_flow_run.target_node_id.as_deref())
         .bind(&source_flow_run.title)
         .bind(&source_flow_run.input_payload)
-        .bind(actor_user_id)
+        .bind(actor.user_id)
         .bind(archive_json_string(&entry.flow_run_fact, "external_user"))
         .bind(archive_json_string(
             &entry.flow_run_fact,

@@ -9,7 +9,6 @@ use axum::{
 use control_plane::{
     errors::ControlPlaneError,
     frontstage::{FrontstagePageService, GetFrontstagePageDetailCommand},
-    ports::FrontstagePageRepository,
 };
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -204,10 +203,10 @@ pub async fn list_frontstage_interface_capabilities(
 ) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    let actor = state
-        .store
-        .load_actor_context_for_workspace(context.user.id, workspace_id)
-        .await?;
+    if context.actor.current_workspace_id != workspace_id {
+        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+    }
+    let actor = &context.actor;
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
     }
@@ -271,10 +270,10 @@ pub async fn get_frontstage_interface_capability(
 ) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    let actor = state
-        .store
-        .load_actor_context_for_workspace(context.user.id, workspace_id)
-        .await?;
+    if context.actor.current_workspace_id != workspace_id {
+        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+    }
+    let actor = &context.actor;
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
     }
@@ -317,7 +316,7 @@ pub async fn dispatch_frontstage_callable_interface(
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
 
-    let detail = FrontstagePageService::new(state.store.clone())
+    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: context.user.id,
             workspace_id,
@@ -414,7 +413,7 @@ pub async fn issue_frontstage_callable_write_grant(
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
-    let detail = FrontstagePageService::new(state.store.clone())
+    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: context.user.id,
             workspace_id,

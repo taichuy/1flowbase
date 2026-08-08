@@ -119,9 +119,10 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 fn service(
     state: &ApiState,
+    actor: &domain::ActorContext,
     operation_id: &'static str,
 ) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
-    base_service(state).for_extension_center_console_operation(operation_id)
+    base_service(state, actor).for_extension_center_console_operation(operation_id)
 }
 
 fn extension_installation_service(
@@ -1263,7 +1264,7 @@ async fn install_or_update_official_extension(
         acknowledged_warnings: value.acknowledged_warnings,
     });
     if is_node_plugin_category(category) {
-        let installed = service(state, operation_id)
+        let installed = service(state, &context.actor, operation_id)
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id: context.user.id,
                 category,
@@ -1290,7 +1291,7 @@ async fn install_or_update_official_extension(
             if current
                 .is_some_and(|assignment| assignment.installation_id != installed.installation.id)
             {
-                service(state, operation_id)
+                service(state, &context.actor, operation_id)
                     .switch_version(SwitchPluginVersionCommand {
                         actor_user_id: context.user.id,
                         provider_code: installed.installation.provider_code.clone(),

@@ -289,7 +289,7 @@ where
         }
         let policies = self
             .repository
-            .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+            .load_role_console_policies_for_user(actor)
             .await?;
         let operation_id = domain::ConsoleOperationId::try_from(operation_id)
             .expect("compiled auth-center operation id must be valid");

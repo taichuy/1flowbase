@@ -104,9 +104,13 @@ pub async fn require_session(
             user.id,
             session.tenant_id,
             session.current_workspace_id,
-            user.default_display_role.as_deref(),
+            Some(&session.active_role_code),
         )
         .await?;
+    if actor.effective_display_role != session.active_role_code {
+        state.session_store.delete(&session.session_id).await?;
+        return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+    }
 
     Ok(RequestContext {
         credential: RequestCredential::CookieSession(session),

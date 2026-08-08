@@ -245,30 +245,14 @@ impl ApplicationRepository for PgControlPlaneStore {
 
     async fn load_role_console_policies_for_user(
         &self,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
+        actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
-        let role_ids: Vec<Uuid> = sqlx::query_scalar(
-            r#"
-            select role.id
-            from user_role_bindings binding
-            join roles role on role.id = binding.role_id
-            where binding.user_id = $1
-              and (role.scope_kind = 'system' or role.workspace_id = $2)
-            order by role.scope_kind asc, role.code asc, role.id asc
-            "#,
+        self.load_console_policy_for_bound_role(
+            actor.user_id,
+            actor.current_workspace_id,
+            &actor.effective_display_role,
         )
-        .bind(actor_user_id)
-        .bind(workspace_id)
-        .fetch_all(self.pool())
-        .await?;
-        let mut policies = Vec::with_capacity(role_ids.len());
-        for role_id in role_ids {
-            policies.push(
-                crate::role_repository::role_console_policy_by_id(self.pool(), role_id).await?,
-            );
-        }
-        Ok(policies)
+        .await
     }
 
     async fn list_applications(

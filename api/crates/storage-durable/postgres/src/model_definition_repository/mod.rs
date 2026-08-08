@@ -1301,6 +1301,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         &self,
         actor_user_id: Uuid,
         workspace_id: Uuid,
+        role_code: &str,
         data_model_id: Uuid,
     ) -> Result<
         Vec<(
@@ -1338,6 +1339,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
               on rdmp.role_id = r.id
              and rdmp.data_model_id = $3
             where urb.user_id = $1
+              and r.code = $4
               and (r.scope_kind = 'system' or r.workspace_id = $2)
             order by r.scope_kind asc, r.code asc
             "#,
@@ -1345,6 +1347,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         .bind(actor_user_id)
         .bind(workspace_id)
         .bind(data_model_id)
+        .bind(role_code)
         .fetch_all(self.pool())
         .await?;
 

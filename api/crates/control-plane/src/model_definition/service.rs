@@ -309,7 +309,7 @@ where
                     return Ok(());
                 }
                 let policies = policy_reader
-                    .load_role_console_policies_for_user(actor.user_id, actor.current_workspace_id)
+                    .load_role_console_policies_for_user(actor)
                     .await
                     .map_err(|_| ControlPlaneError::PermissionDenied("permission_denied"))?;
                 if domain::effective_console_simple_operation(&policies, group, operation_id) {
@@ -389,7 +389,12 @@ where
         let mut role_scope: Option<domain::RoleDataPolicyScope> = None;
         for (policy, model_policy) in self
             .repository
-            .list_actor_role_data_policies(actor.user_id, actor.current_workspace_id, data_model_id)
+            .list_actor_role_data_policies(
+                actor.user_id,
+                actor.current_workspace_id,
+                &actor.effective_display_role,
+                data_model_id,
+            )
             .await?
         {
             if !action_allowed(&policy, model_policy.as_ref(), action) {

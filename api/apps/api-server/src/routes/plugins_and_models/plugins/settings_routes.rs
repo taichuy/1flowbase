@@ -4,9 +4,10 @@ const MODEL_PROVIDER_PLUGIN_TYPE: &str = "model_provider";
 
 fn service(
     state: &ApiState,
+    actor: &domain::ActorContext,
     operation_id: &'static str,
 ) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
-    super::base_service(state).for_model_provider_console_operation(operation_id)
+    super::base_service(state, actor).for_model_provider_console_operation(operation_id)
 }
 
 #[utoipa::path(
@@ -28,13 +29,17 @@ pub async fn list_families(
         query.locale.clone(),
         context.user.preferred_locale,
     );
-    let families = service(&state, "model_provider_plugins.families.view")
-        .list_families(
-            context.user.id,
-            filter_from_query(&query),
-            requested_locales(&locale_meta),
-        )
-        .await?;
+    let families = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.families.view",
+    )
+    .list_families(
+        context.user.id,
+        filter_from_query(&query),
+        requested_locales(&locale_meta),
+    )
+    .await?;
     let i18n_catalog = serde_json::to_value(families.i18n_catalog)?;
     Ok(Json(ApiSuccess::new(PluginFamilyCatalogResponse {
         locale_meta,
@@ -66,16 +71,20 @@ pub async fn list_official_catalog(
         query.locale.clone(),
         context.user.preferred_locale,
     );
-    let local_catalog = service(&state, "model_provider_plugins.official_catalog.view")
-        .list_catalog(
-            context.user.id,
-            filter_from_query(&PluginCatalogQuery {
-                plugin_type: query.plugin_type.clone(),
-                locale: query.locale.clone(),
-            }),
-            requested_locales(&locale_meta),
-        )
-        .await?;
+    let local_catalog = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.official_catalog.view",
+    )
+    .list_catalog(
+        context.user.id,
+        filter_from_query(&PluginCatalogQuery {
+            plugin_type: query.plugin_type.clone(),
+            locale: query.locale.clone(),
+        }),
+        requested_locales(&locale_meta),
+    )
+    .await?;
     let filter = official_filter_from_query(&query);
     let page = state
         .official_extension_catalog_source
@@ -309,9 +318,13 @@ pub async fn install_official_plugin(
         to_risk_override(body.risk_override),
     )
     .await?;
-    let result = service(&state, "model_provider_plugins.install.official")
-        .install_resolved_official_plugin(command)
-        .await?;
+    let result = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.install.official",
+    )
+    .install_resolved_official_plugin(command)
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_install_response(result))),
@@ -333,13 +346,17 @@ pub async fn install_uploaded_plugin(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let (file_name, package_bytes) = read_upload_file(&mut multipart).await?;
-    let result = service(&state, "model_provider_plugins.install.upload")
-        .install_uploaded_plugin(InstallUploadedPluginCommand {
-            actor_user_id: context.user.id,
-            file_name,
-            package_bytes,
-        })
-        .await?;
+    let result = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.install.upload",
+    )
+    .install_uploaded_plugin(InstallUploadedPluginCommand {
+        actor_user_id: context.user.id,
+        file_name,
+        package_bytes,
+    })
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_install_response(result))),
@@ -359,12 +376,16 @@ pub async fn refresh_current_node_artifact(
 ) -> Result<Json<ApiSuccess<PluginArtifactInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let artifact = service(&state, "model_provider_plugins.artifact.refresh")
-        .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
-            actor_user_id: context.user.id,
-            installation_id: parse_uuid(&installation_id, "installation_id")?,
-        })
-        .await?;
+    let artifact = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.artifact.refresh",
+    )
+    .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
+        actor_user_id: context.user.id,
+        installation_id: parse_uuid(&installation_id, "installation_id")?,
+    })
+    .await?;
     Ok(Json(ApiSuccess::new(to_artifact_instance_response(
         artifact,
     ))))
@@ -383,12 +404,16 @@ pub async fn install_current_node_artifact(
 ) -> Result<Json<ApiSuccess<PluginArtifactInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let artifact = service(&state, "model_provider_plugins.artifact.install")
-        .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
-            actor_user_id: context.user.id,
-            installation_id: parse_uuid(&installation_id, "installation_id")?,
-        })
-        .await?;
+    let artifact = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.artifact.install",
+    )
+    .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+        actor_user_id: context.user.id,
+        installation_id: parse_uuid(&installation_id, "installation_id")?,
+    })
+    .await?;
     Ok(Json(ApiSuccess::new(to_artifact_instance_response(
         artifact,
     ))))
@@ -413,14 +438,18 @@ pub async fn upgrade_latest(
         .as_ref()
         .and_then(|body| to_compatibility_override(body.compatibility_override.clone()));
     let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
-    let task = service(&state, "model_provider_plugins.families.upgrade")
-        .upgrade_latest(UpgradeLatestPluginFamilyCommand {
-            actor_user_id: context.user.id,
-            provider_code,
-            compatibility_override,
-            risk_override,
-        })
-        .await?;
+    let task = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.families.upgrade",
+    )
+    .upgrade_latest(UpgradeLatestPluginFamilyCommand {
+        actor_user_id: context.user.id,
+        provider_code,
+        compatibility_override,
+        risk_override,
+    })
+    .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
@@ -439,13 +468,17 @@ pub async fn switch_version(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state, "model_provider_plugins.families.switch")
-        .switch_version(SwitchPluginVersionCommand {
-            actor_user_id: context.user.id,
-            provider_code,
-            target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
-        })
-        .await?;
+    let task = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.families.switch",
+    )
+    .switch_version(SwitchPluginVersionCommand {
+        actor_user_id: context.user.id,
+        provider_code,
+        target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
+    })
+    .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
@@ -462,12 +495,16 @@ pub async fn delete_family(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let task = service(&state, "model_provider_plugins.families.delete")
-        .delete_family(DeletePluginFamilyCommand {
-            actor_user_id: context.user.id,
-            provider_code,
-        })
-        .await?;
+    let task = service(
+        &state,
+        &context.actor,
+        "model_provider_plugins.families.delete",
+    )
+    .delete_family(DeletePluginFamilyCommand {
+        actor_user_id: context.user.id,
+        provider_code,
+    })
+    .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
@@ -483,7 +520,7 @@ pub async fn get_task(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let task = service(&state, "model_provider_plugins.tasks.view")
+    let task = service(&state, &context.actor, "model_provider_plugins.tasks.view")
         .get_task(context.user.id, parse_uuid(&task_id, "task_id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))

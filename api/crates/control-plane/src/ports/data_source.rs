@@ -115,8 +115,7 @@ pub trait DataSourceRepository: Send + Sync {
     }
     async fn load_role_console_policies_for_user(
         &self,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
+        actor: &domain::ActorContext,
     ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>>;
     async fn create_instance(
         &self,

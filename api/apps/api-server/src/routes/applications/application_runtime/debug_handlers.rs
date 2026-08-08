@@ -1,21 +1,21 @@
 async fn ensure_application_visible(
     state: &Arc<ApiState>,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     application_id: Uuid,
 ) -> Result<domain::ApplicationRecord, ApiError> {
-    Ok(ApplicationService::new(state.store.clone())
-        .get_application(actor_user_id, application_id)
+    Ok(ApplicationService::new(state.store.for_actor(actor.clone()))
+        .get_application(actor.user_id, application_id)
         .await?)
 }
 
 async fn ensure_application_non_crud_operation(
     state: &Arc<ApiState>,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
     application_id: Uuid,
     operation: ApplicationNonCrudConsoleOperation,
 ) -> Result<domain::ApplicationRecord, ApiError> {
-    Ok(ApplicationService::new(state.store.clone())
-        .load_application_for_non_crud_console_operation(actor_user_id, application_id, operation)
+    Ok(ApplicationService::new(state.store.for_actor(actor.clone()))
+        .load_application_for_non_crud_console_operation(actor.user_id, application_id, operation)
         .await?)
 }
 
@@ -431,7 +431,7 @@ pub async fn subscribe_flow_debug_run_stream(
     Query(stream_query): Query<DebugRunStreamQuery>,
 ) -> Result<Sse<debug_run_stream::DebugRunSseStream>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
     let flow_run = state
         .store
         .get_flow_run(id, run_id)
@@ -474,7 +474,7 @@ pub async fn get_flow_debug_run_snapshot(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, context.user.id, id).await?;
+    let application = ensure_application_visible(&state, &context.actor, id).await?;
     let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         id,
@@ -826,7 +826,7 @@ pub async fn get_runtime_debug_artifact(
     Path((id, artifact_id)): Path<(Uuid, Uuid)>,
 ) -> Result<axum::response::Response, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     load_runtime_debug_artifact_response(state, context.actor.current_workspace_id, id, artifact_id)
         .await
@@ -854,7 +854,7 @@ pub async fn resolve_runtime_debug_artifacts(
     Json(body): Json<ResolveRuntimeDebugArtifactsBody>,
 ) -> Result<Json<ApiSuccess<ResolveRuntimeDebugArtifactsResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, context.user.id, id).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
 
     if body.artifact_refs.len() > RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS {
         return Err(ControlPlaneError::InvalidInput("artifact_refs").into());

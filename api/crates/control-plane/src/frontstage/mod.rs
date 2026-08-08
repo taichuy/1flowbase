@@ -252,6 +252,7 @@ fn root_slug_for(
 
 pub struct FrontstagePageService<R> {
     repository: R,
+    actor_override: Option<domain::ActorContext>,
 }
 
 impl<R> FrontstagePageService<R>
@@ -259,7 +260,33 @@ where
     R: FrontstagePageRepository,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            actor_override: None,
+        }
+    }
+
+    pub fn for_actor(repository: R, actor: domain::ActorContext) -> Self {
+        Self {
+            repository,
+            actor_override: Some(actor),
+        }
+    }
+
+    async fn load_actor_context(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<domain::ActorContext> {
+        if let Some(actor) = &self.actor_override {
+            if actor.user_id != actor_user_id || actor.current_workspace_id != workspace_id {
+                return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+            }
+            return Ok(actor.clone());
+        }
+        self.repository
+            .load_actor_context_for_workspace(actor_user_id, workspace_id)
+            .await
     }
 
     pub async fn list_page_tree(
@@ -267,10 +294,7 @@ where
         actor_user_id: Uuid,
         workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontstagePageTreeNode>> {
-        let actor = self
-            .repository
-            .load_actor_context_for_workspace(actor_user_id, workspace_id)
-            .await?;
+        let actor = self.load_actor_context(actor_user_id, workspace_id).await?;
         let pages = self.repository.list_frontstage_pages(workspace_id).await?;
         let visibility_rules = self
             .visibility_rules_for_actor(&actor, actor_user_id, workspace_id)
@@ -288,8 +312,7 @@ where
         command: CreateFrontstageGroupCommand,
     ) -> Result<domain::FrontstagePageRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
 
@@ -335,8 +358,7 @@ where
         command: CreateFrontstagePageCommand,
     ) -> Result<domain::frontstage::FrontstagePageCreation> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
         self.ensure_page_parent_placement(
@@ -388,8 +410,7 @@ where
         command: GetFrontstagePageDetailCommand,
     ) -> Result<domain::frontstage::FrontstagePageDetail> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
 
         let detail = self
@@ -432,8 +453,7 @@ where
         command: UpdateFrontstagePageMetadataCommand,
     ) -> Result<domain::FrontstagePageRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
 
@@ -543,8 +563,7 @@ where
         command: MoveFrontstagePageCommand,
     ) -> Result<domain::FrontstagePageRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
 
@@ -590,8 +609,7 @@ where
 
     pub async fn delete_page(&self, command: DeleteFrontstagePageCommand) -> Result<()> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
 
@@ -615,10 +633,7 @@ where
         workspace_id: Uuid,
         page_id: Uuid,
     ) -> Result<Vec<domain::frontstage::FrontstagePageTabRecord>> {
-        let actor = self
-            .repository
-            .load_actor_context_for_workspace(actor_user_id, workspace_id)
-            .await?;
+        let actor = self.load_actor_context(actor_user_id, workspace_id).await?;
         self.ensure_page_visible(&actor, actor_user_id, workspace_id, page_id)
             .await?;
         let tabs = self
@@ -644,8 +659,7 @@ where
         command: CreateFrontstagePageTabCommand,
     ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
         let page = self
@@ -683,8 +697,7 @@ where
         command: UpdateFrontstagePageTabCommand,
     ) -> Result<domain::frontstage::FrontstagePageTabRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
         self.repository
@@ -701,8 +714,7 @@ where
 
     pub async fn delete_page_tab(&self, command: DeleteFrontstagePageTabCommand) -> Result<()> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
         self.repository
@@ -720,8 +732,7 @@ where
         command: SaveFrontstageTabDocumentCommand,
     ) -> Result<domain::frontstage::FrontstagePageDetail> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
         self.ensure_existing_page(command.workspace_id, command.page_id)
@@ -749,8 +760,7 @@ where
         command: GetFrontstageBlockCodeCommand,
     ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         self.ensure_page_visible(
             &actor,
@@ -772,8 +782,7 @@ where
         command: SaveFrontstageBlockCodeCommand,
     ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
         let actor = self
-            .repository
-            .load_actor_context_for_workspace(command.actor_user_id, command.workspace_id)
+            .load_actor_context(command.actor_user_id, command.workspace_id)
             .await?;
         ensure_design_permission(&actor)?;
         self.ensure_existing_page(command.workspace_id, command.page_id)
@@ -874,7 +883,11 @@ where
         }
 
         self.repository
-            .list_frontstage_page_visibility_rules_for_actor_roles(actor_user_id, workspace_id)
+            .list_frontstage_page_visibility_rules_for_actor_roles(
+                actor_user_id,
+                workspace_id,
+                &actor.effective_display_role,
+            )
             .await
     }
 
