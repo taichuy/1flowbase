@@ -1064,6 +1064,7 @@ describe('LlmModelField', () => {
     llmNode.config.llm_parameters = {
       schema_version: '1.0.0',
       items: {
+        store: { enabled: false, value: false },
         use_responses_websocket: { enabled: true, value: false },
         enable_search: { enabled: false, value: false },
         temperature: { enabled: false, value: 0.7 }
@@ -1120,6 +1121,17 @@ describe('LlmModelField', () => {
       ?.querySelector('[role="switch"]');
 
     expect(storeSwitch).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() => {
+      const normalizedNode = latestDocument.graph.nodes.find(
+        (node) => node.id === 'node-llm'
+      );
+
+      expect(normalizedNode?.config.llm_parameters).toMatchObject({
+        items: {
+          store: { enabled: true, value: true }
+        }
+      });
+    });
     fireEvent.click(storeSwitch as HTMLElement);
     fireEvent.click(searchSwitch as HTMLElement);
 
