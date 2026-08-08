@@ -281,7 +281,8 @@ function createStyleBoundaryAgentFlowDocument() {
       ...llmNode.config,
       provider_instance_id: 'provider-openai-prod',
       model: 'gpt-4o-mini',
-      temperature: 0.7
+      temperature: 0.7,
+      mcp_instance_ids: ['workspace_ops', 'workspace_ops']
     };
   }
 
@@ -960,6 +961,16 @@ export function seedStyleBoundaryApplicationFetch() {
           headers: { 'content-type': 'application/json' }
         }
       );
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/catalog'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: styleBoundaryMcpCatalog,
+        meta: null
+      });
     }
 
     if (
