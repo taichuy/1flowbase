@@ -426,7 +426,7 @@ async fn ac_011_roles_policy_only_covers_crud_permissions_data_policy_and_consol
         .await
         .unwrap();
     assert!(service
-        .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), "en_US")
+        .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), &[], "en_US")
         .await
         .is_ok());
     service
@@ -473,7 +473,7 @@ async fn ac_011_roles_legacy_feature_grant_does_not_authorize_crud_or_policy_pat
         .await
         .is_err());
     assert!(service
-        .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), "en_US")
+        .get_console_policy_catalog(actor.user_id, &console_policy_inventory(), &[], "en_US")
         .await
         .is_err());
 }
@@ -545,6 +545,7 @@ async fn role_service_console_policy_catalog_localizes_compiled_inventory() {
         .get_console_policy_catalog(
             repository.root_user_id(),
             &console_policy_inventory(),
+            &[],
             "zh_Hans",
         )
         .await
@@ -610,6 +611,7 @@ async fn role_service_console_policy_catalog_exposes_compiled_full_profiles() {
         .get_console_policy_catalog(
             repository.root_user_id(),
             &console_policy_inventory(),
+            &[],
             "en_US",
         )
         .await

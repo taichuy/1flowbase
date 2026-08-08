@@ -124,7 +124,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.extension_center".to_string(),
                 description_key: "console.policy_groups.settings.system.extension-center.description"
                     .to_string(),
-                order: 50,
+                order: 100,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/extension-center/installed"),
@@ -162,7 +162,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 path: "/settings/i18n".to_string(),
                 label_key: "auto.translation_catalog_title".to_string(),
                 description_key: "auto.translation_catalog_description".to_string(),
-                order: 150,
+                order: 1500,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/i18n/catalog"),
@@ -195,7 +195,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.api_documentation".to_string(),
                 description_key: "console.policy_groups.settings.system.docs.description"
                     .to_string(),
-                order: 100,
+                order: 700,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/docs/catalog"),
@@ -229,7 +229,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 description_key:
                     "console.policy_groups.settings.system.api-key-authentication.description"
                         .to_string(),
-                order: 200,
+                order: 800,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/user-api-keys"),
@@ -256,7 +256,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.system_runtime".to_string(),
                 description_key: "console.policy_groups.settings.system.system-runtime.description"
                     .to_string(),
-                order: 400,
+                order: 1200,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/system/runtime-profile"),
@@ -278,7 +278,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.application_management".to_string(),
                 description_key: "console.policy_groups.settings.system.applications.description"
                     .to_string(),
-                order: 700,
+                order: 300,
             },
             api_routes: settings_api_routes(&[(
                 "GET",
@@ -300,7 +300,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.auth_center".to_string(),
                 description_key: "console.policy_groups.settings.system.auth-center.description"
                     .to_string(),
-                order: 300,
+                order: 1000,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/auth-center/overview"),
@@ -453,7 +453,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.file_management".to_string(),
                 description_key: "console.policy_groups.settings.system.files.description"
                     .to_string(),
-                order: 800,
+                order: 1100,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/files/storages"),
@@ -485,7 +485,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 description_key:
                     "console.policy_groups.settings.system.host-infrastructure.description"
                         .to_string(),
-                order: 500,
+                order: 1400,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/host-infrastructure/cache"),
@@ -531,7 +531,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 description_key:
                     "console.policy_groups.settings.system.memory-observation.description"
                         .to_string(),
-                order: 600,
+                order: 1300,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/host-infrastructure/memory"),
@@ -576,7 +576,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.user_management".to_string(),
                 description_key: "console.policy_groups.settings.system.members.description"
                     .to_string(),
-                order: 1200,
+                order: 500,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/members"),
@@ -606,7 +606,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 description_key:
                     "console.policy_groups.settings.system.model-providers.description"
                         .to_string(),
-                order: 1000,
+                order: 200,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/model-providers/catalog"),
@@ -718,7 +718,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.mcp_management".to_string(),
                 description_key:
                     "console.policy_groups.settings.system.mcp-management.description".to_string(),
-                order: 1100,
+                order: 400,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/mcp/catalog"),
@@ -845,7 +845,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 label_key: "auto.permission_management".to_string(),
                 description_key: "console.policy_groups.settings.system.roles.description"
                     .to_string(),
-                order: 1300,
+                order: 600,
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/roles"),

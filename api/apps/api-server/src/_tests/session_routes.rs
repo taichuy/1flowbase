@@ -281,6 +281,26 @@ async fn switch_role_replaces_the_session_authorization_scope() {
         .filter(|group| group["kind"] == "settings_feature")
         .map(|group| group["group_id"].as_str().unwrap().to_string())
         .collect::<Vec<_>>();
+    assert_eq!(
+        group_ids,
+        vec![
+            "system.extension-center",
+            "system.model-providers",
+            "system.applications",
+            "system.mcp-management",
+            "system.members",
+            "system.roles",
+            "system.docs",
+            "system.api-key-authentication",
+            "system.data-models",
+            "system.auth-center",
+            "system.files",
+            "system.system-runtime",
+            "system.memory-observation",
+            "system.host-infrastructure",
+            "system.i18n-catalog",
+        ]
+    );
     group_ids.reverse();
 
     let reordered = app

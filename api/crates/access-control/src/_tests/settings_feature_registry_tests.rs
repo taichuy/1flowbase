@@ -4,6 +4,45 @@ use access_control::{
     SettingsFeatureOwnerKind, SettingsFeatureRegistration, SettingsFeatureRegistry,
 };
 
+const PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER: &[&str] = &[
+    "system.extension-center",
+    "system.model-providers",
+    "system.applications",
+    "system.mcp-management",
+    "system.members",
+    "system.roles",
+    "system.docs",
+    "system.api-key-authentication",
+    "system.data-models",
+    "system.auth-center",
+    "system.files",
+    "system.system-runtime",
+    "system.memory-observation",
+    "system.host-infrastructure",
+    "system.i18n-catalog",
+];
+
+// AC-012: a fresh workspace receives the product order confirmed for #1613. The stable
+// feature_id tie-break keeps registrations deterministic when they share an order slot.
+#[test]
+fn core_settings_features_define_the_product_default_order() {
+    let mut registrations = core_settings_feature_registrations();
+    registrations.sort_by(|left, right| {
+        left.console_surface
+            .order
+            .cmp(&right.console_surface.order)
+            .then(left.feature_id.cmp(&right.feature_id))
+    });
+
+    assert_eq!(
+        registrations
+            .iter()
+            .map(|registration| registration.feature_id.as_str())
+            .collect::<Vec<_>>(),
+        PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER
+    );
+}
+
 fn feature(
     feature_id: &str,
     owner_kind: SettingsFeatureOwnerKind,

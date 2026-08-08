@@ -70,6 +70,43 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
     assert!(item_ids.contains(&"settings".to_string()));
     assert!(item_ids.contains(&"settings.api-key-authentication".to_string()));
     assert!(item_ids.contains(&"settings.applications".to_string()));
+
+    let mut settings_items = payload["data"]["navigation_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["parent_item_id"] == "settings")
+        .map(|item| {
+            (
+                item["order"].as_i64().unwrap(),
+                item["item_id"].as_str().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    settings_items.sort_by_key(|(order, _)| *order);
+    assert_eq!(
+        settings_items
+            .into_iter()
+            .map(|(_, item_id)| item_id)
+            .collect::<Vec<_>>(),
+        vec![
+            "settings.extension-center",
+            "settings.model-providers",
+            "settings.applications",
+            "settings.mcp-management",
+            "settings.members",
+            "settings.roles",
+            "settings.docs",
+            "settings.api-key-authentication",
+            "settings.data-models",
+            "settings.auth-center",
+            "settings.files",
+            "settings.system-runtime",
+            "settings.memory-observation",
+            "settings.host-infrastructure",
+            "settings.i18n",
+        ]
+    );
 }
 
 #[tokio::test]

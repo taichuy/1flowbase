@@ -750,6 +750,7 @@ pub async fn get_console_policy_catalog(
         .get_console_policy_catalog(
             context.user.id,
             state.console_operation_registry.inventory(),
+            &state.settings_feature_registry.inventory().features,
             locale.as_str(),
         )
         .await?;
@@ -788,6 +789,7 @@ pub async fn replace_console_settings_order(
                 group_ids: body.group_ids,
             },
             state.console_operation_registry.inventory(),
+            &state.settings_feature_registry.inventory().features,
             locale.as_str(),
         )
         .await?;

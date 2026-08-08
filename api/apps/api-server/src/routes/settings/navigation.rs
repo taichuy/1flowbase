@@ -83,13 +83,19 @@ pub async fn get_console_navigation(
         .store
         .get_workspace_console_settings_order(context.actor.current_workspace_id)
         .await?;
-    let active_features = state
+    let mut active_features = state
         .settings_feature_registry
         .inventory()
         .features
         .iter()
         .filter(|feature| feature.lifecycle == access_control::SettingsFeatureLifecycle::Active)
         .collect::<Vec<_>>();
+    active_features.sort_by(|left, right| {
+        left.console_surface
+            .order
+            .cmp(&right.console_surface.order)
+            .then(left.feature_id.cmp(&right.feature_id))
+    });
     let active_ids = active_features
         .iter()
         .map(|feature| feature.feature_id.as_str())

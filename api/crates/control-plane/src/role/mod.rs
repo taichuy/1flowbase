@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use access_control::{
     ConsoleAuthorization, ConsoleLocaleCatalog, ConsoleOperationCompiledInventory,
     ConsolePolicyGroup as RegisteredConsolePolicyGroup, ResourceAccessRegistration,
-    ResourceAccessScopeKind, SettingsFeatureLifecycle, SYSTEM_ROLES_SETTINGS_FEATURE_ID,
+    ResourceAccessScopeKind, SettingsFeatureInventoryEntry, SettingsFeatureLifecycle,
+    SYSTEM_ROLES_SETTINGS_FEATURE_ID,
 };
 use anyhow::Result;
 use uuid::Uuid;
@@ -430,11 +431,30 @@ fn validate_complete_console_policy_catalog(
     compiled_console_policy_operations(inventory)
 }
 
-fn apply_console_settings_order(catalog: &mut ConsolePolicyCatalog, stored_group_ids: &[String]) {
+fn apply_console_settings_order(
+    catalog: &mut ConsolePolicyCatalog,
+    stored_group_ids: &[String],
+    settings_features: &[SettingsFeatureInventoryEntry],
+) {
     let stored_positions = stored_group_ids
         .iter()
         .enumerate()
         .map(|(position, group_id)| (group_id.as_str(), position))
+        .collect::<BTreeMap<_, _>>();
+    let mut default_features = settings_features
+        .iter()
+        .filter(|feature| feature.lifecycle == SettingsFeatureLifecycle::Active)
+        .collect::<Vec<_>>();
+    default_features.sort_by(|left, right| {
+        left.console_surface
+            .order
+            .cmp(&right.console_surface.order)
+            .then(left.feature_id.cmp(&right.feature_id))
+    });
+    let default_positions = default_features
+        .into_iter()
+        .enumerate()
+        .map(|(position, feature)| (feature.feature_id.as_str(), position))
         .collect::<BTreeMap<_, _>>();
     catalog.groups.sort_by(|left, right| {
         let left_kind_order = (left.kind == domain::ConsolePolicyGroupKind::Other) as u8;
@@ -447,7 +467,17 @@ fn apply_console_settings_order(catalog: &mut ConsolePolicyCatalog, stored_group
                 (Some(left_position), Some(right_position)) => left_position.cmp(right_position),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => left.group_id.cmp(&right.group_id),
+                (None, None) => match (
+                    default_positions.get(left.group_id.as_str()),
+                    default_positions.get(right.group_id.as_str()),
+                ) {
+                    (Some(left_position), Some(right_position)) => {
+                        left_position.cmp(right_position)
+                    }
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => left.group_id.cmp(&right.group_id),
+                },
             }
         })
     });
@@ -511,6 +541,7 @@ where
         &self,
         actor_user_id: Uuid,
         inventory: &ConsoleOperationCompiledInventory,
+        settings_features: &[SettingsFeatureInventoryEntry],
         locale: &str,
     ) -> Result<ConsolePolicyCatalog> {
         let actor = self
@@ -533,7 +564,7 @@ where
             .repository
             .get_workspace_console_settings_order(actor.current_workspace_id)
             .await?;
-        apply_console_settings_order(&mut catalog, &order.group_ids);
+        apply_console_settings_order(&mut catalog, &order.group_ids, settings_features);
         catalog.settings_order_revision = order.revision;
         Ok(catalog)
     }
@@ -542,6 +573,7 @@ where
         &self,
         command: ReplaceConsoleSettingsOrderCommand,
         inventory: &ConsoleOperationCompiledInventory,
+        settings_features: &[SettingsFeatureInventoryEntry],
         locale: &str,
     ) -> Result<ConsolePolicyCatalog> {
         let actor = self
@@ -595,7 +627,7 @@ where
                 }),
             ))
             .await?;
-        self.get_console_policy_catalog(command.actor_user_id, inventory, locale)
+        self.get_console_policy_catalog(command.actor_user_id, inventory, settings_features, locale)
             .await
     }
 
