@@ -22,7 +22,7 @@ const PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER: &[&str] = &[
     "system.i18n-catalog",
 ];
 
-// AC-012: a fresh workspace receives the product order confirmed for #1613. The stable
+// AC-008: a fresh workspace receives the product order confirmed for #1613. The stable
 // feature_id tie-break keeps registrations deterministic when they share an order slot.
 #[test]
 fn core_settings_features_define_the_product_default_order() {
