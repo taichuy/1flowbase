@@ -182,62 +182,94 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
             && column.3.as_deref() == Some("C")
     }));
 
+    let model_uuid = model.id.simple().to_string();
     let constraints: Vec<(String, String)> = sqlx::query_as(
         r#"
         select conname, pg_get_constraintdef(oid)
         from pg_constraint
         where conrelid = (quote_ident(current_schema()) || '.' || quote_ident($1))::regclass
+          and position($2 in conname) > 0
+        order by conname
         "#,
     )
     .bind(&model.physical_table_name)
+    .bind(&model_uuid)
     .fetch_all(store.pool())
     .await
     .unwrap();
-    let model_uuid = model.id.simple().to_string();
-    assert!(constraints.iter().all(|(name, _)| name.len() <= 63));
-    assert!(constraints
-        .iter()
-        .all(|(name, _)| name.contains(&model_uuid)));
-    assert!(constraints
-        .iter()
-        .any(|(_, definition)| { definition == "UNIQUE (scope_id, id)" }));
-    assert!(constraints.iter().any(|definition| {
-        definition
-            .1
-            .contains("CHECK (((parent_id IS NULL) OR (parent_id <> id)))")
-    }));
-    assert!(constraints.iter().any(|definition| {
-        definition.1.contains("FOREIGN KEY (scope_id, parent_id)")
-            && definition.1.contains("REFERENCES")
-            && definition.1.contains("(scope_id, id) ON DELETE RESTRICT")
-    }));
+    assert_eq!(
+        constraints,
+        vec![
+            (
+                format!("ck_ot_parent_self_{model_uuid}"),
+                "CHECK (((parent_id IS NULL) OR (parent_id <> id)))".to_owned(),
+            ),
+            (
+                format!("fk_ot_parent_{model_uuid}"),
+                format!(
+                    "FOREIGN KEY (scope_id, parent_id) REFERENCES {}(scope_id, id) ON DELETE RESTRICT",
+                    model.physical_table_name
+                ),
+            ),
+            (
+                format!("pk_ot_{model_uuid}"),
+                "PRIMARY KEY (id)".to_owned(),
+            ),
+            (
+                format!("uq_ot_scope_id_{model_uuid}"),
+                "UNIQUE (scope_id, id)".to_owned(),
+            ),
+        ]
+    );
 
     let indexes: Vec<(String, String)> = sqlx::query_as(
         r#"
         select indexname, indexdef
         from pg_indexes
-        where schemaname = current_schema() and tablename = $1
+        where schemaname = current_schema()
+          and tablename = $1
+          and position($2 in indexname) > 0
+        order by indexname
         "#,
     )
     .bind(&model.physical_table_name)
+    .bind(&model_uuid)
     .fetch_all(store.pool())
     .await
     .unwrap();
-    assert!(indexes.iter().all(|(name, _)| name.len() <= 63));
-    assert!(indexes.iter().all(|(name, _)| name.contains(&model_uuid)));
-    assert!(indexes
+    let index_names = indexes
         .iter()
-        .any(|(_, definition)| { definition.contains("(scope_id, parent_id, sibling_rank, id)") }));
-    assert!(indexes.iter().any(|(_, definition)| {
-        definition.contains("UNIQUE")
-            && definition.contains("(scope_id, parent_id, sibling_rank)")
-            && definition.contains("WHERE (parent_id IS NOT NULL)")
-    }));
-    assert!(indexes.iter().any(|(_, definition)| {
-        definition.contains("UNIQUE")
-            && definition.contains("(scope_id, sibling_rank)")
-            && definition.contains("WHERE (parent_id IS NULL)")
-    }));
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        index_names,
+        vec![
+            format!("idx_ot_siblings_{model_uuid}"),
+            format!("pk_ot_{model_uuid}"),
+            format!("uq_ot_root_rank_{model_uuid}"),
+            format!("uq_ot_scope_id_{model_uuid}"),
+            format!("uq_ot_sibling_{model_uuid}"),
+        ]
+    );
+    let index_definition = |name: &str| {
+        indexes
+            .iter()
+            .find(|(index_name, _)| index_name == name)
+            .map(|(_, definition)| definition.as_str())
+            .unwrap()
+    };
+    assert!(index_definition(&format!("pk_ot_{model_uuid}")).contains("UNIQUE INDEX"));
+    assert!(index_definition(&format!("pk_ot_{model_uuid}")).contains("(id)"));
+    assert!(index_definition(&format!("uq_ot_scope_id_{model_uuid}")).contains("UNIQUE INDEX"));
+    assert!(index_definition(&format!("uq_ot_scope_id_{model_uuid}")).contains("(scope_id, id)"));
+    assert!(index_definition(&format!("idx_ot_siblings_{model_uuid}"))
+        .contains("(scope_id, parent_id, sibling_rank, id)"));
+    assert!(index_definition(&format!("uq_ot_sibling_{model_uuid}")).contains("UNIQUE INDEX"));
+    assert!(index_definition(&format!("uq_ot_sibling_{model_uuid}"))
+        .contains("(scope_id, parent_id, sibling_rank) WHERE (parent_id IS NOT NULL)"));
+    assert!(index_definition(&format!("uq_ot_root_rank_{model_uuid}")).contains("UNIQUE INDEX"));
+    assert!(index_definition(&format!("uq_ot_root_rank_{model_uuid}"))
+        .contains("(scope_id, sibling_rank) WHERE (parent_id IS NULL)"));
 
     for code in ["parent_id", "sibling_rank"] {
         let field = model

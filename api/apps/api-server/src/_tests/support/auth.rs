@@ -176,11 +176,13 @@ async fn test_state_with_runtime_profile_state(
         )),
     ));
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
+    let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
     runtime_registry.rebuild(store.list_runtime_model_metadata().await.unwrap());
     let runtime_engine = std::sync::Arc::new(
-        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend(
+        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend_templates_and_ordered_tree(
             runtime_registry,
+            std::sync::Arc::new(store.clone()),
             std::sync::Arc::new(store.clone()),
             std::sync::Arc::new(
                 crate::provider_runtime::ApiDataSourceRuntimeRecordBackend::new(
@@ -190,6 +192,7 @@ async fn test_state_with_runtime_profile_state(
                     config.api_node_id.clone(),
                 ),
             ),
+            data_model_template_catalog,
         ),
     );
     control_plane::plugin_management::PluginManagementService::new(
