@@ -72,6 +72,24 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
   );
 });
 
+test('mcp gateway fast pack bounds database-backed test concurrency', () => {
+  const plan = buildFoundationPlan({
+    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
+  });
+  const command = plan.packs['mcp-gateway'].fast.find(
+    (item) => item.id === 'mcp-core-list-get-call'
+  );
+
+  assert.deepEqual(command.args, [
+    'test',
+    '-p',
+    'api-server',
+    'mcp_protocol_routes',
+    '--',
+    '--test-threads=4',
+  ]);
+});
+
 test('AC-007/009 receipt requires candidate identity and warnings stay advisory', () => {
   const plan = buildFoundationPlan({
     changedFiles: ['web/packages/block-sdk/src/native-react.ts'],
