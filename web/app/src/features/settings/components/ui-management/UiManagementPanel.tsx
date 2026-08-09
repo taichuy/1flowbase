@@ -411,7 +411,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
             render: (_, r) => `${r.provider_code}/${r.contribution_code}`
           },
           {
-            title: t('state'),
+            title: t('status'),
             render: (_, r) => (
               <Tag
                 color={

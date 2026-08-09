@@ -1,6 +1,4 @@
 import type { OnMount } from '@monaco-editor/react';
-import { listFrontstageUiTemplates } from '@1flowbase/api-client';
-import { useQuery } from '@tanstack/react-query';
 import { Button, Modal, Select, Space, Typography } from 'antd';
 import {
   createJsBlockDiagnostics,
@@ -14,6 +12,7 @@ import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStud
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
+import { useFrontstageUiTemplates } from '../../hooks/use-frontstage-ui-templates';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -79,11 +78,7 @@ export function FrontstageJsxStudioDrawer({
     () => createFrontstageJsxEditorProjection({ catalogEntry }),
     [catalogEntry]
   );
-  const templatesQuery = useQuery({
-    queryKey: ['frontstage', workspaceId, 'ui-templates'],
-    queryFn: () => listFrontstageUiTemplates(workspaceId),
-    enabled: open
-  });
+  const templatesQuery = useFrontstageUiTemplates(workspaceId, open);
   const templates = useMemo(
     () =>
       (templatesQuery.data ?? []).filter(

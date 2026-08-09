@@ -987,6 +987,12 @@ pub async fn create_frontstage_block(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/ui-templates",
+    params(("workspace_id" = String, Path)),
+    responses((status = 200, body = [FrontstageUiTemplateResponse]), (status = 403, body = crate::error_response::ErrorBody))
+)]
 pub async fn list_frontstage_ui_templates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

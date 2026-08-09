@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use access_control::SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_PERMISSION;
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -242,46 +241,60 @@ fn parse_id(value: &str) -> Result<Uuid, ApiError> {
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
-    let owner = || ConsoleOperation(SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_PERMISSION.to_string());
+    let owner = |operation_id: &str| ConsoleOperation(operation_id.to_string());
     ConsoleRouteAssembly::new()
         .route(
             "/settings/ui-management/templates",
-            console_get(list_templates, owner()).post(create_template, owner()),
+            console_get(list_templates, owner("ui_management.templates.list"))
+                .post(create_template, owner("ui_management.templates.create")),
         )
         .route(
             "/settings/ui-management/templates/default",
-            console_delete(reset_default_template, owner()),
+            console_delete(
+                reset_default_template,
+                owner("ui_management.templates.default.reset"),
+            ),
         )
         .route(
             "/settings/ui-management/templates/:id",
-            console_put(update_template, owner()),
+            console_put(update_template, owner("ui_management.templates.update")),
         )
         .route(
             "/settings/ui-management/templates/:id/publish",
-            console_post(publish_template, owner()),
+            console_post(publish_template, owner("ui_management.templates.publish")),
         )
         .route(
             "/settings/ui-management/templates/:id/default",
-            console_put(set_default_template, owner()),
+            console_put(
+                set_default_template,
+                owner("ui_management.templates.default.set"),
+            ),
         )
         .route(
             "/settings/ui-management/templates/:id/archive",
-            console_put(archive_template, owner()),
+            console_put(archive_template, owner("ui_management.templates.archive")),
         )
         .route(
             "/settings/ui-management/components",
-            console_get(list_components, owner()),
+            console_get(list_components, owner("ui_management.components.list")),
         )
         .route(
             "/settings/ui-management/components/contract",
-            console_put(update_component_contract, owner()),
+            console_put(
+                update_component_contract,
+                owner("ui_management.components.contract.update"),
+            ),
         )
         .route(
             "/settings/ui-management/components/state",
-            console_put(update_component_state, owner()),
+            console_put(
+                update_component_state,
+                owner("ui_management.components.state.update"),
+            ),
         )
 }
 
+#[utoipa::path(get, path = "/api/console/settings/ui-management/templates", responses((status = 200, body = TemplateListResponse), (status = 403, body = crate::error_response::ErrorBody)))]
 pub async fn list_templates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -298,6 +311,7 @@ pub async fn list_templates(
     })))
 }
 
+#[utoipa::path(post, path = "/api/console/settings/ui-management/templates", request_body = TemplateBody, responses((status = 201, body = ManagedTemplateResponse), (status = 403, body = crate::error_response::ErrorBody)))]
 pub async fn create_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -321,6 +335,7 @@ pub async fn create_template(
     ))
 }
 
+#[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}", request_body = UpdateTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
 pub async fn update_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -341,6 +356,7 @@ pub async fn update_template(
     Ok(Json(ApiSuccess::new(template_response(value))))
 }
 
+#[utoipa::path(post, path = "/api/console/settings/ui-management/templates/{id}/publish", request_body = PublishTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
 pub async fn publish_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -354,6 +370,7 @@ pub async fn publish_template(
         .await?;
     Ok(Json(ApiSuccess::new(template_response(value))))
 }
+#[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}/default", params(("id" = String, Path)), responses((status = 204)))]
 pub async fn set_default_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -366,6 +383,7 @@ pub async fn set_default_template(
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+#[utoipa::path(delete, path = "/api/console/settings/ui-management/templates/default", request_body = ResetDefaultTemplateBody, responses((status = 204)))]
 pub async fn reset_default_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -378,6 +396,7 @@ pub async fn reset_default_template(
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+#[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}/archive", request_body = ArchiveTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
 pub async fn archive_template(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -392,6 +411,7 @@ pub async fn archive_template(
     Ok(Json(ApiSuccess::new(template_response(value))))
 }
 
+#[utoipa::path(get, path = "/api/console/settings/ui-management/components", responses((status = 200, body = [ComponentCandidateResponse])))]
 pub async fn list_components(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -404,6 +424,7 @@ pub async fn list_components(
         values.into_iter().map(component_response).collect(),
     )))
 }
+#[utoipa::path(put, path = "/api/console/settings/ui-management/components/contract", request_body = ComponentContractBody, responses((status = 200, body = ComponentCandidateResponse)))]
 pub async fn update_component_contract(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -431,6 +452,7 @@ pub async fn update_component_contract(
         ))?;
     Ok(Json(ApiSuccess::new(component_response(candidate))))
 }
+#[utoipa::path(put, path = "/api/console/settings/ui-management/components/state", request_body = ComponentStateBody, responses((status = 200, body = ComponentCandidateResponse)))]
 pub async fn update_component_state(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
