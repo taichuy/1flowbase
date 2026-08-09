@@ -1391,7 +1391,10 @@
       "web/app/src/shared/ui/scrollable-surface/ScrollableSurface.tsx",
       "web/app/src/shared/ui/scrollable-surface/scrollable-surface.css",
       "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/DataTableLayout.tsx",
+      "web/app/src/shared/ui/data-table/DataTableRowActions.tsx",
       "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/shared/ui/data-table/data-table-layout.css",
       "web/app/src/shared/ui/data-table/data-table-state.ts",
       "web/app/src/features/settings/pages/SettingsPage.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsNavigation.tsx",
@@ -1442,7 +1445,7 @@
       },
       {
         "id": "application-table-region",
-        "selector": ".application-management-panel__table-region",
+        "selector": ".data-table-layout__table-region",
         "propertyAssertions": [
           {
             "property": "display",
@@ -1455,7 +1458,7 @@
       {
         "id": "application-toolbar-within-content",
         "type": "within_container",
-        "subjectSelector": ".settings-section-surface__toolbar",
+        "subjectSelector": ".data-table-layout__filter-region",
         "containerSelector": ".section-page-layout__content"
       }
     ]
