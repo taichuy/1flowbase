@@ -1,18 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
-import { Drawer } from 'antd';
+import { ResizableDrawer } from '../../../../shared/ui/resizable-drawer/ResizableDrawer';
 
 const DEFAULT_DETAIL_DRAWER_WIDTH = 980;
 const MIN_DETAIL_DRAWER_WIDTH = 720;
 const MAX_DETAIL_DRAWER_WIDTH = 1280;
-const KEYBOARD_RESIZE_STEP = 40;
-
-function clampDetailDrawerWidth(width: number) {
-  return Math.min(
-    MAX_DETAIL_DRAWER_WIDTH,
-    Math.max(MIN_DETAIL_DRAWER_WIDTH, width)
-  );
-}
+const DETAIL_DRAWER_VIEWPORT_GUTTER = 48;
 
 export function DataModelDetailDrawer({
   children,
@@ -25,98 +18,20 @@ export function DataModelDetailDrawer({
   title: ReactNode;
   onClose: () => void;
 }) {
-  const [width, setWidth] = useState(DEFAULT_DETAIL_DRAWER_WIDTH);
-  const dragStartRef = useRef<{ pointerX: number; width: number } | null>(null);
-
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      const dragStart = dragStartRef.current;
-      if (!dragStart) {
-        return;
-      }
-
-      setWidth(
-        clampDetailDrawerWidth(
-          dragStart.width + dragStart.pointerX - event.clientX
-        )
-      );
-    };
-
-    const handleMouseUp = () => {
-      dragStartRef.current = null;
-      document.body.classList.remove('data-model-panel--resizing-drawer');
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.classList.remove('data-model-panel--resizing-drawer');
-    };
-  }, []);
-
-  const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    dragStartRef.current = {
-      pointerX: event.clientX,
-      width
-    };
-    document.body.classList.add('data-model-panel--resizing-drawer');
-  };
-
-  const handleResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      setWidth((currentWidth) =>
-        clampDetailDrawerWidth(currentWidth + KEYBOARD_RESIZE_STEP)
-      );
-      return;
-    }
-
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      setWidth((currentWidth) =>
-        clampDetailDrawerWidth(currentWidth - KEYBOARD_RESIZE_STEP)
-      );
-      return;
-    }
-
-    if (event.key === 'Home') {
-      event.preventDefault();
-      setWidth(MIN_DETAIL_DRAWER_WIDTH);
-      return;
-    }
-
-    if (event.key === 'End') {
-      event.preventDefault();
-      setWidth(MAX_DETAIL_DRAWER_WIDTH);
-    }
-  };
-
   return (
-    <Drawer
-      title={title}
+    <ResizableDrawer
+      defaultWidth={DEFAULT_DETAIL_DRAWER_WIDTH}
+      minWidth={MIN_DETAIL_DRAWER_WIDTH}
+      maxWidth={MAX_DETAIL_DRAWER_WIDTH}
       open={open}
-      size={width}
-      destroyOnHidden
-      onClose={onClose}
+      title={title}
+      viewportGutter={DETAIL_DRAWER_VIEWPORT_GUTTER}
+      destroyOnClose
       rootClassName="data-model-panel__detail-drawer"
+      resizeLabel="调整 Data Model 详情宽度"
+      onClose={onClose}
     >
-      <div
-        aria-label="调整 Data Model 详情宽度"
-        aria-orientation="vertical"
-        aria-valuemax={MAX_DETAIL_DRAWER_WIDTH}
-        aria-valuemin={MIN_DETAIL_DRAWER_WIDTH}
-        aria-valuenow={width}
-        className="data-model-panel__detail-drawer-resize-handle"
-        role="separator"
-        tabIndex={0}
-        onKeyDown={handleResizeKeyDown}
-        onMouseDown={startResize}
-      />
       {children}
-    </Drawer>
+    </ResizableDrawer>
   );
 }
