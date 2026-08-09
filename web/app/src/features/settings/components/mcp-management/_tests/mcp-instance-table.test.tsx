@@ -4,8 +4,8 @@ import { describe, expect, test, vi } from 'vitest';
 import { McpInstanceTable } from '../McpInstancesTab/McpInstanceTable';
 
 describe('McpInstanceTable', () => {
-  test('shows the backend-owned LLM tool registration prefix', () => {
-    render(
+  test('shows instance_id without rendering the derived LLM registration column', () => {
+    const { container } = render(
       <McpInstanceTable
         canManage
         groupCounts={new Map()}
@@ -45,10 +45,7 @@ describe('McpInstanceTable', () => {
       />
     );
 
-    expect(
-      screen
-        .getAllByText('workspace_ops')
-        .find((element) => element.tagName === 'CODE')
-    ).toBeDefined();
+    expect(screen.getByText('workspace_ops')).toBeInTheDocument();
+    expect(container.querySelector('code')).toBeNull();
   });
 });
