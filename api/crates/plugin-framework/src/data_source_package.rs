@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -7,6 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     capability_kind::PluginConsumptionKind,
+    data_model_template_contract::{DataModelTemplateDescriptor, DataModelTemplateSourceSelector},
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::{
         parse_legacy_installed_plugin_manifest, parse_plugin_manifest,
@@ -26,6 +28,7 @@ pub struct DataSourceDefinition {
     pub supports_webhook: bool,
     pub resource_kinds: Vec<String>,
     pub config_schema: Vec<PluginFormFieldSchema>,
+    pub data_model_templates: Vec<DataModelTemplateDescriptor>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +79,11 @@ impl DataSourcePackage {
                 raw_definition.source_code, source_code
             )));
         }
+        validate_data_model_templates(
+            &source_code,
+            &raw_definition.capabilities,
+            &raw_definition.data_model_templates,
+        )?;
 
         Ok(Self {
             root,
@@ -91,6 +99,7 @@ impl DataSourcePackage {
                 supports_webhook: raw_definition.supports_webhook,
                 resource_kinds: raw_definition.resource_kinds,
                 config_schema: raw_definition.config_schema,
+                data_model_templates: raw_definition.data_model_templates,
             },
         })
     }
@@ -133,6 +142,88 @@ struct RawDataSourceDefinition {
     resource_kinds: Vec<String>,
     #[serde(default)]
     config_schema: Vec<PluginFormFieldSchema>,
+    #[serde(default)]
+    data_model_templates: Vec<DataModelTemplateDescriptor>,
+}
+
+fn validate_data_model_templates(
+    source_code: &str,
+    package_capabilities: &[String],
+    templates: &[DataModelTemplateDescriptor],
+) -> FrameworkResult<()> {
+    let mut identities = BTreeSet::new();
+    let package_capabilities = package_capabilities
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+
+    for template in templates {
+        template.validate().map_err(|error| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "invalid data_model_templates descriptor: {error}"
+            ))
+        })?;
+
+        if !identities.insert(template.identity.clone()) {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "duplicate data_model_templates identity: {}",
+                template.identity.canonical_name()
+            )));
+        }
+        if template.identity.provider != source_code {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "data_model_templates identity provider must match data source namespace {source_code}"
+            )));
+        }
+        match &template.source_selector {
+            DataModelTemplateSourceSelector::ExternalProvider { provider }
+                if provider == source_code => {}
+            _ => {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "data_model_templates source_selector must target external provider {source_code}"
+                )));
+            }
+        }
+
+        for capability in &template.required_capabilities {
+            if !package_capabilities.contains(capability.code.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "data_model_templates capability {} exceeds package capability ceiling",
+                    capability.code
+                )));
+            }
+        }
+        for field in &template.system_fields {
+            jsonschema::validator_for(&field.value_schema).map_err(|error| {
+                PluginFrameworkError::invalid_provider_package(format!(
+                    "invalid value schema for data model system field {}: {error}",
+                    field.code
+                ))
+            })?;
+        }
+        for operation in &template.operations {
+            if operation.handler_ref.provider != source_code {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "data_model_templates handler {} must belong to data source namespace {source_code}",
+                    operation.handler_ref.canonical_name()
+                )));
+            }
+            jsonschema::validator_for(&operation.input_schema).map_err(|error| {
+                PluginFrameworkError::invalid_provider_package(format!(
+                    "invalid input schema for data model operation {}: {error}",
+                    operation.code
+                ))
+            })?;
+            jsonschema::validator_for(&operation.output_schema).map_err(|error| {
+                PluginFrameworkError::invalid_provider_package(format!(
+                    "invalid output schema for data model operation {}: {error}",
+                    operation.code
+                ))
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {

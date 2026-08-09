@@ -45,6 +45,17 @@ case "${payload}" in
   *'"method":"delete_record"'*)
     printf '%s' '{"ok":true,"result":{"deleted":true,"metadata":{"request":{"method":"DELETE","path":"/contacts/contact-1"},"response_map":"status_code"}}}'
     ;;
+  *'"method":"execute_model_operation"'*)
+    if [[ "${payload}" != *'"handler_ref":{"provider":"data_source_http_fixture","code":"archive_contact","version":"v1"}'* ]]; then
+      printf '%s' '{"ok":false,"error":{"code":"unknown_model_operation_handler","message":"unknown data model operation handler","provider_summary":null}}'
+      exit 1
+    fi
+    if [[ "${payload}" == *'"malformed_response":true'* ]]; then
+      printf '%s' '{"ok":true,"result":{"archived":"yes"}}'
+    else
+      printf '%s' '{"ok":true,"result":{"archived":true,"contact_id":"contact-1"}}'
+    fi
+    ;;
   *)
     printf '%s' '{"ok":false,"error":{"kind":"provider_invalid_response","message":"unknown method","provider_summary":null}}'
     exit 1

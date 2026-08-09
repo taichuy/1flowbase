@@ -4,6 +4,7 @@ use serde_json::Value;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 
 use crate::provider_contract::PluginFormFieldSchema;
+use crate::{DataModelOperationHandlerRef, DataModelTemplateIdentity};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -20,6 +21,7 @@ pub enum DataSourceStdioMethod {
     UpdateRecord,
     DeleteRecord,
     ExecuteSql,
+    ExecuteModelOperation,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +57,34 @@ pub struct DataSourceConfigInput {
     pub config_json: Value,
     #[serde(default)]
     pub secret_json: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataSourceModelOperationActorContext {
+    pub actor_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataSourceModelOperationScopeContext {
+    pub scope_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DataSourceExecuteModelOperationInput {
+    #[serde(flatten)]
+    pub connection: DataSourceConfigInput,
+    pub handler_ref: DataModelOperationHandlerRef,
+    pub resource_key: String,
+    pub template_identity: DataModelTemplateIdentity,
+    pub operation_code: String,
+    pub actor: DataSourceModelOperationActorContext,
+    pub scope: DataSourceModelOperationScopeContext,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default)]
+    pub path: Value,
+    #[serde(default)]
+    pub query: Value,
 }
 
 pub const DATA_SOURCE_NATIVE_SQL_CAPABILITY: &str = "native_sql/v1";

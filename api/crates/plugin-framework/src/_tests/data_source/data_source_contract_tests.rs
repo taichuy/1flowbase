@@ -1,11 +1,13 @@
 use plugin_framework::data_source_contract::{
     validate_native_sql_output, DataSourceCatalogEntry, DataSourceCreateRecordInput,
-    DataSourceCrudCapabilities, DataSourceDeleteRecordInput, DataSourceGetRecordInput,
-    DataSourceListRecordsInput, DataSourceRecordFilter, DataSourceRecordPage,
+    DataSourceCrudCapabilities, DataSourceDeleteRecordInput, DataSourceExecuteModelOperationInput,
+    DataSourceGetRecordInput, DataSourceListRecordsInput, DataSourceModelOperationActorContext,
+    DataSourceModelOperationScopeContext, DataSourceRecordFilter, DataSourceRecordPage,
     DataSourceRecordScopeContext, DataSourceRecordSort, DataSourceResourceDescriptor,
     DataSourceStdioMethod, DataSourceUpdateRecordInput, NativeSqlColumn, NativeSqlExecutionItem,
     NativeSqlExecutionOutput, NativeSqlLogicalType, NativeSqlValueEncoding,
 };
+use plugin_framework::{DataModelOperationHandlerRef, DataModelTemplateIdentity};
 use serde_json::json;
 
 #[test]
@@ -23,6 +25,10 @@ fn data_source_stdio_methods_are_stable() {
         (DataSourceStdioMethod::UpdateRecord, "update_record"),
         (DataSourceStdioMethod::DeleteRecord, "delete_record"),
         (DataSourceStdioMethod::ExecuteSql, "execute_sql"),
+        (
+            DataSourceStdioMethod::ExecuteModelOperation,
+            "execute_model_operation",
+        ),
     ];
 
     for (method, expected) in methods {
@@ -31,6 +37,43 @@ fn data_source_stdio_methods_are_stable() {
             format!("\"{expected}\"")
         );
     }
+}
+
+#[test]
+fn generic_model_operation_input_carries_canonical_dispatch_and_request_context() {
+    let input = DataSourceExecuteModelOperationInput {
+        connection: Default::default(),
+        handler_ref: DataModelOperationHandlerRef {
+            provider: "acme_source".to_string(),
+            code: "archive_contact".to_string(),
+            version: "v1".to_string(),
+        },
+        resource_key: "contacts".to_string(),
+        template_identity: DataModelTemplateIdentity {
+            provider: "acme_source".to_string(),
+            code: "contact_archive".to_string(),
+            version: "v1".to_string(),
+        },
+        operation_code: "archive_contact".to_string(),
+        actor: DataSourceModelOperationActorContext {
+            actor_id: "user-1".to_string(),
+        },
+        scope: DataSourceModelOperationScopeContext {
+            scope_id: "workspace-1".to_string(),
+        },
+        payload: json!({ "reason": "duplicate" }),
+        path: json!({ "id": "contact-1" }),
+        query: json!({ "notify": true }),
+    };
+
+    let value = serde_json::to_value(input).unwrap();
+    assert_eq!(value["handler_ref"]["code"], "archive_contact");
+    assert_eq!(value["template_identity"]["code"], "contact_archive");
+    assert_eq!(value["resource_key"], "contacts");
+    assert_eq!(value["actor"]["actor_id"], "user-1");
+    assert_eq!(value["scope"]["scope_id"], "workspace-1");
+    assert_eq!(value["path"]["id"], "contact-1");
+    assert_eq!(value["query"]["notify"], true);
 }
 
 #[test]

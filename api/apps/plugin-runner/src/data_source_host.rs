@@ -4,14 +4,16 @@ use plugin_framework::{
     data_source_contract::{
         validate_native_sql_output, DataSourceCatalogEntry, DataSourceConfigInput,
         DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
-        DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput, DataSourceExecuteSqlInput,
-        DataSourceGetRecordInput, DataSourceGetRecordOutput, DataSourceImportSnapshotInput,
-        DataSourceImportSnapshotOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
-        DataSourcePreviewReadInput, DataSourcePreviewReadOutput, DataSourceResourceDescriptor,
-        DataSourceStdioMethod, DataSourceStdioRequest, DataSourceUpdateRecordInput,
-        DataSourceUpdateRecordOutput, NativeSqlExecutionOutput, DATA_SOURCE_NATIVE_SQL_CAPABILITY,
+        DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
+        DataSourceExecuteModelOperationInput, DataSourceExecuteSqlInput, DataSourceGetRecordInput,
+        DataSourceGetRecordOutput, DataSourceImportSnapshotInput, DataSourceImportSnapshotOutput,
+        DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourcePreviewReadInput,
+        DataSourcePreviewReadOutput, DataSourceResourceDescriptor, DataSourceStdioMethod,
+        DataSourceStdioRequest, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
+        NativeSqlExecutionOutput, DATA_SOURCE_NATIVE_SQL_CAPABILITY,
     },
     error::{FrameworkResult, PluginFrameworkError},
+    DataModelTemplateDescriptor,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -103,6 +105,18 @@ impl DataSourceHost {
         self.loaded_packages
             .insert(summary.plugin_id.clone(), loaded);
         Ok(summary)
+    }
+
+    pub fn data_model_templates(
+        &self,
+        plugin_id: &str,
+    ) -> FrameworkResult<Vec<DataModelTemplateDescriptor>> {
+        Ok(self
+            .loaded_package(plugin_id)?
+            .package
+            .definition
+            .data_model_templates
+            .clone())
     }
 
     pub async fn validate_config(
@@ -418,6 +432,66 @@ impl DataSourceHost {
         Ok(async move { normalize_native_sql_output(operation.await?) })
     }
 
+    pub async fn execute_model_operation(
+        &self,
+        plugin_id: &str,
+        input: DataSourceExecuteModelOperationInput,
+    ) -> FrameworkResult<Value> {
+        self.execute_model_operation_call(plugin_id, input)?.await
+    }
+
+    pub fn execute_model_operation_call(
+        &self,
+        plugin_id: &str,
+        input: DataSourceExecuteModelOperationInput,
+    ) -> FrameworkResult<impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static>
+    {
+        let loaded = self.loaded_package(plugin_id)?;
+        let template = loaded
+            .package
+            .definition
+            .data_model_templates
+            .iter()
+            .find(|template| template.identity == input.template_identity)
+            .ok_or_else(|| {
+                PluginFrameworkError::invalid_provider_contract(format!(
+                    "unknown data model template identity: {}",
+                    input.template_identity.canonical_name()
+                ))
+            })?;
+        let operation = template
+            .operations
+            .iter()
+            .find(|operation| operation.code == input.operation_code)
+            .ok_or_else(|| {
+                PluginFrameworkError::invalid_provider_contract(format!(
+                    "unknown data model operation {} for template {}",
+                    input.operation_code,
+                    input.template_identity.canonical_name()
+                ))
+            })?;
+        if operation.handler_ref != input.handler_ref {
+            return Err(PluginFrameworkError::invalid_provider_contract(format!(
+                "unknown data model operation handler: {}",
+                input.handler_ref.canonical_name()
+            )));
+        }
+
+        let output_schema = operation.output_schema.clone();
+        let input = serde_json::to_value(input)
+            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+        let runtime = self.call_runtime_operation(
+            plugin_id,
+            DataSourceStdioMethod::ExecuteModelOperation,
+            input,
+        )?;
+        Ok(async move {
+            let output = runtime.await?;
+            validate_model_operation_output(&output_schema, &output)?;
+            Ok(output)
+        })
+    }
+
     fn loaded_package(&self, plugin_id: &str) -> FrameworkResult<&LoadedDataSourcePackage> {
         self.loaded_packages.get(plugin_id).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package(format!(
@@ -505,4 +579,17 @@ fn normalize_update_record(raw: Value) -> FrameworkResult<DataSourceUpdateRecord
 fn normalize_delete_record(raw: Value) -> FrameworkResult<DataSourceDeleteRecordOutput> {
     serde_json::from_value(raw)
         .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
+}
+
+fn validate_model_operation_output(schema: &Value, output: &Value) -> FrameworkResult<()> {
+    let validator = jsonschema::validator_for(schema).map_err(|error| {
+        PluginFrameworkError::invalid_provider_contract(format!(
+            "invalid data model operation output schema: {error}"
+        ))
+    })?;
+    validator.validate(output).map_err(|error| {
+        PluginFrameworkError::invalid_provider_contract(format!(
+            "invalid data model operation output: {error}"
+        ))
+    })
 }

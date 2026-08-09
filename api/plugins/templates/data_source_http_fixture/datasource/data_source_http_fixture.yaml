@@ -33,3 +33,52 @@ config_schema:
     type: string
     required: true
     send_mode: secret_ref
+data_model_templates:
+  - descriptor_version: 1
+    identity:
+      provider: data_source_http_fixture
+      code: contact_archive
+      version: v1
+    source_selector:
+      kind: external_provider
+      provider: data_source_http_fixture
+    required_capabilities:
+      - code: update_record
+    system_fields:
+      - code: contact_id
+        value_schema:
+          type: string
+        required: true
+        write_policy: read_only_projection
+        summary: Contact identifier
+        description: Stable identifier projected from the external contact resource.
+    operations:
+      - code: archive_contact
+        method: POST
+        path: /api/runtime/models/{model_code}/archive/{id}
+        input_schema:
+          type: object
+          properties:
+            reason:
+              type: string
+          additionalProperties: false
+        output_schema:
+          type: object
+          required:
+            - archived
+            - contact_id
+          properties:
+            archived:
+              type: boolean
+            contact_id:
+              type: string
+          additionalProperties: false
+        permission_action: update
+        handler_ref:
+          provider: data_source_http_fixture
+          code: archive_contact
+          version: v1
+        summary: Archive contact
+        description: Archives one contact through the external HTTP data source.
+    summary: Archived contact data model
+    description: Non-Core data model template contributed by the HTTP fixture provider.

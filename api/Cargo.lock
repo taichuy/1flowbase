@@ -2588,6 +2588,7 @@ dependencies = [
  "base64",
  "ed25519-dalek",
  "flate2",
+ "jsonschema",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2604,6 +2605,7 @@ name = "plugin-runner"
 version = "0.3.3"
 dependencies = [
  "axum",
+ "jsonschema",
  "libc",
  "plugin-framework",
  "runtime-profile",

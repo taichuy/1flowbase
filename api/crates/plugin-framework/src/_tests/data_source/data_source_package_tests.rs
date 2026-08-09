@@ -104,3 +104,86 @@ config_schema:
     assert_eq!(package.definition.source_code, "acme_hubspot_source");
     assert!(package.supports_native_sql());
 }
+
+fn checked_in_fixture_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/templates/data_source_http_fixture")
+}
+
+fn copy_checked_in_fixture_definition(fixture: &TempDataSourcePackage, definition: &str) {
+    let source = checked_in_fixture_root();
+    fixture.write(
+        "manifest.yaml",
+        &fs::read_to_string(source.join("manifest.yaml")).unwrap(),
+    );
+    fixture.write("datasource/data_source_http_fixture.yaml", definition);
+}
+
+#[test]
+fn ac_004_loads_checked_in_canonical_data_model_template_at_package_intake() {
+    let package = DataSourcePackage::load_from_dir(checked_in_fixture_root()).unwrap();
+    let templates = &package.definition.data_model_templates;
+
+    assert_eq!(templates.len(), 1);
+    assert_eq!(
+        templates[0].identity.canonical_name(),
+        "data_source_http_fixture/contact_archive/v1"
+    );
+    assert_eq!(templates[0].operations[0].code, "archive_contact");
+    assert_eq!(
+        templates[0].operations[0].handler_ref.provider,
+        package.definition.source_code
+    );
+}
+
+#[test]
+fn ac_004_rejects_duplicate_data_model_template_identity_at_package_intake() {
+    let fixture = TempDataSourcePackage::new();
+    let definition = fs::read_to_string(
+        checked_in_fixture_root().join("datasource/data_source_http_fixture.yaml"),
+    )
+    .unwrap();
+    let (prefix, template) = definition.split_once("data_model_templates:\n").unwrap();
+    let duplicate = format!("{prefix}data_model_templates:\n{template}{template}");
+    copy_checked_in_fixture_definition(&fixture, &duplicate);
+
+    let error = DataSourcePackage::load_from_dir(fixture.path()).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("duplicate data_model_templates identity"));
+}
+
+#[test]
+fn ac_004_rejects_invalid_canonical_descriptor_at_package_intake() {
+    let fixture = TempDataSourcePackage::new();
+    let definition = fs::read_to_string(
+        checked_in_fixture_root().join("datasource/data_source_http_fixture.yaml"),
+    )
+    .unwrap()
+    .replace("summary: Archived contact data model", "summary: ''");
+    copy_checked_in_fixture_definition(&fixture, &definition);
+
+    let error = DataSourcePackage::load_from_dir(fixture.path()).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("invalid data_model_templates descriptor"));
+}
+
+#[test]
+fn ac_004_rejects_operation_handler_outside_provider_namespace() {
+    let fixture = TempDataSourcePackage::new();
+    let definition = fs::read_to_string(
+        checked_in_fixture_root().join("datasource/data_source_http_fixture.yaml"),
+    )
+    .unwrap()
+    .replace(
+        "          provider: data_source_http_fixture\n          code: archive_contact",
+        "          provider: foreign_provider\n          code: archive_contact",
+    );
+    copy_checked_in_fixture_definition(&fixture, &definition);
+
+    let error = DataSourcePackage::load_from_dir(fixture.path()).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("must belong to data source namespace"));
+}

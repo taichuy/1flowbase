@@ -10,7 +10,13 @@ use axum::{
     http::{Method, Request, StatusCode},
     Router,
 };
+use plugin_framework::{
+    DataModelOperationHandlerRef, DataModelTemplateIdentity, DataSourceConfigInput,
+    DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
+    DataSourceModelOperationScopeContext,
+};
 use plugin_runner::app;
+use plugin_runner::DataSourceHost;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -931,4 +937,82 @@ async fn crud_routes_call_data_source_stdio_methods() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(delete_payload["deleted"], true);
+}
+
+fn checked_in_model_operation_input(payload: Value) -> DataSourceExecuteModelOperationInput {
+    DataSourceExecuteModelOperationInput {
+        connection: DataSourceConfigInput::default(),
+        handler_ref: DataModelOperationHandlerRef {
+            provider: "data_source_http_fixture".to_string(),
+            code: "archive_contact".to_string(),
+            version: "v1".to_string(),
+        },
+        resource_key: "contacts".to_string(),
+        template_identity: DataModelTemplateIdentity {
+            provider: "data_source_http_fixture".to_string(),
+            code: "contact_archive".to_string(),
+            version: "v1".to_string(),
+        },
+        operation_code: "archive_contact".to_string(),
+        actor: DataSourceModelOperationActorContext {
+            actor_id: "user-1".to_string(),
+        },
+        scope: DataSourceModelOperationScopeContext {
+            scope_id: "workspace-1".to_string(),
+        },
+        payload,
+        path: json!({ "id": "contact-1" }),
+        query: json!({ "notify": false }),
+    }
+}
+
+#[tokio::test]
+async fn ac_013_checked_in_template_executes_generic_model_operation_over_stdio() {
+    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/templates/data_source_http_fixture");
+    let mut host = DataSourceHost::default();
+    let loaded = host.load(package_root).unwrap();
+    let templates = host.data_model_templates(&loaded.plugin_id).unwrap();
+    assert_eq!(templates.len(), 1);
+    assert_eq!(templates[0].operations[0].code, "archive_contact");
+
+    let output = host
+        .execute_model_operation(
+            &loaded.plugin_id,
+            checked_in_model_operation_input(json!({ "reason": "duplicate" })),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(output["archived"], true);
+    assert_eq!(output["contact_id"], "contact-1");
+}
+
+#[tokio::test]
+async fn ac_013_generic_model_operation_fails_closed_for_unknown_handler_and_malformed_output() {
+    let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/templates/data_source_http_fixture");
+    let mut host = DataSourceHost::default();
+    let loaded = host.load(package_root).unwrap();
+
+    let mut unknown = checked_in_model_operation_input(json!({}));
+    unknown.handler_ref.code = "unknown_handler".to_string();
+    let unknown_error = host
+        .execute_model_operation(&loaded.plugin_id, unknown)
+        .await
+        .unwrap_err();
+    assert!(unknown_error
+        .to_string()
+        .contains("unknown data model operation handler"));
+
+    let malformed_error = host
+        .execute_model_operation(
+            &loaded.plugin_id,
+            checked_in_model_operation_input(json!({ "malformed_response": true })),
+        )
+        .await
+        .unwrap_err();
+    assert!(malformed_error
+        .to_string()
+        .contains("invalid data model operation output"));
 }
