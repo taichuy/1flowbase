@@ -72,9 +72,9 @@ vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd');
   return {
     ...actual,
-    App: {
+    App: Object.assign(actual.App, {
       useApp: () => ({ message: antdAppMocks })
-    }
+    })
   };
 });
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({

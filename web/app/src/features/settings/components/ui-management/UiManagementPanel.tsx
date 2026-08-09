@@ -3,18 +3,17 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
+  App,
   Button,
   Drawer,
   Form,
   Input,
-  Modal,
   Select,
   Space,
   Table,
   Tabs,
   Tag,
-  Typography,
-  message
+  Typography
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 
@@ -47,6 +46,7 @@ function requireToken(token: string | null): string {
 
 function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
   const { t } = useTranslation('settingsUiManagement');
+  const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const [form] = Form.useForm<TemplateForm>();
@@ -322,6 +322,7 @@ function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
 
 function ComponentsTab({ canManage }: { canManage: boolean }) {
   const { t } = useTranslation('settingsUiManagement');
+  const { message, modal } = App.useApp();
   const csrfToken = useAuthStore((s) => s.csrfToken);
   const client = useQueryClient();
   const query = useQuery({
@@ -496,7 +497,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
               JSON.parse(v.contract);
               save.mutate(v);
             } catch {
-              Modal.error({ title: t('invalid_json') });
+              modal.error({ title: t('invalid_json') });
             }
           }}
         >
