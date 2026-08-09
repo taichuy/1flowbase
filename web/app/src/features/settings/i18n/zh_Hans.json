@@ -1,5 +1,6 @@
 {
   "auto": {
+    "ui_management": "UI 管理",
     "translation_catalog_title": "多语言",
     "translation_catalog_locale": "语言",
     "translation_catalog_origin": "值来源",

@@ -1,5 +1,12 @@
 {
   "auto": {
+    "code_template": "代码模板",
+    "select_code_template": "选择已发布模板",
+    "replace_code_with_template": "替换当前代码？",
+    "replace_code_with_template_confirm": "这会替换当前草稿，但不会自动保存。你仍可在编辑器中撤销或关闭后重置。",
+    "replace": "替换",
+    "apply_template": "应用模板",
+    "default": "默认",
     "actions": "动作",
     "add_block_button": "+ 创建区块",
     "add_group": "新增分组",

@@ -209,8 +209,7 @@ export interface ConsoleFrontstageComponentCapabilitySummary {
   insert_snippet: string;
 }
 
-export interface ConsoleFrontstageComponentCapability
-  extends ConsoleFrontstageComponentCapabilitySummary {
+export interface ConsoleFrontstageComponentCapability extends ConsoleFrontstageComponentCapabilitySummary {
   props: ConsoleFrontendComponentProp[];
   limitations: string[];
   examples: ConsoleFrontendComponentExample[];
@@ -803,6 +802,29 @@ export function listFrontstageDataCapabilities(
 ): Promise<ConsoleFrontstageDataCapabilities> {
   return apiFetch<ConsoleFrontstageDataCapabilities>({
     path: `/api/console/frontstage/${workspaceId}/data-capabilities`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export interface ConsoleFrontstageUiTemplate {
+  template_id: string | null;
+  provider_code: string;
+  contribution_code: string;
+  name: string;
+  source: string;
+  language: 'jsx' | 'tsx';
+  version: string;
+  is_official: boolean;
+  is_default: boolean;
+}
+
+export function listFrontstageUiTemplates(
+  workspaceId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageUiTemplate[]> {
+  return apiFetch<ConsoleFrontstageUiTemplate[]>({
+    path: `/api/console/frontstage/${workspaceId}/ui-templates`,
     method: 'GET',
     baseUrl
   });

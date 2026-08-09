@@ -43,6 +43,7 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("auto.model_providers", "Model providers"),
     settings_feature!("auto.mcp_management", "MCP management"),
     settings_feature!("auto.permission_management", "Permission management"),
+    settings_feature!("auto.ui_management", "UI management"),
     settings_feature!(
         "console.policy_groups.settings.system.docs.description",
         "API documentation operations"
@@ -98,6 +99,10 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!(
         "console.policy_groups.settings.system.roles.description",
         "Role and permission operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.ui-management.description",
+        "Code template and component contract management operations"
     ),
     policy!("Signed-in console"),
     policy!("Console routes available to every signed-in user"),

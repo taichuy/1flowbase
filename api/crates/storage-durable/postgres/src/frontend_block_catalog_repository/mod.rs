@@ -160,4 +160,43 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
 
         rows.into_iter().map(map_catalog_row).collect()
     }
+
+    async fn list_system_frontend_blocks(
+        &self,
+        node_id: &str,
+    ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
+        let rows = sqlx::query(
+            r#"
+            select reg.installation_id, reg.provider_code, reg.plugin_id, reg.plugin_version,
+                reg.contribution_code, reg.title, reg.runtime, reg.entry, reg.code_template,
+                reg.code_template_version, reg.code_template_language, reg.code_modules,
+                reg.context_contract, reg.permission_network, reg.permission_storage,
+                reg.permission_secrets, reg.ui_capabilities
+            from frontend_block_catalog reg
+            inner join extension_installations installation on installation.id = reg.installation_id
+            inner join extension_artifact_instances artifact
+                on artifact.installation_id = installation.id and artifact.node_id = $1
+            where installation.verification_status = 'valid'
+              and artifact.artifact_status = 'ready'
+              and artifact.availability_status = 'available'
+            order by reg.title asc, reg.contribution_code asc
+            "#,
+        )
+        .bind(node_id)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(map_catalog_row).collect()
+    }
+
+    async fn list_ui_component_overrides_for_catalog(
+        &self,
+    ) -> Result<Vec<domain::UiComponentOverride>> {
+        control_plane::ports::UiManagementRepository::list_ui_component_overrides(self).await
+    }
+
+    async fn list_active_ui_code_templates_for_catalog(
+        &self,
+    ) -> Result<Vec<domain::UiCodeTemplate>> {
+        control_plane::ports::UiManagementRepository::list_ui_code_templates(self, false).await
+    }
 }

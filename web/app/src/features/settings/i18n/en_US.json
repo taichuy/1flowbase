@@ -1,5 +1,6 @@
 {
   "auto": {
+    "ui_management": "UI management",
     "translation_catalog_title": "Languages",
     "translation_catalog_locale": "Language",
     "translation_catalog_origin": "Value origin",

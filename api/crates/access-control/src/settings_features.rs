@@ -50,6 +50,9 @@ pub const SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION: &str = "settings_feature.acc
 pub const SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_ID: &str = "system.system-runtime";
 pub const SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.system-runtime";
+pub const SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID: &str = "system.ui-management";
+pub const SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.ui-management";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -109,6 +112,35 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.ui-management".to_string(),
+                surface_key: "ui-management".to_string(),
+                path: "/settings/ui-management".to_string(),
+                label_key: "auto.ui_management".to_string(),
+                description_key: "console.policy_groups.settings.system.ui-management.description".to_string(),
+                order: 550,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/ui-management/templates"),
+                ("POST", "/api/console/settings/ui-management/templates"),
+                ("PUT", "/api/console/settings/ui-management/templates/{id}"),
+                ("POST", "/api/console/settings/ui-management/templates/{id}/publish"),
+                ("PUT", "/api/console/settings/ui-management/templates/{id}/default"),
+                ("DELETE", "/api/console/settings/ui-management/templates/default"),
+                ("PUT", "/api/console/settings/ui-management/templates/{id}/archive"),
+                ("GET", "/api/console/settings/ui-management/components"),
+                ("PUT", "/api/console/settings/ui-management/components/contract"),
+                ("PUT", "/api/console/settings/ui-management/components/state"),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_EXTENSION_CENTER_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {

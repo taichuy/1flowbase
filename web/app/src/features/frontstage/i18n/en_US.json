@@ -1,5 +1,12 @@
 {
   "auto": {
+    "code_template": "Code template",
+    "select_code_template": "Select a published template",
+    "replace_code_with_template": "Replace current code?",
+    "replace_code_with_template_confirm": "This replaces the current draft without saving it. You can still undo in the editor or reset after closing.",
+    "replace": "Replace",
+    "apply_template": "Apply template",
+    "default": "Default",
     "actions": "Actions",
     "add_block_button": "+ Create block",
     "add_group": "Add new group",

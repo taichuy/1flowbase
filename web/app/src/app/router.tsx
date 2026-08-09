@@ -463,6 +463,29 @@ const settingsMcpManagementRoute = createRoute({
   component: () => renderSettingsRoute('mcp-management')
 });
 
+const settingsUiManagementRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/ui-management',
+  notFoundComponent: NotFoundPage,
+  component: () => (
+    <Navigate to="/settings/ui-management/code-templates" replace />
+  )
+});
+
+const settingsUiManagementTemplatesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/ui-management/code-templates',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('ui-management')
+});
+
+const settingsUiManagementComponentsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/ui-management/components',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('ui-management')
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/members',
@@ -624,6 +647,9 @@ const routeTree = rootRoute.addChildren([
     settingsModelProviderInstancesRoute,
     settingsModelProviderRequestLogsRoute,
     settingsMcpManagementRoute,
+    settingsUiManagementRoute,
+    settingsUiManagementTemplatesRoute,
+    settingsUiManagementComponentsRoute,
     settingsMembersRoute,
     settingsRolesRoute,
     settingsRolesDynamicRoutesRoute,
