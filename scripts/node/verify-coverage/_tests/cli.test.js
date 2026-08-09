@@ -94,6 +94,11 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
       'api-server',
       'mcp_management_routes'
     ),
+    integrationCommand(
+      'backend-coverage-control-plane-ui-routes-integration',
+      'api-server',
+      'ui_management_routes'
+    ),
   ];
 }
 
