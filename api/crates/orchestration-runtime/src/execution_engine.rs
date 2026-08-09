@@ -730,6 +730,14 @@ where
                 });
             }
             "llm" => {
+                let input_payload = llm_node_input_payload(
+                    plan,
+                    node,
+                    &resolved_inputs,
+                    &rendered_templates,
+                    &variable_pool,
+                    runtime_context,
+                );
                 let execution = execute_llm_node(
                     plan,
                     node,
@@ -744,7 +752,7 @@ where
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
-                    input_payload: Value::Object(resolved_inputs.clone()),
+                    input_payload: Value::Object(input_payload),
                     output_payload: execution.output_payload.clone(),
                     error_payload: execution.error_payload.clone(),
                     metrics_payload: execution.metrics_payload.clone(),
