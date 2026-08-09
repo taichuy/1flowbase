@@ -59,8 +59,6 @@ function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
     queryKey: [...settingsUiTemplatesQueryKey, includeArchived],
     queryFn: () => fetchSettingsUiTemplates(includeArchived)
   });
-  const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: settingsUiTemplatesQueryKey });
   const save = useMutation({
     mutationFn: async (value: TemplateForm) =>
       editing
@@ -75,14 +73,17 @@ function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
           )
         : createSettingsUiTemplate(value, requireToken(csrfToken)),
     onSuccess: async () => {
-      await refresh();
+      await queryClient.invalidateQueries({
+        queryKey: settingsUiTemplatesQueryKey
+      });
       setDrawerOpen(false);
       message.success(t('saved'));
     }
   });
   const action = useMutation({
     mutationFn: async (run: () => Promise<unknown>) => run(),
-    onSuccess: refresh
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: settingsUiTemplatesQueryKey })
   });
   const openCreate = () => {
     setEditing(null);
@@ -333,8 +334,6 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
     null
   );
   const [form] = Form.useForm<{ contract: string }>();
-  const refresh = () =>
-    client.invalidateQueries({ queryKey: settingsUiComponentsQueryKey });
   const save = useMutation({
     mutationFn: async (value: { contract: string }) => {
       if (!selected) throw new Error('missing component');
@@ -346,7 +345,9 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
       );
     },
     onSuccess: async () => {
-      await refresh();
+      await client.invalidateQueries({
+        queryKey: settingsUiComponentsQueryKey
+      });
       setSelected(null);
       message.success(t('saved'));
     }
@@ -361,7 +362,8 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
         input.state,
         requireToken(csrfToken)
       ),
-    onSuccess: refresh
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: settingsUiComponentsQueryKey })
   });
   const edit = (row: SettingsUiComponentCandidate) => {
     setSelected(row);
