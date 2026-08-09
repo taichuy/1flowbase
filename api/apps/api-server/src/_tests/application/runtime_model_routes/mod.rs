@@ -306,6 +306,7 @@ display_name: Fixture External Data Source
 auth_modes:
   - api_key
 capabilities:
+  - records.read
   - list_records
   - get_record
   - create_record
@@ -400,14 +401,17 @@ async fn seed_runtime_data_source_instance(
 ) -> String {
     seed_runtime_data_source_instance_with_options(
         database_url,
-        package,
+        package.path(),
         RuntimeDataSourceSeedOptions::default(),
     )
     .await
 }
 
 struct RuntimeDataSourceSeedOptions<'a> {
+    organization: &'a str,
     provider_code: &'a str,
+    plugin_id: &'a str,
+    display_name: &'a str,
     source_code: &'a str,
     contract_version: &'a str,
     desired_state: &'a str,
@@ -422,7 +426,10 @@ struct RuntimeDataSourceSeedOptions<'a> {
 impl Default for RuntimeDataSourceSeedOptions<'_> {
     fn default() -> Self {
         Self {
+            organization: "test",
             provider_code: "plugin.crm",
+            plugin_id: "plugin.crm@0.1.0",
+            display_name: "Fixture External Data Source",
             source_code: "plugin.crm",
             contract_version: "1flowbase.data_source/v1",
             desired_state: "active_requested",
@@ -438,7 +445,7 @@ impl Default for RuntimeDataSourceSeedOptions<'_> {
 
 async fn seed_runtime_data_source_instance_with_options(
     database_url: &str,
-    package: &TempDataSourcePackage,
+    package_root: &Path,
     options: RuntimeDataSourceSeedOptions<'_>,
 ) -> String {
     let pool = sqlx::PgPool::connect(database_url).await.unwrap();
@@ -463,7 +470,7 @@ async fn seed_runtime_data_source_instance_with_options(
     let installed_path = options
         .installed_path
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| package.path().display().to_string());
+        .unwrap_or_else(|| package_root.display().to_string());
 
     sqlx::query(
         r#"
@@ -472,16 +479,19 @@ async fn seed_runtime_data_source_instance_with_options(
             contract_version, protocol, display_name, source_kind, trust_level,
             verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
-            $1, 'capability-plugins', 'test', $2, '0.1.0',
-            'plugin.crm@0.1.0', $3, 'stdio_json',
-            'Fixture External Data Source', 'uploaded', 'unverified', 'valid',
-            $4, 'missing', '{}', $5
+            $1, 'capability-plugins', $2, $3, '0.1.0',
+            $4, $5, 'stdio_json',
+            $6, 'uploaded', 'unverified', 'valid',
+            $7, 'missing', '{}', $8
         )
         "#,
     )
     .bind(installation_id)
+    .bind(options.organization)
     .bind(options.provider_code)
+    .bind(options.plugin_id)
     .bind(options.contract_version)
+    .bind(options.display_name)
     .bind(options.desired_state)
     .bind(actor_user_id)
     .execute(&pool)
@@ -530,9 +540,9 @@ async fn seed_runtime_data_source_instance_with_options(
             config_json, metadata_json, default_data_model_status,
             created_by
         ) values (
-            $1, $2, $3, $4, 'Fixture External Data Source',
-            $5, '{"client_id":"route-runtime-client"}', '{}',
-            'published', $6
+            $1, $2, $3, $4, $5,
+            $6, '{"client_id":"route-runtime-client"}', '{}',
+            'published', $7
         )
         "#,
     )
@@ -540,6 +550,7 @@ async fn seed_runtime_data_source_instance_with_options(
     .bind(workspace_id)
     .bind(installation_id)
     .bind(options.source_code)
+    .bind(options.display_name)
     .bind(options.instance_status)
     .bind(actor_user_id)
     .execute(&pool)

@@ -736,6 +736,162 @@ async fn runtime_model_data_model_template_maps_and_dispatches_external_operatio
 }
 
 #[tokio::test]
+async fn runtime_model_data_model_template_uses_checked_in_provider_catalog_and_operation() {
+    let package_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/templates/data_source_http_fixture");
+    let (app, database_url) = test_app_with_database_url().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let data_source_instance_id = seed_runtime_data_source_instance_with_options(
+        &database_url,
+        &package_root,
+        RuntimeDataSourceSeedOptions {
+            organization: "flowbase",
+            provider_code: "data_source_http_fixture",
+            plugin_id: "data_source_http_fixture@0.1.0",
+            display_name: "Data Source HTTP Fixture",
+            source_code: "data_source_http_fixture",
+            ..RuntimeDataSourceSeedOptions::default()
+        },
+    )
+    .await;
+
+    let catalog_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/console/settings/data-models/model-templates?data_source_id={data_source_instance_id}&resource_key=contacts"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let catalog_status = catalog_response.status();
+    let catalog_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(catalog_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        catalog_status,
+        StatusCode::OK,
+        "unexpected checked-in provider catalog payload: {catalog_payload}"
+    );
+    let external_templates = catalog_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|template| template["template_provider"] == json!("data_source_http_fixture"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        external_templates,
+        vec![&json!({
+            "template_provider": "data_source_http_fixture",
+            "template_code": "contact_archive",
+            "template_version": "v1",
+            "summary": "Archived contact data model",
+            "description": "Non-Core data model template contributed by the HTTP fixture provider."
+        })]
+    );
+
+    let model = map_external_runtime_model(
+        &app,
+        &cookie,
+        &csrf,
+        &data_source_instance_id,
+        "data_source_http_fixture",
+        "contact_archive",
+        "v1",
+    )
+    .await;
+    assert_eq!(model["code"], json!("contacts"));
+    assert_eq!(
+        model["template_provider"],
+        json!("data_source_http_fixture")
+    );
+    assert_eq!(model["template_code"], json!("contact_archive"));
+    assert_eq!(model["template_version"], json!("v1"));
+
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let persisted = sqlx::query(
+        r#"
+        select external_resource_key, external_capability_snapshot,
+               template_provider, template_code, template_version
+        from model_definitions
+        where id = $1
+        "#,
+    )
+    .bind(uuid::Uuid::parse_str(model["id"].as_str().unwrap()).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        persisted.get::<String, _>("external_resource_key"),
+        "contacts"
+    );
+    assert_eq!(
+        persisted.get::<String, _>("template_provider"),
+        "data_source_http_fixture"
+    );
+    assert_eq!(
+        persisted.get::<String, _>("template_code"),
+        "contact_archive"
+    );
+    assert_eq!(persisted.get::<String, _>("template_version"), "v1");
+    assert_eq!(
+        persisted.get::<serde_json::Value, _>("external_capability_snapshot"),
+        json!({
+            "supports_list": true,
+            "supports_get": true,
+            "supports_create": true,
+            "supports_update": true,
+            "supports_delete": true,
+            "supports_filter": true,
+            "supports_sort": true,
+            "supports_pagination": true,
+            "supports_owner_filter": false,
+            "supports_scope_filter": true,
+            "supports_write": true,
+            "supports_transactions": false
+        })
+    );
+
+    let operation_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/runtime/models/contacts/archive/contact-1")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "reason": "duplicate" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let operation_status = operation_response.status();
+    let operation_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(operation_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        operation_status,
+        StatusCode::OK,
+        "unexpected checked-in provider operation payload: {operation_payload}"
+    );
+    assert_eq!(
+        operation_payload["data"],
+        json!({ "archived": true, "contact_id": "contact-1" })
+    );
+}
+
+#[tokio::test]
 async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unavailable_installations(
 ) {
     let cases = [
@@ -829,7 +985,8 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
         let (app, database_url) = test_app_with_database_url().await;
         let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
         let data_source_instance_id =
-            seed_runtime_data_source_instance_with_options(&database_url, &package, options).await;
+            seed_runtime_data_source_instance_with_options(&database_url, package.path(), options)
+                .await;
         let model_code = format!("external_runtime_blocked_{case_name}");
 
         let model_id = seed_external_runtime_model(

@@ -1064,10 +1064,25 @@ fn data_source_capability_codes(
     capabilities: &plugin_framework::DataSourceCrudCapabilities,
 ) -> Vec<String> {
     let mut codes = Vec::new();
+    if capabilities.supports_list {
+        codes.push("list_records".to_owned());
+    }
+    if capabilities.supports_get {
+        codes.push("get_record".to_owned());
+    }
     if capabilities.supports_list && capabilities.supports_get {
         codes.push(
             runtime_core::general_data_model_template::GENERAL_RECORDS_READ_CAPABILITY.to_owned(),
         );
+    }
+    if capabilities.supports_create {
+        codes.push("create_record".to_owned());
+    }
+    if capabilities.supports_update {
+        codes.push("update_record".to_owned());
+    }
+    if capabilities.supports_delete {
+        codes.push("delete_record".to_owned());
     }
     codes
 }

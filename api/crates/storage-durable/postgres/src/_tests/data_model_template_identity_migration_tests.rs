@@ -186,8 +186,11 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
 
     let main_model_id = Uuid::now_v7();
     let external_model_id = Uuid::now_v7();
+    let main_scope_id = Uuid::now_v7();
+    let external_scope_id = Uuid::now_v7();
     for (
         id,
+        scope_id,
         code,
         title,
         description,
@@ -201,6 +204,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
     ) in [
         (
             main_model_id,
+            main_scope_id,
             "historical_main",
             "User Main Title",
             "User-authored main description",
@@ -214,6 +218,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         ),
         (
             external_model_id,
+            external_scope_id,
             "historical_external",
             "User External Title",
             "User-authored external description",
@@ -248,7 +253,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
             "#,
         )
         .bind(id)
-        .bind(Uuid::now_v7())
+        .bind(scope_id)
         .bind(source_kind)
         .bind(external_resource_key)
         .bind(external_table_id)
@@ -266,9 +271,10 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         .unwrap();
     }
 
-    for (model_id, code, title, description, external_field_key, display_options) in [
+    for (model_id, scope_id, code, title, description, external_field_key, display_options) in [
         (
             main_model_id,
+            main_scope_id,
             "payload",
             "Main Payload Label",
             "User main field description",
@@ -277,6 +283,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         ),
         (
             external_model_id,
+            external_scope_id,
             "payload",
             "External Payload Label",
             "User external field description",
@@ -287,21 +294,22 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         sqlx::query(
             r#"
             insert into model_fields (
-                id, data_model_id, code, title, description,
+                id, scope_id, data_model_id, code, title, description,
                 physical_column_name, external_field_key, field_kind,
                 is_system, is_writable, is_required, api_required, is_unique,
                 display_interface, display_options, relation_options,
                 sort_order, availability_status
             ) values (
-                $1, $2, $3, $4, $5,
-                'payload', $6, 'string',
+                $1, $2, $3, $4, $5, $6,
+                'payload', $7, 'string',
                 false, true, true, true, false,
-                'textarea', $7, '{"preserve":"relation-display"}'::jsonb,
+                'textarea', $8, '{"preserve":"relation-display"}'::jsonb,
                 37, 'unavailable'
             )
             "#,
         )
         .bind(Uuid::now_v7())
+        .bind(scope_id)
         .bind(model_id)
         .bind(code)
         .bind(title)
@@ -313,9 +321,9 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         .unwrap();
     }
 
-    for (model_id, enabled, permission_profile) in [
-        (main_model_id, false, "owner"),
-        (external_model_id, false, "system_all"),
+    for (model_id, scope_id, enabled, permission_profile) in [
+        (main_model_id, main_scope_id, false, "owner"),
+        (external_model_id, external_scope_id, false, "system_all"),
     ] {
         sqlx::query(
             r#"
@@ -325,7 +333,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
             "#,
         )
         .bind(Uuid::now_v7())
-        .bind(Uuid::now_v7())
+        .bind(scope_id)
         .bind(model_id)
         .bind(enabled)
         .bind(permission_profile)
@@ -356,7 +364,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         "insert into historical_main_records (id, scope_id, payload) values ($1, $2, 'main-preserved')",
     )
     .bind(Uuid::now_v7())
-    .bind(Uuid::now_v7())
+    .bind(main_scope_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -364,7 +372,7 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         "insert into historical_external_records (id, scope_id, payload) values ($1, $2, 'external-preserved')",
     )
     .bind(Uuid::now_v7())
-    .bind(Uuid::now_v7())
+    .bind(external_scope_id)
     .execute(&pool)
     .await
     .unwrap();
