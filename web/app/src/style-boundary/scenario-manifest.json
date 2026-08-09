@@ -1125,7 +1125,9 @@
       "web/app/src/features/settings/components/settings-section-surface.css",
       "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
       "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/DataTableLayout.tsx",
       "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/shared/ui/data-table/data-table-layout.css",
       "web/app/src/features/settings/i18n/zh_Hans.json",
       "web/app/src/features/settings/i18n/en_US.json"
     ],
@@ -1146,31 +1148,27 @@
       },
       {
         "id": "catalog-desktop-toolbar",
-        "selector": ".i18n-catalog-page__toolbar",
+        "selector": ".i18n-catalog-page .data-table__toolbar",
         "propertyAssertions": [
           {
-            "property": "flex-direction",
-            "expected": "column"
+            "property": "box-sizing",
+            "expected": "border-box"
           }
         ]
       },
       {
         "id": "catalog-desktop-filters",
-        "selector": ".i18n-catalog-page__filters",
+        "selector": ".data-table-filter-form",
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "flex"
-          },
-          {
-            "property": "justify-content",
-            "expected": "flex-start"
+            "expected": "grid"
           }
         ]
       },
       {
         "id": "catalog-desktop-actions",
-        "selector": ".i18n-catalog-page__actions",
+        "selector": ".data-table-filter-form__actions",
         "propertyAssertions": [
           {
             "property": "justify-content",
@@ -1219,7 +1217,9 @@
       "web/app/src/features/settings/components/settings-section-surface.css",
       "web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx",
       "web/app/src/shared/ui/data-table/DataTable.tsx",
+      "web/app/src/shared/ui/data-table/DataTableLayout.tsx",
       "web/app/src/shared/ui/data-table/data-table.css",
+      "web/app/src/shared/ui/data-table/data-table-layout.css",
       "web/app/src/features/settings/i18n/zh_Hans.json",
       "web/app/src/features/settings/i18n/en_US.json"
     ],
@@ -1240,31 +1240,27 @@
       },
       {
         "id": "catalog-mobile-toolbar",
-        "selector": ".i18n-catalog-page__toolbar",
+        "selector": ".i18n-catalog-page .data-table__toolbar",
         "propertyAssertions": [
           {
-            "property": "flex-direction",
-            "expected": "column"
+            "property": "box-sizing",
+            "expected": "border-box"
           }
         ]
       },
       {
         "id": "catalog-mobile-filters",
-        "selector": ".i18n-catalog-page__filters",
+        "selector": ".data-table-filter-form",
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "flex"
-          },
-          {
-            "property": "justify-content",
-            "expected": "flex-start"
+            "expected": "grid"
           }
         ]
       },
       {
         "id": "catalog-mobile-actions",
-        "selector": ".i18n-catalog-page__actions",
+        "selector": ".data-table-filter-form__actions",
         "propertyAssertions": [
           {
             "property": "justify-content",

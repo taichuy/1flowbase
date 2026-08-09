@@ -228,6 +228,13 @@ function getStyleBoundaryCommonResponse(
 
   if (
     method.toUpperCase() === 'GET' &&
+    requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
+  ) {
+    return createStyleBoundaryJsonResponse({ data: [], meta: null });
+  }
+
+  if (
+    method.toUpperCase() === 'GET' &&
     requestUrl.pathname === '/api/console/system/release-status'
   ) {
     return createStyleBoundaryJsonResponse({
@@ -321,13 +328,6 @@ export function seedStyleBoundaryTemplateFetch() {
 
     if (commonResponse) {
       return commonResponse;
-    }
-
-    if (
-      method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
-    ) {
-      return createStyleBoundaryJsonResponse({ data: [], meta: null });
     }
 
     if (
@@ -938,13 +938,6 @@ export function seedStyleBoundaryApplicationFetch() {
 
     if (commonResponse) {
       return commonResponse;
-    }
-
-    if (
-      method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
-    ) {
-      return createStyleBoundaryJsonResponse({ data: [], meta: null });
     }
 
     if (
