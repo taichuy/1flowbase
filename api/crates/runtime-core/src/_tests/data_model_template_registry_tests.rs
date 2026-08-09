@@ -439,9 +439,16 @@ fn ac_004_external_provider_templates_replace_atomically_and_filter_by_capabilit
         provider: Some("acme_source".to_owned()),
     };
     assert!(catalog.compatible_templates(&source, []).is_empty());
-    let compatible = catalog.compatible_templates(&source, ["records.read"]);
-    assert_eq!(compatible.len(), 1);
-    assert_eq!(compatible[0].identity(), &descriptor.identity);
+    let compatible_identities = catalog
+        .compatible_templates(&source, ["records.read"])
+        .into_iter()
+        .map(|template| template.identity().clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        compatible_identities,
+        BTreeSet::from([general_template_identity(), descriptor.identity.clone()]),
+        "external resources retain core/general/v1 alongside provider templates"
+    );
 
     let replacement = external_descriptor("acme_source", "contacts", "v2");
     catalog
@@ -453,6 +460,16 @@ fn ac_004_external_provider_templates_replace_atomically_and_filter_by_capabilit
         .unwrap();
     assert!(catalog.resolve(&descriptor.identity).is_err());
     assert!(catalog.resolve(&replacement.identity).is_ok());
+    let compatible_identities = catalog
+        .compatible_templates(&source, ["records.read"])
+        .into_iter()
+        .map(|template| template.identity().clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        compatible_identities,
+        BTreeSet::from([general_template_identity(), replacement.identity]),
+        "provider replacement must not remove core/general/v1 from external compatibility"
+    );
 }
 
 #[test]

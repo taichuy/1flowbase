@@ -26,6 +26,26 @@ async fn openapi_paths() -> Map<String, Value> {
     payload["paths"].as_object().cloned().unwrap_or_default()
 }
 
+async fn dynamic_openapi_paths() -> Map<String, Value> {
+    let response = test_app()
+        .await
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: Value = serde_json::from_slice(&body).unwrap();
+
+    payload["paths"].as_object().cloned().unwrap_or_default()
+}
+
 async fn create_member(app: &axum::Router, cookie: &str, csrf: &str, account: &str) -> String {
     let response = app
         .clone()
@@ -64,8 +84,8 @@ async fn create_member(app: &axum::Router, cookie: &str, csrf: &str, account: &s
 }
 
 #[tokio::test]
-async fn openapi_contains_runtime_and_model_detail_routes() {
-    let paths = openapi_paths().await;
+async fn dynamic_openapi_contains_runtime_and_model_detail_routes() {
+    let paths = dynamic_openapi_paths().await;
 
     for route in [
         "/api/console/settings/data-models/model-definitions/{id}",
@@ -104,6 +124,27 @@ async fn openapi_contains_runtime_and_model_detail_routes() {
             "expected openapi to contain path {route}, got: {:?}",
             paths.keys().collect::<Vec<_>>()
         );
+    }
+
+    let templates = runtime_core::data_model_template_registry::DataModelTemplateCatalog::core();
+    for template in templates.templates() {
+        let identity = template.identity().canonical_name();
+        for operation in &template.descriptor().operations {
+            let method = operation.method.as_str().to_ascii_lowercase();
+            let definition = &paths[&operation.path][&method];
+            assert!(
+                definition.is_object(),
+                "dynamic OpenAPI must project compiled template operation: {} {}",
+                operation.method.as_str(),
+                operation.path
+            );
+            assert!(
+                definition["x-data-model-templates"]
+                    .as_array()
+                    .is_some_and(|owners| owners.iter().any(|owner| owner == &identity)),
+                "dynamic OpenAPI operation must retain compiled template owner: {identity}"
+            );
+        }
     }
 }
 
