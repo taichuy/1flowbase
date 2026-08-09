@@ -1017,6 +1017,7 @@ mod tests {
             .merge(crate::routes::frontend_block_catalog::route_assembly())
             .merge(crate::routes::js_dependencies::route_assembly())
             .merge(crate::routes::node_contributions::route_assembly())
+            .merge(crate::routes::ui_management::route_assembly())
             .merge(crate::routes::roles::route_assembly())
             .merge(crate::routes::permissions::route_assembly())
             .merge(crate::routes::frontstage::route_assembly())
