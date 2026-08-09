@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use axum::http::HeaderMap;
 use control_plane::auth::ApiKeyService;
 use control_plane::ports::SessionStore;
@@ -10,6 +12,7 @@ use crate::{app_state::ApiState, error_response::ApiError};
 pub enum RequestCredential {
     CookieSession(SessionRecord),
     UserApiKey { api_key_id: Uuid },
+    ServerDelegation,
 }
 
 #[derive(Clone)]
@@ -20,12 +23,25 @@ pub struct RequestContext {
 }
 
 impl RequestContext {
+    pub fn server_delegation(user: UserRecord, actor: ActorContext) -> Self {
+        Self {
+            credential: RequestCredential::ServerDelegation,
+            user,
+            actor,
+        }
+    }
+
     pub fn cookie_session(
         &self,
     ) -> Result<&SessionRecord, control_plane::errors::ControlPlaneError> {
         match &self.credential {
             RequestCredential::CookieSession(session) => Ok(session),
             RequestCredential::UserApiKey { .. } => {
+                Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                    "cookie_session_required",
+                ))
+            }
+            RequestCredential::ServerDelegation => {
                 Err(control_plane::errors::ControlPlaneError::PermissionDenied(
                     "cookie_session_required",
                 ))
@@ -41,8 +57,25 @@ impl RequestContext {
         match &self.credential {
             RequestCredential::CookieSession(_) => "session",
             RequestCredential::UserApiKey { .. } => "user_api_key",
+            RequestCredential::ServerDelegation => "server_delegation",
         }
     }
+}
+
+tokio::task_local! {
+    static SERVER_DELEGATED_REQUEST_CONTEXT: RequestContext;
+}
+
+pub async fn with_server_delegated_request_context<F>(
+    context: RequestContext,
+    future: F,
+) -> F::Output
+where
+    F: Future,
+{
+    SERVER_DELEGATED_REQUEST_CONTEXT
+        .scope(context, future)
+        .await
 }
 
 fn extract_cookie(headers: &HeaderMap, cookie_name: &str) -> Option<String> {
@@ -65,6 +98,10 @@ pub async fn require_session(
     state: &ApiState,
     headers: &HeaderMap,
 ) -> Result<RequestContext, ApiError> {
+    if let Ok(context) = SERVER_DELEGATED_REQUEST_CONTEXT.try_with(Clone::clone) {
+        return Ok(context);
+    }
+
     if let Some(token) = extract_bearer_token(headers) {
         let user_api_key = ApiKeyService::new(state.store.clone())
             .authenticate_user_api_key(token)

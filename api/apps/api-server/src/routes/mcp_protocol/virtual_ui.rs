@@ -1,7 +1,14 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::http::HeaderMap;
+use axum::{
+    body::to_bytes,
+    http::{
+        header::{AUTHORIZATION, COOKIE},
+        HeaderMap, HeaderName, StatusCode,
+    },
+    response::Response,
+};
 use control_plane::mcp_management::{
     mcp_llm_registrations, McpLlmOperation, McpLlmRegistrationSource, McpManagementService,
 };
@@ -18,6 +25,7 @@ use super::{input_schema, result_delivery};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
+    middleware::require_session::{with_server_delegated_request_context, RequestContext},
     routes::mcp_management::{
         bindable_mcp_interface,
         debug_execute::{self, McpServerBoundInputs},
@@ -30,12 +38,15 @@ const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
 const MCP_GET: &str = portable_meta_tool_name("mcp_get");
 const MCP_RESULT: &str = portable_meta_tool_name("mcp_result");
 const MCP_CALL: &str = portable_meta_tool_name("mcp_call");
+const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
+const TARGET_INTERFACE_ERROR_BODY_LIMIT: usize = 16 * 1024;
 
 const fn portable_meta_tool_name(name: &'static str) -> &'static str {
     let bytes = name.as_bytes();
-    if bytes.is_empty() || bytes.len() > 64 {
-        panic!("meta tool names must contain between 1 and 64 bytes");
-    }
+    assert!(
+        !bytes.is_empty() && bytes.len() <= 64,
+        "meta tool names must contain between 1 and 64 bytes"
+    );
     let mut index = 0;
     while index < bytes.len() {
         let byte = bytes[index];
@@ -44,9 +55,10 @@ const fn portable_meta_tool_name(name: &'static str) -> &'static str {
             || (byte >= b'0' && byte <= b'9')
             || byte == b'_'
             || byte == b'-';
-        if !portable {
-            panic!("meta tool names must use portable function-name characters");
-        }
+        assert!(
+            portable,
+            "meta tool names must use portable function-name characters"
+        );
         index += 1;
     }
     name
@@ -118,13 +130,92 @@ pub(crate) enum VirtualToolOutcome {
 pub(crate) struct ApiMcpRuntimeToolInvoker {
     state: Arc<ApiState>,
     headers: HeaderMap,
-    actor: domain::ActorContext,
+    authorization: RuntimeMcpAuthorization,
     catalog: domain::McpCatalogSnapshot,
     run_level_instance_ids: Vec<String>,
 }
 
+#[derive(Clone)]
+enum RuntimeMcpAuthorization {
+    ForwardedActor(domain::ActorContext),
+    ServerDelegation(RuntimeActorDelegation),
+}
+
+#[derive(Clone)]
+struct RuntimeActorDelegation {
+    user_id: uuid::Uuid,
+    tenant_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+    active_role_code: String,
+    session_version: i64,
+}
+
+impl RuntimeActorDelegation {
+    async fn request_context(&self, state: &ApiState) -> Result<RequestContext, ApiError> {
+        let user = state
+            .store
+            .find_user_by_id(self.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if user.session_version != self.session_version
+            || matches!(user.status, domain::UserStatus::Disabled)
+        {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        let actor = state
+            .store
+            .load_actor_context(
+                user.id,
+                self.tenant_id,
+                self.workspace_id,
+                Some(&self.active_role_code),
+            )
+            .await?;
+        if actor.effective_display_role != self.active_role_code {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        Ok(RequestContext::server_delegation(user, actor))
+    }
+}
+
 impl ApiMcpRuntimeToolInvoker {
     pub(crate) async fn new(
+        state: Arc<ApiState>,
+        mut headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+    ) -> Result<Self, ApiError> {
+        let user = state
+            .store
+            .find_user_by_id(actor.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if matches!(user.status, domain::UserStatus::Disabled) {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        let catalog = McpManagementService::new(state.store.clone())
+            .read_catalog_for_actor(&actor)
+            .await?;
+        let authorization = RuntimeMcpAuthorization::ServerDelegation(RuntimeActorDelegation {
+            user_id: actor.user_id,
+            tenant_id: actor.tenant_id,
+            workspace_id: actor.current_workspace_id,
+            active_role_code: actor.effective_display_role.clone(),
+            session_version: user.session_version,
+        });
+        headers.remove(COOKIE);
+        headers.remove(AUTHORIZATION);
+        headers.remove(CSRF_HEADER);
+        Ok(Self {
+            state,
+            headers,
+            authorization,
+            catalog,
+            run_level_instance_ids,
+        })
+    }
+
+    pub(crate) async fn new_with_forwarded_authorization(
         state: Arc<ApiState>,
         headers: HeaderMap,
         actor: domain::ActorContext,
@@ -136,7 +227,7 @@ impl ApiMcpRuntimeToolInvoker {
         Ok(Self {
             state,
             headers,
-            actor,
+            authorization: RuntimeMcpAuthorization::ForwardedActor(actor),
             catalog,
             run_level_instance_ids,
         })
@@ -233,40 +324,89 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
             }
         };
         let scope = VirtualMcpScope::single(instance_id.to_string());
-        let outcome = dispatch(
-            &self.state,
-            &self.headers,
-            &self.actor,
-            &self.catalog,
-            &scope,
-            operation_name,
-            arguments,
-        )
-        .await
+        let outcome = match &self.authorization {
+            RuntimeMcpAuthorization::ForwardedActor(actor) => {
+                dispatch(
+                    &self.state,
+                    &self.headers,
+                    actor,
+                    &self.catalog,
+                    &scope,
+                    operation_name,
+                    arguments,
+                )
+                .await
+            }
+            RuntimeMcpAuthorization::ServerDelegation(delegation) => {
+                let context = match delegation.request_context(&self.state).await {
+                    Ok(context) => context,
+                    Err(error)
+                        if matches!(
+                            error
+                                .0
+                                .downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                            Some(control_plane::errors::ControlPlaneError::NotAuthenticated)
+                        ) =>
+                    {
+                        return runtime_internal_tool_output(
+                            node,
+                            registration,
+                            target_failure(
+                                StatusCode::UNAUTHORIZED,
+                                Some("not_authenticated".to_string()),
+                            ),
+                        )
+                    }
+                    Err(error) => return Err(anyhow::anyhow!(error.0.to_string())),
+                };
+                let actor = context.actor.clone();
+                with_server_delegated_request_context(
+                    context,
+                    dispatch(
+                        &self.state,
+                        &self.headers,
+                        &actor,
+                        &self.catalog,
+                        &scope,
+                        operation_name,
+                        arguments,
+                    ),
+                )
+                .await
+            }
+        }
         .map_err(|error| anyhow::anyhow!(error.0.to_string()))?;
-        let (content, is_error) = match outcome {
-            VirtualToolOutcome::Success(value) => (value, false),
-            VirtualToolOutcome::Error {
-                code,
-                message,
-                data,
-            } => (
-                json!({"code": code, "message": message, "data": data}),
-                true,
-            ),
-        };
-        Ok(RuntimeInternalToolOutput {
-            content,
-            is_error,
-            event: json!({
-                "event_type": "mcp_runtime_tool_call_completed",
-                "node_id": node.node_id,
-                "provider_name": registration.provider_name,
-                "owner": registration.owner,
-                "is_error": is_error,
-            }),
-        })
+        runtime_internal_tool_output(node, registration, outcome)
     }
+}
+
+fn runtime_internal_tool_output(
+    node: &CompiledNode,
+    registration: &RuntimeInternalToolRegistration,
+    outcome: VirtualToolOutcome,
+) -> anyhow::Result<RuntimeInternalToolOutput> {
+    let (content, is_error) = match outcome {
+        VirtualToolOutcome::Success(value) => (value, false),
+        VirtualToolOutcome::Error {
+            code,
+            message,
+            data,
+        } => (
+            json!({"code": code, "message": message, "data": data}),
+            true,
+        ),
+    };
+    Ok(RuntimeInternalToolOutput {
+        content,
+        is_error,
+        event: json!({
+            "event_type": "mcp_runtime_tool_call_completed",
+            "node_id": node.node_id,
+            "provider_name": registration.provider_name,
+            "owner": registration.owner,
+            "is_error": is_error,
+        }),
+    })
 }
 
 impl VirtualToolOutcome {
@@ -665,15 +805,7 @@ async fn call(
                 ))),
                 Err(debug_execute::McpDebugExecuteError::Api(error)) => Ok(interface_error(&error)),
                 Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => {
-                    Ok(VirtualToolOutcome::failed(
-                        "Tool execution failed",
-                        json!({
-                            "category": "target_interface",
-                            "http_status": response.status().as_u16(),
-                            "outcome": "failed",
-                            "retry_original": false
-                        }),
-                    ))
+                    Ok(target_interface_failure(response).await)
                 }
             }
         }
@@ -776,6 +908,43 @@ async fn call(
     }
 }
 
+async fn target_interface_failure(response: Response) -> VirtualToolOutcome {
+    let status = response.status();
+    let target_code = if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+        to_bytes(response.into_body(), TARGET_INTERFACE_ERROR_BODY_LIMIT)
+            .await
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .and_then(|payload| {
+                payload
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+    } else {
+        None
+    };
+    target_failure(status, target_code)
+}
+
+fn target_failure(status: StatusCode, target_code: Option<String>) -> VirtualToolOutcome {
+    let category = match status {
+        StatusCode::UNAUTHORIZED => "target_authentication",
+        StatusCode::FORBIDDEN => "target_authorization",
+        _ => "target_interface",
+    };
+    let mut data = serde_json::Map::from_iter([
+        ("category".to_string(), json!(category)),
+        ("http_status".to_string(), json!(status.as_u16())),
+        ("outcome".to_string(), json!("failed")),
+        ("retry_original".to_string(), json!(false)),
+    ]);
+    if let Some(code) = target_code {
+        data.insert("target_code".to_string(), json!(code));
+    }
+    VirtualToolOutcome::failed("Tool execution failed", Value::Object(data))
+}
+
 fn string_argument<'a>(arguments: &'a Value, field: &str) -> Option<&'a str> {
     arguments.get(field).and_then(Value::as_str)
 }
@@ -857,6 +1026,36 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn target_interface_unauthorized_exposes_stable_authentication_code() {
+        let response = Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(axum::body::Body::from(
+                json!({
+                    "status": 401,
+                    "code": "not_authenticated",
+                    "message": "sensitive detail"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+
+        let VirtualToolOutcome::Error { data, .. } = target_interface_failure(response).await
+        else {
+            panic!("target failure should remain an MCP error");
+        };
+        assert_eq!(
+            data,
+            Some(json!({
+                "category": "target_authentication",
+                "http_status": 401,
+                "target_code": "not_authenticated",
+                "outcome": "failed",
+                "retry_original": false
+            }))
+        );
+    }
 
     #[test]
     #[should_panic(expected = "portable function-name characters")]
