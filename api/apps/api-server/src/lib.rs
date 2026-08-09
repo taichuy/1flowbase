@@ -219,7 +219,10 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         config.database_pool_max_connections,
     )
     .await?;
-    let store = durable.store.clone();
+    let store = durable
+        .store
+        .clone()
+        .with_runtime_table_name_policy(config.runtime_table_name_policy.clone());
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
     let builtin_host_extensions =
         host_extensions::builtin::load_builtin_host_extension_manifests(api_workspace_root()?)?;

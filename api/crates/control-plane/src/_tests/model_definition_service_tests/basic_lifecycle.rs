@@ -235,7 +235,7 @@ async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
 
     assert_eq!(created.scope_kind, DataModelScopeKind::Workspace);
     assert_eq!(created.scope_id, Uuid::nil());
-    assert!(created.physical_table_name.starts_with("rtm_workspace_"));
+    assert_eq!(created.physical_table_name, created.code);
 
     for action in [
         runtime_core::runtime_acl::RuntimeDataAction::View,

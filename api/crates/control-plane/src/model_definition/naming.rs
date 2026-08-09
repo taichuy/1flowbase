@@ -1,5 +1,4 @@
 use domain::DataModelScopeKind;
-use uuid::Uuid;
 
 pub(super) fn registered_system_table_name(
     scope_kind: domain::DataModelScopeKind,
@@ -18,19 +17,8 @@ pub(super) fn registered_system_table_name(
     domain::builtin_data_model_contract(code).map(|contract| contract.physical_table_name)
 }
 
-pub(super) fn build_physical_table_name(scope_kind: DataModelScopeKind, code: &str) -> String {
-    let prefix = match scope_kind {
-        DataModelScopeKind::Workspace => "workspace",
-        DataModelScopeKind::System => "system",
-    };
-    let suffix = Uuid::now_v7().simple().to_string();
-    let sanitized_code = code.replace('-', "_");
-
-    format!(
-        "rtm_{prefix}_{}_{}",
-        &suffix[suffix.len() - 8..],
-        sanitized_code
-    )
+pub(super) fn build_physical_table_name(_scope_kind: DataModelScopeKind, code: &str) -> String {
+    code.to_string()
 }
 
 pub(super) fn build_physical_column_name(code: &str) -> String {

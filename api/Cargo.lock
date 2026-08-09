@@ -2831,6 +2831,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_regex"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79e745eeef604742ec751000e44d91cdc0552aacacb2c74bee88cc7685918cfa"
+dependencies = [
+ "rand 0.10.2",
+ "regex-syntax",
+]
+
+[[package]]
 name = "rayon"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3828,6 +3838,9 @@ dependencies = [
  "futures-util",
  "plugin-framework",
  "postgres-test-support",
+ "rand 0.10.2",
+ "rand_regex",
+ "regex-syntax",
  "runtime-core",
  "serde_json",
  "sha2 0.10.9",
