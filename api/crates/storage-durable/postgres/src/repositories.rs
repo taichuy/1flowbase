@@ -19,6 +19,7 @@ use crate::mappers::role_mapper::StoredRoleRow;
 pub struct PgControlPlaneStore {
     pool: PgPool,
     actor_override: Option<ActorContext>,
+    pub(crate) runtime_table_name_policy: crate::RuntimeTableNamePolicy,
 }
 
 impl PgControlPlaneStore {
@@ -26,13 +27,23 @@ impl PgControlPlaneStore {
         Self {
             pool,
             actor_override: None,
+            runtime_table_name_policy: crate::RuntimeTableNamePolicy::default(),
         }
+    }
+
+    pub fn with_runtime_table_name_policy(
+        mut self,
+        runtime_table_name_policy: crate::RuntimeTableNamePolicy,
+    ) -> Self {
+        self.runtime_table_name_policy = runtime_table_name_policy;
+        self
     }
 
     pub fn for_actor(&self, actor: ActorContext) -> Self {
         Self {
             pool: self.pool.clone(),
             actor_override: Some(actor),
+            runtime_table_name_policy: self.runtime_table_name_policy.clone(),
         }
     }
 

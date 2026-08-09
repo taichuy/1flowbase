@@ -41,8 +41,11 @@ http = "1"
 jsonschema = "0.46.5"
 moka = { version = "0.12.15", features = ["future"] }
 rand_core = { version = "0.6", features = ["std"] }
+rand = "0.10"
+rand_regex = { version = "0.19", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 regex = "1"
+regex-syntax = "0.8"
 rquickjs = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

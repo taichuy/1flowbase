@@ -36,6 +36,7 @@ pub mod workspace_repository;
 pub use connection::{
     connect, connect_with_max_connections, connect_with_pool_settings, PgPoolSettings,
 };
+pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
 pub use repositories::PgControlPlaneStore;
 
