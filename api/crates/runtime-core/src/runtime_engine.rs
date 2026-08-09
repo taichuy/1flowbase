@@ -26,7 +26,7 @@ use crate::{
     runtime_model_registry::{
         RegisteredRuntimeModel, RuntimeDataModelAvailability, RuntimeModelRegistry,
     },
-    runtime_record_repository::RuntimeRecordRepository,
+    runtime_record_repository::{OrderedTreeRuntimeRepository, RuntimeRecordRepository},
 };
 
 pub use crate::runtime_record_repository::{RuntimeListQuery, RuntimeListResult, RuntimeSortInput};
@@ -165,6 +165,12 @@ pub enum RuntimeModelError {
         model_code: String,
         fields: Vec<String>,
     },
+    #[error("runtime model operation invalid input: {0}")]
+    InvalidOperationInput(&'static str),
+    #[error("runtime model operation invalid field: {0}")]
+    InvalidOperationField(String),
+    #[error("runtime model ordered-tree adapter unavailable")]
+    OrderedTreeUnavailable,
 }
 
 impl RuntimeModelError {
@@ -201,6 +207,92 @@ impl RuntimeModelError {
             fields: fields.into_iter().map(Into::into).collect(),
         }
     }
+}
+
+fn operation_object(value: Value) -> Result<serde_json::Map<String, Value>> {
+    value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| RuntimeModelError::InvalidOperationInput("payload").into())
+}
+
+fn take_optional_uuid(
+    object: &mut serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<Option<Uuid>> {
+    match object.remove(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Uuid::parse_str(&value)
+            .map(Some)
+            .map_err(|_| RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+        Some(_) => Err(RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+    }
+}
+
+fn operation_uuid(value: &Value, field: &str) -> Result<Uuid> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .ok_or_else(|| RuntimeModelError::InvalidOperationField(field.to_owned()).into())
+}
+
+fn operation_u32(value: &Value, field: &str, default: u32) -> Result<u32> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Number(value)) => value
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+        Some(Value::String(value)) => value
+            .parse::<u32>()
+            .map_err(|_| RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+        Some(_) => Err(RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+    }
+}
+
+fn operation_u64(value: &Value, field: &str) -> Result<u64> {
+    let value = match value.get(field) {
+        Some(Value::Number(value)) => value.as_u64(),
+        Some(Value::String(value)) => value.parse::<u64>().ok(),
+        _ => None,
+    }
+    .ok_or_else(|| RuntimeModelError::InvalidOperationField(field.to_owned()))?;
+    if value == 0 {
+        return Err(RuntimeModelError::InvalidOperationField(field.to_owned()).into());
+    }
+    Ok(value)
+}
+
+fn operation_bool(value: &Value, field: &str, default: bool) -> Result<bool> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(Value::String(value)) => value
+            .parse::<bool>()
+            .map_err(|_| RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+        Some(_) => Err(RuntimeModelError::InvalidOperationField(field.to_owned()).into()),
+    }
+}
+
+fn operation_string(value: &Value, field: &str) -> Result<String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| RuntimeModelError::InvalidOperationField(field.to_owned()).into())
+}
+
+fn reject_structure_fields(payload: &Value) -> Result<()> {
+    let payload = payload
+        .as_object()
+        .ok_or(RuntimeModelError::InvalidOperationInput("payload"))?;
+    for field in ["parent_id", "sibling_rank"] {
+        if payload.contains_key(field) {
+            return Err(RuntimeModelError::InvalidOperationField(field.to_owned()).into());
+        }
+    }
+    Ok(())
 }
 
 pub fn ensure_runtime_model_available(
@@ -307,6 +399,7 @@ pub struct RuntimeEngine {
     validator: Arc<dyn RecordValidator>,
     registry: RuntimeModelRegistry,
     records: Arc<dyn RuntimeRecordRepository>,
+    ordered_tree_records: Option<Arc<dyn OrderedTreeRuntimeRepository>>,
     data_source_records: Option<Arc<dyn DataSourceRuntimeRecordBackend>>,
     template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog,
 }
@@ -318,6 +411,7 @@ impl RuntimeEngine {
             validator: Arc::new(NoopRecordValidator),
             registry,
             records,
+            ordered_tree_records: None,
             data_source_records: None,
             template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog::core(),
         }
@@ -333,6 +427,7 @@ impl RuntimeEngine {
             validator: Arc::new(NoopRecordValidator),
             registry,
             records,
+            ordered_tree_records: None,
             data_source_records: Some(data_source_records),
             template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog::core(),
         }
@@ -349,6 +444,25 @@ impl RuntimeEngine {
             validator: Arc::new(NoopRecordValidator),
             registry,
             records,
+            ordered_tree_records: None,
+            data_source_records: Some(data_source_records),
+            template_catalog,
+        }
+    }
+
+    pub fn new_with_data_source_backend_templates_and_ordered_tree(
+        registry: RuntimeModelRegistry,
+        records: Arc<dyn RuntimeRecordRepository>,
+        ordered_tree_records: Arc<dyn OrderedTreeRuntimeRepository>,
+        data_source_records: Arc<dyn DataSourceRuntimeRecordBackend>,
+        template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog,
+    ) -> Self {
+        Self {
+            default_value_resolver: Arc::new(PassthroughValueResolver),
+            validator: Arc::new(NoopRecordValidator),
+            registry,
+            records,
+            ordered_tree_records: Some(ordered_tree_records),
             data_source_records: Some(data_source_records),
             template_catalog,
         }
@@ -423,9 +537,6 @@ impl RuntimeEngine {
     ) -> Result<Value> {
         let metadata =
             self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
-        if metadata.source_kind != domain::DataModelSourceKind::ExternalSource {
-            return Err(RuntimeModelError::unavailable(&input.model_code).into());
-        }
         let template = self.resolve_template(&metadata)?;
         let operation = template
             .operation(&input.operation_code)
@@ -440,6 +551,18 @@ impl RuntimeEngine {
             metadata.model_id,
             input.scope_grant.as_ref(),
         )?;
+        if let Some(handler) =
+            crate::ordered_tree_template::CoreOrderedTreeOperationHandler::from_ref(
+                &operation.handler_ref,
+            )
+        {
+            return self
+                .execute_ordered_tree_operation(input, metadata, access_scope, handler)
+                .await;
+        }
+        if metadata.source_kind != domain::DataModelSourceKind::ExternalSource {
+            return Err(RuntimeModelError::unavailable(&input.model_code).into());
+        }
         let expected_capabilities = metadata
             .external_capability_snapshot
             .clone()
@@ -471,6 +594,246 @@ impl RuntimeEngine {
                 },
             )
             .await
+    }
+
+    async fn execute_ordered_tree_operation(
+        &self,
+        input: RuntimeModelOperationInput,
+        metadata: ModelMetadata,
+        access_scope: crate::runtime_acl::RuntimeAccessScope,
+        handler: crate::ordered_tree_template::CoreOrderedTreeOperationHandler,
+    ) -> Result<Value> {
+        use crate::ordered_tree_template::CoreOrderedTreeOperationHandler as Handler;
+        use crate::runtime_record_repository::{
+            OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeCreateInput,
+            OrderedTreeCreatePosition, OrderedTreeDescendantsInput, OrderedTreeLeafDeleteInput,
+            OrderedTreeMoveInput, OrderedTreeMovePosition, OrderedTreeNodeInput,
+            OrderedTreeSearchInput, OrderedTreeSubtreeDeleteInput,
+        };
+
+        let repository = self
+            .ordered_tree_records
+            .as_ref()
+            .ok_or(RuntimeModelError::OrderedTreeUnavailable)?;
+        let scope_id = access_scope
+            .scope_id
+            .unwrap_or(input.actor.current_workspace_id);
+        match handler {
+            Handler::ListRecords | Handler::GetRecord => {
+                Err(RuntimeModelError::InvalidOperationInput("ordered_tree_crud_adapter").into())
+            }
+            Handler::CreateRecord => {
+                let mut payload = operation_object(input.payload)?;
+                if payload.contains_key("sibling_rank") {
+                    return Err(RuntimeModelError::InvalidOperationField(
+                        "sibling_rank".to_owned(),
+                    )
+                    .into());
+                }
+                let parent_id = take_optional_uuid(&mut payload, "parent_id")?;
+                let before_id = take_optional_uuid(&mut payload, "before_id")?;
+                let after_id = take_optional_uuid(&mut payload, "after_id")?;
+                let payload = Value::Object(payload);
+                ensure_runtime_payload_fields_writable(
+                    &metadata,
+                    &self.resolve_template(&metadata)?,
+                    &payload,
+                )?;
+                ensure_create_api_required_fields(&metadata, &payload)?;
+                let payload = self
+                    .default_value_resolver
+                    .apply(input.actor.user_id, &metadata.model_code, payload)
+                    .await?;
+                self.validator
+                    .validate(input.actor.user_id, &metadata.model_code, &payload)
+                    .await?;
+                let created = repository
+                    .create_ordered_tree_node(
+                        &metadata,
+                        OrderedTreeCreateInput {
+                            actor_user_id: input.actor.user_id,
+                            scope_id,
+                            payload,
+                            position: OrderedTreeCreatePosition {
+                                parent_id,
+                                before_id,
+                                after_id,
+                            },
+                        },
+                    )
+                    .await?;
+                self.records
+                    .get_record(
+                        &metadata,
+                        Some(scope_id),
+                        None,
+                        &created.node_id.to_string(),
+                    )
+                    .await?
+                    .ok_or_else(|| anyhow!("runtime record not found after tree create"))
+            }
+            Handler::UpdateRecord => {
+                reject_structure_fields(&input.payload)?;
+                self.update_record(RuntimeUpdateInput {
+                    actor: input.actor,
+                    model_code: input.model_code,
+                    record_id: operation_uuid(&input.path, "id")?.to_string(),
+                    payload: input.payload,
+                    scope_grant: input.scope_grant,
+                })
+                .await
+            }
+            Handler::DeleteRecord => {
+                let deleted = repository
+                    .delete_ordered_tree_leaf(
+                        &metadata,
+                        OrderedTreeLeafDeleteInput {
+                            scope_id,
+                            node_id: operation_uuid(&input.path, "id")?,
+                        },
+                    )
+                    .await?;
+                if !deleted {
+                    return Err(
+                        crate::runtime_record_repository::OrderedTreeCommandError::NodeNotFound
+                            .into(),
+                    );
+                }
+                Ok(serde_json::json!({ "deleted": true }))
+            }
+            Handler::ListRoots => {
+                let nodes = repository
+                    .list_ordered_tree_roots(
+                        &metadata,
+                        OrderedTreeBoundedListInput {
+                            scope_id,
+                            result_limit: operation_u32(&input.query, "limit", 100)?,
+                        },
+                    )
+                    .await?;
+                Ok(Value::Array(
+                    nodes.into_iter().map(|node| node.record).collect(),
+                ))
+            }
+            Handler::ListChildren => {
+                let nodes = repository
+                    .list_ordered_tree_children(
+                        &metadata,
+                        OrderedTreeChildrenInput {
+                            scope_id,
+                            parent_id: operation_uuid(&input.path, "id")?,
+                            result_limit: operation_u32(&input.query, "limit", 100)?,
+                        },
+                    )
+                    .await?;
+                Ok(Value::Array(
+                    nodes.into_iter().map(|node| node.record).collect(),
+                ))
+            }
+            Handler::ListAncestors => {
+                let nodes = repository
+                    .list_ordered_tree_ancestors(
+                        &metadata,
+                        OrderedTreeNodeInput {
+                            scope_id,
+                            node_id: operation_uuid(&input.path, "id")?,
+                        },
+                    )
+                    .await?;
+                Ok(Value::Array(
+                    nodes.into_iter().map(|node| node.record).collect(),
+                ))
+            }
+            Handler::ListDescendants => {
+                let include_path = operation_bool(&input.query, "include_path", false)?;
+                let nodes = repository
+                    .list_ordered_tree_descendants(
+                        &metadata,
+                        OrderedTreeDescendantsInput {
+                            scope_id,
+                            node_id: operation_uuid(&input.path, "id")?,
+                            max_depth: operation_u32(&input.query, "max_depth", 32)?,
+                            result_limit: operation_u32(&input.query, "limit", 100)?,
+                            include_path,
+                        },
+                    )
+                    .await?;
+                Ok(Value::Array(
+                    nodes
+                        .into_iter()
+                        .map(|node| {
+                            serde_json::json!({
+                                "record": node.record,
+                                "depth": node.depth,
+                                "has_children": node.has_children,
+                                "path": node.path,
+                            })
+                        })
+                        .collect(),
+                ))
+            }
+            Handler::Search => {
+                let prefix = operation_string(&input.query, "prefix")?;
+                let nodes = repository
+                    .search_ordered_tree_prefix(
+                        &metadata,
+                        OrderedTreeSearchInput {
+                            scope_id,
+                            prefix,
+                            match_limit: operation_u32(&input.query, "limit", 20)?,
+                        },
+                    )
+                    .await?;
+                Ok(Value::Array(
+                    nodes
+                        .into_iter()
+                        .map(|node| {
+                            serde_json::json!({ "record": node.record, "is_match": node.is_match })
+                        })
+                        .collect(),
+                ))
+            }
+            Handler::Move => {
+                let mut payload = operation_object(input.payload)?;
+                let new_parent_id = take_optional_uuid(&mut payload, "new_parent_id")?;
+                let before_id = take_optional_uuid(&mut payload, "before_id")?;
+                let after_id = take_optional_uuid(&mut payload, "after_id")?;
+                if !payload.is_empty() {
+                    return Err(RuntimeModelError::InvalidOperationInput("payload").into());
+                }
+                repository
+                    .move_ordered_tree_node(
+                        &metadata,
+                        OrderedTreeMoveInput {
+                            actor_user_id: input.actor.user_id,
+                            scope_id,
+                            node_id: operation_uuid(&input.path, "id")?,
+                            position: OrderedTreeMovePosition {
+                                new_parent_id,
+                                before_id,
+                                after_id,
+                            },
+                        },
+                    )
+                    .await?;
+                Ok(serde_json::json!({ "moved": true }))
+            }
+            Handler::DeleteSubtree => {
+                let expected_affected_count =
+                    operation_u64(&input.payload, "expected_affected_count")?;
+                let deleted = repository
+                    .delete_ordered_tree_subtree(
+                        &metadata,
+                        OrderedTreeSubtreeDeleteInput {
+                            scope_id,
+                            node_id: operation_uuid(&input.path, "id")?,
+                            expected_affected_count,
+                        },
+                    )
+                    .await?;
+                Ok(serde_json::json!({ "deleted_count": deleted.deleted_count }))
+            }
+        }
     }
 
     pub async fn execute_native_sql(

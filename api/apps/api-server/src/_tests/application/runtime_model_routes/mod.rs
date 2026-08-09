@@ -629,6 +629,42 @@ async fn create_orders_model(app: &axum::Router, cookie: &str, csrf: &str) -> St
     create_model_with_status(app, cookie, csrf, "orders", None).await
 }
 
+async fn create_ordered_tree_model(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    code: &str,
+) -> String {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/data-models/model-definitions")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "ordered_tree",
+                        "template_version": "v1",
+                        "code": code,
+                        "title": code
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    payload["data"]["id"].as_str().unwrap().to_owned()
+}
+
 async fn create_model_with_status(
     app: &axum::Router,
     cookie: &str,
@@ -638,6 +674,9 @@ async fn create_model_with_status(
 ) -> String {
     let mut body = json!({
         "scope_kind": "workspace",
+        "template_provider": "core",
+        "template_code": "general",
+        "template_version": "v1",
         "code": code,
         "title": code
     });
@@ -956,4 +995,5 @@ fn quote_test_identifier(value: &str) -> String {
 
 mod api_key_access;
 mod crud_dispatch;
+mod ordered_tree_lifecycle;
 mod status_scope;

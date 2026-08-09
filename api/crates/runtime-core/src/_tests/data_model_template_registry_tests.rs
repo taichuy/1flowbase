@@ -13,6 +13,7 @@ use crate::{
         DataModelTemplateResolutionContract,
     },
     general_data_model_template::{core_data_model_template_registry, general_template_identity},
+    ordered_tree_template::ordered_tree_template_identity,
 };
 
 #[derive(Default)]
@@ -153,6 +154,142 @@ fn ac_004_general_v1_descriptor_is_serializable_and_compiles_as_one_truth() {
     );
     assert_eq!(compatible.len(), 1);
     assert_eq!(compatible[0].identity(), &descriptor.identity);
+}
+
+// AC-008/AC-009: the compiled descriptor is the route, permission, and handler inventory.
+#[test]
+fn ordered_tree_v1_compiles_exactly_twelve_operations_without_regressing_other_templates() {
+    let registry = core_data_model_template_registry().expect("core templates must compile");
+    let ordered = registry
+        .resolve(&ordered_tree_template_identity())
+        .expect("ordered-tree template must resolve")
+        .descriptor();
+
+    assert_eq!(
+        ordered
+            .operations
+            .iter()
+            .map(|operation| (
+                operation.code.as_str(),
+                operation.method,
+                operation.path.as_str(),
+                operation.permission_action.as_str(),
+                operation.handler_ref.canonical_name(),
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "list_records",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/list",
+                "view",
+                "core/ordered_tree_list_records/v1".to_owned()
+            ),
+            (
+                "get_record",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/get/{id}",
+                "view",
+                "core/ordered_tree_get_record/v1".to_owned()
+            ),
+            (
+                "create_record",
+                plugin_framework::DataModelOperationMethod::Post,
+                "/api/runtime/models/{model_code}/create",
+                "create",
+                "core/ordered_tree_create_record/v1".to_owned()
+            ),
+            (
+                "update_record",
+                plugin_framework::DataModelOperationMethod::Patch,
+                "/api/runtime/models/{model_code}/update/{id}",
+                "update",
+                "core/ordered_tree_update_record/v1".to_owned()
+            ),
+            (
+                "delete_record",
+                plugin_framework::DataModelOperationMethod::Delete,
+                "/api/runtime/models/{model_code}/delete/{id}",
+                "delete",
+                "core/ordered_tree_delete_record/v1".to_owned()
+            ),
+            (
+                "tree_roots",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/tree/roots",
+                "view",
+                "core/ordered_tree_list_roots/v1".to_owned()
+            ),
+            (
+                "tree_children",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/tree/children/{id}",
+                "view",
+                "core/ordered_tree_list_children/v1".to_owned()
+            ),
+            (
+                "tree_ancestors",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/tree/ancestors/{id}",
+                "view",
+                "core/ordered_tree_list_ancestors/v1".to_owned()
+            ),
+            (
+                "tree_descendants",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/tree/descendants/{id}",
+                "view",
+                "core/ordered_tree_list_descendants/v1".to_owned()
+            ),
+            (
+                "tree_search",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/tree/search",
+                "view",
+                "core/ordered_tree_search/v1".to_owned()
+            ),
+            (
+                "tree_move",
+                plugin_framework::DataModelOperationMethod::Post,
+                "/api/runtime/models/{model_code}/tree/move/{id}",
+                "update",
+                "core/ordered_tree_move/v1".to_owned()
+            ),
+            (
+                "tree_delete_subtree",
+                plugin_framework::DataModelOperationMethod::Post,
+                "/api/runtime/models/{model_code}/tree/delete-subtree/{id}",
+                "delete",
+                "core/ordered_tree_delete_subtree/v1".to_owned()
+            ),
+        ]
+    );
+    assert_eq!(
+        registry
+            .resolve(&general_template_identity())
+            .expect("general template must remain registered")
+            .descriptor()
+            .operations
+            .len(),
+        5
+    );
+
+    let catalog = DataModelTemplateCatalog::core();
+    let external = external_descriptor("fixture_provider", "fixture_records", "v1");
+    catalog
+        .replace_provider(
+            "fixture-installation",
+            "fixture_provider",
+            vec![external.clone()],
+        )
+        .expect("external descriptor must remain installable");
+    assert_eq!(
+        catalog
+            .resolve(&external.identity)
+            .expect("external template must resolve")
+            .descriptor(),
+        &external
+    );
 }
 
 #[test]

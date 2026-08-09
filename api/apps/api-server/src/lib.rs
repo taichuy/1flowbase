@@ -364,8 +364,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let runtime_metadata = store.list_runtime_model_metadata().await?;
     runtime_registry.rebuild(runtime_metadata);
     let runtime_engine = Arc::new(
-        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend_and_templates(
+        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend_templates_and_ordered_tree(
             runtime_registry,
+            Arc::new(store.clone()),
             Arc::new(store.clone()),
             Arc::new(ApiDataSourceRuntimeRecordBackend::new(
                 store.clone(),

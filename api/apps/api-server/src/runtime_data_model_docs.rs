@@ -350,7 +350,7 @@ fn build_operation_definition(
 
     match handler {
         None => {
-            let parameters = operation
+            let mut parameters = operation
                 .path
                 .split('/')
                 .filter_map(|segment| {
@@ -368,6 +368,31 @@ fn build_operation_definition(
                     })
                 })
                 .collect::<Vec<_>>();
+            if matches!(
+                operation.method,
+                plugin_framework::DataModelOperationMethod::Get
+            ) {
+                let required = operation
+                    .input_schema
+                    .get("required")
+                    .and_then(Value::as_array);
+                if let Some(properties) = operation
+                    .input_schema
+                    .get("properties")
+                    .and_then(Value::as_object)
+                {
+                    parameters.extend(properties.iter().map(|(name, schema)| {
+                        json!({
+                            "name": name,
+                            "in": "query",
+                            "required": required.is_some_and(|required| {
+                                required.iter().any(|field| field.as_str() == Some(name))
+                            }),
+                            "schema": schema
+                        })
+                    }));
+                }
+            }
             if !parameters.is_empty() {
                 definition.insert("parameters".to_owned(), Value::Array(parameters));
             }
@@ -398,7 +423,8 @@ fn build_operation_definition(
                     "401": { "description": "Missing or invalid API key" },
                     "403": { "description": "Operation permission or scope grant denied" },
                     "404": { "description": "Data Model operation not found" },
-                    "409": { "description": "Data Model, template, provider, or operation unavailable" },
+                    "409": { "description": "Data Model state or ordered-tree mutation conflict" },
+                    "503": { "description": "Ordered-tree adapter or query capability unavailable" },
                     "502": { "description": "RuntimeExtension returned an invalid response" }
                 }),
             );
@@ -692,6 +718,65 @@ mod tests {
         for field in &template.descriptor().system_fields {
             assert_eq!(record_properties[&field.code], field.value_schema);
         }
+    }
+
+    // AC-008/AC-011: matcher, capability catalog, and OpenAPI are projections of one descriptor.
+    #[test]
+    fn ordered_tree_descriptor_routes_and_get_query_schemas_stay_aligned() {
+        let mut model = model_fixture();
+        model.template_code = "ordered_tree".to_owned();
+        let templates = DataModelTemplateCatalog::core();
+        let template = template_for_model(&model, &templates).expect("ordered tree must resolve");
+        let catalog = build_category_operations(std::slice::from_ref(&model), &templates);
+
+        assert_eq!(template.descriptor().operations.len(), 12);
+        assert_eq!(catalog.operations.len(), 12);
+        for descriptor in &template.descriptor().operations {
+            let path = operation_path(&model, descriptor);
+            let catalog_operation = catalog
+                .operations
+                .iter()
+                .find(|operation| operation.id == operation_id(model.id, &descriptor.code))
+                .expect("descriptor operation must be discoverable");
+            assert_eq!(catalog_operation.method, descriptor.method.as_str());
+            assert_eq!(catalog_operation.path, path);
+            let matched = template
+                .match_operation(
+                    descriptor.method,
+                    &path.replace("{id}", &Uuid::nil().to_string()),
+                )
+                .expect("documented operation must match the production descriptor router");
+            assert_eq!(matched.operation.code, descriptor.code);
+
+            let spec = build_operation_openapi(&model, &descriptor.code, &templates)
+                .expect("descriptor operation must project OpenAPI");
+            let operation = &spec["paths"][&path][descriptor.method.as_str().to_ascii_lowercase()];
+            assert_eq!(
+                operation["summary"],
+                format!("{} — Orders", descriptor.summary)
+            );
+            assert_eq!(operation["description"], descriptor.description);
+        }
+
+        let descendants = build_operation_openapi(&model, "tree_descendants", &templates)
+            .expect("descendants docs must exist");
+        let parameters = descendants["paths"]["/api/runtime/models/orders/tree/descendants/{id}"]
+            ["get"]["parameters"]
+            .as_array()
+            .expect("GET schema properties must project as parameters");
+        for query_name in ["max_depth", "limit", "include_path"] {
+            assert!(parameters.iter().any(|parameter| {
+                parameter["name"] == query_name && parameter["in"] == "query"
+            }));
+        }
+        let search = build_operation_openapi(&model, "tree_search", &templates).unwrap();
+        assert!(
+            search["paths"]["/api/runtime/models/orders/tree/search"]["get"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|parameter| parameter["name"] == "prefix" && parameter["required"] == true)
+        );
     }
 
     #[test]

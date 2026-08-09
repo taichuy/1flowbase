@@ -77,7 +77,13 @@ pub fn core_data_model_template_registry(
         OnceLock::new();
     REGISTRY
         .get_or_init(|| {
-            DataModelTemplateRegistry::compile([general_template_descriptor()], &CoreResolution)
+            DataModelTemplateRegistry::compile(
+                [
+                    general_template_descriptor(),
+                    crate::ordered_tree_template::ordered_tree_template_descriptor(),
+                ],
+                &CoreResolution,
+            )
         })
         .as_ref()
         .map_err(Clone::clone)
@@ -115,7 +121,7 @@ pub fn template_is_compatible(
         .any(|template| template.identity() == identity))
 }
 
-fn general_template_descriptor() -> DataModelTemplateDescriptor {
+pub(crate) fn general_template_descriptor() -> DataModelTemplateDescriptor {
     DataModelTemplateDescriptor {
         descriptor_version: DATA_MODEL_TEMPLATE_DESCRIPTOR_VERSION_V1,
         identity: general_template_identity(),
@@ -251,5 +257,7 @@ impl DataModelTemplateResolutionContract for CoreResolution {
 
     fn contains_operation_handler(&self, handler_ref: &DataModelOperationHandlerRef) -> bool {
         CoreGeneralOperationHandler::from_ref(handler_ref).is_some()
+            || crate::ordered_tree_template::CoreOrderedTreeOperationHandler::from_ref(handler_ref)
+                .is_some()
     }
 }

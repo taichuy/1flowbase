@@ -592,6 +592,13 @@ fn map_engine_error(error: anyhow::Error) -> anyhow::Error {
             } => {
                 return ControlPlaneError::InvalidInput("api_required").into();
             }
+            runtime_core::runtime_engine::RuntimeModelError::InvalidOperationInput(_)
+            | runtime_core::runtime_engine::RuntimeModelError::InvalidOperationField(_) => {
+                return ControlPlaneError::InvalidInput("runtime_operation_input").into();
+            }
+            runtime_core::runtime_engine::RuntimeModelError::OrderedTreeUnavailable => {
+                "ordered_tree_unavailable"
+            }
         };
         return ControlPlaneError::Conflict(code).into();
     }

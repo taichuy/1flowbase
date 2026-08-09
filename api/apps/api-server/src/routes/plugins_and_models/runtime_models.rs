@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
-    error_response::ApiError,
+    error_response::{ApiError, ApiServiceUnavailable},
     middleware::{
         require_csrf::require_csrf,
         require_session::{require_session, RequestContext},
@@ -64,8 +64,68 @@ fn map_runtime_error(error: anyhow::Error) -> ApiError {
                 return control_plane::errors::ControlPlaneError::InvalidInput("api_required")
                     .into();
             }
+            runtime_core::runtime_engine::RuntimeModelError::InvalidOperationInput(_) => {
+                return control_plane::errors::ControlPlaneError::InvalidInput(
+                    "runtime_operation_input",
+                )
+                .into();
+            }
+            runtime_core::runtime_engine::RuntimeModelError::InvalidOperationField(_) => {
+                return control_plane::errors::ControlPlaneError::InvalidInput(
+                    "runtime_operation_field",
+                )
+                .into();
+            }
+            runtime_core::runtime_engine::RuntimeModelError::OrderedTreeUnavailable => {
+                return ApiServiceUnavailable("ordered_tree_unavailable").into();
+            }
         };
         return control_plane::errors::ControlPlaneError::Conflict(code).into();
+    }
+
+    if let Some(tree_error) =
+        error.downcast_ref::<runtime_core::runtime_record_repository::OrderedTreeCommandError>()
+    {
+        use runtime_core::runtime_record_repository::OrderedTreeCommandError as Error;
+        return match tree_error {
+            Error::ConflictingAnchors | Error::FieldNotWritable(_) => {
+                control_plane::errors::ControlPlaneError::InvalidInput(tree_error.code()).into()
+            }
+            Error::NodeNotFound | Error::ParentNotFound | Error::AnchorNotFound => {
+                control_plane::errors::ControlPlaneError::NotFound(tree_error.code()).into()
+            }
+            Error::TreeNodeHasChildren
+            | Error::ExpectedAffectedCountMismatch { .. }
+            | Error::PositionConflict
+            | Error::Cycle
+            | Error::AnchorSiblingGroupConflict => {
+                control_plane::errors::ControlPlaneError::Conflict(tree_error.code()).into()
+            }
+            Error::WrongTemplate => ApiServiceUnavailable(tree_error.code()).into(),
+        };
+    }
+
+    if let Some(tree_error) =
+        error.downcast_ref::<runtime_core::runtime_record_repository::OrderedTreeQueryError>()
+    {
+        use runtime_core::runtime_record_repository::OrderedTreeQueryError as Error;
+        return match tree_error {
+            Error::NodeNotFound => {
+                control_plane::errors::ControlPlaneError::NotFound("tree_node_not_found").into()
+            }
+            Error::ParentNotFound => {
+                control_plane::errors::ControlPlaneError::NotFound("tree_parent_not_found").into()
+            }
+            Error::InvalidResultLimit { .. }
+            | Error::InvalidMaxDepth { .. }
+            | Error::EmptySearchPrefix => {
+                control_plane::errors::ControlPlaneError::InvalidInput("ordered_tree_query_input")
+                    .into()
+            }
+            Error::WrongTemplate
+            | Error::AncestorDepthLimitExceeded { .. }
+            | Error::NoSearchableFields => ApiServiceUnavailable("ordered_tree_unavailable").into(),
+        };
     }
 
     error.into()
@@ -92,6 +152,7 @@ struct ResolvedRuntimeOperation {
 #[derive(Debug, Clone, Copy)]
 enum ResolvedRuntimeOperationHandler {
     Core(runtime_core::general_data_model_template::CoreGeneralOperationHandler),
+    Ordered(runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler),
     External,
 }
 
@@ -99,6 +160,7 @@ impl ResolvedRuntimeOperation {
     fn audit_action(&self) -> &str {
         match &self.handler {
             ResolvedRuntimeOperationHandler::Core(handler) => handler.audit_action(),
+            ResolvedRuntimeOperationHandler::Ordered(handler) => handler.audit_action(),
             ResolvedRuntimeOperationHandler::External => &self.operation_code,
         }
     }
@@ -297,6 +359,17 @@ async fn dispatch_runtime_operation(
                 .into_response()
             }
         },
+        ResolvedRuntimeOperationHandler::Ordered(
+            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::GetRecord,
+        ) => match resolved.path_parameters.get("id").cloned() {
+            Some(record_id) => Some(record_id),
+            None => {
+                return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "runtime_path",
+                ))
+                .into_response()
+            }
+        },
         _ => None,
     };
 
@@ -371,8 +444,34 @@ async fn dispatch_runtime_operation(
         )
         .await
         .into_response(),
-        ResolvedRuntimeOperationHandler::External => {
-            execute_external_model_operation(state, headers, model_code, uri, body, resolved)
+        ResolvedRuntimeOperationHandler::Ordered(
+            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::ListRecords,
+        ) => {
+            let query = match Query::<RuntimeListQueryParams>::try_from_uri(&uri) {
+                Ok(query) => query,
+                Err(_) => {
+                    return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "query",
+                    ))
+                    .into_response()
+                }
+            };
+            list_records(State(state), headers, Path(model_code), query, resolved)
+                .await
+                .into_response()
+        }
+        ResolvedRuntimeOperationHandler::Ordered(
+            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::GetRecord,
+        ) => get_record(
+            State(state),
+            headers,
+            Path((model_code, record_id.unwrap_or_default())),
+            resolved,
+        )
+        .await
+        .into_response(),
+        ResolvedRuntimeOperationHandler::Ordered(_) | ResolvedRuntimeOperationHandler::External => {
+            execute_descriptor_model_operation(state, headers, model_code, uri, body, resolved)
                 .await
                 .into_response()
         }
@@ -401,6 +500,12 @@ async fn resolve_runtime_operation(
         &matched.operation.handler_ref,
     )
     .map(ResolvedRuntimeOperationHandler::Core)
+    .or_else(|| {
+        runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::from_ref(
+            &matched.operation.handler_ref,
+        )
+        .map(ResolvedRuntimeOperationHandler::Ordered)
+    })
     .unwrap_or(ResolvedRuntimeOperationHandler::External);
     let data_action = runtime_core::general_data_model_template::runtime_data_action(
         &matched.operation.permission_action,
@@ -416,14 +521,14 @@ async fn resolve_runtime_operation(
     })
 }
 
-async fn execute_external_model_operation(
+async fn execute_descriptor_model_operation(
     state: Arc<ApiState>,
     headers: HeaderMap,
     model_code: String,
     uri: Uri,
     body: Bytes,
     operation: ResolvedRuntimeOperation,
-) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+) -> Result<(StatusCode, Json<ApiSuccess<Value>>), ApiError> {
     let (credential, scope_grant) =
         runtime_authorization(&state, &headers, &model_code, &operation).await?;
     if operation.data_action != runtime_core::runtime_acl::RuntimeDataAction::View {
@@ -464,7 +569,12 @@ async fn execute_external_model_operation(
         None,
     )
     .await?;
-    Ok(Json(ApiSuccess::new(output)))
+    let status = if operation.operation_code == "create_record" {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(ApiSuccess::new(output))))
 }
 
 fn descriptor_method(method: &Method) -> Option<plugin_framework::DataModelOperationMethod> {
@@ -1079,6 +1189,41 @@ async fn get_record(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // AC-012: typed ordered-tree errors keep stable HTTP status classes.
+    #[test]
+    fn ordered_tree_errors_map_to_bad_request_not_found_conflict_and_unavailable() {
+        use runtime_core::runtime_record_repository::OrderedTreeCommandError;
+
+        let cases = [
+            (
+                anyhow::Error::new(
+                    runtime_core::runtime_engine::RuntimeModelError::InvalidOperationInput(
+                        "payload",
+                    ),
+                ),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                anyhow::Error::new(OrderedTreeCommandError::NodeNotFound),
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                anyhow::Error::new(OrderedTreeCommandError::TreeNodeHasChildren),
+                StatusCode::CONFLICT,
+            ),
+            (
+                anyhow::Error::new(
+                    runtime_core::runtime_engine::RuntimeModelError::OrderedTreeUnavailable,
+                ),
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(map_runtime_error(error).into_response().status(), expected);
+        }
+    }
 
     #[test]
     fn runtime_record_response_rounds_application_log_cache_hit_rate() {

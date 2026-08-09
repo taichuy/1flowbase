@@ -15,6 +15,10 @@ use crate::official_extension_catalog::{
 #[derive(Debug)]
 pub struct ApiError(pub anyhow::Error);
 
+#[derive(Debug, thiserror::Error)]
+#[error("service unavailable: {0}")]
+pub struct ApiServiceUnavailable(pub &'static str);
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
     pub status: u16,
@@ -54,6 +58,9 @@ impl IntoResponse for ApiError {
                     StatusCode::SERVICE_UNAVAILABLE,
                     "extension_catalog_temporarily_inconsistent",
                 )
+            }
+            None if let Some(error) = self.0.downcast_ref::<ApiServiceUnavailable>() => {
+                (StatusCode::SERVICE_UNAVAILABLE, error.0)
             }
             None if self
                 .0

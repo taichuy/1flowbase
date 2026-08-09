@@ -261,6 +261,16 @@ pub trait OrderedTreeQueryRepository: Send + Sync {
     ) -> Result<Vec<OrderedTreeSearchProjection>>;
 }
 
+pub trait OrderedTreeRuntimeRepository:
+    OrderedTreeStructureRepository + OrderedTreeQueryRepository
+{
+}
+
+impl<T> OrderedTreeRuntimeRepository for T where
+    T: OrderedTreeStructureRepository + OrderedTreeQueryRepository
+{
+}
+
 #[async_trait]
 pub trait RuntimeRecordRepository: Send + Sync {
     async fn list_records(
