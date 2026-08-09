@@ -823,21 +823,30 @@ describe('Settings data models page', () => {
   );
 
   test(
-    'resizes the Data Model detail drawer from its left edge',
+    'uses the shared native resizable drawer for Data Model details',
     async () => {
       renderApp('/settings/data-models?source=source-1');
 
       const editorDialog = await openContactsDataModelEditor();
-      const resizeHandle = screen.getByRole('separator', {
+      const keyboardResizeHandle = screen.getByRole('separator', {
         name: '调整 Data Model 详情宽度'
       });
-
       const drawerWrapper = editorDialog.closest('.ant-drawer-content-wrapper');
+      const nativeResizeHandle = document.querySelector(
+        '.data-model-panel__detail-drawer.resizable-drawer .ant-drawer-resizable-dragger-right'
+      );
 
       expect(drawerWrapper).toBeInstanceOf(HTMLElement);
       expect(drawerWrapper).toHaveStyle({ width: '980px' });
+      expect(drawerWrapper).toHaveStyle({
+        minWidth: 'min(720px, calc(100vw - 48px))',
+        maxWidth: 'calc(100vw - 48px)'
+      });
+      expect(nativeResizeHandle).toBeInstanceOf(HTMLElement);
+      expect(keyboardResizeHandle).toHaveAttribute('aria-valuemin', '720');
+      expect(keyboardResizeHandle).toHaveAttribute('aria-valuemax', '1280');
 
-      fireEvent.mouseDown(resizeHandle, { clientX: 44 });
+      fireEvent.mouseDown(nativeResizeHandle as HTMLElement, { clientX: 44 });
       fireEvent.mouseMove(document, { clientX: 144 });
       fireEvent.mouseUp(document);
 

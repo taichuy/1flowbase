@@ -12,6 +12,7 @@ export interface ResizableDrawerProps {
   defaultWidth?: number;
   minWidth?: number;
   maxWidth?: number;
+  viewportGutter?: number;
   resizeLabel: string;
   extra?: ReactNode;
   footer?: ReactNode;
@@ -41,10 +42,13 @@ export function ResizableDrawer({
   resizeLabel,
   rootClassName,
   title,
+  viewportGutter = 0,
   zIndex
 }: ResizableDrawerProps) {
   const initialWidth = clampWidth(defaultWidth, minWidth, maxWidth);
   const [width, setWidth] = useState(initialWidth);
+  const viewportWidth =
+    viewportGutter > 0 ? `calc(100vw - ${viewportGutter}px)` : '100vw';
 
   useEffect(() => {
     if (!open) {
@@ -80,7 +84,8 @@ export function ResizableDrawer({
           width: NATIVE_DRAGGER_HIT_WIDTH
         },
         wrapper: {
-          minWidth: `min(${minWidth}px, 100vw)`
+          minWidth: `min(${minWidth}px, ${viewportWidth})`,
+          ...(viewportGutter > 0 ? { maxWidth: viewportWidth } : {})
         }
       }}
       title={title}
