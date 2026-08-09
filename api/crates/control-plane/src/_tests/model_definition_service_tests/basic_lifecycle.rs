@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn ac_003_update_model_preserves_create_only_template_identity() {
+async fn data_model_template_update_preserves_create_only_identity_without_conversion() {
     let service = ModelDefinitionService::for_tests();
     let created = service
         .create_model(CreateModelDefinitionCommand {

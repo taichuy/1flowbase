@@ -462,11 +462,13 @@ async fn seed_external_runtime_model(
         insert into model_definitions (
             id, scope_kind, scope_id, data_source_instance_id, source_kind,
             external_resource_key, external_capability_snapshot,
+            template_provider, template_code, template_version,
             code, title, physical_table_name, acl_namespace, audit_namespace,
             availability_status, status, owner_kind, is_protected, created_by, updated_by
         ) values (
-            $1, 'system', $2, $3, 'external_source', 'contacts', '{}',
-            $4, $5, $6, $7, $8,
+            $1, 'system', $2, $3, 'external_source', 'contacts',
+            '{"supports_list":true,"supports_get":true,"supports_create":true,"supports_update":true,"supports_delete":true,"supports_filter":true,"supports_sort":true,"supports_pagination":true,"supports_scope_filter":true,"supports_write":true}',
+            'core', 'general', 'v1', $4, $5, $6, $7, $8,
             'available', 'published', 'core', false, $9, $9
         )
         "#,

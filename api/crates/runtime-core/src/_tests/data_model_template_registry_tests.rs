@@ -419,7 +419,7 @@ fn ac_004_compatibility_requires_selector_and_capability_subset() {
                     kind: DataModelSourceKind::ExternalSource,
                     provider: Some("example".to_owned()),
                 },
-                ["runtime.crud"],
+                ["records.read"],
             )
             .len(),
         1
@@ -439,7 +439,7 @@ fn ac_004_external_provider_templates_replace_atomically_and_filter_by_capabilit
         provider: Some("acme_source".to_owned()),
     };
     assert!(catalog.compatible_templates(&source, []).is_empty());
-    let compatible = catalog.compatible_templates(&source, ["runtime.crud"]);
+    let compatible = catalog.compatible_templates(&source, ["records.read"]);
     assert_eq!(compatible.len(), 1);
     assert_eq!(compatible[0].identity(), &descriptor.identity);
 

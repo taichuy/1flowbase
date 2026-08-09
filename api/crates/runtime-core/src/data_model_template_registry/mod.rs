@@ -271,6 +271,15 @@ impl DataModelTemplateCatalog {
             .cloned()
             .collect()
     }
+
+    pub fn templates(&self) -> Vec<CompiledDataModelTemplate> {
+        self.compiled
+            .read()
+            .expect("data model template compiled catalog poisoned")
+            .templates()
+            .cloned()
+            .collect()
+    }
 }
 
 fn compile_catalog(

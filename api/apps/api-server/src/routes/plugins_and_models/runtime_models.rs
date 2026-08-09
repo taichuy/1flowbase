@@ -6,7 +6,7 @@ use std::{
 
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::any,
@@ -337,7 +337,7 @@ async fn dispatch_runtime_operation(
     headers: HeaderMap,
     Path((model_code, _operation_path)): Path<(String, String)>,
     method: Method,
-    uri: Uri,
+    OriginalUri(uri): OriginalUri,
     body: Bytes,
 ) -> Response {
     let resolved =

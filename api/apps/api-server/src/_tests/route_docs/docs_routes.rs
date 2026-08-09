@@ -165,7 +165,10 @@ async fn create_model(
                         "scope_kind": "workspace",
                         "code": code,
                         "title": code,
-                        "status": status
+                        "status": status,
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1"
                     })
                     .to_string(),
                 ))

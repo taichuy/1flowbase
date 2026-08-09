@@ -278,6 +278,65 @@ pub fn build_category_openapi(
     })
 }
 
+pub fn append_template_runtime_openapi_paths(
+    document: &mut Value,
+    catalog: &DataModelTemplateCatalog,
+) {
+    let Some(paths) = document.get_mut("paths").and_then(Value::as_object_mut) else {
+        return;
+    };
+
+    for template in catalog.templates() {
+        let identity = template.identity().canonical_name();
+        for operation in &template.descriptor().operations {
+            let method = operation.method.as_str().to_ascii_lowercase();
+            let path_item = paths
+                .entry(operation.path.clone())
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            let Some(path_item) = path_item.as_object_mut() else {
+                continue;
+            };
+            if let Some(existing) = path_item.get_mut(&method) {
+                append_operation_template_identity(existing, &identity);
+                continue;
+            }
+
+            let operation_id = format!(
+                "data_model_template__{}__{}__{}__{}",
+                template.identity().provider,
+                template.identity().code,
+                template.identity().version,
+                operation.code
+            );
+            let mut definition = descriptor_operation_definition(
+                operation,
+                operation_id,
+                operation.summary.clone(),
+                true,
+            );
+            definition["tags"] = json!(["Data Model Runtime"]);
+            definition["security"] = json!([{ "UserApiKey": [] }]);
+            definition["x-data-model-templates"] = json!([identity]);
+            path_item.insert(method, definition);
+        }
+    }
+}
+
+fn append_operation_template_identity(operation: &mut Value, identity: &str) {
+    let Some(identities) = operation
+        .get_mut("x-data-model-templates")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    if !identities
+        .iter()
+        .any(|value| value.as_str() == Some(identity))
+    {
+        identities.push(Value::String(identity.to_owned()));
+    }
+}
+
 pub fn build_operation_openapi(
     model: &domain::ModelDefinitionRecord,
     operation_code: &str,
@@ -332,103 +391,20 @@ fn build_operation_definition(
     update_schema_ref: &str,
 ) -> Option<Value> {
     let handler = CoreGeneralOperationHandler::from_ref(&operation.handler_ref);
-    let mut definition = serde_json::Map::from_iter([
-        (
-            "operationId".to_owned(),
-            Value::String(operation_id(model.id, &operation.code)),
-        ),
-        (
-            "summary".to_owned(),
-            Value::String(format!("{} — {}", operation.summary, model.title)),
-        ),
-        (
-            "description".to_owned(),
-            Value::String(operation.description.clone()),
-        ),
-        ("security".to_owned(), json!([{ "patBearer": [] }])),
-    ]);
+    let operation_id = operation_id(model.id, &operation.code);
+    let summary = format!("{} — {}", operation.summary, model.title);
+    if handler.is_none() {
+        return Some(descriptor_operation_definition(
+            operation,
+            operation_id,
+            summary,
+            false,
+        ));
+    }
+    let mut definition = operation_definition_base(operation, operation_id, summary);
 
     match handler {
-        None => {
-            let mut parameters = operation
-                .path
-                .split('/')
-                .filter_map(|segment| {
-                    segment
-                        .strip_prefix('{')
-                        .and_then(|value| value.strip_suffix('}'))
-                })
-                .filter(|parameter| *parameter != "model_code")
-                .map(|parameter| {
-                    json!({
-                        "name": parameter,
-                        "in": "path",
-                        "required": true,
-                        "schema": { "type": "string" }
-                    })
-                })
-                .collect::<Vec<_>>();
-            if matches!(
-                operation.method,
-                plugin_framework::DataModelOperationMethod::Get
-            ) {
-                let required = operation
-                    .input_schema
-                    .get("required")
-                    .and_then(Value::as_array);
-                if let Some(properties) = operation
-                    .input_schema
-                    .get("properties")
-                    .and_then(Value::as_object)
-                {
-                    parameters.extend(properties.iter().map(|(name, schema)| {
-                        json!({
-                            "name": name,
-                            "in": "query",
-                            "required": required.is_some_and(|required| {
-                                required.iter().any(|field| field.as_str() == Some(name))
-                            }),
-                            "schema": schema
-                        })
-                    }));
-                }
-            }
-            if !parameters.is_empty() {
-                definition.insert("parameters".to_owned(), Value::Array(parameters));
-            }
-            if !matches!(
-                operation.method,
-                plugin_framework::DataModelOperationMethod::Get
-            ) {
-                definition.insert(
-                    "requestBody".to_owned(),
-                    json!({
-                        "required": true,
-                        "content": {
-                            "application/json": { "schema": operation.input_schema.clone() }
-                        }
-                    }),
-                );
-            }
-            definition.insert(
-                "responses".to_owned(),
-                json!({
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": { "schema": operation.output_schema.clone() }
-                        }
-                    },
-                    "400": { "description": "Invalid operation input" },
-                    "401": { "description": "Missing or invalid API key" },
-                    "403": { "description": "Operation permission or scope grant denied" },
-                    "404": { "description": "Data Model operation not found" },
-                    "409": { "description": "Data Model state or ordered-tree mutation conflict" },
-                    "503": { "description": "Ordered-tree adapter or query capability unavailable" },
-                    "502": { "description": "RuntimeExtension returned an invalid response" }
-                }),
-            );
-        }
+        None => unreachable!("non-general handlers return above"),
         Some(CoreGeneralOperationHandler::ListRecords) => {
             definition.insert("parameters".to_owned(), runtime_list_parameters());
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, true));
@@ -461,6 +437,110 @@ fn build_operation_definition(
         }
     }
     Some(Value::Object(definition))
+}
+
+fn operation_definition_base(
+    operation: &DataModelTemplateOperation,
+    operation_id: String,
+    summary: String,
+) -> serde_json::Map<String, Value> {
+    serde_json::Map::from_iter([
+        ("operationId".to_owned(), Value::String(operation_id)),
+        ("summary".to_owned(), Value::String(summary)),
+        (
+            "description".to_owned(),
+            Value::String(operation.description.clone()),
+        ),
+        ("security".to_owned(), json!([{ "patBearer": [] }])),
+    ])
+}
+
+fn descriptor_operation_definition(
+    operation: &DataModelTemplateOperation,
+    operation_id: String,
+    summary: String,
+    include_model_code_parameter: bool,
+) -> Value {
+    let mut definition = operation_definition_base(operation, operation_id, summary);
+    let mut parameters = operation
+        .path
+        .split('/')
+        .filter_map(|segment| {
+            segment
+                .strip_prefix('{')
+                .and_then(|value| value.strip_suffix('}'))
+        })
+        .filter(|parameter| include_model_code_parameter || *parameter != "model_code")
+        .map(|parameter| {
+            json!({
+                "name": parameter,
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" }
+            })
+        })
+        .collect::<Vec<_>>();
+    if matches!(
+        operation.method,
+        plugin_framework::DataModelOperationMethod::Get
+    ) {
+        let required = operation
+            .input_schema
+            .get("required")
+            .and_then(Value::as_array);
+        if let Some(properties) = operation
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+        {
+            parameters.extend(properties.iter().map(|(name, schema)| {
+                json!({
+                    "name": name,
+                    "in": "query",
+                    "required": required.is_some_and(|required| {
+                        required.iter().any(|field| field.as_str() == Some(name))
+                    }),
+                    "schema": schema
+                })
+            }));
+        }
+    }
+    if !parameters.is_empty() {
+        definition.insert("parameters".to_owned(), Value::Array(parameters));
+    }
+    if !matches!(
+        operation.method,
+        plugin_framework::DataModelOperationMethod::Get
+    ) {
+        definition.insert(
+            "requestBody".to_owned(),
+            json!({
+                "required": true,
+                "content": {
+                    "application/json": { "schema": operation.input_schema.clone() }
+                }
+            }),
+        );
+    }
+    definition.insert(
+        "responses".to_owned(),
+        json!({
+            "200": {
+                "description": "Success",
+                "content": {
+                    "application/json": { "schema": operation.output_schema.clone() }
+                }
+            },
+            "400": { "description": "Invalid operation input" },
+            "401": { "description": "Missing or invalid API key" },
+            "403": { "description": "Operation permission or scope grant denied" },
+            "404": { "description": "Data Model operation not found" },
+            "409": { "description": "Data Model state or ordered-tree mutation conflict" },
+            "503": { "description": "Ordered-tree adapter or query capability unavailable" },
+            "502": { "description": "RuntimeExtension returned an invalid response" }
+        }),
+    );
+    Value::Object(definition)
 }
 
 fn runtime_list_parameters() -> Value {
@@ -686,7 +766,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn descriptor_drives_catalog_openapi_and_system_fields() {
+    fn data_model_template_descriptor_drives_catalog_openapi_and_system_fields() {
         let model = model_fixture();
         let templates = DataModelTemplateCatalog::core();
         let template =
@@ -722,7 +802,7 @@ mod tests {
 
     // AC-008/AC-011: matcher, capability catalog, and OpenAPI are projections of one descriptor.
     #[test]
-    fn ordered_tree_descriptor_routes_and_get_query_schemas_stay_aligned() {
+    fn data_model_template_ordered_tree_routes_and_get_query_schemas_stay_aligned() {
         let mut model = model_fixture();
         model.template_code = "ordered_tree".to_owned();
         let templates = DataModelTemplateCatalog::core();
@@ -776,6 +856,45 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|parameter| parameter["name"] == "prefix" && parameter["required"] == true)
+        );
+    }
+
+    #[test]
+    fn data_model_template_global_openapi_uses_descriptor_route_inventory_only() {
+        let templates = DataModelTemplateCatalog::core();
+        let mut document = json!({ "paths": {} });
+
+        append_template_runtime_openapi_paths(&mut document, &templates);
+
+        let paths = document["paths"].as_object().unwrap();
+        for template in templates.templates() {
+            for operation in &template.descriptor().operations {
+                assert!(
+                    paths[&operation.path][operation.method.as_str().to_ascii_lowercase()]
+                        .is_object(),
+                    "descriptor operation must appear in global OpenAPI: {} {}",
+                    operation.method.as_str(),
+                    operation.path
+                );
+            }
+        }
+        assert_eq!(
+            paths.len(),
+            12,
+            "general CRUD paths are shared by ordered tree"
+        );
+        assert!(paths.keys().all(|path| {
+            !["convert", "migrate", "copy"]
+                .iter()
+                .any(|forbidden| path.contains(forbidden))
+        }));
+        assert_eq!(
+            paths["/api/runtime/models/{model_code}/list"]["get"]["x-data-model-templates"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2,
+            "shared CRUD routes must retain both descriptor owners"
         );
     }
 

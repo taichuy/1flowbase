@@ -59,6 +59,10 @@ pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, 
         .ok_or_else(|| anyhow!("dynamic OpenAPI document must be an object"))?;
     crate::openapi_docs::ensure_session_security_schemes(document_map, &state.cookie_name)?;
     append_workflow_extension_paths(&mut document, &operations);
+    crate::runtime_data_model_docs::append_template_runtime_openapi_paths(
+        &mut document,
+        state.runtime_engine.template_catalog(),
+    );
     Ok(document)
 }
 

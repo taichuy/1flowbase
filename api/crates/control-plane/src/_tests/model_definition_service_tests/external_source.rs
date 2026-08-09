@@ -122,7 +122,7 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
 }
 
 #[tokio::test]
-async fn create_model_fails_closed_for_unknown_template_identity() {
+async fn data_model_template_create_fails_closed_for_unknown_identity() {
     let error = ModelDefinitionService::for_tests()
         .create_model(CreateModelDefinitionCommand {
             actor_user_id: Uuid::nil(),
@@ -148,7 +148,7 @@ async fn create_model_fails_closed_for_unknown_template_identity() {
 }
 
 #[tokio::test]
-async fn create_external_model_rejects_template_capability_mismatch() {
+async fn data_model_template_create_rejects_external_capability_mismatch() {
     let data_source_instance_id = Uuid::now_v7();
     let repository = InMemoryModelDefinitionRepository::with_data_source_defaults(
         data_source_instance_id,
