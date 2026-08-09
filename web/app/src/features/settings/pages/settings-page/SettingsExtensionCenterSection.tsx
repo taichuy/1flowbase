@@ -46,7 +46,11 @@ import {
   type SettingsExtensionCenterCategory,
   type SettingsInstalledExtension
 } from '../../api/extensions';
-import { settingsI18nCatalogQueryKey } from '../../api/i18n-catalog';
+import {
+  activateSettingsInstalledI18nCatalog,
+  previewSettingsInstalledI18nCatalog,
+  settingsI18nCatalogQueryKey
+} from '../../api/i18n-catalog';
 import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
 import {
   ExtensionApplicationFlow,
@@ -393,14 +397,70 @@ function GenericExtensionCenterSection({
           overrides,
           operation.update
         );
-        return { challenge: null, operation, result };
+        if (
+          operation.activateI18nAfterInstall &&
+          result.application_action === 'activate_i18n'
+        ) {
+          try {
+            const preview = await previewSettingsInstalledI18nCatalog(
+              result.installation.id
+            );
+            await activateSettingsInstalledI18nCatalog(
+              result.installation.id,
+              {
+                expected_revision: preview.revision,
+                ...(preview.required_integrity_override
+                  ? {
+                      integrity_override: {
+                        reason: 'user_confirmed',
+                        acknowledged_warnings:
+                          preview.required_integrity_override.warnings.map(
+                            (warning) => warning.code
+                          )
+                      }
+                    }
+                  : {})
+              },
+              csrfToken
+            );
+            return {
+              challenge: null,
+              operation,
+              result,
+              i18nActivation: 'activated' as const
+            };
+          } catch {
+            return {
+              challenge: null,
+              operation,
+              result,
+              i18nActivation: 'failed' as const
+            };
+          }
+        }
+        return {
+          challenge: null,
+          operation,
+          result,
+          i18nActivation: 'not_requested' as const
+        };
       } catch (error) {
         const challenge = getSettingsExtensionRiskChallenge(error);
         if (!challenge) throw error;
-        return { challenge, operation, result: null };
+        return {
+          challenge,
+          operation,
+          result: null,
+          i18nActivation: 'not_requested' as const
+        };
       }
     },
-    onSuccess: async ({ challenge, operation, result }) => {
+    onSuccess: async ({
+      challenge,
+      operation,
+      result,
+      i18nActivation
+    }) => {
       if (challenge) {
         const acknowledgedWarnings = challenge.warnings
           .filter((warning) => warning.overridable)
@@ -452,12 +512,18 @@ function GenericExtensionCenterSection({
       }
 
       try {
-        message.success(
-          operation.entry.category === 'i18n' &&
-            operation.activateI18nAfterInstall === false
-            ? t('auto.translation_catalog_installed_not_activated')
-            : t('auto.extension_operation_completed')
-        );
+        if (i18nActivation === 'failed') {
+          message.error(t('auto.translation_catalog_activation_failed_after_install'));
+        } else if (i18nActivation === 'activated') {
+          message.success(t('auto.translation_catalog_activated'));
+        } else {
+          message.success(
+            operation.entry.category === 'i18n' &&
+              operation.activateI18nAfterInstall === false
+              ? t('auto.translation_catalog_installed_not_activated')
+              : t('auto.extension_operation_completed')
+          );
+        }
         await invalidateExtensionApplicationState();
         if (
           result &&
@@ -466,7 +532,7 @@ function GenericExtensionCenterSection({
           ) &&
           !(
             result.application_action === 'activate_i18n' &&
-            operation.activateI18nAfterInstall === false
+            operation.activateI18nAfterInstall !== undefined
           )
         ) {
           setApplicationTarget({

@@ -905,6 +905,7 @@
     "install_and_activate": "Install and activate",
     "translation_catalog_update_choice_description": "Install only saves the new version locally and keeps the active version unchanged. Install and activate opens activation confirmation after installation.",
     "translation_catalog_installed_not_activated": "The new version was installed; the active version is unchanged",
+    "translation_catalog_activation_failed_after_install": "The new version was installed, but activation failed. The active version is unchanged.",
     "go_to_agent_flow_templates": "Go to Agent Flow template management",
     "go_to_mcp_management": "Go to MCP Management",
     "go_to_language_management": "Go to language management",

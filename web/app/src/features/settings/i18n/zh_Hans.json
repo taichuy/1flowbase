@@ -905,6 +905,7 @@
     "install_and_activate": "安装并激活",
     "translation_catalog_update_choice_description": "仅安装会把新版本保存到本地，但继续使用当前激活版本；安装并激活会在安装完成后进入激活确认。",
     "translation_catalog_installed_not_activated": "新版本已安装，当前激活版本未改变",
+    "translation_catalog_activation_failed_after_install": "新版本已安装，但激活失败；当前激活版本未改变",
     "go_to_agent_flow_templates": "前往 Agent Flow 模板管理",
     "go_to_mcp_management": "前往 MCP 管理",
     "go_to_language_management": "前往多语言管理",

@@ -766,6 +766,9 @@ describe('SettingsExtensionCenterSection', () => {
       integrity_warnings: [],
       required_integrity_override: null
     });
+    i18nCatalogApi.activateSettingsInstalledI18nCatalog.mockRejectedValue(
+      new Error('activation conflict')
+    );
 
     renderSection('i18n');
     const row = await screen.findByRole('row', { name: /Platform translations/ });
@@ -801,7 +804,20 @@ describe('SettingsExtensionCenterSection', () => {
     fireEvent.click(
       within(activateDialog).getByRole('button', { name: '安装并激活' })
     );
-    expect(await screen.findByText('激活多语言目录')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        i18nCatalogApi.activateSettingsInstalledI18nCatalog
+      ).toHaveBeenCalledWith(
+        'i18n-installation-2.0.4',
+        { expected_revision: 7 },
+        'csrf-123'
+      );
+    });
+    expect(
+      await screen.findByText(
+        '新版本已安装，但激活失败；当前激活版本未改变'
+      )
+    ).toBeInTheDocument();
   });
 
   test('AC-002 keeps the installed target row loading for the complete update request', async () => {
