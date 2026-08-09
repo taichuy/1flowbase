@@ -17,6 +17,7 @@ import {
   contactsModel,
   dataModelsApi,
   findDataModelsNavigation,
+  focusManager,
   openContactsDataModelEditor,
   openDataModelEditorByTitle,
   renderApp,
@@ -1355,6 +1356,118 @@ describe('Settings data models page', () => {
       )
     );
   });
+
+  test.each([
+    ['a catalog without the selected identity', 'incompatible'],
+    ['an empty catalog', 'empty'],
+    ['a catalog error', 'error']
+  ] as const)(
+    'AC-013 clears external template selection while refetching %s and remains fail closed',
+    async (_label, outcome) => {
+      renderApp('/settings/data-models?source=source-1');
+
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: '映射为 Data Model' },
+          { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+        )
+      );
+      const templateSelector = await screen.findByRole('combobox', {
+        name: 'Data Model 模板'
+      });
+      await waitFor(() => expect(templateSelector).toBeEnabled());
+      fireEvent.mouseDown(templateSelector);
+      fireEvent.click(
+        await screen.findByText('联系人树 · plugin.crm/contact_tree/v2')
+      );
+      expect(
+        screen.getByText('由 CRM 插件提供的联系人树。')
+      ).toBeInTheDocument();
+      const confirmButtons = screen.getAllByRole('button', {
+        name: '映射为 Data Model'
+      });
+      const confirmButton = confirmButtons[confirmButtons.length - 1];
+      expect(confirmButton).toBeEnabled();
+
+      let resolveRefetch!: (
+        templates: SettingsCompatibleDataModelTemplate[]
+      ) => void;
+      let rejectRefetch!: (error: Error) => void;
+      const refetchResult = new Promise<SettingsCompatibleDataModelTemplate[]>(
+        (resolve, reject) => {
+          resolveRefetch = resolve;
+          rejectRefetch = reject;
+        }
+      );
+      dataModelsApi.fetchSettingsCompatibleDataModelTemplates.mockImplementationOnce(
+        () => refetchResult
+      );
+      focusManager.setFocused(false);
+
+      await act(async () => {
+        focusManager.setFocused(true);
+      });
+
+      await waitFor(() =>
+        expect(
+          dataModelsApi.fetchSettingsCompatibleDataModelTemplates
+        ).toHaveBeenCalledTimes(2)
+      );
+      await waitFor(() =>
+        expect(templateSelector).toHaveAttribute('aria-busy', 'true')
+      );
+      expect(templateSelector).toBeDisabled();
+      expect(
+        screen.queryByText('由 CRM 插件提供的联系人树。')
+      ).not.toBeInTheDocument();
+      expect(confirmButton).toBeDisabled();
+      expect(
+        dataModelsApi.mapSettingsDataSourceResourceToModel
+      ).not.toHaveBeenCalled();
+
+      await act(async () => {
+        if (outcome === 'error') {
+          rejectRefetch(new Error('compatible catalog refetch unavailable'));
+          await refetchResult.catch(() => undefined);
+          return;
+        }
+        resolveRefetch(
+          outcome === 'empty'
+            ? []
+            : [
+                {
+                  template_provider: 'plugin.crm',
+                  template_code: 'contact_list',
+                  template_version: 'v1',
+                  summary: '联系人列表',
+                  description: '不再包含先前选择的模板身份。'
+                }
+              ]
+        );
+        await refetchResult;
+      });
+
+      if (outcome === 'error') {
+        expect(
+          await screen.findByText('compatible catalog refetch unavailable')
+        ).toBeInTheDocument();
+        expect(templateSelector).toBeDisabled();
+      } else if (outcome === 'empty') {
+        expect(
+          await screen.findByText('当前数据源没有可用的 Data Model 模板。')
+        ).toBeInTheDocument();
+        expect(templateSelector).toBeDisabled();
+      } else {
+        await waitFor(() => expect(templateSelector).toBeEnabled());
+        expect(screen.queryByText('联系人树')).not.toBeInTheDocument();
+      }
+      expect(confirmButton).toBeDisabled();
+      expect(
+        dataModelsApi.mapSettingsDataSourceResourceToModel
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   test('AC-013 keeps external mapping fail closed when the compatible catalog is empty', async () => {
     dataModelsApi.fetchSettingsCompatibleDataModelTemplates.mockResolvedValue(

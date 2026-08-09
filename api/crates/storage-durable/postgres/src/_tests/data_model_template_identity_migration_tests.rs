@@ -403,9 +403,12 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
         r#"
         select id, template_provider, template_code, template_version
         from model_definitions
+        where id in ($1, $2)
         order by code
         "#,
     )
+    .bind(main_model_id)
+    .bind(external_model_id)
     .fetch_all(&pool)
     .await
     .unwrap();
@@ -421,6 +424,25 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
             (main_model_id, "core".into(), "general".into(), "v1".into()),
         ]
     );
+    let builtin_identities: Vec<(String, String, String)> = sqlx::query_as(
+        r#"
+        select template_provider, template_code, template_version
+        from model_definitions
+        where id not in ($1, $2)
+        order by code
+        "#,
+    )
+    .bind(main_model_id)
+    .bind(external_model_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(builtin_identities.len(), 8);
+    assert!(builtin_identities
+        .iter()
+        .all(|(provider, code, version)| provider == "core"
+            && code == "general"
+            && version == "v1"));
     let identity_columns: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"
         select column_name, is_nullable, column_default
