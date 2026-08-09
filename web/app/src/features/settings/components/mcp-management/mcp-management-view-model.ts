@@ -34,7 +34,10 @@ type DirectoryTool = {
   short_description: string;
 };
 
-export type McpDirectoryTreeNode = Omit<DataNode, 'children' | 'key' | 'title'> & {
+export type McpDirectoryTreeNode = Omit<
+  DataNode,
+  'children' | 'key' | 'title'
+> & {
   key: string;
   title: string;
   node_type: 'instance' | 'group' | 'binding';
@@ -54,6 +57,15 @@ export function normalizeMcpDirectoryPath(path: string | null | undefined) {
   }
 
   return value.startsWith('/') ? value : `/${value}`;
+}
+
+export function buildMcpChildGroupPath(
+  parentPath: string,
+  pathSegment: string
+) {
+  const parent = normalizeMcpDirectoryPath(parentPath);
+  const prefix = parent === '/' ? '/' : `${parent}/`;
+  return `${prefix}${pathSegment.trim()}`;
 }
 
 function parentDirectoryPath(path: string) {
@@ -162,7 +174,7 @@ export function buildMcpDirectoryTreeData({
 
   const rootNode: McpDirectoryTreeNode = {
     key: `instance:${instance.instance_id}:${rootPath}`,
-    title: `${instance.name} ${rootPath}`,
+    title: '/',
     node_type: 'instance',
     path: rootPath,
     children: []

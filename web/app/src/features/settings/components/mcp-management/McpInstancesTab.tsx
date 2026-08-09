@@ -65,6 +65,7 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import {
+  buildMcpChildGroupPath,
   nextMcpDirectoryExpandedKeys,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
@@ -82,6 +83,7 @@ type CopyInstanceFormValues = CopySettingsMcpInstanceBody;
 type GroupFormValues = {
   instance_id: string;
   path: string;
+  path_segment?: string;
   display_name?: string;
   description_short: string | null;
   enabled: boolean;
@@ -119,6 +121,7 @@ export function McpInstancesTab({
   const [bindingForm] = Form.useForm<BindingFormValues>();
 
   const watchedPath = Form.useWatch('path', groupForm);
+  Form.useWatch('path_segment', groupForm);
   const watchedDisplayName = Form.useWatch('display_name', groupForm);
   const watchedGroupDescriptionShort = Form.useWatch(
     'description_short',
@@ -514,6 +517,7 @@ export function McpInstancesTab({
     groupForm.setFieldsValue({
       instance_id: selectedInstance?.instance_id ?? '',
       path: normalizedPath,
+      path_segment: '',
       display_name: group?.display_name ?? '',
       description_short: group?.description_short ?? null,
       enabled: group?.enabled ?? true,
@@ -599,6 +603,8 @@ export function McpInstancesTab({
       return (
         normalizeMcpDirectoryPath(currentValues.path) !==
           normalizeMcpDirectoryPath(savedValues.path) ||
+        (currentValues.path_segment ?? '') !==
+          (savedValues.path_segment ?? '') ||
         (currentValues.display_name ?? '') !==
           (savedValues.display_name ?? '') ||
         (currentValues.description_short ?? null) !==
@@ -647,6 +653,16 @@ export function McpInstancesTab({
     return normalizeMcpDirectoryPath(selectedInstance?.default_entry_path);
   };
 
+  const groupCreationParentPath = () =>
+    normalizeMcpDirectoryPath(parentGroupPath ?? selectedDirectoryPath());
+
+  const groupCreationPathPrefix = () => {
+    return buildMcpChildGroupPath(groupCreationParentPath(), '');
+  };
+
+  const groupCreationPath = (pathSegment: string) =>
+    buildMcpChildGroupPath(groupCreationParentPath(), pathSegment);
+
   const expandDirectoryPath = (path: string) => {
     if (!selectedInstance) return;
     const rootKey = `instance:${selectedInstance.instance_id}:${normalizeMcpDirectoryPath(
@@ -679,7 +695,8 @@ export function McpInstancesTab({
     groupForm.resetFields();
     groupForm.setFieldsValue({
       instance_id: selectedInstance?.instance_id ?? '',
-      path: currentPath === '/' ? '/' : `${currentPath}/`,
+      path: currentPath,
+      path_segment: '',
       display_name: '',
       description_short: null,
       enabled: true,
@@ -705,6 +722,7 @@ export function McpInstancesTab({
     groupForm.setFieldsValue({
       instance_id: selectedInstance?.instance_id ?? '',
       path: '/',
+      path_segment: '',
       display_name: '',
       description_short: null,
       enabled: true,
@@ -759,6 +777,7 @@ export function McpInstancesTab({
           groupForm.setFieldsValue({
             instance_id: record.instance_id,
             path: normalizeMcpDirectoryPath(record.default_entry_path),
+            path_segment: '',
             display_name: '',
             description_short: null,
             enabled: true,
@@ -912,6 +931,7 @@ export function McpInstancesTab({
                         groupForm.setFieldsValue({
                           instance_id: value,
                           path: nextPath,
+                          path_segment: '',
                           display_name: '',
                           description_short: null,
                           enabled: true,
@@ -1103,6 +1123,7 @@ export function McpInstancesTab({
                           ? {
                               instance_id: values.instance_id,
                               path: savedGroup.path,
+                              path_segment: '',
                               display_name: savedGroup.display_name,
                               description_short: savedGroup.description_short,
                               enabled: savedGroup.enabled,
@@ -1154,32 +1175,87 @@ export function McpInstancesTab({
                   >
                     <Input />
                   </Form.Item>
-                  <Form.Item
-                    name="path"
-                    label={i18nText(
-                      'settingsMcpManagement',
-                      'auto.directory_path'
-                    )}
-                    rules={[
-                      { required: true, whitespace: true },
-                      { max: 255 },
-                      {
-                        pattern: /^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/,
-                        message: i18nText(
+                  {directoryEditorIntent === 'create' ? (
+                    <>
+                      <Form.Item name="path" hidden>
+                        <Input />
+                      </Form.Item>
+                      <Form.Item
+                        label={i18nText(
                           'settingsMcpManagement',
-                          'auto.group_path_invalid'
-                        )
-                      }
-                    ]}
-                  >
-                    <Input
-                      aria-label={i18nText(
+                          'auto.directory_path'
+                        )}
+                      >
+                        <Space.Compact block>
+                          <Input
+                            aria-label={i18nText(
+                              'settingsMcpManagement',
+                              'auto.parent_group_prefix'
+                            )}
+                            readOnly
+                            title={groupCreationPathPrefix()}
+                            value={groupCreationPathPrefix()}
+                            style={{ width: '45%' }}
+                          />
+                          <Form.Item
+                            name="path_segment"
+                            noStyle
+                            rules={[
+                              { required: true, whitespace: true },
+                              {
+                                validator: (_, value) => {
+                                  const pathSegment = String(
+                                    value ?? ''
+                                  ).trim();
+                                  const path = groupCreationPath(pathSegment);
+                                  return /^[A-Za-z0-9_-]+$/.test(pathSegment) &&
+                                    path.length <= 255
+                                    ? Promise.resolve()
+                                    : Promise.reject(
+                                        new Error(
+                                          i18nText(
+                                            'settingsMcpManagement',
+                                            'auto.group_path_segment_invalid'
+                                          )
+                                        )
+                                      );
+                                }
+                              }
+                            ]}
+                          >
+                            <Input
+                              aria-label={i18nText(
+                                'settingsMcpManagement',
+                                'auto.directory_path'
+                              )}
+                              onChange={(event) =>
+                                groupForm.setFieldValue(
+                                  'path',
+                                  groupCreationPath(event.target.value)
+                                )
+                              }
+                            />
+                          </Form.Item>
+                        </Space.Compact>
+                      </Form.Item>
+                    </>
+                  ) : (
+                    <Form.Item
+                      name="path"
+                      label={i18nText(
                         'settingsMcpManagement',
                         'auto.directory_path'
                       )}
-                      readOnly={directoryEditorIntent === 'edit'}
-                    />
-                  </Form.Item>
+                    >
+                      <Input
+                        aria-label={i18nText(
+                          'settingsMcpManagement',
+                          'auto.directory_path'
+                        )}
+                        readOnly
+                      />
+                    </Form.Item>
+                  )}
                   <Form.Item
                     name="display_name"
                     label={i18nText(

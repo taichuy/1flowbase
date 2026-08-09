@@ -3,7 +3,7 @@
     "cancel_child_group_creation": "取消子分组新建",
     "directory_path": "路径",
     "display_name": "显示名称",
-    "group_path_invalid": "路径必须以 / 开头，且每个路径段只能包含英文字母、数字、下划线和连字符",
+    "group_path_segment_invalid": "当前路径段只能包含英文字母、数字、下划线和连字符",
     "enabled": "启用",
     "group_description_short": "简短描述",
     "instance_description": "描述",

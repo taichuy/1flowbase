@@ -852,7 +852,7 @@ describe('McpManagementPanel', () => {
     expandTreeRootIfCollapsed(tree);
 
     fireEvent.change(within(dialog).getByLabelText('路径'), {
-      target: { value: '/ops' }
+      target: { value: 'ops' }
     });
 
     expect(within(tree).getAllByText('ops')).toHaveLength(1);
@@ -949,7 +949,7 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
     expect(rootNode).toBeInstanceOf(HTMLElement);
     fireEvent.click(rootLabel);
@@ -963,7 +963,7 @@ describe('McpManagementPanel', () => {
       target: { value: '客户运营' }
     });
     fireEvent.change(within(dialog).getByLabelText('路径'), {
-      target: { value: '/customer_ops' }
+      target: { value: 'customer_ops' }
     });
     fireEvent.change(within(dialog).getByLabelText('简短描述'), {
       target: { value: 'Tools for customer operations' }
@@ -987,19 +987,19 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    fireEvent.click(within(dialog).getByText('Ops MCP /'));
+    fireEvent.click(within(within(dialog).getByRole('tree')).getByText('/'));
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: '后台设置' }
     });
     fireEvent.change(within(dialog).getByLabelText('路径'), {
-      target: { value: '/后台设置' }
+      target: { value: '后台设置' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     expect(
       await within(dialog).findByText(
-        '路径必须以 / 开头，且每个路径段只能包含英文字母、数字、下划线和连字符'
+        '当前路径段只能包含英文字母、数字、下划线和连字符'
       )
     ).toBeInTheDocument();
     expect(mcpManagementApi.upsertSettingsMcpGroup).not.toHaveBeenCalled();
@@ -1035,7 +1035,7 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
@@ -1068,7 +1068,7 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
@@ -1098,7 +1098,7 @@ describe('McpManagementPanel', () => {
     const tree = within(dialog).getByRole('tree');
     expandTreeRootIfCollapsed(tree);
 
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     fireEvent.click(rootLabel);
     await waitFor(() => {
       expect(rootLabel.closest('.ant-tree-node-content-wrapper')).toHaveClass(
