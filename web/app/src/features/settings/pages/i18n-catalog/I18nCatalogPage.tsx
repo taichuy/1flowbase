@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   Flex,
-  Form,
   Input,
   Modal,
   Select,
@@ -19,8 +18,14 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   DataTable,
+  DataTableColumnSettings,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
+import {
+  DataTableFilterField,
+  DataTableFilterForm,
+  DataTableLayout
+} from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
   deleteSettingsCustomI18nCatalogKey,
@@ -75,7 +80,7 @@ export function I18nCatalogPage() {
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const { message: messageApi } = App.useApp();
-  const [filterForm] = Form.useForm<CatalogFilters>();
+  const [filterDraft, setFilterDraft] = useState<CatalogFilters>({});
   const [filters, setFilters] = useState<CatalogFilters>({});
   const [page, setPage] = useState(1);
   const [selectedIdentity, setSelectedIdentity] =
@@ -252,103 +257,24 @@ export function I18nCatalogPage() {
   const entries = listQuery.data?.entries ?? [];
   const revision = listQuery.data?.revision ?? 0;
 
+  function applyFilters() {
+    const nextFilters = {
+      ...filterDraft,
+      search: filterDraft.search?.trim() || undefined
+    };
+    setFilterDraft(nextFilters);
+    setFilters(nextFilters);
+    setPage(1);
+  }
+
+  function resetFilters() {
+    setFilterDraft({});
+    setFilters({});
+    setPage(1);
+  }
+
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-      toolbar={
-        <Form
-          className="i18n-catalog-page__toolbar-form"
-          form={filterForm}
-          onFinish={(values) => {
-            setFilters(values);
-            setPage(1);
-          }}
-        >
-          <Flex
-            className="i18n-catalog-page__toolbar"
-            vertical
-            align="stretch"
-            gap={12}
-          >
-            <Flex
-              className="i18n-catalog-page__filters"
-              justify="flex-start"
-              gap={8}
-              wrap
-            >
-              <Form.Item
-                className="i18n-catalog-page__filter-item i18n-catalog-page__filter-item--search"
-                name="search"
-              >
-                <Input.Search
-                  placeholder={t('auto.translation_catalog_search')}
-                  onSearch={() => filterForm.submit()}
-                  allowClear
-                  data-testid="i18n-catalog-search"
-                />
-              </Form.Item>
-              <Form.Item
-                className="i18n-catalog-page__filter-item i18n-catalog-page__filter-item--compact"
-                name="locale"
-              >
-                <Select
-                  allowClear
-                  placeholder={t('auto.translation_catalog_locale')}
-                  data-testid="i18n-catalog-locale-filter"
-                  options={[
-                    { value: 'zh_Hans', label: 'zh_Hans' },
-                    { value: 'en_US', label: 'en_US' }
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item
-                className="i18n-catalog-page__filter-item"
-                name="origin"
-              >
-                <Select
-                  allowClear
-                  placeholder={t('auto.translation_catalog_origin')}
-                  options={originOptions}
-                  data-testid="i18n-catalog-origin-filter"
-                />
-              </Form.Item>
-            </Flex>
-            <Space className="i18n-catalog-page__actions" wrap>
-              <Button
-                className="i18n-catalog-page__filter-submit"
-                htmlType="submit"
-                data-testid="i18n-catalog-apply-filters"
-              >
-                {t('auto.translation_catalog_filter')}
-              </Button>
-              <Button
-                className="i18n-catalog-page__action"
-                icon={<GlobalOutlined />}
-                aria-label={t('auto.translation_catalog_version')}
-                onClick={() => setCatalogActivationOpen(true)}
-              >
-                {t('auto.translation_catalog_version')}
-              </Button>
-              <Button
-                className="i18n-catalog-page__action"
-                icon={<UndoOutlined />}
-                onClick={() => setRestoreAllOpen(true)}
-              >
-                {t('auto.translation_catalog_restore_defaults')}
-              </Button>
-              <Button
-                className="i18n-catalog-page__action"
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setCreateOpen(true)}
-              >
-                {t('auto.new')}
-              </Button>
-            </Space>
-          </Flex>
-        </Form>
-      }
-    >
+    <SettingsSectionSurface heightMode="fill">
       {conflictVisible ? (
         <Alert
           closable
@@ -366,31 +292,117 @@ export function I18nCatalogPage() {
           title={t('auto.translation_catalog_load_failed')}
         />
       ) : null}
-      <div
-        className="i18n-catalog-page"
-        data-testid="i18n-catalog-page"
-        data-ready={!listQuery.isLoading}
+      <DataTableLayout
+        filters={
+          <DataTableFilterForm
+            ariaLabel={t('auto.translation_catalog_filter')}
+            resetLabel={t('auto.reset')}
+            submitLabel={t('auto.translation_catalog_filter')}
+            onReset={resetFilters}
+            onSubmit={applyFilters}
+          >
+            <DataTableFilterField label={t('auto.translation_catalog_search')}>
+              <Input.Search
+                allowClear
+                aria-label={t('auto.translation_catalog_search')}
+                data-testid="i18n-catalog-search"
+                placeholder={t('auto.translation_catalog_search')}
+                value={filterDraft.search}
+                onChange={(event) =>
+                  setFilterDraft((current) => ({
+                    ...current,
+                    search: event.target.value
+                  }))
+                }
+                onSearch={applyFilters}
+              />
+            </DataTableFilterField>
+            <DataTableFilterField label={t('auto.translation_catalog_locale')}>
+              <Select
+                allowClear
+                aria-label={t('auto.translation_catalog_locale')}
+                data-testid="i18n-catalog-locale-filter"
+                placeholder={t('auto.translation_catalog_locale')}
+                value={filterDraft.locale}
+                options={[
+                  { value: 'zh_Hans', label: 'zh_Hans' },
+                  { value: 'en_US', label: 'en_US' }
+                ]}
+                onChange={(locale) =>
+                  setFilterDraft((current) => ({ ...current, locale }))
+                }
+              />
+            </DataTableFilterField>
+            <DataTableFilterField label={t('auto.translation_catalog_origin')}>
+              <Select
+                allowClear
+                aria-label={t('auto.translation_catalog_origin')}
+                data-testid="i18n-catalog-origin-filter"
+                placeholder={t('auto.translation_catalog_origin')}
+                value={filterDraft.origin}
+                options={originOptions}
+                onChange={(origin) =>
+                  setFilterDraft((current) => ({ ...current, origin }))
+                }
+              />
+            </DataTableFilterField>
+          </DataTableFilterForm>
+        }
       >
         <div
-          className="i18n-catalog-page__table-region"
-          data-testid="i18n-catalog-table"
+          className="i18n-catalog-page"
+          data-testid="i18n-catalog-page"
+          data-ready={!listQuery.isLoading}
         >
-          <DataTable<SettingsI18nCatalogEntry>
-            columns={columns}
-            configuration={tableConfiguration}
-            dataSource={entries}
-            loading={listQuery.isLoading}
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={listQuery.data?.total ?? 0}
-            rowKey={(entry) => `${entry.key}:${entry.locale}`}
-            onRow={(entry) => ({
-              onClick: () => setSelectedIdentity(identityOf(entry))
-            })}
-            onPageChange={setPage}
-          />
+          <div
+            className="i18n-catalog-page__table-region"
+            data-testid="i18n-catalog-table"
+          >
+            <DataTable<SettingsI18nCatalogEntry>
+              columns={columns}
+              configuration={tableConfiguration}
+              dataSource={entries}
+              loading={listQuery.isLoading}
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={listQuery.data?.total ?? 0}
+              rowKey={(entry) => `${entry.key}:${entry.locale}`}
+              toolbar={
+                <Flex justify="flex-end" gap={8} wrap>
+                  <Button
+                    icon={<GlobalOutlined />}
+                    aria-label={t('auto.translation_catalog_version')}
+                    onClick={() => setCatalogActivationOpen(true)}
+                  >
+                    {t('auto.translation_catalog_version')}
+                  </Button>
+                  <Button
+                    icon={<UndoOutlined />}
+                    onClick={() => setRestoreAllOpen(true)}
+                  >
+                    {t('auto.translation_catalog_restore_defaults')}
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => setCreateOpen(true)}
+                  >
+                    {t('auto.new')}
+                  </Button>
+                  <DataTableColumnSettings
+                    columns={columns}
+                    configuration={tableConfiguration}
+                  />
+                </Flex>
+              }
+              onRow={(entry) => ({
+                onClick: () => setSelectedIdentity(identityOf(entry))
+              })}
+              onPageChange={setPage}
+            />
+          </div>
         </div>
-      </div>
+      </DataTableLayout>
       <I18nCatalogEntryDrawer
         entry={detailQuery.data ?? null}
         loading={detailQuery.isLoading}
