@@ -1,12 +1,22 @@
+use std::collections::BTreeMap;
+
 use axum::{
     body::{to_bytes, Body},
-    http::{Request, StatusCode},
+    http::{header::COOKIE, HeaderMap, HeaderValue, Request, StatusCode},
+};
+use orchestration_runtime::{
+    compiled_plan::CompiledNode, execution_engine::RuntimeInternalToolInvoker,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
 use crate::_tests::support::{
-    login_and_capture_cookie, seed_workspace, test_api_state_with_database_url, test_app,
+    create_member, login_and_capture_cookie, seed_workspace, test_api_state_with_database_url,
+    test_app,
+};
+use crate::{
+    middleware::require_session::require_session,
+    routes::mcp_protocol::virtual_ui::ApiMcpRuntimeToolInvoker,
 };
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -205,6 +215,184 @@ async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     response_json(response).await
+}
+
+fn runtime_mcp_test_node() -> CompiledNode {
+    CompiledNode {
+        node_id: "node-llm".to_string(),
+        node_type: "llm".to_string(),
+        alias: "LLM".to_string(),
+        container_id: None,
+        dependency_node_ids: Vec::new(),
+        downstream_node_ids: Vec::new(),
+        bindings: BTreeMap::new(),
+        outputs: Vec::new(),
+        config: json!({}),
+        plugin_runtime: None,
+        llm_runtime: None,
+        code_runtime: None,
+    }
+}
+
+async fn runtime_mcp_invoker(
+    state: std::sync::Arc<crate::app_state::ApiState>,
+    cookie: &str,
+) -> ApiMcpRuntimeToolInvoker {
+    let mut headers = HeaderMap::new();
+    headers.insert(COOKIE, HeaderValue::from_str(cookie).unwrap());
+    let context = require_session(&state, &headers).await.unwrap();
+    ApiMcpRuntimeToolInvoker::new(state, headers, context.actor, vec!["taichuy".to_string()])
+        .await
+        .unwrap()
+}
+
+async fn invoke_runtime_create_model(
+    invoker: &ApiMcpRuntimeToolInvoker,
+    model_code: &str,
+) -> orchestration_runtime::execution_engine::RuntimeInternalToolOutput {
+    let node = runtime_mcp_test_node();
+    let registration = invoker
+        .registrations_for_node(&node)
+        .into_iter()
+        .find(|registration| registration.provider_name == "taichuy_mcp_call")
+        .expect("runtime registration should expose the selected MCP call tool");
+
+    invoker
+        .invoke_runtime_internal_tool(
+            &node,
+            &registration,
+            json!({
+                "tool_id": "create_model_probe",
+                "max_inline_chars": 12000,
+                "arguments": {
+                    "body": {
+                        "code": model_code,
+                        "title": "Delegated model",
+                        "scope_kind": "workspace"
+                    }
+                }
+            }),
+        )
+        .await
+        .unwrap()
+}
+
+async fn create_model_probe_tool(app: &axum::Router, cookie: &str, csrf: &str) {
+    create_interface_tool_and_binding(
+        app,
+        cookie,
+        csrf,
+        "create_model_probe",
+        "create_model",
+        json!({
+            "mappings": [
+                {
+                    "interface_param": "code",
+                    "mcp_param": "body.code",
+                    "required": true
+                },
+                {
+                    "interface_param": "title",
+                    "mcp_param": "body.title",
+                    "required": true
+                },
+                {
+                    "interface_param": "scope_kind",
+                    "mcp_param": "body.scope_kind",
+                    "required": true
+                }
+            ]
+        }),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn ac_001_runtime_mcp_write_uses_server_delegation_without_browser_csrf() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &root_cookie, &root_csrf).await;
+    create_model_probe_tool(&app, &root_cookie, &root_csrf).await;
+
+    let invoker = runtime_mcp_invoker(state, &root_cookie).await;
+    let output = invoke_runtime_create_model(&invoker, "runtime_delegated_model_root").await;
+
+    assert!(!output.is_error, "{}", output.content);
+    assert_eq!(
+        output.content["structuredContent"]["code"],
+        json!("runtime_delegated_model_root")
+    );
+}
+
+#[tokio::test]
+async fn ac_002_runtime_mcp_write_keeps_console_operation_authorization() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &root_cookie, &root_csrf).await;
+    create_model_probe_tool(&app, &root_cookie, &root_csrf).await;
+    create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "runtime-mcp-member",
+        "temp-pass",
+    )
+    .await;
+    let (member_cookie, _) =
+        login_and_capture_cookie(&app, "runtime-mcp-member", "temp-pass").await;
+
+    let invoker = runtime_mcp_invoker(state, &member_cookie).await;
+    let output = invoke_runtime_create_model(&invoker, "runtime_delegated_model_forbidden").await;
+
+    assert!(output.is_error, "{}", output.content);
+    assert_eq!(output.content["data"]["http_status"], json!(403));
+    assert_eq!(
+        output.content["data"]["category"],
+        json!("target_authorization")
+    );
+    assert_eq!(
+        output.content["data"]["target_code"],
+        json!("console_operation_permission_denied")
+    );
+}
+
+#[tokio::test]
+async fn ac_003_runtime_mcp_write_rejects_revoked_session_delegation() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &root_cookie, &root_csrf).await;
+    create_model_probe_tool(&app, &root_cookie, &root_csrf).await;
+    let invoker = runtime_mcp_invoker(state, &root_cookie).await;
+
+    let revoked = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/session/actions/revoke-all")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
+
+    let output = invoke_runtime_create_model(&invoker, "runtime_delegated_model_revoked").await;
+
+    assert!(output.is_error, "{}", output.content);
+    assert_eq!(output.content["data"]["http_status"], json!(401));
+    assert_eq!(
+        output.content["data"]["category"],
+        json!("target_authentication")
+    );
+    assert_eq!(
+        output.content["data"]["target_code"],
+        json!("not_authenticated")
+    );
 }
 
 fn assert_meta_tools(payload: &Value) {

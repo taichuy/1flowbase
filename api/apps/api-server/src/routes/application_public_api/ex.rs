@@ -58,6 +58,7 @@ pub async fn invoke_workflow_extension(
         RequestCredential::UserApiKey { api_key_id } => WorkflowHttpPrincipal::UserApiKey {
             api_key_id: *api_key_id,
         },
+        RequestCredential::ServerDelegation => WorkflowHttpPrincipal::User,
     };
     let method = workflow_extension_method(&method)?;
     let parameters = request_parameters(uri.query(), &headers, &body)?;

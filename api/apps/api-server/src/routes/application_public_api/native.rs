@@ -94,9 +94,14 @@ pub(crate) async fn public_mcp_runtime_invoker(
         })?,
     );
     Ok(Arc::new(
-        virtual_ui::ApiMcpRuntimeToolInvoker::new(state.clone(), headers, actor, Vec::new())
-            .await
-            .map_err(|error| service_error(error.0))?,
+        virtual_ui::ApiMcpRuntimeToolInvoker::new_with_forwarded_authorization(
+            state.clone(),
+            headers,
+            actor,
+            Vec::new(),
+        )
+        .await
+        .map_err(|error| service_error(error.0))?,
     ))
 }
 
