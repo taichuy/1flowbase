@@ -91,7 +91,11 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
   ]);
 
   const handleAuthenticated = useCallback(
-    async () => {
+    async (_session: {
+      csrf_token: string;
+      effective_display_role: string;
+      current_workspace_id: string;
+    }) => {
       const [me, currentSession] = await Promise.all([
         fetchCurrentMe(),
         fetchCurrentSession()

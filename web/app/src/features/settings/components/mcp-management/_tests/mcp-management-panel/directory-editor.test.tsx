@@ -9,6 +9,43 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
+import type { CSSProperties, ReactNode } from 'react';
+
+vi.mock('../../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
+  FixedHeightModal: ({
+    children,
+    className,
+    footer,
+    open,
+    scrollBodyClassName,
+    title,
+    width
+  }: {
+    children: ReactNode;
+    className?: string;
+    footer?: ReactNode;
+    open: boolean;
+    scrollBodyClassName?: string;
+    title: ReactNode;
+    width?: CSSProperties['width'];
+  }) =>
+    open ? (
+      <dialog
+        aria-label={String(title)}
+        className={`ant-modal ${className ?? ''}`}
+        open
+        style={{ width }}
+      >
+        <div
+          className={scrollBodyClassName}
+          data-testid="fixed-height-modal-scroll-body"
+        >
+          {children}
+        </div>
+        {footer}
+      </dialog>
+    ) : null
+}));
 
 const mcpManagementApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
@@ -917,6 +954,11 @@ describe('McpManagementPanel', () => {
     expect(rootNode).toBeInstanceOf(HTMLElement);
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
+    await waitFor(() => {
+      expect(
+        dialog.querySelector('.mcp-management__directory-editor-status')
+      ).toHaveTextContent('未保存');
+    });
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: 'Customer Ops' }
     });
@@ -967,6 +1009,9 @@ describe('McpManagementPanel', () => {
     const rootLabel = within(dialog).getByText('Ops MCP /');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('tool_id')).toBeInTheDocument();
+    });
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'tool_id' })
     );
@@ -1003,10 +1048,12 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
 
-    expect(within(dialog).getByRole('tree')).not.toHaveTextContent(
-      '未命名 Tool'
-    );
-    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('');
+    await waitFor(() => {
+      expect(within(dialog).getByRole('tree')).not.toHaveTextContent(
+        '未命名 Tool'
+      );
+      expect(within(dialog).getByLabelText('显示名称')).toHaveValue('');
+    });
   });
 
   test('moves the single Tool draft when adding under another group', async () => {
@@ -1021,10 +1068,14 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
     expandTreeRootIfCollapsed(tree);
-    fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     const rootLabel = within(dialog).getByText('Ops MCP /');
     fireEvent.click(rootLabel);
+    await waitFor(() => {
+      expect(rootLabel.closest('.ant-tree-node-content-wrapper')).toHaveClass(
+        'ant-tree-node-selected'
+      );
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
       expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
@@ -1032,6 +1083,13 @@ describe('McpManagementPanel', () => {
 
     const groupLabel = within(dialog).getByText('ops');
     fireEvent.click(groupLabel);
+    await waitFor(() => {
+      expect(
+        within(dialog)
+          .getByText('ops')
+          .closest('.ant-tree-node-content-wrapper')
+      ).toHaveClass('ant-tree-node-selected');
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     await waitFor(() => {
@@ -1042,7 +1100,7 @@ describe('McpManagementPanel', () => {
     });
   });
 
-  test('does not carry a draft group path into the binding mount path', () => {
+  test('does not carry a draft group path into the binding mount path', async () => {
     renderPanelWithMountedTool();
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -1061,7 +1119,9 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
-    expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/');
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/');
+    });
   });
 
   test('falls back to interface id when a stale tool response misses operation', () => {

@@ -239,6 +239,25 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
   value: ResizeObserverMock
 });
 
+class IntersectionObserverMock implements IntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = '0px';
+  readonly thresholds = [0];
+
+  disconnect() {}
+  observe() {}
+  takeRecords() {
+    return [];
+  }
+  unobserve() {}
+}
+
+Object.defineProperty(globalThis, 'IntersectionObserver', {
+  configurable: true,
+  writable: true,
+  value: IntersectionObserverMock
+});
+
 const originalGetComputedStyle = window.getComputedStyle.bind(window);
 
 function createCssPixelFallback(
@@ -275,7 +294,24 @@ function createCssPixelFallback(
 Object.defineProperty(window, 'getComputedStyle', {
   writable: true,
   value: vi.fn().mockImplementation((element: Element) => {
-    const style = originalGetComputedStyle(element);
+    let style: CSSStyleDeclaration;
+    try {
+      style = originalGetComputedStyle(element);
+    } catch (error) {
+      const selectorError = error as { message?: unknown; name?: unknown };
+      if (
+        selectorError.name !== 'SyntaxError' ||
+        typeof selectorError.message !== 'string' ||
+        !selectorError.message.includes('unknown pseudo-class selector')
+      ) {
+        throw error;
+      }
+
+      style =
+        element instanceof HTMLElement || element instanceof SVGElement
+          ? element.style
+          : document.createElement('div').style;
+    }
     const originalGetPropertyValue = style.getPropertyValue.bind(style);
 
     return new Proxy(style, {

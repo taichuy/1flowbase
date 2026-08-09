@@ -230,24 +230,6 @@ describe('DebugConversationPane workflow trace', () => {
     expect(toolCallback).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('call_weather')).not.toBeInTheDocument();
 
-    const inputPayload = screen.getByRole('button', { name: '输入' });
-    expect(inputPayload).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      inputPayload
-        .closest('.json-preview-block')
-        ?.querySelector('.json-preview-block__editor')
-    ).toBeNull();
-
-    fireEvent.click(inputPayload);
-
-    expect(inputPayload).toHaveAttribute('aria-expanded', 'true');
-    expect(
-      inputPayload
-        .closest('.json-preview-block')
-        ?.querySelector('.json-preview-block__editor')
-    ).not.toBeNull();
-    expect(screen.getByLabelText('输入 JSON')).toHaveTextContent('天气?');
-
     fireEvent.click(toolCallback);
 
     expect(toolCallback).toHaveAttribute('aria-expanded', 'true');

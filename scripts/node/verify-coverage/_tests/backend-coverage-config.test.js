@@ -30,6 +30,10 @@ test('coverage thresholds include critical runtime areas', () => {
     frontendThresholds.some((threshold) => threshold.prefix === 'packages/page-runtime/'),
     true
   );
+  assert.deepEqual(
+    frontendThresholds.find((threshold) => threshold.key === 'settings')?.thresholds,
+    { lines: 56, functions: 54, statements: 55, branches: 46 }
+  );
 });
 
 test('backend coverage uses the current storage-postgres crate name', () => {

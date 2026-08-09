@@ -4,12 +4,13 @@ import {
   // eslint-disable-next-line testing-library/no-manual-cleanup -- Explicit teardown drains React scheduler work before jsdom removes window.
   cleanup,
   fireEvent,
-  render,
+  render as testingRender,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { App } from 'antd';
+import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
@@ -19,6 +20,8 @@ import { appI18n } from '../../../../shared/i18n/app-i18n';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
+
+const render = (ui: ReactElement) => testingRender(ui, { wrapper: App });
 
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()

@@ -1,6 +1,45 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
+import type { CSSProperties, ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
+  FixedHeightModal: ({
+    children,
+    className,
+    footer,
+    open,
+    scrollBodyClassName,
+    title,
+    width
+  }: {
+    children: ReactNode;
+    className?: string;
+    footer?: ReactNode;
+    open: boolean;
+    scrollBodyClassName?: string;
+    title: ReactNode;
+    width?: CSSProperties['width'];
+  }) =>
+    open ? (
+      <dialog
+        aria-label={String(title)}
+        className={`ant-modal ${className ?? ''}`}
+        open
+        style={{ width }}
+      >
+        <div className="ant-modal-content">
+          <div
+            className={scrollBodyClassName}
+            data-testid="fixed-height-modal-scroll-body"
+          >
+            {children}
+          </div>
+          {footer}
+        </div>
+      </dialog>
+    ) : null
+}));
 
 const applicationManagementApi = vi.hoisted(() => ({
   settingsApplicationManagementQueryPrefix: ['settings', 'applications'],

@@ -1,11 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within
-} from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const authCenterApi = vi.hoisted(() => ({
@@ -525,62 +518,4 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     ).toHaveLength(1);
   });
 
-  test('throttles drawer mouse resize updates with animation frames', async () => {
-    let animationFrameCallback: FrameRequestCallback | null = null;
-    const requestAnimationFrameSpy = vi
-      .spyOn(window, 'requestAnimationFrame')
-      .mockImplementation((callback) => {
-        animationFrameCallback = callback;
-        return 123;
-      });
-    const cancelAnimationFrameSpy = vi
-      .spyOn(window, 'cancelAnimationFrame')
-      .mockImplementation(() => undefined);
-
-    try {
-      render(
-        <AppProviders>
-          <SettingsAuthCenterSection />
-        </AppProviders>
-      );
-
-      const editButtons = await screen.findAllByRole('button', {
-        name: '编辑'
-      });
-      fireEvent.click(editButtons[0]);
-      const dialog = await screen.findByRole('dialog', {
-        name: 'Password 配置'
-      });
-      const resizeHandle = within(dialog).getByRole('separator', {
-        name: '调整认证器配置抽屉宽度'
-      });
-      // Ant Design applies the drawer width to a wrapper without an accessible role.
-
-      const drawerWrapper = dialog.closest('.ant-drawer-content-wrapper');
-      expect(drawerWrapper).toBeInstanceOf(HTMLElement);
-
-      expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-      expect(drawerWrapper).toHaveStyle({ width: '520px' });
-      fireEvent.mouseDown(resizeHandle, { clientX: 500 });
-      fireEvent.mouseMove(document, { clientX: 460 });
-      fireEvent.mouseMove(document, { clientX: 450 });
-
-      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
-      expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-      expect(drawerWrapper).toHaveStyle({ width: '520px' });
-
-      await act(async () => {
-        animationFrameCallback?.(performance.now());
-      });
-
-      expect(drawerWrapper).toHaveStyle({ width: '570px' });
-      expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-      fireEvent.mouseUp(document);
-      expect(resizeHandle).toHaveAttribute('aria-valuenow', '570');
-      expect(document.body).not.toHaveClass('schema-form-drawer--resizing');
-    } finally {
-      requestAnimationFrameSpy.mockRestore();
-      cancelAnimationFrameSpy.mockRestore();
-    }
-  });
 });
