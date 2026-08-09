@@ -274,7 +274,29 @@ export function McpInstancesTab({
         },
         csrfToken
       ),
-    onSuccess: async () => {
+    onSuccess: async (savedGroup) => {
+      queryClient.setQueryData<ConsoleMcpCatalog>(
+        settingsMcpCatalogQueryKey,
+        (currentCatalog) => {
+          if (!currentCatalog || !savedGroup) return currentCatalog;
+          return {
+            ...currentCatalog,
+            groups: [
+              ...currentCatalog.groups.filter(
+                (group) =>
+                  group.id !== savedGroup.id &&
+                  !(
+                    group.instance_record_id ===
+                      savedGroup.instance_record_id &&
+                    normalizeMcpDirectoryPath(group.path) ===
+                      normalizeMcpDirectoryPath(savedGroup.path)
+                  )
+              ),
+              savedGroup
+            ]
+          };
+        }
+      );
       message.success(i18nText('settings', 'auto.mcp_saved'));
       groupForm.resetFields();
       await queryClient.invalidateQueries({
@@ -708,7 +730,11 @@ export function McpInstancesTab({
     : undefined;
 
   return (
-    <Space orientation="vertical" size="middle" className="mcp-management__stack">
+    <Space
+      orientation="vertical"
+      size="middle"
+      className="mcp-management__stack"
+    >
       <McpInstanceTable
         onCreate={() => {
           setEditingInstance(null);
@@ -1179,7 +1205,17 @@ export function McpInstancesTab({
                       'settingsMcpManagement',
                       'auto.display_name'
                     )}
-                    rules={[{ required: true }]}
+                    rules={[
+                      { required: true, whitespace: true },
+                      {
+                        max: 255,
+                        pattern: /^[A-Za-z0-9_-]+$/,
+                        message: i18nText(
+                          'settingsMcpManagement',
+                          'auto.group_display_name_invalid'
+                        )
+                      }
+                    ]}
                   >
                     <Input
                       onChange={(e) => {

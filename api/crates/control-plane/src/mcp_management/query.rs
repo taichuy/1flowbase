@@ -14,6 +14,18 @@ pub(crate) fn validate_path(value: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn validate_group_display_name(value: &str) -> Result<()> {
+    if value.is_empty()
+        || value.len() > 255
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(ControlPlaneError::InvalidInput("display_name").into());
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_positive(value: i32, field: &'static str) -> Result<()> {
     if value <= 0 {
         return Err(ControlPlaneError::InvalidInput(field).into());
