@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import { beforeEach, vi } from 'vitest';
 
@@ -92,16 +98,27 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   expect(
     screen.getByRole('combobox', { name: '字段配置' })
   ).toBeInTheDocument();
+  const filterForm = screen.getByRole('form', { name: '筛选' });
+  const toolbar = document.querySelector('.data-table__toolbar');
+  const scrollArea = document.querySelector('.data-table__scroll-area');
+
   expect(
-    screen
-      .getByRole('textbox', { name: '应用' })
-      .closest('.model-provider-request-logs-panel__filters')
-  ).not.toBeNull();
+    within(filterForm).getByRole('combobox', { name: '时间范围' })
+  ).toBeInTheDocument();
   expect(
-    screen
-      .getByRole('button', { name: /刷\s*新/ })
-      .closest('.model-provider-request-logs-panel__actions')
-  ).not.toBeNull();
+    within(filterForm).getByRole('textbox', { name: '用户 ID' })
+  ).toBeInTheDocument();
+  expect(
+    within(filterForm).getByRole('textbox', { name: '应用' })
+  ).toBeInTheDocument();
+  expect(
+    within(filterForm).queryByRole('combobox', { name: '状态' })
+  ).not.toBeInTheDocument();
+  expect(toolbar).not.toBeNull();
+  expect(scrollArea?.contains(toolbar)).toBe(false);
+  expect(
+    within(toolbar as HTMLElement).getByRole('button', { name: /刷\s*新/ })
+  ).toBeInTheDocument();
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
   expect(screen.getByText('root')).toBeInTheDocument();
@@ -118,12 +135,36 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   fireEvent.change(screen.getByRole('textbox', { name: '用户 ID' }), {
     target: { value: 'user-1' }
   });
+  expect(
+    requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(-1)?.[0]
+      .user_id
+  ).toBeUndefined();
+  fireEvent.click(within(filterForm).getByRole('button', { name: /筛\s*选/ }));
   await waitFor(() => {
     const lastFilter =
       requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(
         -1
       )?.[0];
     expect(lastFilter.user_id).toBe('user-1');
+  });
+
+  fireEvent.click(within(filterForm).getByRole('button', { name: /展\s*开/ }));
+  expect(
+    within(filterForm).getByRole('combobox', { name: '状态' })
+  ).toBeInTheDocument();
+  expect(
+    within(filterForm).getByRole('checkbox', { name: '仅看零输出' })
+  ).toBeInTheDocument();
+
+  fireEvent.click(within(filterForm).getByRole('button', { name: /重\s*置/ }));
+  expect(screen.getByRole('textbox', { name: '用户 ID' })).toHaveValue('');
+  await waitFor(() => {
+    const lastFilter =
+      requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(
+        -1
+      )?.[0];
+    expect(lastFilter.user_id).toBeUndefined();
+    expect(lastFilter.started_after).toEqual(expect.any(String));
   });
 });
 
@@ -196,6 +237,11 @@ test('AC-001 defaults to the past seven days and clears selection when the range
 
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '时间范围' }));
   fireEvent.click(await screen.findByText('全部时间'));
+  expect(
+    requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(-1)?.[0]
+      .started_after
+  ).toEqual(expect.any(String));
+  fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
   await waitFor(() => {
     const lastFilter =
       requestLogsApi.fetchSettingsModelProviderRequestLogs.mock.calls.at(
