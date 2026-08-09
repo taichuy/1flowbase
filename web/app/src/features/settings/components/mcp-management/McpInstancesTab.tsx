@@ -35,8 +35,7 @@ import {
 } from './McpInstancesTab/directory-tree';
 import {
   countMcpInstanceDirectoryItems,
-  formatMcpDirectoryPath,
-  formatMcpGroupEditorPath
+  formatMcpDirectoryPath
 } from './McpInstancesTab/catalog-view';
 import type {
   ConsoleMcpCatalog,
@@ -83,7 +82,7 @@ type CopyInstanceFormValues = CopySettingsMcpInstanceBody;
 type GroupFormValues = {
   instance_id: string;
   path: string;
-  display_name: string;
+  display_name?: string;
   description_short: string | null;
   enabled: boolean;
   sort_order: number;
@@ -267,7 +266,7 @@ export function McpInstancesTab({
         values.instance_id,
         {
           path: values.path,
-          display_name: values.display_name,
+          display_name: values.display_name?.trim() || null,
           description_short: values.description_short,
           enabled: values.enabled,
           sort_order: values.sort_order
@@ -573,16 +572,6 @@ export function McpInstancesTab({
     });
     bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
   }
-
-  const getFullReadablePath = () =>
-    formatMcpGroupEditorPath({
-      instanceName: selectedInstance?.name || 'mcp',
-      selectedDirectoryKey,
-      currentPath: groupForm.getFieldValue('path'),
-      parentPath: parentGroupPath,
-      draftDisplayName: watchedDisplayName,
-      groups: groupByPath
-    });
 
   const getReadablePathFor = (rawPath: string | null | undefined) =>
     formatMcpDirectoryPath(
@@ -1109,16 +1098,26 @@ export function McpInstancesTab({
                   }}
                   onFinish={(values) =>
                     saveGroupMutation.mutate(values, {
-                      onSuccess: () => {
+                      onSuccess: (savedGroup) => {
+                        const savedValues: GroupFormValues = savedGroup
+                          ? {
+                              instance_id: values.instance_id,
+                              path: savedGroup.path,
+                              display_name: savedGroup.display_name,
+                              description_short: savedGroup.description_short,
+                              enabled: savedGroup.enabled,
+                              sort_order: savedGroup.sort_order
+                            }
+                          : values;
                         const savedPath = normalizeMcpDirectoryPath(
-                          values.path
+                          savedValues.path
                         );
                         setParentGroupPath(null);
                         setDirectoryDraftActive(false);
                         setSelectedDirectoryKey(`group:${savedPath}`);
                         setDirectoryEditorIntent('edit');
-                        groupSavedValuesRef.current = values;
-                        groupForm.setFieldsValue(values);
+                        groupSavedValuesRef.current = savedValues;
+                        groupForm.setFieldsValue(savedValues);
                       }
                     })
                   }
@@ -1155,48 +1154,30 @@ export function McpInstancesTab({
                   >
                     <Input />
                   </Form.Item>
-                  <Form.Item name="path" hidden rules={[{ required: true }]}>
-                    <Input />
-                  </Form.Item>
                   <Form.Item
-                    id="path"
+                    name="path"
                     label={i18nText(
                       'settingsMcpManagement',
                       'auto.directory_path'
                     )}
-                    required
+                    rules={[
+                      { required: true, whitespace: true },
+                      { max: 255 },
+                      {
+                        pattern: /^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/,
+                        message: i18nText(
+                          'settingsMcpManagement',
+                          'auto.group_path_invalid'
+                        )
+                      }
+                    ]}
                   >
                     <Input
-                      id="path"
                       aria-label={i18nText(
                         'settingsMcpManagement',
                         'auto.directory_path'
                       )}
-                      value={
-                        typeof process !== 'undefined' &&
-                        (process.env.NODE_ENV === 'test' ||
-                          Boolean(process.env.VITEST))
-                          ? watchedPath
-                          : getFullReadablePath()
-                      }
-                      onChange={(e) => {
-                        groupForm.setFieldValue('path', e.target.value);
-                      }}
-                      readOnly={
-                        !(
-                          typeof process !== 'undefined' &&
-                          (process.env.NODE_ENV === 'test' ||
-                            Boolean(process.env.VITEST))
-                        )
-                      }
-                      variant="borderless"
-                      style={{
-                        padding: 0,
-                        fontWeight: 'bold',
-                        fontSize: 15,
-                        color: 'rgba(0, 0, 0, 0.88)',
-                        cursor: 'default'
-                      }}
+                      readOnly={directoryEditorIntent === 'edit'}
                     />
                   </Form.Item>
                   <Form.Item
@@ -1205,37 +1186,9 @@ export function McpInstancesTab({
                       'settingsMcpManagement',
                       'auto.display_name'
                     )}
-                    rules={[
-                      { required: true, whitespace: true },
-                      {
-                        max: 255,
-                        pattern: /^[A-Za-z0-9_-]+$/,
-                        message: i18nText(
-                          'settingsMcpManagement',
-                          'auto.group_display_name_invalid'
-                        )
-                      }
-                    ]}
+                    rules={[{ max: 255 }]}
                   >
-                    <Input
-                      onChange={(e) => {
-                        const value = e.target.value || '';
-                        const isEditingGroup =
-                          selectedDirectoryKey &&
-                          selectedDirectoryKey.startsWith('group:');
-                        if (!isEditingGroup) {
-                          const parent = parentGroupPath || '/';
-                          const slug = value
-                            .trim()
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]+/g, '_')
-                            .replace(/^_+|_+$/g, '');
-                          const newPath =
-                            parent === '/' ? `/${slug}` : `${parent}/${slug}`;
-                          groupForm.setFieldValue('path', newPath);
-                        }
-                      }}
-                    />
+                    <Input />
                   </Form.Item>
                   <Form.Item
                     name="description_short"

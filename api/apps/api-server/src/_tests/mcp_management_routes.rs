@@ -13,7 +13,7 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
-async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_valid_group() {
+async fn mcp_group_path_is_machine_safe_and_display_name_has_a_path_leaf_default() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -42,7 +42,14 @@ async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_v
         .unwrap();
     assert_eq!(create_instance_response.status(), StatusCode::CREATED);
 
-    for invalid_name in ["后台设置", "backend settings", "backend/settings", ""] {
+    for invalid_path in [
+        "",
+        "/",
+        "backend_settings",
+        "/后台设置",
+        "/backend settings",
+        "/backend/settings/",
+    ] {
         let response = app
             .clone()
             .oneshot(
@@ -54,8 +61,8 @@ async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_v
                     .header("content-type", "application/json")
                     .body(Body::from(
                         json!({
-                            "path": "/backend_settings",
-                            "display_name": invalid_name,
+                            "path": invalid_path,
+                            "display_name": "后台设置",
                             "description_short": null,
                             "enabled": true,
                             "sort_order": 0
@@ -67,7 +74,7 @@ async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_v
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(response_json(response).await["code"], json!("display_name"));
+        assert_eq!(response_json(response).await["code"], json!("path"));
     }
 
     let valid_response = app
@@ -82,7 +89,7 @@ async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_v
                 .body(Body::from(
                     json!({
                         "path": "/backend_settings",
-                        "display_name": "Backend_Settings-01",
+                        "display_name": "后台设置",
                         "description_short": null,
                         "enabled": true,
                         "sort_order": 0
@@ -96,9 +103,64 @@ async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_v
     assert_eq!(valid_response.status(), StatusCode::OK);
     let valid_payload = response_json(valid_response).await;
     assert_eq!(valid_payload["data"]["path"], json!("/backend_settings"));
+    assert_eq!(valid_payload["data"]["display_name"], json!("后台设置"));
+
+    let default_name_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/group_validation/groups")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "path": "/user_pages",
+                        "description_short": null,
+                        "enabled": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(default_name_response.status(), StatusCode::OK);
+    let default_name_payload = response_json(default_name_response).await;
     assert_eq!(
-        valid_payload["data"]["display_name"],
-        json!("Backend_Settings-01")
+        default_name_payload["data"]["display_name"],
+        json!("user_pages")
+    );
+
+    let blank_name_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/group_validation/groups")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "path": "/audit_logs",
+                        "display_name": "   ",
+                        "description_short": null,
+                        "enabled": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blank_name_response.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(blank_name_response).await["data"]["display_name"],
+        json!("audit_logs")
     );
 
     let catalog_response = app
@@ -119,7 +181,13 @@ async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_v
         .unwrap()
         .iter()
         .any(|group| group["path"] == json!("/backend_settings")
-            && group["display_name"] == json!("Backend_Settings-01")));
+            && group["display_name"] == json!("后台设置")));
+    assert!(catalog_payload["data"]["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|group| group["path"] == json!("/user_pages")
+            && group["display_name"] == json!("user_pages")));
 }
 
 #[tokio::test]

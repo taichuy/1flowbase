@@ -335,7 +335,7 @@ export interface CopyConsoleMcpInstanceBody {
 
 export interface SaveConsoleMcpGroupBody {
   path: string;
-  display_name: string;
+  display_name?: string | null;
   description_short: string | null;
   enabled: boolean;
   sort_order: number;

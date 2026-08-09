@@ -1212,6 +1212,15 @@ describe('McpManagementPanel', () => {
   });
 
   test('keeps the directory editor open and selects the saved group', async () => {
+    mcpManagementApi.upsertSettingsMcpGroup.mockResolvedValue({
+      id: 'group-customer-ops',
+      instance_record_id: 'instance-record-1',
+      path: '/customer_ops',
+      display_name: 'customer_ops',
+      description_short: null,
+      enabled: true,
+      sort_order: 0
+    });
     renderPanelWithMountedTool({ includeBinding: false });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -1225,8 +1234,8 @@ describe('McpManagementPanel', () => {
     const rootLabel = within(dialog).getByText('Ops MCP /');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
-    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'customer_ops' }
+    fireEvent.change(within(dialog).getByLabelText('路径'), {
+      target: { value: '/customer_ops' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
@@ -1235,7 +1244,7 @@ describe('McpManagementPanel', () => {
         'ops_mcp',
         expect.objectContaining({
           path: '/customer_ops',
-          display_name: 'customer_ops'
+          display_name: null
         }),
         expect.any(String)
       );
@@ -1243,6 +1252,9 @@ describe('McpManagementPanel', () => {
     expect(
       screen.getByRole('dialog', { name: '目录编辑' })
     ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('显示名称')).toHaveValue(
+      'customer_ops'
+    );
   });
 
   test('exposes explicit creation actions beside the directory tree', () => {
@@ -1389,6 +1401,8 @@ describe('McpManagementPanel', () => {
     await waitFor(() =>
       expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops')
     );
+    expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops');
+    expect(within(dialog).getByLabelText('路径')).toHaveAttribute('readonly');
     expect(rootNode).toHaveClass('ant-tree-node-selected');
     expect(groupNode).not.toHaveClass('ant-tree-node-selected');
     expect(status).toHaveTextContent('已保存');

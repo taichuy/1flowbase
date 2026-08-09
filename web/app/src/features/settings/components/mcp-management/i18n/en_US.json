@@ -3,7 +3,7 @@
     "cancel_child_group_creation": "Cancel child group creation",
     "directory_path": "Path",
     "display_name": "Display name",
-    "group_display_name_invalid": "Use only English letters, numbers, underscores, and hyphens",
+    "group_path_invalid": "The path must start with /, and each segment may contain only English letters, numbers, underscores, and hyphens",
     "enabled": "Enabled",
     "group_description_short": "Short description",
     "instance_description": "Description",
