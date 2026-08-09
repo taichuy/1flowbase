@@ -1,12 +1,23 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  buildMcpChildGroupPath,
   buildMcpDirectoryTreeData,
   buildReadableToolId,
   nextMcpDirectoryExpandedKeys
 } from '../mcp-management-view-model';
 
 describe('mcp management view model', () => {
+  test('builds a direct child path from fixed root and nested parents', () => {
+    expect(buildMcpChildGroupPath('/', 'system_mcp')).toBe('/system_mcp');
+    expect(buildMcpChildGroupPath('/system_mcp', 'discovery')).toBe(
+      '/system_mcp/discovery'
+    );
+    expect(buildMcpChildGroupPath('/system_mcp/discovery', 'search')).toBe(
+      '/system_mcp/discovery/search'
+    );
+  });
+
   test('keeps descendants collapsed when reopening a parent directory', () => {
     expect(
       nextMcpDirectoryExpandedKeys(
@@ -90,7 +101,7 @@ describe('mcp management view model', () => {
     expect(treeData).toEqual([
       {
         key: 'instance:workspace_ops:/',
-        title: 'Workspace Ops /',
+        title: '/',
         node_type: 'instance',
         path: '/',
         children: [

@@ -1178,7 +1178,7 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
@@ -1231,11 +1231,11 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
     fireEvent.change(within(dialog).getByLabelText('路径'), {
-      target: { value: '/customer_ops' }
+      target: { value: 'customer_ops' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
@@ -1322,8 +1322,11 @@ describe('McpManagementPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
 
     await waitFor(() => {
-      expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops/');
+      expect(within(dialog).getByLabelText('路径')).toHaveValue('');
     });
+    expect(within(dialog).getByLabelText('新增至父目录：')).toHaveValue(
+      '/ops/'
+    );
     expect(within(dialog).getByText(/新增至父目录/)).toBeInTheDocument();
     expect(within(dialog).getByText('目标目录： /ops')).toBeInTheDocument();
     expect(
@@ -1382,7 +1385,7 @@ describe('McpManagementPanel', () => {
     const tree = within(dialog).getByRole('tree');
     expandTreeRootIfCollapsed(tree);
 
-    const rootLabel = within(dialog).getByText('Ops MCP /');
+    const rootLabel = within(within(dialog).getByRole('tree')).getByText('/');
     const rootNode = rootLabel.closest('.ant-tree-node-content-wrapper');
     const groupLabel = within(dialog).getByText('ops');
     const groupNode = groupLabel.closest('.ant-tree-node-content-wrapper');
