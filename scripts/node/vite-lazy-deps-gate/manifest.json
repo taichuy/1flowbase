@@ -150,6 +150,13 @@
       "smokePaths": [
         "/settings/i18n"
       ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../../components/ui-management/UiManagementPanel",
+      "smokePaths": [
+        "/settings/ui-management/code-templates"
+      ]
     }
   ]
 }
