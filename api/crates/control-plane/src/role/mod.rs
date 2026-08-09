@@ -666,17 +666,6 @@ where
         self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_REPLACE_OPERATION_ID)
             .await?;
 
-        if self
-            .repository
-            .list_roles(actor.current_workspace_id)
-            .await?
-            .into_iter()
-            .find(|role| role.code == command.role_code)
-            .is_some_and(|role| role.is_builtin || !role.is_editable)
-        {
-            return Err(ControlPlaneError::PermissionDenied("builtin_role_immutable").into());
-        }
-
         let operation_index = validate_complete_console_policy_catalog(inventory)?;
         let groups = role_console_policy_groups_from_input(&command.groups, &operation_index)?;
         let role_code = command.role_code.clone();

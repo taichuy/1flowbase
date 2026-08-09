@@ -876,12 +876,19 @@ async fn role_deletion_rejects_default_and_bound_roles_before_deleting_unused_cu
     let default_role_error = default_role_result.unwrap_err();
     assert!(matches!(
         default_role_error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::PermissionDenied(
-            "builtin_role_immutable"
-        )) | Some(ControlPlaneError::InvalidInput(
+        Some(ControlPlaneError::InvalidInput(
             "default_member_role_required"
         ))
     ));
+
+    <PgControlPlaneStore as RoleRepository>::delete_team_role(
+        &store,
+        actor_user_id,
+        workspace_id,
+        "admin",
+    )
+    .await
+    .unwrap();
 
     let bound_role_result = <PgControlPlaneStore as RoleRepository>::delete_team_role(
         &store,

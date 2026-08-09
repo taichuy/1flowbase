@@ -1,5 +1,6 @@
 {
   "auto": {
+    "ui_management": "UI 管理",
     "translation_catalog_title": "多语言",
     "translation_catalog_locale": "语言",
     "translation_catalog_origin": "值来源",
@@ -439,6 +440,8 @@
     "request_log_failed": "失败",
     "request_log_failed_after_first_token": "首 Token 后失败",
     "request_log_time_range": "时间范围",
+    "request_log_collapse_filters": "收起",
+    "request_log_reset_filters": "重置",
     "request_log_today": "今天",
     "request_log_past_seven_days": "过去 7 天",
     "request_log_past_four_weeks": "过去 4 周",

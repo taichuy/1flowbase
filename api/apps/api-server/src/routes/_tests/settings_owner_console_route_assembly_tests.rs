@@ -83,6 +83,65 @@ fn ac_002_013_permissions_route_binding_is_explicit_and_stable() {
 }
 
 #[test]
+fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
+    assert_route_bindings(
+        &crate::routes::ui_management::route_assembly(),
+        &[
+            (
+                "GET",
+                "/api/console/settings/ui-management/templates",
+                "ui_management.templates.list",
+            ),
+            (
+                "POST",
+                "/api/console/settings/ui-management/templates",
+                "ui_management.templates.create",
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/ui-management/templates/default",
+                "ui_management.templates.default.reset",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/ui-management/templates/:id",
+                "ui_management.templates.update",
+            ),
+            (
+                "POST",
+                "/api/console/settings/ui-management/templates/:id/publish",
+                "ui_management.templates.publish",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/ui-management/templates/:id/default",
+                "ui_management.templates.default.set",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/ui-management/templates/:id/archive",
+                "ui_management.templates.archive",
+            ),
+            (
+                "GET",
+                "/api/console/settings/ui-management/components",
+                "ui_management.components.list",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/ui-management/components/contract",
+                "ui_management.components.contract.update",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/ui-management/components/state",
+                "ui_management.components.state.update",
+            ),
+        ],
+    );
+}
+
+#[test]
 fn ac_002_013_roles_route_bindings_are_explicit_and_stable() {
     let assembly = crate::routes::roles::route_assembly();
     let keys = assembly

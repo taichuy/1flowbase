@@ -408,6 +408,25 @@ pub trait FrontendBlockCatalogRepository: Send + Sync {
         node_id: &str,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::FrontendBlockCatalogEntry>>;
+
+    async fn list_system_frontend_blocks(
+        &self,
+        _node_id: &str,
+    ) -> anyhow::Result<Vec<domain::FrontendBlockCatalogEntry>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_ui_component_overrides_for_catalog(
+        &self,
+    ) -> anyhow::Result<Vec<domain::UiComponentOverride>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_active_ui_code_templates_for_catalog(
+        &self,
+    ) -> anyhow::Result<Vec<domain::UiCodeTemplate>> {
+        Ok(Vec::new())
+    }
 }
 
 #[derive(Debug, Clone)]

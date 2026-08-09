@@ -103,10 +103,10 @@ where
             .await?;
 
         let tenant = self.repository.upsert_root_tenant().await?;
-        let workspace = match official_catalog {
+        let workspace_result = match official_catalog {
             Some(seed) => {
                 self.repository
-                    .upsert_root_workspace_with_official_catalog(
+                    .upsert_root_workspace_with_official_catalog_for_bootstrap(
                         tenant.id,
                         &config.workspace_name,
                         seed,
@@ -115,15 +115,22 @@ where
             }
             None => {
                 self.repository
-                    .upsert_workspace(tenant.id, &config.workspace_name)
+                    .upsert_workspace_for_bootstrap(tenant.id, &config.workspace_name)
                     .await?
             }
         };
-        self.repository.upsert_builtin_roles(workspace.id).await?;
+        self.repository
+            .upsert_root_role(workspace_result.workspace.id)
+            .await?;
+        if workspace_result.created {
+            self.repository
+                .seed_workspace_role_templates(workspace_result.workspace.id)
+                .await?;
+        }
         let root_user = self
             .repository
             .upsert_root_user(
-                workspace.id,
+                workspace_result.workspace.id,
                 &config.root_account,
                 &config.root_email,
                 &config.root_password_hash,
@@ -133,7 +140,7 @@ where
             .await?;
 
         Ok(BootstrapResult {
-            workspace_id: workspace.id,
+            workspace_id: workspace_result.workspace.id,
             root_user_id: root_user.id,
         })
     }

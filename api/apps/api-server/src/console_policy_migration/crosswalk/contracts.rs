@@ -292,6 +292,21 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "system.system-runtime",
         &["system.release_status.view", "system.runtime_profile.view"],
     ),
+    core_simple_settings(
+        "system.ui-management",
+        &[
+            "ui_management.components.contract.update",
+            "ui_management.components.list",
+            "ui_management.components.state.update",
+            "ui_management.templates.archive",
+            "ui_management.templates.create",
+            "ui_management.templates.default.reset",
+            "ui_management.templates.default.set",
+            "ui_management.templates.list",
+            "ui_management.templates.publish",
+            "ui_management.templates.update",
+        ],
+    ),
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
@@ -318,6 +333,16 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
     "roles.console_settings_order.replace",
+    "ui_management.components.contract.update",
+    "ui_management.components.list",
+    "ui_management.components.state.update",
+    "ui_management.templates.archive",
+    "ui_management.templates.create",
+    "ui_management.templates.default.reset",
+    "ui_management.templates.default.set",
+    "ui_management.templates.list",
+    "ui_management.templates.publish",
+    "ui_management.templates.update",
 ];
 
 pub(super) const AUTHENTICATED_OPERATION_EVIDENCE: &str =

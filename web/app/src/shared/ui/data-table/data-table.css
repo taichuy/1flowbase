@@ -9,7 +9,6 @@
 }
 
 .data-table__scroll-area {
-  container-type: inline-size;
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
@@ -19,10 +18,10 @@
 }
 
 .data-table__toolbar {
-  position: sticky;
-  left: 0;
   box-sizing: border-box;
-  width: calc(100cqi - 32px);
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .data-table .ant-table-wrapper {

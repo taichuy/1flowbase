@@ -238,11 +238,8 @@ impl RoleRepository for PgControlPlaneStore {
         let role = find_role_by_code(self.pool(), workspace_id, role_code)
             .await?
             .ok_or(ControlPlaneError::NotFound("role"))?;
-        if role.code == "root"
-            || role.is_builtin
-            || matches!(role.scope_kind, RoleScopeKind::System)
-        {
-            return Err(ControlPlaneError::PermissionDenied("builtin_role_immutable").into());
+        if role.code == "root" || matches!(role.scope_kind, RoleScopeKind::System) {
+            return Err(ControlPlaneError::PermissionDenied("root_role_immutable").into());
         }
         if role.is_default_member_role {
             return Err(ControlPlaneError::InvalidInput("default_member_role_required").into());

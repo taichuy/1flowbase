@@ -6,7 +6,7 @@ mod evaluator;
 mod navigation;
 mod settings_features;
 
-pub use catalog::{builtin_role_templates, permission_catalog};
+pub use catalog::{bootstrap_role_templates, permission_catalog};
 pub use console_operations::{
     ConsoleAuthorization, ConsoleInterfaceInventoryEntry, ConsoleInterfaceRegistration,
     ConsoleLocaleCatalog, ConsoleLocaleCatalogContribution, ConsoleLocaleText,
@@ -73,6 +73,7 @@ pub use settings_features::{
     SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID, SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION,
     SYSTEM_ROLES_SETTINGS_FEATURE_ID, SYSTEM_ROLES_SETTINGS_FEATURE_PERMISSION,
     SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_ID, SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_PERMISSION,
+    SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID, SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_PERMISSION,
 };
 
 pub fn crate_name() -> &'static str {

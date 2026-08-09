@@ -11,12 +11,15 @@ use domain::{
     FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
     FrontendBlockPermissions, FrontendComponentContract, FrontendComponentExample,
     FrontendModuleAsset, FrontendModuleAssetRole, FrontendModuleBinding,
+    UiComponentContractRevision, UiComponentLocator, UiComponentOverride, UiComponentOverrideState,
+    SYSTEM_SCOPE_ID,
 };
 use uuid::Uuid;
 
 #[derive(Clone)]
 struct MemoryFrontendComponentCatalog {
     entries: Vec<FrontendBlockCatalogEntry>,
+    overrides: Vec<UiComponentOverride>,
 }
 
 #[async_trait]
@@ -34,6 +37,10 @@ impl FrontendBlockCatalogRepository for MemoryFrontendComponentCatalog {
         _workspace_id: Uuid,
     ) -> Result<Vec<FrontendBlockCatalogEntry>> {
         Ok(self.entries.clone())
+    }
+
+    async fn list_ui_component_overrides_for_catalog(&self) -> Result<Vec<UiComponentOverride>> {
+        Ok(self.overrides.clone())
     }
 }
 
@@ -102,6 +109,7 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
     let service = FrontendComponentCatalogService::new(
         MemoryFrontendComponentCatalog {
             entries: vec![sample_block(installation_id)],
+            overrides: vec![],
         },
         "test-node",
     );
@@ -135,4 +143,82 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
         .unwrap()
         .expect("the paged component must be addressable by id");
     assert_eq!(detail.contract.insert_snippet, "<Button></Button>");
+}
+
+#[tokio::test]
+async fn ac_005_hidden_and_published_overlays_change_discovery_without_modules() {
+    let installation_id = Uuid::now_v7();
+    let now = time::OffsetDateTime::now_utc();
+    let actor = Uuid::now_v7();
+    let hidden_id = Uuid::now_v7();
+    let published_id = Uuid::now_v7();
+    let published_contract = sample_component("button-managed", "Button");
+    let service = FrontendComponentCatalogService::new(
+        MemoryFrontendComponentCatalog {
+            entries: vec![sample_block(installation_id)],
+            overrides: vec![
+                UiComponentOverride {
+                    id: hidden_id,
+                    scope_id: SYSTEM_SCOPE_ID,
+                    locator: UiComponentLocator {
+                        provider_code: "1flowbase".into(),
+                        contribution_code: "frontstage.js-ui-block".into(),
+                        module_source: "@1flowbase/native-components".into(),
+                        export_name: "Alert".into(),
+                    },
+                    state: UiComponentOverrideState::Hidden,
+                    latest_revision: None,
+                    published_revision: None,
+                    created_by: actor,
+                    updated_by: actor,
+                    created_at: now,
+                    updated_at: now,
+                },
+                UiComponentOverride {
+                    id: published_id,
+                    scope_id: SYSTEM_SCOPE_ID,
+                    locator: UiComponentLocator {
+                        provider_code: "1flowbase".into(),
+                        contribution_code: "frontstage.js-ui-block".into(),
+                        module_source: "@1flowbase/native-components".into(),
+                        export_name: "Button".into(),
+                    },
+                    state: UiComponentOverrideState::Published,
+                    latest_revision: None,
+                    published_revision: Some(UiComponentContractRevision {
+                        id: Uuid::now_v7(),
+                        component_override_id: published_id,
+                        revision: 2,
+                        contract: published_contract,
+                        is_latest: false,
+                        is_published: true,
+                        created_by: actor,
+                        created_at: now,
+                    }),
+                    created_by: actor,
+                    updated_by: actor,
+                    created_at: now,
+                    updated_at: now,
+                },
+            ],
+        },
+        "test-node",
+    );
+
+    let page = service
+        .list_component_capabilities(ListFrontendComponentCapabilitiesQuery {
+            workspace_id: Uuid::now_v7(),
+            installation_id: None,
+            contribution_code: None,
+            query: None,
+            module_source: None,
+            offset: 0,
+            limit: 20,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(page.total, 1);
+    assert_eq!(page.items[0].contract.component_code, "button-managed");
+    assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
 }

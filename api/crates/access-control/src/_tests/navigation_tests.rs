@@ -50,6 +50,7 @@ fn root_console_navigation_sees_all_builtin_items() {
     assert!(item_ids.contains(&"settings.data-models"));
     assert!(item_ids.contains(&"settings.model-providers"));
     assert!(item_ids.contains(&"settings.mcp-management"));
+    assert!(item_ids.contains(&"settings.ui-management"));
     assert!(item_ids.contains(&"settings.members"));
     assert!(item_ids.contains(&"settings.roles"));
     assert!(item_ids.contains(&"settings.i18n"));

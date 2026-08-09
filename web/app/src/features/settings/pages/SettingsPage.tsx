@@ -65,6 +65,8 @@ export function SettingsPage({
   const canManageMcpManagement =
     isRoot ||
     permissionSet.has('settings_feature.access.system.mcp-management');
+  const canManageUiManagement =
+    isRoot || permissionSet.has('settings_feature.access.system.ui-management');
   const sectionAccess = useMemo(
     () => ({
       isRoot,
@@ -74,12 +76,14 @@ export function SettingsPage({
       canManageDataModels,
       canManageModelProviders,
       canManageHostInfrastructure,
-      canManageMcpManagement
+      canManageMcpManagement,
+      canManageUiManagement
     }),
     [
       canManageDataModels,
       canManageHostInfrastructure,
       canManageMcpManagement,
+      canManageUiManagement,
       canManageMembers,
       canManageModelProviders,
       canManageRoles,

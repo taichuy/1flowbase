@@ -1,5 +1,6 @@
 {
   "auto": {
+    "ui_management": "UI management",
     "translation_catalog_title": "Languages",
     "translation_catalog_locale": "Language",
     "translation_catalog_origin": "Value origin",
@@ -439,6 +440,8 @@
     "request_log_failed": "Failed",
     "request_log_failed_after_first_token": "Failed after first token",
     "request_log_time_range": "Time range",
+    "request_log_collapse_filters": "Collapse",
+    "request_log_reset_filters": "Reset",
     "request_log_today": "Today",
     "request_log_past_seven_days": "Past 7 days",
     "request_log_past_four_weeks": "Past 4 weeks",

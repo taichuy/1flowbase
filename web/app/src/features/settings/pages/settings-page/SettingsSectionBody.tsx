@@ -67,6 +67,11 @@ const I18nCatalogPage = lazy(() =>
     default: module.I18nCatalogPage
   }))
 );
+const UiManagementPanel = lazy(() =>
+  import('../../components/ui-management/UiManagementPanel').then((module) => ({
+    default: module.UiManagementPanel
+  }))
+);
 
 function SettingsSectionFallback() {
   return <LoadingState compact />;
@@ -85,6 +90,7 @@ interface SettingsSectionAccess {
   canManageModelProviders: boolean;
   canManageHostInfrastructure: boolean;
   canManageMcpManagement: boolean;
+  canManageUiManagement: boolean;
 }
 
 export function SettingsSectionBody({
@@ -158,6 +164,12 @@ export function SettingsSectionBody({
           <SettingsMcpManagementSection
             canManage={access.canManageMcpManagement}
           />
+        </SettingsSectionBoundary>
+      );
+    case 'ui-management':
+      return (
+        <SettingsSectionBoundary>
+          <UiManagementPanel canManage={access.canManageUiManagement} />
         </SettingsSectionBoundary>
       );
     case 'host-infrastructure':

@@ -31,6 +31,7 @@ pub mod repositories;
 pub mod role_repository;
 pub mod runtime_record_repository;
 mod secret_crypto;
+pub mod ui_management_repository;
 pub mod workspace_repository;
 
 pub use connection::{
