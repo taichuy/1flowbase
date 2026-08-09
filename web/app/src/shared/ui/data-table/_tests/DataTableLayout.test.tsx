@@ -17,8 +17,6 @@ describe('DataTableLayout', () => {
         filters={
           <DataTableFilterForm
             ariaLabel="列表筛选"
-            collapseLabel="收起"
-            expandLabel="展开"
             resetLabel="重置"
             submitLabel="筛选"
             onReset={vi.fn()}
@@ -41,6 +39,9 @@ describe('DataTableLayout', () => {
     );
 
     expect(screen.getByRole('form')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '展开' })
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('table')).toHaveTextContent('列表');
 
     const cssSource = await readFile(

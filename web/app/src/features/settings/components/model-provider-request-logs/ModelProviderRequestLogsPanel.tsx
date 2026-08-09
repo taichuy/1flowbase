@@ -396,7 +396,7 @@ export function ModelProviderRequestLogsPanel() {
               'auto.request_log_collapse_filters'
             )}
             expandLabel={i18nText('settings', 'auto.expand')}
-            resetLabel={i18nText('settings', 'auto.request_log_reset_filters')}
+            resetLabel={i18nText('settings', 'auto.reset')}
             submitLabel={i18nText(
               'settings',
               'auto.translation_catalog_filter'
