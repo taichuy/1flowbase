@@ -1099,7 +1099,11 @@ export function McpInstancesTab({
                   <Typography.Text type="secondary">
                     {directoryEditorIntent === 'create'
                       ? `${i18nText('settingsMcpManagement', 'auto.target_directory')} ${selectedDirectoryPath()}`
-                      : selectedDirectoryPath()}
+                      : directoryEditorMode === 'group'
+                        ? normalizeMcpDirectoryPath(
+                            groupForm.getFieldValue('path')
+                          )
+                        : selectedDirectoryPath()}
                   </Typography.Text>
                 </div>
               </div>
@@ -1175,7 +1179,7 @@ export function McpInstancesTab({
                   >
                     <Input />
                   </Form.Item>
-                  {directoryEditorIntent === 'create' ? (
+                  {directoryEditorIntent === 'create' && (
                     <>
                       <Form.Item name="path" hidden>
                         <Input />
@@ -1239,22 +1243,6 @@ export function McpInstancesTab({
                         </Space.Compact>
                       </Form.Item>
                     </>
-                  ) : (
-                    <Form.Item
-                      name="path"
-                      label={i18nText(
-                        'settingsMcpManagement',
-                        'auto.directory_path'
-                      )}
-                    >
-                      <Input
-                        aria-label={i18nText(
-                          'settingsMcpManagement',
-                          'auto.directory_path'
-                        )}
-                        readOnly
-                      />
-                    </Form.Item>
                   )}
                   <Form.Item
                     name="display_name"

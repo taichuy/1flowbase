@@ -837,6 +837,29 @@ describe('McpManagementPanel', () => {
     ).not.toBeInTheDocument();
   });
 
+  test('AC-R11 hides the immutable path field while editing a group', async () => {
+    renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    expandTreeRootIfCollapsed(within(dialog).getByRole('tree'));
+    fireEvent.click(within(dialog).getByText('ops'));
+    await waitFor(() => {
+      expect(
+        within(dialog).getByRole('heading', { name: '编辑分组' })
+      ).toBeInTheDocument();
+    });
+    expect(within(dialog).queryByLabelText('路径')).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
+    expect(within(dialog).getByLabelText('路径')).toBeInTheDocument();
+  });
+
   test('does not preview a duplicate draft group when the path already exists', () => {
     renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
 

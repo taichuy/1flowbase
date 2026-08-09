@@ -1404,8 +1404,10 @@ describe('McpManagementPanel', () => {
     await waitFor(() =>
       expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops')
     );
-    expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops');
-    expect(within(dialog).getByLabelText('路径')).toHaveAttribute('readonly');
+    expect(within(dialog).queryByLabelText('路径')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(dialog).getByText('/ops')).toBeInTheDocument()
+    );
     expect(rootNode).toHaveClass('ant-tree-node-selected');
     expect(groupNode).not.toHaveClass('ant-tree-node-selected');
     expect(status).toHaveTextContent('已保存');
