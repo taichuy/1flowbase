@@ -339,11 +339,25 @@ fn ensure_runtime_record_action_allowed(
     }
 }
 
-fn ensure_create_api_required_fields(metadata: &ModelMetadata, payload: &Value) -> Result<()> {
+fn ensure_create_api_required_fields(
+    metadata: &ModelMetadata,
+    template: &crate::data_model_template_registry::CompiledDataModelTemplate,
+    payload: &Value,
+) -> Result<()> {
     let missing_fields = metadata
         .fields
         .iter()
         .filter(|field| field.api_required && field.is_writable)
+        .filter(|field| {
+            !template
+                .descriptor()
+                .system_fields
+                .iter()
+                .any(|system_field| {
+                    system_field.code == field.code
+                        || system_field.code == field.physical_column_name
+                })
+        })
         .filter(|field| {
             payload
                 .as_object()
@@ -634,12 +648,9 @@ impl RuntimeEngine {
                 let before_id = take_optional_uuid(&mut payload, "before_id")?;
                 let after_id = take_optional_uuid(&mut payload, "after_id")?;
                 let payload = Value::Object(payload);
-                ensure_runtime_payload_fields_writable(
-                    &metadata,
-                    &self.resolve_template(&metadata)?,
-                    &payload,
-                )?;
-                ensure_create_api_required_fields(&metadata, &payload)?;
+                let template = self.resolve_template(&metadata)?;
+                ensure_runtime_payload_fields_writable(&metadata, &template, &payload)?;
+                ensure_create_api_required_fields(&metadata, &template, &payload)?;
                 let payload = self
                     .default_value_resolver
                     .apply(input.actor.user_id, &metadata.model_code, payload)
@@ -936,7 +947,7 @@ impl RuntimeEngine {
             .await?;
         let template = self.resolve_template(&metadata)?;
         ensure_runtime_payload_fields_writable(&metadata, &template, &payload)?;
-        ensure_create_api_required_fields(&metadata, &payload)?;
+        ensure_create_api_required_fields(&metadata, &template, &payload)?;
         self.validator
             .validate(input.actor.user_id, &input.model_code, &payload)
             .await?;

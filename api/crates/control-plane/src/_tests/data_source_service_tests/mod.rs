@@ -1154,14 +1154,21 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
             source,
             Some(capabilities),
         );
-        Ok((template.source_selector.matches(source)
+        let mut compatible =
+            runtime_core::data_model_template_registry::DataModelTemplateCatalog::core()
+                .compatible_templates(source, live_capabilities.iter().map(String::as_str))
+                .into_iter()
+                .map(|template| template.descriptor().clone())
+                .collect::<Vec<_>>();
+        if template.source_selector.matches(source)
             && template
                 .required_capabilities
                 .iter()
-                .all(|required| live_capabilities.contains(&required.code)))
-        .then_some(template)
-        .into_iter()
-        .collect())
+                .all(|required| live_capabilities.contains(&required.code))
+        {
+            compatible.push(template);
+        }
+        Ok(compatible)
     }
 
     async fn validate_config(
@@ -1337,7 +1344,7 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
                     group: None,
                     order: Some(1),
                     advanced: None,
-                    required: Some(false),
+                    required: Some(true),
                     send_mode: None,
                     enabled_by_default: None,
                     description: None,

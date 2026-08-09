@@ -1081,12 +1081,12 @@ where
                 &descriptor.capabilities,
             )
             .await?;
-        if !compatible
-            .iter()
-            .any(|template| template.identity == template_identity)
-        {
-            return Err(ControlPlaneError::InvalidInput("data_model_template_incompatible").into());
-        }
+        let selected_template = compatible
+            .into_iter()
+            .find(|template| template.identity == template_identity)
+            .ok_or(ControlPlaneError::InvalidInput(
+                "data_model_template_incompatible",
+            ))?;
 
         let model = self
             .repository
@@ -1125,22 +1125,39 @@ where
         let mut fields = Vec::new();
         for schema in descriptor.fields {
             let external_field_key = normalize_required_text(&schema.key, "external_field_key")?;
+            let field_code = normalize_code_identifier(&external_field_key, "external_field_key")?;
+            let schema_required = schema.required.unwrap_or(false);
+            let (is_system, is_writable, api_required) = match selected_template
+                .system_fields
+                .iter()
+                .find(|field| field.code == field_code)
+                .map(|field| field.write_policy)
+            {
+                Some(
+                    plugin_framework::DataModelSystemFieldWritePolicy::RuntimeGenerated
+                    | plugin_framework::DataModelSystemFieldWritePolicy::RuntimeManaged
+                    | plugin_framework::DataModelSystemFieldWritePolicy::DatabaseGenerated
+                    | plugin_framework::DataModelSystemFieldWritePolicy::DatabaseManaged
+                    | plugin_framework::DataModelSystemFieldWritePolicy::ReadOnlyProjection,
+                ) => (true, false, false),
+                None => (false, true, schema_required),
+            };
             let field = self
                 .repository
                 .add_model_field(&AddModelFieldInput {
                     actor_user_id: actor.user_id,
                     model_id: model.id,
                     physical_column_name: None,
-                    code: normalize_code_identifier(&external_field_key, "external_field_key")?,
+                    code: field_code,
                     title: field_title(&schema),
                     description: schema.description.clone(),
                     external_field_key: Some(external_field_key),
                     field_kind: model_field_kind_from_schema(&schema),
-                    is_system: false,
-                    is_writable: true,
+                    is_system,
+                    is_writable,
                     apply_physical_schema: false,
-                    is_required: schema.required.unwrap_or(false),
-                    api_required: schema.required.unwrap_or(false),
+                    is_required: schema_required,
+                    api_required,
                     is_unique: descriptor
                         .primary_key
                         .as_deref()

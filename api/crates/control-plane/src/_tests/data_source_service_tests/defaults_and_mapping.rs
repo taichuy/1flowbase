@@ -147,7 +147,7 @@ async fn preview_read_uses_stored_secret_and_creates_preview_session() {
 }
 
 #[tokio::test]
-async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_secret() {
+async fn map_resource_to_model_projects_selected_template_field_policy() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::ready();
     let service = data_source_service(repository.clone(), runtime.clone(), "test-master-key");
@@ -180,8 +180,8 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
             workspace_id: workspace_id(),
             instance_id: created.instance.id,
             resource_key: "contacts".into(),
-            template_provider: "acme_hubspot_source".into(),
-            template_code: "contacts".into(),
+            template_provider: "core".into(),
+            template_code: "general".into(),
             template_version: "v1".into(),
         })
         .await
@@ -200,8 +200,8 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
         Some("contacts")
     );
     assert_eq!(mapped.model.external_table_id, None);
-    assert_eq!(mapped.model.template_provider, "acme_hubspot_source");
-    assert_eq!(mapped.model.template_code, "contacts");
+    assert_eq!(mapped.model.template_provider, "core");
+    assert_eq!(mapped.model.template_code, "general");
     assert_eq!(mapped.model.template_version, "v1");
     assert_eq!(
         mapped.model.external_capability_snapshot,
@@ -222,11 +222,19 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
     );
     assert_eq!(mapped.fields.len(), 2);
     assert_eq!(mapped.fields[0].external_field_key.as_deref(), Some("id"));
+    assert!(mapped.fields[0].is_system);
+    assert!(!mapped.fields[0].is_writable);
+    assert!(mapped.fields[0].is_required);
+    assert!(!mapped.fields[0].api_required);
     assert_eq!(
         mapped.fields[1].external_field_key.as_deref(),
         Some("properties.email")
     );
     assert_eq!(mapped.fields[1].code, "properties_email");
+    assert!(!mapped.fields[1].is_system);
+    assert!(mapped.fields[1].is_writable);
+    assert!(mapped.fields[1].is_required);
+    assert!(mapped.fields[1].api_required);
 
     let runtime_input = runtime.last_describe_input().await.unwrap();
     assert_eq!(
@@ -286,15 +294,23 @@ async fn ac_004_compatible_templates_use_live_resource_capability_subset() {
         .await
         .unwrap();
 
-    assert_eq!(templates.len(), 1);
+    assert_eq!(templates.len(), 2);
     assert_eq!(
-        templates[0].descriptor.identity.provider,
-        "acme_hubspot_source"
+        templates
+            .iter()
+            .map(|template| template.descriptor.identity.canonical_name())
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from([
+            "acme_hubspot_source/contacts/v1".to_owned(),
+            "core/general/v1".to_owned(),
+        ])
     );
-    assert_eq!(templates[0].descriptor.identity.code, "contacts");
-    assert_eq!(templates[0].descriptor.identity.version, "v1");
+    let provider_template = templates
+        .iter()
+        .find(|template| template.descriptor.identity.provider == "acme_hubspot_source")
+        .expect("provider template must remain compatible");
     assert_eq!(
-        templates[0].descriptor.required_capabilities,
+        provider_template.descriptor.required_capabilities,
         vec![plugin_framework::DataModelCapabilityRequirement {
             code: "records.read".to_owned(),
         }]
@@ -387,6 +403,18 @@ async fn map_resource_to_model_redacts_descriptor_secret_echoes_before_mapping()
         })
         .await
         .unwrap();
+
+    assert_eq!(mapped.model.template_provider, "acme_hubspot_source");
+    assert_eq!(mapped.model.template_code, "contacts");
+    assert_eq!(mapped.model.template_version, "v1");
+    let id_field = mapped
+        .fields
+        .iter()
+        .find(|field| field.code == "id")
+        .expect("provider system field must be mapped");
+    assert!(id_field.is_system);
+    assert!(!id_field.is_writable);
+    assert!(!id_field.api_required);
 
     let runtime_input = runtime.last_describe_input().await.unwrap();
     assert_eq!(

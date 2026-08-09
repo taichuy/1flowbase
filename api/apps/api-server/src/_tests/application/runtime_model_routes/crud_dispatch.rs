@@ -446,13 +446,18 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         )
         .await
         .unwrap();
-    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let create_status = create_response.status();
     let create_payload: serde_json::Value = serde_json::from_slice(
         &to_bytes(create_response.into_body(), usize::MAX)
             .await
             .unwrap(),
     )
     .unwrap();
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "external core/general create must not require descriptor system fields: {create_payload}"
+    );
     assert_eq!(create_payload["data"]["id"], json!("contact-created"));
     assert_eq!(
         create_payload["data"]["email_address"],

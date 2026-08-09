@@ -687,6 +687,28 @@ async fn runtime_create_validates_api_required_fields_not_metadata_required() {
             domain::ModelFieldRecord {
                 id: Uuid::now_v7(),
                 data_model_id: model_id,
+                code: "id".into(),
+                title: "ID".into(),
+                description: None,
+                physical_column_name: "id".into(),
+                external_field_key: Some("id".into()),
+                field_kind: domain::ModelFieldKind::String,
+                is_system: false,
+                is_writable: true,
+                is_required: true,
+                api_required: true,
+                is_unique: true,
+                default_value: None,
+                display_interface: None,
+                display_options: json!({}),
+                relation_target_model_id: None,
+                relation_options: json!({}),
+                sort_order: 0,
+                availability_status: domain::MetadataAvailabilityStatus::Available,
+            },
+            domain::ModelFieldRecord {
+                id: Uuid::now_v7(),
+                data_model_id: model_id,
                 code: "title".into(),
                 title: "Title".into(),
                 description: None,
@@ -703,7 +725,7 @@ async fn runtime_create_validates_api_required_fields_not_metadata_required() {
                 display_options: json!({}),
                 relation_target_model_id: None,
                 relation_options: json!({}),
-                sort_order: 0,
+                sort_order: 1,
                 availability_status: domain::MetadataAvailabilityStatus::Available,
             },
             domain::ModelFieldRecord {
@@ -725,7 +747,7 @@ async fn runtime_create_validates_api_required_fields_not_metadata_required() {
                 display_options: json!({}),
                 relation_target_model_id: None,
                 relation_options: json!({}),
-                sort_order: 1,
+                sort_order: 2,
                 availability_status: domain::MetadataAvailabilityStatus::Available,
             },
         ],
@@ -748,6 +770,22 @@ async fn runtime_create_validates_api_required_fields_not_metadata_required() {
             .await
             .unwrap_err(),
         RuntimeModelError::missing_create_required_fields("api_required_orders", vec!["status"]),
+    );
+
+    let system_field_error = engine
+        .create_record(RuntimeCreateInput {
+            actor: actor.clone(),
+            model_code: "api_required_orders".into(),
+            payload: json!({ "id": Uuid::now_v7(), "status": "draft" }),
+            scope_grant: Some(scope_grant(model_id, Uuid::nil())),
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        system_field_error
+            .to_string()
+            .contains("runtime field is not writable: id"),
+        "compiled system field must remain client non-writable: {system_field_error}"
     );
 
     let created = engine
