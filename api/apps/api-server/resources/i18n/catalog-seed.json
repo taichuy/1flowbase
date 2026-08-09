@@ -440,6 +440,8 @@
           "Replace members roles in the system backend.",
           "Replace roles console policy",
           "Replace roles console policy in the system backend.",
+          "Replace roles console settings order",
+          "Replace roles console settings order in the system backend.",
           "Replace roles data policy",
           "Replace roles data policy in the system backend.",
           "Replace roles frontstage routes",
@@ -631,7 +633,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:0c6a5f0d4f0f4d57cd71859baa6ac9b294c9505246fd2fab5442d5471ecf2205"
+        "sha256": "sha256:c0eb2b3a561786871651227ff5688c0c3330a41292cb412dabafb715e49cc24d"
       },
       {
         "keys": [
@@ -1009,6 +1011,8 @@
           "Replace members roles in the system backend.",
           "Replace roles console policy",
           "Replace roles console policy in the system backend.",
+          "Replace roles console settings order",
+          "Replace roles console settings order in the system backend.",
           "Replace roles data policy",
           "Replace roles data policy in the system backend.",
           "Replace roles frontstage routes",
@@ -1200,7 +1204,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:7e79a403ecaa865aa7a8e8e73ee06713825de61fd993de41fb96ef6dd97f5985"
+        "sha256": "sha256:8360dc3db36c13737137a851ff09d960c0c0c29f259708c7e63b4d3be47ef835"
       },
       {
         "keys": [
@@ -1535,7 +1539,7 @@
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:35cc2cb5e49e7e2d93bc329481d9dd4b174566a2f1ad13ffdd8e0ca43a5fd076",
+    "semantic_sha256": "sha256:b1a8e2fc90d237ca678e72a6a7e1733ec334d4a4d428abb66e16337748c0ab0c",
     "source_locale": "en_US"
   },
   "messages": [
@@ -4799,6 +4803,20 @@
       "translations": {
         "en_US": "Replace roles console policy in the system backend.",
         "zh_Hans": "替换角色控制台策略（系统后端）"
+      }
+    },
+    {
+      "key": "Replace roles console settings order",
+      "translations": {
+        "en_US": "Replace roles console settings order",
+        "zh_Hans": "替换角色控制台设置顺序"
+      }
+    },
+    {
+      "key": "Replace roles console settings order in the system backend.",
+      "translations": {
+        "en_US": "Replace roles console settings order in the system backend.",
+        "zh_Hans": "替换角色控制台设置顺序（系统后端）"
       }
     },
     {

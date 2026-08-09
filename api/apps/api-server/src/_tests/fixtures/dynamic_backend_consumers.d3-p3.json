@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 280,
-  "count": 560,
+  "projected_interface_count": 281,
+  "count": 562,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1671,6 +1671,12 @@
       "PUT",
       "/api/console/settings/model-providers/providers/:provider_code/main-instance",
       "Update model providers main instance"
+    ],
+    [
+      "roles.console_settings_order.replace",
+      "PUT",
+      "/api/console/settings/roles/console-policy-catalog/order",
+      "Replace roles console settings order"
     ],
     [
       "roles.console_policy.replace",

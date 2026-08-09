@@ -663,6 +663,56 @@
         "authorization_operation_id": "get_workflow_schedule_trigger"
       },
       {
+        "interface_id": "assistant_list_conversations",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/assistant/conversations"
+        },
+        "summary": "Assistant list conversations",
+        "description": "Assistant list conversations in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_get_conversation_messages",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/assistant/conversations/{conversation_id}/messages"
+        },
+        "summary": "Assistant get conversation messages",
+        "description": "Assistant get conversation messages in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_get_legacy_snapshot_messages",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/assistant/legacy-runs/{flow_run_id}/messages"
+        },
+        "summary": "Assistant get legacy snapshot messages",
+        "description": "Assistant get legacy snapshot messages in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_runs_websocket",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/assistant/runs/websocket"
+        },
+        "summary": "Assistant runs websocket",
+        "description": "Assistant runs websocket in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_get_settings",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/assistant/settings"
+        },
+        "summary": "Assistant get settings",
+        "description": "Assistant get settings in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
         "interface_id": "agent_flow.data_source_options.list",
         "route": {
           "method": "GET",
@@ -1683,6 +1733,16 @@
         "authorization_operation_id": "update_version"
       },
       {
+        "interface_id": "assistant_update_settings",
+        "route": {
+          "method": "PATCH",
+          "path": "/api/console/assistant/settings"
+        },
+        "summary": "Assistant update settings",
+        "description": "Assistant update settings in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
         "interface_id": "update_frontstage_page_title",
         "route": {
           "method": "PATCH",
@@ -2001,6 +2061,46 @@
         "summary": "Restore applications orchestration version",
         "description": "Restore applications orchestration version in the system backend.",
         "authorization_operation_id": "applications.orchestration.version.restore"
+      },
+      {
+        "interface_id": "assistant_create_conversation",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/assistant/conversations"
+        },
+        "summary": "Assistant create conversation",
+        "description": "Assistant create conversation in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_start_run",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/assistant/runs"
+        },
+        "summary": "Assistant start run",
+        "description": "Assistant start run in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_start_run_stream",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/assistant/runs/stream"
+        },
+        "summary": "Assistant start run stream",
+        "description": "Assistant start run stream in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "assistant_create_websocket_ticket",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/assistant/runs/websocket-ticket"
+        },
+        "summary": "Assistant create websocket ticket",
+        "description": "Assistant create websocket ticket in the system backend.",
+        "authorization_operation_id": null
       },
       {
         "interface_id": "data_sources.secret.rotate",
@@ -2490,6 +2590,16 @@
         },
         "summary": "Revoke all sessions",
         "description": "Revoke all sessions in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "switch_active_role",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/session/actions/switch-role"
+        },
+        "summary": "Switch active role",
+        "description": "Switch active role in the system backend.",
         "authorization_operation_id": null
       },
       {
@@ -3213,6 +3323,16 @@
         "authorization_operation_id": "model_providers.main_instance.update"
       },
       {
+        "interface_id": "roles.console_settings_order.replace",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/settings/roles/console-policy-catalog/order"
+        },
+        "summary": "Replace roles console settings order",
+        "description": "Replace roles console settings order in the system backend.",
+        "authorization_operation_id": "roles.console_settings_order.replace"
+      },
+      {
         "interface_id": "roles.console_policy.replace",
         "route": {
           "method": "PUT",
@@ -3260,7 +3380,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3283,7 +3403,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3306,7 +3426,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3329,7 +3449,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3354,7 +3474,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3377,7 +3497,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3400,7 +3520,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3423,7 +3543,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3446,7 +3566,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3469,7 +3589,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3492,7 +3612,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3515,7 +3635,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3538,7 +3658,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3561,7 +3681,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3584,7 +3704,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3607,7 +3727,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3630,7 +3750,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3653,7 +3773,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3676,6 +3796,26 @@
           {
             "method": "GET",
             "path": "/api/console/applications/archive/installed-extension/:installation_id/preview"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/assistant/conversations"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/assistant/conversations/{conversation_id}/messages"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/assistant/legacy-runs/{flow_run_id}/messages"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/assistant/runs/websocket"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/assistant/settings"
           },
           {
             "method": "GET",
@@ -3755,6 +3895,10 @@
           },
           {
             "method": "PATCH",
+            "path": "/api/console/assistant/settings"
+          },
+          {
+            "method": "PATCH",
             "path": "/api/console/frontstage/:workspace_id/pages/:page_id"
           },
           {
@@ -3776,6 +3920,22 @@
           {
             "method": "POST",
             "path": "/api/console/applications/archive/preview"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/assistant/conversations"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/assistant/runs"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/assistant/runs/stream"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/assistant/runs/websocket-ticket"
           },
           {
             "method": "POST",
@@ -3827,6 +3987,10 @@
           },
           {
             "method": "POST",
+            "path": "/api/console/session/actions/switch-role"
+          },
+          {
+            "method": "POST",
             "path": "/api/console/session/actions/switch-workspace"
           },
           {
@@ -3852,7 +4016,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3875,7 +4039,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3900,7 +4064,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3923,7 +4087,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3946,13 +4110,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 199001,
+        "order": 200001,
         "routes": [
           {
             "method": "POST",
@@ -3969,7 +4133,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3992,7 +4156,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4015,7 +4179,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4038,7 +4202,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4061,7 +4225,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4084,7 +4248,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4107,7 +4271,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4130,7 +4294,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4153,7 +4317,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4178,7 +4342,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4203,7 +4367,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4226,7 +4390,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4249,7 +4413,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4272,7 +4436,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4295,7 +4459,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4318,7 +4482,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4341,7 +4505,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4364,7 +4528,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4387,7 +4551,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4410,7 +4574,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4433,7 +4597,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4456,7 +4620,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4479,7 +4643,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4502,7 +4666,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4525,7 +4689,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4548,7 +4712,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4571,7 +4735,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4594,7 +4758,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4617,7 +4781,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4640,7 +4804,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4663,7 +4827,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4686,7 +4850,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4709,7 +4873,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4732,7 +4896,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4755,7 +4919,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4780,7 +4944,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4805,7 +4969,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4830,7 +4994,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4855,7 +5019,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4880,7 +5044,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4905,7 +5069,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4930,7 +5094,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4953,7 +5117,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4978,7 +5142,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5003,7 +5167,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5028,7 +5192,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5053,7 +5217,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5078,7 +5242,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5103,7 +5267,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5128,7 +5292,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5153,7 +5317,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5178,7 +5342,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5203,13 +5367,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 198000,
+        "order": 199000,
         "routes": [
           {
             "method": "GET",
@@ -5226,13 +5390,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 198002,
+        "order": 199002,
         "routes": [
           {
             "method": "GET",
@@ -5249,13 +5413,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 198003,
+        "order": 199003,
         "routes": [
           {
             "method": "GET",
@@ -5272,7 +5436,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5297,7 +5461,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5322,7 +5486,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5345,7 +5509,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5368,7 +5532,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5391,7 +5555,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5414,7 +5578,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5437,7 +5601,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5460,7 +5624,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5483,7 +5647,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5508,7 +5672,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5533,7 +5697,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5556,7 +5720,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5581,7 +5745,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5606,7 +5770,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5631,7 +5795,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5654,7 +5818,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5677,7 +5841,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5700,7 +5864,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5723,7 +5887,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5746,7 +5910,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5769,7 +5933,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5792,7 +5956,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5815,7 +5979,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5838,7 +6002,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5861,7 +6025,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5884,7 +6048,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5907,7 +6071,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5930,7 +6094,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5953,7 +6117,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5976,7 +6140,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5999,7 +6163,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6022,7 +6186,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6045,7 +6209,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6068,7 +6232,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6093,7 +6257,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6118,7 +6282,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6143,7 +6307,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6168,7 +6332,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6193,7 +6357,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6218,7 +6382,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6243,13 +6407,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 198001,
+        "order": 199001,
         "routes": [
           {
             "method": "GET",
@@ -6266,7 +6430,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6289,7 +6453,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6312,7 +6476,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6335,7 +6499,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6358,7 +6522,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6381,7 +6545,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6404,13 +6568,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 199002,
+        "order": 200002,
         "routes": [
           {
             "method": "GET",
@@ -6427,13 +6591,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 199000,
+        "order": 200000,
         "routes": [
           {
             "method": "GET",
@@ -6450,7 +6614,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6473,7 +6637,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6496,7 +6660,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6519,7 +6683,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6542,7 +6706,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6565,7 +6729,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6588,7 +6752,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6611,7 +6775,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6634,7 +6798,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6657,7 +6821,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6680,7 +6844,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6703,7 +6867,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6726,7 +6890,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6749,7 +6913,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6772,7 +6936,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6795,7 +6959,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6818,7 +6982,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6841,7 +7005,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6864,7 +7028,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6887,7 +7051,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6910,7 +7074,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6933,7 +7097,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6956,7 +7120,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6979,7 +7143,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7002,7 +7166,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7025,7 +7189,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7048,7 +7212,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7071,7 +7235,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7094,7 +7258,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7117,7 +7281,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7140,7 +7304,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7163,7 +7327,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7186,7 +7350,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7209,7 +7373,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7232,7 +7396,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7255,7 +7419,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7278,7 +7442,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7301,7 +7465,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7324,7 +7488,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7347,7 +7511,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7370,7 +7534,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7393,7 +7557,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7416,7 +7580,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7439,7 +7603,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7462,7 +7626,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7485,7 +7649,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7508,7 +7672,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7531,7 +7695,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7554,7 +7718,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7577,7 +7741,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7600,7 +7764,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7623,7 +7787,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7646,7 +7810,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7669,7 +7833,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7692,7 +7856,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7715,7 +7879,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7738,7 +7902,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7761,7 +7925,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7784,7 +7948,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7807,7 +7971,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7830,7 +7994,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7853,7 +8017,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7876,7 +8040,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7899,7 +8063,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7922,7 +8086,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7945,7 +8109,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7968,7 +8132,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7991,7 +8155,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8014,7 +8178,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8037,7 +8201,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8060,7 +8224,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8083,7 +8247,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8106,7 +8270,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8129,7 +8293,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8152,7 +8316,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8175,7 +8339,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8198,7 +8362,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8221,7 +8385,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8244,7 +8408,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8267,7 +8431,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8290,7 +8454,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8313,7 +8477,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8336,7 +8500,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8359,7 +8523,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8382,7 +8546,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8405,7 +8569,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8428,7 +8592,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8451,7 +8615,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8474,7 +8638,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8497,7 +8661,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8520,7 +8684,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8543,7 +8707,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8568,7 +8732,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8591,7 +8755,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8614,7 +8778,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8637,7 +8801,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8660,7 +8824,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8683,7 +8847,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8706,7 +8870,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8729,7 +8893,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8752,7 +8916,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8775,7 +8939,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8798,7 +8962,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8821,7 +8985,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8844,7 +9008,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8867,7 +9031,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8890,7 +9054,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8913,7 +9077,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8936,7 +9100,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8959,7 +9123,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8982,7 +9146,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9005,7 +9169,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9030,7 +9194,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9055,7 +9219,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9080,7 +9244,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9105,7 +9269,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9130,7 +9294,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9153,7 +9317,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9178,13 +9342,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 199003,
+        "order": 200003,
         "routes": [
           {
             "method": "POST",
@@ -9201,7 +9365,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9224,13 +9388,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 182,
+        "order": 183,
         "routes": [
           {
             "method": "GET",
@@ -9247,17 +9411,40 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 183,
+        "order": 184,
         "routes": [
           {
             "method": "GET",
             "path": "/api/console/settings/roles/console-policy-catalog"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "roles.console_settings_order.replace",
+        "authorization_profile_id": "roles.console_settings_order.replace",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.3"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.roles"
+        },
+        "order": 182,
+        "routes": [
+          {
+            "method": "PUT",
+            "path": "/api/console/settings/roles/console-policy-catalog/order"
           }
         ],
         "authorization": {
@@ -9270,13 +9457,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 184,
+        "order": 185,
         "routes": [
           {
             "method": "POST",
@@ -9293,13 +9480,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 185,
+        "order": 186,
         "routes": [
           {
             "method": "GET",
@@ -9316,13 +9503,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 186,
+        "order": 187,
         "routes": [
           {
             "method": "PUT",
@@ -9339,13 +9526,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 187,
+        "order": 188,
         "routes": [
           {
             "method": "GET",
@@ -9362,13 +9549,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 188,
+        "order": 189,
         "routes": [
           {
             "method": "DELETE",
@@ -9385,13 +9572,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 189,
+        "order": 190,
         "routes": [
           {
             "method": "PUT",
@@ -9408,13 +9595,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 190,
+        "order": 191,
         "routes": [
           {
             "method": "GET",
@@ -9431,13 +9618,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 191,
+        "order": 192,
         "routes": [
           {
             "method": "GET",
@@ -9454,13 +9641,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 192,
+        "order": 193,
         "routes": [
           {
             "method": "GET",
@@ -9477,13 +9664,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 193,
+        "order": 194,
         "routes": [
           {
             "method": "PUT",
@@ -9500,13 +9687,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 194,
+        "order": 195,
         "routes": [
           {
             "method": "GET",
@@ -9523,13 +9710,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 195,
+        "order": 196,
         "routes": [
           {
             "method": "PATCH",
@@ -9546,7 +9733,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9571,7 +9758,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9594,13 +9781,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.applications"
         },
-        "order": 196,
+        "order": 197,
         "routes": [
           {
             "method": "GET",
@@ -9617,13 +9804,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 197,
+        "order": 198,
         "routes": [
           {
             "method": "GET",
@@ -9640,7 +9827,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9663,7 +9850,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9686,7 +9873,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9709,7 +9896,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9734,13 +9921,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.system-runtime"
         },
-        "order": 200,
+        "order": 201,
         "routes": [
           {
             "method": "GET",
@@ -9757,13 +9944,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.system-runtime"
         },
-        "order": 201,
+        "order": 202,
         "routes": [
           {
             "method": "GET",
@@ -9780,7 +9967,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9803,7 +9990,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9826,7 +10013,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9849,7 +10036,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9872,7 +10059,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9895,7 +10082,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9920,7 +10107,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9943,7 +10130,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9968,13 +10155,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.workspace"
         },
-        "order": 202,
+        "order": 203,
         "routes": [
           {
             "method": "PATCH",
@@ -9992,7 +10179,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "scope_kind": "workspace",
@@ -10029,7 +10216,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.2"
+          "version": "0.3.3"
         },
         "lifecycle": "active",
         "scope_kind": "workspace",
@@ -10047,5 +10234,3353 @@
         ]
       }
     ]
+  },
+  "route_assembly": [
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/health"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/session"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/session"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/session/actions/revoke-all"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/session/actions/switch-workspace"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/session/actions/switch-role"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/me"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/me"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/me/meta"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/me/actions/change-password"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/assistant/settings"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/assistant/settings"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/assistant/conversations"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/assistant/conversations"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/assistant/conversations/{conversation_id}/messages"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/assistant/legacy-runs/{flow_run_id}/messages"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/assistant/runs"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/assistant/runs/stream"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/assistant/runs/websocket-ticket"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/assistant/runs/websocket"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/navigation"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/applications"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "settings_feature.access.system.applications"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/applications/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/applications/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.create"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/tags"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/environment-variables"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:id/environment-variables"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/js-dependencies"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:id/js-dependencies"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-keys"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:application_id/api-keys"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/applications/:application_id/api-keys/:key_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-mapping"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:application_id/api-mapping"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-publication"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/applications/:application_id/api-publication"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.publish"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:application_id/api-publications"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.publish"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/applications/:application_id/api-status"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.api.set_enabled"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/workflow-schedule-trigger"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:application_id/workflow-schedule-trigger"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-docs/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-docs/categories/:category_id/operations"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-docs/categories/:category_id/openapi.json"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:application_id/api-docs/operations/:operation_id/openapi.json"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/orchestration"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:id/orchestration/draft"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/archive/export"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.orchestration.template.export"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/archive/preview"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/archive/import"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.orchestration.template.import"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/archive/installed-extension/:installation_id/preview"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/archive/installed-extension/:installation_id/import"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/versions/:version_id/restore"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.orchestration.version.restore"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/applications/:id/orchestration/versions/:version_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/debug-runs"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/debug-runs/stream"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/orchestration/runs/:run_id/debug-stream"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/orchestration/runs/:run_id/debug-snapshot"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/runs/:run_id/resume"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/runs/:run_id/cancel"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/nodes/:node_id/debug-runs"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.run"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/orchestration/debug-variable-snapshot"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:id/orchestration/debug-variable-cache"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/applications/:id/orchestration/debug-variable-cache"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/orchestration/debug-artifacts/resolve"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/orchestration/debug-artifacts/:artifact_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/logs/runs/export"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.export"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/logs/runs/archive"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.export"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/logs/runs/archive/import-sessions"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.import"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/applications/:id/logs/runs/archive/import-sessions/:session_id/chunks/:chunk_index"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.import"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/applications/:id/logs/runs/archive/import-sessions/:session_id/complete"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.import"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/archive/import-jobs/:job_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.import"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/monitoring/run-metrics"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/monitoring/runtime-activity"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/conversations/:conversation_id/messages"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/conversation/messages"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/overview"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/trace-tree"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/export"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.export"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/archive"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.logs.export"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/content"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/details/:detail_ref_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/trace-tree/nodes/:trace_node_id/tool-callbacks/:tool_call_id/content"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/resume-timeline"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/logs/runs/:run_id/debug-stream"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/applications/:id/orchestration/nodes/:node_id/last-run"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "applications.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/data-sources/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "settings_feature.access.system.data-models"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/data-sources"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/data-sources"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/data-models/data-sources/:data_source_id/defaults"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.defaults.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/data-sources/:data_source_id/validate"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.validate"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/data-sources/:data_source_id/resources"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/data-sources/:data_source_id/resources/discover"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.discover"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/data-sources/:data_source_id/preview-read"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.preview"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/data-sources/:data_source_id/resources/map-to-model"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.map_to_model"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/model-definitions"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/model-definitions"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.create"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/model-definitions:batchDelete"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/data-models/model-definitions/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/data-models/model-definitions/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/model-definitions/:id/advisor-findings"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.advisor.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/model-definitions/:id/fields"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_fields.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/data-models/model-definitions/:id/fields/:field_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_fields.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/data-models/model-definitions/:id/fields/:field_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_fields.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/model-definitions/:id/scope-grants"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_scope_grants.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/data-models/model-definitions/:id/scope-grants"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_scope_grants.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/data-models/model-definitions/:id/scope-grants/:grant_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_scope_grants.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/model-definitions/:model_id/openapi.json"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_definitions.openapi.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/docs/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "settings_feature.access.system.docs"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/docs/categories/:category_id/operations"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "settings_feature.access.system.docs"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/docs/categories/:category_id/openapi.json"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "settings_feature.access.system.docs"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/docs/operations/:operation_id/openapi.json"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "settings_feature.access.system.docs"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/data-sources/agent-flow-options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "agent_flow.data_source_options.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/data-sources/:data_source_id/secret/rotate"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "data_sources.secret.rotate"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/files/upload"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/files/:file_table_id/records/:record_id/content"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/files/storages"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_storages.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/files/storages"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_storages.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/files/storages/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_storages.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/files/storages/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_storages.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/files/tables"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_tables.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/files/tables"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_tables.create"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/files/tables/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_tables.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/files/tables/:id/binding"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "file_tables.storage.bind"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/memory"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/memory/stats"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/stats"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/search"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/tree"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/host-infrastructure/memory/contracts/:contract_code/entries/reveal"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.memory.reveal"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/cache"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.cache.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.cache.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/reveal"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.cache.reveal"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/host-infrastructure/cache/domains/:domain_code/entries/clear"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.cache.entry.clear"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/host-infrastructure/cache/domains/:domain_code/clear"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.cache.domain.clear"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/host-infrastructure/providers"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.providers.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "host_infrastructure.providers.configure"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/i18n/catalog"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/i18n/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.state.get"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/i18n/update-check"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.update.check"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/i18n/activate"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.update.activate"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/i18n/installed-extension/:installation_id/preview"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/i18n/installed-extension/:installation_id/activate"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/i18n/entries"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.entries.list"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/i18n/entries/detail"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.entries.detail"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/i18n/overrides"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.overrides.upsert"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/i18n/overrides"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.overrides.restore"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/i18n/custom-translations"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.custom_translations.upsert"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/i18n/custom-keys"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.custom_keys.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/i18n/restore-overrides"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "i18n_catalog.overrides.restore_all"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/interface-capabilities"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/list"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/export"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.catalog.export"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/instances"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/instances"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.create"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/instances/:instance_id/copy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.copy"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/instances/:instance_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/instances/:instance_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/instances/:instance_id/client-credential"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.client_credential.reveal"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/instances/:instance_id/client-credential"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.client_credential.save"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/instances/:instance_id/client-credential"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.client_credential.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/instances/:instance_id/groups"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.groups.upsert"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/instances/:instance_id/groups"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.groups.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/instances/:instance_id/groups/move"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.groups.move"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/instances/:instance_id/tool-bindings"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tool_bindings.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/tool-bindings/:binding_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tool_bindings.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/tool-bindings/:binding_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tool_bindings.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/tools"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/tools"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/tools/:tool_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/tools/:tool_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/tools/:tool_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/tools/:tool_id/description/refresh"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.description.refresh"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/tools/:tool_id/description-check"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.description.check"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/debug/execute"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.debug.execute"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/instances/:instance_id/discovery-policy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.discovery_policy.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/instances/:instance_id/discovery-policy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.discovery_policy.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/bundles/official"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.official.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/preview-official"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.preview"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/import-official"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.import"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/export"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.export"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/bundles/export-defaults"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.export"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/instances/:instance_id/bundles/export"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.export"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/preview-upload"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.preview"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/import-upload"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundles.import"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/bundles/library"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/sync"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.sync"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/preview"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.preview"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/import"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.import"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/current/:bundle_version"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.current.switch"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.releases.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/bundles/library/:organization/:bundle_id/releases/:bundle_version/repair"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.bundle_library.releases.repair"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/upstream-connections"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/upstream-connections"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/upstream-connections/:connection_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/upstream-connections/:connection_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/mcp/upstream-connections/:connection_id/credentials"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_credentials.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/mcp/upstream-connections/:connection_id/credentials"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_credentials.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/upstream-connections/test"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.test"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/upstream-connections/:connection_id/test"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.test"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/upstream-connections/:connection_id/discover"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_connections.discover"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/upstream-connections/:connection_id/imports"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_tools.import"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/mcp/tools/:tool_id/debug"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.upstream_tools.debug"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/user-api-keys"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "user_api_keys.manage"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/user-api-keys"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "user_api_keys.manage"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/user-api-keys/role-options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "user_api_keys.manage"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/user-api-keys/:api_key_id/revoke"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "user_api_keys.manage"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/workspace"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/workspace"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "workspace.update"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/members"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/members"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/members/role-options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.role_options.list"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/members/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/members/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/members/:id/disable"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.disable"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/members/:id/enable"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.enable"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/members/:id/reset-password"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.password.reset"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/members/:id/roles"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "members.roles.replace"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/models/agent-flow-options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "agent_flow.data_model_options.list"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/model-providers/providers/:provider_code/icon"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.icons.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/model-providers/options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.options.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/model-providers/:id/balance"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.balance.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/request-logs"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.request_logs.view"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/model-providers/request-logs"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.request_logs.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/request-logs/clear"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.request_logs.clear"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/instances"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/instances"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/providers/:provider_code/main-instance"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.main_instance.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/model-providers/providers/:provider_code/main-instance"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.main_instance.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/preview-models"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.preview.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.settings_options.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/model-providers/instances/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/model-providers/instances/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/instances/:id/validate"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.validate"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/instances/:id/secrets/reveal"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.secrets.reveal"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/instances/:id/models"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.models.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/instances/:id/models/refresh"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_providers.instances.models.refresh"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontend-blocks"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "frontend_blocks.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/js-dependencies"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "js_dependencies.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/node-contributions"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "node_contributions.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/roles"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/data-model-options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.data_model_options.list"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/console-policy-catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.console_policy_catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/roles/console-policy-catalog/order"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.console_settings_order.replace"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/settings/roles/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/roles/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/:id/console-policy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.console_policy.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/roles/:id/console-policy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.console_policy.replace"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/:id/permissions"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.permissions.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/roles/:id/permissions"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.permissions.replace"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/:id/frontstage-routes"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.frontstage_routes.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/roles/:id/frontstage-routes"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.frontstage_routes.replace"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/:id/data-policy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.data_policy.view"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/roles/:id/data-policy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.data_policy.replace"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/roles/permission-options"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "roles.permission_options.list"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/groups"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/move"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/blocks"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/data-capabilities"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/interface-capabilities"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/interface-capabilities/:interface_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/component-capabilities"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/component-capabilities/:component_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/component-module-assets/:sha256"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/write-grants"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/extension-center/installed"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.installed.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/installed/:installation_id/select"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.installed.select"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/extension-center/installed/:installation_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.installed.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/extension-center/catalog/:category"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/extension-center/catalog/:category/:catalog_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.catalog.detail"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/update-check"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.update_check"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/install"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.install"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/update"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/install-upload"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.install.upload"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/plugins/catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/plugins/families"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.families.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/families/:provider_code/upgrade-latest"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.families.upgrade"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/families/:provider_code/switch-version"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.families.switch"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/plugins/families/:provider_code"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.families.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/plugins/official-catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.official_catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/install-upload"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.install.upload"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/install"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.install"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/install-official"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.install.official"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/:installation_id/catalog-projection/refresh"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.catalog_projection.refresh"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/:installation_id/artifact/refresh"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.artifact.refresh"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/:installation_id/artifact/install-current-node"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.artifact.install"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/:installation_id/enable"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.enable"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/plugins/:installation_id/assign"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.assign"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/plugins/tasks"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.tasks.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/plugins/tasks/:task_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "plugins.tasks.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/plugins/families"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.families.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/plugins/official-catalog"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.official_catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/plugins/install-official"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.install.official"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/plugins/install-upload"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.install.upload"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/plugins/:installation_id/artifact/refresh"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.artifact.refresh"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/plugins/:installation_id/artifact/install-current-node"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.artifact.install"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/plugins/families/:provider_code/upgrade-latest"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.families.upgrade"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/model-providers/plugins/families/:provider_code/switch-version"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.families.switch"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/model-providers/plugins/families/:provider_code"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.families.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/model-providers/plugins/tasks/:task_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_provider_plugins.tasks.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/auth-center/overview"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.overview.view"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/auth-center/authenticators"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.create"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/auth-center/authenticators/order"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.order"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/auth-center/authenticators/:id/actions/enable"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.enable"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/auth-center/authenticators/:id/copy"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.copy"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/auth-center/authenticators/:id/config"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.update"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/auth-center/authenticators/:id/public-ui-block"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.update"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/auth-center/authenticators/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "auth_center.authenticators.delete"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/system/runtime-profile"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "system.runtime_profile.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/system/release-status"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "system.release_status.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/workspaces"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    }
+  ],
+  "locales": {
+    "en_US": {
+      "Applications": "Applications",
+      "Applications in the current workspace": "Applications in the current workspace",
+      "Configured data source instances in the current workspace": "Configured data source instances in the current workspace",
+      "Create": "Create",
+      "Create an application": "Create an application",
+      "Data source instances": "Data source instances",
+      "Delete": "Delete",
+      "Delete an application": "Delete an application",
+      "Update": "Update",
+      "Update an application": "Update an application",
+      "View": "View",
+      "View a data source instance": "View a data source instance",
+      "View an application": "View an application"
+    },
+    "zh_Hans": {
+      "Applications": "Applications",
+      "Applications in the current workspace": "Applications in the current workspace",
+      "Configured data source instances in the current workspace": "Configured data source instances in the current workspace",
+      "Create": "Create",
+      "Create an application": "Create an application",
+      "Data source instances": "Data source instances",
+      "Delete": "Delete",
+      "Delete an application": "Delete an application",
+      "Update": "Update",
+      "Update an application": "Update an application",
+      "View": "View",
+      "View a data source instance": "View a data source instance",
+      "View an application": "View an application"
+    }
   }
 }

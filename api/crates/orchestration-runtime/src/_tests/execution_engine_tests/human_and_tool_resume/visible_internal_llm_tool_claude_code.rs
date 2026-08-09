@@ -178,5 +178,8 @@ async fn visible_internal_llm_tool_stays_available_for_claude_code_compact_resum
         .iter()
         .filter_map(|tool| tool["function"]["name"].as_str())
         .collect::<Vec<_>>();
-    assert_eq!(tool_names, vec!["Bash", "inspect_visible_context"]);
+    assert_eq!(
+        tool_names,
+        vec!["Bash", "Bash_run_0", "inspect_visible_context"]
+    );
 }

@@ -91,7 +91,7 @@ async fn roles_feature_only_completes_role_crud_and_permission_configuration() {
         json!({
             "feature_id": "system.roles",
             "label_key": "auto.permission_management",
-            "order": 1300
+            "order": 600
         })
     );
 

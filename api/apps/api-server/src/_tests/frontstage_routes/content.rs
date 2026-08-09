@@ -206,10 +206,11 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         json!([])
     );
 
+    let other_csrf = switch_workspace(&app, &cookie, &csrf, &other_workspace_id.to_string()).await;
     let (_, other_page_payload) = create_page(
         &app,
         &cookie,
-        &csrf,
+        &other_csrf,
         &other_workspace_id.to_string(),
         Some("Other Workspace Page"),
         None,
@@ -220,6 +221,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     let other_tab_id = other_page_payload["data"]["default_tab"]["id"]
         .as_str()
         .unwrap();
+    let csrf = switch_workspace(&app, &cookie, &other_csrf, &workspace_id).await;
     let (cross_workspace_status, _) = save_page_content(
         &app,
         &cookie,

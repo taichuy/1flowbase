@@ -15,6 +15,10 @@ const {
 
 test('coverage thresholds include critical runtime areas', () => {
   assert.equal(
+    backendThresholds.find((threshold) => threshold.packageName === 'control-plane')?.line,
+    69
+  );
+  assert.equal(
     backendThresholds.some((threshold) => threshold.packageName === 'plugin-runner'),
     true
   );

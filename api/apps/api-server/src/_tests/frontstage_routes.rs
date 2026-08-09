@@ -146,6 +146,28 @@ async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {
         .to_string()
 }
 
+async fn switch_workspace(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    workspace_id: &str,
+) -> String {
+    let (status, payload) = send_json(
+        app,
+        "POST",
+        "/api/console/session/actions/switch-workspace",
+        cookie,
+        csrf,
+        json!({ "workspace_id": workspace_id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    payload["data"]["csrf_token"]
+        .as_str()
+        .expect("workspace switch should rotate the CSRF token")
+        .to_owned()
+}
+
 async fn create_group(
     app: &axum::Router,
     cookie: &str,

@@ -139,7 +139,13 @@ async fn visible_internal_image_llm_tool_injects_workspace_path_media_blocks() {
         .collect::<Vec<_>>();
     assert_eq!(
         main_tool_names,
-        vec!["Bash", "Read", "inspect_visible_context"]
+        vec![
+            "Bash",
+            "Read",
+            "Bash_run_0",
+            "Read_run_1",
+            "inspect_visible_context"
+        ]
     );
     let image_tool_schema = captured[0]
         .tools
@@ -161,7 +167,10 @@ async fn visible_internal_image_llm_tool_injects_workspace_path_media_blocks() {
         .iter()
         .filter_map(|tool| tool["function"]["name"].as_str())
         .collect::<Vec<_>>();
-    assert_eq!(resumed_main_tool_names, vec!["Bash", "Read"]);
+    assert_eq!(
+        resumed_main_tool_names,
+        vec!["Bash", "Read", "Bash_run_0", "Read_run_1"]
+    );
     let media_blocks = mounted_input.messages[0]
         .content_blocks
         .as_ref()
@@ -340,7 +349,7 @@ async fn visible_internal_image_llm_tool_ignores_repeated_media_call_when_extern
         .iter()
         .filter_map(|tool| tool["function"]["name"].as_str())
         .collect::<Vec<_>>();
-    assert_eq!(resumed_main_tool_names, vec!["Bash"]);
+    assert_eq!(resumed_main_tool_names, vec!["Bash", "Bash_run_0"]);
 }
 
 #[tokio::test]

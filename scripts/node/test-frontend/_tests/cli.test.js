@@ -27,6 +27,17 @@ test('parseCliArgs accepts pr frontend gate', () => {
   });
 });
 
+test('frontend coverage reuses the stable full-test exclusion inventory', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../../../web/app/package.json'), 'utf8')
+  );
+  const stableArgs = packageJson.scripts.test.split(' run ')[1];
+  const coverageArgs = packageJson.scripts['test:coverage'].split(' coverage ')[1];
+
+  assert.ok(stableArgs);
+  assert.equal(coverageArgs, stableArgs);
+});
+
 test('buildCommands maps full layer to lint, test, build and style-boundary', () => {
   const repoRoot = '/repo-root';
 

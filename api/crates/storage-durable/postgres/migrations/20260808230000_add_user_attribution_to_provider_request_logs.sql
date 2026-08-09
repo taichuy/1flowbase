@@ -18,15 +18,17 @@ create temporary table model_provider_request_log_user_fields (
     code text not null unique,
     title text not null,
     field_kind text not null,
+    is_required boolean not null,
+    is_unique boolean not null,
     sort_order integer not null
 ) on commit drop;
 
 insert into model_provider_request_log_user_fields (
-    field_id, code, title, field_kind, sort_order
+    field_id, code, title, field_kind, is_required, is_unique, sort_order
 )
 values
-    ('00000000-1535-4000-8000-000000000030', 'user_id', 'User ID', 'many_to_one', 29),
-    ('00000000-1535-4000-8000-000000000031', 'user_account', 'User account', 'string', 30);
+    ('00000000-1535-4000-8000-000000000030', 'user_id', 'User ID', 'many_to_one', false, false, 29),
+    ('00000000-1535-4000-8000-000000000031', 'user_account', 'User account', 'string', false, false, 30);
 
 insert into model_fields (
     id,
@@ -63,9 +65,9 @@ select
     fields.field_kind,
     true,
     false,
+    fields.is_required,
     false,
-    false,
-    false,
+    fields.is_unique,
     null,
     null,
     '{}'::jsonb,
@@ -95,9 +97,9 @@ set scope_id = definitions.scope_id,
     field_kind = fields.field_kind,
     is_system = true,
     is_writable = false,
-    is_required = false,
+    is_required = fields.is_required,
     api_required = false,
-    is_unique = false,
+    is_unique = fields.is_unique,
     availability_status = 'available',
     updated_at = now()
 from model_provider_request_log_user_fields fields
