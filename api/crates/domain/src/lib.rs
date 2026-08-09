@@ -136,7 +136,8 @@ pub use modeling::{
     DataModelScopeKind, DataModelSourceKind, DataModelStatus, MetadataAvailabilityStatus,
     ModelDefinitionRecord, ModelFieldKind, ModelFieldRecord, RoleDataModelPolicyRecord,
     RoleDataPolicyRecord, RoleDataPolicyScope, ScopeDataModelGrantRecord,
-    ScopeDataModelPermissionProfile,
+    ScopeDataModelPermissionProfile, CORE_DATA_MODEL_TEMPLATE_PROVIDER,
+    GENERAL_DATA_MODEL_TEMPLATE_CODE, GENERAL_DATA_MODEL_TEMPLATE_VERSION,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

@@ -62,6 +62,10 @@ pub enum DataModelSourceKind {
     ExternalSource,
 }
 
+pub const CORE_DATA_MODEL_TEMPLATE_PROVIDER: &str = "core";
+pub const GENERAL_DATA_MODEL_TEMPLATE_CODE: &str = "general";
+pub const GENERAL_DATA_MODEL_TEMPLATE_VERSION: &str = "v1";
+
 impl DataModelSourceKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -387,6 +391,9 @@ pub struct ModelDefinitionRecord {
     pub external_resource_key: Option<String>,
     pub external_table_id: Option<String>,
     pub external_capability_snapshot: Option<Value>,
+    pub template_provider: String,
+    pub template_code: String,
+    pub template_version: String,
     pub code: String,
     pub title: String,
     pub description: Option<String>,

@@ -1,6 +1,7 @@
 use control_plane::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
-    ModelDefinitionRepository, UpdateModelDefinitionStatusInput, UpdateScopeDataModelGrantInput,
+    ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
+    UpdateScopeDataModelGrantInput,
 };
 use domain::{
     DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
@@ -162,6 +163,9 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: "host-extension".into(),
+            template_code: "orders-specialized".into(),
+            template_version: "v3".into(),
             code: code.clone(),
             title: "Orders".into(),
             description: None,
@@ -176,7 +180,33 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
     assert_eq!(created.scope_id, workspace_id);
     assert_eq!(created.code, code);
     assert_eq!(created.title, "Orders");
+    assert_eq!(created.template_provider, "host-extension");
+    assert_eq!(created.template_code, "orders-specialized");
+    assert_eq!(created.template_version, "v3");
     assert_eq!(created.physical_table_name, created.code);
+    let persisted =
+        ModelDefinitionRepository::get_model_definition(&store, workspace_id, created.id)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(persisted.template_provider, created.template_provider);
+    assert_eq!(persisted.template_code, created.template_code);
+    assert_eq!(persisted.template_version, created.template_version);
+    let updated = ModelDefinitionRepository::update_model_definition(
+        &store,
+        &UpdateModelDefinitionInput {
+            actor_user_id: Uuid::nil(),
+            model_id: created.id,
+            title: "Renamed Orders".into(),
+            description: Some("Presentation-only update".into()),
+            external_table_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.template_provider, created.template_provider);
+    assert_eq!(updated.template_code, created.template_code);
+    assert_eq!(updated.template_version, created.template_version);
     let system_fields: Vec<_> = created
         .fields
         .iter()
@@ -243,6 +273,9 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("system_{}", Uuid::now_v7().simple()),
             title: "System Orders".into(),
             description: None,
@@ -288,6 +321,9 @@ async fn ac_002_model_definition_repository_generates_enabled_regex_prefix() {
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: code.clone(),
             title: "Orders".into(),
             description: None,
@@ -322,6 +358,9 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
                 external_resource_key: None,
                 external_table_id: None,
                 external_capability_snapshot: None,
+                template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+                template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+                template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
                 code: code.into(),
                 title: code.into(),
                 description: None,
@@ -359,6 +398,9 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "attachments".into(),
             title: "Custom attachments".into(),
             description: Some("Custom attachment metadata".into()),
@@ -543,6 +585,9 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("customers_{}", Uuid::now_v7().simple()),
             title: "Customers".into(),
             description: None,
@@ -584,6 +629,9 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("system_customers_{}", Uuid::now_v7().simple()),
             title: "System Customers".into(),
             description: None,
@@ -655,6 +703,9 @@ async fn model_definition_repository_accepts_owner_scope_grant_for_workspace_mod
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("workspace_grant_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Model".into(),
             description: None,
@@ -712,6 +763,9 @@ async fn model_definition_repository_rejects_cross_scope_grants_for_workspace_mo
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
             description: None,
@@ -774,6 +828,9 @@ async fn model_definition_repository_updates_owner_scope_grant_for_workspace_mod
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
             description: None,
@@ -844,6 +901,9 @@ async fn model_definition_repository_blocks_duplicate_code_inside_same_data_sour
         external_resource_key: Some("orders".into()),
         external_table_id: None,
         external_capability_snapshot: None,
+        template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+        template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+        template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
         code,
         title: "Orders".into(),
         description: None,
@@ -885,6 +945,9 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
         external_resource_key: None,
         external_table_id: None,
         external_capability_snapshot: None,
+        template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+        template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+        template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
         code,
         title: "Orders".into(),
         description: None,
@@ -939,6 +1002,9 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             external_resource_key: Some("orders".into()),
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: code.clone(),
             title: "Orders".into(),
             description: None,
@@ -960,6 +1026,9 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             external_resource_key: Some("orders".into()),
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: code.clone(),
             title: "Orders Copy".into(),
             description: None,
@@ -1019,6 +1088,9 @@ async fn ac_005_model_definition_repository_exhausts_regex_prefix_collisions() {
                 external_resource_key: Some("orders".into()),
                 external_table_id: None,
                 external_capability_snapshot: None,
+                template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+                template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+                template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
                 code: code.clone(),
                 title: "Orders".into(),
                 description: None,
@@ -1068,6 +1140,9 @@ async fn model_definition_repository_rejects_workspace_model_with_foreign_data_s
             external_resource_key: Some("orders".into()),
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("orders_{}", Uuid::now_v7().simple()),
             title: "Orders".into(),
             description: None,
@@ -1145,10 +1220,13 @@ async fn model_definition_repository_deletes_external_source_field_without_local
             external_resource_key: Some("crm.contacts".into()),
             external_table_id: Some("crm.contacts".into()),
             external_capability_snapshot: Some(serde_json::json!({
-            "supports_owner_filter": true,
-            "supports_scope_filter": true,
+                "supports_owner_filter": true,
+                "supports_scope_filter": true,
                 "supports_write": false
             })),
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("external_contacts_{}", Uuid::now_v7().simple()),
             title: "External Contacts".into(),
             description: None,
@@ -1289,6 +1367,9 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: format!("foreign_orders_{}", Uuid::now_v7().simple()),
             title: "Foreign Orders".into(),
             description: None,

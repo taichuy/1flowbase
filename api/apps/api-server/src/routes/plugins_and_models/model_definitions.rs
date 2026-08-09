@@ -44,6 +44,9 @@ const STATE_MODEL_RESOURCE: ResourceCrudDescriptor =
 #[serde(deny_unknown_fields)]
 pub struct CreateModelDefinitionBody {
     pub scope_kind: String,
+    pub template_provider: String,
+    pub template_code: String,
+    pub template_version: String,
     pub code: String,
     pub title: String,
     pub description: Option<String>,
@@ -51,6 +54,7 @@ pub struct CreateModelDefinitionBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateModelDefinitionBody {
     pub title: Option<String>,
     #[serde(
@@ -206,6 +210,9 @@ pub struct ModelDefinitionResponse {
     pub source_kind: String,
     pub external_resource_key: Option<String>,
     pub external_table_id: Option<String>,
+    pub template_provider: String,
+    pub template_code: String,
+    pub template_version: String,
     pub physical_table_name: String,
     pub acl_namespace: String,
     pub audit_namespace: String,
@@ -411,6 +418,9 @@ pub(super) fn to_model_definition_response(
         source_kind: model.source_kind.as_str().to_string(),
         external_resource_key: model.external_resource_key,
         external_table_id: model.external_table_id,
+        template_provider: model.template_provider,
+        template_code: model.template_code,
+        template_version: model.template_version,
         physical_table_name: model.physical_table_name,
         acl_namespace: model.acl_namespace,
         audit_namespace: model.audit_namespace,
@@ -674,6 +684,9 @@ pub async fn create_model(
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: body.template_provider,
+            template_code: body.template_code,
+            template_version: body.template_version,
             code: body.code,
             title: body.title,
             description: body.description,

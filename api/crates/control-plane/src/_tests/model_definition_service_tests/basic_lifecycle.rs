@@ -1,6 +1,43 @@
 use super::*;
 
 #[tokio::test]
+async fn ac_003_update_model_preserves_create_only_template_identity() {
+    let service = ModelDefinitionService::for_tests();
+    let created = service
+        .create_model(CreateModelDefinitionCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            data_source_instance_id: None,
+            external_resource_key: None,
+            external_table_id: None,
+            template_provider: "core".into(),
+            template_code: "general".into(),
+            template_version: "v1".into(),
+            code: "immutable_template".into(),
+            title: "Before".into(),
+            description: None,
+            status: None,
+        })
+        .await
+        .unwrap();
+
+    let updated = service
+        .update_model(UpdateModelDefinitionCommand {
+            actor_user_id: Uuid::nil(),
+            model_id: created.id,
+            title: "After".into(),
+            description: Some("Presentation metadata changed".into()),
+            external_table_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(updated.template_provider, created.template_provider);
+    assert_eq!(updated.template_code, created.template_code);
+    assert_eq!(updated.template_version, created.template_version);
+}
+
+#[tokio::test]
 async fn add_field_returns_immediately_usable_metadata_without_publish_step() {
     let service = ModelDefinitionService::for_tests();
     let created = service
@@ -10,6 +47,9 @@ async fn add_field_returns_immediately_usable_metadata_without_publish_step() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "orders".into(),
             title: "Orders".into(),
             description: None,
@@ -63,6 +103,9 @@ async fn update_field_saves_user_owned_description_metadata() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "orders_with_notes".into(),
             title: "Orders".into(),
             description: None,
@@ -122,6 +165,9 @@ async fn delete_model_requires_explicit_confirmation() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "orders".into(),
             title: "Orders".into(),
             description: None,
@@ -155,6 +201,9 @@ async fn delete_model_rejects_builtin_main_source_models() {
             external_resource_key: None,
             external_table_id: None,
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: code.into(),
             title: code.into(),
             description: None,
@@ -208,6 +257,9 @@ async fn create_system_model_uses_fixed_system_scope_id() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "system_orders".into(),
             title: "System Orders".into(),
             description: None,
@@ -231,6 +283,9 @@ async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "workspace_orders".into(),
             title: "Workspace Orders".into(),
             description: None,
@@ -297,6 +352,9 @@ async fn in_memory_repository_rejects_cross_scope_grant_for_workspace_model() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "workspace_grant_fixture".into(),
             title: "Workspace Grant Fixture".into(),
             description: None,
@@ -335,6 +393,9 @@ async fn create_model_defaults_to_main_source_published_status() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "main_source_orders".into(),
             title: "Main Source Orders".into(),
             description: None,
@@ -362,6 +423,9 @@ async fn create_model_inherits_main_source_defaults() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             code: "main_source_draft_orders".into(),
             title: "Main Source Draft Orders".into(),
             description: None,

@@ -198,6 +198,9 @@ impl ModelDefinitionRepository for MemoryProvisioningRepository {
             external_resource_key: input.external_resource_key.clone(),
             external_table_id: input.external_table_id.clone(),
             external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
             status: input.status,
             protection: input.protection.clone(),
         };

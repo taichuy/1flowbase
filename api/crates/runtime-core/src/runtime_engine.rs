@@ -1220,6 +1220,9 @@ fn test_model_metadata() -> ModelMetadata {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+        template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+        template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
         physical_table_name: "rtm_workspace_demo_orders".into(),
         scope_column_name: "scope_id".into(),
         fields: vec![

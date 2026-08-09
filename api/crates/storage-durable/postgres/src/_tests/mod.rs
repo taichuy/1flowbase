@@ -1,5 +1,6 @@
 mod application;
 mod crate_smoke_tests;
+mod data_model_template_identity_migration_tests;
 mod data_source_repository_tests;
 mod extension_installation_repository_tests;
 mod file_management_repository_tests;

@@ -675,6 +675,9 @@ fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> ModelMetad
         data_source_instance_id: model.data_source_instance_id,
         source_kind: model.source_kind,
         external_resource_key: model.external_resource_key,
+        template_provider: model.template_provider,
+        template_code: model.template_code,
+        template_version: model.template_version,
         physical_table_name: model.physical_table_name,
         scope_column_name: "scope_id".into(),
         fields: model

@@ -101,6 +101,9 @@ fn model_definition_mapper_preserves_scope_source_status_and_protection() {
         external_resource_key: Some("crm.contacts".into()),
         external_table_id: Some("contacts".into()),
         external_capability_snapshot: Some(json!({ "driver": "http" })),
+        template_provider: "crm-provider".into(),
+        template_code: "crm-contacts".into(),
+        template_version: "v2".into(),
         code: "contacts".into(),
         title: "Contacts".into(),
         description: Some("CRM contacts".into()),
@@ -135,6 +138,9 @@ fn model_definition_mapper_preserves_scope_source_status_and_protection() {
         record.external_capability_snapshot,
         Some(json!({ "driver": "http" }))
     );
+    assert_eq!(record.template_provider, "crm-provider");
+    assert_eq!(record.template_code, "crm-contacts");
+    assert_eq!(record.template_version, "v2");
     assert_eq!(record.code, "contacts");
     assert_eq!(record.description.as_deref(), Some("CRM contacts"));
     assert_eq!(record.physical_table_name, "dm_contacts");

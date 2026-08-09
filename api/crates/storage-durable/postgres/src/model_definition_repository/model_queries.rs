@@ -22,6 +22,9 @@ pub(super) async fn load_model_definition(
             external_resource_key,
             external_table_id,
             external_capability_snapshot,
+            template_provider,
+            template_code,
+            template_version,
             code,
             title,
             description,
@@ -51,6 +54,9 @@ pub(super) async fn load_model_definition(
             external_resource_key: row.get("external_resource_key"),
             external_table_id: row.get("external_table_id"),
             external_capability_snapshot: row.get("external_capability_snapshot"),
+            template_provider: row.get("template_provider"),
+            template_code: row.get("template_code"),
+            template_version: row.get("template_version"),
             code: row.get("code"),
             title: row.get("title"),
             description: row.get("description"),
@@ -94,6 +100,9 @@ pub(super) async fn load_model_definition_with_lock(
             external_resource_key,
             external_table_id,
             external_capability_snapshot,
+            template_provider,
+            template_code,
+            template_version,
             code,
             title,
             description,
@@ -128,6 +137,9 @@ pub(super) async fn load_model_definition_with_lock(
             external_resource_key: row.get("external_resource_key"),
             external_table_id: row.get("external_table_id"),
             external_capability_snapshot: row.get("external_capability_snapshot"),
+            template_provider: row.get("template_provider"),
+            template_code: row.get("template_code"),
+            template_version: row.get("template_version"),
             code: row.get("code"),
             title: row.get("title"),
             description: row.get("description"),
@@ -161,6 +173,9 @@ pub(super) async fn insert_model_definition(
             external_resource_key,
             external_table_id,
             external_capability_snapshot,
+            template_provider,
+            template_code,
+            template_version,
             code,
             title,
             description,
@@ -175,7 +190,7 @@ pub(super) async fn insert_model_definition(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $23)
         "#,
     )
     .bind(model.id)
@@ -186,6 +201,9 @@ pub(super) async fn insert_model_definition(
     .bind(&model.external_resource_key)
     .bind(&model.external_table_id)
     .bind(&model.external_capability_snapshot)
+    .bind(&model.template_provider)
+    .bind(&model.template_code)
+    .bind(&model.template_version)
     .bind(&model.code)
     .bind(&model.title)
     .bind(&model.description)
@@ -220,6 +238,9 @@ pub(super) async fn insert_model_definition_after_failure(
             external_resource_key,
             external_table_id,
             external_capability_snapshot,
+            template_provider,
+            template_code,
+            template_version,
             code,
             title,
             description,
@@ -234,7 +255,7 @@ pub(super) async fn insert_model_definition_after_failure(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $23)
         on conflict (id) do update
         set availability_status = excluded.availability_status,
             status = excluded.status,
@@ -250,6 +271,9 @@ pub(super) async fn insert_model_definition_after_failure(
     .bind(&model.external_resource_key)
     .bind(&model.external_table_id)
     .bind(&model.external_capability_snapshot)
+    .bind(&model.template_provider)
+    .bind(&model.template_code)
+    .bind(&model.template_version)
     .bind(&model.code)
     .bind(&model.title)
     .bind(&model.description)

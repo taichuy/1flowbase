@@ -1,3 +1,4 @@
 mod console_route_assembly_tests;
 mod file_console_route_assembly_tests;
+mod model_definition_template_identity_tests;
 mod settings_owner_console_route_assembly_tests;
