@@ -816,6 +816,7 @@ where
         command: UpsertMcpGroupCommand,
     ) -> Result<domain::McpGroupRecord> {
         validate_path(&command.path)?;
+        validate_group_display_name(&command.display_name)?;
         let instance = self
             .repository
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
@@ -1497,7 +1498,8 @@ where
 mod query;
 use query::{
     bindable_interface, compile_list_path_regex, generate_short_id, list_item_matches_keywords,
-    parent_group_path, path_matches_list_query, validate_list_return_fields,
+    parent_group_path, path_matches_list_query, validate_group_display_name,
+    validate_list_return_fields,
 };
 pub(crate) use query::{
     input_mapping_requires_des_id, normalize_des_id, validate_identifier, validate_path,

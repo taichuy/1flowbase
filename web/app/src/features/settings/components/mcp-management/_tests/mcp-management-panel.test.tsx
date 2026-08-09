@@ -1226,7 +1226,7 @@ describe('McpManagementPanel', () => {
     fireEvent.click(rootLabel);
     fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'Customer Ops' }
+      target: { value: 'customer_ops' }
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
@@ -1234,7 +1234,8 @@ describe('McpManagementPanel', () => {
       expect(mcpManagementApi.upsertSettingsMcpGroup).toHaveBeenCalledWith(
         'ops_mcp',
         expect.objectContaining({
-          display_name: 'Customer Ops'
+          path: '/customer_ops',
+          display_name: 'customer_ops'
         }),
         expect.any(String)
       );
@@ -1415,7 +1416,7 @@ describe('McpManagementPanel', () => {
     await waitFor(() => expect(status).toHaveTextContent('已保存'));
 
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'Updated ops' }
+      target: { value: 'updated_ops' }
     });
     await waitFor(() => expect(status).toHaveTextContent('未保存'));
 

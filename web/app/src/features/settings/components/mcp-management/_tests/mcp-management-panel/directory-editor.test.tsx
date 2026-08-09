@@ -960,7 +960,7 @@ describe('McpManagementPanel', () => {
       ).toHaveTextContent('未保存');
     });
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'Customer Ops' }
+      target: { value: 'customer_ops' }
     });
     fireEvent.change(within(dialog).getByLabelText('简短描述'), {
       target: { value: 'Tools for customer operations' }
@@ -968,12 +968,35 @@ describe('McpManagementPanel', () => {
 
     await waitFor(() => {
       expect(within(dialog).getByRole('tree')).toHaveTextContent(
-        'Customer Ops'
+        'customer_ops'
       );
     });
     const currentTree = within(dialog).getByRole('tree');
     expect(currentTree).toHaveTextContent('Tools for customer operations');
-    expect(currentTree).not.toHaveTextContent('Customer Ops /customer_ops');
+    expect(currentTree).not.toHaveTextContent('customer_ops /customer_ops');
+  });
+
+  test('rejects group display names outside the identifier character set', async () => {
+    renderPanelWithMountedTool({ includeBinding: false });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', { name: '目录编辑' })
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    fireEvent.click(within(dialog).getByText('Ops MCP /'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '新建分组' }));
+    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
+      target: { value: '后台设置' }
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
+
+    expect(
+      await within(dialog).findByText('仅允许英文字母、数字、下划线和连字符')
+    ).toBeInTheDocument();
+    expect(mcpManagementApi.upsertSettingsMcpGroup).not.toHaveBeenCalled();
   });
 
   test('hides the directory tree drag handle while keeping nodes draggable', () => {

@@ -13,6 +13,116 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
+async fn mcp_group_display_name_rejects_non_identifier_characters_and_persists_valid_group() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create_instance_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "instance_id": "group_validation",
+                        "name": "Group validation",
+                        "description_short": null,
+                        "status": "enabled",
+                        "default_entry_path": "/"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_instance_response.status(), StatusCode::CREATED);
+
+    for invalid_name in ["后台设置", "backend settings", "backend/settings", ""] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/mcp/instances/group_validation/groups")
+                    .header("cookie", &root_cookie)
+                    .header("x-csrf-token", &root_csrf)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "path": "/backend_settings",
+                            "display_name": invalid_name,
+                            "description_short": null,
+                            "enabled": true,
+                            "sort_order": 0
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response_json(response).await["code"], json!("display_name"));
+    }
+
+    let valid_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/group_validation/groups")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "path": "/backend_settings",
+                        "display_name": "Backend_Settings-01",
+                        "description_short": null,
+                        "enabled": true,
+                        "sort_order": 0
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(valid_response.status(), StatusCode::OK);
+    let valid_payload = response_json(valid_response).await;
+    assert_eq!(valid_payload["data"]["path"], json!("/backend_settings"));
+    assert_eq!(
+        valid_payload["data"]["display_name"],
+        json!("Backend_Settings-01")
+    );
+
+    let catalog_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/mcp/catalog")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog_payload = response_json(catalog_response).await;
+    assert!(catalog_payload["data"]["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|group| group["path"] == json!("/backend_settings")
+            && group["display_name"] == json!("Backend_Settings-01")));
+}
+
+#[tokio::test]
 async fn mcp_tool_contract_accepts_boolean_json_result_schemas() {
     let response = crate::app()
         .oneshot(
