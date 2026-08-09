@@ -4,6 +4,7 @@ fn registered_system_table_model(model_id: Uuid) -> ModelDefinitionRecord {
     ModelDefinitionRecord {
         code: "users".into(),
         title: "Users".into(),
+        description: None,
         physical_table_name: "users".into(),
         protection: DataModelProtection {
             owner_kind: DataModelOwnerKind::Core,

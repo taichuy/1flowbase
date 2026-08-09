@@ -109,6 +109,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -143,6 +144,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                     external_capability_snapshot: row.get("external_capability_snapshot"),
                     code: row.get("code"),
                     title: row.get("title"),
+                    description: row.get("description"),
                     physical_table_name: row.get("physical_table_name"),
                     acl_namespace: row.get("acl_namespace"),
                     audit_namespace: row.get("audit_namespace"),
@@ -238,8 +240,9 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             r#"
             update model_definitions
             set title = $2,
-                external_table_id = $3,
-                updated_by = $4,
+                description = $3,
+                external_table_id = $4,
+                updated_by = $5,
                 updated_at = now()
             where id = $1
             returning
@@ -253,6 +256,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -265,6 +269,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         )
         .bind(input.model_id)
         .bind(&input.title)
+        .bind(&input.description)
         .bind(&input.external_table_id)
         .bind(nullable_actor_user_id(input.actor_user_id))
         .fetch_optional(self.pool())
@@ -284,6 +289,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot: row.get("external_capability_snapshot"),
                 code: row.get("code"),
                 title: row.get("title"),
+                description: row.get("description"),
                 physical_table_name: row.get("physical_table_name"),
                 acl_namespace: row.get("acl_namespace"),
                 audit_namespace: row.get("audit_namespace"),
@@ -328,6 +334,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -363,6 +370,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot: row.get("external_capability_snapshot"),
                 code: row.get("code"),
                 title: row.get("title"),
+                description: row.get("description"),
                 physical_table_name: row.get("physical_table_name"),
                 acl_namespace: row.get("acl_namespace"),
                 audit_namespace: row.get("audit_namespace"),
@@ -406,6 +414,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -437,6 +446,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot: row.get("external_capability_snapshot"),
                 code: row.get("code"),
                 title: row.get("title"),
+                description: row.get("description"),
                 physical_table_name: row.get("physical_table_name"),
                 acl_namespace: row.get("acl_namespace"),
                 audit_namespace: row.get("audit_namespace"),

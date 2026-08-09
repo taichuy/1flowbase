@@ -46,12 +46,18 @@ pub struct CreateModelDefinitionBody {
     pub scope_kind: String,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModelDefinitionBody {
     pub title: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
+    pub description: Option<Option<String>>,
     pub status: Option<String>,
     pub external_table_id: Option<String>,
 }
@@ -193,6 +199,7 @@ pub struct ModelDefinitionResponse {
     pub scope_id: String,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub status: String,
     pub runtime_availability: String,
     pub data_source_id: Option<String>,
@@ -397,6 +404,7 @@ pub(super) fn to_model_definition_response(
         scope_id: model.scope_id.to_string(),
         code: model.code,
         title: model.title,
+        description: model.description,
         status: model.status.as_str().to_string(),
         runtime_availability: runtime_availability_for_status(model.status).to_string(),
         data_source_id,
@@ -668,6 +676,7 @@ pub async fn create_model(
             external_table_id: None,
             code: body.code,
             title: body.title,
+            description: body.description,
             status: requested_status,
         })
         .await?;
@@ -749,7 +758,7 @@ pub async fn update_model(
         access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
     );
     let mut model = None;
-    if body.title.is_some() || body.external_table_id.is_some() {
+    if body.title.is_some() || body.description.is_some() || body.external_table_id.is_some() {
         let current_model = settings_service(
             &state,
             access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
@@ -760,6 +769,7 @@ pub async fn update_model(
             Some(title) => title,
             None => current_model.title,
         };
+        let description = body.description.unwrap_or(current_model.description);
         model = Some(
             mutation_service
                 .update_model(UpdateModelDefinitionCommand {
@@ -767,6 +777,7 @@ pub async fn update_model(
                     model_id,
                     external_table_id: body.external_table_id.or(current_model.external_table_id),
                     title,
+                    description,
                 })
                 .await?,
         );

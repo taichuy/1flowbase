@@ -24,6 +24,7 @@ pub(super) async fn load_model_definition(
             external_capability_snapshot,
             code,
             title,
+            description,
             physical_table_name,
             acl_namespace,
             audit_namespace,
@@ -52,6 +53,7 @@ pub(super) async fn load_model_definition(
             external_capability_snapshot: row.get("external_capability_snapshot"),
             code: row.get("code"),
             title: row.get("title"),
+            description: row.get("description"),
             physical_table_name: row.get("physical_table_name"),
             acl_namespace: row.get("acl_namespace"),
             audit_namespace: row.get("audit_namespace"),
@@ -94,6 +96,7 @@ pub(super) async fn load_model_definition_with_lock(
             external_capability_snapshot,
             code,
             title,
+            description,
             physical_table_name,
             acl_namespace,
             audit_namespace,
@@ -127,6 +130,7 @@ pub(super) async fn load_model_definition_with_lock(
             external_capability_snapshot: row.get("external_capability_snapshot"),
             code: row.get("code"),
             title: row.get("title"),
+            description: row.get("description"),
             physical_table_name: row.get("physical_table_name"),
             acl_namespace: row.get("acl_namespace"),
             audit_namespace: row.get("audit_namespace"),
@@ -159,6 +163,7 @@ pub(super) async fn insert_model_definition(
             external_capability_snapshot,
             code,
             title,
+            description,
             physical_table_name,
             acl_namespace,
             audit_namespace,
@@ -170,7 +175,7 @@ pub(super) async fn insert_model_definition(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
         "#,
     )
     .bind(model.id)
@@ -183,6 +188,7 @@ pub(super) async fn insert_model_definition(
     .bind(&model.external_capability_snapshot)
     .bind(&model.code)
     .bind(&model.title)
+    .bind(&model.description)
     .bind(&model.physical_table_name)
     .bind(&model.acl_namespace)
     .bind(&model.audit_namespace)
@@ -216,6 +222,7 @@ pub(super) async fn insert_model_definition_after_failure(
             external_capability_snapshot,
             code,
             title,
+            description,
             physical_table_name,
             acl_namespace,
             audit_namespace,
@@ -227,7 +234,7 @@ pub(super) async fn insert_model_definition_after_failure(
             created_by,
             updated_by
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
         on conflict (id) do update
         set availability_status = excluded.availability_status,
             status = excluded.status,
@@ -245,6 +252,7 @@ pub(super) async fn insert_model_definition_after_failure(
     .bind(&model.external_capability_snapshot)
     .bind(&model.code)
     .bind(&model.title)
+    .bind(&model.description)
     .bind(&model.physical_table_name)
     .bind(&model.acl_namespace)
     .bind(&model.audit_namespace)

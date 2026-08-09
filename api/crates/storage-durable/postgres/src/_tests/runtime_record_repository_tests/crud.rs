@@ -33,6 +33,7 @@ async fn runtime_record_repository_supports_crud_filter_sort_and_relation_expans
             protection: domain::DataModelProtection::default(),
             code: "customers".into(),
             title: "Customers".into(),
+            description: None,
         },
     )
     .await
@@ -52,6 +53,7 @@ async fn runtime_record_repository_supports_crud_filter_sort_and_relation_expans
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         },
     )
     .await
@@ -384,6 +386,7 @@ async fn runtime_record_repository_blocks_expanding_draft_relation_targets() {
             protection: domain::DataModelProtection::default(),
             code: "draft_relation_customers".into(),
             title: "Draft Relation Customers".into(),
+            description: None,
         },
     )
     .await
@@ -403,6 +406,7 @@ async fn runtime_record_repository_blocks_expanding_draft_relation_targets() {
             protection: domain::DataModelProtection::default(),
             code: "draft_relation_orders".into(),
             title: "Draft Relation Orders".into(),
+            description: None,
         },
     )
     .await
@@ -580,6 +584,7 @@ async fn runtime_record_repository_enforces_owner_scope() {
             protection: domain::DataModelProtection::default(),
             code: "orders_acl".into(),
             title: "Orders ACL".into(),
+            description: None,
         },
     )
     .await

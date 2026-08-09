@@ -254,6 +254,13 @@ export function DataModelDetail({
         value: apiAccessLabel(model)
       }
     ],
+    [
+      {
+        key: 'description',
+        label: i18nText('settings', 'auto.description'),
+        value: model.description || '-'
+      }
+    ],
     ...(model.source_kind === 'main_source'
       ? [
           [

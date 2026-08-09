@@ -164,6 +164,7 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -244,6 +245,7 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
             external_capability_snapshot: None,
             code: format!("system_{}", Uuid::now_v7().simple()),
             title: "System Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -288,6 +290,7 @@ async fn ac_002_model_definition_repository_generates_enabled_regex_prefix() {
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -321,6 +324,7 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
                 external_capability_snapshot: None,
                 code: code.into(),
                 title: code.into(),
+                description: None,
                 status: DataModelStatus::Published,
                 protection: DataModelProtection {
                     owner_kind: domain::DataModelOwnerKind::Core,
@@ -357,6 +361,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
             external_capability_snapshot: None,
             code: "attachments".into(),
             title: "Custom attachments".into(),
+            description: Some("Custom attachment metadata".into()),
             status: DataModelStatus::Draft,
             protection: DataModelProtection {
                 owner_kind: domain::DataModelOwnerKind::Core,
@@ -432,9 +437,14 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
         .await
         .unwrap();
 
-    let (title, status, physical_table_name): (String, String, String) = sqlx::query_as(
+    let (title, description, status, physical_table_name): (
+        String,
+        Option<String>,
+        String,
+        String,
+    ) = sqlx::query_as(
         r#"
-        select title, status, physical_table_name
+        select title, description, status, physical_table_name
         from model_definitions
         where id = $1
         "#,
@@ -444,6 +454,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
     .await
     .unwrap();
     assert_eq!(title, "Custom attachments");
+    assert_eq!(description.as_deref(), Some("Custom attachment metadata"));
     assert_eq!(status, "published");
     assert_eq!(physical_table_name, "attachments");
 
@@ -534,6 +545,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
             external_capability_snapshot: None,
             code: format!("customers_{}", Uuid::now_v7().simple()),
             title: "Customers".into(),
+            description: None,
             status: DataModelStatus::Draft,
             protection: DataModelProtection {
                 is_protected: true,
@@ -574,6 +586,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
             external_capability_snapshot: None,
             code: format!("system_customers_{}", Uuid::now_v7().simple()),
             title: "System Customers".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -644,6 +657,7 @@ async fn model_definition_repository_accepts_owner_scope_grant_for_workspace_mod
             external_capability_snapshot: None,
             code: format!("workspace_grant_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Model".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -700,6 +714,7 @@ async fn model_definition_repository_rejects_cross_scope_grants_for_workspace_mo
             external_capability_snapshot: None,
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -761,6 +776,7 @@ async fn model_definition_repository_updates_owner_scope_grant_for_workspace_mod
             external_capability_snapshot: None,
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -830,6 +846,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_same_data_sour
         external_capability_snapshot: None,
         code,
         title: "Orders".into(),
+        description: None,
         status: DataModelStatus::Published,
         protection: DataModelProtection::default(),
     };
@@ -870,6 +887,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
         external_capability_snapshot: None,
         code,
         title: "Orders".into(),
+        description: None,
         status: DataModelStatus::Published,
         protection: DataModelProtection::default(),
     };
@@ -923,6 +941,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -943,6 +962,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders Copy".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -1001,6 +1021,7 @@ async fn ac_005_model_definition_repository_exhausts_regex_prefix_collisions() {
                 external_capability_snapshot: None,
                 code: code.clone(),
                 title: "Orders".into(),
+                description: None,
                 status: DataModelStatus::Published,
                 protection: DataModelProtection::default(),
             },
@@ -1049,6 +1070,7 @@ async fn model_definition_repository_rejects_workspace_model_with_foreign_data_s
             external_capability_snapshot: None,
             code: format!("orders_{}", Uuid::now_v7().simple()),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -1129,6 +1151,7 @@ async fn model_definition_repository_deletes_external_source_field_without_local
             })),
             code: format!("external_contacts_{}", Uuid::now_v7().simple()),
             title: "External Contacts".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -1268,6 +1291,7 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
             external_capability_snapshot: None,
             code: format!("foreign_orders_{}", Uuid::now_v7().simple()),
             title: "Foreign Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },

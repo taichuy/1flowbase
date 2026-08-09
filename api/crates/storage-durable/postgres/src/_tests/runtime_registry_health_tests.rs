@@ -120,6 +120,7 @@ async fn seed_external_runtime_model(
             protection: domain::DataModelProtection::default(),
             code: model_code,
             title: "External Contacts".into(),
+            description: None,
         },
     )
     .await
@@ -195,6 +196,7 @@ async fn list_runtime_model_metadata_marks_model_unavailable_when_table_is_missi
             protection: domain::DataModelProtection::default(),
             code: model_code.clone(),
             title: "Orders".into(),
+            description: None,
         },
     )
     .await
@@ -395,6 +397,7 @@ async fn list_runtime_model_metadata_preserves_data_model_status() {
             protection: domain::DataModelProtection::default(),
             code: model_code.clone(),
             title: "Draft Orders".into(),
+            description: None,
         },
     )
     .await

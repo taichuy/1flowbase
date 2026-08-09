@@ -627,6 +627,7 @@ where
                 protection: registered_system_table_protection(),
                 code: template.code.to_string(),
                 title: template.title.to_string(),
+                description: None,
             })
             .await?;
 

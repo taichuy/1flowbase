@@ -9,6 +9,7 @@ pub struct CreateModelDefinitionCommand {
     pub external_table_id: Option<String>,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub status: Option<domain::DataModelStatus>,
 }
 
@@ -21,6 +22,7 @@ pub struct UpdateModelDefinitionCommand {
     pub actor_user_id: Uuid,
     pub model_id: Uuid,
     pub title: String,
+    pub description: Option<String>,
     pub external_table_id: Option<String>,
 }
 

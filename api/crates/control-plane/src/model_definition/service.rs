@@ -517,6 +517,7 @@ where
                 external_capability_snapshot: None,
                 code: command.code,
                 title: command.title,
+                description: command.description,
                 status,
                 protection: domain::DataModelProtection::default(),
             })
@@ -705,6 +706,7 @@ where
                 actor_user_id: command.actor_user_id,
                 model_id: command.model_id,
                 title: command.title,
+                description: command.description,
                 external_table_id,
             })
             .await?;
@@ -715,7 +717,10 @@ where
                 "state_model",
                 Some(command.model_id),
                 "state_model.updated",
-                serde_json::json!({ "title": model.title }),
+                serde_json::json!({
+                    "title": model.title,
+                    "description": model.description,
+                }),
             ))
             .await?;
 

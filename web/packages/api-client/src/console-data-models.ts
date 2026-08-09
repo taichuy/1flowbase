@@ -67,8 +67,7 @@ export interface ConsoleCoreDataSource extends ConsoleDataSourceBase {
   };
 }
 
-export interface ConsoleRuntimeExtensionDataSource
-  extends ConsoleDataSourceBase {
+export interface ConsoleRuntimeExtensionDataSource extends ConsoleDataSourceBase {
   fixed: false;
   backend: {
     kind: 'runtime_extension';
@@ -179,6 +178,7 @@ export interface ConsoleDataModel {
   scope_id: string;
   code: string;
   title: string;
+  description: string | null;
   status: ConsoleDataModelStatus;
   runtime_availability: string;
   data_source_id: string | null;
@@ -264,6 +264,7 @@ export interface CreateConsoleDataModelInput {
   scope_kind: ConsoleDataModelScopeKind;
   code: string;
   title: string;
+  description?: string | null;
   status?: ConsoleDataModelStatus;
 }
 
@@ -292,6 +293,8 @@ export interface ConsoleDataSourcePreview {
 }
 
 export interface UpdateConsoleDataModelInput {
+  title?: string;
+  description?: string | null;
   status?: ConsoleDataModelStatus;
 }
 

@@ -30,6 +30,7 @@ async fn runtime_record_repository_scopes_dynamic_rows_without_workspace_row() {
             protection: domain::DataModelProtection::default(),
             code: "default_scope_orders".into(),
             title: "Default Scope Orders".into(),
+            description: None,
         },
     )
     .await
@@ -218,6 +219,7 @@ async fn runtime_record_repository_uses_default_scope_id_without_workspace_row()
             protection: domain::DataModelProtection::default(),
             code: "default_scope_orders".into(),
             title: "Default Scope Orders".into(),
+            description: None,
         },
     )
     .await

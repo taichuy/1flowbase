@@ -53,7 +53,8 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                     json!({
                         "scope_kind": "workspace",
                         "code": "orders",
-                        "title": "Orders"
+                        "title": "Orders",
+                        "description": "Workspace order records"
                     })
                     .to_string(),
                 ))
@@ -70,6 +71,10 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
     )
     .unwrap();
     assert_eq!(created["data"]["status"], json!("published"));
+    assert_eq!(
+        created["data"]["description"],
+        json!("Workspace order records")
+    );
     assert!(!created["data"]
         .as_object()
         .unwrap()
@@ -341,7 +346,8 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "title": "Orders V2"
+                        "title": "Orders V2",
+                        "description": "Updated order records"
                     })
                     .to_string(),
                 ))
@@ -351,6 +357,21 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
         .unwrap();
 
     assert_eq!(update_model_response.status(), StatusCode::OK);
+    let updated_model: serde_json::Value = serde_json::from_slice(
+        &to_bytes(update_model_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(updated_model["data"]["title"], json!("Orders V2"));
+    assert_eq!(
+        updated_model["data"]["description"],
+        json!("Updated order records")
+    );
+    assert_eq!(
+        updated_model["data"]["physical_table_name"],
+        json!("orders")
+    );
 
     let create_after_model_update = app
         .clone()

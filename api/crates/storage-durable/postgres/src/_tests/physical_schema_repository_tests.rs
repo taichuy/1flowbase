@@ -62,6 +62,7 @@ async fn create_main_source_model(
             protection: domain::DataModelProtection::default(),
             code: code.into(),
             title: title.into(),
+            description: None,
         },
     )
     .await
@@ -187,6 +188,7 @@ async fn update_model_and_field_keep_physical_names_immutable() {
             actor_user_id: Uuid::nil(),
             model_id: model.id,
             title: "Renamed Orders".into(),
+            description: Some("Renamed order records".into()),
             external_table_id: None,
         },
     )
@@ -226,6 +228,10 @@ async fn update_model_and_field_keep_physical_names_immutable() {
             .unwrap();
 
     assert_eq!(updated_model.physical_table_name, model.physical_table_name);
+    assert_eq!(
+        updated_model.description.as_deref(),
+        Some("Renamed order records")
+    );
     assert_eq!(stored_table_name, model.physical_table_name);
     assert_eq!(
         updated_field.physical_column_name,
@@ -356,6 +362,7 @@ async fn add_scalar_field_creates_real_postgres_column_and_unique_index() {
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         },
     )
     .await
@@ -453,6 +460,7 @@ async fn add_one_to_many_field_only_writes_metadata_without_creating_column() {
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         },
     )
     .await
@@ -472,6 +480,7 @@ async fn add_one_to_many_field_only_writes_metadata_without_creating_column() {
             protection: domain::DataModelProtection::default(),
             code: "order_items".into(),
             title: "Order Items".into(),
+            description: None,
         },
     )
     .await
@@ -554,6 +563,7 @@ async fn add_many_to_many_field_creates_host_managed_join_table() {
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         },
     )
     .await
@@ -573,6 +583,7 @@ async fn add_many_to_many_field_creates_host_managed_join_table() {
             protection: domain::DataModelProtection::default(),
             code: "tags".into(),
             title: "Tags".into(),
+            description: None,
         },
     )
     .await
@@ -672,6 +683,7 @@ async fn create_runtime_model_table_always_uses_scope_id_column() {
             protection: domain::DataModelProtection::default(),
             code: "orders_scope_column".into(),
             title: "Orders Scope Column".into(),
+            description: None,
         },
     )
     .await

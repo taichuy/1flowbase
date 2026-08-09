@@ -835,6 +835,7 @@ impl ModelDefinitionRepository for InMemoryDataSourceRepository {
             external_capability_snapshot: input.external_capability_snapshot.clone(),
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_table_name: format!("rtm_workspace_{}", input.code),
             acl_namespace: format!("state_model.{}", input.code),
             audit_namespace: format!("audit.state_model.{}", input.code),

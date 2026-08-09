@@ -93,6 +93,7 @@ pub(super) async fn create_model_definition(
         external_capability_snapshot: input.external_capability_snapshot.clone(),
         code: input.code.clone(),
         title: input.title.clone(),
+        description: input.description.clone(),
         physical_table_name: match registered_table_name {
             Some(table_name) => table_name.to_string(),
             None => build_physical_table_name(&store.runtime_table_name_policy, &input.code)?,

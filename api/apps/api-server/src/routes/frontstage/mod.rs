@@ -20,7 +20,6 @@ use control_plane::resource_action::{
     ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
     ResourceScopeKind,
 };
-use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -154,16 +153,28 @@ pub struct CreateFrontstagePageBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateFrontstagePageMetadataBody {
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub title: Option<Option<String>>,
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub icon: Option<Option<String>>,
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<FrontstageNavigationPlacementResponse>,
     pub content_presentation: Option<FrontstagePageContentPresentationResponse>,
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub slug: Option<Option<String>>,
 }
 
@@ -182,7 +193,10 @@ pub struct CreateFrontstagePageTabBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateFrontstagePageTabBody {
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub title: Option<Option<String>>,
     pub rank: Option<String>,
 }
@@ -240,14 +254,6 @@ pub(crate) struct FrontstageCapabilityInput {
     pub(crate) page_id: Uuid,
     pub(crate) tab_id: Uuid,
     pub(crate) params: Value,
-}
-
-fn deserialize_present_optional<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 fn default_navigation_placement() -> FrontstageNavigationPlacementResponse {

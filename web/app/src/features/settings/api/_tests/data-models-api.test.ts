@@ -151,7 +151,8 @@ describe('settings data models API wrappers', () => {
       {
         scope_kind: 'workspace',
         code: 'orders',
-        title: 'Orders'
+        title: 'Orders',
+        description: 'Workspace order records'
       },
       'csrf-123'
     );
@@ -159,19 +160,28 @@ describe('settings data models API wrappers', () => {
       {
         scope_kind: 'workspace',
         code: 'orders',
-        title: 'Orders'
+        title: 'Orders',
+        description: 'Workspace order records'
       },
       'csrf-123'
     );
 
     await updateSettingsDataModel(
       'model-1',
-      { status: 'published' },
+      {
+        title: 'Customer Orders',
+        description: 'Customer order records',
+        status: 'published'
+      },
       'csrf-123'
     );
     expect(updateConsoleDataModel).toHaveBeenCalledWith(
       'model-1',
-      { status: 'published' },
+      {
+        title: 'Customer Orders',
+        description: 'Customer order records',
+        status: 'published'
+      },
       'csrf-123'
     );
 

@@ -12,6 +12,7 @@ async fn add_field_returns_immediately_usable_metadata_without_publish_step() {
             external_table_id: None,
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -64,6 +65,7 @@ async fn update_field_saves_user_owned_description_metadata() {
             external_table_id: None,
             code: "orders_with_notes".into(),
             title: "Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -122,6 +124,7 @@ async fn delete_model_requires_explicit_confirmation() {
             external_table_id: None,
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -154,6 +157,7 @@ async fn delete_model_rejects_builtin_main_source_models() {
             external_capability_snapshot: None,
             code: code.into(),
             title: code.into(),
+            description: None,
             physical_table_name: code.into(),
             acl_namespace: format!("state_model.{code}"),
             audit_namespace: format!("audit.state_model.{code}"),
@@ -206,6 +210,7 @@ async fn create_system_model_uses_fixed_system_scope_id() {
             external_table_id: None,
             code: "system_orders".into(),
             title: "System Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -228,6 +233,7 @@ async fn create_workspace_model_uses_current_workspace_scope_and_grant() {
             external_table_id: None,
             code: "workspace_orders".into(),
             title: "Workspace Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -293,6 +299,7 @@ async fn in_memory_repository_rejects_cross_scope_grant_for_workspace_model() {
             external_table_id: None,
             code: "workspace_grant_fixture".into(),
             title: "Workspace Grant Fixture".into(),
+            description: None,
             status: None,
         })
         .await
@@ -330,6 +337,7 @@ async fn create_model_defaults_to_main_source_published_status() {
             external_table_id: None,
             code: "main_source_orders".into(),
             title: "Main Source Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -356,6 +364,7 @@ async fn create_model_inherits_main_source_defaults() {
             external_table_id: None,
             code: "main_source_draft_orders".into(),
             title: "Main Source Draft Orders".into(),
+            description: None,
             status: None,
         })
         .await

@@ -13,6 +13,7 @@ async fn update_scope_grant_records_audit_event() {
             external_table_id: None,
             code: "scope_grant_audit_orders".into(),
             title: "Scope Grant Audit Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -732,6 +733,7 @@ async fn delete_scope_grant_records_audit_event() {
             external_table_id: None,
             code: "delete_scope_grant_audit_orders".into(),
             title: "Delete Scope Grant Audit Orders".into(),
+            description: None,
             status: None,
         })
         .await
