@@ -256,14 +256,18 @@ pub async fn build_openapi_capability_catalog(
     models.sort_by(|left, right| left.code.cmp(&right.code));
     let operations = runtime_data_model_docs::build_category_operations(&models);
     for operation in operations.operations {
-        let Ok(Some((model_id, kind))) = runtime_data_model_docs::parse_operation_id(&operation.id)
+        let Ok(Some((model_id, operation_code))) =
+            runtime_data_model_docs::parse_operation_id(&operation.id)
         else {
             continue;
         };
         let Some(model) = models.iter().find(|model| model.id == model_id) else {
             continue;
         };
-        let spec = runtime_data_model_docs::build_operation_openapi(model, kind);
+        let Some(spec) = runtime_data_model_docs::build_operation_openapi(model, &operation_code)
+        else {
+            continue;
+        };
         let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {
             continue;
         };

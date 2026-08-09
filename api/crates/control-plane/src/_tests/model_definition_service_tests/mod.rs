@@ -159,6 +159,7 @@ async fn ac_1281_model_definition_policy_only_allows_without_legacy_grant() {
         data_source_instance_id: None,
         external_resource_key: None,
         external_table_id: None,
+        external_capabilities: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),

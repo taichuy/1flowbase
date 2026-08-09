@@ -78,6 +78,7 @@ async fn main_source_default_status_stays_published() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            external_capabilities: None,
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -105,6 +106,7 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            external_capabilities: None,
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -117,6 +119,67 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
         .unwrap();
 
     assert_eq!(created.status, DataModelStatus::Draft);
+}
+
+#[tokio::test]
+async fn create_model_fails_closed_for_unknown_template_identity() {
+    let error = ModelDefinitionService::for_tests()
+        .create_model(CreateModelDefinitionCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            data_source_instance_id: None,
+            external_resource_key: None,
+            external_table_id: None,
+            external_capabilities: None,
+            template_provider: "missing".to_owned(),
+            template_code: "unknown".to_owned(),
+            template_version: "v1".to_owned(),
+            code: "unknown_template_orders".into(),
+            title: "Unknown Template Orders".into(),
+            description: None,
+            status: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("data_model_template_unavailable"));
+}
+
+#[tokio::test]
+async fn create_external_model_rejects_template_capability_mismatch() {
+    let data_source_instance_id = Uuid::now_v7();
+    let repository = InMemoryModelDefinitionRepository::with_data_source_defaults(
+        data_source_instance_id,
+        DataSourceDefaults::default(),
+    );
+    let error = ModelDefinitionService::new(repository)
+        .create_model(CreateModelDefinitionCommand {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            data_source_instance_id: Some(data_source_instance_id),
+            external_resource_key: Some("contacts".into()),
+            external_table_id: None,
+            external_capabilities: Some(plugin_framework::DataSourceCrudCapabilities {
+                supports_list: true,
+                supports_get: false,
+                ..Default::default()
+            }),
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
+            code: "incompatible_external_contacts".into(),
+            title: "Incompatible External Contacts".into(),
+            description: None,
+            status: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("data_model_template_incompatible"));
 }
 
 #[tokio::test]
@@ -137,6 +200,11 @@ async fn create_model_inherits_data_source_defaults_when_instance_is_selected() 
             data_source_instance_id: Some(data_source_instance_id),
             external_resource_key: Some("contacts".into()),
             external_table_id: None,
+            external_capabilities: Some(plugin_framework::DataSourceCrudCapabilities {
+                supports_list: true,
+                supports_get: true,
+                ..Default::default()
+            }),
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -171,6 +239,11 @@ async fn external_create_requires_external_resource_key_and_main_source_rejects_
             data_source_instance_id: Some(data_source_instance_id),
             external_resource_key: None,
             external_table_id: None,
+            external_capabilities: Some(plugin_framework::DataSourceCrudCapabilities {
+                supports_list: true,
+                supports_get: true,
+                ..Default::default()
+            }),
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -192,6 +265,7 @@ async fn external_create_requires_external_resource_key_and_main_source_rejects_
             data_source_instance_id: None,
             external_resource_key: Some("contacts".into()),
             external_table_id: None,
+            external_capabilities: None,
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -222,6 +296,11 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
             data_source_instance_id: Some(data_source_instance_id),
             external_resource_key: Some("contacts".into()),
             external_table_id: None,
+            external_capabilities: Some(plugin_framework::DataSourceCrudCapabilities {
+                supports_list: true,
+                supports_get: true,
+                ..Default::default()
+            }),
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -264,6 +343,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
             data_source_instance_id: None,
             external_resource_key: None,
             external_table_id: None,
+            external_capabilities: None,
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -323,6 +403,11 @@ async fn create_model_rejects_data_source_defaults_outside_actor_workspace() {
             data_source_instance_id: Some(data_source_instance_id),
             external_resource_key: Some("contacts".into()),
             external_table_id: None,
+            external_capabilities: Some(plugin_framework::DataSourceCrudCapabilities {
+                supports_list: true,
+                supports_get: true,
+                ..Default::default()
+            }),
             template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
             template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
             template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),

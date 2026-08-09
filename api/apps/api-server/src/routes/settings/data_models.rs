@@ -90,6 +90,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/data-models/model-templates",
+            console_get(
+                model_definitions::list_compatible_templates,
+                ConsoleOperation(MODEL_DEFINITIONS_LIST_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
             "/settings/data-models/model-definitions",
             console_get(
                 model_definitions::list_models,

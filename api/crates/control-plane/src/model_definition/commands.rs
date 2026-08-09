@@ -7,6 +7,7 @@ pub struct CreateModelDefinitionCommand {
     pub data_source_instance_id: Option<Uuid>,
     pub external_resource_key: Option<String>,
     pub external_table_id: Option<String>,
+    pub external_capabilities: Option<plugin_framework::DataSourceCrudCapabilities>,
     pub template_provider: String,
     pub template_code: String,
     pub template_version: String,

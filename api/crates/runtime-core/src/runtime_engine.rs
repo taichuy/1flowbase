@@ -254,24 +254,23 @@ fn ensure_runtime_payload_fields_writable(metadata: &ModelMetadata, payload: &Va
     let Some(payload) = payload.as_object() else {
         return Ok(());
     };
+    let template = resolve_compiled_template(metadata)?;
+    let is_system_field = |field_code: &str| {
+        template
+            .descriptor()
+            .system_fields
+            .iter()
+            .any(|field| field.code == field_code)
+    };
 
     for field_code in payload.keys() {
-        if matches!(
-            field_code.as_str(),
-            "id" | "scope_id" | "created_by" | "updated_by"
-        ) {
+        if is_system_field(field_code) {
             return Err(anyhow!("runtime field is not writable: {field_code}"));
         }
         let Some(field) = metadata.field_by_code(field_code) else {
             continue;
         };
-        if field.is_system
-            || !field.is_writable
-            || matches!(
-                field.physical_column_name.as_str(),
-                "id" | "scope_id" | "created_by" | "updated_by"
-            )
-        {
+        if field.is_system || !field.is_writable || is_system_field(&field.physical_column_name) {
             return Err(anyhow!("runtime field is not writable: {field_code}"));
         }
     }
@@ -343,6 +342,16 @@ impl RuntimeEngine {
 
     pub fn registry(&self) -> &RuntimeModelRegistry {
         &self.registry
+    }
+
+    pub fn template_for_model(
+        &self,
+        model_code: &str,
+        workspace_id: Uuid,
+    ) -> Result<&'static crate::data_model_template_registry::CompiledDataModelTemplate> {
+        let runtime_model = self.load_runtime_model(model_code, workspace_id)?;
+        self.ensure_available(&runtime_model)?;
+        self.resolve_template(&runtime_model.metadata)
     }
 
     pub async fn execute_native_sql(
@@ -555,6 +564,7 @@ impl RuntimeEngine {
     ) -> Result<ModelMetadata> {
         let runtime_model = self.load_runtime_model(model_code, workspace_id)?;
         self.ensure_available(&runtime_model)?;
+        self.resolve_template(&runtime_model.metadata)?;
         Ok(runtime_model.metadata)
     }
 
@@ -584,6 +594,13 @@ impl RuntimeEngine {
             &runtime_model.metadata.model_code,
             runtime_model.availability,
         )
+    }
+
+    fn resolve_template(
+        &self,
+        metadata: &ModelMetadata,
+    ) -> Result<&'static crate::data_model_template_registry::CompiledDataModelTemplate> {
+        resolve_compiled_template(metadata)
     }
 
     async fn list_external_records(
@@ -730,6 +747,19 @@ impl RuntimeEngine {
             .as_ref()
             .ok_or_else(|| anyhow!("external data source runtime backend is not configured"))
     }
+}
+
+fn resolve_compiled_template(
+    metadata: &ModelMetadata,
+) -> Result<&'static crate::data_model_template_registry::CompiledDataModelTemplate> {
+    let identity = plugin_framework::DataModelTemplateIdentity {
+        provider: metadata.template_provider.clone(),
+        code: metadata.template_code.clone(),
+        version: metadata.template_version.clone(),
+    };
+    crate::general_data_model_template::core_data_model_template_registry()
+        .and_then(|registry| registry.resolve(&identity))
+        .map_err(|_| RuntimeModelError::unavailable(&metadata.model_code).into())
 }
 
 fn external_data_source_instance_id(metadata: &ModelMetadata) -> Result<Uuid> {

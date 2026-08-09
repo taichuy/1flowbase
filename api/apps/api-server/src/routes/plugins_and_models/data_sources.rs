@@ -267,7 +267,7 @@ pub async fn list_agent_flow_data_source_options(
     )))
 }
 
-fn service(
+pub(super) fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
 ) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {

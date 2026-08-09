@@ -486,6 +486,35 @@ where
         } else {
             domain::DataModelSourceKind::MainSource
         };
+        let template_source = plugin_framework::DataModelTemplateSource {
+            kind: match source_kind {
+                domain::DataModelSourceKind::MainSource => {
+                    plugin_framework::DataModelSourceKind::MainSource
+                }
+                domain::DataModelSourceKind::ExternalSource => {
+                    plugin_framework::DataModelSourceKind::ExternalSource
+                }
+            },
+            provider: None,
+        };
+        let template_identity = plugin_framework::DataModelTemplateIdentity {
+            provider: command.template_provider.clone(),
+            code: command.template_code.clone(),
+            version: command.template_version.clone(),
+        };
+        let source_capabilities = runtime_core::general_data_model_template::source_capabilities(
+            &template_source,
+            command.external_capabilities.as_ref(),
+        );
+        let compatible = runtime_core::general_data_model_template::template_is_compatible(
+            &template_identity,
+            &template_source,
+            &source_capabilities,
+        )
+        .map_err(|_| ControlPlaneError::Conflict("data_model_template_unavailable"))?;
+        if !compatible {
+            return Err(ControlPlaneError::InvalidInput("data_model_template_incompatible").into());
+        }
         let external_resource_key =
             normalize_external_resource_key(source_kind, command.external_resource_key.as_deref())?;
         let external_table_id =
@@ -514,7 +543,11 @@ where
                 source_kind,
                 external_resource_key,
                 external_table_id,
-                external_capability_snapshot: None,
+                external_capability_snapshot: command
+                    .external_capabilities
+                    .as_ref()
+                    .map(serde_json::to_value)
+                    .transpose()?,
                 template_provider: command.template_provider,
                 template_code: command.template_code,
                 template_version: command.template_version,

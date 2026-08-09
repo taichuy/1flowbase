@@ -110,13 +110,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 fn parse_data_model_docs_operation_id(
     operation_id: &str,
-) -> Result<
-    Option<(
-        uuid::Uuid,
-        runtime_data_model_docs::RuntimeDataModelDocsOperationKind,
-    )>,
-    ApiError,
-> {
+) -> Result<Option<(uuid::Uuid, String)>, ApiError> {
     runtime_data_model_docs::parse_operation_id(operation_id)
         .map_err(|_| ControlPlaneError::InvalidInput("operation_id").into())
 }
@@ -221,15 +215,15 @@ pub async fn get_operation_openapi(
 ) -> Result<Json<Value>, ApiError> {
     let context = require_session(&state, &headers).await?;
 
-    if let Some((model_id, kind)) = parse_data_model_docs_operation_id(&operation_id)? {
+    if let Some((model_id, operation_code)) = parse_data_model_docs_operation_id(&operation_id)? {
         let Some(model) =
             runtime_data_model_docs::ready_model(&state, context.user.id, model_id).await?
         else {
             return Err(ControlPlaneError::NotFound("operation_id").into());
         };
-        return Ok(Json(runtime_data_model_docs::build_operation_openapi(
-            &model, kind,
-        )));
+        let spec = runtime_data_model_docs::build_operation_openapi(&model, &operation_code)
+            .ok_or(ControlPlaneError::NotFound("operation_id"))?;
+        return Ok(Json(spec));
     }
 
     if let Some(spec) = state.api_docs.operation_spec(&operation_id) {
@@ -282,5 +276,7 @@ pub async fn get_data_model_openapi(
         return Err(ControlPlaneError::NotFound("model_id").into());
     }
 
-    Ok(Json(runtime_data_model_docs::build_model_openapi(&model)))
+    let spec = runtime_data_model_docs::build_model_openapi(&model)
+        .ok_or(ControlPlaneError::NotFound("model_id"))?;
+    Ok(Json(spec))
 }

@@ -1,16 +1,18 @@
 use std::collections::BTreeSet;
 
 use plugin_framework::{
-    DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelOperationMethod,
-    DataModelSourceKind, DataModelSystemFieldWritePolicy, DataModelTemplateDescriptor,
-    DataModelTemplateIdentity, DataModelTemplateOperation, DataModelTemplateSource,
-    DataModelTemplateSourceSelector, DataModelTemplateSystemField,
-    DATA_MODEL_TEMPLATE_DESCRIPTOR_VERSION_V1,
+    DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelSourceKind,
+    DataModelTemplateDescriptor, DataModelTemplateIdentity, DataModelTemplateSource,
+    DataModelTemplateSourceSelector,
 };
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::data_model_template_registry::{
-    DataModelTemplateRegistry, DataModelTemplateRegistryError, DataModelTemplateResolutionContract,
+use crate::{
+    data_model_template_registry::{
+        DataModelTemplateRegistry, DataModelTemplateRegistryError,
+        DataModelTemplateResolutionContract,
+    },
+    general_data_model_template::{core_data_model_template_registry, general_template_identity},
 };
 
 #[derive(Default)]
@@ -67,15 +69,71 @@ fn ac_004_general_v1_descriptor_is_serializable_and_compiles_as_one_truth() {
         compiled
             .operations
             .iter()
-            .map(|operation| operation.code.as_str())
+            .map(|operation| (
+                operation.code.as_str(),
+                operation.method,
+                operation.path.as_str(),
+                operation.permission_action.as_str(),
+                operation.handler_ref.canonical_name(),
+            ))
             .collect::<Vec<_>>(),
         [
-            "list_records",
-            "get_record",
-            "create_record",
-            "update_record",
-            "delete_record"
+            (
+                "list_records",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/list",
+                "view",
+                "core/list_records/v1".to_owned(),
+            ),
+            (
+                "get_record",
+                plugin_framework::DataModelOperationMethod::Get,
+                "/api/runtime/models/{model_code}/get/{id}",
+                "view",
+                "core/get_record/v1".to_owned(),
+            ),
+            (
+                "create_record",
+                plugin_framework::DataModelOperationMethod::Post,
+                "/api/runtime/models/{model_code}/create",
+                "create",
+                "core/create_record/v1".to_owned(),
+            ),
+            (
+                "update_record",
+                plugin_framework::DataModelOperationMethod::Patch,
+                "/api/runtime/models/{model_code}/update/{id}",
+                "update",
+                "core/update_record/v1".to_owned(),
+            ),
+            (
+                "delete_record",
+                plugin_framework::DataModelOperationMethod::Delete,
+                "/api/runtime/models/{model_code}/delete/{id}",
+                "delete",
+                "core/delete_record/v1".to_owned(),
+            ),
         ]
+    );
+    let matched = registry
+        .resolve(&descriptor.identity)
+        .unwrap()
+        .match_operation(
+            plugin_framework::DataModelOperationMethod::Patch,
+            "/api/runtime/models/orders/update/018f0000-0000-7000-8000-000000000000",
+        )
+        .expect("production update route must match");
+    assert_eq!(matched.operation.code, "update_record");
+    assert_eq!(
+        matched
+            .path_parameters
+            .get("model_code")
+            .map(String::as_str),
+        Some("orders")
+    );
+    assert_eq!(
+        matched.path_parameters.get("id").map(String::as_str),
+        Some("018f0000-0000-7000-8000-000000000000")
     );
     assert!(compiled.operations.iter().all(|operation| {
         operation.input_schema.is_object()
@@ -91,7 +149,7 @@ fn ac_004_general_v1_descriptor_is_serializable_and_compiles_as_one_truth() {
             kind: DataModelSourceKind::MainSource,
             provider: None,
         },
-        ["runtime.crud"],
+        ["records.read"],
     );
     assert_eq!(compatible.len(), 1);
     assert_eq!(compatible[0].identity(), &descriptor.identity);
@@ -214,7 +272,7 @@ fn ac_004_compatibility_requires_selector_and_capability_subset() {
                 kind: DataModelSourceKind::ExternalSource,
                 provider: Some("other".to_owned()),
             },
-            ["runtime.crud"],
+            ["records.read"],
         )
         .is_empty());
     assert_eq!(
@@ -254,120 +312,10 @@ fn resolution_inventory_for(descriptor: &DataModelTemplateDescriptor) -> Resolut
 }
 
 fn general_v1_descriptor() -> DataModelTemplateDescriptor {
-    DataModelTemplateDescriptor {
-        descriptor_version: DATA_MODEL_TEMPLATE_DESCRIPTOR_VERSION_V1,
-        identity: DataModelTemplateIdentity {
-            provider: "core".to_owned(),
-            code: "general".to_owned(),
-            version: "v1".to_owned(),
-        },
-        source_selector: DataModelTemplateSourceSelector::Any,
-        required_capabilities: vec![DataModelCapabilityRequirement {
-            code: "runtime.crud".to_owned(),
-        }],
-        system_fields: vec![
-            system_field(
-                "id",
-                "string",
-                DataModelSystemFieldWritePolicy::RuntimeGenerated,
-            ),
-            system_field(
-                "scope_id",
-                "string",
-                DataModelSystemFieldWritePolicy::RuntimeManaged,
-            ),
-            system_field(
-                "created_by",
-                "string",
-                DataModelSystemFieldWritePolicy::RuntimeManaged,
-            ),
-            system_field(
-                "updated_by",
-                "string",
-                DataModelSystemFieldWritePolicy::RuntimeManaged,
-            ),
-            system_field(
-                "created_at",
-                "string",
-                DataModelSystemFieldWritePolicy::DatabaseGenerated,
-            ),
-            system_field(
-                "updated_at",
-                "string",
-                DataModelSystemFieldWritePolicy::DatabaseManaged,
-            ),
-        ],
-        operations: vec![
-            operation(
-                "list_records",
-                DataModelOperationMethod::Get,
-                "/api/runtime/models/{model_code}/list",
-                "view",
-            ),
-            operation(
-                "get_record",
-                DataModelOperationMethod::Get,
-                "/api/runtime/models/{model_code}/get/{id}",
-                "view",
-            ),
-            operation(
-                "create_record",
-                DataModelOperationMethod::Post,
-                "/api/runtime/models/{model_code}/create",
-                "create",
-            ),
-            operation(
-                "update_record",
-                DataModelOperationMethod::Patch,
-                "/api/runtime/models/{model_code}/update/{id}",
-                "update",
-            ),
-            operation(
-                "delete_record",
-                DataModelOperationMethod::Delete,
-                "/api/runtime/models/{model_code}/delete/{id}",
-                "delete",
-            ),
-        ],
-        summary: "General data model".to_owned(),
-        description: "Core general data model template.".to_owned(),
-    }
-}
-
-fn system_field(
-    code: &str,
-    schema_type: &str,
-    write_policy: DataModelSystemFieldWritePolicy,
-) -> DataModelTemplateSystemField {
-    DataModelTemplateSystemField {
-        code: code.to_owned(),
-        value_schema: json!({ "type": schema_type }),
-        required: true,
-        write_policy,
-        summary: format!("{code} system field"),
-        description: format!("Canonical {code} system field."),
-    }
-}
-
-fn operation(
-    code: &str,
-    method: DataModelOperationMethod,
-    path: &str,
-    permission_action: &str,
-) -> DataModelTemplateOperation {
-    DataModelTemplateOperation {
-        code: code.to_owned(),
-        method,
-        path: path.to_owned(),
-        input_schema: json!({ "type": "object" }),
-        output_schema: json!({ "type": "object" }),
-        permission_action: permission_action.to_owned(),
-        handler_ref: DataModelOperationHandlerRef {
-            provider: "core".to_owned(),
-            code: code.to_owned(),
-            version: "v1".to_owned(),
-        },
-        summary: format!("{code} operation"),
-        description: format!("Canonical {code} runtime operation."),
-    }
+    core_data_model_template_registry()
+        .expect("production registry must compile")
+        .resolve(&general_template_identity())
+        .expect("production general template must resolve")
+        .descriptor()
+        .clone()
 }

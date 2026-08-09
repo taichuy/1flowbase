@@ -1,4 +1,9 @@
 use control_plane::{errors::ControlPlaneError, model_definition::ModelDefinitionService};
+use plugin_framework::{DataModelTemplateIdentity, DataModelTemplateOperation};
+use runtime_core::{
+    data_model_template_registry::CompiledDataModelTemplate,
+    general_data_model_template::{core_data_model_template_registry, CoreGeneralOperationHandler},
+};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -12,100 +17,13 @@ pub const DATA_MODEL_DOCS_CATEGORY_ID: &str = "data-model-apis";
 pub const DATA_MODEL_DOCS_CATEGORY_LABEL: &str = "Data Model APIs";
 const DATA_MODEL_OPERATION_ID_PREFIX: &str = "data_model__";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RuntimeDataModelDocsOperationKind {
-    ListRecords,
-    CreateRecord,
-    GetRecord,
-    UpdateRecord,
-    DeleteRecord,
-}
-
-impl RuntimeDataModelDocsOperationKind {
-    pub fn all() -> [Self; 5] {
-        [
-            Self::ListRecords,
-            Self::CreateRecord,
-            Self::GetRecord,
-            Self::UpdateRecord,
-            Self::DeleteRecord,
-        ]
-    }
-
-    fn id_suffix(self) -> &'static str {
-        match self {
-            Self::ListRecords => "list_records",
-            Self::CreateRecord => "create_record",
-            Self::GetRecord => "get_record",
-            Self::UpdateRecord => "update_record",
-            Self::DeleteRecord => "delete_record",
-        }
-    }
-
-    fn method(self) -> &'static str {
-        match self {
-            Self::ListRecords | Self::GetRecord => "GET",
-            Self::CreateRecord => "POST",
-            Self::UpdateRecord => "PATCH",
-            Self::DeleteRecord => "DELETE",
-        }
-    }
-
-    fn method_lowercase(self) -> &'static str {
-        match self {
-            Self::ListRecords | Self::GetRecord => "get",
-            Self::CreateRecord => "post",
-            Self::UpdateRecord => "patch",
-            Self::DeleteRecord => "delete",
-        }
-    }
-
-    fn summary(self, model: &domain::ModelDefinitionRecord) -> String {
-        match self {
-            Self::ListRecords => format!("List {} records", model.title),
-            Self::CreateRecord => format!("Create {} record", model.title),
-            Self::GetRecord => format!("Get {} record", model.title),
-            Self::UpdateRecord => format!("Update {} record", model.title),
-            Self::DeleteRecord => format!("Delete {} record", model.title),
-        }
-    }
-
-    fn description(self, model: &domain::ModelDefinitionRecord) -> String {
-        match self {
-            Self::ListRecords => format!(
-                "Runtime list API for Data Model `{}` with concrete path registration.",
-                model.code
-            ),
-            Self::CreateRecord => format!(
-                "Runtime create API for Data Model `{}` with concrete path registration.",
-                model.code
-            ),
-            Self::GetRecord => format!(
-                "Runtime fetch API for Data Model `{}` with concrete path registration.",
-                model.code
-            ),
-            Self::UpdateRecord => format!(
-                "Runtime update API for Data Model `{}` with concrete path registration.",
-                model.code
-            ),
-            Self::DeleteRecord => format!(
-                "Runtime delete API for Data Model `{}` with concrete path registration.",
-                model.code
-            ),
-        }
-    }
-}
-
-pub fn operation_id(model_id: uuid::Uuid, kind: RuntimeDataModelDocsOperationKind) -> String {
-    format!(
-        "{DATA_MODEL_OPERATION_ID_PREFIX}{model_id}__{}",
-        kind.id_suffix()
-    )
+pub fn operation_id(model_id: uuid::Uuid, operation_code: &str) -> String {
+    format!("{DATA_MODEL_OPERATION_ID_PREFIX}{model_id}__{operation_code}")
 }
 
 pub fn parse_operation_id(
     operation_id: &str,
-) -> Result<Option<(uuid::Uuid, RuntimeDataModelDocsOperationKind)>, &'static str> {
+) -> Result<Option<(uuid::Uuid, String)>, &'static str> {
     let Some(rest) = operation_id.strip_prefix(DATA_MODEL_OPERATION_ID_PREFIX) else {
         return Ok(None);
     };
@@ -113,15 +31,10 @@ pub fn parse_operation_id(
         return Err("missing operation suffix");
     };
     let model_id = uuid::Uuid::parse_str(model_id).map_err(|_| "invalid model id")?;
-    let kind = match suffix {
-        "list_records" => RuntimeDataModelDocsOperationKind::ListRecords,
-        "create_record" => RuntimeDataModelDocsOperationKind::CreateRecord,
-        "get_record" => RuntimeDataModelDocsOperationKind::GetRecord,
-        "update_record" => RuntimeDataModelDocsOperationKind::UpdateRecord,
-        "delete_record" => RuntimeDataModelDocsOperationKind::DeleteRecord,
-        _ => return Err("unknown operation kind"),
-    };
-    Ok(Some((model_id, kind)))
+    if suffix.is_empty() {
+        return Err("missing operation code");
+    }
+    Ok(Some((model_id, suffix.to_owned())))
 }
 
 pub async fn ready_models(
@@ -175,50 +88,40 @@ pub async fn ready_model(
     Ok(Some(model))
 }
 
-pub fn list_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/list", model.code)
-}
-
-pub fn get_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/get/{{id}}", model.code)
-}
-
-pub fn create_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/create", model.code)
-}
-
-pub fn update_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/update/{{id}}", model.code)
-}
-
-pub fn delete_path(model: &domain::ModelDefinitionRecord) -> String {
-    format!("/api/runtime/models/{}/delete/{{id}}", model.code)
-}
-
-pub fn operation_path(
+fn template_for_model(
     model: &domain::ModelDefinitionRecord,
-    kind: RuntimeDataModelDocsOperationKind,
+) -> Option<&'static CompiledDataModelTemplate> {
+    let identity = DataModelTemplateIdentity {
+        provider: model.template_provider.clone(),
+        code: model.template_code.clone(),
+        version: model.template_version.clone(),
+    };
+    core_data_model_template_registry()
+        .ok()?
+        .resolve(&identity)
+        .ok()
+}
+
+fn operation_path(
+    model: &domain::ModelDefinitionRecord,
+    operation: &DataModelTemplateOperation,
 ) -> String {
-    match kind {
-        RuntimeDataModelDocsOperationKind::ListRecords => list_path(model),
-        RuntimeDataModelDocsOperationKind::CreateRecord => create_path(model),
-        RuntimeDataModelDocsOperationKind::GetRecord => get_path(model),
-        RuntimeDataModelDocsOperationKind::UpdateRecord => update_path(model),
-        RuntimeDataModelDocsOperationKind::DeleteRecord => delete_path(model),
-    }
+    operation.path.replace("{model_code}", &model.code)
 }
 
 pub fn build_category(models: &[domain::ModelDefinitionRecord]) -> Option<DocsCatalogCategory> {
-    if models.is_empty() {
+    let operation_count = models
+        .iter()
+        .filter_map(template_for_model)
+        .map(|template| template.descriptor().operations.len())
+        .sum();
+    if operation_count == 0 {
         return None;
     }
     Some(DocsCatalogCategory {
         id: DATA_MODEL_DOCS_CATEGORY_ID.to_string(),
         label: DATA_MODEL_DOCS_CATEGORY_LABEL.to_string(),
-        operation_count: models
-            .iter()
-            .map(|_| RuntimeDataModelDocsOperationKind::all().len())
-            .sum(),
+        operation_count,
     })
 }
 
@@ -232,13 +135,19 @@ pub fn build_category_operations(
         } else {
             model.title.clone()
         };
-        for kind in RuntimeDataModelDocsOperationKind::all() {
+        let Some(template) = template_for_model(model) else {
+            continue;
+        };
+        for operation in &template.descriptor().operations {
             operations.push(DocsCatalogOperation {
-                id: operation_id(model.id, kind),
-                method: kind.method().to_string(),
-                path: operation_path(model, kind),
-                summary: Some(kind.summary(model)),
-                description: Some(kind.description(model)),
+                id: operation_id(model.id, &operation.code),
+                method: operation.method.as_str().to_owned(),
+                path: operation_path(model, operation),
+                summary: Some(format!("{} — {}", operation.summary, model.title)),
+                description: Some(format!(
+                    "{} Data Model `{}`.",
+                    operation.description, model.code
+                )),
                 tags: vec!["data-model".to_string(), model.code.clone()],
                 group: group.clone(),
                 deprecated: false,
@@ -252,12 +161,8 @@ pub fn build_category_operations(
     }
 }
 
-pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
-    let list_path = list_path(model);
-    let get_path = get_path(model);
-    let create_path = create_path(model);
-    let update_path = update_path(model);
-    let delete_path = delete_path(model);
+pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Option<Value> {
+    let template = template_for_model(model)?;
     let schema_name = record_schema_name(&model.code);
     let create_schema_name = format!("{schema_name}CreateInput");
     let update_schema_name = format!("{schema_name}UpdateInput");
@@ -265,65 +170,32 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
     let create_schema_ref = format!("#/components/schemas/{create_schema_name}");
     let update_schema_ref = format!("#/components/schemas/{update_schema_name}");
 
-    let spec = json!({
+    let mut paths = serde_json::Map::new();
+    for operation in &template.descriptor().operations {
+        let path = operation_path(model, operation);
+        let method = operation.method.as_str().to_ascii_lowercase();
+        let definition = build_operation_definition(
+            model,
+            operation,
+            &schema_ref,
+            &create_schema_ref,
+            &update_schema_ref,
+        )?;
+        paths
+            .entry(path)
+            .or_insert_with(|| Value::Object(serde_json::Map::new()))
+            .as_object_mut()?
+            .insert(method, definition);
+    }
+
+    Some(json!({
         "openapi": "3.1.0",
         "info": {
             "title": format!("{} Data Model API", model.title),
             "version": "1.0.0"
         },
         "security": [{ "patBearer": [] }],
-        "paths": {
-            list_path: {
-                "get": {
-                    "operationId": format!("list_{}_records", model.code),
-                    "summary": format!("List {} records", model.title),
-                    "description": "List records with filter, sort, pagination, and relation expansion. PAT uses bound user role permissions plus an enabled scope grant.",
-                    "security": [{ "patBearer": [] }],
-                    "parameters": runtime_list_parameters(),
-                    "responses": runtime_responses(&schema_ref, true)
-                }
-            },
-            create_path: {
-                "post": {
-                    "operationId": format!("create_{}_record", model.code),
-                    "summary": format!("Create {} record", model.title),
-                    "description": "Create a record. PAT uses bound user role permissions, scope permission, and audit logging.",
-                    "security": [{ "patBearer": [] }],
-                    "requestBody": json_request_body(&create_schema_ref),
-                    "responses": runtime_responses(&schema_ref, false)
-                }
-            },
-            get_path: {
-                "get": {
-                    "operationId": format!("get_{}_record", model.code),
-                    "summary": format!("Get {} record", model.title),
-                    "security": [{ "patBearer": [] }],
-                    "parameters": [id_parameter(), expand_parameter()],
-                    "responses": runtime_responses(&schema_ref, false)
-                }
-            },
-            update_path: {
-                "patch": {
-                    "operationId": format!("update_{}_record", model.code),
-                    "summary": format!("Update {} record", model.title),
-                    "description": "Update a record. PAT uses bound user role permissions, scope permission, and audit logging.",
-                    "security": [{ "patBearer": [] }],
-                    "parameters": [id_parameter()],
-                    "requestBody": json_request_body(&update_schema_ref),
-                    "responses": runtime_responses(&schema_ref, false)
-                }
-            },
-            delete_path: {
-                "delete": {
-                    "operationId": format!("delete_{}_record", model.code),
-                    "summary": format!("Delete {} record", model.title),
-                    "description": "Delete a record. PAT uses bound user role permissions, scope permission, and audit logging.",
-                    "security": [{ "patBearer": [] }],
-                    "parameters": [id_parameter()],
-                    "responses": runtime_delete_responses()
-                }
-            }
-        },
+        "paths": Value::Object(paths),
         "components": {
             "securitySchemes": {
                 "patBearer": {
@@ -334,7 +206,7 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
                 }
             },
             "schemas": {
-                schema_name: record_schema(model),
+                schema_name: record_schema(model, template),
                 create_schema_name: record_write_schema(model, true),
                 update_schema_name: record_write_schema(model, false)
             }
@@ -348,15 +220,16 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Value {
         },
         "x-scope-permission-note": "Runtime Data Model APIs accept pat_ user API keys with bound user role permissions and require an enabled owner or scope_all scope grant for the request scope.",
         "x-external-source-safety-limits": external_source_safety_limits(model)
-    });
-    spec
+    }))
 }
 
 pub fn build_category_openapi(models: &[domain::ModelDefinitionRecord]) -> Value {
     let mut paths = serde_json::Map::new();
     let mut schemas = serde_json::Map::new();
     for model in models {
-        let spec = build_model_openapi(model);
+        let Some(spec) = build_model_openapi(model) else {
+            continue;
+        };
         if let Some(spec_paths) = spec.get("paths").and_then(Value::as_object) {
             for (path, path_item) in spec_paths {
                 paths.insert(path.clone(), path_item.clone());
@@ -399,25 +272,26 @@ pub fn build_category_openapi(models: &[domain::ModelDefinitionRecord]) -> Value
 
 pub fn build_operation_openapi(
     model: &domain::ModelDefinitionRecord,
-    kind: RuntimeDataModelDocsOperationKind,
-) -> Value {
-    let full_spec = build_model_openapi(model);
-    let path = operation_path(model, kind);
-    let method = kind.method_lowercase();
+    operation_code: &str,
+) -> Option<Value> {
+    let template = template_for_model(model)?;
+    let operation_descriptor = template.operation(operation_code)?;
+    let full_spec = build_model_openapi(model)?;
+    let path = operation_path(model, operation_descriptor);
+    let method = operation_descriptor.method.as_str().to_ascii_lowercase();
     let operation = full_spec
         .get("paths")
         .and_then(Value::as_object)
         .and_then(|paths| paths.get(&path))
         .and_then(Value::as_object)
-        .and_then(|path_item| path_item.get(method))
-        .cloned()
-        .unwrap_or(Value::Null);
+        .and_then(|path_item| path_item.get(&method))
+        .cloned()?;
     let mut path_item = serde_json::Map::new();
-    path_item.insert(method.to_string(), operation);
+    path_item.insert(method, operation);
     let mut paths = serde_json::Map::new();
     paths.insert(path, Value::Object(path_item));
 
-    json!({
+    Some(json!({
         "openapi": "3.1.0",
         "info": full_spec.get("info").cloned().unwrap_or_else(|| json!({})),
         "security": full_spec.get("security").cloned().unwrap_or_else(|| json!([])),
@@ -438,7 +312,66 @@ pub fn build_operation_openapi(
             .get("x-external-source-safety-limits")
             .cloned()
             .unwrap_or_else(|| Value::String(String::new()))
-    })
+    }))
+}
+
+fn build_operation_definition(
+    model: &domain::ModelDefinitionRecord,
+    operation: &DataModelTemplateOperation,
+    schema_ref: &str,
+    create_schema_ref: &str,
+    update_schema_ref: &str,
+) -> Option<Value> {
+    let handler = CoreGeneralOperationHandler::from_ref(&operation.handler_ref)?;
+    let mut definition = serde_json::Map::from_iter([
+        (
+            "operationId".to_owned(),
+            Value::String(operation_id(model.id, &operation.code)),
+        ),
+        (
+            "summary".to_owned(),
+            Value::String(format!("{} — {}", operation.summary, model.title)),
+        ),
+        (
+            "description".to_owned(),
+            Value::String(operation.description.clone()),
+        ),
+        ("security".to_owned(), json!([{ "patBearer": [] }])),
+    ]);
+
+    match handler {
+        CoreGeneralOperationHandler::ListRecords => {
+            definition.insert("parameters".to_owned(), runtime_list_parameters());
+            definition.insert("responses".to_owned(), runtime_responses(schema_ref, true));
+        }
+        CoreGeneralOperationHandler::GetRecord => {
+            definition.insert(
+                "parameters".to_owned(),
+                json!([id_parameter(), expand_parameter()]),
+            );
+            definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
+        }
+        CoreGeneralOperationHandler::CreateRecord => {
+            definition.insert(
+                "requestBody".to_owned(),
+                json_request_body(create_schema_ref),
+            );
+            definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
+        }
+        CoreGeneralOperationHandler::UpdateRecord => {
+            definition.insert("parameters".to_owned(), json!([id_parameter()]));
+            definition.insert(
+                "requestBody".to_owned(),
+                json_request_body(update_schema_ref),
+            );
+            definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
+        }
+        CoreGeneralOperationHandler::DeleteRecord => {
+            definition.insert("parameters".to_owned(), json!([id_parameter()]));
+            definition.insert("responses".to_owned(), runtime_delete_responses());
+        }
+    }
+    Some(Value::Object(definition))
 }
 
 fn runtime_list_parameters() -> Value {
@@ -548,10 +481,22 @@ fn runtime_delete_responses() -> Value {
     })
 }
 
-fn record_schema(model: &domain::ModelDefinitionRecord) -> Value {
+fn record_schema(
+    model: &domain::ModelDefinitionRecord,
+    template: &CompiledDataModelTemplate,
+) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
+    for field in &template.descriptor().system_fields {
+        properties.insert(field.code.clone(), field.value_schema.clone());
+        if field.required {
+            required.push(Value::String(field.code.clone()));
+        }
+    }
     for field in &model.fields {
+        if properties.contains_key(&field.code) {
+            continue;
+        }
         properties.insert(field.code.clone(), record_field_schema(field));
         if field.is_required {
             required.push(Value::String(field.code.clone()));
@@ -645,4 +590,79 @@ fn record_schema_name(code: &str) -> String {
     }
     name.push_str("Record");
     name
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn descriptor_drives_catalog_openapi_and_system_fields() {
+        let model = model_fixture();
+        let template = template_for_model(&model).expect("production template must resolve");
+        let catalog = build_category_operations(std::slice::from_ref(&model));
+
+        assert_eq!(
+            catalog.operations.len(),
+            template.descriptor().operations.len()
+        );
+        for descriptor in &template.descriptor().operations {
+            let catalog_operation = catalog
+                .operations
+                .iter()
+                .find(|operation| operation.id == operation_id(model.id, &descriptor.code))
+                .expect("every descriptor operation must be cataloged");
+            assert_eq!(catalog_operation.method, descriptor.method.as_str());
+            assert_eq!(catalog_operation.path, operation_path(&model, descriptor));
+            let operation_spec = build_operation_openapi(&model, &descriptor.code)
+                .expect("every resolved handler must project OpenAPI");
+            assert!(operation_spec["paths"][&catalog_operation.path]
+                [descriptor.method.as_str().to_ascii_lowercase()]
+            .is_object());
+        }
+
+        let spec = build_model_openapi(&model).expect("production template must project OpenAPI");
+        let record_properties = &spec["components"]["schemas"]["OrdersRecord"]["properties"];
+        for field in &template.descriptor().system_fields {
+            assert_eq!(record_properties[&field.code], field.value_schema);
+        }
+    }
+
+    #[test]
+    fn unknown_template_identity_is_excluded_from_dynamic_docs() {
+        let mut model = model_fixture();
+        model.template_provider = "missing".to_owned();
+
+        assert!(build_category(&[model.clone()]).is_none());
+        assert!(build_category_operations(&[model.clone()])
+            .operations
+            .is_empty());
+        assert!(build_model_openapi(&model).is_none());
+    }
+
+    fn model_fixture() -> domain::ModelDefinitionRecord {
+        domain::ModelDefinitionRecord {
+            id: Uuid::nil(),
+            scope_kind: domain::DataModelScopeKind::Workspace,
+            scope_id: Uuid::nil(),
+            data_source_instance_id: None,
+            source_kind: domain::DataModelSourceKind::MainSource,
+            external_resource_key: None,
+            external_table_id: None,
+            external_capability_snapshot: None,
+            template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
+            template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
+            template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
+            code: "orders".to_owned(),
+            title: "Orders".to_owned(),
+            description: None,
+            physical_table_name: "rtm_workspace_orders".to_owned(),
+            acl_namespace: "state_model.orders".to_owned(),
+            audit_namespace: "audit.state_model.orders".to_owned(),
+            fields: vec![],
+            availability_status: domain::MetadataAvailabilityStatus::Available,
+            status: domain::DataModelStatus::Published,
+            protection: domain::DataModelProtection::default(),
+        }
+    }
 }

@@ -742,7 +742,14 @@ async fn runtime_create_and_update_reject_non_writable_system_payload_fields() {
     let actor = ActorContext::root(Uuid::now_v7(), workspace_id, "root");
     let grant = scope_grant(model_id, workspace_id);
 
-    for field_code in ["id", "scope_id", "created_by", "updated_by"] {
+    for field_code in [
+        "id",
+        "scope_id",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+    ] {
         let create_error = engine
             .create_record(RuntimeCreateInput {
                 actor: actor.clone(),
@@ -771,7 +778,14 @@ async fn runtime_create_and_update_reject_non_writable_system_payload_fields() {
         .unwrap();
     let record_id = created["id"].as_str().unwrap().to_string();
 
-    for field_code in ["id", "scope_id", "created_by", "updated_by"] {
+    for field_code in [
+        "id",
+        "scope_id",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+    ] {
         let update_error = engine
             .update_record(RuntimeUpdateInput {
                 actor: actor.clone(),

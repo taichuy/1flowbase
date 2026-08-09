@@ -5,9 +5,11 @@ use std::{
 };
 
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    routing::{delete, get, patch, post},
+    http::{HeaderMap, Method, StatusCode, Uri},
+    response::{IntoResponse, Response},
+    routing::any,
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -79,34 +81,11 @@ fn runtime_acl_denial_reason(error: &anyhow::Error) -> Option<&'static str> {
     None
 }
 
-#[derive(Debug, Clone, Copy)]
-enum RuntimeModelAction {
-    List,
-    Get,
-    Create,
-    Update,
-    Delete,
-}
-
-impl RuntimeModelAction {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::List => "list",
-            Self::Get => "get",
-            Self::Create => "create",
-            Self::Update => "update",
-            Self::Delete => "delete",
-        }
-    }
-
-    fn data_action(self) -> runtime_core::runtime_acl::RuntimeDataAction {
-        match self {
-            Self::List | Self::Get => runtime_core::runtime_acl::RuntimeDataAction::View,
-            Self::Create => runtime_core::runtime_acl::RuntimeDataAction::Create,
-            Self::Update => runtime_core::runtime_acl::RuntimeDataAction::Update,
-            Self::Delete => runtime_core::runtime_acl::RuntimeDataAction::Delete,
-        }
-    }
+#[derive(Debug, Clone)]
+struct ResolvedRuntimeOperation {
+    handler: runtime_core::general_data_model_template::CoreGeneralOperationHandler,
+    data_action: runtime_core::runtime_acl::RuntimeDataAction,
+    path_parameters: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -269,12 +248,160 @@ async fn enrich_application_run_count_tokens_results(
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/models/:model_code/list", get(list_records))
-        .route("/models/:model_code/get/:id", get(get_record))
-        .route("/models/:model_code/create", post(create_record))
-        .route("/models/:model_code/update/:id", patch(update_record))
-        .route("/models/:model_code/delete/:id", delete(delete_record))
+    Router::new().route(
+        "/models/:model_code/*operation_path",
+        any(dispatch_runtime_operation),
+    )
+}
+
+async fn dispatch_runtime_operation(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((model_code, _operation_path)): Path<(String, String)>,
+    method: Method,
+    uri: Uri,
+    body: Bytes,
+) -> Response {
+    let resolved =
+        match resolve_runtime_operation(&state, &headers, &model_code, &method, &uri).await {
+            Ok(resolved) => resolved,
+            Err(error) => return error.into_response(),
+        };
+    let record_id = match resolved.handler {
+        runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord
+        | runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord
+        | runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord => {
+            match resolved.path_parameters.get("id").cloned() {
+                Some(record_id) => Some(record_id),
+                None => {
+                    return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "runtime_path",
+                    ))
+                    .into_response()
+                }
+            }
+        }
+        _ => None,
+    };
+
+    match resolved.handler {
+        runtime_core::general_data_model_template::CoreGeneralOperationHandler::ListRecords => {
+            let query = match Query::<RuntimeListQueryParams>::try_from_uri(&uri) {
+                Ok(query) => query,
+                Err(_) => {
+                    return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "query",
+                    ))
+                    .into_response()
+                }
+            };
+            list_records(State(state), headers, Path(model_code), query, resolved)
+                .await
+                .into_response()
+        }
+        runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord => {
+            get_record(
+                State(state),
+                headers,
+                Path((model_code, record_id.unwrap_or_default())),
+                resolved,
+            )
+            .await
+            .into_response()
+        }
+        runtime_core::general_data_model_template::CoreGeneralOperationHandler::CreateRecord => {
+            match serde_json::from_slice::<Value>(&body) {
+                Ok(payload) => create_record(
+                    State(state),
+                    headers,
+                    Path(model_code),
+                    Json(payload),
+                    resolved,
+                )
+                .await
+                .into_response(),
+                Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "payload",
+                ))
+                .into_response(),
+            }
+        }
+        runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord => {
+            match serde_json::from_slice::<Value>(&body) {
+                Ok(payload) => update_record(
+                    State(state),
+                    headers,
+                    Path((model_code, record_id.unwrap_or_default())),
+                    Json(payload),
+                    resolved,
+                )
+                .await
+                .into_response(),
+                Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "payload",
+                ))
+                .into_response(),
+            }
+        }
+        runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord => {
+            delete_record(
+                State(state),
+                headers,
+                Path((model_code, record_id.unwrap_or_default())),
+                resolved,
+            )
+            .await
+            .into_response()
+        }
+    }
+}
+
+async fn resolve_runtime_operation(
+    state: &ApiState,
+    headers: &HeaderMap,
+    model_code: &str,
+    method: &Method,
+    uri: &Uri,
+) -> Result<ResolvedRuntimeOperation, ApiError> {
+    let credential = authenticate_runtime_request(state, headers).await?;
+    let template = state
+        .runtime_engine
+        .template_for_model(model_code, credential.actor().current_workspace_id)
+        .map_err(map_runtime_error)?;
+    let method = descriptor_method(method).ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("runtime_operation"),
+    )?;
+    let matched = template.match_operation(method, uri.path()).ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("runtime_operation"),
+    )?;
+    let handler = runtime_core::general_data_model_template::CoreGeneralOperationHandler::from_ref(
+        &matched.operation.handler_ref,
+    )
+    .ok_or(control_plane::errors::ControlPlaneError::Conflict(
+        "data_model_template_handler_unavailable",
+    ))?;
+    let data_action = runtime_core::general_data_model_template::runtime_data_action(
+        &matched.operation.permission_action,
+    )
+    .ok_or(control_plane::errors::ControlPlaneError::Conflict(
+        "data_model_template_permission_unavailable",
+    ))?;
+    Ok(ResolvedRuntimeOperation {
+        handler,
+        data_action,
+        path_parameters: matched.path_parameters,
+    })
+}
+
+fn descriptor_method(method: &Method) -> Option<plugin_framework::DataModelOperationMethod> {
+    match *method {
+        Method::GET => Some(plugin_framework::DataModelOperationMethod::Get),
+        Method::POST => Some(plugin_framework::DataModelOperationMethod::Post),
+        Method::PUT => Some(plugin_framework::DataModelOperationMethod::Put),
+        Method::PATCH => Some(plugin_framework::DataModelOperationMethod::Patch),
+        Method::DELETE => Some(plugin_framework::DataModelOperationMethod::Delete),
+        _ => None,
+    }
 }
 
 fn parse_filter(filter: Option<&str>) -> Result<domain::ResourceFilterExpr, ApiError> {
@@ -634,7 +761,7 @@ async fn append_api_key_runtime_audit(
     state: &ApiState,
     credential: &RuntimeCredential,
     model_code: &str,
-    action: RuntimeModelAction,
+    operation: &ResolvedRuntimeOperation,
     event_code: &str,
     reason: Option<&str>,
 ) -> Result<(), ApiError> {
@@ -659,7 +786,7 @@ async fn append_api_key_runtime_audit(
             serde_json::json!({
                 "api_key_id": api_key.api_key.id,
                 "model_code": model_code,
-                "action": action.as_str(),
+                "action": operation.handler.audit_action(),
                 "scope_kind": api_key.api_key.scope_kind.as_str(),
                 "scope_id": api_key.api_key.scope_id,
                 "reason": reason,
@@ -674,7 +801,7 @@ async fn append_api_key_engine_acl_denied_audit(
     state: &ApiState,
     credential: &RuntimeCredential,
     model_code: &str,
-    action: RuntimeModelAction,
+    operation: &ResolvedRuntimeOperation,
     error: &anyhow::Error,
 ) -> Result<(), ApiError> {
     if let Some(reason) = runtime_acl_denial_reason(error) {
@@ -682,7 +809,7 @@ async fn append_api_key_engine_acl_denied_audit(
             state,
             credential,
             model_code,
-            action,
+            operation,
             "state_model.api_key_runtime_access_denied",
             Some(reason),
         )
@@ -696,7 +823,7 @@ async fn runtime_authorization(
     state: &ApiState,
     headers: &HeaderMap,
     model_code: &str,
-    action: RuntimeModelAction,
+    operation: &ResolvedRuntimeOperation,
 ) -> Result<
     (
         RuntimeCredential,
@@ -712,7 +839,7 @@ async fn runtime_authorization(
         state,
         credential.actor(),
         model.model_id,
-        action.data_action(),
+        operation.data_action,
     )
     .await?;
     Ok((credential, scope_grant))
@@ -728,20 +855,15 @@ fn require_session_csrf_for_write(
     Ok(())
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/runtime/models/{model_code}/list",
-    params(("model_code" = String, Path, description = "Runtime model code")),
-    responses((status = 200, body = RuntimeListResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
-)]
-pub async fn list_records(
+async fn list_records(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(model_code): Path<String>,
     Query(query): Query<RuntimeListQueryParams>,
+    operation: ResolvedRuntimeOperation,
 ) -> Result<Json<ApiSuccess<RuntimeListResponse>>, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::List).await?;
+        runtime_authorization(&state, &headers, &model_code, &operation).await?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
     let cache_key = if let Some(metadata) = &cache_metadata {
@@ -789,7 +911,7 @@ pub async fn list_records(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::List,
+                &operation,
                 &error,
             )
             .await?;
@@ -806,22 +928,14 @@ pub async fn list_records(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/runtime/models/{model_code}/get/{id}",
-    params(
-        ("model_code" = String, Path, description = "Runtime model code"),
-        ("id" = String, Path, description = "Runtime record id")
-    ),
-    responses((status = 200, body = RuntimeRecordEnvelope), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
-)]
-pub async fn get_record(
+async fn get_record(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((model_code, record_id)): Path<(String, String)>,
+    operation: ResolvedRuntimeOperation,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Get).await?;
+        runtime_authorization(&state, &headers, &model_code, &operation).await?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
     let cache_key = if let Some(metadata) = &cache_metadata {
@@ -866,7 +980,7 @@ pub async fn get_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Get,
+                &operation,
                 &error,
             )
             .await?;
@@ -994,21 +1108,15 @@ mod tests {
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/runtime/models/{model_code}/create",
-    request_body = RuntimeRecordEnvelope,
-    params(("model_code" = String, Path, description = "Runtime model code")),
-    responses((status = 201, body = RuntimeRecordEnvelope), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
-)]
-pub async fn create_record(
+async fn create_record(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(model_code): Path<String>,
     Json(payload): Json<Value>,
+    operation: ResolvedRuntimeOperation,
 ) -> Result<(StatusCode, Json<ApiSuccess<Value>>), ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Create).await?;
+        runtime_authorization(&state, &headers, &model_code, &operation).await?;
     require_session_csrf_for_write(&headers, &credential)?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
@@ -1028,7 +1136,7 @@ pub async fn create_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Create,
+                &operation,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
@@ -1044,7 +1152,7 @@ pub async fn create_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Create,
+                &operation,
                 &error,
             )
             .await?;
@@ -1052,7 +1160,7 @@ pub async fn create_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Create,
+                &operation,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -1064,24 +1172,15 @@ pub async fn create_record(
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(record))))
 }
 
-#[utoipa::path(
-    patch,
-    path = "/api/runtime/models/{model_code}/update/{id}",
-    request_body = RuntimeRecordEnvelope,
-    params(
-        ("model_code" = String, Path, description = "Runtime model code"),
-        ("id" = String, Path, description = "Runtime record id")
-    ),
-    responses((status = 200, body = RuntimeRecordEnvelope), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
-)]
-pub async fn update_record(
+async fn update_record(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((model_code, record_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
+    operation: ResolvedRuntimeOperation,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Update).await?;
+        runtime_authorization(&state, &headers, &model_code, &operation).await?;
     require_session_csrf_for_write(&headers, &credential)?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
@@ -1102,7 +1201,7 @@ pub async fn update_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Update,
+                &operation,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
@@ -1118,7 +1217,7 @@ pub async fn update_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Update,
+                &operation,
                 &error,
             )
             .await?;
@@ -1126,7 +1225,7 @@ pub async fn update_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Update,
+                &operation,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -1138,22 +1237,14 @@ pub async fn update_record(
     Ok(Json(ApiSuccess::new(record)))
 }
 
-#[utoipa::path(
-    delete,
-    path = "/api/runtime/models/{model_code}/delete/{id}",
-    params(
-        ("model_code" = String, Path, description = "Runtime model code"),
-        ("id" = String, Path, description = "Runtime record id")
-    ),
-    responses((status = 200, body = RuntimeRecordEnvelope), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
-)]
-pub async fn delete_record(
+async fn delete_record(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((model_code, record_id)): Path<(String, String)>,
+    operation: ResolvedRuntimeOperation,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, RuntimeModelAction::Delete).await?;
+        runtime_authorization(&state, &headers, &model_code, &operation).await?;
     require_session_csrf_for_write(&headers, &credential)?;
     let cache_metadata =
         runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
@@ -1173,7 +1264,7 @@ pub async fn delete_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Delete,
+                &operation,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
@@ -1189,7 +1280,7 @@ pub async fn delete_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Delete,
+                &operation,
                 &error,
             )
             .await?;
@@ -1197,7 +1288,7 @@ pub async fn delete_record(
                 &state,
                 &credential,
                 &model_code,
-                RuntimeModelAction::Delete,
+                &operation,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )

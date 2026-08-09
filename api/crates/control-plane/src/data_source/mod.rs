@@ -997,6 +997,25 @@ where
             .filter(|value| !value.is_empty())
             .unwrap_or(&descriptor_resource_key)
             .to_string();
+        let template_source = plugin_framework::DataModelTemplateSource {
+            kind: plugin_framework::DataModelSourceKind::ExternalSource,
+            provider: Some(instance.source_code.clone()),
+        };
+        let template_identity =
+            runtime_core::general_data_model_template::general_template_identity();
+        let template_capabilities = runtime_core::general_data_model_template::source_capabilities(
+            &template_source,
+            Some(&descriptor.capabilities),
+        );
+        if !runtime_core::general_data_model_template::template_is_compatible(
+            &template_identity,
+            &template_source,
+            &template_capabilities,
+        )
+        .map_err(|_| ControlPlaneError::Conflict("data_model_template_unavailable"))?
+        {
+            return Err(ControlPlaneError::InvalidInput("data_model_template_incompatible").into());
+        }
 
         let model = self
             .repository

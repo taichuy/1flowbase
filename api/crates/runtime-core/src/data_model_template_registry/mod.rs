@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use plugin_framework::{
-    DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelTemplateContractError,
-    DataModelTemplateDescriptor, DataModelTemplateIdentity, DataModelTemplateSource,
+    DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelOperationMethod,
+    DataModelTemplateContractError, DataModelTemplateDescriptor, DataModelTemplateIdentity,
+    DataModelTemplateOperation, DataModelTemplateSource,
 };
 use thiserror::Error;
 
@@ -28,11 +29,64 @@ impl CompiledDataModelTemplate {
     pub fn identity(&self) -> &DataModelTemplateIdentity {
         &self.descriptor.identity
     }
+
+    pub fn operation(&self, code: &str) -> Option<&DataModelTemplateOperation> {
+        self.descriptor
+            .operations
+            .iter()
+            .find(|operation| operation.code == code)
+    }
+
+    pub fn match_operation<'a>(
+        &'a self,
+        method: DataModelOperationMethod,
+        request_path: &str,
+    ) -> Option<MatchedDataModelTemplateOperation<'a>> {
+        self.descriptor.operations.iter().find_map(|operation| {
+            (operation.method == method)
+                .then(|| match_path_template(&operation.path, request_path))
+                .flatten()
+                .map(|path_parameters| MatchedDataModelTemplateOperation {
+                    operation,
+                    path_parameters,
+                })
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchedDataModelTemplateOperation<'a> {
+    pub operation: &'a DataModelTemplateOperation,
+    pub path_parameters: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DataModelTemplateRegistry {
     templates: BTreeMap<DataModelTemplateIdentity, CompiledDataModelTemplate>,
+}
+
+fn match_path_template(template: &str, request_path: &str) -> Option<BTreeMap<String, String>> {
+    let template_segments = template.split('/').collect::<Vec<_>>();
+    let request_segments = request_path.split('/').collect::<Vec<_>>();
+    if template_segments.len() != request_segments.len() {
+        return None;
+    }
+
+    let mut parameters = BTreeMap::new();
+    for (template_segment, request_segment) in template_segments.into_iter().zip(request_segments) {
+        if let Some(parameter) = template_segment
+            .strip_prefix('{')
+            .and_then(|value| value.strip_suffix('}'))
+        {
+            if request_segment.is_empty() {
+                return None;
+            }
+            parameters.insert(parameter.to_owned(), request_segment.to_owned());
+        } else if template_segment != request_segment {
+            return None;
+        }
+    }
+    Some(parameters)
 }
 
 impl DataModelTemplateRegistry {
