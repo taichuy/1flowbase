@@ -185,9 +185,7 @@ describe('EmbeddedAgentAssistant', () => {
     });
     expect(trigger).toHaveTextContent('AI');
 
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
+    fireEvent.click(trigger);
 
     await waitFor(() => {
       expect(getConsoleAssistantSettings).toHaveBeenCalledTimes(1);
@@ -214,10 +212,8 @@ describe('EmbeddedAgentAssistant', () => {
     expect(settings).toHaveTextContent('');
     expect(settings.querySelector('.anticon-setting')).toBeInTheDocument();
 
-    await waitFor(() => expect(settings).not.toBeDisabled());
-    await act(async () => {
-      fireEvent.click(settings);
-    });
+    await waitFor(() => expect(settings).toBeEnabled());
+    fireEvent.click(settings);
     expect(
       await screen.findByText(i18nText('appShell', 'auto.assistant_settings'))
     ).toBeInTheDocument();
@@ -560,18 +556,14 @@ describe('EmbeddedAgentAssistant', () => {
     expect(trigger.closest('.app-shell-design-menu')).toBeInTheDocument();
     expect(trigger).toHaveAttribute('aria-pressed', 'false');
 
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
+    fireEvent.click(trigger);
 
     expect(trigger).toHaveAttribute('aria-pressed', 'true');
     expect(trigger.closest('.embedded-agent-assistant-trigger')).toHaveClass(
       'ant-menu-item-selected'
     );
 
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
+    fireEvent.click(trigger);
 
     await waitFor(() => {
       expect(trigger).toHaveAttribute('aria-pressed', 'false');
@@ -634,7 +626,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     fireEvent.change(composer, { target: { value: 'Summarize this' } });
     fireEvent.click(sendButton);
 
@@ -689,7 +681,7 @@ describe('EmbeddedAgentAssistant', () => {
               preview_size_bytes: 256,
               content_type: 'application/json',
               artifact_ref: 'artifact-input',
-              preview: '[{\"name\":\"preview tool\"}]'
+              preview: '[{"name":"preview tool"}]'
             }
           }
         });
@@ -738,7 +730,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     fireEvent.change(composer, { target: { value: 'List available tools' } });
     fireEvent.click(sendButton);
 
@@ -861,7 +853,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     const initialContextProgress = document.querySelector(
       '.embedded-agent-assistant-preview__context-progress'
     );
@@ -936,7 +928,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     fireEvent.change(composer, { target: { value: 'Keep streaming' } });
     fireEvent.click(sendButton);
 
@@ -993,7 +985,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     fireEvent.change(composer, { target: { value: 'Fallback please' } });
     fireEvent.click(sendButton);
 
@@ -1041,7 +1033,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     fireEvent.change(composer, { target: { value: 'Stall' } });
     fireEvent.click(sendButton);
 
@@ -1056,7 +1048,7 @@ describe('EmbeddedAgentAssistant', () => {
 
     await waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
     expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();
-    await waitFor(() => expect(composer).not.toBeDisabled());
+    await waitFor(() => expect(composer).toBeEnabled());
   });
 
   test('issue 1601 closes the transport and cancels an accepted run', async () => {
@@ -1094,7 +1086,7 @@ describe('EmbeddedAgentAssistant', () => {
     const sendButton = screen.getByRole('button', {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
-    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await waitFor(() => expect(sendButton).toBeEnabled());
     fireEvent.change(composer, { target: { value: 'Close me' } });
     fireEvent.click(sendButton);
     await waitFor(() =>

@@ -413,7 +413,7 @@ describe('ApplicationManagementPanel', () => {
     );
 
     await screen.findByText('Daily Report');
-    expect(screen.queryByRole('button', { name: '新增' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '新增' })).not.toBeInTheDocument();
   });
 
   test('applies filter drafts together and resets them from the filter form', async () => {
