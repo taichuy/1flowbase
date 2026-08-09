@@ -296,7 +296,7 @@ async fn application_run_detail_returns_raw_payload_only_for_matching_applicatio
 }
 
 #[tokio::test]
-async fn terminal_flow_run_writes_static_application_run_log_summary() {
+async fn terminal_flow_run_counts_external_and_host_internal_tool_calls() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -341,6 +341,7 @@ async fn terminal_flow_run_writes_static_application_run_log_summary() {
             output_payload: json!({ "answer": "ok" }),
             error_payload: None,
             metrics_payload: json!({
+                "internal_tool_call_count": 3,
                 "usage": {
                     "input_tokens": 13,
                     "output_tokens": 9,
@@ -420,7 +421,7 @@ async fn terminal_flow_run_writes_static_application_run_log_summary() {
     let cache_hit_rate = logs.items[0].input_cache_hit_rate.unwrap();
     assert!((cache_hit_rate - (250.0 / 263.0)).abs() < f64::EPSILON);
     assert_eq!(logs.items[0].unique_node_count, 2);
-    assert_eq!(logs.items[0].tool_callback_count, 2);
+    assert_eq!(logs.items[0].tool_callback_count, 5);
 }
 
 #[tokio::test]

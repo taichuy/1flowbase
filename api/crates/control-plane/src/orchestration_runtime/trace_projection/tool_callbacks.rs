@@ -106,17 +106,25 @@ fn tool_calls_from_node_payload(payload: &serde_json::Value) -> Vec<serde_json::
 }
 
 fn tool_calls_from_node_debug_payload(payload: &serde_json::Value) -> Vec<serde_json::Value> {
-    payload
-        .get("llm_rounds")
+    let Some(llm_rounds) = payload.get("llm_rounds") else {
+        return Vec::new();
+    };
+    if let Some(rounds) = llm_rounds.as_array() {
+        return rounds
+            .iter()
+            .filter_map(|round| round.get("assistant"))
+            .filter_map(|assistant| assistant.get("tool_calls"))
+            .filter_map(serde_json::Value::as_array)
+            .flatten()
+            .cloned()
+            .collect();
+    }
+
+    llm_rounds
+        .get("tool_callbacks")
         .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|round| round.get("assistant"))
-        .filter_map(|assistant| assistant.get("tool_calls"))
-        .filter_map(serde_json::Value::as_array)
-        .flatten()
         .cloned()
-        .collect()
+        .unwrap_or_default()
 }
 
 fn tool_calls_from_visible_internal_route_traces(
@@ -179,7 +187,9 @@ pub(super) fn tool_result_for_call_from_node_runs(
     tool_call_id: &str,
 ) -> Option<serde_json::Value> {
     node_runs.iter().rev().find_map(|node_run| {
-        tool_result_for_call_from_debug_payload(&node_run.debug_payload, tool_call_id)
+        let result = tool_result_for_call_from_debug_payload(&node_run.debug_payload, tool_call_id);
+        let event = runtime_internal_tool_event_for_call(&node_run.debug_payload, tool_call_id);
+        merge_tool_result_and_runtime_event(result, event)
     })
 }
 
@@ -187,7 +197,17 @@ fn tool_result_for_call_from_debug_payload(
     debug_payload: &serde_json::Value,
     tool_call_id: &str,
 ) -> Option<serde_json::Value> {
-    let rounds = debug_payload.get("llm_rounds")?.as_array()?;
+    let llm_rounds = debug_payload.get("llm_rounds")?;
+    if let Some(callbacks) = llm_rounds
+        .get("tool_callbacks")
+        .and_then(serde_json::Value::as_array)
+    {
+        return callbacks
+            .iter()
+            .find(|callback| tool_payload_matches_call_id(callback, tool_call_id))
+            .cloned();
+    }
+    let rounds = llm_rounds.as_array()?;
 
     for round in rounds.iter().rev() {
         let Some(tool_results) = round
@@ -205,6 +225,43 @@ fn tool_result_for_call_from_debug_payload(
     }
 
     None
+}
+
+fn runtime_internal_tool_event_for_call(
+    debug_payload: &serde_json::Value,
+    tool_call_id: &str,
+) -> Option<serde_json::Value> {
+    debug_payload
+        .get("runtime_internal_tool_events")
+        .and_then(serde_json::Value::as_array)?
+        .iter()
+        .find(|event| tool_payload_matches_call_id(event, tool_call_id))
+        .cloned()
+}
+
+fn merge_tool_result_and_runtime_event(
+    result: Option<serde_json::Value>,
+    event: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    match (result, event) {
+        (Some(mut result), Some(event)) => {
+            if let (Some(result), Some(event)) = (result.as_object_mut(), event.as_object()) {
+                for (key, value) in event {
+                    if key == "execution_status"
+                        && result.get(key).and_then(serde_json::Value::as_str) == Some("unknown")
+                    {
+                        result.insert(key.clone(), value.clone());
+                    } else {
+                        result.entry(key.clone()).or_insert_with(|| value.clone());
+                    }
+                }
+            }
+            Some(result)
+        }
+        (Some(result), None) => Some(result),
+        (None, Some(event)) => Some(event),
+        (None, None) => None,
+    }
 }
 
 fn tool_payload_matches_call_id(payload: &serde_json::Value, tool_call_id: &str) -> bool {
@@ -434,11 +491,26 @@ fn callback_status(task: &domain::CallbackTaskRecord) -> &'static str {
     }
 }
 
-fn tool_result_execution_status(tool_result: Option<&serde_json::Value>) -> Option<String> {
+pub(super) fn tool_result_execution_status(
+    tool_result: Option<&serde_json::Value>,
+) -> Option<String> {
     tool_result
         .and_then(|value| value.get("execution_status"))
         .and_then(serde_json::Value::as_str)
         .map(ToOwned::to_owned)
+}
+
+pub(super) fn tool_result_duration_ms(tool_result: Option<&serde_json::Value>) -> Option<i64> {
+    tool_result
+        .and_then(|value| value.get("duration_ms"))
+        .and_then(serde_json::Value::as_i64)
+}
+
+pub(super) fn tool_result_timestamp(
+    tool_result: Option<&serde_json::Value>,
+    field: &str,
+) -> Option<OffsetDateTime> {
+    serde_json::from_value(tool_result?.get(field)?.clone()).ok()
 }
 
 fn route_trace_execution_status(route_trace: Option<&serde_json::Value>) -> Option<String> {

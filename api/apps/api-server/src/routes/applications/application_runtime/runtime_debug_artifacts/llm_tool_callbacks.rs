@@ -687,7 +687,29 @@ pub(super) fn count_llm_tool_callback_trace_items(
     }
     attach_inline_route_traces(&mut callbacks, debug_payloads);
 
-    callbacks.len()
+    let mut callback_ids = callbacks
+        .into_iter()
+        .map(|callback| callback.id)
+        .collect::<std::collections::HashSet<_>>();
+    callback_ids.extend(
+        debug_payloads
+            .iter()
+            .filter_map(|payload| payload.get("llm_rounds"))
+            .filter_map(|llm_rounds| llm_rounds.get("tool_callbacks"))
+            .filter_map(Value::as_array)
+            .flatten()
+            .enumerate()
+            .map(|(index, callback)| {
+                callback
+                    .get("id")
+                    .or_else(|| callback.get("tool_call_id"))
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| format!("artifact_tool_callback_{index}"))
+            }),
+    );
+
+    callback_ids.len()
 }
 
 fn upsert_llm_tool_callback(

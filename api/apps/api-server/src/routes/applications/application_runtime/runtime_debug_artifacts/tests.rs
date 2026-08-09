@@ -324,3 +324,18 @@ fn llm_tool_callback_payloads_include_callback_duration_ms() {
         json!(1234)
     );
 }
+
+#[test]
+fn artifact_indexed_llm_rounds_count_host_internal_tool_callbacks() {
+    let debug_payloads = vec![json!({
+        "llm_rounds": {
+            "artifact_ref": Uuid::now_v7(),
+            "tool_callbacks": [
+                {"id": "call-list", "name": "1flowbase_mcp_list"},
+                {"id": "call-get", "name": "1flowbase_mcp_get"}
+            ]
+        }
+    })];
+
+    assert_eq!(count_llm_tool_callback_trace_items(&debug_payloads, &[]), 2);
+}

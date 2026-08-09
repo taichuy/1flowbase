@@ -45,6 +45,7 @@ where
         )
         .await?;
         if execution.error_payload.is_some() {
+            attach_runtime_internal_tool_events(&mut execution, &internal_events);
             return Ok(execution);
         }
         let Some(tool_calls) = output_tool_calls(&execution.output_payload) else {
@@ -68,6 +69,7 @@ where
             })
             .collect::<Vec<_>>();
         if internal_calls.is_empty() {
+            attach_runtime_internal_tool_events(&mut execution, &internal_events);
             return Ok(execution);
         }
         let mut callback_wait = execution.pending_callback.take().ok_or_else(|| {
@@ -88,6 +90,7 @@ where
             .collect::<Vec<_>>();
         let mut results = Vec::with_capacity(internal_calls.len());
         for (call, registration) in &internal_calls {
+            let call_id = tool_call_id(call);
             let arguments = call
                 .get("arguments")
                 .or_else(|| {
@@ -100,15 +103,37 @@ where
                 Value::String(value) => serde_json::from_str(&value).unwrap_or_else(|_| json!({})),
                 value => value,
             };
-            let output = internal_invoker
+            let started_at = OffsetDateTime::now_utc();
+            let timer = std::time::Instant::now();
+            let mut output = internal_invoker
                 .invoke_runtime_internal_tool(node, registration, arguments)
                 .await?;
+            let finished_at = OffsetDateTime::now_utc();
+            let duration_ms = i64::try_from(timer.elapsed().as_millis()).unwrap_or(i64::MAX);
+            let is_error = output.is_error;
+            enrich_runtime_internal_tool_event(
+                &mut output.event,
+                &call_id,
+                registration,
+                is_error,
+                started_at,
+                finished_at,
+                duration_ms,
+            );
             internal_events.push(output.event);
             results.push(json!({
-                "tool_call_id": tool_call_id(call),
+                "tool_call_id": call_id,
                 "name": registration.provider_name,
                 "content": output.content,
-                "is_error": output.is_error,
+                "is_error": is_error,
+                "callback_status": "returned",
+                "execution_status": if is_error { "failed" } else { "succeeded" },
+                "execution_kind": "host_internal",
+                "registration_id": registration.registration_id,
+                "registration_owner": registration.owner,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "duration_ms": duration_ms,
             }));
         }
         apply_mixed_llm_tool_callback_results(
@@ -146,6 +171,43 @@ fn attach_runtime_internal_tool_events(execution: &mut LlmNodeExecution, events:
         "runtime_internal_tool_events".to_string(),
         Value::Array(events.to_vec()),
     );
+    if let Some(metrics) = execution.metrics_payload.as_object_mut() {
+        metrics.insert("internal_tool_call_count".to_string(), json!(events.len()));
+    }
+}
+
+fn enrich_runtime_internal_tool_event(
+    event: &mut Value,
+    tool_call_id: &str,
+    registration: &RuntimeInternalToolRegistration,
+    is_error: bool,
+    started_at: OffsetDateTime,
+    finished_at: OffsetDateTime,
+    duration_ms: i64,
+) {
+    let Some(event) = event.as_object_mut() else {
+        return;
+    };
+    event.insert("tool_call_id".to_string(), json!(tool_call_id));
+    event.insert(
+        "registration_id".to_string(),
+        json!(registration.registration_id),
+    );
+    event.insert(
+        "provider_name".to_string(),
+        json!(registration.provider_name),
+    );
+    event.insert("owner".to_string(), registration.owner.clone());
+    event.insert("execution_kind".to_string(), json!("host_internal"));
+    event.insert("callback_status".to_string(), json!("returned"));
+    event.insert(
+        "execution_status".to_string(),
+        json!(if is_error { "failed" } else { "succeeded" }),
+    );
+    event.insert("is_error".to_string(), json!(is_error));
+    event.insert("started_at".to_string(), json!(started_at));
+    event.insert("finished_at".to_string(), json!(finished_at));
+    event.insert("duration_ms".to_string(), json!(duration_ms));
 }
 
 pub(crate) async fn execute_llm_node_provider_round<I>(

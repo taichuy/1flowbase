@@ -933,6 +933,13 @@ impl TraceProjectionBuilder {
         let node_mode = route_trace
             .as_ref()
             .map(|trace| route_trace_node_kind(trace).to_string());
+        let node_mode = node_mode.or_else(|| {
+            tool_result
+                .as_ref()
+                .and_then(|result| result.get("execution_kind"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        });
         let payload = tool_callback_content_payload(
             None,
             &tool_call_id,
@@ -948,21 +955,34 @@ impl TraceProjectionBuilder {
             parent_trace_node_id: Some(parent_trace_node_id),
             stable_locator: stable_locator.clone(),
             node_kind: "tool_callback".to_string(),
-            owner_kind: Some("tool_call".to_string()),
-            owner_id: Some(tool_call_id.clone()),
+            owner_kind: Some(if node_mode.as_deref() == Some("host_internal") {
+                "runtime_internal_tool_call".to_string()
+            } else {
+                "tool_call".to_string()
+            }),
+            owner_id: tool_result
+                .as_ref()
+                .and_then(|result| result.get("registration_id"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+                .or_else(|| Some(tool_call_id.clone())),
             order_key: order_key.clone(),
             node_id: None,
             node_type: Some("tool".to_string()),
             node_mode,
             node_alias: tool_name,
-            status: route_trace_tool_callback_status(route_trace.as_ref()).unwrap_or_else(|| {
-                trace_node_group_status(parent_node_runs)
-                    .as_str()
-                    .to_string()
-            }),
-            started_at: parent_node_runs[0].started_at,
-            finished_at: trace_node_group_finished_at(parent_node_runs),
-            duration_ms: None,
+            status: route_trace_tool_callback_status(route_trace.as_ref())
+                .or_else(|| tool_result_execution_status(tool_result.as_ref()))
+                .unwrap_or_else(|| {
+                    trace_node_group_status(parent_node_runs)
+                        .as_str()
+                        .to_string()
+                }),
+            started_at: tool_result_timestamp(tool_result.as_ref(), "started_at")
+                .unwrap_or(parent_node_runs[0].started_at),
+            finished_at: tool_result_timestamp(tool_result.as_ref(), "finished_at")
+                .or_else(|| trace_node_group_finished_at(parent_node_runs)),
+            duration_ms: tool_result_duration_ms(tool_result.as_ref()),
             metrics_payload,
             has_children: has_route_child,
             child_count: i64::from(has_route_child),
@@ -1462,7 +1482,8 @@ use tool_callbacks::{
     route_trace_metrics_payload, route_trace_node_alias, route_trace_node_kind, route_trace_status,
     route_trace_tool_callback_status, synthetic_tool_calls_not_in_callback_tasks,
     tool_callback_content_payload, tool_callback_metrics_payload, tool_calls_from_callback_task,
-    tool_group_status, tool_result_for_call, tool_result_for_call_from_node_runs,
+    tool_group_status, tool_result_duration_ms, tool_result_execution_status, tool_result_for_call,
+    tool_result_for_call_from_node_runs, tool_result_timestamp,
 };
 
 fn root_order_key(index: usize) -> String {
