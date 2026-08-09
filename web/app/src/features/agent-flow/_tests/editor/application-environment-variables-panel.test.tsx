@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import { ApplicationEnvironmentVariablesPanel } from '../../components/editor/ApplicationEnvironmentVariablesPanel';
@@ -21,13 +21,15 @@ describe('ApplicationEnvironmentVariablesPanel', () => {
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '类型' }));
     fireEvent.click(await screen.findByTitle('number'));
 
-    expect(screen.getByRole('spinbutton')).toBeInTheDocument();
+    expect(await screen.findByRole('spinbutton')).toBeInTheDocument();
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '类型' }));
     fireEvent.click(await screen.findByTitle('boolean'));
 
-    expect(screen.getByText('true')).toBeInTheDocument();
-    expect(screen.getByText('false')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('true')).toBeInTheDocument();
+      expect(screen.getByText('false')).toBeInTheDocument();
+    });
   }, 10000);
 
   test('edits object values as field rows', () => {

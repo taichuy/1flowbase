@@ -53,6 +53,46 @@ test('backend coverage uses the current storage-postgres crate name', () => {
   );
 });
 
+test('control-plane coverage includes its storage-backed management service tests', () => {
+  const commands = buildBackendCommands({
+    repoRoot: '/repo-root',
+    cargoParallelism: 4,
+    cargoTestThreads: 2,
+    backendKeys: ['control-plane'],
+  });
+
+  assert.deepEqual(
+    commands.map((command) => command.label),
+    [
+      'backend-coverage-control-plane-tests',
+      'backend-coverage-control-plane-mcp-management-integration',
+      'backend-coverage-control-plane-ui-management-integration',
+      'backend-coverage-control-plane-mcp-routes-integration',
+      'backend-coverage-control-plane-ui-routes-integration',
+    ]
+  );
+  assert.deepEqual(
+    commands[1].args.slice(-2),
+    ['mcp_management_repository_tests', '--test-threads=2']
+  );
+  assert.deepEqual(
+    commands[2].args.slice(-2),
+    ['ui_management_repository_tests', '--test-threads=2']
+  );
+  assert.equal(commands[1].args.includes('--exclude-from-report'), true);
+  assert.equal(commands[1].args.includes('storage-postgres'), true);
+  assert.equal(commands[2].args.includes('--output-path'), true);
+  assert.deepEqual(
+    commands[3].args.slice(-2),
+    ['mcp_management_routes', '--test-threads=2']
+  );
+  assert.equal(commands[3].args.includes('api-server'), true);
+  assert.deepEqual(
+    commands[4].args.slice(-2),
+    ['ui_management_routes', '--test-threads=2']
+  );
+});
+
 test('backend coverage removes stale json summaries before threshold reporting', async () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-verify-coverage-stale-'));
   const stalePath = path.join(repoRoot, 'tmp', 'test-governance', 'coverage', 'backend', 'storage-pg.json');

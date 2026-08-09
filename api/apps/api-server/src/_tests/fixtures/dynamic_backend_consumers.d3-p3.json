@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 281,
-  "count": 562,
+  "projected_interface_count": 291,
+  "count": 582,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -171,6 +171,12 @@
       "DELETE",
       "/api/console/settings/roles/:id",
       "Delete roles"
+    ],
+    [
+      "ui_management.templates.default.reset",
+      "DELETE",
+      "/api/console/settings/ui-management/templates/default",
+      "Reset UI management templates default"
     ],
     [
       "list_applications",
@@ -845,6 +851,18 @@
       "View roles permissions"
     ],
     [
+      "ui_management.components.list",
+      "GET",
+      "/api/console/settings/ui-management/components",
+      "List UI management components"
+    ],
+    [
+      "ui_management.templates.list",
+      "GET",
+      "/api/console/settings/ui-management/templates",
+      "List UI management templates"
+    ],
+    [
       "system.release_status.view",
       "GET",
       "/api/console/system/release-status",
@@ -1517,6 +1535,18 @@
       "Create roles"
     ],
     [
+      "ui_management.templates.create",
+      "POST",
+      "/api/console/settings/ui-management/templates",
+      "Create UI management templates"
+    ],
+    [
+      "ui_management.templates.publish",
+      "POST",
+      "/api/console/settings/ui-management/templates/:id/publish",
+      "Publish UI management templates"
+    ],
+    [
       "create_user_api_key",
       "POST",
       "/api/console/user-api-keys",
@@ -1701,6 +1731,36 @@
       "PUT",
       "/api/console/settings/roles/:id/permissions",
       "Replace roles permissions"
+    ],
+    [
+      "ui_management.components.contract.update",
+      "PUT",
+      "/api/console/settings/ui-management/components/contract",
+      "Update UI management components contract"
+    ],
+    [
+      "ui_management.components.state.update",
+      "PUT",
+      "/api/console/settings/ui-management/components/state",
+      "Update UI management components state"
+    ],
+    [
+      "ui_management.templates.update",
+      "PUT",
+      "/api/console/settings/ui-management/templates/:id",
+      "Update UI management templates"
+    ],
+    [
+      "ui_management.templates.archive",
+      "PUT",
+      "/api/console/settings/ui-management/templates/:id/archive",
+      "UI management templates archive"
+    ],
+    [
+      "ui_management.templates.default.set",
+      "PUT",
+      "/api/console/settings/ui-management/templates/:id/default",
+      "UI management templates default set"
     ]
   ]
 }

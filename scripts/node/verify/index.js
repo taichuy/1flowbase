@@ -601,8 +601,89 @@ function selectBackendCoverageEntries(backendKeys) {
 }
 
 function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThreads, backendKeys }) {
-  return selectBackendCoverageEntries(backendKeys).map((entry) => {
+  return selectBackendCoverageEntries(backendKeys).flatMap((entry) => {
     const usesNextest = entry.key === 'api-server';
+    const env = {
+      ...buildCargoCommandEnv({ cargoParallelism, disableIncremental: true }),
+      // Coverage instrumentation does not require Rust debug symbols for source mapping.
+      ...(usesNextest ? { CARGO_PROFILE_TEST_DEBUG: '0' } : {}),
+    };
+    if (entry.key === 'control-plane') {
+      const outputPath = path.join(
+        repoRoot,
+        COVERAGE_ROOT,
+        'backend',
+        `${entry.key}.json`
+      );
+      const command = 'cargo';
+      const cwd = 'api';
+      const integrationCommand = (label, packageName, filter) => ({
+        label,
+        command,
+        args: [
+          'llvm-cov',
+          '--package',
+          entry.packageName,
+          '--package',
+          packageName,
+          '--exclude-from-report',
+          packageName,
+          '--no-clean',
+          '--json',
+          '--summary-only',
+          '--output-path',
+          outputPath,
+          '--',
+          filter,
+          `--test-threads=${cargoTestThreads}`,
+        ],
+        cwd,
+        env: packageName === 'api-server'
+          ? { ...env, CARGO_PROFILE_TEST_DEBUG: '0' }
+          : env,
+      });
+
+      return [
+        {
+          label: 'backend-coverage-control-plane-tests',
+          command,
+          args: [
+            'llvm-cov',
+            '--package',
+            entry.packageName,
+            '--no-clean',
+            '--json',
+            '--summary-only',
+            '--output-path',
+            outputPath,
+            '--',
+            `--test-threads=${cargoTestThreads}`,
+          ],
+          cwd,
+          env,
+        },
+        integrationCommand(
+          'backend-coverage-control-plane-mcp-management-integration',
+          'storage-postgres',
+          'mcp_management_repository_tests'
+        ),
+        integrationCommand(
+          'backend-coverage-control-plane-ui-management-integration',
+          'storage-postgres',
+          'ui_management_repository_tests'
+        ),
+        integrationCommand(
+          'backend-coverage-control-plane-mcp-routes-integration',
+          'api-server',
+          'mcp_management_routes'
+        ),
+        integrationCommand(
+          'backend-coverage-control-plane-ui-routes-integration',
+          'api-server',
+          'ui_management_routes'
+        ),
+      ];
+    }
     return {
       label: `backend-coverage-${entry.key}`,
       command: 'cargo',
@@ -621,11 +702,7 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
           : ['--', `--test-threads=${cargoTestThreads}`]),
       ],
       cwd: 'api',
-      env: {
-        ...buildCargoCommandEnv({ cargoParallelism, disableIncremental: true }),
-        // Coverage instrumentation does not require Rust debug symbols for source mapping.
-        ...(usesNextest ? { CARGO_PROFILE_TEST_DEBUG: '0' } : {}),
-      },
+      env,
     };
   });
 }
@@ -728,7 +805,7 @@ function collectFrontendCoverageFailures(summary) {
       const actualPct = aggregateMetric(matchedEntries, metric);
       const expectedPct = threshold.thresholds[metric];
 
-      if (actualPct + Number.EPSILON >= expectedPct) {
+      if (Number(formatPct(actualPct)) >= Number(formatPct(expectedPct))) {
         return [];
       }
 

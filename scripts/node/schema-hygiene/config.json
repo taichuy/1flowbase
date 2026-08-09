@@ -57,9 +57,17 @@
     "runtime_credit_ledger",
     "runtime_debug_artifacts",
     "runtime_events",
-    "runtime_usage_ledger"
+    "runtime_usage_ledger",
+    "ui_code_template_revisions",
+    "ui_component_contract_revisions"
   ],
-  "systemScopeTables": [],
+  "systemScopeTables": [
+    "ui_code_template_defaults",
+    "ui_code_template_revisions",
+    "ui_code_templates",
+    "ui_component_contract_revisions",
+    "ui_component_overrides"
+  ],
   "defaultTableReadiness": {
     "idGeneration": "repository write path supplies Uuid::now_v7 ids before insert",
     "created_byGeneration": "actor context is written when available; system paths may remain null",
@@ -852,6 +860,14 @@
       "skip": [
         "managed-table-scope-column",
         "managed-table-scope-time-index"
+      ]
+    },
+    "ui_code_template_defaults": {
+      "kind": "bounded_system_default_projection",
+      "reason": "UI code template defaults are one bounded system-scoped mapping per provider contribution and use the composite primary key as stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at"
       ]
     },
     "tenants": {

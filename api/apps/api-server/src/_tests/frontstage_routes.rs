@@ -47,6 +47,10 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
                 "GET",
                 "/api/console/frontstage/:workspace_id/interface-capabilities/:interface_id",
             ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/ui-templates",
+            ),
             ("GET", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),

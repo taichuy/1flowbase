@@ -132,6 +132,8 @@
           "Create roles in the system backend.",
           "Create run archive upload session",
           "Create run archive upload session in the system backend.",
+          "Create UI management templates",
+          "Create UI management templates in the system backend.",
           "Create user API key",
           "Create user API key in the system backend.",
           "Data sources map to model",
@@ -378,6 +380,10 @@
           "List roles in the system backend.",
           "List roles permission options",
           "List roles permission options in the system backend.",
+          "List UI management components",
+          "List UI management components in the system backend.",
+          "List UI management templates",
+          "List UI management templates in the system backend.",
           "List user API key role options",
           "List user API key role options in the system backend.",
           "List user API keys",
@@ -418,6 +424,8 @@
           "Preview uploaded MCP bundle in the system backend.",
           "Publish application API",
           "Publish application API in the system backend.",
+          "Publish UI management templates",
+          "Publish UI management templates in the system backend.",
           "Refresh MCP tools description",
           "Refresh MCP tools description in the system backend.",
           "Refresh model provider plugins artifact",
@@ -452,6 +460,8 @@
           "Replace workflow schedule trigger in the system backend.",
           "Reset members password",
           "Reset members password in the system backend.",
+          "Reset UI management templates default",
+          "Reset UI management templates default in the system backend.",
           "Resolve runtime debug artifacts",
           "Resolve runtime debug artifacts in the system backend.",
           "Restore applications orchestration version",
@@ -500,6 +510,10 @@
           "Test connection in the system backend.",
           "Test draft connection",
           "Test draft connection in the system backend.",
+          "UI management templates archive",
+          "UI management templates archive in the system backend.",
+          "UI management templates default set",
+          "UI management templates default set in the system backend.",
           "Unpublish application API",
           "Unpublish application API in the system backend.",
           "Update auth center authenticator config",
@@ -538,6 +552,12 @@
           "Update model scope grants in the system backend.",
           "Update roles",
           "Update roles in the system backend.",
+          "Update UI management components contract",
+          "Update UI management components contract in the system backend.",
+          "Update UI management components state",
+          "Update UI management components state in the system backend.",
+          "Update UI management templates",
+          "Update UI management templates in the system backend.",
           "Update version",
           "Update version in the system backend.",
           "Update workspace",
@@ -633,7 +653,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:c0eb2b3a561786871651227ff5688c0c3330a41292cb412dabafb715e49cc24d"
+        "sha256": "sha256:9f9a3e162592677bc8966aaea18575fa5c40df4c4580b0c980bc1b21b6e24fe8"
       },
       {
         "keys": [
@@ -703,6 +723,8 @@
           "Create roles in the system backend.",
           "Create run archive upload session",
           "Create run archive upload session in the system backend.",
+          "Create UI management templates",
+          "Create UI management templates in the system backend.",
           "Create user API key",
           "Create user API key in the system backend.",
           "Data sources map to model",
@@ -949,6 +971,10 @@
           "List roles in the system backend.",
           "List roles permission options",
           "List roles permission options in the system backend.",
+          "List UI management components",
+          "List UI management components in the system backend.",
+          "List UI management templates",
+          "List UI management templates in the system backend.",
           "List user API key role options",
           "List user API key role options in the system backend.",
           "List user API keys",
@@ -989,6 +1015,8 @@
           "Preview uploaded MCP bundle in the system backend.",
           "Publish application API",
           "Publish application API in the system backend.",
+          "Publish UI management templates",
+          "Publish UI management templates in the system backend.",
           "Refresh MCP tools description",
           "Refresh MCP tools description in the system backend.",
           "Refresh model provider plugins artifact",
@@ -1023,6 +1051,8 @@
           "Replace workflow schedule trigger in the system backend.",
           "Reset members password",
           "Reset members password in the system backend.",
+          "Reset UI management templates default",
+          "Reset UI management templates default in the system backend.",
           "Resolve runtime debug artifacts",
           "Resolve runtime debug artifacts in the system backend.",
           "Restore applications orchestration version",
@@ -1071,6 +1101,10 @@
           "Test connection in the system backend.",
           "Test draft connection",
           "Test draft connection in the system backend.",
+          "UI management templates archive",
+          "UI management templates archive in the system backend.",
+          "UI management templates default set",
+          "UI management templates default set in the system backend.",
           "Unpublish application API",
           "Unpublish application API in the system backend.",
           "Update auth center authenticator config",
@@ -1109,6 +1143,12 @@
           "Update model scope grants in the system backend.",
           "Update roles",
           "Update roles in the system backend.",
+          "Update UI management components contract",
+          "Update UI management components contract in the system backend.",
+          "Update UI management components state",
+          "Update UI management components state in the system backend.",
+          "Update UI management templates",
+          "Update UI management templates in the system backend.",
           "Update version",
           "Update version in the system backend.",
           "Update workspace",
@@ -1204,7 +1244,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:8360dc3db36c13737137a851ff09d960c0c0c29f259708c7e63b4d3be47ef835"
+        "sha256": "sha256:ef383556de38088c9ae01dec095d8e302cea7ec4eb32d2593e54842c0cf69b05"
       },
       {
         "keys": [
@@ -1216,6 +1256,7 @@
           "Application management operations",
           "Authentication center",
           "Authentication center operations",
+          "Code template and component contract management operations",
           "Data model and data source operations",
           "Data source",
           "Discover and manage host-installed extensions",
@@ -1237,11 +1278,12 @@
           "Root language catalog operations",
           "System runtime",
           "System runtime operations",
+          "UI management",
           "User management"
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/settings/en_US.json",
-        "sha256": "sha256:216c0691597c1f5bfe6aef8bcedc4294e087b8c88f6a76015fef15329eab7830"
+        "sha256": "sha256:e3351a58e6b1ab7fd77d881fb1cb13917b5107a26ddf5949fc1def49664fffbf"
       },
       {
         "keys": [
@@ -1253,6 +1295,7 @@
           "Application management operations",
           "Authentication center",
           "Authentication center operations",
+          "Code template and component contract management operations",
           "Data model and data source operations",
           "Data source",
           "Discover and manage host-installed extensions",
@@ -1274,11 +1317,12 @@
           "Root language catalog operations",
           "System runtime",
           "System runtime operations",
+          "UI management",
           "User management"
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/settings/zh_Hans.json",
-        "sha256": "sha256:6e2f8da21e30ce930236e2453e4d3e0f0080dd96a3267ad2faeaf858b012aae0"
+        "sha256": "sha256:65dd1a4de29b730034dba850301fe3c5076d44d0f2b14c63cbeb841e2b604d62"
       },
       {
         "keys": [
@@ -1539,7 +1583,7 @@
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:b1a8e2fc90d237ca678e72a6a7e1733ec334d4a4d428abb66e16337748c0ab0c",
+    "semantic_sha256": "sha256:b374a2481f457fa7299ebef64aaa3c88b8766d6ebff483e9a4f998503fd351fa",
     "source_locale": "en_US"
   },
   "messages": [
@@ -1870,6 +1914,13 @@
       "translations": {
         "en_US": "Clear model providers request logs in the system backend.",
         "zh_Hans": "清除模型供应商请求日志（系统后端）"
+      }
+    },
+    {
+      "key": "Code template and component contract management operations",
+      "translations": {
+        "en_US": "Code template and component contract management operations",
+        "zh_Hans": "Code template and component contract management operations"
       }
     },
     {
@@ -2206,6 +2257,20 @@
       "translations": {
         "en_US": "Create run archive upload session in the system backend.",
         "zh_Hans": "创建运行归档上传会话（系统后端）"
+      }
+    },
+    {
+      "key": "Create UI management templates",
+      "translations": {
+        "en_US": "Create UI management templates",
+        "zh_Hans": "Create UI management templates"
+      }
+    },
+    {
+      "key": "Create UI management templates in the system backend.",
+      "translations": {
+        "en_US": "Create UI management templates in the system backend.",
+        "zh_Hans": "Create UI management templates in the system backend."
       }
     },
     {
@@ -4155,6 +4220,34 @@
       }
     },
     {
+      "key": "List UI management components",
+      "translations": {
+        "en_US": "List UI management components",
+        "zh_Hans": "List UI management components"
+      }
+    },
+    {
+      "key": "List UI management components in the system backend.",
+      "translations": {
+        "en_US": "List UI management components in the system backend.",
+        "zh_Hans": "List UI management components in the system backend."
+      }
+    },
+    {
+      "key": "List UI management templates",
+      "translations": {
+        "en_US": "List UI management templates",
+        "zh_Hans": "List UI management templates"
+      }
+    },
+    {
+      "key": "List UI management templates in the system backend.",
+      "translations": {
+        "en_US": "List UI management templates in the system backend.",
+        "zh_Hans": "List UI management templates in the system backend."
+      }
+    },
+    {
       "key": "List user API key role options",
       "translations": {
         "en_US": "List user API key role options",
@@ -4596,6 +4689,20 @@
       }
     },
     {
+      "key": "Publish UI management templates",
+      "translations": {
+        "en_US": "Publish UI management templates",
+        "zh_Hans": "Publish UI management templates"
+      }
+    },
+    {
+      "key": "Publish UI management templates in the system backend.",
+      "translations": {
+        "en_US": "Publish UI management templates in the system backend.",
+        "zh_Hans": "Publish UI management templates in the system backend."
+      }
+    },
+    {
       "key": "Refresh MCP tools description",
       "translations": {
         "en_US": "Refresh MCP tools description",
@@ -4887,6 +4994,20 @@
       "translations": {
         "en_US": "Reset members password in the system backend.",
         "zh_Hans": "重置成员密码（系统后端）"
+      }
+    },
+    {
+      "key": "Reset UI management templates default",
+      "translations": {
+        "en_US": "Reset UI management templates default",
+        "zh_Hans": "Reset UI management templates default"
+      }
+    },
+    {
+      "key": "Reset UI management templates default in the system backend.",
+      "translations": {
+        "en_US": "Reset UI management templates default in the system backend.",
+        "zh_Hans": "Reset UI management templates default in the system backend."
       }
     },
     {
@@ -5352,6 +5473,41 @@
       }
     },
     {
+      "key": "UI management",
+      "translations": {
+        "en_US": "UI management",
+        "zh_Hans": "UI management"
+      }
+    },
+    {
+      "key": "UI management templates archive",
+      "translations": {
+        "en_US": "UI management templates archive",
+        "zh_Hans": "UI management templates archive"
+      }
+    },
+    {
+      "key": "UI management templates archive in the system backend.",
+      "translations": {
+        "en_US": "UI management templates archive in the system backend.",
+        "zh_Hans": "UI management templates archive in the system backend."
+      }
+    },
+    {
+      "key": "UI management templates default set",
+      "translations": {
+        "en_US": "UI management templates default set",
+        "zh_Hans": "UI management templates default set"
+      }
+    },
+    {
+      "key": "UI management templates default set in the system backend.",
+      "translations": {
+        "en_US": "UI management templates default set in the system backend.",
+        "zh_Hans": "UI management templates default set in the system backend."
+      }
+    },
+    {
       "key": "Unpublish application API",
       "translations": {
         "en_US": "Unpublish application API",
@@ -5629,6 +5785,48 @@
       "translations": {
         "en_US": "Update roles in the system backend.",
         "zh_Hans": "更新角色（系统后端）"
+      }
+    },
+    {
+      "key": "Update UI management components contract",
+      "translations": {
+        "en_US": "Update UI management components contract",
+        "zh_Hans": "Update UI management components contract"
+      }
+    },
+    {
+      "key": "Update UI management components contract in the system backend.",
+      "translations": {
+        "en_US": "Update UI management components contract in the system backend.",
+        "zh_Hans": "Update UI management components contract in the system backend."
+      }
+    },
+    {
+      "key": "Update UI management components state",
+      "translations": {
+        "en_US": "Update UI management components state",
+        "zh_Hans": "Update UI management components state"
+      }
+    },
+    {
+      "key": "Update UI management components state in the system backend.",
+      "translations": {
+        "en_US": "Update UI management components state in the system backend.",
+        "zh_Hans": "Update UI management components state in the system backend."
+      }
+    },
+    {
+      "key": "Update UI management templates",
+      "translations": {
+        "en_US": "Update UI management templates",
+        "zh_Hans": "Update UI management templates"
+      }
+    },
+    {
+      "key": "Update UI management templates in the system backend.",
+      "translations": {
+        "en_US": "Update UI management templates in the system backend.",
+        "zh_Hans": "Update UI management templates in the system backend."
       }
     },
     {

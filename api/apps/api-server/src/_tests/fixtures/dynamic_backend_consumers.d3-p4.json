@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 72,
+  "count": 74,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -361,6 +361,16 @@
       "category": "resource_action",
       "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
       "key": "View a data source instance"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "UI management"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Code template and component contract management operations"
     }
   ]
 }

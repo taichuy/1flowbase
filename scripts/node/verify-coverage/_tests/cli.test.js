@@ -19,9 +19,9 @@ const {
   backendThresholds,
 } = require('../../testing/coverage-thresholds.js');
 
-function expectedBackendCoverageCommand({ repoRoot, entry, cargoParallelism, cargoTestThreads }) {
+function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, cargoTestThreads }) {
   const usesNextest = entry.key === 'api-server';
-  return {
+  const baseCommand = {
     label: `backend-coverage-${entry.key}`,
     command: 'cargo',
     args: [
@@ -47,6 +47,59 @@ function expectedBackendCoverageCommand({ repoRoot, entry, cargoParallelism, car
         : {}),
     },
   };
+  if (entry.key !== 'control-plane') {
+    return [baseCommand];
+  }
+
+  const outputPath = `${repoRoot}/tmp/test-governance/coverage/backend/control-plane.json`;
+  const integrationCommand = (label, packageName, filter) => ({
+    ...baseCommand,
+    label,
+    env: packageName === 'api-server'
+      ? { ...baseCommand.env, CARGO_PROFILE_TEST_DEBUG: '0' }
+      : baseCommand.env,
+    args: [
+      'llvm-cov',
+      '--package',
+      'control-plane',
+      '--package',
+      packageName,
+      '--exclude-from-report',
+      packageName,
+      '--no-clean',
+      '--json',
+      '--summary-only',
+      '--output-path',
+      outputPath,
+      '--',
+      filter,
+      `--test-threads=${cargoTestThreads}`,
+    ],
+  });
+
+  return [
+    { ...baseCommand, label: 'backend-coverage-control-plane-tests' },
+    integrationCommand(
+      'backend-coverage-control-plane-mcp-management-integration',
+      'storage-postgres',
+      'mcp_management_repository_tests'
+    ),
+    integrationCommand(
+      'backend-coverage-control-plane-ui-management-integration',
+      'storage-postgres',
+      'ui_management_repository_tests'
+    ),
+    integrationCommand(
+      'backend-coverage-control-plane-mcp-routes-integration',
+      'api-server',
+      'mcp_management_routes'
+    ),
+    integrationCommand(
+      'backend-coverage-control-plane-ui-routes-integration',
+      'api-server',
+      'ui_management_routes'
+    ),
+  ];
 }
 
 test('parseCliArgs defaults to all coverage gates', () => {
@@ -129,12 +182,38 @@ test('collectFrontendCoverageFailures only checks configured high-risk prefixes'
   assert.deepEqual(collectFrontendCoverageFailures(summary), []);
 });
 
+test('collectFrontendCoverageFailures compares the two-decimal percentage reported by the gate', () => {
+  const coveredFunctions = 1304;
+  const totalFunctions = 2415;
+  const summary = {
+    '/repo/web/app/src/features/settings/components/UiManagementPanel.tsx': {
+      lines: { covered: 56, total: 100, pct: 56 },
+      functions: {
+        covered: coveredFunctions,
+        total: totalFunctions,
+        pct: (coveredFunctions / totalFunctions) * 100,
+      },
+      statements: { covered: 55, total: 100, pct: 55 },
+      branches: { covered: 46, total: 100, pct: 46 },
+    },
+  };
+
+  assert.equal((coveredFunctions / totalFunctions) * 100 < 54, true);
+  assert.equal(((coveredFunctions / totalFunctions) * 100).toFixed(2), '54.00');
+  assert.deepEqual(
+    collectFrontendCoverageFailures(summary).filter(
+      (failure) => failure.key === 'settings'
+    ),
+    []
+  );
+});
+
 test('buildBackendCommands emits one cargo llvm-cov command per protected package', () => {
   const repoRoot = '/repo-root';
 
   assert.deepEqual(
     buildBackendCommands({ repoRoot, cargoParallelism: 4, cargoTestThreads: 2 }),
-    backendThresholds.map((entry) => expectedBackendCoverageCommand({
+    backendThresholds.flatMap((entry) => expectedBackendCoverageCommands({
       repoRoot,
       entry,
       cargoParallelism: 4,
@@ -223,12 +302,12 @@ test('main cleans llvm-cov artifacts before and after backend coverage runs', as
     calls.map((call) => call.args),
     [
       ['llvm-cov', 'clean', '--profraw-only'],
-      ...backendThresholds.map((entry) => expectedBackendCoverageCommand({
+      ...backendThresholds.flatMap((entry) => expectedBackendCoverageCommands({
         repoRoot,
         entry,
         cargoParallelism: 2,
         cargoTestThreads: 4,
-      }).args),
+      }).map((command) => command.args)),
       ['llvm-cov', 'clean', '--profraw-only'],
     ]
   );

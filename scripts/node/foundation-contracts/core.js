@@ -44,7 +44,14 @@ const FOUNDATION_DEFINITIONS = {
       {
         id: 'mcp-core-list-get-call',
         command: 'cargo',
-        args: ['test', '-p', 'api-server', 'mcp_protocol_routes'],
+        args: [
+          'test',
+          '-p',
+          'api-server',
+          'mcp_protocol_routes',
+          '--',
+          '--test-threads=4',
+        ],
         cwd: 'api',
       },
     ],

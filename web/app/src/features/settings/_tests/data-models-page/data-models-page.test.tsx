@@ -923,7 +923,7 @@ describe('Settings data models page', () => {
     expect(screen.getByText('system_all')).toBeInTheDocument();
 
     const openPermissionDropdown = async (name: string) => {
-      const trigger = screen.getByRole('combobox', { name });
+      const trigger = await screen.findByRole('combobox', { name });
       fireEvent.mouseDown(trigger);
       await waitFor(() =>
         expect(
@@ -953,13 +953,6 @@ describe('Settings data models page', () => {
         selector: '.ant-select-item-option-content'
       })
     ).not.toBeInTheDocument();
-    fireEvent.keyDown(
-      screen.getByRole('combobox', { name: '权限 grant-owner' }),
-      {
-        key: 'Escape'
-      }
-    );
-
     const systemDropdown = await openPermissionDropdown('权限 grant-system');
     expect(
       within(systemDropdown).getByText('system_all', {

@@ -649,12 +649,14 @@ describe('NodeDetailPanel', () => {
 
       fireEvent.mouseDown(screen.getByRole('combobox', { name: '异常处理' }));
       fireEvent.click(await screen.findByText('默认值'));
+      fireEvent.click(
+        await screen.findByRole('button', { name: /编辑.*默认输出/ })
+      );
 
-      expect(
-        await screen.findByRole('dialog', { name: '默认输出' })
-      ).toBeInTheDocument();
-
-      fireEvent.change(screen.getByRole('textbox', { name: '默认输出' }), {
+      const defaultOutputEditor = await screen.findByRole('textbox', {
+        name: '默认输出'
+      });
+      fireEvent.change(defaultOutputEditor, {
         target: { value: '{"text":"兜底回复"}' }
       });
       fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));

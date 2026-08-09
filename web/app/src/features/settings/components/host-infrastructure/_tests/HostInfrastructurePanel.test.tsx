@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { App } from 'antd';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
@@ -169,9 +170,11 @@ function renderPanel(canManage = true) {
   });
 
   return render(
-    <QueryClientProvider client={queryClient}>
-      <HostInfrastructurePanel canManage={canManage} />
-    </QueryClientProvider>
+    <App>
+      <QueryClientProvider client={queryClient}>
+        <HostInfrastructurePanel canManage={canManage} />
+      </QueryClientProvider>
+    </App>
   );
 }
 
