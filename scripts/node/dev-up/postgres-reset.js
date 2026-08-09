@@ -1,3 +1,7 @@
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
 const { log } = require('./cli.js');
 const {
   buildServiceEnv,
@@ -14,6 +18,19 @@ const {
 
 const LOCAL_POSTGRES_HOSTS = new Set(['127.0.0.1', 'localhost']);
 const ALLOW_DB_RESET_ENV = 'ONEFLOWBASE_DEV_UP_ALLOW_DB_RESET';
+const KNOWN_EQUIVALENT_MIGRATION_DRIFTS = new Map([
+  [
+    '20260808230000',
+    {
+      relativePath:
+        'api/crates/storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql',
+      appliedChecksum:
+        '65656b2b49acc6f0c034d3df7440f5113f08d14613279d55aacc7463948c783c1a1aeb3f667500cd18245bf2a493db66',
+      resolvedChecksum:
+        '5f8137b467d8d6d16aa5416407b64249ba43e17ea452e37e4811e7b4d7cb5502cd53ad975f2df41615f57dc56e5a9811',
+    },
+  ],
+]);
 
 function getCommandOutput(result) {
   return [result?.stdout, result?.stderr, result?.error?.message].filter(Boolean).join('\n');
@@ -37,6 +54,12 @@ function isExplicitResetOptInEnabled(env) {
 
 function quotePostgresIdentifier(identifier) {
   return `"${String(identifier).replaceAll('"', '""')}"`;
+}
+
+function extractModifiedMigrationVersion(result) {
+  return getCommandOutput(result).match(
+    /migration (\d+) was previously applied but has been modified/iu
+  )?.[1];
 }
 
 function parsePostgresDatabaseUrl(databaseUrl) {
@@ -121,6 +144,82 @@ function buildLocalPostgresResetPlan(service, databaseUrl) {
   };
 }
 
+function tryRepairKnownEquivalentMigrationDrift(
+  service,
+  prestartCommand,
+  result,
+  { runMiddlewareComposeImpl = runMiddlewareCompose, logImpl = log } = {}
+) {
+  const version = extractModifiedMigrationVersion(result);
+  const drift = KNOWN_EQUIVALENT_MIGRATION_DRIFTS.get(version);
+  if (!drift) {
+    return false;
+  }
+
+  const database = parsePostgresDatabaseUrl(prestartCommand.env.API_DATABASE_URL);
+  const expectedPort = getMiddlewarePostgresPort(service.repoRoot);
+  if (
+    !database ||
+    !LOCAL_POSTGRES_HOSTS.has(database.host) ||
+    database.port !== expectedPort
+  ) {
+    return false;
+  }
+
+  const migrationPath = path.join(service.repoRoot, drift.relativePath);
+  if (!fs.existsSync(migrationPath)) {
+    return false;
+  }
+
+  const resolvedChecksum = crypto
+    .createHash('sha384')
+    .update(fs.readFileSync(migrationPath))
+    .digest('hex');
+  if (resolvedChecksum !== drift.resolvedChecksum) {
+    return false;
+  }
+
+  const repairSql = `with repaired as (
+    update _sqlx_migrations
+    set checksum = decode('${drift.resolvedChecksum}', 'hex')
+    where version = ${version}
+      and success
+      and checksum = decode('${drift.appliedChecksum}', 'hex')
+    returning 1
+  )
+  select count(*) from repaired;`;
+  const repairResult = runMiddlewareComposeImpl(
+    service.repoRoot,
+    [
+      'exec',
+      '-T',
+      'db',
+      'psql',
+      '-U',
+      database.user,
+      '-d',
+      database.databaseName,
+      '-X',
+      '-A',
+      '-t',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      repairSql,
+    ],
+    { captureOutput: true, allowFailure: true }
+  );
+  ensureCommandSuccess(`Repair development migration ${version} checksum`, repairResult);
+  if (repairResult.stdout.trim() !== '1') {
+    return false;
+  }
+
+  logImpl(
+    `${service.label} repaired known equivalent local migration ${version} checksum without rebuilding database`
+  );
+  return true;
+}
+
 function tryRecoverApiServerPrestartFailure(
   service,
   prestartCommand,
@@ -137,6 +236,15 @@ function tryRecoverApiServerPrestartFailure(
 
   if (!isRecoverableMigrationDrift(result)) {
     return false;
+  }
+
+  if (
+    tryRepairKnownEquivalentMigrationDrift(service, prestartCommand, result, {
+      runMiddlewareComposeImpl,
+      logImpl,
+    })
+  ) {
+    return true;
   }
 
   if (!isExplicitResetOptInEnabled(prestartCommand.env)) {

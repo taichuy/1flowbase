@@ -126,6 +126,8 @@ Claude Code
 
 教程：[Fusion 风格工作流：把多模型评审团发布成一个可观测的虚拟模型](https://github.com/taichuy/1flowbase/wiki/Fusion-Style-Workflow-CN)
 
+![Workflow Editor Preview](../assets/workflow_editor_preview_tool.png)
+
 ### 发布由工作流支撑的模型 API
 
 构建一次工作流，即可通过常见模型协议对外提供服务：
