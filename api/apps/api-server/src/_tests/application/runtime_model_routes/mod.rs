@@ -110,6 +110,58 @@ fn write_external_runtime_package(package: &TempDataSourcePackage) {
         }
     })
     .to_string();
+    let describe_output = json!({
+        "ok": true,
+        "result": {
+            "resource_key": "contacts",
+            "primary_key": "id",
+            "fields": [
+                { "key": "id", "label": "Contact ID", "type": "string", "required": true },
+                { "key": "email_address", "label": "Email address", "type": "string" },
+                { "key": "secret_echo", "label": "Secret echo", "type": "string" }
+            ],
+            "supports_preview_read": false,
+            "supports_import_snapshot": false,
+            "capabilities": {
+                "supports_list": true,
+                "supports_get": true,
+                "supports_create": true,
+                "supports_update": true,
+                "supports_delete": true,
+                "supports_filter": false,
+                "supports_sort": false,
+                "supports_pagination": false,
+                "supports_owner_filter": false,
+                "supports_scope_filter": false,
+                "supports_write": true,
+                "supports_transactions": false
+            },
+            "metadata": { "display_name": "Contacts" }
+        }
+    })
+    .to_string();
+    let model_operation_output = json!({
+        "ok": true,
+        "result": {
+            "root_id": "contact-1",
+            "children": [{ "id": "contact-2", "label": "Alice" }]
+        }
+    })
+    .to_string();
+    let malformed_model_operation_output = json!({
+        "ok": true,
+        "result": { "root_id": false, "children": [] }
+    })
+    .to_string();
+    let unknown_model_operation_output = json!({
+        "ok": false,
+        "error": {
+            "code": "unknown_model_operation_handler",
+            "message": "unknown data model operation handler",
+            "provider_summary": null
+        }
+    })
+    .to_string();
     let error_output = json!({
         "ok": false,
         "error": {
@@ -127,6 +179,32 @@ set -euo pipefail
 
 payload="$(cat)"
 case "${{payload}}" in
+  *'"method":"describe_resource"'*)
+    if [[ "${{payload}}" == *'"client_secret":"route-runtime-secret"'* && "${{payload}}" == *'"resource_key":"contacts"'* ]]; then
+      printf '%s' '{describe_output}'
+    else
+      printf '%s' '{error_output}'
+      exit 1
+    fi
+    ;;
+  *'"method":"execute_model_operation"'*)
+    if [[ "${{payload}}" == *'"handler_ref":{{"provider":"plugin.crm","code":"contact_tree","version":"v2"}}'* && "${{payload}}" == *'"client_secret":"route-runtime-secret"'* ]]; then
+      if [[ "${{payload}}" == *'"malformed":"true"'* ]]; then
+        printf '%s' '{malformed_model_operation_output}'
+      elif [[ "${{payload}}" == *'"unknown_handler":"true"'* ]]; then
+        printf '%s' '{unknown_model_operation_output}'
+        exit 1
+      elif [[ "${{payload}}" == *'"timeout":"true"'* ]]; then
+        sleep 6
+        printf '%s' '{model_operation_output}'
+      else
+        printf '%s' '{model_operation_output}'
+      fi
+    else
+      printf '%s' '{error_output}'
+      exit 1
+    fi
+    ;;
   *'"method":"list_records"'*)
     if [[ "${{payload}}" == *'"client_secret":"route-runtime-secret"'* && "${{payload}}" == *'"resource_key":"contacts"'* ]]; then
       printf '%s' '{list_output}'
@@ -188,7 +266,7 @@ esac
     package.write(
         "manifest.yaml",
         r#"manifest_version: 1
-plugin_id: fixture_external_data_source@0.1.0
+plugin_id: plugin.crm@0.1.0
 version: 0.1.0
 publisher_namespace: taichuy
 vendor: taichuy
@@ -222,8 +300,8 @@ node_contributions: []
 "#,
     );
     package.write(
-        "datasource/fixture_external_data_source.yaml",
-        r#"source_code: fixture_external_data_source
+        "datasource/plugin.crm.yaml",
+        r#"source_code: plugin.crm
 display_name: Fixture External Data Source
 auth_modes:
   - api_key
@@ -242,6 +320,62 @@ config_schema:
     label: Client ID
     type: string
     required: true
+data_model_templates:
+  - descriptor_version: 1
+    identity:
+      provider: plugin.crm
+      code: contact_tree
+      version: v2
+    source_selector:
+      kind: external_provider
+      provider: plugin.crm
+    required_capabilities:
+      - code: records.read
+    system_fields:
+      - code: id
+        value_schema:
+          type: string
+        required: true
+        write_policy: read_only_projection
+        summary: Contact identifier
+        description: Stable external contact identifier.
+    operations:
+      - code: contact_tree
+        method: GET
+        path: /api/runtime/models/{model_code}/tree/{id}
+        input_schema:
+          type: object
+        output_schema:
+          type: object
+          required:
+            - root_id
+            - children
+          properties:
+            root_id:
+              type: string
+            children:
+              type: array
+              items:
+                type: object
+                required:
+                  - id
+                  - label
+                properties:
+                  id:
+                    type: string
+                  label:
+                    type: string
+                additionalProperties: false
+          additionalProperties: false
+        permission_action: view
+        handler_ref:
+          provider: plugin.crm
+          code: contact_tree
+          version: v2
+        summary: Contact tree
+        description: Loads the contact tree through the external CRM runtime.
+    summary: 联系人树
+    description: 外部 CRM 联系人树。
 "#,
     );
 }
@@ -288,8 +422,8 @@ struct RuntimeDataSourceSeedOptions<'a> {
 impl Default for RuntimeDataSourceSeedOptions<'_> {
     fn default() -> Self {
         Self {
-            provider_code: "fixture_external_data_source",
-            source_code: "fixture_external_data_source",
+            provider_code: "plugin.crm",
+            source_code: "plugin.crm",
             contract_version: "1flowbase.data_source/v1",
             desired_state: "active_requested",
             artifact_status: "ready",
@@ -339,7 +473,7 @@ async fn seed_runtime_data_source_instance_with_options(
             verification_status, desired_state, signature_status, metadata_json, created_by
         ) values (
             $1, 'capability-plugins', 'test', $2, '0.1.0',
-            'fixture_external_data_source@0.1.0', $3, 'stdio_json',
+            'plugin.crm@0.1.0', $3, 'stdio_json',
             'Fixture External Data Source', 'uploaded', 'unverified', 'valid',
             $4, 'missing', '{}', $5
         )
@@ -467,7 +601,7 @@ async fn seed_external_runtime_model(
             availability_status, status, owner_kind, is_protected, created_by, updated_by
         ) values (
             $1, 'system', $2, $3, 'external_source', 'contacts',
-            '{"supports_list":true,"supports_get":true,"supports_create":true,"supports_update":true,"supports_delete":true,"supports_filter":true,"supports_sort":true,"supports_pagination":true,"supports_scope_filter":true,"supports_write":true}',
+            '{"supports_list":true,"supports_get":true,"supports_create":true,"supports_update":true,"supports_delete":true,"supports_filter":false,"supports_sort":false,"supports_pagination":false,"supports_owner_filter":false,"supports_scope_filter":false,"supports_write":true,"supports_transactions":false}',
             'core', 'general', 'v1', $4, $5, $6, $7, $8,
             'available', 'published', 'core', false, $9, $9
         )
@@ -502,6 +636,50 @@ async fn seed_external_runtime_model(
     .unwrap();
 
     model_id.to_string()
+}
+
+async fn map_external_runtime_model(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    data_source_instance_id: &str,
+    template_provider: &str,
+    template_code: &str,
+    template_version: &str,
+) -> serde_json::Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/settings/data-models/data-sources/{data_source_instance_id}/resources/map-to-model"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "resource_key": "contacts",
+                        "template_provider": template_provider,
+                        "template_code": template_code,
+                        "template_version": template_version
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "unexpected map-to-model payload: {payload}"
+    );
+    payload["data"].clone()
 }
 
 async fn create_user_api_key(app: &axum::Router, cookie: &str, csrf: &str, name: &str) -> String {

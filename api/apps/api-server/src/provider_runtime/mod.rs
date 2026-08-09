@@ -1063,24 +1063,7 @@ impl ApiProviderRuntime {
 fn data_source_capability_codes(
     capabilities: &plugin_framework::DataSourceCrudCapabilities,
 ) -> Vec<String> {
-    let mut codes = [
-        (capabilities.supports_list, "list_records"),
-        (capabilities.supports_get, "get_record"),
-        (capabilities.supports_create, "create_record"),
-        (capabilities.supports_update, "update_record"),
-        (capabilities.supports_delete, "delete_record"),
-        (capabilities.supports_filter, "filter_records"),
-        (capabilities.supports_sort, "sort_records"),
-        (capabilities.supports_pagination, "paginate_records"),
-        (capabilities.supports_owner_filter, "owner_filter"),
-        (capabilities.supports_scope_filter, "scope_filter"),
-        (capabilities.supports_write, "write_records"),
-        (capabilities.supports_transactions, "transactions"),
-    ]
-    .into_iter()
-    .filter(|(supported, _)| *supported)
-    .map(|(_, code)| code.to_owned())
-    .collect::<Vec<_>>();
+    let mut codes = Vec::new();
     if capabilities.supports_list && capabilities.supports_get {
         codes.push(
             runtime_core::general_data_model_template::GENERAL_RECORDS_READ_CAPABILITY.to_owned(),

@@ -354,32 +354,28 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let data_source_instance_id = seed_runtime_data_source_instance(&database_url, &package).await;
-    let model_id = seed_external_runtime_model(
-        &database_url,
-        &data_source_instance_id,
-        "external_runtime_contacts",
-        "External Runtime Contacts",
-    )
-    .await;
-
-    create_text_field_with_external_key(&app, &cookie, &csrf, &model_id, "email", "email_address")
-        .await;
-    create_text_field_with_external_key(
+    let model = map_external_runtime_model(
         &app,
         &cookie,
         &csrf,
-        &model_id,
-        "token_echo",
-        "secret_echo",
+        &data_source_instance_id,
+        "core",
+        "general",
+        "v1",
     )
     .await;
+    assert_eq!(model["code"], json!("contacts"));
+    assert_eq!(model["external_resource_key"], json!("contacts"));
+    assert_eq!(model["template_provider"], json!("core"));
+    assert_eq!(model["template_code"], json!("general"));
+    assert_eq!(model["template_version"], json!("v1"));
 
     let list_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/external_runtime_contacts/list")
+                .uri("/api/runtime/models/contacts/list")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -400,11 +396,11 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
     );
     assert_eq!(list_payload["data"]["total"], json!(1));
     assert_eq!(
-        list_payload["data"]["items"][0]["email"],
+        list_payload["data"]["items"][0]["email_address"],
         json!("list@example.com")
     );
     assert_eq!(
-        list_payload["data"]["items"][0]["token_echo"],
+        list_payload["data"]["items"][0]["secret_echo"],
         json!("Bearer ***")
     );
     assert!(!list_payload.to_string().contains("route-runtime-secret"));
@@ -414,7 +410,7 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/runtime/models/external_runtime_contacts/get/contact-1")
+                .uri("/api/runtime/models/contacts/get/contact-1")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -428,20 +424,23 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(get_payload["data"]["email"], json!("get@example.com"));
-    assert_eq!(get_payload["data"]["token_echo"], json!("Bearer ***"));
+    assert_eq!(
+        get_payload["data"]["email_address"],
+        json!("get@example.com")
+    );
+    assert_eq!(get_payload["data"]["secret_echo"], json!("Bearer ***"));
 
     let create_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/runtime/models/external_runtime_contacts/create")
+                .uri("/api/runtime/models/contacts/create")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "email": "created@example.com" }).to_string(),
+                    json!({ "email_address": "created@example.com" }).to_string(),
                 ))
                 .unwrap(),
         )
@@ -456,22 +455,22 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
     .unwrap();
     assert_eq!(create_payload["data"]["id"], json!("contact-created"));
     assert_eq!(
-        create_payload["data"]["email"],
+        create_payload["data"]["email_address"],
         json!("created@example.com")
     );
-    assert_eq!(create_payload["data"]["token_echo"], json!("Bearer ***"));
+    assert_eq!(create_payload["data"]["secret_echo"], json!("Bearer ***"));
 
     let update_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/api/runtime/models/external_runtime_contacts/update/contact-1")
+                .uri("/api/runtime/models/contacts/update/contact-1")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "email": "updated@example.com" }).to_string(),
+                    json!({ "email_address": "updated@example.com" }).to_string(),
                 ))
                 .unwrap(),
         )
@@ -485,16 +484,16 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
     )
     .unwrap();
     assert_eq!(
-        update_payload["data"]["email"],
+        update_payload["data"]["email_address"],
         json!("updated@example.com")
     );
-    assert_eq!(update_payload["data"]["token_echo"], json!("Bearer ***"));
+    assert_eq!(update_payload["data"]["secret_echo"], json!("Bearer ***"));
 
     let delete_response = app
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/runtime/models/external_runtime_contacts/delete/contact-1")
+                .uri("/api/runtime/models/contacts/delete/contact-1")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .body(Body::empty())
@@ -510,6 +509,230 @@ async fn runtime_model_routes_dispatch_external_source_crud_to_data_source_runti
     )
     .unwrap();
     assert_eq!(delete_payload["data"]["deleted"], json!(true));
+}
+
+#[tokio::test]
+async fn runtime_model_data_model_template_maps_and_dispatches_external_operation() {
+    let package = TempDataSourcePackage::new();
+    write_external_runtime_package(&package);
+    let (app, database_url) = test_app_with_database_url().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let data_source_instance_id = seed_runtime_data_source_instance(&database_url, &package).await;
+
+    let catalog_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/console/settings/data-models/model-templates?data_source_id={data_source_instance_id}&resource_key=contacts"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let catalog_status = catalog_response.status();
+    let catalog_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(catalog_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        catalog_status,
+        StatusCode::OK,
+        "unexpected template catalog payload: {catalog_payload}"
+    );
+    let external_templates = catalog_payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|template| template["template_provider"] == json!("plugin.crm"))
+        .collect::<Vec<_>>();
+    assert_eq!(external_templates.len(), 1);
+    assert_eq!(
+        external_templates[0],
+        &json!({
+            "template_provider": "plugin.crm",
+            "template_code": "contact_tree",
+            "template_version": "v2",
+            "summary": "联系人树",
+            "description": "外部 CRM 联系人树。"
+        })
+    );
+
+    let model = map_external_runtime_model(
+        &app,
+        &cookie,
+        &csrf,
+        &data_source_instance_id,
+        "plugin.crm",
+        "contact_tree",
+        "v2",
+    )
+    .await;
+    assert_eq!(model["code"], json!("contacts"));
+    assert_eq!(model["title"], json!("Contacts"));
+    assert_eq!(model["template_provider"], json!("plugin.crm"));
+    assert_eq!(model["template_code"], json!("contact_tree"));
+    assert_eq!(model["template_version"], json!("v2"));
+
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let persisted = sqlx::query(
+        r#"
+        select external_resource_key, external_capability_snapshot,
+               template_provider, template_code, template_version
+        from model_definitions
+        where id = $1
+        "#,
+    )
+    .bind(uuid::Uuid::parse_str(model["id"].as_str().unwrap()).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        persisted.get::<String, _>("external_resource_key"),
+        "contacts"
+    );
+    assert_eq!(
+        persisted.get::<String, _>("template_provider"),
+        "plugin.crm"
+    );
+    assert_eq!(persisted.get::<String, _>("template_code"), "contact_tree");
+    assert_eq!(persisted.get::<String, _>("template_version"), "v2");
+    let capability_snapshot: serde_json::Value = persisted.get("external_capability_snapshot");
+    assert_eq!(capability_snapshot["supports_list"], json!(true));
+    assert_eq!(capability_snapshot["supports_get"], json!(true));
+
+    let operation_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/runtime/models/contacts/tree/contact-1")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let operation_status = operation_response.status();
+    let operation_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(operation_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        operation_status,
+        StatusCode::OK,
+        "unexpected external operation payload: {operation_payload}"
+    );
+    assert_eq!(
+        operation_payload["data"],
+        json!({
+            "root_id": "contact-1",
+            "children": [{ "id": "contact-2", "label": "Alice" }]
+        })
+    );
+
+    for (query, expected_status, expected_code) in [
+        (
+            "malformed=true",
+            StatusCode::BAD_REQUEST,
+            "data_source_runtime",
+        ),
+        (
+            "timeout=true",
+            StatusCode::BAD_GATEWAY,
+            "data_source_runtime",
+        ),
+        (
+            "unknown_handler=true",
+            StatusCode::BAD_GATEWAY,
+            "data_source_runtime",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/runtime/models/contacts/tree/contact-1?{query}"
+                    ))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let payload: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert_eq!(
+            status, expected_status,
+            "unexpected {query} payload: {payload}"
+        );
+        assert_eq!(payload["code"], json!(expected_code));
+        assert!(payload.get("data").is_none());
+    }
+
+    sqlx::query(
+        r#"
+        update model_definitions
+        set external_capability_snapshot =
+            external_capability_snapshot || '{"supports_get":false}'::jsonb
+        where id = $1
+        "#,
+    )
+    .bind(uuid::Uuid::parse_str(model["id"].as_str().unwrap()).unwrap())
+    .execute(&pool)
+    .await
+    .unwrap();
+    let rebuild_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!(
+                    "/api/console/settings/data-models/model-definitions/{}",
+                    model["id"].as_str().unwrap()
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "title": "Contacts" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rebuild_response.status(), StatusCode::OK);
+
+    let drift_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/runtime/models/contacts/tree/contact-1")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let drift_status = drift_response.status();
+    let drift_payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(drift_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(drift_status, StatusCode::CONFLICT);
+    assert_eq!(drift_payload["code"], json!("data_source_capability_drift"));
+    assert!(drift_payload.get("data").is_none());
 }
 
 #[tokio::test]

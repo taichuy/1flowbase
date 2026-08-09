@@ -292,6 +292,13 @@ async fn ac_004_compatible_templates_use_live_resource_capability_subset() {
         "acme_hubspot_source"
     );
     assert_eq!(templates[0].descriptor.identity.code, "contacts");
+    assert_eq!(templates[0].descriptor.identity.version, "v1");
+    assert_eq!(
+        templates[0].descriptor.required_capabilities,
+        vec![plugin_framework::DataModelCapabilityRequirement {
+            code: "records.read".to_owned(),
+        }]
+    );
 }
 
 #[tokio::test]

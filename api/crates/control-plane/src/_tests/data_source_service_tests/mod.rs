@@ -1111,7 +1111,7 @@ fn stub_external_template() -> plugin_framework::DataModelTemplateDescriptor {
         "descriptor_version": 1,
         "identity": { "provider": "acme_hubspot_source", "code": "contacts", "version": "v1" },
         "source_selector": { "kind": "external_provider", "provider": "acme_hubspot_source" },
-        "required_capabilities": [{ "code": "list_records" }],
+        "required_capabilities": [{ "code": "records.read" }],
         "system_fields": [{
             "code": "id",
             "value_schema": { "type": "string" },
@@ -1150,12 +1150,18 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
         capabilities: &plugin_framework::DataSourceCrudCapabilities,
     ) -> Result<Vec<plugin_framework::DataModelTemplateDescriptor>> {
         let template = stub_external_template();
-        Ok(
-            (template.source_selector.matches(source) && capabilities.supports_list)
-                .then_some(template)
-                .into_iter()
-                .collect(),
-        )
+        let live_capabilities = runtime_core::general_data_model_template::source_capabilities(
+            source,
+            Some(capabilities),
+        );
+        Ok((template.source_selector.matches(source)
+            && template
+                .required_capabilities
+                .iter()
+                .all(|required| live_capabilities.contains(&required.code)))
+        .then_some(template)
+        .into_iter()
+        .collect())
     }
 
     async fn validate_config(

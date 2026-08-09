@@ -18,6 +18,7 @@ use control_plane::data_source::{
     UpdateMainDataSourceDefaultsCommand, ValidateDataSourceInstanceCommand,
     ValidateDataSourceInstanceResult,
 };
+use control_plane::ports::RuntimeRegistrySync;
 use serde::{Deserialize, Serialize};
 use storage_durable::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
@@ -759,6 +760,12 @@ pub async fn map_resource_to_model(
             template_version: body.template_version,
         })
         .await?;
+    crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
+        state.store.clone(),
+        state.runtime_engine.registry().clone(),
+    )
+    .rebuild()
+    .await?;
     let mut model = result.model;
     model.fields = result.fields;
 
