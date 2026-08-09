@@ -40,6 +40,26 @@ export function DataTableFilterField({
   );
 }
 
+type DataTableFilterFormProps = {
+  ariaLabel: string;
+  children: ReactNode;
+  resetLabel: string;
+  submitLabel: string;
+  onReset: () => void;
+  onSubmit: () => void;
+} & (
+  | {
+      collapseLabel: string;
+      expandLabel: string;
+      expandedFields: ReactNode;
+    }
+  | {
+      collapseLabel?: never;
+      expandLabel?: never;
+      expandedFields?: never;
+    }
+);
+
 export function DataTableFilterForm({
   ariaLabel,
   children,
@@ -50,17 +70,7 @@ export function DataTableFilterForm({
   submitLabel,
   onReset,
   onSubmit
-}: {
-  ariaLabel: string;
-  children: ReactNode;
-  collapseLabel: string;
-  expandLabel: string;
-  expandedFields?: ReactNode;
-  resetLabel: string;
-  submitLabel: string;
-  onReset: () => void;
-  onSubmit: () => void;
-}) {
+}: DataTableFilterFormProps) {
   const [expanded, setExpanded] = useState(false);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

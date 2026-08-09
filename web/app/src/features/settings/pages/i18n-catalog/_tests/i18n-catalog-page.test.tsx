@@ -145,7 +145,7 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(screen.getAllByText('过期翻译').length).toBeGreaterThan(0);
   });
 
-  test('AC-002/003 keeps the management table and removes the redundant text status', async () => {
+  test('AC-002/003 uses the shared filter layout and fixed table toolbar', async () => {
     const view = renderPage();
 
     await findLoadedDesktopEntry('系统设置');
@@ -153,14 +153,25 @@ describe('I18nCatalogPage batch fixtures', () => {
     const surface = screen.getByTestId('settings-section-surface');
     expect(surface).toHaveClass('settings-section-surface--fill');
 
-    const toolbar = surface.querySelector('.settings-section-surface__toolbar');
+    expect(
+      surface.querySelector('.settings-section-surface__toolbar')
+    ).toBeNull();
+
+    const filterForm = within(surface).getByRole('form', { name: '筛选' });
+    const toolbar = surface.querySelector('.data-table__toolbar');
+    const scrollArea = surface.querySelector('.data-table__scroll-area');
+
     expect(toolbar).not.toBeNull();
     expect(
-      within(toolbar as HTMLElement).getByTestId('i18n-catalog-search')
+      within(filterForm).getByTestId('i18n-catalog-search')
     ).toBeInTheDocument();
     expect(
-      within(toolbar as HTMLElement).getByTestId('i18n-catalog-apply-filters')
+      within(filterForm).getByRole('button', { name: /筛\s*选/ })
     ).toHaveTextContent(/筛\s*选/);
+    expect(
+      within(filterForm).getByRole('button', { name: /重\s*置/ })
+    ).toBeInTheDocument();
+    expect(scrollArea?.contains(toolbar)).toBe(false);
     expect(
       within(toolbar as HTMLElement).getByRole('button', {
         name: /恢复默认值/
@@ -169,6 +180,37 @@ describe('I18nCatalogPage batch fixtures', () => {
     expect(
       within(toolbar as HTMLElement).getByRole('button', { name: /新增/ })
     ).toBeInTheDocument();
+    expect(
+      within(toolbar as HTMLElement).getByRole('combobox', {
+        name: '字段配置'
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.change(
+      within(filterForm).getByRole('searchbox', {
+        name: '搜索 Key 或翻译'
+      }),
+      { target: { value: 'Settings' } }
+    );
+    expect(
+      catalogApi.fetchSettingsI18nCatalogEntries.mock.calls.at(-1)?.[0].search
+    ).toBeUndefined();
+    fireEvent.click(
+      within(filterForm).getByRole('button', { name: /筛\s*选/ })
+    );
+    await waitFor(() =>
+      expect(
+        catalogApi.fetchSettingsI18nCatalogEntries.mock.calls.at(-1)?.[0].search
+      ).toBe('Settings')
+    );
+    fireEvent.click(
+      within(filterForm).getByRole('button', { name: /重\s*置/ })
+    );
+    await waitFor(() =>
+      expect(
+        catalogApi.fetchSettingsI18nCatalogEntries.mock.calls.at(-1)?.[0].search
+      ).toBeUndefined()
+    );
 
     const status = surface.querySelector('.settings-section-surface__status');
     expect(status).toBeNull();
@@ -199,9 +241,14 @@ describe('I18nCatalogPage batch fixtures', () => {
     await findLoadedDesktopEntry('系统设置');
 
     fireEvent.click(screen.getByRole('button', { name: '目录版本' }));
-    const dialog = await screen.findByRole('dialog', {
-      name: '激活多语言目录'
-    });
+    await waitFor(() =>
+      expect(catalogApi.fetchSettingsI18nCatalogUpdateStatus).toHaveBeenCalled()
+    );
+    const dialogTitle = await screen.findByText('激活多语言目录');
+    const dialog = dialogTitle.closest('.ant-modal');
+    if (!(dialog instanceof HTMLElement)) {
+      throw new Error('catalog activation modal did not render');
+    }
     expect(await within(dialog).findByText('2.0.0')).toBeInTheDocument();
     expect(await within(dialog).findByText('2.0.1')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /激\s*活/ }));
