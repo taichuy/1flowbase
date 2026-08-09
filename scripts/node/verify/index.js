@@ -617,7 +617,7 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       );
       const command = 'cargo';
       const cwd = 'api';
-      const integrationCommand = (label, filter) => ({
+      const integrationCommand = (label, packageName, filter) => ({
         label,
         command,
         args: [
@@ -625,9 +625,9 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
           '--package',
           entry.packageName,
           '--package',
-          'storage-postgres',
+          packageName,
           '--exclude-from-report',
-          'storage-postgres',
+          packageName,
           '--no-clean',
           '--json',
           '--summary-only',
@@ -638,7 +638,9 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
           `--test-threads=${cargoTestThreads}`,
         ],
         cwd,
-        env,
+        env: packageName === 'api-server'
+          ? { ...env, CARGO_PROFILE_TEST_DEBUG: '0' }
+          : env,
       });
 
       return [
@@ -662,11 +664,18 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
         },
         integrationCommand(
           'backend-coverage-control-plane-mcp-management-integration',
+          'storage-postgres',
           'mcp_management_repository_tests'
         ),
         integrationCommand(
           'backend-coverage-control-plane-ui-management-integration',
+          'storage-postgres',
           'ui_management_repository_tests'
+        ),
+        integrationCommand(
+          'backend-coverage-control-plane-mcp-routes-integration',
+          'api-server',
+          'mcp_management_routes'
         ),
       ];
     }

@@ -67,6 +67,7 @@ test('control-plane coverage includes its storage-backed management service test
       'backend-coverage-control-plane-tests',
       'backend-coverage-control-plane-mcp-management-integration',
       'backend-coverage-control-plane-ui-management-integration',
+      'backend-coverage-control-plane-mcp-routes-integration',
     ]
   );
   assert.deepEqual(
@@ -80,6 +81,11 @@ test('control-plane coverage includes its storage-backed management service test
   assert.equal(commands[1].args.includes('--exclude-from-report'), true);
   assert.equal(commands[1].args.includes('storage-postgres'), true);
   assert.equal(commands[2].args.includes('--output-path'), true);
+  assert.deepEqual(
+    commands[3].args.slice(-2),
+    ['mcp_management_routes', '--test-threads=2']
+  );
+  assert.equal(commands[3].args.includes('api-server'), true);
 });
 
 test('backend coverage removes stale json summaries before threshold reporting', async () => {

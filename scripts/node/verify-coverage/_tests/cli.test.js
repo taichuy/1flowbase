@@ -52,17 +52,20 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
   }
 
   const outputPath = `${repoRoot}/tmp/test-governance/coverage/backend/control-plane.json`;
-  const integrationCommand = (label, filter) => ({
+  const integrationCommand = (label, packageName, filter) => ({
     ...baseCommand,
     label,
+    env: packageName === 'api-server'
+      ? { ...baseCommand.env, CARGO_PROFILE_TEST_DEBUG: '0' }
+      : baseCommand.env,
     args: [
       'llvm-cov',
       '--package',
       'control-plane',
       '--package',
-      'storage-postgres',
+      packageName,
       '--exclude-from-report',
-      'storage-postgres',
+      packageName,
       '--no-clean',
       '--json',
       '--summary-only',
@@ -78,11 +81,18 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
     { ...baseCommand, label: 'backend-coverage-control-plane-tests' },
     integrationCommand(
       'backend-coverage-control-plane-mcp-management-integration',
+      'storage-postgres',
       'mcp_management_repository_tests'
     ),
     integrationCommand(
       'backend-coverage-control-plane-ui-management-integration',
+      'storage-postgres',
       'ui_management_repository_tests'
+    ),
+    integrationCommand(
+      'backend-coverage-control-plane-mcp-routes-integration',
+      'api-server',
+      'mcp_management_routes'
     ),
   ];
 }
