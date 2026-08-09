@@ -36,6 +36,8 @@ import {
   dataModelTemplatePresentation
 } from '../../lib/data-model-template-presentation';
 
+const NO_COMPATIBLE_TEMPLATES: SettingsCompatibleDataModelTemplate[] = [];
+
 export function DataSourceResourcesPanel({
   dataSource,
   resources,
@@ -86,11 +88,37 @@ export function DataSourceResourcesPanel({
     compatibleTemplatesQuery.isSuccess && !compatibleTemplatesQuery.isFetching;
   const compatibleTemplates = templatesReady
     ? (compatibleTemplatesQuery.data ?? [])
-    : [];
+    : NO_COMPATIBLE_TEMPLATES;
 
   useEffect(() => {
     setSelectedTemplate(null);
   }, [mappingTarget]);
+
+  useEffect(() => {
+    if (!templatesReady) {
+      setSelectedTemplate(null);
+      return;
+    }
+    setSelectedTemplate((current) =>
+      current &&
+      compatibleTemplates.some(
+        (template) =>
+          dataModelTemplateIdentity(template) ===
+          dataModelTemplateIdentity(current)
+      )
+        ? current
+        : null
+    );
+  }, [compatibleTemplates, templatesReady]);
+
+  const selectedTemplateIsCompatible =
+    templatesReady &&
+    selectedTemplate !== null &&
+    compatibleTemplates.some(
+      (template) =>
+        dataModelTemplateIdentity(template) ===
+        dataModelTemplateIdentity(selectedTemplate)
+    );
 
   const closeTemplateSelection = () => {
     setMappingTarget(null);
@@ -146,7 +174,7 @@ export function DataSourceResourcesPanel({
           )
         }
       />
-      {selectedTemplate ? (
+      {selectedTemplateIsCompatible ? (
         <Typography.Text type="secondary">
           {dataModelTemplatePresentation(selectedTemplate).description}
         </Typography.Text>
@@ -157,9 +185,13 @@ export function DataSourceResourcesPanel({
         </Button>
         <Button
           type="primary"
-          disabled={!templatesReady || !selectedTemplate || !mappingTarget}
+          disabled={!selectedTemplateIsCompatible || !mappingTarget}
           onClick={() => {
-            if (mappingTarget && selectedTemplate) {
+            if (
+              mappingTarget &&
+              selectedTemplate &&
+              selectedTemplateIsCompatible
+            ) {
               onMap(mappingTarget, selectedTemplate);
               closeTemplateSelection();
             }
