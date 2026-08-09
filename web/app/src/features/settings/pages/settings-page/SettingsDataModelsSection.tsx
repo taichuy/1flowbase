@@ -38,6 +38,7 @@ import {
   type CreateSettingsDataModelFieldInput,
   type CreateSettingsDataModelInput,
   type CreateSettingsDataSourceInput,
+  type SettingsCompatibleDataModelTemplate,
   type SettingsDataModel,
   type SettingsDataModelField,
   type SettingsDataModelScopeGrant,
@@ -274,17 +275,24 @@ export function SettingsDataModelsSection({
   const mapResourceMutation = useMutation({
     mutationFn: ({
       dataSource,
-      resource
+      resource,
+      template
     }: {
       dataSource: SettingsRuntimeExtensionDataSource;
       resource: SettingsDataSourceRemoteResource;
+      template: SettingsCompatibleDataModelTemplate;
     }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
       return mapSettingsDataSourceResourceToModel(
         dataSource.id,
-        resource.resource_key,
+        {
+          resource_key: resource.resource_key,
+          template_provider: template.template_provider,
+          template_code: template.template_code,
+          template_version: template.template_version
+        },
         csrfToken
       );
     },
@@ -606,10 +614,11 @@ export function SettingsDataModelsSection({
                     resource
                   })
                 }
-                onMap={(resource) =>
+                onMap={(resource, template) =>
                   mapResourceMutation.mutate({
                     dataSource: selectedRuntimeExtensionDataSource,
-                    resource
+                    resource,
+                    template
                   })
                 }
               />

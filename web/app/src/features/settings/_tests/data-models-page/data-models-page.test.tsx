@@ -546,10 +546,10 @@ describe('Settings data models page', () => {
       const summaryRows = within(editorDialog).getAllByTestId(
         'data-model-summary-row'
       );
-      expect(within(summaryRows[2]).getByText('物理表：')).toBeInTheDocument();
-      expect(within(summaryRows[3]).getByText('说明：')).toBeInTheDocument();
+      expect(within(summaryRows[4]).getByText('物理表：')).toBeInTheDocument();
+      expect(within(summaryRows[5]).getByText('说明：')).toBeInTheDocument();
       expect(
-        within(summaryRows[3]).getByTestId('data-model-summary-item')
+        within(summaryRows[5]).getByTestId('data-model-summary-item')
       ).toHaveClass('data-model-panel__meta-card--full-row');
 
       const detailActions = within(editorDialog).getByTestId(
@@ -591,6 +591,47 @@ describe('Settings data models page', () => {
     expect(
       screen.queryByText(i18nText('settings', 'auto.catalog_label'))
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-002 loads main compatible templates when opening create and submits general identity', async () => {
+    renderApp('/settings/data-models?source=main');
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: '新建数据表' },
+        {
+          timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT
+        }
+      )
+    );
+    await waitFor(() =>
+      expect(
+        dataModelsApi.fetchSettingsCompatibleDataModelTemplates
+      ).toHaveBeenCalledWith('main')
+    );
+    const createDialog = await screen.findByRole('dialog', {
+      name: '新建 Data Model'
+    });
+    expect(within(createDialog).getByText('普通表')).toBeInTheDocument();
+    fireEvent.change(within(createDialog).getByLabelText('标题'), {
+      target: { value: 'Orders' }
+    });
+    fireEvent.change(within(createDialog).getByLabelText('Code'), {
+      target: { value: 'orders' }
+    });
+    fireEvent.click(within(createDialog).getByRole('button', { name: '创建' }));
+
+    await waitFor(() =>
+      expect(dataModelsApi.createSettingsDataModel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template_provider: 'core',
+          template_code: 'general',
+          template_version: 'v1'
+        }),
+        'csrf-123'
+      )
+    );
   });
 
   test(
@@ -647,7 +688,7 @@ describe('Settings data models page', () => {
       const summaryRows = within(detailSummary).getAllByTestId(
         'data-model-summary-row'
       );
-      expect(summaryRows).toHaveLength(4);
+      expect(summaryRows).toHaveLength(6);
       expect(within(summaryRows[0]).getByText('标题：')).toBeInTheDocument();
       expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
@@ -655,23 +696,21 @@ describe('Settings data models page', () => {
         within(summaryRows[1]).getByText('开放 API：')
       ).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('开放')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('数据源：')).toBeInTheDocument();
-      expect(within(summaryRows[3]).getByText('说明：')).toBeInTheDocument();
+      expect(within(summaryRows[4]).getByText('数据源：')).toBeInTheDocument();
+      expect(within(summaryRows[5]).getByText('说明：')).toBeInTheDocument();
       expect(
-        within(summaryRows[3]).getByText('CRM contact records')
+        within(summaryRows[5]).getByText('CRM contact records')
       ).toBeInTheDocument();
       expect(
-        within(summaryRows[3]).getByTestId('data-model-summary-item')
+        within(summaryRows[5]).getByTestId('data-model-summary-item')
       ).toHaveClass('data-model-panel__meta-card--full-row');
       expect(
         within(detailSummary).queryByText('状态：')
       ).not.toBeInTheDocument();
       expect(
-        within(summaryRows[3]).queryByText('published')
+        within(summaryRows[5]).queryByText('published')
       ).not.toBeInTheDocument();
-      expect(
-        within(detailSummary).queryByText('available')
-      ).not.toBeInTheDocument();
+      expect(within(detailSummary).getByText('available')).toBeInTheDocument();
       expect(
         within(detailSummary).getByText('远端资源标识：')
       ).toBeInTheDocument();
@@ -728,7 +767,7 @@ describe('Settings data models page', () => {
         })
       ).not.toBeInTheDocument();
       expect(screen.getAllByText('开放 API').length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByText('available')).not.toBeInTheDocument();
+      expect(within(editorDialog).getByText('available')).toBeInTheDocument();
       const apiFieldsTable = await within(editorDialog).findByTestId(
         'data-model-api-fields-table'
       );
@@ -1019,12 +1058,16 @@ describe('Settings data models page', () => {
     expect(
       within(editorDialog).getByRole('tab', { name: '字段' })
     ).toBeInTheDocument();
+    expect(within(editorDialog).getByText('模板提供方：')).toBeInTheDocument();
+    expect(within(editorDialog).getByText('模板代码：')).toBeInTheDocument();
+    expect(within(editorDialog).getByText('模板版本：')).toBeInTheDocument();
     expect(within(editorDialog).getAllByText('contacts')).not.toHaveLength(0);
     fireEvent.click(
       within(detailActions).getByRole('button', { name: /编\s*辑/ })
     );
     expect(await screen.findByDisplayValue('Contacts')).toBeInTheDocument();
     expect(screen.getByLabelText('Code')).toBeDisabled();
+    expect(screen.queryByLabelText('Data Model 模板')).not.toBeInTheDocument();
   }, 20_000);
 
   test('submits Data Model edits from the form drawer', async () => {
@@ -1036,6 +1079,9 @@ describe('Settings data models page', () => {
         mode="edit"
         model={contactsModel}
         source={null}
+        compatibleTemplates={[]}
+        templatesLoading={false}
+        templatesError={null}
         saving={false}
         onClose={vi.fn()}
         onCreate={vi.fn()}
@@ -1089,6 +1135,17 @@ describe('Settings data models page', () => {
         mode="create"
         model={null}
         source={null}
+        compatibleTemplates={[
+          {
+            template_provider: 'core',
+            template_code: 'general',
+            template_version: 'v1',
+            summary: '普通表',
+            description: '适用于通用记录。'
+          }
+        ]}
+        templatesLoading={false}
+        templatesError={null}
         saving={false}
         onClose={vi.fn()}
         onCreate={onCreate}
@@ -1113,11 +1170,146 @@ describe('Settings data models page', () => {
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({
         scope_kind: 'workspace',
+        template_provider: 'core',
+        template_code: 'general',
+        template_version: 'v1',
         code: 'orders',
         title: 'Orders',
         description: 'Workspace order records',
         status: 'published'
       })
+    );
+  });
+
+  test('AC-002 selects only backend-compatible main templates and submits the selected identity', async () => {
+    const onCreate = vi.fn();
+
+    render(
+      <DataModelFormDrawer
+        open
+        mode="create"
+        model={null}
+        source={null}
+        compatibleTemplates={[
+          {
+            template_provider: 'core',
+            template_code: 'general',
+            template_version: 'v1',
+            summary: '普通表',
+            description: '适用于通用记录。'
+          },
+          {
+            template_provider: 'core',
+            template_code: 'ordered_tree',
+            template_version: 'v1',
+            summary: 'Ordered tree data model',
+            description: 'Core main-source ordered-tree Data Model template.'
+          }
+        ]}
+        templatesLoading={false}
+        templatesError={null}
+        saving={false}
+        onClose={vi.fn()}
+        onCreate={onCreate}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    const createDialog = await screen.findByRole('dialog', {
+      name: '新建 Data Model'
+    });
+    expect(within(createDialog).getByText('普通表')).toBeInTheDocument();
+    fireEvent.mouseDown(
+      within(createDialog).getByRole('combobox', {
+        name: 'Data Model 模板'
+      })
+    );
+    fireEvent.click(await screen.findByText('树状表'));
+    fireEvent.change(within(createDialog).getByLabelText('标题'), {
+      target: { value: 'Categories' }
+    });
+    fireEvent.change(within(createDialog).getByLabelText('Code'), {
+      target: { value: 'categories' }
+    });
+    fireEvent.click(within(createDialog).getByRole('button', { name: '创建' }));
+
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template_provider: 'core',
+          template_code: 'ordered_tree',
+          template_version: 'v1'
+        })
+      )
+    );
+  });
+
+  test('AC-002 does not fall back when the compatible template catalog is empty', async () => {
+    const onCreate = vi.fn();
+
+    render(
+      <DataModelFormDrawer
+        open
+        mode="create"
+        model={null}
+        source={null}
+        compatibleTemplates={[]}
+        templatesLoading={false}
+        templatesError={null}
+        saving={false}
+        onClose={vi.fn()}
+        onCreate={onCreate}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    const createDialog = await screen.findByRole('dialog', {
+      name: '新建 Data Model'
+    });
+    expect(
+      within(createDialog).getByText('当前数据源没有可用的 Data Model 模板。')
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByRole('button', { name: '创建' })
+    ).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  test('AC-013 maps an external resource with the selected backend-compatible plugin template', async () => {
+    renderApp('/settings/data-models?source=source-1');
+
+    const mapButton = await screen.findByRole(
+      'button',
+      { name: '映射为 Data Model' },
+      { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+    );
+    fireEvent.click(mapButton);
+    const templateSelector = await screen.findByRole('combobox', {
+      name: 'Data Model 模板'
+    });
+    expect(screen.queryByText('普通表')).not.toBeInTheDocument();
+    fireEvent.mouseDown(templateSelector);
+    fireEvent.click(
+      await screen.findByText('联系人树 · plugin.crm/contact_tree/v2')
+    );
+    const confirmButtons = screen.getAllByRole('button', {
+      name: '映射为 Data Model'
+    });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() =>
+      expect(
+        dataModelsApi.mapSettingsDataSourceResourceToModel
+      ).toHaveBeenCalledWith(
+        'source-1',
+        {
+          resource_key: 'contacts',
+          template_provider: 'plugin.crm',
+          template_code: 'contact_tree',
+          template_version: 'v2'
+        },
+        'csrf-123'
+      )
     );
   });
 

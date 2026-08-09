@@ -15,6 +15,7 @@ import {
   fetchConsoleDataSourceCatalog,
   fetchConsoleDataSources,
   fetchConsoleDataSourceResources,
+  fetchConsoleCompatibleDataModelTemplates,
   fetchConsoleDataModelAdvisorFindings,
   fetchConsoleDataModelOpenApiDocument,
   fetchConsoleDataModelRecordPreview,
@@ -98,7 +99,9 @@ describe('console-data-models client', () => {
       path: '/api/console/settings/data-models/data-sources/source-1/validate',
       method: 'POST'
     });
-    await expect(fetchConsoleDataSourceResources('source-1')).resolves.toMatchObject({
+    await expect(
+      fetchConsoleDataSourceResources('source-1')
+    ).resolves.toMatchObject({
       path: '/api/console/settings/data-models/data-sources/source-1/resources'
     });
     await expect(
@@ -120,13 +123,39 @@ describe('console-data-models client', () => {
     await expect(
       mapConsoleDataSourceResourceToModel(
         'source-1',
-        'contacts',
+        {
+          resource_key: 'contacts',
+          template_provider: 'plugin.crm',
+          template_code: 'contact_tree',
+          template_version: 'v2'
+        },
         'csrf-123'
       )
     ).resolves.toMatchObject({
       path: '/api/console/settings/data-models/data-sources/source-1/resources/map-to-model',
       method: 'POST',
-      body: { resource_key: 'contacts' }
+      body: {
+        resource_key: 'contacts',
+        template_provider: 'plugin.crm',
+        template_code: 'contact_tree',
+        template_version: 'v2'
+      }
+    });
+  });
+
+  test('AC-002/013 reads compatible templates from source and resource context', async () => {
+    await expect(
+      fetchConsoleCompatibleDataModelTemplates({ data_source_id: 'main' })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/data-models/model-templates?data_source_id=main'
+    });
+    await expect(
+      fetchConsoleCompatibleDataModelTemplates({
+        data_source_id: 'source-1',
+        resource_key: 'contacts/tree'
+      })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/data-models/model-templates?data_source_id=source-1&resource_key=contacts%2Ftree'
     });
   });
 
@@ -158,6 +187,9 @@ describe('console-data-models client', () => {
       createConsoleDataModel(
         {
           scope_kind: 'workspace',
+          template_provider: 'core',
+          template_code: 'general',
+          template_version: 'v1',
           code: 'orders',
           title: 'Orders',
           status: 'draft'
@@ -169,6 +201,9 @@ describe('console-data-models client', () => {
       method: 'POST',
       body: {
         scope_kind: 'workspace',
+        template_provider: 'core',
+        template_code: 'general',
+        template_version: 'v1',
         code: 'orders',
         title: 'Orders',
         status: 'draft'

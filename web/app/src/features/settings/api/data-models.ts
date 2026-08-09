@@ -7,6 +7,7 @@ import {
   deleteConsoleDataModel,
   deleteConsoleDataModelField,
   discoverConsoleDataSourceResources,
+  fetchConsoleCompatibleDataModelTemplates,
   fetchConsoleDataModelAdvisorFindings,
   fetchConsoleDataModelOpenApiDocument,
   fetchConsoleDataModelRecordPreview,
@@ -25,6 +26,7 @@ import {
   type BatchDeleteConsoleDataModelsInput,
   type BatchDeleteConsoleDataModelsResult,
   type ConsoleDataModel,
+  type ConsoleCompatibleDataModelTemplate,
   type ConsoleDataModelAdvisorFinding,
   type ConsoleDataModelField,
   type ConsoleDataModelScopeGrant,
@@ -40,6 +42,7 @@ import {
   type CreateConsoleDataModelInput,
   type CreateConsoleDataSourceInput,
   type CreateConsoleDataModelScopeGrantInput,
+  type MapConsoleDataSourceResourceToModelInput,
   type UpdateConsoleDataModelFieldInput,
   type UpdateConsoleDataModelInput,
   type UpdateConsoleDataModelScopeGrantInput,
@@ -54,6 +57,8 @@ export type SettingsDataSourceRemoteResource = ConsoleDataSourceRemoteResource;
 export type SettingsDataSourceResources = ConsoleDataSourceResources;
 export type SettingsDataSourcePreview = ConsoleDataSourcePreview;
 export type SettingsDataModel = ConsoleDataModel;
+export type SettingsCompatibleDataModelTemplate =
+  ConsoleCompatibleDataModelTemplate;
 export type SettingsDataModelField = ConsoleDataModelField;
 export type SettingsDataModelScopeGrant = ConsoleDataModelScopeGrant;
 export type SettingsDataModelAdvisorFinding = ConsoleDataModelAdvisorFinding;
@@ -64,6 +69,8 @@ export type BatchDeleteSettingsDataModelsInput =
 export type BatchDeleteSettingsDataModelsResult =
   BatchDeleteConsoleDataModelsResult;
 export type CreateSettingsDataModelInput = CreateConsoleDataModelInput;
+export type MapSettingsDataSourceResourceToModelInput =
+  MapConsoleDataSourceResourceToModelInput;
 export type CreateSettingsDataSourceInput = CreateConsoleDataSourceInput;
 export type UpdateSettingsDataModelInput = UpdateConsoleDataModelInput;
 export type CreateSettingsDataModelFieldInput =
@@ -96,6 +103,19 @@ export function settingsDataSourceResourcesQueryKey(dataSourceId: string) {
     'data-sources',
     dataSourceId,
     'resources'
+  ] as const;
+}
+
+export function settingsCompatibleDataModelTemplatesQueryKey(
+  dataSourceId: string,
+  resourceKey?: string
+) {
+  return [
+    'settings',
+    'data-models',
+    'compatible-templates',
+    dataSourceId,
+    resourceKey ?? null
   ] as const;
 }
 
@@ -190,14 +210,20 @@ export function previewSettingsDataSourceResource(
 
 export function mapSettingsDataSourceResourceToModel(
   dataSourceId: string,
-  resourceKey: string,
+  input: MapSettingsDataSourceResourceToModelInput,
   csrfToken: string
 ) {
-  return mapConsoleDataSourceResourceToModel(
-    dataSourceId,
-    resourceKey,
-    csrfToken
-  );
+  return mapConsoleDataSourceResourceToModel(dataSourceId, input, csrfToken);
+}
+
+export function fetchSettingsCompatibleDataModelTemplates(
+  dataSourceId: string,
+  resourceKey?: string
+) {
+  return fetchConsoleCompatibleDataModelTemplates({
+    data_source_id: dataSourceId,
+    resource_key: resourceKey
+  });
 }
 
 export function fetchSettingsDataModels(

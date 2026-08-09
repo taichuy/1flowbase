@@ -185,12 +185,23 @@ export interface ConsoleDataModel {
   source_kind: ConsoleDataModelSourceKind;
   external_resource_key: string | null;
   external_table_id: string | null;
+  template_provider: string;
+  template_code: string;
+  template_version: string;
   physical_table_name: string;
   acl_namespace: string;
   audit_namespace: string;
   builtin_kind: ConsoleDataModelBuiltinKind | null;
   capabilities: ConsoleDataModelCapabilities;
   fields: ConsoleDataModelField[];
+}
+
+export interface ConsoleCompatibleDataModelTemplate {
+  template_provider: string;
+  template_code: string;
+  template_version: string;
+  summary: string;
+  description: string;
 }
 
 export type ConsoleAgentFlowDataModelOptionState =
@@ -262,10 +273,25 @@ export interface FetchConsoleDataModelsInput {
 
 export interface CreateConsoleDataModelInput {
   scope_kind: ConsoleDataModelScopeKind;
+  template_provider: string;
+  template_code: string;
+  template_version: string;
   code: string;
   title: string;
   description?: string | null;
   status?: ConsoleDataModelStatus;
+}
+
+export interface FetchConsoleCompatibleDataModelTemplatesInput {
+  data_source_id: string;
+  resource_key?: string;
+}
+
+export interface MapConsoleDataSourceResourceToModelInput {
+  resource_key: string;
+  template_provider: string;
+  template_code: string;
+  template_version: string;
 }
 
 export interface CreateConsoleDataSourceInput {
@@ -553,15 +579,28 @@ export function previewConsoleDataSourceResource(
 
 export function mapConsoleDataSourceResourceToModel(
   dataSourceId: string,
-  resourceKey: string,
+  input: MapConsoleDataSourceResourceToModelInput,
   csrfToken: string,
   baseUrl?: string
 ) {
   return apiFetch<ConsoleDataModel>({
     path: `/api/console/settings/data-models/data-sources/${encodedPathSegment(dataSourceId)}/resources/map-to-model`,
     method: 'POST',
-    body: { resource_key: resourceKey },
+    body: input,
     csrfToken,
+    baseUrl
+  });
+}
+
+export function fetchConsoleCompatibleDataModelTemplates(
+  input: FetchConsoleCompatibleDataModelTemplatesInput,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleCompatibleDataModelTemplate[]>({
+    path: appendQuery('/api/console/settings/data-models/model-templates', {
+      data_source_id: input.data_source_id,
+      resource_key: input.resource_key
+    }),
     baseUrl
   });
 }

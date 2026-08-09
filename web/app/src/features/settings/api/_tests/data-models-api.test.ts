@@ -21,6 +21,7 @@ vi.mock('@1flowbase/api-client', () => ({
     records: []
   }),
   fetchConsoleDataModelScopeGrants: vi.fn().mockResolvedValue([]),
+  fetchConsoleCompatibleDataModelTemplates: vi.fn().mockResolvedValue([]),
   fetchConsoleDataModels: vi.fn().mockResolvedValue([]),
   fetchConsoleDataSources: vi.fn().mockResolvedValue([]),
   fetchConsoleDataSourceCatalog: vi.fn().mockResolvedValue({ entries: [] }),
@@ -48,6 +49,7 @@ import {
   deleteConsoleDataModel,
   deleteConsoleDataModelField,
   fetchConsoleDataModels,
+  fetchConsoleCompatibleDataModelTemplates,
   fetchConsoleDataSources,
   updateConsoleDataModel,
   updateConsoleDataModelField,
@@ -61,6 +63,8 @@ import {
   deleteSettingsDataModel,
   deleteSettingsDataModelField,
   fetchSettingsDataModels,
+  fetchSettingsCompatibleDataModelTemplates,
+  settingsCompatibleDataModelTemplatesQueryKey,
   fetchSettingsDataSources,
   settingsDataModelAdvisorFindingsQueryKey,
   settingsDataModelRecordPreviewQueryKey,
@@ -86,6 +90,15 @@ describe('settings data models API wrappers', () => {
       'models',
       'main',
       '{}'
+    ]);
+    expect(
+      settingsCompatibleDataModelTemplatesQueryKey('source-1', 'contacts')
+    ).toEqual([
+      'settings',
+      'data-models',
+      'compatible-templates',
+      'source-1',
+      'contacts'
     ]);
     expect(settingsDataModelScopeGrantsQueryKey('model-1')).toEqual([
       'settings',
@@ -125,6 +138,11 @@ describe('settings data models API wrappers', () => {
     await fetchSettingsDataModels('source-1', {
       code: { $includes: 'orders' }
     });
+    await fetchSettingsCompatibleDataModelTemplates('source-1', 'contacts');
+    expect(fetchConsoleCompatibleDataModelTemplates).toHaveBeenCalledWith({
+      data_source_id: 'source-1',
+      resource_key: 'contacts'
+    });
     expect(fetchConsoleDataModels).toHaveBeenCalledWith({
       data_source_id: 'source-1',
       filter: { code: { $includes: 'orders' } }
@@ -150,6 +168,9 @@ describe('settings data models API wrappers', () => {
     await createSettingsDataModel(
       {
         scope_kind: 'workspace',
+        template_provider: 'core',
+        template_code: 'general',
+        template_version: 'v1',
         code: 'orders',
         title: 'Orders',
         description: 'Workspace order records'
@@ -159,6 +180,9 @@ describe('settings data models API wrappers', () => {
     expect(createConsoleDataModel).toHaveBeenCalledWith(
       {
         scope_kind: 'workspace',
+        template_provider: 'core',
+        template_code: 'general',
+        template_version: 'v1',
         code: 'orders',
         title: 'Orders',
         description: 'Workspace order records'

@@ -1,5 +1,19 @@
-import { Button, Empty, Flex, Space, Table, Tag, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+
+import {
+  Alert,
+  Button,
+  Empty,
+  Flex,
+  Popover,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { useQuery } from '@tanstack/react-query';
 import {
   CheckCircleOutlined,
   EyeOutlined,
@@ -8,10 +22,19 @@ import {
 } from '@ant-design/icons';
 
 import type {
+  SettingsCompatibleDataModelTemplate,
   SettingsRuntimeExtensionDataSource,
   SettingsDataSourceRemoteResource
 } from '../../api/data-models';
+import {
+  fetchSettingsCompatibleDataModelTemplates,
+  settingsCompatibleDataModelTemplatesQueryKey
+} from '../../api/data-models';
 import { i18nText } from '../../../../shared/i18n/text';
+import {
+  dataModelTemplateIdentity,
+  dataModelTemplatePresentation
+} from '../../lib/data-model-template-presentation';
 
 export function DataSourceResourcesPanel({
   dataSource,
@@ -38,8 +61,110 @@ export function DataSourceResourcesPanel({
   onValidate: () => void;
   onDiscover: () => void;
   onPreview: (resource: SettingsDataSourceRemoteResource) => void;
-  onMap: (resource: SettingsDataSourceRemoteResource) => void;
+  onMap: (
+    resource: SettingsDataSourceRemoteResource,
+    template: SettingsCompatibleDataModelTemplate
+  ) => void;
 }) {
+  const [mappingTarget, setMappingTarget] =
+    useState<SettingsDataSourceRemoteResource | null>(null);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<SettingsCompatibleDataModelTemplate | null>(null);
+  const compatibleTemplatesQuery = useQuery({
+    queryKey: settingsCompatibleDataModelTemplatesQueryKey(
+      dataSource.id,
+      mappingTarget?.resource_key
+    ),
+    queryFn: () =>
+      fetchSettingsCompatibleDataModelTemplates(
+        dataSource.id,
+        mappingTarget?.resource_key
+      ),
+    enabled: Boolean(mappingTarget)
+  });
+
+  useEffect(() => {
+    setSelectedTemplate(null);
+  }, [mappingTarget]);
+
+  const closeTemplateSelection = () => {
+    setMappingTarget(null);
+    setSelectedTemplate(null);
+  };
+
+  const templateSelection = (
+    <Space orientation="vertical" size={12} style={{ width: 320 }}>
+      <Typography.Text strong>
+        {i18nText('settings', 'auto.select_data_model_template')}
+      </Typography.Text>
+      {compatibleTemplatesQuery.error instanceof Error ? (
+        <Alert
+          type="error"
+          showIcon
+          title={compatibleTemplatesQuery.error.message}
+        />
+      ) : null}
+      {!compatibleTemplatesQuery.isLoading &&
+      !compatibleTemplatesQuery.error &&
+      compatibleTemplatesQuery.data?.length === 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          title={i18nText('settings', 'auto.no_compatible_data_model_template')}
+        />
+      ) : null}
+      <Select
+        aria-label={i18nText('settings', 'auto.data_model_template')}
+        loading={compatibleTemplatesQuery.isLoading}
+        disabled={
+          compatibleTemplatesQuery.isLoading ||
+          Boolean(compatibleTemplatesQuery.error) ||
+          compatibleTemplatesQuery.data?.length === 0
+        }
+        value={
+          selectedTemplate
+            ? dataModelTemplateIdentity(selectedTemplate)
+            : undefined
+        }
+        placeholder={i18nText('settings', 'auto.select_data_model_template')}
+        options={(compatibleTemplatesQuery.data ?? []).map((template) => ({
+          value: dataModelTemplateIdentity(template),
+          label: `${dataModelTemplatePresentation(template).title} · ${dataModelTemplateIdentity(template)}`,
+          title: dataModelTemplatePresentation(template).description
+        }))}
+        onChange={(identity) =>
+          setSelectedTemplate(
+            compatibleTemplatesQuery.data?.find(
+              (template) => dataModelTemplateIdentity(template) === identity
+            ) ?? null
+          )
+        }
+      />
+      {selectedTemplate ? (
+        <Typography.Text type="secondary">
+          {dataModelTemplatePresentation(selectedTemplate).description}
+        </Typography.Text>
+      ) : null}
+      <Flex justify="flex-end" gap={8}>
+        <Button onClick={closeTemplateSelection}>
+          {i18nText('settings', 'auto.cancel')}
+        </Button>
+        <Button
+          type="primary"
+          disabled={!selectedTemplate || !mappingTarget}
+          onClick={() => {
+            if (mappingTarget && selectedTemplate) {
+              onMap(mappingTarget, selectedTemplate);
+              closeTemplateSelection();
+            }
+          }}
+        >
+          {i18nText('settings', 'auto.map_to_data_model')}
+        </Button>
+      </Flex>
+    </Space>
+  );
+
   const columns: ColumnsType<SettingsDataSourceRemoteResource> = [
     {
       title: i18nText('settings', 'auto.remote_resources'),
@@ -79,17 +204,29 @@ export function DataSourceResourcesPanel({
           >
             {i18nText('settings', 'auto.preview')}
           </Button>
-          <Button
-            type="link"
-            icon={<LinkOutlined aria-hidden="true" />}
-            disabled={
-              !canManage || !dataSource.capabilities.can_map_resources
-            }
-            loading={mappingResourceKey === resource.resource_key}
-            onClick={() => onMap(resource)}
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            open={mappingTarget?.resource_key === resource.resource_key}
+            content={templateSelection}
+            onOpenChange={(open) => {
+              if (!open) {
+                closeTemplateSelection();
+              }
+            }}
           >
-            {i18nText('settings', 'auto.map_to_data_model')}
-          </Button>
+            <Button
+              type="link"
+              icon={<LinkOutlined aria-hidden="true" />}
+              disabled={
+                !canManage || !dataSource.capabilities.can_map_resources
+              }
+              loading={mappingResourceKey === resource.resource_key}
+              onClick={() => setMappingTarget(resource)}
+            >
+              {i18nText('settings', 'auto.map_to_data_model')}
+            </Button>
+          </Popover>
         </Space>
       )
     }

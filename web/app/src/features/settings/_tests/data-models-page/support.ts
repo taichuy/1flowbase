@@ -153,6 +153,15 @@ const dataModelsApi = vi.hoisted(() => ({
     dataSourceId,
     'resources'
   ]),
+  settingsCompatibleDataModelTemplatesQueryKey: vi.fn(
+    (dataSourceId: string, resourceKey?: string) => [
+      'settings',
+      'data-models',
+      'compatible-templates',
+      dataSourceId,
+      resourceKey ?? null
+    ]
+  ),
   settingsDataModelsQueryKey: vi.fn((sourceId: string) => [
     'settings',
     'data-models',
@@ -188,6 +197,7 @@ const dataModelsApi = vi.hoisted(() => ({
   createSettingsDataSource: vi.fn(),
   validateSettingsDataSource: vi.fn(),
   fetchSettingsDataSourceResources: vi.fn(),
+  fetchSettingsCompatibleDataModelTemplates: vi.fn(),
   discoverSettingsDataSourceResources: vi.fn(),
   previewSettingsDataSourceResource: vi.fn(),
   mapSettingsDataSourceResourceToModel: vi.fn(),
@@ -430,6 +440,9 @@ function settingsDataModel(
     source_kind: 'main_source',
     external_resource_key: null,
     external_table_id: null,
+    template_provider: 'core',
+    template_code: 'general',
+    template_version: 'v1',
     physical_table_name: `dm_${code}`,
     acl_namespace: `data_model.${code}`,
     audit_namespace: `data_model.${code}`,
@@ -813,6 +826,37 @@ export function setupDataModelsPageTest() {
     last_error_message: null,
     refreshed_at: '2026-04-30T08:00:00Z'
   });
+  dataModelsApi.fetchSettingsCompatibleDataModelTemplates.mockImplementation(
+    async (dataSourceId: string, resourceKey?: string) =>
+      dataSourceId === 'main'
+        ? [
+            {
+              template_provider: 'core',
+              template_code: 'general',
+              template_version: 'v1',
+              summary: 'General data model',
+              description: 'Core general-purpose Data Model template.'
+            },
+            {
+              template_provider: 'core',
+              template_code: 'ordered_tree',
+              template_version: 'v1',
+              summary: 'Ordered tree data model',
+              description: 'Core main-source ordered-tree Data Model template.'
+            }
+          ]
+        : resourceKey === 'contacts'
+          ? [
+              {
+                template_provider: 'plugin.crm',
+                template_code: 'contact_tree',
+                template_version: 'v2',
+                summary: '联系人树',
+                description: '由 CRM 插件提供的联系人树。'
+              }
+            ]
+          : []
+  );
   dataModelsApi.fetchSettingsDataModels.mockImplementation(
     (dataSourceId: string) =>
       Promise.resolve(

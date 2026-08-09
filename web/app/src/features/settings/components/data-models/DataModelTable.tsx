@@ -22,11 +22,13 @@ import {
   ExclamationCircleOutlined,
   StopOutlined
 } from '@ant-design/icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   updateSettingsDataSourceDefaults,
+  fetchSettingsCompatibleDataModelTemplates,
+  settingsCompatibleDataModelTemplatesQueryKey,
   settingsDataSourcesQueryKey,
   type UpdateSettingsDataSourceDefaultsInput,
   type CreateSettingsDataModelInput,
@@ -164,6 +166,17 @@ export function DataModelTable({
   const [deleteTarget, setDeleteTarget] = useState<SettingsDataModel | null>(
     null
   );
+  const compatibleTemplatesQuery = useQuery({
+    queryKey: settingsCompatibleDataModelTemplatesQueryKey(
+      selectedSource?.id ?? ''
+    ),
+    queryFn: () =>
+      fetchSettingsCompatibleDataModelTemplates(selectedSource?.id ?? ''),
+    enabled:
+      drawerState.open &&
+      drawerState.mode === 'create' &&
+      selectedSource?.id === 'main'
+  });
 
   const columns: ColumnsType<SettingsDataModel> = [
     {
@@ -270,7 +283,8 @@ export function DataModelTable({
         <span className="data-model-panel__sr-only">
           {i18nText('settings', 'auto.data_sheet')}
         </span>
-        {selectedSource?.capabilities.can_create_data_model ? (
+        {selectedSource?.id === 'main' &&
+        selectedSource.capabilities.can_create_data_model ? (
           <Button
             type="primary"
             icon={<PlusOutlined aria-hidden="true" />}
@@ -454,6 +468,13 @@ export function DataModelTable({
         source={
           selectedSource?.capabilities.can_create_data_model
             ? selectedSource
+            : null
+        }
+        compatibleTemplates={compatibleTemplatesQuery.data ?? []}
+        templatesLoading={compatibleTemplatesQuery.isLoading}
+        templatesError={
+          compatibleTemplatesQuery.error instanceof Error
+            ? compatibleTemplatesQuery.error.message
             : null
         }
         saving={saving}

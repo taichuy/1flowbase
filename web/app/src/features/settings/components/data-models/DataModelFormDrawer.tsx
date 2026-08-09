@@ -1,9 +1,20 @@
 import { useEffect, useState } from 'react';
 
-import { Button, Drawer, Form, Input, Switch } from 'antd';
+import {
+  Alert,
+  Button,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Space,
+  Switch,
+  Typography
+} from 'antd';
 
 import type {
   CreateSettingsDataModelInput,
+  SettingsCompatibleDataModelTemplate,
   SettingsDataModel,
   SettingsDataSource,
   UpdateSettingsDataModelInput
@@ -15,6 +26,10 @@ import {
   dataModelTitleHelp
 } from './data-model-help-text';
 import { i18nText } from '../../../../shared/i18n/text';
+import {
+  dataModelTemplateIdentity,
+  dataModelTemplatePresentation
+} from '../../lib/data-model-template-presentation';
 
 interface DataModelFormValues {
   code: string;
@@ -35,6 +50,9 @@ export function DataModelFormDrawer({
   mode,
   model,
   source,
+  compatibleTemplates,
+  templatesLoading,
+  templatesError,
   saving,
   onClose,
   onCreate,
@@ -44,6 +62,9 @@ export function DataModelFormDrawer({
   mode: 'create' | 'edit';
   model: SettingsDataModel | null;
   source: SettingsDataSource | null;
+  compatibleTemplates: SettingsCompatibleDataModelTemplate[];
+  templatesLoading: boolean;
+  templatesError: string | null;
   saving: boolean;
   onClose: () => void;
   onCreate: (input: CreateSettingsDataModelInput) => void;
@@ -54,6 +75,8 @@ export function DataModelFormDrawer({
 }) {
   const [form] = Form.useForm<DataModelFormValues>();
   const [apiOpen, setApiOpen] = useState(true);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<SettingsCompatibleDataModelTemplate | null>(null);
   useEffect(() => {
     if (!open) {
       return;
@@ -77,6 +100,22 @@ export function DataModelFormDrawer({
     });
   }, [form, mode, model, open, source]);
 
+  useEffect(() => {
+    if (!open || mode !== 'create') {
+      setSelectedTemplate(null);
+      return;
+    }
+
+    setSelectedTemplate(
+      compatibleTemplates.find(
+        (template) =>
+          template.template_provider === 'core' &&
+          template.template_code === 'general' &&
+          template.template_version === 'v1'
+      ) ?? null
+    );
+  }, [compatibleTemplates, mode, open]);
+
   const handleSubmit = async () => {
     const values = await form.validateFields();
 
@@ -90,8 +129,15 @@ export function DataModelFormDrawer({
       return;
     }
 
+    if (!selectedTemplate) {
+      return;
+    }
+
     onCreate({
       scope_kind: 'workspace',
+      template_provider: selectedTemplate.template_provider,
+      template_code: selectedTemplate.template_code,
+      template_version: selectedTemplate.template_version,
       code: values.code,
       title: values.title,
       description: values.description.trim() || null,
@@ -119,6 +165,10 @@ export function DataModelFormDrawer({
               : i18nText('settings', 'auto.save')
           }
           loading={saving}
+          disabled={
+            mode === 'create' &&
+            (templatesLoading || Boolean(templatesError) || !selectedTemplate)
+          }
           onClick={handleSubmit}
         >
           {mode === 'create'
@@ -128,6 +178,72 @@ export function DataModelFormDrawer({
       }
     >
       <Form form={form} layout="vertical">
+        {mode === 'create' ? (
+          <>
+            {templatesError ? (
+              <Alert type="error" showIcon title={templatesError} />
+            ) : null}
+            {!templatesLoading &&
+            !templatesError &&
+            compatibleTemplates.length === 0 ? (
+              <Alert
+                type="warning"
+                showIcon
+                title={i18nText(
+                  'settings',
+                  'auto.no_compatible_data_model_template'
+                )}
+              />
+            ) : null}
+            <Form.Item
+              label={i18nText('settings', 'auto.data_model_template')}
+              required
+            >
+              <Select
+                aria-label={i18nText('settings', 'auto.data_model_template')}
+                loading={templatesLoading}
+                disabled={
+                  templatesLoading ||
+                  Boolean(templatesError) ||
+                  compatibleTemplates.length === 0
+                }
+                value={
+                  selectedTemplate
+                    ? dataModelTemplateIdentity(selectedTemplate)
+                    : undefined
+                }
+                placeholder={i18nText(
+                  'settings',
+                  'auto.select_data_model_template'
+                )}
+                options={compatibleTemplates.map((template) => ({
+                  value: dataModelTemplateIdentity(template),
+                  label: (
+                    <Space orientation="vertical" size={0}>
+                      <Typography.Text strong>
+                        {dataModelTemplatePresentation(template).title}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {dataModelTemplatePresentation(template).description}
+                      </Typography.Text>
+                      <Typography.Text type="secondary">
+                        {dataModelTemplateIdentity(template)}
+                      </Typography.Text>
+                    </Space>
+                  )
+                }))}
+                onChange={(identity) =>
+                  setSelectedTemplate(
+                    compatibleTemplates.find(
+                      (template) =>
+                        dataModelTemplateIdentity(template) === identity
+                    ) ?? null
+                  )
+                }
+              />
+            </Form.Item>
+          </>
+        ) : null}
         <Form.Item
           name="title"
           label={
