@@ -244,6 +244,19 @@ impl PgControlPlaneStore {
                           and flow_run_callback_tasks.callback_kind = 'llm_tool_calls'
                     ),
                     0
+                ) + coalesce(
+                    (
+                        select sum(
+                            case
+                                when node_runs.metrics_payload ->> 'internal_tool_call_count' ~ '^[0-9]+$'
+                                then (node_runs.metrics_payload ->> 'internal_tool_call_count')::bigint
+                                else 0
+                            end
+                        )::bigint
+                        from node_runs
+                        where node_runs.flow_run_id = $1
+                    ),
+                    0
                 ),
                 $16, $17, $18, $19
             )

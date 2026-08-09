@@ -208,6 +208,7 @@ where
         request_context: runtime_context.native_model_request_context.clone(),
         required_capabilities,
         tools: provider_tools(
+            plan,
             node,
             resolved_inputs,
             rendered_templates,

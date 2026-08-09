@@ -7,10 +7,18 @@ use plugin_framework::provider_contract::{
 };
 use std::sync::Arc;
 
+const RUNTIME_TOOL_REGISTRATIONS_KEY: &str = "tool_registrations";
+
+#[derive(Clone, Debug)]
+struct FrozenRuntimeInternalToolRegistration {
+    provider_name: String,
+}
+
 #[derive(Clone, Default)]
 pub struct ExecutionRuntimeContext {
     operation: AiNativeOperation,
     pub(super) tools: Vec<Value>,
+    frozen_runtime_internal_tools: BTreeMap<String, FrozenRuntimeInternalToolRegistration>,
     protocol_context: RuntimeProtocolContext,
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
@@ -39,9 +47,22 @@ impl ExecutionRuntimeContext {
         plan: &CompiledPlan,
         variable_pool: &Map<String, Value>,
     ) -> Result<Self> {
+        let frozen_runtime_internal_tools =
+            frozen_runtime_internal_tool_registrations(plan, variable_pool);
+        let mut tools = run_level_provider_tools(plan, variable_pool);
+        let frozen_provider_names = frozen_runtime_internal_tools
+            .values()
+            .map(|registration| registration.provider_name.as_str())
+            .collect::<BTreeSet<_>>();
+        tools.retain(|tool| {
+            runtime_provider_tool_name(tool)
+                .as_deref()
+                .is_none_or(|name| !frozen_provider_names.contains(name))
+        });
         Ok(Self {
             operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
-            tools: run_level_provider_tools(plan, variable_pool),
+            tools,
+            frozen_runtime_internal_tools,
             protocol_context: RuntimeProtocolContext::Absent,
             native_model_prompt_context: native_model_prompt_context_from_variable_pool(
                 variable_pool,
@@ -115,6 +136,17 @@ impl ExecutionRuntimeContext {
                 .filter_map(runtime_provider_tool_name),
         );
         for registration in &mut registrations {
+            if let Some(frozen) = self
+                .frozen_runtime_internal_tools
+                .get(&registration.registration_id)
+            {
+                registration.provider_name = frozen.provider_name.clone();
+                set_runtime_provider_tool_name(
+                    &mut registration.provider_tool,
+                    &registration.provider_name,
+                );
+                continue;
+            }
             if occupied.insert(registration.provider_name.clone()) {
                 continue;
             }
@@ -123,13 +155,7 @@ impl ExecutionRuntimeContext {
                 &registration.registration_id,
             );
             registration.provider_name = qualified.clone();
-            if let Some(function) = registration
-                .provider_tool
-                .get_mut("function")
-                .and_then(Value::as_object_mut)
-            {
-                function.insert("name".to_string(), Value::String(qualified.clone()));
-            }
+            set_runtime_provider_tool_name(&mut registration.provider_tool, &qualified);
             occupied.insert(qualified);
         }
         registrations
@@ -204,6 +230,47 @@ fn runtime_provider_tool_name(tool: &Value) -> Option<String> {
         .or_else(|| tool.get("name"))
         .and_then(Value::as_str)
         .map(str::to_string)
+}
+
+fn set_runtime_provider_tool_name(tool: &mut Value, provider_name: &str) {
+    if let Some(function) = tool.get_mut("function").and_then(Value::as_object_mut) {
+        function.insert("name".to_string(), Value::String(provider_name.to_string()));
+    } else if let Some(object) = tool.as_object_mut() {
+        object.insert("name".to_string(), Value::String(provider_name.to_string()));
+    }
+}
+
+fn frozen_runtime_internal_tool_registrations(
+    plan: &CompiledPlan,
+    variable_pool: &Map<String, Value>,
+) -> BTreeMap<String, FrozenRuntimeInternalToolRegistration> {
+    plan.topological_order
+        .iter()
+        .filter_map(|node_id| plan.nodes.get(node_id))
+        .filter(|node| matches!(node.node_type.as_str(), "start" | "workflow_start"))
+        .filter_map(|node| variable_pool.get(&node.node_id))
+        .filter_map(|payload| payload.get(RUNTIME_TOOL_REGISTRATIONS_KEY))
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(|snapshot| {
+            let registration_id = snapshot.get("registration_id")?.as_str()?.to_string();
+            let provider_name = snapshot.get("provider_name")?.as_str()?.to_string();
+            Some((
+                registration_id,
+                FrozenRuntimeInternalToolRegistration { provider_name },
+            ))
+        })
+        .collect()
+}
+
+pub(super) fn frozen_runtime_internal_provider_names(
+    plan: &CompiledPlan,
+    variable_pool: &Map<String, Value>,
+) -> BTreeSet<String> {
+    frozen_runtime_internal_tool_registrations(plan, variable_pool)
+        .into_values()
+        .map(|registration| registration.provider_name)
+        .collect()
 }
 
 fn qualified_runtime_internal_tool_name(base: &str, registration_id: &str) -> String {
@@ -292,6 +359,7 @@ pub(super) fn synchronize_runtime_global_variables(
     variable_pool: &mut Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
 ) {
+    materialize_run_level_internal_tool_registrations(plan, variable_pool, runtime_context);
     let prior_user_turn_count = if runtime_context.native_model_prompt_context.is_empty() {
         legacy_start_history(plan, variable_pool)
             .map(prior_user_turn_count)
@@ -340,6 +408,109 @@ pub(super) fn synchronize_runtime_global_variables(
         return;
     }
     sys.insert("dialog_count".to_string(), json!(prior_user_turn_count));
+}
+
+fn materialize_run_level_internal_tool_registrations(
+    plan: &CompiledPlan,
+    variable_pool: &mut Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+) {
+    let already_frozen = plan
+        .topological_order
+        .iter()
+        .filter_map(|node_id| plan.nodes.get(node_id))
+        .filter(|node| matches!(node.node_type.as_str(), "start" | "workflow_start"))
+        .filter_map(|node| variable_pool.get(&node.node_id))
+        .filter_map(|payload| payload.get(RUNTIME_TOOL_REGISTRATIONS_KEY))
+        .any(|snapshots| snapshots.as_array().is_some_and(|items| !items.is_empty()));
+    if already_frozen {
+        return;
+    }
+
+    let mut registrations =
+        BTreeMap::<String, (RuntimeInternalToolRegistration, BTreeSet<String>)>::new();
+    for node in plan
+        .topological_order
+        .iter()
+        .filter_map(|node_id| plan.nodes.get(node_id))
+        .filter(|node| node.node_type == "llm")
+    {
+        for registration in runtime_context.runtime_internal_tool_registrations(node) {
+            let is_run_level = registration
+                .owner
+                .get("source")
+                .and_then(|source| source.get("kind"))
+                .and_then(Value::as_str)
+                == Some("run");
+            if !is_run_level {
+                continue;
+            }
+            registrations
+                .entry(registration.registration_id.clone())
+                .and_modify(|(_, node_ids)| {
+                    node_ids.insert(node.node_id.clone());
+                })
+                .or_insert_with(|| (registration, BTreeSet::from([node.node_id.clone()])));
+        }
+    }
+    if registrations.is_empty() {
+        return;
+    }
+
+    let provider_tools = registrations
+        .values()
+        .map(|(registration, _)| registration.provider_tool.clone())
+        .collect::<Vec<_>>();
+    let snapshots = registrations
+        .into_values()
+        .map(|(registration, node_ids)| {
+            json!({
+                "registration_id": registration.registration_id,
+                "provider_name": registration.provider_name,
+                "execution_kind": "host_internal",
+                "owner": registration.owner,
+                "node_ids": node_ids,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for node in plan
+        .topological_order
+        .iter()
+        .filter_map(|node_id| plan.nodes.get(node_id))
+        .filter(|node| matches!(node.node_type.as_str(), "start" | "workflow_start"))
+    {
+        let Some(start_payload) = variable_pool
+            .entry(node.node_id.clone())
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+        else {
+            continue;
+        };
+        let tools = start_payload
+            .entry("tools".to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if let Some(tools) = tools.as_array_mut() {
+            let mut occupied = tools
+                .iter()
+                .filter_map(runtime_provider_tool_name)
+                .collect::<BTreeSet<_>>();
+            for provider_tool in &provider_tools {
+                let provider_name = runtime_provider_tool_name(provider_tool);
+                if provider_name
+                    .as_ref()
+                    .is_some_and(|name| !occupied.insert(name.clone()))
+                {
+                    continue;
+                }
+                tools.push(provider_tool.clone());
+            }
+        }
+        start_payload.insert(
+            RUNTIME_TOOL_REGISTRATIONS_KEY.to_string(),
+            Value::Array(snapshots.clone()),
+        );
+    }
 }
 
 fn legacy_start_history<'a>(

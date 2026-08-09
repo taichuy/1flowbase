@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::json;
 
+mod runtime_internal_tools;
+
 #[test]
 fn stable_trace_node_id_is_deterministic_for_locator() {
     let flow_run_id = Uuid::now_v7();

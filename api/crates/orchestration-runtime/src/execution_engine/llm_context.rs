@@ -691,6 +691,7 @@ pub(super) fn compatible_history_messages(
 }
 
 pub(super) fn provider_tools(
+    plan: &CompiledPlan,
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     rendered_templates: &Map<String, Value>,
@@ -708,12 +709,21 @@ pub(super) fn provider_tools(
         variable_pool,
         runtime_context,
     );
-    tools.extend(
-        runtime_context
-            .runtime_internal_tool_registrations(node)
-            .into_iter()
-            .map(|registration| registration.provider_tool),
-    );
+    let frozen_internal_names = frozen_runtime_internal_provider_names(plan, variable_pool);
+    tools.retain(|tool| {
+        provider_tool_name(tool)
+            .as_deref()
+            .is_none_or(|name| !frozen_internal_names.contains(name))
+    });
+    let mut occupied = tools
+        .iter()
+        .filter_map(provider_tool_name)
+        .collect::<HashSet<_>>();
+    for registration in runtime_context.runtime_internal_tool_registrations(node) {
+        if occupied.insert(registration.provider_name) {
+            tools.push(registration.provider_tool);
+        }
+    }
     if !media_route_has_returned_to_main(node, resolved_inputs, variable_pool) {
         tools.extend(visible_internal_llm_provider_tools(node));
     }
