@@ -7,7 +7,6 @@ import {
   within
 } from '@testing-library/react';
 import { Grid } from 'antd';
-import { focusManager } from '@tanstack/react-query';
 import { createElement } from 'react';
 import { expect, vi } from 'vitest';
 
@@ -1034,7 +1033,6 @@ export function setupDataModelsPageTest() {
 
 export function cleanupDataModelsPageTest() {
   cleanup();
-  focusManager.setFocused(undefined);
   const warningCalls = [
     ...consoleWarnSpy.mock.calls,
     ...consoleErrorSpy.mock.calls
@@ -1056,7 +1054,6 @@ export {
   DataModelFormDrawer,
   dataModelsApi,
   fireEvent,
-  focusManager,
   i18nText,
   render,
   screen,
