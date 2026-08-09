@@ -728,7 +728,7 @@ function collectFrontendCoverageFailures(summary) {
       const actualPct = aggregateMetric(matchedEntries, metric);
       const expectedPct = threshold.thresholds[metric];
 
-      if (actualPct + Number.EPSILON >= expectedPct) {
+      if (Number(formatPct(actualPct)) >= Number(formatPct(expectedPct))) {
         return [];
       }
 

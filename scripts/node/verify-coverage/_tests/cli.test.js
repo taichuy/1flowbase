@@ -129,6 +129,32 @@ test('collectFrontendCoverageFailures only checks configured high-risk prefixes'
   assert.deepEqual(collectFrontendCoverageFailures(summary), []);
 });
 
+test('collectFrontendCoverageFailures compares the two-decimal percentage reported by the gate', () => {
+  const coveredFunctions = 1304;
+  const totalFunctions = 2415;
+  const summary = {
+    '/repo/web/app/src/features/settings/components/UiManagementPanel.tsx': {
+      lines: { covered: 56, total: 100, pct: 56 },
+      functions: {
+        covered: coveredFunctions,
+        total: totalFunctions,
+        pct: (coveredFunctions / totalFunctions) * 100,
+      },
+      statements: { covered: 55, total: 100, pct: 55 },
+      branches: { covered: 46, total: 100, pct: 46 },
+    },
+  };
+
+  assert.equal((coveredFunctions / totalFunctions) * 100 < 54, true);
+  assert.equal(((coveredFunctions / totalFunctions) * 100).toFixed(2), '54.00');
+  assert.deepEqual(
+    collectFrontendCoverageFailures(summary).filter(
+      (failure) => failure.key === 'settings'
+    ),
+    []
+  );
+});
+
 test('buildBackendCommands emits one cargo llvm-cov command per protected package', () => {
   const repoRoot = '/repo-root';
 
