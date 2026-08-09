@@ -15,6 +15,7 @@ pub(crate) fn test_data_model_definition() -> domain::ModelDefinitionRecord {
         external_capability_snapshot: None,
         code: "orders".to_string(),
         title: "Orders".to_string(),
+        description: None,
         physical_table_name: "rtm_workspace_test_orders".to_string(),
         acl_namespace: "runtime_model:orders".to_string(),
         audit_namespace: "runtime_model:orders".to_string(),

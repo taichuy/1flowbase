@@ -1011,6 +1011,7 @@ where
                 external_capability_snapshot: Some(serde_json::to_value(&descriptor.capabilities)?),
                 code: model_code,
                 title: model_title,
+                description: None,
                 status,
                 protection: domain::DataModelProtection::default(),
             })

@@ -196,6 +196,7 @@ fn sample_model(model_id: Uuid) -> ModelDefinitionRecord {
         scope_id: Uuid::now_v7(),
         code: "orders".to_string(),
         title: "Orders".to_string(),
+        description: None,
         physical_table_name: "rtm_workspace_orders".to_string(),
         acl_namespace: "state_model.orders".to_string(),
         audit_namespace: "audit.state_model.orders".to_string(),

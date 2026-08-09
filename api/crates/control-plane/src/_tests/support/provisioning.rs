@@ -187,6 +187,7 @@ impl ModelDefinitionRepository for MemoryProvisioningRepository {
             scope_id: input.scope_id,
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_table_name: memory_physical_table_name(input),
             acl_namespace: format!("state_model.{}", input.code),
             audit_namespace: format!("audit.state_model.{}", input.code),

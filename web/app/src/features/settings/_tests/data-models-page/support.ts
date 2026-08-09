@@ -423,6 +423,7 @@ function settingsDataModel(
     scope_id: '00000000-0000-0000-0000-000000000000',
     code,
     title,
+    description: null,
     status: 'published',
     runtime_availability: 'available',
     data_source_id: 'main',
@@ -473,6 +474,7 @@ export const contactsModel = settingsDataModel(
     source_kind: 'external_source',
     external_resource_key: 'contacts',
     external_table_id: 'crm.contacts',
+    description: 'CRM contact records',
     physical_table_name: 'dm_contacts'
   }
 );
@@ -811,12 +813,13 @@ export function setupDataModelsPageTest() {
     last_error_message: null,
     refreshed_at: '2026-04-30T08:00:00Z'
   });
-  dataModelsApi.fetchSettingsDataModels.mockImplementation((dataSourceId: string) =>
-    Promise.resolve(
-      dataSourceId === 'main'
-        ? mainSourceModels
-        : [contactsModel, draftOrdersModel]
-    )
+  dataModelsApi.fetchSettingsDataModels.mockImplementation(
+    (dataSourceId: string) =>
+      Promise.resolve(
+        dataSourceId === 'main'
+          ? mainSourceModels
+          : [contactsModel, draftOrdersModel]
+      )
   );
   dataModelsApi.fetchSettingsDataModelScopeGrants.mockResolvedValue([
     {

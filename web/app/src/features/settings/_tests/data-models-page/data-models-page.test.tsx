@@ -554,13 +554,13 @@ describe('Settings data models page', () => {
       const apiSwitch = screen.getByRole('switch', { name: '开放 API' });
       expect(apiSwitch).toBeEnabled();
       expect(apiSwitch).toBeChecked();
-      expect(screen.getByLabelText('标题')).toBeDisabled();
+      expect(screen.getByLabelText('标题')).toBeEnabled();
       expect(screen.queryByLabelText('数据源')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '保存' }));
       await waitFor(() =>
         expect(dataModelsApi.updateSettingsDataModel).toHaveBeenCalledWith(
           'model-roles',
-          { status: 'published' },
+          { title: '角色', description: null, status: 'published' },
           'csrf-123'
         )
       );
@@ -639,7 +639,7 @@ describe('Settings data models page', () => {
       const summaryRows = within(detailSummary).getAllByTestId(
         'data-model-summary-row'
       );
-      expect(summaryRows).toHaveLength(3);
+      expect(summaryRows).toHaveLength(4);
       expect(within(summaryRows[0]).getByText('标题：')).toBeInTheDocument();
       expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
@@ -647,12 +647,16 @@ describe('Settings data models page', () => {
         within(summaryRows[1]).getByText('开放 API：')
       ).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('开放')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('数据源：')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('说明：')).toBeInTheDocument();
+      expect(
+        within(summaryRows[2]).getByText('CRM contact records')
+      ).toBeInTheDocument();
+      expect(within(summaryRows[3]).getByText('数据源：')).toBeInTheDocument();
       expect(
         within(detailSummary).queryByText('状态：')
       ).not.toBeInTheDocument();
       expect(
-        within(summaryRows[2]).queryByText('published')
+        within(summaryRows[3]).queryByText('published')
       ).not.toBeInTheDocument();
       expect(
         within(detailSummary).queryByText('available')
@@ -1033,7 +1037,14 @@ describe('Settings data models page', () => {
       },
       { timeout: 5000 }
     );
-    expect(within(editDialog).getByDisplayValue('Contacts')).toBeDisabled();
+    const titleInput = within(editDialog).getByLabelText('标题');
+    expect(titleInput).toBeEnabled();
+    fireEvent.change(titleInput, { target: { value: 'Customer Contacts' } });
+    const descriptionInput = within(editDialog).getByLabelText('说明');
+    expect(descriptionInput).toBeEnabled();
+    fireEvent.change(descriptionInput, {
+      target: { value: 'Customer contact records' }
+    });
     expect(
       within(editDialog).queryByLabelText('表 ID')
     ).not.toBeInTheDocument();
@@ -1049,7 +1060,50 @@ describe('Settings data models page', () => {
 
     await waitFor(() =>
       expect(onUpdate).toHaveBeenCalledWith(contactsModel, {
+        title: 'Customer Contacts',
+        description: 'Customer contact records',
         status: 'draft'
+      })
+    );
+  });
+
+  test('submits Data Model descriptions when creating from the form drawer', async () => {
+    const onCreate = vi.fn();
+
+    render(
+      <DataModelFormDrawer
+        open
+        mode="create"
+        model={null}
+        source={null}
+        saving={false}
+        onClose={vi.fn()}
+        onCreate={onCreate}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    const createDialog = await screen.findByRole('dialog', {
+      name: '新建 Data Model'
+    });
+    fireEvent.change(within(createDialog).getByLabelText('标题'), {
+      target: { value: 'Orders' }
+    });
+    fireEvent.change(within(createDialog).getByLabelText('Code'), {
+      target: { value: 'orders' }
+    });
+    fireEvent.change(within(createDialog).getByLabelText('说明'), {
+      target: { value: 'Workspace order records' }
+    });
+    fireEvent.click(within(createDialog).getByRole('button', { name: '创建' }));
+
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        scope_kind: 'workspace',
+        code: 'orders',
+        title: 'Orders',
+        description: 'Workspace order records',
+        status: 'published'
       })
     );
   });

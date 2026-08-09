@@ -51,6 +51,7 @@ async fn create_model_rebuilds_runtime_registry_once() {
             external_table_id: None,
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -77,6 +78,7 @@ async fn add_field_rebuilds_runtime_registry_once() {
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         })
         .await
         .unwrap();
@@ -125,6 +127,7 @@ async fn delete_model_rebuilds_runtime_registry_once() {
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         })
         .await
         .unwrap();
@@ -160,6 +163,7 @@ async fn batch_delete_models_rebuilds_runtime_registry_once() {
             protection: domain::DataModelProtection::default(),
             code: "orders".into(),
             title: "Orders".into(),
+            description: None,
         })
         .await
         .unwrap();
@@ -177,6 +181,7 @@ async fn batch_delete_models_rebuilds_runtime_registry_once() {
             protection: domain::DataModelProtection::default(),
             code: "invoices".into(),
             title: "Invoices".into(),
+            description: None,
         })
         .await
         .unwrap();

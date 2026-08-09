@@ -14,6 +14,9 @@ control-plane = { path = "../../control-plane" }
 domain = { path = "../../domain" }
 futures-util.workspace = true
 plugin-framework = { path = "../../plugin-framework" }
+rand.workspace = true
+rand_regex.workspace = true
+regex-syntax.workspace = true
 runtime-core = { path = "../../runtime-core" }
 serde_json.workspace = true
 sha2.workspace = true

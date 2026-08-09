@@ -12,6 +12,7 @@ pub struct CreateModelDefinitionInput {
     pub external_capability_snapshot: Option<serde_json::Value>,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub status: domain::DataModelStatus,
     pub protection: domain::DataModelProtection,
 }
@@ -21,6 +22,7 @@ pub struct UpdateModelDefinitionInput {
     pub actor_user_id: Uuid,
     pub model_id: Uuid,
     pub title: String,
+    pub description: Option<String>,
     pub external_table_id: Option<String>,
 }
 

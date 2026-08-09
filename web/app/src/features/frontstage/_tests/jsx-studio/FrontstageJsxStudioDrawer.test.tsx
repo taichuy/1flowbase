@@ -36,6 +36,14 @@ const interfaceCapabilitiesApi = vi.hoisted(() => ({
 const componentCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageComponentCapabilities: vi.fn()
 }));
+const uiTemplatesHook = vi.hoisted(() => ({
+  useFrontstageUiTemplates: vi.fn()
+}));
+const antdAppMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+  warning: vi.fn()
+}));
 const monacoHook = vi.hoisted(() => ({
   addExtraLib: vi.fn(),
   setCompilerOptions: vi.fn(),
@@ -59,6 +67,16 @@ vi.mock(
   '../../hooks/use-frontstage-component-capabilities',
   () => componentCapabilitiesHook
 );
+vi.mock('../../hooks/use-frontstage-ui-templates', () => uiTemplatesHook);
+vi.mock('antd', async () => {
+  const actual = await vi.importActual<typeof import('antd')>('antd');
+  return {
+    ...actual,
+    App: {
+      useApp: () => ({ message: antdAppMocks })
+    }
+  };
+});
 vi.mock('../../../../shared/ui/resizable-drawer/ResizableDrawer', () => ({
   ResizableDrawer: ({
     children,
@@ -240,6 +258,10 @@ describe('FrontstageJsxStudioDrawer', () => {
       reset: vi.fn(),
       save: vi.fn().mockResolvedValue(undefined)
     });
+    uiTemplatesHook.useFrontstageUiTemplates.mockReturnValue({
+      data: [],
+      isLoading: false
+    });
     const capability = {
       interface_id: 'list_application_conversations_records',
       method: 'GET',
@@ -351,7 +373,9 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '插入代码' }));
 
-    expect(await screen.findByText('接口代码已插入')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(antdAppMocks.success).toHaveBeenCalledWith('接口代码已插入')
+    );
     expect(onSaveBlock).not.toHaveBeenCalled();
   });
 

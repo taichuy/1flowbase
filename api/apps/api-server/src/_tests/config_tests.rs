@@ -48,6 +48,51 @@ fn api_config_does_not_require_ephemeral_backend_env() {
     let config = ApiConfig::from_env_map(&env).unwrap();
 
     assert_eq!(config.cookie_name, "flowbase_console_session");
+    assert!(!config.runtime_table_name_policy.auto_prefix_enabled());
+}
+
+#[test]
+fn ac_002_api_config_enables_regex_generated_runtime_table_prefixes() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        ("API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED", "true"),
+        (
+            "API_RUNTIME_TABLE_PREFIX_REGEX",
+            "rtm_workspace_[a-z0-9]{8}",
+        ),
+    ]);
+
+    let config = ApiConfig::from_env_map(&env).unwrap();
+
+    assert!(config.runtime_table_name_policy.auto_prefix_enabled());
+}
+
+#[test]
+fn ac_003_api_config_rejects_invalid_runtime_table_prefix_regex() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        ("API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED", "true"),
+        ("API_RUNTIME_TABLE_PREFIX_REGEX", "rtm_workspace_("),
+    ]);
+
+    let error = ApiConfig::from_env_map(&env).unwrap_err();
+
+    assert!(error.to_string().contains("API_RUNTIME_TABLE_PREFIX_REGEX"));
+}
+
+#[test]
+fn ac_003_api_config_rejects_unsafe_runtime_table_prefix_languages() {
+    for prefix_regex in ["", "[A-Z]{8}", "a{62}"] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.extend([
+            ("API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED", "true"),
+            ("API_RUNTIME_TABLE_PREFIX_REGEX", prefix_regex),
+        ]);
+
+        let error = ApiConfig::from_env_map(&env).unwrap_err();
+
+        assert!(error.to_string().contains("API_RUNTIME_TABLE_PREFIX_REGEX"));
+    }
 }
 
 #[test]

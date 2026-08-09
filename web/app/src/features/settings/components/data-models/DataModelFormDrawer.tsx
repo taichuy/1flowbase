@@ -19,6 +19,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 interface DataModelFormValues {
   code: string;
   title: string;
+  description: string;
 }
 
 function isApiOpen(status: SettingsDataModel['status'] | undefined) {
@@ -62,7 +63,8 @@ export function DataModelFormDrawer({
       setApiOpen(isApiOpen(model.status));
       form.setFieldsValue({
         code: model.code,
-        title: model.title
+        title: model.title,
+        description: model.description ?? ''
       });
       return;
     }
@@ -70,7 +72,8 @@ export function DataModelFormDrawer({
     setApiOpen(isApiOpen(source?.default_data_model_status ?? 'published'));
     form.setFieldsValue({
       code: '',
-      title: ''
+      title: '',
+      description: ''
     });
   }, [form, mode, model, open, source]);
 
@@ -78,7 +81,11 @@ export function DataModelFormDrawer({
     const values = await form.validateFields();
 
     if (mode === 'edit' && model) {
-      onUpdate(model, { status: apiOpenStatus(apiOpen) });
+      onUpdate(model, {
+        title: values.title,
+        description: values.description.trim() || null,
+        status: apiOpenStatus(apiOpen)
+      });
       onClose();
       return;
     }
@@ -87,6 +94,7 @@ export function DataModelFormDrawer({
       scope_kind: 'workspace',
       code: values.code,
       title: values.title,
+      description: values.description.trim() || null,
       status: apiOpenStatus(apiOpen)
     });
     onClose();
@@ -119,10 +127,7 @@ export function DataModelFormDrawer({
         </Button>
       }
     >
-      <Form
-        form={form}
-        layout="vertical"
-      >
+      <Form form={form} layout="vertical">
         <Form.Item
           name="title"
           label={
@@ -138,9 +143,15 @@ export function DataModelFormDrawer({
             }
           ]}
         >
-          <Input
-            aria-label={i18nText('settings', 'auto.title')}
-            disabled={mode === 'edit'}
+          <Input aria-label={i18nText('settings', 'auto.title')} />
+        </Form.Item>
+        <Form.Item
+          name="description"
+          label={i18nText('settings', 'auto.description')}
+        >
+          <Input.TextArea
+            aria-label={i18nText('settings', 'auto.description')}
+            autoSize={{ minRows: 3, maxRows: 6 }}
           />
         </Form.Item>
         <Form.Item

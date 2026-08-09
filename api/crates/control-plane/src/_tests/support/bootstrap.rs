@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::ports::BootstrapRepository;
+use crate::ports::{BootstrapRepository, WorkspaceBootstrapResult};
 use domain::{
     AuthenticatorRecord, BoundRole, PermissionDefinition, RoleScopeKind, TenantRecord, UserRecord,
     UserStatus, WorkspaceRecord,
@@ -27,6 +27,7 @@ struct MemoryBootstrapRepositoryInner {
     official_catalog_initialized: AtomicBool,
     official_catalog_bootstraps: AtomicUsize,
     root_user_creates: AtomicUsize,
+    workspace_role_template_seeds: AtomicUsize,
     authenticators: RwLock<Vec<AuthenticatorRecord>>,
     root_tenant: RwLock<Option<TenantRecord>>,
     workspace: RwLock<Option<WorkspaceRecord>>,
@@ -48,6 +49,12 @@ impl MemoryBootstrapRepository {
 
     pub fn workspace_upserts(&self) -> usize {
         self.inner.workspace_upserts.load(Ordering::SeqCst)
+    }
+
+    pub fn workspace_role_template_seeds(&self) -> usize {
+        self.inner
+            .workspace_role_template_seeds
+            .load(Ordering::SeqCst)
     }
 
     pub fn mark_official_catalog_initialized(&self) {
@@ -153,14 +160,17 @@ impl BootstrapRepository for MemoryBootstrapRepository {
             .load(Ordering::SeqCst))
     }
 
-    async fn upsert_workspace(
+    async fn upsert_workspace_for_bootstrap(
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
-    ) -> Result<WorkspaceRecord> {
+    ) -> Result<WorkspaceBootstrapResult> {
         self.inner.workspace_upserts.fetch_add(1, Ordering::SeqCst);
         if let Some(workspace) = self.inner.workspace.read().await.clone() {
-            return Ok(workspace);
+            return Ok(WorkspaceBootstrapResult {
+                workspace,
+                created: false,
+            });
         }
 
         let workspace = WorkspaceRecord {
@@ -171,25 +181,35 @@ impl BootstrapRepository for MemoryBootstrapRepository {
             introduction: String::new(),
         };
         *self.inner.workspace.write().await = Some(workspace.clone());
-        Ok(workspace)
+        Ok(WorkspaceBootstrapResult {
+            workspace,
+            created: true,
+        })
     }
 
-    async fn upsert_root_workspace_with_official_catalog(
+    async fn upsert_root_workspace_with_official_catalog_for_bootstrap(
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
         _seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
-    ) -> Result<WorkspaceRecord> {
+    ) -> Result<WorkspaceBootstrapResult> {
         self.inner
             .official_catalog_bootstraps
             .fetch_add(1, Ordering::SeqCst);
         self.inner
             .official_catalog_initialized
             .store(true, Ordering::SeqCst);
-        BootstrapRepository::upsert_workspace(self, tenant_id, workspace_name).await
+        BootstrapRepository::upsert_workspace_for_bootstrap(self, tenant_id, workspace_name).await
     }
 
-    async fn upsert_builtin_roles(&self, _workspace_id: Uuid) -> Result<()> {
+    async fn upsert_root_role(&self, _workspace_id: Uuid) -> Result<()> {
+        Ok(())
+    }
+
+    async fn seed_workspace_role_templates(&self, _workspace_id: Uuid) -> Result<()> {
+        self.inner
+            .workspace_role_template_seeds
+            .fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 

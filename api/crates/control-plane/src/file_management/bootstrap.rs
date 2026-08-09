@@ -106,6 +106,7 @@ where
             protection: input.protection.clone(),
             code: input.code,
             title: input.title,
+            description: None,
         })
         .await?;
 

@@ -133,7 +133,7 @@ async fn seed_data_source_instance(
 }
 
 #[tokio::test]
-async fn model_definition_repository_creates_scope_bound_metadata_without_publish_state() {
+async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -164,6 +164,7 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -175,7 +176,7 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
     assert_eq!(created.scope_id, workspace_id);
     assert_eq!(created.code, code);
     assert_eq!(created.title, "Orders");
-    assert!(created.physical_table_name.starts_with("rtm_workspace_"));
+    assert_eq!(created.physical_table_name, created.code);
     let system_fields: Vec<_> = created
         .fields
         .iter()
@@ -244,6 +245,7 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
             external_capability_snapshot: None,
             code: format!("system_{}", Uuid::now_v7().simple()),
             title: "System Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -253,9 +255,53 @@ async fn model_definition_repository_creates_scope_bound_metadata_without_publis
 
     assert_eq!(system_created.scope_kind, DataModelScopeKind::System);
     assert_eq!(system_created.scope_id, SYSTEM_SCOPE_ID);
-    assert!(system_created
-        .physical_table_name
-        .starts_with("rtm_system_"));
+    assert_eq!(system_created.physical_table_name, system_created.code);
+}
+
+#[tokio::test]
+async fn ac_002_model_definition_repository_generates_enabled_regex_prefix() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let policy = crate::RuntimeTableNamePolicy::from_config(true, "rtm_workspace_[a]{8}").unwrap();
+    let store = PgControlPlaneStore::new(pool).with_runtime_table_name_policy(policy);
+    let workspace_id = Uuid::now_v7();
+    let tenant_id = root_tenant_id(&store).await;
+    sqlx::query(
+        "insert into workspaces (id, tenant_id, name, created_by, updated_by) values ($1, $2, $3, null, null)",
+    )
+    .bind(workspace_id)
+    .bind(tenant_id)
+    .bind(format!("Regex Prefix Workspace {}", workspace_id.simple()))
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let code = format!("orders_{}", Uuid::now_v7().simple());
+    let created = ModelDefinitionRepository::create_model_definition(
+        &store,
+        &CreateModelDefinitionInput {
+            actor_user_id: Uuid::nil(),
+            scope_kind: DataModelScopeKind::Workspace,
+            scope_id: workspace_id,
+            data_source_instance_id: None,
+            source_kind: DataModelSourceKind::MainSource,
+            external_resource_key: None,
+            external_table_id: None,
+            external_capability_snapshot: None,
+            code: code.clone(),
+            title: "Orders".into(),
+            description: None,
+            status: DataModelStatus::Published,
+            protection: DataModelProtection::default(),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        created.physical_table_name,
+        format!("rtm_workspace_aaaaaaaa_{code}")
+    );
 }
 
 #[tokio::test]
@@ -278,6 +324,7 @@ async fn model_definition_repository_binds_core_system_models_to_registered_tabl
                 external_capability_snapshot: None,
                 code: code.into(),
                 title: code.into(),
+                description: None,
                 status: DataModelStatus::Published,
                 protection: DataModelProtection {
                     owner_kind: domain::DataModelOwnerKind::Core,
@@ -314,6 +361,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
             external_capability_snapshot: None,
             code: "attachments".into(),
             title: "Custom attachments".into(),
+            description: Some("Custom attachment metadata".into()),
             status: DataModelStatus::Draft,
             protection: DataModelProtection {
                 owner_kind: domain::DataModelOwnerKind::Core,
@@ -389,9 +437,14 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
         .await
         .unwrap();
 
-    let (title, status, physical_table_name): (String, String, String) = sqlx::query_as(
+    let (title, description, status, physical_table_name): (
+        String,
+        Option<String>,
+        String,
+        String,
+    ) = sqlx::query_as(
         r#"
-        select title, status, physical_table_name
+        select title, description, status, physical_table_name
         from model_definitions
         where id = $1
         "#,
@@ -401,6 +454,7 @@ async fn builtin_system_table_contract_migration_preserves_metadata_and_user_fie
     .await
     .unwrap();
     assert_eq!(title, "Custom attachments");
+    assert_eq!(description.as_deref(), Some("Custom attachment metadata"));
     assert_eq!(status, "published");
     assert_eq!(physical_table_name, "attachments");
 
@@ -491,6 +545,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
             external_capability_snapshot: None,
             code: format!("customers_{}", Uuid::now_v7().simple()),
             title: "Customers".into(),
+            description: None,
             status: DataModelStatus::Draft,
             protection: DataModelProtection {
                 is_protected: true,
@@ -531,6 +586,7 @@ async fn model_definition_repository_persists_status_owner_and_scope_grants() {
             external_capability_snapshot: None,
             code: format!("system_customers_{}", Uuid::now_v7().simple()),
             title: "System Customers".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -601,6 +657,7 @@ async fn model_definition_repository_accepts_owner_scope_grant_for_workspace_mod
             external_capability_snapshot: None,
             code: format!("workspace_grant_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Model".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -657,6 +714,7 @@ async fn model_definition_repository_rejects_cross_scope_grants_for_workspace_mo
             external_capability_snapshot: None,
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -718,6 +776,7 @@ async fn model_definition_repository_updates_owner_scope_grant_for_workspace_mod
             external_capability_snapshot: None,
             code: format!("workspace_grant_update_{}", Uuid::now_v7().simple()),
             title: "Workspace Grant Update Model".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -787,6 +846,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_same_data_sour
         external_capability_snapshot: None,
         code,
         title: "Orders".into(),
+        description: None,
         status: DataModelStatus::Published,
         protection: DataModelProtection::default(),
     };
@@ -827,6 +887,7 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
         external_capability_snapshot: None,
         code,
         title: "Orders".into(),
+        description: None,
         status: DataModelStatus::Published,
         protection: DataModelProtection::default(),
     };
@@ -842,7 +903,9 @@ async fn model_definition_repository_blocks_duplicate_code_inside_main_source() 
 async fn model_definition_repository_allows_duplicate_code_across_data_sources_in_same_workspace() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
-    let store = PgControlPlaneStore::new(pool);
+    let policy =
+        crate::RuntimeTableNamePolicy::from_config(true, "rtm_workspace_[a-z0-9]{8}").unwrap();
+    let store = PgControlPlaneStore::new(pool).with_runtime_table_name_policy(policy);
     let (workspace_id, actor_user_id, installation_id) =
         seed_data_source_workspace(&store, "duplicate-code-across-sources", "main_source").await;
     let first_data_source_id = seed_data_source_instance(
@@ -878,6 +941,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -898,6 +962,7 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
             external_capability_snapshot: None,
             code: code.clone(),
             title: "Orders Copy".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -911,6 +976,64 @@ async fn model_definition_repository_allows_duplicate_code_across_data_sources_i
         first.data_source_instance_id,
         second.data_source_instance_id
     );
+    assert_ne!(first.physical_table_name, second.physical_table_name);
+}
+
+#[tokio::test]
+async fn ac_005_model_definition_repository_exhausts_regex_prefix_collisions() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let policy = crate::RuntimeTableNamePolicy::from_config(true, "fixed_prefix").unwrap();
+    let store = PgControlPlaneStore::new(pool).with_runtime_table_name_policy(policy);
+    let (workspace_id, actor_user_id, installation_id) =
+        seed_data_source_workspace(&store, "regex-prefix-collision", "main_source").await;
+    let first_data_source_id = seed_data_source_instance(
+        &store,
+        workspace_id,
+        actor_user_id,
+        installation_id,
+        "main_source",
+        "Main Source",
+    )
+    .await;
+    let second_data_source_id = seed_data_source_instance(
+        &store,
+        workspace_id,
+        actor_user_id,
+        installation_id,
+        "main_source",
+        "Secondary Source",
+    )
+    .await;
+    let code = format!("orders_{}", Uuid::now_v7().simple());
+
+    for data_source_instance_id in [first_data_source_id, second_data_source_id] {
+        let result = ModelDefinitionRepository::create_model_definition(
+            &store,
+            &CreateModelDefinitionInput {
+                actor_user_id,
+                scope_kind: DataModelScopeKind::Workspace,
+                scope_id: workspace_id,
+                data_source_instance_id: Some(data_source_instance_id),
+                source_kind: DataModelSourceKind::ExternalSource,
+                external_resource_key: Some("orders".into()),
+                external_table_id: None,
+                external_capability_snapshot: None,
+                code: code.clone(),
+                title: "Orders".into(),
+                description: None,
+                status: DataModelStatus::Published,
+                protection: DataModelProtection::default(),
+            },
+        )
+        .await;
+
+        if data_source_instance_id == first_data_source_id {
+            assert!(result.is_ok());
+        } else {
+            assert!(result.unwrap_err().to_string().contains("after 8 attempts"));
+        }
+    }
 }
 
 #[tokio::test]
@@ -947,6 +1070,7 @@ async fn model_definition_repository_rejects_workspace_model_with_foreign_data_s
             external_capability_snapshot: None,
             code: format!("orders_{}", Uuid::now_v7().simple()),
             title: "Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -1027,6 +1151,7 @@ async fn model_definition_repository_deletes_external_source_field_without_local
             })),
             code: format!("external_contacts_{}", Uuid::now_v7().simple()),
             title: "External Contacts".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },
@@ -1166,6 +1291,7 @@ async fn model_definition_repository_status_update_requires_visible_workspace() 
             external_capability_snapshot: None,
             code: format!("foreign_orders_{}", Uuid::now_v7().simple()),
             title: "Foreign Orders".into(),
+            description: None,
             status: DataModelStatus::Published,
             protection: DataModelProtection::default(),
         },

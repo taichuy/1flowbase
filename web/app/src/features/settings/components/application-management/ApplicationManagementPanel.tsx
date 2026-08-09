@@ -2,13 +2,11 @@ import {
   CopyOutlined,
   DeleteOutlined,
   ExportOutlined,
-  MoreOutlined,
   PlusOutlined
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
-  Dropdown,
   Flex,
   Input,
   App,
@@ -31,6 +29,12 @@ import {
   DataTableColumnSettings,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
+import {
+  DataTableFilterField,
+  DataTableFilterForm,
+  DataTableLayout
+} from '../../../../shared/ui/data-table/DataTableLayout';
+import { DataTableRowActions } from '../../../../shared/ui/data-table/DataTableRowActions';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
   applicationCatalogQueryKey,
@@ -129,7 +133,6 @@ export function ApplicationManagementPanel() {
     readApplicationManagementRouteState
   );
   const [filterDraft, setFilterDraft] = useState(routeState);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<
     string[]
   >([]);
@@ -517,7 +520,19 @@ export function ApplicationManagementPanel() {
             }
           ];
           return (
-            <Space size={2}>
+            <DataTableRowActions
+              moreAriaLabel={i18nText(
+                'applications',
+                'auto.more_actions_named',
+                { value1: application.name }
+              )}
+              moreItems={items}
+              onMoreAction={(key) => {
+                if (key === 'copy') copyApplication(application);
+                if (key === 'export') exportApplications([application.id]);
+                if (key === 'delete') confirmDelete(application);
+              }}
+            >
               <Button
                 href={`/applications/${application.id}/orchestration`}
                 size="small"
@@ -546,29 +561,7 @@ export function ApplicationManagementPanel() {
                   </Button>
                 </span>
               </Tooltip>
-              <Dropdown
-                menu={{
-                  items,
-                  onClick: ({ key }) => {
-                    if (key === 'copy') copyApplication(application);
-                    if (key === 'export') exportApplications([application.id]);
-                    if (key === 'delete') confirmDelete(application);
-                  }
-                }}
-                trigger={['click']}
-              >
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<MoreOutlined />}
-                  aria-label={i18nText(
-                    'applications',
-                    'auto.more_actions_named',
-                    { value1: application.name }
-                  )}
-                />
-              </Dropdown>
-            </Space>
+            </DataTableRowActions>
           );
         }
       }
@@ -596,249 +589,234 @@ export function ApplicationManagementPanel() {
     workflow_triggers: [],
     tags: []
   };
+  const expandedFilterFields = (
+    <>
+      <DataTableFilterField
+        label={i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_publication_status'
+        )}
+      >
+        <Select
+          allowClear
+          aria-label={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_publication_status'
+          )}
+          placeholder={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_all_publication_statuses'
+          )}
+          value={filterDraft.publication_status}
+          options={[
+            {
+              value: 'published',
+              label: i18nText('settings', 'auto.published')
+            },
+            {
+              value: 'unpublished',
+              label: i18nText('settings', 'auto.unpublished')
+            }
+          ]}
+          onChange={(publication_status) =>
+            setFilterDraft((current) => ({
+              ...current,
+              publication_status
+            }))
+          }
+        />
+      </DataTableFilterField>
+      <DataTableFilterField
+        label={i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_creator'
+        )}
+      >
+        <Select
+          allowClear
+          showSearch
+          loading={membersQuery.isPending}
+          status={membersQuery.isError ? 'error' : undefined}
+          optionFilterProp="label"
+          aria-label={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_creator'
+          )}
+          placeholder={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_all_creators'
+          )}
+          notFoundContent={
+            membersQuery.isError
+              ? i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_creators_load_failed'
+                )
+              : undefined
+          }
+          value={filterDraft.created_by}
+          options={(membersQuery.data ?? []).map((member) => ({
+            value: member.id,
+            label: member.name || member.nickname || member.account
+          }))}
+          onChange={(created_by) =>
+            setFilterDraft((current) => ({ ...current, created_by }))
+          }
+        />
+      </DataTableFilterField>
+      <DataTableFilterField
+        label={i18nText(
+          'settingsApplicationManagement',
+          'auto.application_management_tags'
+        )}
+      >
+        <Select
+          allowClear
+          aria-label={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_tags'
+          )}
+          placeholder={i18nText(
+            'settingsApplicationManagement',
+            'auto.application_management_all_tags'
+          )}
+          value={filterDraft.tag_id}
+          options={catalog.tags.map((tag) => ({
+            value: tag.id,
+            label: tag.name
+          }))}
+          onChange={(tag_id) =>
+            setFilterDraft((current) => ({ ...current, tag_id }))
+          }
+        />
+      </DataTableFilterField>
+    </>
+  );
 
   return (
-    <SettingsSectionSurface
-      heightMode="fill"
-      toolbar={
-        <form
-          className="application-management-panel__filter-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            applyFilters();
-          }}
-        >
-          <label className="application-management-panel__filter-field">
-            <span className="application-management-panel__filter-label">
-              {i18nText(
+    <SettingsSectionSurface heightMode="fill">
+      {modalContextHolder}
+      <DataTableLayout
+        filters={
+          <DataTableFilterForm
+            ariaLabel={i18nText(
+              'settingsApplicationManagement',
+              'auto.application_management_apply_filters'
+            )}
+            collapseLabel={i18nText(
+              'settingsApplicationManagement',
+              'auto.application_management_collapse_filters'
+            )}
+            expandLabel={i18nText(
+              'settingsApplicationManagement',
+              'auto.application_management_expand_filters'
+            )}
+            expandedFields={expandedFilterFields}
+            resetLabel={i18nText(
+              'settingsApplicationManagement',
+              'auto.application_management_reset_filters'
+            )}
+            submitLabel={i18nText(
+              'settingsApplicationManagement',
+              'auto.application_management_apply_filters'
+            )}
+            onReset={resetFilters}
+            onSubmit={applyFilters}
+          >
+            <DataTableFilterField
+              label={i18nText(
                 'settingsApplicationManagement',
                 'auto.application_management_type'
               )}
-            </span>
-            <Select<SettingsApplicationManagementItem['application_type']>
-              allowClear
-              aria-label={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_type'
-              )}
-              placeholder={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_all_types'
-              )}
-              value={filterDraft.application_type}
-              options={catalog.types}
-              onChange={(application_type) =>
-                setFilterDraft((current) => ({
-                  ...current,
-                  application_type
-                }))
-              }
-            />
-          </label>
-          <label className="application-management-panel__filter-field">
-            <span className="application-management-panel__filter-label">
-              {i18nText(
+            >
+              <Select<SettingsApplicationManagementItem['application_type']>
+                allowClear
+                aria-label={i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_type'
+                )}
+                placeholder={i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_all_types'
+                )}
+                value={filterDraft.application_type}
+                options={catalog.types}
+                onChange={(application_type) =>
+                  setFilterDraft((current) => ({
+                    ...current,
+                    application_type
+                  }))
+                }
+              />
+            </DataTableFilterField>
+            <DataTableFilterField
+              label={i18nText(
                 'settingsApplicationManagement',
                 'auto.application_management_keyword'
               )}
-            </span>
-            <Input
-              aria-label={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_search'
-              )}
-              placeholder={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_search'
-              )}
-              type="search"
-              value={filterDraft.keyword ?? ''}
-              onChange={(event) =>
-                setFilterDraft((current) => ({
-                  ...current,
-                  keyword: event.target.value
-                }))
-              }
-            />
-          </label>
-          <label className="application-management-panel__filter-field">
-            <span className="application-management-panel__filter-label">
-              {i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_sort'
-              )}
-            </span>
-            <Select
-              aria-label={i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_sort'
-              )}
-              value={filterDraft.sort}
-              options={[
-                {
-                  value: 'updated_at:desc',
-                  label: i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_sort_updated_desc'
-                  )
-                },
-                {
-                  value: 'created_at:desc',
-                  label: i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_sort_created_desc'
-                  )
-                },
-                {
-                  value: 'name:asc',
-                  label: i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_sort_name_asc'
-                  )
-                }
-              ]}
-              onChange={(sort) =>
-                setFilterDraft((current) => ({ ...current, sort }))
-              }
-            />
-          </label>
-          {filtersExpanded ? (
-            <>
-              <label className="application-management-panel__filter-field">
-                <span className="application-management-panel__filter-label">
-                  {i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_publication_status'
-                  )}
-                </span>
-                <Select
-                  allowClear
-                  aria-label={i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_publication_status'
-                  )}
-                  placeholder={i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_all_publication_statuses'
-                  )}
-                  value={filterDraft.publication_status}
-                  options={[
-                    {
-                      value: 'published',
-                      label: i18nText('settings', 'auto.published')
-                    },
-                    {
-                      value: 'unpublished',
-                      label: i18nText('settings', 'auto.unpublished')
-                    }
-                  ]}
-                  onChange={(publication_status) =>
-                    setFilterDraft((current) => ({
-                      ...current,
-                      publication_status
-                    }))
-                  }
-                />
-              </label>
-              <label className="application-management-panel__filter-field">
-                <span className="application-management-panel__filter-label">
-                  {i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_creator'
-                  )}
-                </span>
-                <Select
-                  allowClear
-                  showSearch
-                  loading={membersQuery.isPending}
-                  status={membersQuery.isError ? 'error' : undefined}
-                  optionFilterProp="label"
-                  aria-label={i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_creator'
-                  )}
-                  placeholder={i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_all_creators'
-                  )}
-                  notFoundContent={
-                    membersQuery.isError
-                      ? i18nText(
-                          'settingsApplicationManagement',
-                          'auto.application_management_creators_load_failed'
-                        )
-                      : undefined
-                  }
-                  value={filterDraft.created_by}
-                  options={(membersQuery.data ?? []).map((member) => ({
-                    value: member.id,
-                    label: member.name || member.nickname || member.account
-                  }))}
-                  onChange={(created_by) =>
-                    setFilterDraft((current) => ({ ...current, created_by }))
-                  }
-                />
-              </label>
-              <label className="application-management-panel__filter-field">
-                <span className="application-management-panel__filter-label">
-                  {i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_tags'
-                  )}
-                </span>
-                <Select
-                  allowClear
-                  aria-label={i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_tags'
-                  )}
-                  placeholder={i18nText(
-                    'settingsApplicationManagement',
-                    'auto.application_management_all_tags'
-                  )}
-                  value={filterDraft.tag_id}
-                  options={catalog.tags.map((tag) => ({
-                    value: tag.id,
-                    label: tag.name
-                  }))}
-                  onChange={(tag_id) =>
-                    setFilterDraft((current) => ({ ...current, tag_id }))
-                  }
-                />
-              </label>
-            </>
-          ) : null}
-          <div className="application-management-panel__filter-actions">
-            <Button
-              aria-expanded={filtersExpanded}
-              htmlType="button"
-              onClick={() => setFiltersExpanded((expanded) => !expanded)}
             >
-              {i18nText(
+              <Input
+                aria-label={i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_search'
+                )}
+                placeholder={i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_search'
+                )}
+                type="search"
+                value={filterDraft.keyword ?? ''}
+                onChange={(event) =>
+                  setFilterDraft((current) => ({
+                    ...current,
+                    keyword: event.target.value
+                  }))
+                }
+              />
+            </DataTableFilterField>
+            <DataTableFilterField
+              label={i18nText(
                 'settingsApplicationManagement',
-                filtersExpanded
-                  ? 'auto.application_management_collapse_filters'
-                  : 'auto.application_management_expand_filters'
+                'auto.application_management_sort'
               )}
-            </Button>
-            <Button htmlType="button" onClick={resetFilters}>
-              {i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_reset_filters'
-              )}
-            </Button>
-            <Button htmlType="submit" type="primary">
-              {i18nText(
-                'settingsApplicationManagement',
-                'auto.application_management_apply_filters'
-              )}
-            </Button>
-          </div>
-        </form>
-      }
-    >
-      {modalContextHolder}
-      <div className="application-management-panel__table-region">
+            >
+              <Select
+                aria-label={i18nText(
+                  'settingsApplicationManagement',
+                  'auto.application_management_sort'
+                )}
+                value={filterDraft.sort}
+                options={[
+                  {
+                    value: 'updated_at:desc',
+                    label: i18nText(
+                      'settingsApplicationManagement',
+                      'auto.application_management_sort_updated_desc'
+                    )
+                  },
+                  {
+                    value: 'created_at:desc',
+                    label: i18nText(
+                      'settingsApplicationManagement',
+                      'auto.application_management_sort_created_desc'
+                    )
+                  },
+                  {
+                    value: 'name:asc',
+                    label: i18nText(
+                      'settingsApplicationManagement',
+                      'auto.application_management_sort_name_asc'
+                    )
+                  }
+                ]}
+                onChange={(sort) =>
+                  setFilterDraft((current) => ({ ...current, sort }))
+                }
+              />
+            </DataTableFilterField>
+          </DataTableFilterForm>
+        }
+      >
         <DataTable<SettingsApplicationManagementItem>
           columns={columns}
           configuration={tableConfiguration}
@@ -891,7 +869,7 @@ export function ApplicationManagementPanel() {
             updateRouteState({ page });
           }}
         />
-      </div>
+      </DataTableLayout>
 
       <ApplicationFormModal
         open={createOpen}

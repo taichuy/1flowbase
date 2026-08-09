@@ -123,6 +123,7 @@ fn model_definition(
         scope_id,
         code: code.to_string(),
         title: code.to_string(),
+        description: None,
         physical_table_name: format!("rtm_{}_{}", scope_kind.as_str(), code),
         acl_namespace: format!("state_model.{code}"),
         audit_namespace: format!("audit.state_model.{code}"),

@@ -160,6 +160,7 @@ async fn ac_1281_model_definition_policy_only_allows_without_legacy_grant() {
         external_table_id: None,
         code: "should_not_create".to_string(),
         title: "Should not create".to_string(),
+        description: None,
         status: None,
     })
     .await
@@ -257,6 +258,7 @@ impl ModelDefinitionRepository for ScopedModelDefinitionRepository {
             external_capability_snapshot: input.external_capability_snapshot.clone(),
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_table_name: format!("rtm_workspace_{}", input.code),
             acl_namespace: format!("state_model.{}", input.code),
             audit_namespace: format!("audit.state_model.{}", input.code),
@@ -554,6 +556,7 @@ fn system_model(model_id: Uuid) -> ModelDefinitionRecord {
         scope_id: SYSTEM_SCOPE_ID,
         code: "system_orders".into(),
         title: "System Orders".into(),
+        description: None,
         physical_table_name: "rtm_system_orders".into(),
         acl_namespace: "state_model.system_orders".into(),
         audit_namespace: "audit.state_model.system_orders".into(),
@@ -637,6 +640,7 @@ fn model_in_workspace(model_id: Uuid, workspace_id: Uuid) -> ModelDefinitionReco
         scope_id: workspace_id,
         code: "foreign_orders".into(),
         title: "Foreign Orders".into(),
+        description: None,
         physical_table_name: "rtm_workspace_foreign_orders".into(),
         acl_namespace: "state_model.foreign_orders".into(),
         audit_namespace: "audit.state_model.foreign_orders".into(),

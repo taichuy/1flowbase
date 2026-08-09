@@ -179,7 +179,7 @@ describe('DataTable', () => {
     expect(onNextPage).toHaveBeenCalledTimes(1);
   });
 
-  test('renders table actions in the Ant Design table title area', () => {
+  test('renders table actions outside the horizontally scrollable table area', () => {
     render(
       <DataTable<SampleRow>
         columns={columns}
@@ -194,10 +194,15 @@ describe('DataTable', () => {
       />
     );
 
-    const tableTitle = document.querySelector('.ant-table-title');
-    expect(tableTitle).not.toBeNull();
+    const toolbar = document.querySelector('.data-table__toolbar');
+    const scrollArea = document.querySelector('.data-table__scroll-area');
+
+    expect(toolbar).not.toBeNull();
+    expect(scrollArea).not.toBeNull();
+    expect(scrollArea?.contains(toolbar)).toBe(false);
+    expect(document.querySelector('.ant-table-title')).toBeNull();
     expect(
-      within(tableTitle as HTMLElement).getByRole('button', { name: '刷新' })
+      within(toolbar as HTMLElement).getByRole('button', { name: '刷新' })
     ).toBeInTheDocument();
   });
 

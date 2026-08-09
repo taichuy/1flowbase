@@ -23,6 +23,11 @@ import {
   DataTableColumnSettings,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
+import {
+  DataTableFilterField,
+  DataTableFilterForm,
+  DataTableLayout
+} from '../../../../shared/ui/data-table/DataTableLayout';
 import { useUserPreferenceDataTableConfiguration } from '../../../../shared/ui/data-table/user-preference-data-table';
 import { useAuthStore } from '../../../../state/auth-store';
 import './model-provider-request-logs-panel.css';
@@ -44,6 +49,26 @@ type ClearProgress = {
 };
 
 const DEFAULT_TIME_RANGE: RequestLogTimeRange = '7';
+
+type RequestLogFilters = {
+  timeRange: RequestLogTimeRange;
+  userId: string;
+  applicationName: string;
+  providerInstanceId: string;
+  modelId: string;
+  status?: string;
+  zeroOutputOnly: boolean;
+};
+
+const DEFAULT_FILTERS: RequestLogFilters = {
+  timeRange: DEFAULT_TIME_RANGE,
+  userId: '',
+  applicationName: '',
+  providerInstanceId: '',
+  modelId: '',
+  status: undefined,
+  zeroOutputOnly: false
+};
 
 function startedAfterForRange(timeRange: RequestLogTimeRange) {
   if (timeRange === 'all') return undefined;
@@ -92,6 +117,8 @@ export function ModelProviderRequestLogsPanel() {
   const [modelId, setModelId] = useState('');
   const [status, setStatus] = useState<string>();
   const [zeroOutputOnly, setZeroOutputOnly] = useState(false);
+  const [appliedFilters, setAppliedFilters] =
+    useState<RequestLogFilters>(DEFAULT_FILTERS);
   const [selectedAttemptIds, setSelectedAttemptIds] = useState<string[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
@@ -100,31 +127,22 @@ export function ModelProviderRequestLogsPanel() {
     null
   );
   const startedAfter = useMemo(
-    () => startedAfterForRange(timeRange),
-    [timeRange]
+    () => startedAfterForRange(appliedFilters.timeRange),
+    [appliedFilters.timeRange]
   );
   const filter = useMemo<ConsoleModelProviderRequestLogsFilter>(
     () => ({
       page,
       page_size: PAGE_SIZE,
-      user_id: userId.trim() || undefined,
-      application_name: applicationName.trim() || undefined,
-      provider_instance_id: providerInstanceId.trim() || undefined,
-      model_id: modelId.trim() || undefined,
-      status,
-      zero_output_only: zeroOutputOnly || undefined,
+      user_id: appliedFilters.userId || undefined,
+      application_name: appliedFilters.applicationName || undefined,
+      provider_instance_id: appliedFilters.providerInstanceId || undefined,
+      model_id: appliedFilters.modelId || undefined,
+      status: appliedFilters.status,
+      zero_output_only: appliedFilters.zeroOutputOnly || undefined,
       started_after: startedAfter
     }),
-    [
-      applicationName,
-      modelId,
-      page,
-      providerInstanceId,
-      startedAfter,
-      status,
-      userId,
-      zeroOutputOnly
-    ]
+    [appliedFilters, page, startedAfter]
   );
   const requestLogsQuery = useQuery({
     queryKey: settingsModelProviderRequestLogsQueryKey(filter),
@@ -279,6 +297,31 @@ export function ModelProviderRequestLogsPanel() {
     setSelectedAttemptIds([]);
   }
 
+  function applyFilters() {
+    setAppliedFilters({
+      timeRange,
+      userId: userId.trim(),
+      applicationName: applicationName.trim(),
+      providerInstanceId: providerInstanceId.trim(),
+      modelId: modelId.trim(),
+      status,
+      zeroOutputOnly
+    });
+    resetPageAndSelection();
+  }
+
+  function resetFilters() {
+    setTimeRange(DEFAULT_FILTERS.timeRange);
+    setUserId(DEFAULT_FILTERS.userId);
+    setApplicationName(DEFAULT_FILTERS.applicationName);
+    setProviderInstanceId(DEFAULT_FILTERS.providerInstanceId);
+    setModelId(DEFAULT_FILTERS.modelId);
+    setStatus(DEFAULT_FILTERS.status);
+    setZeroOutputOnly(DEFAULT_FILTERS.zeroOutputOnly);
+    setAppliedFilters(DEFAULT_FILTERS);
+    resetPageAndSelection();
+  }
+
   async function invalidateRequestLogs() {
     await queryClient.invalidateQueries({
       queryKey: ['settings', 'model-providers', 'request-logs']
@@ -344,165 +387,180 @@ export function ModelProviderRequestLogsPanel() {
 
   return (
     <section className="model-provider-request-logs-panel">
-      <div className="model-provider-request-logs-panel__toolbar">
-        <Flex
-          className="model-provider-request-logs-panel__filters"
-          gap={12}
-          wrap
-        >
-          <Select<RequestLogTimeRange>
-            aria-label={i18nText('settings', 'auto.request_log_time_range')}
-            value={timeRange}
-            onChange={(value) => {
-              resetPageAndSelection();
-              setTimeRange(value);
-            }}
-            style={{ width: 150 }}
-            options={[
-              {
-                label: i18nText('settings', 'auto.request_log_today'),
-                value: 'today'
-              },
-              {
-                label: i18nText('settings', 'auto.request_log_past_seven_days'),
-                value: '7'
-              },
-              {
-                label: i18nText('settings', 'auto.request_log_past_four_weeks'),
-                value: '28'
-              },
-              {
-                label: i18nText(
-                  'settings',
-                  'auto.request_log_past_three_months'
-                ),
-                value: '90'
-              },
-              {
-                label: i18nText(
-                  'settings',
-                  'auto.request_log_past_twelve_months'
-                ),
-                value: '365'
-              },
-              {
-                label: i18nText('settings', 'auto.request_log_all_time'),
-                value: 'all'
-              }
-            ]}
-          />
-          <Input
-            aria-label={i18nText('settings', 'auto.request_log_user_id')}
-            placeholder={i18nText('settings', 'auto.request_log_user_id')}
-            value={userId}
-            onChange={(event) => {
-              resetPageAndSelection();
-              setUserId(event.target.value);
-            }}
-            style={{ width: 240 }}
-          />
-          <Input
-            aria-label={i18nText('settings', 'auto.request_log_application')}
-            placeholder={i18nText('settings', 'auto.request_log_application')}
-            value={applicationName}
-            onChange={(event) => {
-              resetPageAndSelection();
-              setApplicationName(event.target.value);
-            }}
-            style={{ width: 240 }}
-          />
-          <Input
-            aria-label={i18nText('settings', 'auto.provider_instance_id')}
-            placeholder={i18nText('settings', 'auto.provider_instance_id')}
-            value={providerInstanceId}
-            onChange={(event) => {
-              resetPageAndSelection();
-              setProviderInstanceId(event.target.value);
-            }}
-            style={{ width: 240 }}
-          />
-          <Input
-            aria-label={i18nText('settings', 'auto.request_log_model')}
-            placeholder={i18nText('settings', 'auto.request_log_model')}
-            value={modelId}
-            onChange={(event) => {
-              resetPageAndSelection();
-              setModelId(event.target.value);
-            }}
-            style={{ width: 180 }}
-          />
-          <Select
-            aria-label={i18nText('settings', 'auto.status')}
-            allowClear
-            placeholder={i18nText('settings', 'auto.status')}
-            value={status}
-            onChange={(value) => {
-              resetPageAndSelection();
-              setStatus(value);
-            }}
-            style={{ width: 160 }}
-            options={[
-              {
-                label: i18nText('settings', 'auto.request_log_succeeded'),
-                value: 'succeeded'
-              },
-              {
-                label: i18nText('settings', 'auto.request_log_empty_response'),
-                value: 'empty_response'
-              },
-              {
-                label: i18nText('settings', 'auto.request_log_failed'),
-                value: 'failed'
-              },
-              {
-                label: i18nText(
-                  'settings',
-                  'auto.request_log_failed_after_first_token'
-                ),
-                value: 'failed_after_first_token'
-              }
-            ]}
-          />
-        </Flex>
-        <Flex
-          className="model-provider-request-logs-panel__actions"
-          gap={12}
-          wrap
-        >
-          <Checkbox
-            checked={zeroOutputOnly}
-            onChange={(event) => {
-              resetPageAndSelection();
-              setZeroOutputOnly(event.target.checked);
-            }}
+      <DataTableLayout
+        filters={
+          <DataTableFilterForm
+            ariaLabel={i18nText('settings', 'auto.translation_catalog_filter')}
+            collapseLabel={i18nText(
+              'settings',
+              'auto.request_log_collapse_filters'
+            )}
+            expandLabel={i18nText('settings', 'auto.expand')}
+            resetLabel={i18nText('settings', 'auto.reset')}
+            submitLabel={i18nText(
+              'settings',
+              'auto.translation_catalog_filter'
+            )}
+            expandedFields={
+              <>
+                <DataTableFilterField
+                  label={i18nText('settings', 'auto.provider')}
+                >
+                  <Input
+                    aria-label={i18nText('settings', 'auto.provider')}
+                    placeholder={i18nText('settings', 'auto.provider')}
+                    value={providerInstanceId}
+                    onChange={(event) =>
+                      setProviderInstanceId(event.target.value)
+                    }
+                  />
+                </DataTableFilterField>
+                <DataTableFilterField
+                  label={i18nText('settings', 'auto.request_log_model')}
+                >
+                  <Input
+                    aria-label={i18nText('settings', 'auto.request_log_model')}
+                    placeholder={i18nText('settings', 'auto.request_log_model')}
+                    value={modelId}
+                    onChange={(event) => setModelId(event.target.value)}
+                  />
+                </DataTableFilterField>
+                <DataTableFilterField
+                  label={i18nText('settings', 'auto.status')}
+                >
+                  <Select
+                    aria-label={i18nText('settings', 'auto.status')}
+                    allowClear
+                    placeholder={i18nText('settings', 'auto.status')}
+                    value={status}
+                    onChange={setStatus}
+                    options={[
+                      {
+                        label: i18nText(
+                          'settings',
+                          'auto.request_log_succeeded'
+                        ),
+                        value: 'succeeded'
+                      },
+                      {
+                        label: i18nText(
+                          'settings',
+                          'auto.request_log_empty_response'
+                        ),
+                        value: 'empty_response'
+                      },
+                      {
+                        label: i18nText('settings', 'auto.request_log_failed'),
+                        value: 'failed'
+                      },
+                      {
+                        label: i18nText(
+                          'settings',
+                          'auto.request_log_failed_after_first_token'
+                        ),
+                        value: 'failed_after_first_token'
+                      }
+                    ]}
+                  />
+                </DataTableFilterField>
+                <DataTableFilterField
+                  label={i18nText(
+                    'settings',
+                    'auto.request_log_zero_output_only'
+                  )}
+                >
+                  <Checkbox
+                    aria-label={i18nText(
+                      'settings',
+                      'auto.request_log_zero_output_only'
+                    )}
+                    checked={zeroOutputOnly}
+                    onChange={(event) =>
+                      setZeroOutputOnly(event.target.checked)
+                    }
+                  />
+                </DataTableFilterField>
+              </>
+            }
+            onReset={resetFilters}
+            onSubmit={applyFilters}
           >
-            {i18nText('settings', 'auto.request_log_zero_output_only')}
-          </Checkbox>
-          <Button onClick={() => requestLogsQuery.refetch()}>
-            {i18nText('settings', 'auto.refresh')}
-          </Button>
-          <Button
-            danger
-            disabled={selectedAttemptIds.length === 0}
-            loading={deletingSelected}
-            onClick={() => setDeleteConfirmOpen(true)}
-          >
-            {i18nText('settings', 'auto.request_log_delete_selected')}
-          </Button>
-          <Button
-            danger
-            disabled={clearProgress?.status === 'running'}
-            onClick={() => setClearConfirmOpen(true)}
-          >
-            {i18nText('settings', 'auto.request_log_clear')}
-          </Button>
-          <DataTableColumnSettings
-            columns={columns}
-            configuration={tableConfiguration}
-          />
-        </Flex>
-      </div>
-      <div className="model-provider-request-logs-panel__table-region">
+            <DataTableFilterField
+              label={i18nText('settings', 'auto.request_log_time_range')}
+            >
+              <Select<RequestLogTimeRange>
+                aria-label={i18nText('settings', 'auto.request_log_time_range')}
+                value={timeRange}
+                onChange={setTimeRange}
+                options={[
+                  {
+                    label: i18nText('settings', 'auto.request_log_today'),
+                    value: 'today'
+                  },
+                  {
+                    label: i18nText(
+                      'settings',
+                      'auto.request_log_past_seven_days'
+                    ),
+                    value: '7'
+                  },
+                  {
+                    label: i18nText(
+                      'settings',
+                      'auto.request_log_past_four_weeks'
+                    ),
+                    value: '28'
+                  },
+                  {
+                    label: i18nText(
+                      'settings',
+                      'auto.request_log_past_three_months'
+                    ),
+                    value: '90'
+                  },
+                  {
+                    label: i18nText(
+                      'settings',
+                      'auto.request_log_past_twelve_months'
+                    ),
+                    value: '365'
+                  },
+                  {
+                    label: i18nText('settings', 'auto.request_log_all_time'),
+                    value: 'all'
+                  }
+                ]}
+              />
+            </DataTableFilterField>
+            <DataTableFilterField
+              label={i18nText('settings', 'auto.request_log_user_id')}
+            >
+              <Input
+                aria-label={i18nText('settings', 'auto.request_log_user_id')}
+                placeholder={i18nText('settings', 'auto.request_log_user_id')}
+                value={userId}
+                onChange={(event) => setUserId(event.target.value)}
+              />
+            </DataTableFilterField>
+            <DataTableFilterField
+              label={i18nText('settings', 'auto.request_log_application')}
+            >
+              <Input
+                aria-label={i18nText(
+                  'settings',
+                  'auto.request_log_application'
+                )}
+                placeholder={i18nText(
+                  'settings',
+                  'auto.request_log_application'
+                )}
+                value={applicationName}
+                onChange={(event) => setApplicationName(event.target.value)}
+              />
+            </DataTableFilterField>
+          </DataTableFilterForm>
+        }
+      >
         <DataTable<ConsoleModelProviderRequestLog>
           className="model-provider-request-logs-table"
           columns={columns}
@@ -541,13 +599,39 @@ export function ModelProviderRequestLogsPanel() {
               </>
             )
           }}
+          toolbar={
+            <Flex justify="flex-end" gap={8} wrap>
+              <Button onClick={() => requestLogsQuery.refetch()}>
+                {i18nText('settings', 'auto.refresh')}
+              </Button>
+              <Button
+                danger
+                disabled={selectedAttemptIds.length === 0}
+                loading={deletingSelected}
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                {i18nText('settings', 'auto.request_log_delete_selected')}
+              </Button>
+              <Button
+                danger
+                disabled={clearProgress?.status === 'running'}
+                onClick={() => setClearConfirmOpen(true)}
+              >
+                {i18nText('settings', 'auto.request_log_clear')}
+              </Button>
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={tableConfiguration}
+              />
+            </Flex>
+          }
           total={requestLogsQuery.data?.total_count ?? 0}
           onPageChange={(nextPage) => {
             setSelectedAttemptIds([]);
             setPage(nextPage);
           }}
         />
-      </div>
+      </DataTableLayout>
       {clearProgress ? (
         <Alert
           action={

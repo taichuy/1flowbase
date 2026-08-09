@@ -1,7 +1,10 @@
 mod change_log;
+mod create;
 mod field_queries;
 mod model_queries;
 mod naming;
+
+pub use naming::RuntimeTableNamePolicy;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -21,9 +24,8 @@ use uuid::Uuid;
 use crate::{
     mappers::model_definition_mapper::{PgModelDefinitionMapper, StoredModelDefinitionRow},
     physical_schema_repository::{
-        add_fk_column_and_constraint, add_scalar_column, create_join_table,
-        create_runtime_model_table, drop_join_table, drop_runtime_column, drop_runtime_model_table,
-        is_platform_runtime_column, join_table_name,
+        add_fk_column_and_constraint, add_scalar_column, create_join_table, drop_join_table,
+        drop_runtime_column, drop_runtime_model_table, is_platform_runtime_column, join_table_name,
     },
     repositories::{tenant_id_for_workspace, workspace_id_for_user, PgControlPlaneStore},
 };
@@ -35,48 +37,10 @@ use self::{
         load_join_tables_for_model, load_model_field_for_update,
     },
     model_queries::{
-        insert_model_definition, insert_model_definition_after_failure, load_model_definition,
-        load_model_definition_for_update, load_model_definition_with_lock,
+        load_model_definition, load_model_definition_for_update, load_model_definition_with_lock,
     },
-    naming::{
-        build_physical_column_name, build_physical_table_name, is_registered_system_table,
-        nullable_actor_user_id, registered_system_table_name,
-    },
+    naming::{build_physical_column_name, nullable_actor_user_id},
 };
-
-async fn ensure_workspace_data_source_belongs_to_scope(
-    store: &PgControlPlaneStore,
-    input: &CreateModelDefinitionInput,
-) -> Result<()> {
-    if !matches!(input.scope_kind, domain::DataModelScopeKind::Workspace) {
-        return Ok(());
-    }
-
-    let Some(data_source_instance_id) = input.data_source_instance_id else {
-        return Ok(());
-    };
-
-    let exists = sqlx::query_scalar::<_, bool>(
-        r#"
-        select exists (
-            select 1
-            from data_source_instances
-            where id = $1
-              and workspace_id = $2
-        )
-        "#,
-    )
-    .bind(data_source_instance_id)
-    .bind(input.scope_id)
-    .fetch_one(store.pool())
-    .await?;
-
-    if exists {
-        Ok(())
-    } else {
-        Err(ControlPlaneError::NotFound("data_source_instance").into())
-    }
-}
 
 fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecord> {
     [
@@ -145,6 +109,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -179,6 +144,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                     external_capability_snapshot: row.get("external_capability_snapshot"),
                     code: row.get("code"),
                     title: row.get("title"),
+                    description: row.get("description"),
                     physical_table_name: row.get("physical_table_name"),
                     acl_namespace: row.get("acl_namespace"),
                     audit_namespace: row.get("audit_namespace"),
@@ -263,116 +229,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         &self,
         input: &CreateModelDefinitionInput,
     ) -> Result<domain::ModelDefinitionRecord> {
-        ensure_workspace_data_source_belongs_to_scope(self, input).await?;
-
-        let mut model = domain::ModelDefinitionRecord {
-            id: Uuid::now_v7(),
-            scope_kind: input.scope_kind,
-            scope_id: input.scope_id,
-            data_source_instance_id: input.data_source_instance_id,
-            source_kind: input.source_kind,
-            external_resource_key: input.external_resource_key.clone(),
-            external_table_id: input.external_table_id.clone(),
-            external_capability_snapshot: input.external_capability_snapshot.clone(),
-            code: input.code.clone(),
-            title: input.title.clone(),
-            physical_table_name: registered_system_table_name(
-                input.scope_kind,
-                input.source_kind,
-                &input.protection,
-                &input.code,
-            )
-            .map(str::to_string)
-            .unwrap_or_else(|| build_physical_table_name(input.scope_kind, &input.code)),
-            acl_namespace: format!("state_model.{}", input.code),
-            audit_namespace: format!("audit.state_model.{}", input.code),
-            fields: vec![],
-            availability_status: domain::MetadataAvailabilityStatus::Available,
-            status: input.status,
-            protection: input.protection.clone(),
-        };
-        if model.source_kind == domain::DataModelSourceKind::MainSource
-            && !is_registered_system_table(&model)
-        {
-            model.fields = platform_runtime_field_records(model.id);
-        }
-        let before_snapshot = serde_json::json!({});
-        let after_snapshot = serde_json::to_value(&model)?;
-        let actor_user_id = nullable_actor_user_id(input.actor_user_id);
-        let mut tx = self.pool().begin().await?;
-
-        let transactional_result = async {
-            insert_model_definition(
-                &mut tx,
-                &model,
-                actor_user_id,
-                domain::MetadataAvailabilityStatus::Available,
-            )
-            .await?;
-            if model.source_kind == domain::DataModelSourceKind::MainSource {
-                if !is_registered_system_table(&model) {
-                    create_runtime_model_table(&mut tx, &model).await?;
-                }
-                for field in &model.fields {
-                    insert_model_field(
-                        &mut tx,
-                        field,
-                        actor_user_id,
-                        domain::MetadataAvailabilityStatus::Available,
-                    )
-                    .await?;
-                }
-            }
-            append_change_log_tx(
-                &mut tx,
-                &ChangeLogEntry {
-                    data_model_id: Some(model.id),
-                    action: "model.created",
-                    target_type: "model_definition",
-                    target_id: Some(model.id),
-                    actor_user_id,
-                    before_snapshot: before_snapshot.clone(),
-                    after_snapshot: after_snapshot.clone(),
-                    execution_status: "success",
-                    error_message: None,
-                },
-            )
-            .await
-        }
-        .await;
-
-        match transactional_result {
-            Ok(()) => {
-                tx.commit().await?;
-                Ok(model)
-            }
-            Err(error) => {
-                tx.rollback().await?;
-                insert_model_definition_after_failure(
-                    self.pool(),
-                    &model,
-                    actor_user_id,
-                    domain::MetadataAvailabilityStatus::Broken,
-                )
-                .await?;
-                append_change_log(
-                    self.pool(),
-                    &ChangeLogEntry {
-                        data_model_id: None,
-                        action: "model.created",
-                        target_type: "model_definition",
-                        target_id: Some(model.id),
-                        actor_user_id,
-                        before_snapshot,
-                        after_snapshot,
-                        execution_status: "failed",
-                        error_message: Some(error.to_string()),
-                    },
-                )
-                .await?;
-                Err(error)
-            }
-        }
+        create::create_model_definition(self, input).await
     }
 
     async fn update_model_definition(
@@ -383,8 +240,9 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
             r#"
             update model_definitions
             set title = $2,
-                external_table_id = $3,
-                updated_by = $4,
+                description = $3,
+                external_table_id = $4,
+                updated_by = $5,
                 updated_at = now()
             where id = $1
             returning
@@ -398,6 +256,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -410,6 +269,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
         )
         .bind(input.model_id)
         .bind(&input.title)
+        .bind(&input.description)
         .bind(&input.external_table_id)
         .bind(nullable_actor_user_id(input.actor_user_id))
         .fetch_optional(self.pool())
@@ -429,6 +289,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot: row.get("external_capability_snapshot"),
                 code: row.get("code"),
                 title: row.get("title"),
+                description: row.get("description"),
                 physical_table_name: row.get("physical_table_name"),
                 acl_namespace: row.get("acl_namespace"),
                 audit_namespace: row.get("audit_namespace"),
@@ -473,6 +334,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -508,6 +370,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot: row.get("external_capability_snapshot"),
                 code: row.get("code"),
                 title: row.get("title"),
+                description: row.get("description"),
                 physical_table_name: row.get("physical_table_name"),
                 acl_namespace: row.get("acl_namespace"),
                 audit_namespace: row.get("audit_namespace"),
@@ -551,6 +414,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot,
                 code,
                 title,
+                description,
                 physical_table_name,
                 acl_namespace,
                 audit_namespace,
@@ -582,6 +446,7 @@ impl ModelDefinitionRepository for PgControlPlaneStore {
                 external_capability_snapshot: row.get("external_capability_snapshot"),
                 code: row.get("code"),
                 title: row.get("title"),
+                description: row.get("description"),
                 physical_table_name: row.get("physical_table_name"),
                 acl_namespace: row.get("acl_namespace"),
                 audit_namespace: row.get("audit_namespace"),

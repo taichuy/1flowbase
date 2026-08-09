@@ -33,6 +33,7 @@ pub struct ApiConfig {
     pub env: ApiEnvironment,
     pub database_url: String,
     pub database_pool_max_connections: u32,
+    pub runtime_table_name_policy: storage_durable::RuntimeTableNamePolicy,
     pub business_file_local_root: String,
     pub plugin_runner_internal_base_url: String,
     pub cookie_name: String,
@@ -132,6 +133,20 @@ impl ApiConfig {
                 .ok_or_else(|| anyhow!("missing env {key}"))
         };
         let env = ApiEnvironment::parse(map.get("API_ENV").map(String::as_str))?;
+        let runtime_table_auto_prefix_enabled = parse_bool_flag(
+            "API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED",
+            map.get("API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED"),
+            false,
+        )?;
+        let runtime_table_prefix_regex = map
+            .get("API_RUNTIME_TABLE_PREFIX_REGEX")
+            .map(String::as_str)
+            .unwrap_or("rtm_workspace_[a-z0-9]{8}");
+        let runtime_table_name_policy = storage_durable::RuntimeTableNamePolicy::from_config(
+            runtime_table_auto_prefix_enabled,
+            runtime_table_prefix_regex,
+        )
+        .map_err(|error| anyhow!("invalid env API_RUNTIME_TABLE_PREFIX_REGEX: {error}"))?;
         let cors_allowed_origins = parse_cors_allowed_origins(map.get("API_ALLOWED_ORIGINS"))?;
         let provider_install_root = map
             .get("API_PROVIDER_INSTALL_ROOT")
@@ -276,6 +291,7 @@ impl ApiConfig {
                 map.get("API_DATABASE_POOL_MAX_CONNECTIONS"),
                 5,
             )?,
+            runtime_table_name_policy,
             business_file_local_root: default_business_file_local_root(),
             plugin_runner_internal_base_url: map
                 .get("API_PLUGIN_RUNNER_INTERNAL_BASE_URL")

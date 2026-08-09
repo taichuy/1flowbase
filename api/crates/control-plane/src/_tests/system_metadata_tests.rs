@@ -341,6 +341,7 @@ async fn bootstrap_repairs_existing_partial_system_metadata_models() {
             protection: DataModelProtection::default(),
             code: "users".into(),
             title: "用户".into(),
+            description: None,
         })
         .await
         .unwrap();

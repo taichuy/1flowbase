@@ -13,6 +13,7 @@ export type SettingsSectionKey =
   | 'files'
   | 'data-models'
   | 'mcp-management'
+  | 'ui-management'
   | 'model-providers'
   | 'members'
   | 'roles';
@@ -63,6 +64,7 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'files',
   'data-models',
   'mcp-management',
+  'ui-management',
   'model-providers',
   'members',
   'roles'
@@ -181,6 +183,11 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'mcp-management',
     label_key: 'auto.mcp_management',
     to: '/settings/mcp-management'
+  },
+  {
+    key: 'ui-management',
+    label_key: 'auto.ui_management',
+    to: '/settings/ui-management/code-templates'
   },
   {
     key: 'members',

@@ -241,6 +241,10 @@ impl MemoryRoleRepository {
     pub async fn set_actor_console_policies(&self, policies: Vec<domain::RoleConsolePolicy>) {
         *self.actor_console_policies.write().await = policies;
     }
+
+    pub async fn seed_role(&self, role: RoleTemplate) {
+        self.roles.write().await.push(role);
+    }
 }
 
 #[async_trait]

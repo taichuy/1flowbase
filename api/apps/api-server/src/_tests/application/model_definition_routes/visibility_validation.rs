@@ -171,10 +171,10 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
         workspace_payload["data"]["scope_id"],
         json!(current_workspace_id)
     );
-    assert!(workspace_payload["data"]["physical_table_name"]
-        .as_str()
-        .unwrap()
-        .starts_with("rtm_workspace_"));
+    assert_eq!(
+        workspace_payload["data"]["physical_table_name"],
+        json!("workspace_orders_scope_contract")
+    );
 
     let system_response = app
         .clone()

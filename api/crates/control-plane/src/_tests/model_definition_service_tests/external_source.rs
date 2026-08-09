@@ -80,6 +80,7 @@ async fn main_source_default_status_stays_published() {
             external_table_id: None,
             code: "main_source_ready_orders".into(),
             title: "Main Source Ready Orders".into(),
+            description: None,
             status: None,
         })
         .await
@@ -103,6 +104,7 @@ async fn create_model_persists_explicit_draft_status_in_initial_create_path() {
             external_table_id: None,
             code: "explicit_draft_orders".into(),
             title: "Explicit Draft Orders".into(),
+            description: None,
             status: Some(DataModelStatus::Draft),
         })
         .await
@@ -131,6 +133,7 @@ async fn create_model_inherits_data_source_defaults_when_instance_is_selected() 
             external_table_id: None,
             code: "external_contacts".into(),
             title: "External Contacts".into(),
+            description: None,
             status: None,
         })
         .await
@@ -161,6 +164,7 @@ async fn external_create_requires_external_resource_key_and_main_source_rejects_
             external_table_id: None,
             code: "external_missing_key".into(),
             title: "External Missing Key".into(),
+            description: None,
             status: None,
         })
         .await
@@ -178,6 +182,7 @@ async fn external_create_requires_external_resource_key_and_main_source_rejects_
             external_table_id: None,
             code: "main_source_external_key".into(),
             title: "Main Source External Key".into(),
+            description: None,
             status: None,
         })
         .await
@@ -204,6 +209,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
             external_table_id: None,
             code: "external_contacts_fields".into(),
             title: "External Contacts Fields".into(),
+            description: None,
             status: None,
         })
         .await
@@ -242,6 +248,7 @@ async fn external_add_field_requires_external_field_key_and_main_source_rejects_
             external_table_id: None,
             code: "main_source_fields".into(),
             title: "Main Source Fields".into(),
+            description: None,
             status: None,
         })
         .await
@@ -297,6 +304,7 @@ async fn create_model_rejects_data_source_defaults_outside_actor_workspace() {
             external_table_id: None,
             code: "external_contacts".into(),
             title: "External Contacts".into(),
+            description: None,
             status: None,
         })
         .await

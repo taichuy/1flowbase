@@ -114,8 +114,9 @@ vi.mock('../../../applications/api/applications', async (importOriginal) => ({
 vi.mock('../../../applications/api/public-api', () => applicationsPublicApi);
 vi.mock('../../api/members', () => membersApi);
 vi.mock('../../../agent-flow/api/orchestration', () => orchestrationApi);
-vi.mock('../../../applications/lib/template-download', () =>
-  applicationArchiveDownload
+vi.mock(
+  '../../../applications/lib/template-download',
+  () => applicationArchiveDownload
 );
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -530,9 +531,7 @@ describe('ApplicationManagementPanel', () => {
     expect(
       screen.getByRole('searchbox', { name: '搜索应用名称或 ID' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('combobox', { name: '排序' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '排序' })).toBeInTheDocument();
     expect(
       screen.queryByRole('combobox', { name: '发布状态' })
     ).not.toBeInTheDocument();
@@ -544,7 +543,7 @@ describe('ApplicationManagementPanel', () => {
     ).not.toBeInTheDocument();
 
     const filterActions = document.querySelector(
-      '.application-management-panel__filter-actions'
+      '.data-table-filter-form__actions'
     ) as HTMLElement;
     expect(
       within(filterActions)
@@ -561,21 +560,18 @@ describe('ApplicationManagementPanel', () => {
     expect(
       screen.getByRole('combobox', { name: '创建者' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('combobox', { name: '标签' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /收\s*起/ })
-    ).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('combobox', { name: '标签' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /收\s*起/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /收\s*起/ }));
 
     expect(
       screen.queryByRole('combobox', { name: '发布状态' })
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /展\s*开/ })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /展\s*开/ })).toBeInTheDocument();
   });
 
   test('shows an explicit creator loading failure instead of an empty result', async () => {
@@ -740,10 +736,7 @@ describe('ApplicationManagementPanel', () => {
       within(actionsCell as HTMLElement).getByRole('link', {
         name: /查\s*看/
       })
-    ).toHaveAttribute(
-      'href',
-      '/applications/app-workflow/orchestration'
-    );
+    ).toHaveAttribute('href', '/applications/app-workflow/orchestration');
   });
 
   test('keeps blank row clicks inert while edit remains an explicit action', async () => {

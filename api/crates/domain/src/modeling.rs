@@ -389,6 +389,7 @@ pub struct ModelDefinitionRecord {
     pub external_capability_snapshot: Option<Value>,
     pub code: String,
     pub title: String,
+    pub description: Option<String>,
     pub physical_table_name: String,
     pub acl_namespace: String,
     pub audit_namespace: String,

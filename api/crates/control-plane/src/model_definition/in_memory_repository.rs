@@ -117,6 +117,7 @@ impl InMemoryModelDefinitionRepository {
                     format!("model_{}", model_id.simple())
                 },
                 title: "Runtime Model".to_string(),
+                description: None,
                 physical_table_name: format!("rtm_workspace_00000000_{}", model_id.simple()),
                 acl_namespace: "state_model.runtime_model".to_string(),
                 audit_namespace: "audit.state_model.runtime_model".to_string(),
@@ -212,6 +213,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             external_capability_snapshot: input.external_capability_snapshot.clone(),
             code: input.code.clone(),
             title: input.title.clone(),
+            description: input.description.clone(),
             physical_table_name: registered_system_table_name(
                 input.scope_kind,
                 input.source_kind,
@@ -243,6 +245,7 @@ impl ModelDefinitionRepository for InMemoryModelDefinitionRepository {
             .get_mut(&input.model_id)
             .ok_or(ControlPlaneError::NotFound("model_definition"))?;
         model.title = input.title.clone();
+        model.description = input.description.clone();
         model.external_table_id = input.external_table_id.clone();
         Ok(model.clone())
     }

@@ -20,7 +20,6 @@ use control_plane::resource_action::{
     ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
     ResourceScopeKind,
 };
-use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -154,16 +153,28 @@ pub struct CreateFrontstagePageBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateFrontstagePageMetadataBody {
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub title: Option<Option<String>>,
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub icon: Option<Option<String>>,
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub placement: Option<FrontstageNavigationPlacementResponse>,
     pub content_presentation: Option<FrontstagePageContentPresentationResponse>,
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub slug: Option<Option<String>>,
 }
 
@@ -182,7 +193,10 @@ pub struct CreateFrontstagePageTabBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateFrontstagePageTabBody {
-    #[serde(default, deserialize_with = "deserialize_present_optional")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
     pub title: Option<Option<String>>,
     pub rank: Option<String>,
 }
@@ -202,6 +216,20 @@ pub struct CreateFrontstageBlockBody {
     pub payload: Value,
     pub code_ref: String,
     pub code: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageUiTemplateResponse {
+    pub template_id: Option<String>,
+    pub provider_code: String,
+    pub contribution_code: String,
+    pub name: String,
+    pub source: String,
+    #[schema(value_type = String)]
+    pub language: domain::UiCodeTemplateLanguage,
+    pub version: String,
+    pub is_official: bool,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -226,14 +254,6 @@ pub(crate) struct FrontstageCapabilityInput {
     pub(crate) page_id: Uuid,
     pub(crate) tab_id: Uuid,
     pub(crate) params: Value,
-}
-
-fn deserialize_present_optional<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 fn default_navigation_placement() -> FrontstageNavigationPlacementResponse {
@@ -320,6 +340,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 component_capabilities::list_frontstage_component_capabilities,
                 Authenticated,
             ),
+        )
+        .route(
+            "/frontstage/:workspace_id/ui-templates",
+            console_get(list_frontstage_ui_templates, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/component-capabilities/:component_id",
@@ -967,6 +991,51 @@ pub async fn create_frontstage_block(
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_page_detail_response(detail))),
     ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/ui-templates",
+    params(("workspace_id" = String, Path)),
+    responses((status = 200, body = [FrontstageUiTemplateResponse]), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_frontstage_ui_templates(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(workspace_id): Path<String>,
+) -> Result<Json<ApiSuccess<Vec<FrontstageUiTemplateResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    if context.actor.current_workspace_id != workspace_id
+        || !context.actor.has_permission("frontstage.page.design")
+    {
+        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+            "frontstage.page.design",
+        )
+        .into());
+    }
+    let templates = control_plane::ui_management::UiManagementService::new(
+        state.store.clone(),
+        state.api_node_id.clone(),
+    )
+    .list_published_templates_for_workspace(workspace_id)
+    .await?;
+    Ok(Json(ApiSuccess::new(
+        templates
+            .into_iter()
+            .map(|value| FrontstageUiTemplateResponse {
+                template_id: value.template_id.map(|id| id.to_string()),
+                provider_code: value.provider_code,
+                contribution_code: value.contribution_code,
+                name: value.name,
+                source: value.source,
+                language: value.language,
+                version: value.version,
+                is_official: value.is_official,
+                is_default: value.is_default,
+            })
+            .collect(),
+    )))
 }
 
 #[utoipa::path(

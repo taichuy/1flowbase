@@ -103,6 +103,7 @@ fn model_definition_mapper_preserves_scope_source_status_and_protection() {
         external_capability_snapshot: Some(json!({ "driver": "http" })),
         code: "contacts".into(),
         title: "Contacts".into(),
+        description: Some("CRM contacts".into()),
         physical_table_name: "dm_contacts".into(),
         acl_namespace: "data_model.contacts".into(),
         audit_namespace: "data_model.contacts".into(),
@@ -135,6 +136,7 @@ fn model_definition_mapper_preserves_scope_source_status_and_protection() {
         Some(json!({ "driver": "http" }))
     );
     assert_eq!(record.code, "contacts");
+    assert_eq!(record.description.as_deref(), Some("CRM contacts"));
     assert_eq!(record.physical_table_name, "dm_contacts");
     assert!(matches!(
         record.availability_status,

@@ -1,5 +1,8 @@
 use anyhow::Result;
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -150,10 +153,54 @@ where
             .repository
             .list_workspace_frontend_blocks(&self.node_id, workspace_id)
             .await?;
+        let overrides = self
+            .repository
+            .list_ui_component_overrides_for_catalog()
+            .await?
+            .into_iter()
+            .map(|value| {
+                (
+                    (
+                        value.locator.provider_code.clone(),
+                        value.locator.contribution_code.clone(),
+                        value.locator.module_source.clone(),
+                        value.locator.export_name.clone(),
+                    ),
+                    value,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         let mut entries = Vec::new();
         for block in blocks {
             for module in block.code_modules {
-                for contract in module.components {
+                for export_name in &module.exports {
+                    let override_record = overrides.get(&(
+                        block.provider_code.clone(),
+                        block.contribution_code.clone(),
+                        module.source.clone(),
+                        export_name.clone(),
+                    ));
+                    let contract = match override_record.map(|value| value.state) {
+                        Some(domain::UiComponentOverrideState::Hidden) => continue,
+                        Some(domain::UiComponentOverrideState::Published) => {
+                            let Some(revision) =
+                                override_record.and_then(|value| value.published_revision.as_ref())
+                            else {
+                                continue;
+                            };
+                            revision.contract.clone()
+                        }
+                        Some(domain::UiComponentOverrideState::Inherit) | None => {
+                            let Some(contract) = module
+                                .components
+                                .iter()
+                                .find(|contract| &contract.export_name == export_name)
+                            else {
+                                continue;
+                            };
+                            contract.clone()
+                        }
+                    };
                     entries.push(FrontendComponentCapability {
                         component_id: format!(
                             "{}:{}:{}",
@@ -312,11 +359,29 @@ where
             }
         }
 
-        Ok(FrontendBlockCatalogView {
-            entries: self
-                .repository
-                .list_workspace_frontend_blocks(&self.node_id, actor.current_workspace_id)
-                .await?,
-        })
+        let mut entries = self
+            .repository
+            .list_workspace_frontend_blocks(&self.node_id, actor.current_workspace_id)
+            .await?;
+        let managed_defaults = self
+            .repository
+            .list_active_ui_code_templates_for_catalog()
+            .await?;
+        for entry in &mut entries {
+            let Some(template) = managed_defaults.iter().find(|template| {
+                template.is_default
+                    && template.provider_code == entry.provider_code
+                    && template.contribution_code == entry.contribution_code
+            }) else {
+                continue;
+            };
+            let Some(revision) = template.published_revision.as_ref() else {
+                continue;
+            };
+            entry.code_template = Some(revision.source.clone());
+            entry.code_template_language = Some(revision.language.as_str().to_string());
+            entry.code_template_version = Some(format!("managed-r{}", revision.revision));
+        }
+        Ok(FrontendBlockCatalogView { entries })
     }
 }

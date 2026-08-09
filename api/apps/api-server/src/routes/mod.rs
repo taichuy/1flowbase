@@ -30,7 +30,7 @@ pub use plugins_and_models_group::{
 pub use settings_group::{
     application_management, auth_center, data_models, docs, file_storages, file_tables,
     host_infrastructure, i18n_catalog, mcp_management, members, navigation, permissions, roles,
-    system, workspace, workspaces,
+    system, ui_management, workspace, workspaces,
 };
 
 pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
