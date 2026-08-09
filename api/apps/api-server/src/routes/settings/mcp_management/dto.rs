@@ -229,7 +229,7 @@ pub struct CopyMcpInstanceBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertMcpGroupBody {
     pub path: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     pub description_short: Option<String>,
     pub enabled: bool,
     pub sort_order: i32,

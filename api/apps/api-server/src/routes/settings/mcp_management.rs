@@ -478,7 +478,7 @@ pub async fn upsert_mcp_group(
                 actor_user_id: context.user.id,
                 instance_id,
                 path: body.path,
-                display_name: body.display_name,
+                display_name: body.display_name.unwrap_or_default(),
                 description_short: body.description_short,
                 enabled: body.enabled,
                 sort_order: body.sort_order,

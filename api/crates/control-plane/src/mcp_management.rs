@@ -815,8 +815,8 @@ where
         actor: &domain::ActorContext,
         command: UpsertMcpGroupCommand,
     ) -> Result<domain::McpGroupRecord> {
-        validate_path(&command.path)?;
-        validate_group_display_name(&command.display_name)?;
+        validate_group_path(&command.path)?;
+        let display_name = normalize_group_display_name(&command.path, &command.display_name)?;
         let instance = self
             .repository
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
@@ -828,7 +828,7 @@ where
                 actor_user_id: command.actor_user_id,
                 instance_record_id: instance.id,
                 path: command.path,
-                display_name: command.display_name,
+                display_name,
                 description_short: command.description_short,
                 enabled: command.enabled,
                 sort_order: command.sort_order,
@@ -1498,7 +1498,7 @@ where
 mod query;
 use query::{
     bindable_interface, compile_list_path_regex, generate_short_id, list_item_matches_keywords,
-    parent_group_path, path_matches_list_query, validate_group_display_name,
+    normalize_group_display_name, parent_group_path, path_matches_list_query, validate_group_path,
     validate_list_return_fields,
 };
 pub(crate) use query::{

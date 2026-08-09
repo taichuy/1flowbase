@@ -851,8 +851,8 @@ describe('McpManagementPanel', () => {
     const tree = within(dialog).getByRole('tree');
     expandTreeRootIfCollapsed(tree);
 
-    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'ops' }
+    fireEvent.change(within(dialog).getByLabelText('路径'), {
+      target: { value: '/ops' }
     });
 
     expect(within(tree).getAllByText('ops')).toHaveLength(1);
@@ -960,23 +960,24 @@ describe('McpManagementPanel', () => {
       ).toHaveTextContent('未保存');
     });
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'customer_ops' }
+      target: { value: '客户运营' }
+    });
+    fireEvent.change(within(dialog).getByLabelText('路径'), {
+      target: { value: '/customer_ops' }
     });
     fireEvent.change(within(dialog).getByLabelText('简短描述'), {
       target: { value: 'Tools for customer operations' }
     });
 
     await waitFor(() => {
-      expect(within(dialog).getByRole('tree')).toHaveTextContent(
-        'customer_ops'
-      );
+      expect(within(dialog).getByRole('tree')).toHaveTextContent('客户运营');
     });
     const currentTree = within(dialog).getByRole('tree');
     expect(currentTree).toHaveTextContent('Tools for customer operations');
-    expect(currentTree).not.toHaveTextContent('customer_ops /customer_ops');
+    expect(currentTree).not.toHaveTextContent('客户运营 /customer_ops');
   });
 
-  test('rejects group display names outside the identifier character set', async () => {
+  test('accepts Unicode display names but rejects unsafe group paths', async () => {
     renderPanelWithMountedTool({ includeBinding: false });
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
@@ -991,10 +992,15 @@ describe('McpManagementPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('显示名称'), {
       target: { value: '后台设置' }
     });
+    fireEvent.change(within(dialog).getByLabelText('路径'), {
+      target: { value: '/后台设置' }
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: /保存/ }));
 
     expect(
-      await within(dialog).findByText('仅允许英文字母、数字、下划线和连字符')
+      await within(dialog).findByText(
+        '路径必须以 / 开头，且每个路径段只能包含英文字母、数字、下划线和连字符'
+      )
     ).toBeInTheDocument();
     expect(mcpManagementApi.upsertSettingsMcpGroup).not.toHaveBeenCalled();
   });

@@ -14,16 +14,34 @@ pub(crate) fn validate_path(value: &str) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_group_display_name(value: &str) -> Result<()> {
-    if value.is_empty()
-        || value.len() > 255
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+pub(crate) fn validate_group_path(value: &str) -> Result<()> {
+    if value.len() > 255
+        || value == "/"
+        || !value.starts_with('/')
+        || value.ends_with('/')
+        || value.split('/').skip(1).any(|segment| {
+            segment.is_empty()
+                || !segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        })
     {
-        return Err(ControlPlaneError::InvalidInput("display_name").into());
+        return Err(ControlPlaneError::InvalidInput("path").into());
     }
     Ok(())
+}
+
+pub(crate) fn normalize_group_display_name(path: &str, value: &str) -> Result<String> {
+    let display_name = value.trim();
+    let display_name = if display_name.is_empty() {
+        path.rsplit('/').next().unwrap_or_default()
+    } else {
+        display_name
+    };
+    if display_name.is_empty() || display_name.chars().count() > 255 {
+        return Err(ControlPlaneError::InvalidInput("display_name").into());
+    }
+    Ok(display_name.to_owned())
 }
 
 pub(crate) fn validate_positive(value: i32, field: &'static str) -> Result<()> {
