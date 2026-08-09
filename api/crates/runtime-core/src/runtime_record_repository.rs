@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use domain::ResourceFilterExpr;
 use serde_json::Value;
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::model_metadata::ModelMetadata;
@@ -27,6 +28,130 @@ pub struct RuntimeListQuery {
     pub expand_relations: Vec<String>,
     pub page: i64,
     pub page_size: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeCreatePosition {
+    pub parent_id: Option<Uuid>,
+    pub before_id: Option<Uuid>,
+    pub after_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeMovePosition {
+    pub new_parent_id: Option<Uuid>,
+    pub before_id: Option<Uuid>,
+    pub after_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderedTreeCreateInput {
+    pub actor_user_id: Uuid,
+    pub scope_id: Uuid,
+    pub payload: Value,
+    pub position: OrderedTreeCreatePosition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeCreateResult {
+    pub node_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeMoveInput {
+    pub actor_user_id: Uuid,
+    pub scope_id: Uuid,
+    pub node_id: Uuid,
+    pub position: OrderedTreeMovePosition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeLeafDeleteInput {
+    pub scope_id: Uuid,
+    pub node_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSubtreeDeleteInput {
+    pub scope_id: Uuid,
+    pub node_id: Uuid,
+    pub expected_affected_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSubtreeDeleteResult {
+    pub deleted_count: u64,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum OrderedTreeCommandError {
+    #[error("ordered-tree command requires core/ordered_tree/v1 metadata")]
+    WrongTemplate,
+    #[error("ordered-tree position must specify at most one anchor")]
+    ConflictingAnchors,
+    #[error("ordered-tree node not found")]
+    NodeNotFound,
+    #[error("ordered-tree parent not found in scope")]
+    ParentNotFound,
+    #[error("ordered-tree anchor not found in scope")]
+    AnchorNotFound,
+    #[error("ordered-tree anchor does not belong to the target sibling group")]
+    AnchorSiblingGroupConflict,
+    #[error("ordered-tree move would create a cycle")]
+    Cycle,
+    #[error("tree_node_has_children")]
+    TreeNodeHasChildren,
+    #[error("ordered-tree subtree changed: expected {expected}, found {actual}")]
+    ExpectedAffectedCountMismatch { expected: u64, actual: u64 },
+    #[error("ordered-tree sibling position conflicts with a concurrent write")]
+    PositionConflict,
+    #[error("ordered-tree payload field is not writable: {0}")]
+    FieldNotWritable(String),
+}
+
+impl OrderedTreeCommandError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::TreeNodeHasChildren => "tree_node_has_children",
+            Self::ExpectedAffectedCountMismatch { .. } => "tree_subtree_changed",
+            Self::PositionConflict => "tree_position_conflict",
+            Self::Cycle => "tree_cycle",
+            Self::NodeNotFound => "tree_node_not_found",
+            Self::ParentNotFound => "tree_parent_not_found",
+            Self::AnchorNotFound => "tree_anchor_not_found",
+            Self::AnchorSiblingGroupConflict => "tree_anchor_sibling_group_conflict",
+            Self::ConflictingAnchors => "tree_conflicting_anchors",
+            Self::WrongTemplate => "tree_wrong_template",
+            Self::FieldNotWritable(_) => "tree_field_not_writable",
+        }
+    }
+}
+
+#[async_trait]
+pub trait OrderedTreeStructureRepository: Send + Sync {
+    async fn create_ordered_tree_node(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeCreateInput,
+    ) -> Result<OrderedTreeCreateResult>;
+
+    async fn move_ordered_tree_node(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeMoveInput,
+    ) -> Result<()>;
+
+    async fn delete_ordered_tree_leaf(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeLeafDeleteInput,
+    ) -> Result<bool>;
+
+    async fn delete_ordered_tree_subtree(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeSubtreeDeleteInput,
+    ) -> Result<OrderedTreeSubtreeDeleteResult>;
 }
 
 #[async_trait]

@@ -432,6 +432,20 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         payload: Value,
     ) -> Result<Value> {
         let payload = payload_object(payload)?;
+        if metadata.template_provider == "core"
+            && metadata.template_code == "ordered_tree"
+            && metadata.template_version == "v1"
+        {
+            if let Some(field_code) = payload
+                .keys()
+                .find(|field_code| matches!(field_code.as_str(), "parent_id" | "sibling_rank"))
+            {
+                return Err(runtime_core::runtime_record_repository::OrderedTreeCommandError::FieldNotWritable(
+                    field_code.clone(),
+                )
+                .into());
+            }
+        }
         if payload.is_empty() {
             return self
                 .get_record(
@@ -932,7 +946,7 @@ fn metadata_scope_filter(metadata: &ModelMetadata, scope_id: Option<Uuid>) -> Op
         .flatten()
 }
 
-fn push_field_value(
+pub(crate) fn push_field_value(
     builder: &mut QueryBuilder<Postgres>,
     field: &domain::ModelFieldRecord,
     value: &Value,
@@ -1038,7 +1052,7 @@ fn sort_direction_sql(direction: &str) -> Result<&'static str> {
     }
 }
 
-fn quote_identifier(value: &str) -> Result<String> {
+pub(crate) fn quote_identifier(value: &str) -> Result<String> {
     if !value
         .chars()
         .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
