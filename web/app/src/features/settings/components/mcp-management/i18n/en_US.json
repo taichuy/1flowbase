@@ -205,7 +205,6 @@
     "proxy_local_arguments": "Local arguments",
     "proxy_remote_arguments": "Remote arguments",
     "proxy_upstream_result": "Raw upstream result",
-    "proxy_mapped_result": "Local mapped result",
-    "llm_tool_registration": "LLM tools"
+    "proxy_mapped_result": "Local mapped result"
   }
 }
