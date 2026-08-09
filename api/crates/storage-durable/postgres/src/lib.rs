@@ -23,6 +23,7 @@ pub mod model_provider_repository;
 pub mod native_sql;
 pub mod node_contribution_repository;
 pub mod orchestration_runtime_repository;
+pub mod ordered_tree;
 pub mod physical_schema_repository;
 mod plugin_installation_commit_repository;
 pub mod plugin_repository;

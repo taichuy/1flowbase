@@ -111,7 +111,7 @@ pub(super) async fn create_model_definition(
     if model.source_kind == domain::DataModelSourceKind::MainSource
         && !is_registered_system_table(&model)
     {
-        model.fields = platform_runtime_field_records(model.id);
+        model.fields = platform_runtime_field_records(&model);
     }
     let before_snapshot = serde_json::json!({});
     let actor_user_id = nullable_actor_user_id(input.actor_user_id);

@@ -42,8 +42,10 @@ use self::{
     naming::{build_physical_column_name, nullable_actor_user_id},
 };
 
-fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecord> {
-    [
+fn platform_runtime_field_records(
+    model: &domain::ModelDefinitionRecord,
+) -> Vec<domain::ModelFieldRecord> {
+    let mut fields = [
         ("id", domain::ModelFieldKind::String),
         ("scope_id", domain::ModelFieldKind::ManyToOne),
         ("created_by", domain::ModelFieldKind::String),
@@ -56,7 +58,7 @@ fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecor
     .map(
         |(sort_order, (code, field_kind))| domain::ModelFieldRecord {
             id: Uuid::now_v7(),
-            data_model_id: model_id,
+            data_model_id: model.id,
             code: code.to_string(),
             title: code.to_string(),
             description: None,
@@ -77,7 +79,9 @@ fn platform_runtime_field_records(model_id: Uuid) -> Vec<domain::ModelFieldRecor
             availability_status: domain::MetadataAvailabilityStatus::Available,
         },
     )
-    .collect()
+    .collect::<Vec<_>>();
+    fields.extend(crate::ordered_tree::schema::system_field_records(model));
+    fields
 }
 
 #[async_trait]

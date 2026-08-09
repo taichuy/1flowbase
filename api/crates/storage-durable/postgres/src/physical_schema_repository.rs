@@ -43,6 +43,10 @@ pub async fn create_runtime_model_table(
     tx: &mut Transaction<'_, Postgres>,
     model: &domain::ModelDefinitionRecord,
 ) -> Result<()> {
+    if crate::ordered_tree::schema::matches(model) {
+        return crate::ordered_tree::schema::create_table(tx, model).await;
+    }
+
     let table_name = quote_identifier(&model.physical_table_name)?;
     let statement = format!(
         r#"
