@@ -1,5 +1,4 @@
 import {
-  act,
   fireEvent,
   render,
   screen,
@@ -280,7 +279,7 @@ describe('DebugAssistantMessage', () => {
       </AppProviders>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /LLM/ }));
+    fireEvent.click(await screen.findByText('LLM'));
     fireEvent.click(screen.getByRole('button', { name: '加载完整值' }));
 
     expect(onLoadArtifact).toHaveBeenCalledWith('artifact-1');
@@ -316,7 +315,7 @@ describe('DebugAssistantMessage', () => {
     expect(onOpenResumeTimeline).toHaveBeenCalledWith(message);
   });
 
-  test('renders raw debug payload as data processing for trace items', () => {
+  test('renders raw debug payload as data processing for trace items', async () => {
     const message: AgentFlowDebugMessage = {
       id: 'assistant-process',
       role: 'assistant',
@@ -364,7 +363,7 @@ describe('DebugAssistantMessage', () => {
 
     render(<DebugAssistantMessage message={message} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Tool/ }));
+    fireEvent.click(await screen.findByText('Tool'));
 
     const processJson = screen.getByLabelText('数据处理 JSON');
     expect(processJson).toHaveTextContent('provider_events');
@@ -376,7 +375,7 @@ describe('DebugAssistantMessage', () => {
     expect(outputJson).toHaveTextContent('example.test');
   });
 
-  test('always renders data processing for trace items when debug payload is empty', () => {
+  test('always renders data processing for trace items when debug payload is empty', async () => {
     const message: AgentFlowDebugMessage = {
       id: 'assistant-empty-process',
       role: 'assistant',
@@ -405,7 +404,7 @@ describe('DebugAssistantMessage', () => {
 
     render(<DebugAssistantMessage message={message} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Code/ }));
+    fireEvent.click(await screen.findByText('Code'));
 
     expect(screen.getByLabelText('数据处理 JSON')).toHaveTextContent('{}');
   });
@@ -434,8 +433,7 @@ describe('DebugAssistantMessage', () => {
     vi.useRealTimers();
   });
 
-  test('reveals completed assistant content progressively', () => {
-    vi.useFakeTimers();
+  test('renders completed assistant content without a client typewriter delay', () => {
     const baseMessage: AgentFlowDebugMessage = {
       id: 'assistant-typing-completed',
       role: 'assistant',
@@ -454,17 +452,10 @@ describe('DebugAssistantMessage', () => {
       <DebugAssistantMessage message={{ ...baseMessage, content: 'abcdef' }} />
     );
 
-    expect(container).not.toHaveTextContent('abcdef');
-
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-
     expect(container).toHaveTextContent('abcdef');
-    vi.useRealTimers();
   });
 
-  test('renders Dify-style think tags in a collapsible labeled section', () => {
+  test('keeps raw think tags out of the answer when no trace node can own the reasoning', () => {
     const message: AgentFlowDebugMessage = {
       id: 'assistant-reasoning',
       role: 'assistant',
@@ -477,21 +468,11 @@ describe('DebugAssistantMessage', () => {
 
     render(<DebugAssistantMessage message={message} />);
 
-    const reasoningToggle = screen.getByRole('button', { name: /思考/ });
-    expect(reasoningToggle).toHaveAttribute('aria-expanded', 'true');
-    expect(
-      screen.getByText('先分析用户问题，再整理退款政策。')
-    ).toBeInTheDocument();
     expect(screen.getByText('退款政策摘要。')).toBeInTheDocument();
     expect(screen.queryByText(/<think>/)).not.toBeInTheDocument();
-
-    fireEvent.click(reasoningToggle);
-
-    expect(reasoningToggle).toHaveAttribute('aria-expanded', 'false');
     expect(
       screen.queryByText('先分析用户问题，再整理退款政策。')
     ).not.toBeInTheDocument();
-    expect(screen.getByText('退款政策摘要。')).toBeInTheDocument();
   });
 
   test('copies answer content through App message context without static message warning', async () => {

@@ -1,10 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { navigateSpy, fetchCurrentMe, fetchLoginInstances, renderedBlocks } =
+const {
+  navigateSpy,
+  fetchCurrentMe,
+  fetchCurrentSession,
+  fetchLoginInstances,
+  renderedBlocks
+} =
   vi.hoisted(() => ({
     navigateSpy: vi.fn(),
     fetchCurrentMe: vi.fn(),
+    fetchCurrentSession: vi.fn(),
     fetchLoginInstances: vi.fn(),
     renderedBlocks: vi.fn()
   }));
@@ -16,7 +23,11 @@ vi.mock('@tanstack/react-router', async () => {
   return { ...actual, useNavigate: () => navigateSpy };
 });
 
-vi.mock('../api/session', () => ({ fetchCurrentMe, fetchLoginInstances }));
+vi.mock('../api/session', () => ({
+  fetchCurrentMe,
+  fetchCurrentSession,
+  fetchLoginInstances
+}));
 
 vi.mock('../components/PublicAuthBlock', () => ({
   PublicAuthBlock: (props: {
@@ -77,6 +88,7 @@ describe('SignInPage', () => {
     window.history.pushState({}, '', '/sign-in');
     navigateSpy.mockReset();
     fetchCurrentMe.mockReset();
+    fetchCurrentSession.mockReset();
     fetchLoginInstances.mockReset();
     renderedBlocks.mockReset();
     useAuthStore.getState().setAnonymous();
@@ -95,6 +107,25 @@ describe('SignInPage', () => {
       introduction: '',
       effective_display_role: 'member',
       permissions: []
+    });
+    fetchCurrentSession.mockResolvedValue({
+      actor: {
+        id: 'user-1',
+        account: 'root',
+        effective_display_role: 'member',
+        current_workspace_id: 'workspace-1'
+      },
+      session: {
+        id: 'session-1',
+        user_id: 'user-1',
+        tenant_id: 'tenant-1',
+        current_workspace_id: 'workspace-1',
+        active_role_code: 'member'
+      },
+      available_roles: [],
+      active_role_permissions: [],
+      csrf_token: 'csrf-123',
+      cookie_name: 'flowbase_console_session'
     });
   });
 

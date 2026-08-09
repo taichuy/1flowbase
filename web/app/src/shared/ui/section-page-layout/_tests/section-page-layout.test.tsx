@@ -352,10 +352,10 @@ describe('SectionPageLayout', () => {
     const view = renderInRouter(
       <SectionPageLayout
         pageTitle="个人资料"
-        navItems={navItems.slice(0, 4)}
+        navItems={navItems}
         activeKey="profile"
       >
-        <section>四个以内的移动导航</section>
+        <section>五个以内的移动导航</section>
       </SectionPageLayout>
     );
 
@@ -369,10 +369,13 @@ describe('SectionPageLayout', () => {
     renderInRouter(
       <SectionPageLayout
         pageTitle="个人资料"
-        navItems={navItems}
+        navItems={[
+          ...navItems,
+          { key: 'sessions', label: '登录会话', to: '/me/sessions' }
+        ]}
         activeKey="profile"
       >
-        <section>超过四个的移动导航</section>
+        <section>超过五个的移动导航</section>
       </SectionPageLayout>
     );
 

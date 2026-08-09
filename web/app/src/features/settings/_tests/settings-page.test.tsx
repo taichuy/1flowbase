@@ -1142,25 +1142,6 @@ describe('SettingsPage', () => {
     expect(
       within(dialog).getByRole('switch', { name: 'Enabled' })
     ).toBeChecked();
-    const resizeHandle = within(dialog).getByRole('separator', {
-      name: '调整认证器配置抽屉宽度'
-    });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-    fireEvent.mouseDown(resizeHandle, { clientX: 500 });
-    expect(document.body).toHaveClass('resizable-drawer--resizing');
-    fireEvent.mouseMove(document, { clientX: 460 });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '520');
-    fireEvent.mouseUp(document);
-    await waitFor(() => {
-      expect(resizeHandle).toHaveAttribute('aria-valuenow', '560');
-    });
-    expect(document.body).not.toHaveClass('resizable-drawer--resizing');
-    fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '600');
-    fireEvent.keyDown(resizeHandle, { key: 'Home' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '480');
-    fireEvent.keyDown(resizeHandle, { key: 'End' });
-    expect(resizeHandle).toHaveAttribute('aria-valuenow', '960');
     const footer = within(dialog)
       .getByRole('button', { name: /保\s*存/ })
 

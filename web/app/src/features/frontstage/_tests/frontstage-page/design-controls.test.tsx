@@ -663,11 +663,8 @@ describe('FrontStagePage - design controls', () => {
       'x-layout-mode': 'free'
     });
 
-    fireEvent.click(configurePage);
-    fireEvent.click(within(pageMenu).getByText('编辑'));
-    expect(
-      await screen.findByRole('dialog', { name: '配置页面' })
-    ).toBeInTheDocument();
+    fireEvent.click(within(pageMenu).getByRole('menuitem', { name: /编辑/ }));
+    expect(await screen.findByText('配置页面')).toBeInTheDocument();
     expect(
       screen.queryByRole('combobox', { name: '内容呈现方式' })
     ).not.toBeInTheDocument();
