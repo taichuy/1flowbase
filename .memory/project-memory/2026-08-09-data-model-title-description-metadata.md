@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 数据建模定义标题与描述属于用户可编辑 metadata
-summary: 用户确认数据建模定义的 code 创建后不可编辑，title 必填且可编辑，description 可选且在新增、编辑与详情中可用；标题或描述更新不得改变 physical_table_name，内置数据定义 reconcile 也不得覆盖用户描述。
+summary: 用户确认数据建模定义的 code 创建后不可编辑，title 必填且可编辑，description 可选且在新增、编辑与详情中可用；详情中描述放在物理表或外部来源信息之后并独占整行；标题或描述更新不得改变 physical_table_name，内置数据定义 reconcile 也不得覆盖用户描述。
 keywords:
   - data-modeling
   - title
@@ -13,8 +13,8 @@ match_when:
   - 修改 model_definitions DTO、持久化或 reconcile
   - 判断标题、描述与物理表名的所有权边界
 created_at: 2026-08-09 12
-updated_at: 2026-08-09 12
-last_verified_at: 2026-08-09 12
+updated_at: 2026-08-09 15
+last_verified_at: 2026-08-09 15
 decision_policy: verify_before_decision
 scope:
   - api/apps/api-server/src/routes/plugins_and_models/model_definitions.rs
@@ -46,6 +46,7 @@ scope:
 - `code` 创建后不可编辑。
 - `title` 在新增和编辑时必填、可编辑。
 - `description` 是可选多行文本，在新增、编辑和详情中展示；列表不增加描述列。
+- 详情摘要中先展示物理表或外部来源信息，再展示描述；描述作为长文本独占最后一整行，不与其他 metadata 平分两列。
 - 历史数据的 `description` 默认为 `NULL`。
 - 修改 `title` 或 `description` 不得修改 `physical_table_name`。
 - `description` 属于 user-owned metadata；系统内置数据定义 reconcile 必须保留用户填写的描述。

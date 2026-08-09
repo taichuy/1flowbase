@@ -543,6 +543,14 @@ describe('Settings data models page', () => {
       expect(
         within(editorDialog).getByText('默认成员角色')
       ).toBeInTheDocument();
+      const summaryRows = within(editorDialog).getAllByTestId(
+        'data-model-summary-row'
+      );
+      expect(within(summaryRows[2]).getByText('物理表：')).toBeInTheDocument();
+      expect(within(summaryRows[3]).getByText('说明：')).toBeInTheDocument();
+      expect(
+        within(summaryRows[3]).getByTestId('data-model-summary-item')
+      ).toHaveClass('data-model-panel__meta-card--full-row');
 
       const detailActions = within(editorDialog).getByTestId(
         'data-model-detail-actions'
@@ -647,11 +655,14 @@ describe('Settings data models page', () => {
         within(summaryRows[1]).getByText('开放 API：')
       ).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('开放')).toBeInTheDocument();
-      expect(within(summaryRows[2]).getByText('说明：')).toBeInTheDocument();
+      expect(within(summaryRows[2]).getByText('数据源：')).toBeInTheDocument();
+      expect(within(summaryRows[3]).getByText('说明：')).toBeInTheDocument();
       expect(
-        within(summaryRows[2]).getByText('CRM contact records')
+        within(summaryRows[3]).getByText('CRM contact records')
       ).toBeInTheDocument();
-      expect(within(summaryRows[3]).getByText('数据源：')).toBeInTheDocument();
+      expect(
+        within(summaryRows[3]).getByTestId('data-model-summary-item')
+      ).toHaveClass('data-model-panel__meta-card--full-row');
       expect(
         within(detailSummary).queryByText('状态：')
       ).not.toBeInTheDocument();

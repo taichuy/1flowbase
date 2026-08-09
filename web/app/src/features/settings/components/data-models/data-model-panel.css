@@ -464,6 +464,10 @@
   min-height: 28px;
 }
 
+.data-model-panel__meta-card--full-row {
+  grid-column: 1 / -1;
+}
+
 .data-model-panel__meta-card-label {
   flex: 0 0 auto;
   font-weight: 500;

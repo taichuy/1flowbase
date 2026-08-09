@@ -254,13 +254,6 @@ export function DataModelDetail({
         value: apiAccessLabel(model)
       }
     ],
-    [
-      {
-        key: 'description',
-        label: i18nText('settings', 'auto.description'),
-        value: model.description || '-'
-      }
-    ],
     ...(model.source_kind === 'main_source'
       ? [
           [
@@ -284,7 +277,14 @@ export function DataModelDetail({
               value: model.external_resource_key ?? '-'
             }
           ]
-        ])
+        ]),
+    [
+      {
+        key: 'description',
+        label: i18nText('settings', 'auto.description'),
+        value: model.description || '-'
+      }
+    ]
   ];
 
   return (
@@ -302,7 +302,11 @@ export function DataModelDetail({
             {row.map((item) => (
               <div
                 key={item.key}
-                className="data-model-panel__meta-card"
+                className={`data-model-panel__meta-card${
+                  item.key === 'description'
+                    ? ' data-model-panel__meta-card--full-row'
+                    : ''
+                }`}
                 data-testid="data-model-summary-item"
               >
                 <span className="data-model-panel__meta-card-label">
