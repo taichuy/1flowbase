@@ -21,6 +21,7 @@ mod model_provider_repository_tests;
 mod native_sql_tests;
 mod node_contribution_repository_tests;
 mod orchestration_runtime_repository_tests;
+mod ordered_tree;
 mod physical_schema_repository_tests;
 mod plugin;
 mod protocol_context_migration_tests;

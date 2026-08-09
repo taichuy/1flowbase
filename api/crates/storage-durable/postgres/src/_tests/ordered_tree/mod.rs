@@ -1,9 +1,40 @@
 use control_plane::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
 use domain::DataModelScopeKind;
+use runtime_core::{model_metadata::ModelMetadata, resource_descriptor::ResourceDescriptor};
 use uuid::Uuid;
 
-use super::rank::{between, rebalance, FractionalRank};
+use crate::ordered_tree::rank::{between, rebalance, FractionalRank};
 use crate::{run_migrations, PgControlPlaneStore};
+
+mod commands;
+mod queries;
+
+fn runtime_metadata(model: &domain::ModelDefinitionRecord) -> ModelMetadata {
+    ModelMetadata {
+        model_id: model.id,
+        model_code: model.code.clone(),
+        status: model.status,
+        scope_kind: model.scope_kind,
+        scope_id: model.scope_id,
+        data_source_instance_id: model.data_source_instance_id,
+        source_kind: model.source_kind,
+        external_resource_key: model.external_resource_key.clone(),
+        external_capability_snapshot: model
+            .external_capability_snapshot
+            .clone()
+            .map(serde_json::from_value)
+            .transpose()
+            .expect("fixture capability snapshot must match the runtime contract"),
+        template_provider: model.template_provider.clone(),
+        template_code: model.template_code.clone(),
+        template_version: model.template_version.clone(),
+        physical_table_name: model.physical_table_name.clone(),
+        scope_column_name: "scope_id".to_owned(),
+        fields: model.fields.clone(),
+        record_capabilities: domain::data_model_capabilities(model).record,
+        resource: ResourceDescriptor::runtime_model(&model.code, model.scope_kind),
+    }
+}
 
 fn rank(value: &str) -> FractionalRank {
     FractionalRank::parse(value).expect("fixture rank should be canonical")

@@ -4,7 +4,6 @@ use control_plane::ports::{CreateModelDefinitionInput, ModelDefinitionRepository
 use domain::DataModelScopeKind;
 use runtime_core::{
     model_metadata::ModelMetadata,
-    resource_descriptor::ResourceDescriptor,
     runtime_record_repository::{
         OrderedTreeCommandError, OrderedTreeCreateInput, OrderedTreeCreatePosition,
         OrderedTreeLeafDeleteInput, OrderedTreeMoveInput, OrderedTreeMovePosition,
@@ -15,6 +14,7 @@ use serde_json::json;
 use tokio::sync::Barrier;
 use uuid::Uuid;
 
+use super::runtime_metadata as metadata;
 use crate::{run_migrations, PgControlPlaneStore};
 
 fn base_database_url() -> String {
@@ -72,27 +72,6 @@ async fn create_model(
     )
     .await
     .unwrap()
-}
-
-fn metadata(model: &domain::ModelDefinitionRecord) -> ModelMetadata {
-    ModelMetadata {
-        model_id: model.id,
-        model_code: model.code.clone(),
-        status: model.status,
-        scope_kind: model.scope_kind,
-        scope_id: model.scope_id,
-        data_source_instance_id: model.data_source_instance_id,
-        source_kind: model.source_kind,
-        external_resource_key: model.external_resource_key.clone(),
-        template_provider: model.template_provider.clone(),
-        template_code: model.template_code.clone(),
-        template_version: model.template_version.clone(),
-        physical_table_name: model.physical_table_name.clone(),
-        scope_column_name: "scope_id".to_owned(),
-        fields: model.fields.clone(),
-        record_capabilities: domain::data_model_capabilities(model).record,
-        resource: ResourceDescriptor::runtime_model(&model.code, model.scope_kind),
-    }
 }
 
 fn position(

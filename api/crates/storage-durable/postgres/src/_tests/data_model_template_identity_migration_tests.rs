@@ -64,6 +64,96 @@ async fn schema_snapshot(pool: &sqlx::PgPool) -> Vec<(String, String, String, St
     .unwrap()
 }
 
+async fn dynamic_physical_schema_snapshot(pool: &sqlx::PgPool) -> Value {
+    sqlx::query_scalar(
+        r#"
+        select jsonb_build_object(
+            'constraints', coalesce((
+                select jsonb_agg(
+                    jsonb_build_array(tables.relname, constraints.conname, pg_get_constraintdef(constraints.oid))
+                    order by tables.relname, constraints.conname
+                )
+                from pg_constraint constraints
+                join pg_class tables on tables.oid = constraints.conrelid
+                join pg_namespace schemas on schemas.oid = tables.relnamespace
+                where schemas.nspname = current_schema()
+                  and tables.relname in ('historical_main_records', 'historical_external_records')
+            ), '[]'::jsonb),
+            'indexes', coalesce((
+                select jsonb_agg(jsonb_build_array(tablename, indexname, indexdef) order by tablename, indexname)
+                from pg_indexes
+                where schemaname = current_schema()
+                  and tablename in ('historical_main_records', 'historical_external_records')
+            ), '[]'::jsonb)
+        )
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn field_metadata_snapshot(pool: &sqlx::PgPool) -> Value {
+    sqlx::query_scalar(
+        r#"
+        select coalesce(
+            jsonb_agg(to_jsonb(field_row) order by field_row.data_model_id, field_row.code),
+            '[]'::jsonb
+        )
+        from (select * from model_fields) field_row
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn grant_snapshot(pool: &sqlx::PgPool) -> Value {
+    sqlx::query_scalar(
+        r#"
+        select coalesce(
+            jsonb_agg(to_jsonb(grant_row) order by grant_row.data_model_id),
+            '[]'::jsonb
+        )
+        from (select * from scope_data_model_grants) grant_row
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn dynamic_record_snapshot(pool: &sqlx::PgPool) -> Value {
+    sqlx::query_scalar(
+        r#"
+        select jsonb_build_object(
+            'main', (select jsonb_agg(to_jsonb(record_row) order by record_row.id) from historical_main_records record_row),
+            'external', (select jsonb_agg(to_jsonb(record_row) order by record_row.id) from historical_external_records record_row)
+        )
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn has_legacy_api_exposure_column(pool: &sqlx::PgPool) -> bool {
+    sqlx::query_scalar(
+        r#"
+        select exists (
+            select 1
+            from information_schema.columns
+            where table_schema = current_schema()
+              and table_name = 'model_definitions'
+              and column_name = 'api_exposure_status'
+        )
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
 #[test]
 fn ac_001_template_identity_migration_sql_only_changes_model_metadata() {
     let normalized = MIGRATION_SQL.to_ascii_lowercase();
@@ -96,64 +186,211 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
 
     let main_model_id = Uuid::now_v7();
     let external_model_id = Uuid::now_v7();
-    for (id, code, source_kind, physical_table_name) in [
+    for (
+        id,
+        code,
+        title,
+        description,
+        source_kind,
+        external_resource_key,
+        external_table_id,
+        external_capability_snapshot,
+        physical_table_name,
+        availability_status,
+        status,
+    ) in [
         (
             main_model_id,
             "historical_main",
+            "User Main Title",
+            "User-authored main description",
             "main_source",
+            None,
+            None,
+            None,
             "historical_main_records",
+            "unavailable",
+            "disabled",
         ),
         (
             external_model_id,
             "historical_external",
+            "User External Title",
+            "User-authored external description",
             "external_source",
+            Some("contacts"),
+            Some("crm.contacts"),
+            Some(serde_json::json!({
+                "supports_list": true,
+                "supports_get": true,
+                "supports_create": false,
+                "supports_update": false,
+                "supports_delete": false
+            })),
             "historical_external_records",
+            "broken",
+            "broken",
         ),
     ] {
         sqlx::query(
             r#"
             insert into model_definitions (
-                id, scope_kind, scope_id, source_kind, code, title,
-                physical_table_name, acl_namespace, audit_namespace
-            ) values ($1, 'workspace', $2, $3, $4, $4, $5, $6, $7)
+                id, scope_kind, scope_id, source_kind,
+                external_resource_key, external_table_id, external_capability_snapshot,
+                code, title, description, physical_table_name,
+                acl_namespace, audit_namespace, availability_status, status
+            ) values (
+                $1, 'workspace', $2, $3,
+                $4, $5, $6,
+                $7, $8, $9, $10,
+                $11, $12, $13, $14
+            )
             "#,
         )
         .bind(id)
         .bind(Uuid::now_v7())
         .bind(source_kind)
+        .bind(external_resource_key)
+        .bind(external_table_id)
+        .bind(external_capability_snapshot)
         .bind(code)
+        .bind(title)
+        .bind(description)
         .bind(physical_table_name)
         .bind(format!("state_model.{code}"))
         .bind(format!("audit.state_model.{code}"))
+        .bind(availability_status)
+        .bind(status)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    for (model_id, code, title, description, external_field_key, display_options) in [
+        (
+            main_model_id,
+            "payload",
+            "Main Payload Label",
+            "User main field description",
+            None,
+            serde_json::json!({ "rows": 7, "tone": "quiet" }),
+        ),
+        (
+            external_model_id,
+            "payload",
+            "External Payload Label",
+            "User external field description",
+            Some("remote_payload"),
+            serde_json::json!({ "rows": 11, "tone": "loud" }),
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            insert into model_fields (
+                id, data_model_id, code, title, description,
+                physical_column_name, external_field_key, field_kind,
+                is_system, is_writable, is_required, api_required, is_unique,
+                display_interface, display_options, relation_options,
+                sort_order, availability_status
+            ) values (
+                $1, $2, $3, $4, $5,
+                'payload', $6, 'string',
+                false, true, true, true, false,
+                'textarea', $7, '{"preserve":"relation-display"}'::jsonb,
+                37, 'unavailable'
+            )
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(model_id)
+        .bind(code)
+        .bind(title)
+        .bind(description)
+        .bind(external_field_key)
+        .bind(display_options)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    for (model_id, enabled, permission_profile) in [
+        (main_model_id, false, "owner"),
+        (external_model_id, false, "system_all"),
+    ] {
+        sqlx::query(
+            r#"
+            insert into scope_data_model_grants (
+                id, scope_kind, scope_id, data_model_id, enabled, permission_profile
+            ) values ($1, 'workspace', $2, $3, $4, $5)
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(Uuid::now_v7())
+        .bind(model_id)
+        .bind(enabled)
+        .bind(permission_profile)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    for table_name in ["historical_main_records", "historical_external_records"] {
+        sqlx::query(&format!(
+            r#"
+            create table {table_name} (
+                id uuid primary key,
+                scope_id uuid not null,
+                created_by uuid,
+                updated_by uuid,
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now(),
+                payload text not null
+            )
+            "#
+        ))
         .execute(&pool)
         .await
         .unwrap();
     }
     sqlx::query(
-        "create table historical_main_records (id uuid primary key, payload text not null)",
+        "insert into historical_main_records (id, scope_id, payload) values ($1, $2, 'main-preserved')",
     )
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
     .execute(&pool)
     .await
     .unwrap();
-    let record_id = Uuid::now_v7();
-    sqlx::query("insert into historical_main_records (id, payload) values ($1, 'preserved')")
-        .bind(record_id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "insert into historical_external_records (id, scope_id, payload) values ($1, $2, 'external-preserved')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let metadata_before = model_metadata_snapshot(&pool).await;
+    let fields_before = field_metadata_snapshot(&pool).await;
+    let grants_before = grant_snapshot(&pool).await;
     let schema_before = schema_snapshot(&pool).await;
-    let record_before: (Uuid, String) =
-        sqlx::query_as("select id, payload from historical_main_records")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let dynamic_physical_schema_before = dynamic_physical_schema_snapshot(&pool).await;
+    let records_before = dynamic_record_snapshot(&pool).await;
+    // API exposure is now represented by the current status/permission contract; the legacy
+    // api_exposure_status column was intentionally removed before this migration.
+    assert!(!has_legacy_api_exposure_column(&pool).await);
 
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
     assert_eq!(model_metadata_snapshot(&pool).await, metadata_before);
+    assert_eq!(field_metadata_snapshot(&pool).await, fields_before);
+    assert_eq!(grant_snapshot(&pool).await, grants_before);
     assert_eq!(schema_snapshot(&pool).await, schema_before);
+    assert_eq!(
+        dynamic_physical_schema_snapshot(&pool).await,
+        dynamic_physical_schema_before
+    );
+    assert_eq!(dynamic_record_snapshot(&pool).await, records_before);
+    assert!(!has_legacy_api_exposure_column(&pool).await);
     let identities: Vec<(Uuid, String, String, String)> = sqlx::query_as(
         r#"
         select id, template_provider, template_code, template_version
@@ -193,11 +430,4 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
     assert!(identity_columns
         .iter()
         .all(|(_, nullable, default)| nullable == "NO" && default.is_none()));
-    assert_eq!(
-        sqlx::query_as::<_, (Uuid, String)>("select id, payload from historical_main_records")
-            .fetch_one(&pool)
-            .await
-            .unwrap(),
-        record_before
-    );
 }
