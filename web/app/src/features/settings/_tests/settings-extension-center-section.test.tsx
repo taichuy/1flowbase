@@ -555,8 +555,8 @@ describe('SettingsExtensionCenterSection', () => {
     extensionsApi.installSettingsExtension.mockRejectedValue(
       new ApiClientError({
         status: 502,
-        code: 'extension_artifact_download_unavailable',
-        message: 'upstream unavailable'
+        code: 'extension_artifact_not_published',
+        message: 'release asset was not found'
       })
     );
     renderSection('runtime-extensions');
@@ -565,7 +565,7 @@ describe('SettingsExtensionCenterSection', () => {
     fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 
     expect(
-      await screen.findByText('扩展包下载失败，请重试')
+      await screen.findByText('发布方尚未完成该版本发布，请稍后重试')
     ).toBeInTheDocument();
   });
 
@@ -707,6 +707,101 @@ describe('SettingsExtensionCenterSection', () => {
         true
       );
     });
+  });
+
+  test('AC-I18N-UPDATE offers cancel, install-only, and install-and-activate', async () => {
+    const i18nCatalogEntry = {
+      ...catalogEntry,
+      category: 'i18n' as const,
+      id: 'i18n:taichuy/platform',
+      name: 'Platform translations',
+      artifact: 'platform',
+      version: '2.0.4',
+      current_version: '2.0.1',
+      installation_status: 'installed' as const
+    };
+    const i18nInstallation = {
+      ...installedEntry,
+      id: 'i18n-installation-2.0.4',
+      category: 'i18n' as const,
+      catalog_id: 'i18n:taichuy/platform',
+      artifact_id: 'platform',
+      version: '2.0.4',
+      application_action: 'activate_i18n' as const,
+      application_status: 'not_applied' as const
+    };
+    extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValue({
+      category: 'i18n',
+      catalog_page: 'page-i18n',
+      catalog_page_number: 1,
+      catalog_page_checksum: 'sha256:i18n',
+      catalog_page_locator: 'i18n/catalog/v1/pages/1.json',
+      limit: 20,
+      next_cursor: null,
+      total_entries: 1,
+      entries: [i18nCatalogEntry]
+    });
+    extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
+      category: 'i18n',
+      items: [{
+        catalog_id: 'i18n:taichuy/platform',
+        current_version: '2.0.1',
+        latest_version: '2.0.4',
+        status: 'update_available'
+      }]
+    });
+    extensionsApi.installSettingsExtension.mockResolvedValue({
+      installation: i18nInstallation,
+      local_artifact_was_present: false,
+      node_plugin_installation_id: null,
+      application_action: 'activate_i18n',
+      application_status: 'not_applied'
+    });
+    i18nCatalogApi.previewSettingsInstalledI18nCatalog.mockResolvedValue({
+      extension_installation_id: 'i18n-installation-2.0.4',
+      application_status: 'not_applied',
+      active_catalog_version: '2.0.1',
+      installed_catalog_version: '2.0.4',
+      revision: 7,
+      integrity_warnings: [],
+      required_integrity_override: null
+    });
+
+    renderSection('i18n');
+    const row = await screen.findByRole('row', { name: /Platform translations/ });
+    fireEvent.click(within(row).getByRole('button', { name: '更新' }));
+
+    const dialog = (await screen.findByText('更新多语言目录')).closest(
+      '[role="dialog"]'
+    ) as HTMLElement;
+    expect(
+      within(dialog).getByRole('button', { name: /取\s*消/ })
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '仅安装新版本' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '安装并激活' })).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '仅安装新版本' }));
+    await waitFor(() => {
+      expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
+        i18nCatalogEntry,
+        'csrf-123',
+        {},
+        true
+      );
+    });
+    expect(screen.queryByText('激活多语言目录')).not.toBeInTheDocument();
+
+    const refreshedRow = await screen.findByRole('row', {
+      name: /Platform translations/
+    });
+    fireEvent.click(within(refreshedRow).getByRole('button', { name: '更新' }));
+    const activateDialog = (await screen.findByText('更新多语言目录')).closest(
+      '[role="dialog"]'
+    ) as HTMLElement;
+    fireEvent.click(
+      within(activateDialog).getByRole('button', { name: '安装并激活' })
+    );
+    expect(await screen.findByText('激活多语言目录')).toBeInTheDocument();
   });
 
   test('AC-002 keeps the installed target row loading for the complete update request', async () => {

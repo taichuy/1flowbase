@@ -1,5 +1,7 @@
 use api_server::error_response::ApiError;
-use api_server::official_extension_catalog::OfficialExtensionCatalogUnavailable;
+use api_server::official_extension_catalog::{
+    OfficialExtensionArtifactError, OfficialExtensionCatalogUnavailable,
+};
 use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
 use control_plane::errors::ControlPlaneError;
 use plugin_framework::error::PluginFrameworkError;
@@ -32,6 +34,34 @@ async fn inconsistent_extension_catalog_is_a_retryable_service_failure() {
         payload["code"],
         "extension_catalog_temporarily_inconsistent"
     );
+}
+
+#[tokio::test]
+async fn extension_artifact_failure_exposes_safe_actionable_codes() {
+    for (error, expected_code) in [
+        (
+            OfficialExtensionArtifactError::NotFound {
+                host: "ghproxy.net".to_string(),
+                status: 404,
+            },
+            "extension_artifact_not_published",
+        ),
+        (
+            OfficialExtensionArtifactError::ChecksumMismatch,
+            "extension_artifact_checksum_mismatch",
+        ),
+        (
+            OfficialExtensionArtifactError::SignatureInvalid,
+            "extension_artifact_signature_invalid",
+        ),
+    ] {
+        let response = ApiError(anyhow::Error::new(error)).into_response();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["code"], expected_code);
+        assert!(payload["message"].as_str().unwrap().contains("extension"));
+    }
 }
 
 #[tokio::test]

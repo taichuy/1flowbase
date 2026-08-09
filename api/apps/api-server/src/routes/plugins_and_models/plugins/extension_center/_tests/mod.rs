@@ -11,6 +11,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 use control_plane::{
     plugin_management::{
         group_installed_extension_families, ExtensionArtifactInstallOutcome,
@@ -18,6 +19,7 @@ use control_plane::{
     },
     ports::{AuthRepository, ExtensionInstallationRepository},
 };
+use ed25519_dalek::{pkcs8::EncodePublicKey, Signer, SigningKey};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -36,7 +38,8 @@ use super::{
     artifact_preflight_challenge, catalog_application_action, default_application_status,
     extension_update_status, paginate_installed_families, project_catalog_entry,
     project_installed_catalog_joins, requested_installation_identity, validate_preflight_overrides,
-    InstalledCatalogJoin, PreflightDecision, UploadedExtensionArtifact,
+    verify_trusted_artifact_signature, InstalledCatalogJoin, PreflightDecision,
+    UploadedExtensionArtifact,
 };
 
 #[test]
@@ -720,6 +723,42 @@ fn root_1545_ac_5_uploaded_invalid_signature_remains_overridable() {
         vec!["checksum_missing", "signature_invalid"]
     );
     assert!(challenge.warnings.iter().all(|warning| warning.overridable));
+}
+
+#[test]
+fn signed_i18n_artifact_requires_cryptographic_verification_before_install() {
+    let signing_key = SigningKey::from_bytes(&[7_u8; 32]);
+    let bytes = b"signed-i18n-seed".to_vec();
+    let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+    let signature = STANDARD.encode(signing_key.sign(&bytes).to_bytes());
+    let trusted_keys = vec![plugin_framework::TrustedPublicKey {
+        key_id: "official-key-2026-04".to_string(),
+        algorithm: "ed25519".to_string(),
+        public_key_pem: signing_key
+            .verifying_key()
+            .to_public_key_pem(Default::default())
+            .unwrap(),
+    }];
+    let downloaded = DownloadedOfficialExtensionArtifact {
+        descriptor: OfficialExtensionArtifactDescriptor {
+            locator_kind: "release_asset".to_string(),
+            locator: "https://example.test/i18n.json".to_string(),
+            expected_checksum: Some(checksum),
+            signature: Some(json!({
+                "algorithm": "ed25519",
+                "key_id": "official-key-2026-04",
+                "signature": signature,
+            })),
+            platform: None,
+        },
+        file_name: "i18n.json".to_string(),
+        artifact_bytes: bytes,
+    };
+
+    verify_trusted_artifact_signature(&downloaded, &trusted_keys).unwrap();
+    let mut tampered = downloaded;
+    tampered.artifact_bytes[0] ^= 1;
+    assert!(verify_trusted_artifact_signature(&tampered, &trusted_keys).is_err());
 }
 
 fn runtime_entry() -> OfficialExtensionCatalogEntry {

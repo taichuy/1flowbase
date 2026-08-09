@@ -65,6 +65,7 @@ type ExtensionOperation = {
   kind: 'catalog';
   entry: SettingsExtensionCatalogEntry;
   update: boolean;
+  activateI18nAfterInstall?: boolean;
 };
 type ExtensionOverrides = Parameters<typeof installSettingsExtension>[2];
 
@@ -127,6 +128,46 @@ function extensionApplicationStatusLabel(
 
 function extensionKey(row: ExtensionRow) {
   return extensionCatalogId(row);
+}
+
+function extensionOperationErrorKey(error: unknown) {
+  if (!(error instanceof ApiClientError)) return 'auto.extension_operation_failed';
+  switch (error.code) {
+    case 'extension_artifact_not_published':
+      return 'auto.extension_artifact_not_published';
+    case 'extension_artifact_network_unavailable':
+    case 'extension_artifact_upstream_rejected':
+    case 'extension_artifact_download_unavailable':
+      return 'auto.extension_artifact_download_failed';
+    case 'extension_artifact_checksum_mismatch':
+      return 'auto.extension_artifact_checksum_failed';
+    case 'extension_artifact_signature_invalid':
+      return 'auto.extension_artifact_signature_failed';
+    default:
+      return 'auto.extension_operation_failed';
+  }
+}
+
+function extensionRiskWarningKey(code: string) {
+  switch (code) {
+    case 'checksum_missing':
+      return 'auto.extension_warning_checksum_missing';
+    case 'signature_missing':
+      return 'auto.extension_warning_signature_missing';
+    case 'signing_key_unknown':
+      return 'auto.extension_warning_signing_key_unknown';
+    default:
+      return null;
+  }
+}
+
+function extensionRiskWarningText(
+  code: string,
+  message: string,
+  t: (key: string) => string
+) {
+  const key = extensionRiskWarningKey(code);
+  return key ? t(key) : message;
 }
 
 function McpExtensionCenterSection() {
@@ -199,6 +240,8 @@ function GenericExtensionCenterSection({
   );
   const [applicationTarget, setApplicationTarget] =
     useState<ExtensionApplicationTarget | null>(null);
+  const [pendingI18nUpdate, setPendingI18nUpdate] =
+    useState<ExtensionOperation | null>(null);
   const [searchText, setSearchText] = useState(q ?? '');
   const updateCheckRequestRef = useRef(0);
 
@@ -371,7 +414,7 @@ function GenericExtensionCenterSection({
                   className="structured-list__item"
                   key={`${warning.code}-${index}`}
                 >
-                  {warning.message}
+                  {extensionRiskWarningText(warning.code, warning.message, t)}
                 </li>
               ))}
             </ul>
@@ -409,12 +452,21 @@ function GenericExtensionCenterSection({
       }
 
       try {
-        message.success(t('auto.extension_operation_completed'));
+        message.success(
+          operation.entry.category === 'i18n' &&
+            operation.activateI18nAfterInstall === false
+            ? t('auto.translation_catalog_installed_not_activated')
+            : t('auto.extension_operation_completed')
+        );
         await invalidateExtensionApplicationState();
         if (
           result &&
           ['import_agent_flow', 'import_mcp', 'activate_i18n'].includes(
             result.application_action
+          ) &&
+          !(
+            result.application_action === 'activate_i18n' &&
+            operation.activateI18nAfterInstall === false
           )
         ) {
           setApplicationTarget({
@@ -428,12 +480,7 @@ function GenericExtensionCenterSection({
     },
     onError: (error) => {
       setActiveOperationKey(null);
-      message.error(
-        error instanceof ApiClientError &&
-          error.code === 'extension_artifact_download_unavailable'
-          ? t('auto.extension_artifact_download_failed')
-          : t('auto.extension_operation_failed')
-      );
+      message.error(t(extensionOperationErrorKey(error)));
     }
   });
   const deleteVersionMutation = useMutation({
@@ -458,6 +505,18 @@ function GenericExtensionCenterSection({
     [runOperation]
   );
 
+  const requestOperation = useCallback(
+    (operation: ExtensionOperation) => {
+      if (operation.update && operation.entry.category === 'i18n') {
+        setPendingI18nUpdate(operation);
+        setActiveOperationKey(null);
+        return;
+      }
+      submitOperation(operation);
+    },
+    [submitOperation]
+  );
+
   const resolveInstalledUpdate = useCallback(
     async (row: SettingsInstalledExtension) => {
       const key = extensionKey(row);
@@ -467,7 +526,7 @@ function GenericExtensionCenterSection({
           row.category,
           row.catalog_id
         );
-        submitOperation({ kind: 'catalog', entry, update: true });
+        requestOperation({ kind: 'catalog', entry, update: true });
       } catch {
         setUpdateStates((current) => ({
           ...current,
@@ -477,7 +536,7 @@ function GenericExtensionCenterSection({
         message.error(t('auto.extension_operation_failed'));
       }
     },
-    [message, submitOperation, t]
+    [message, requestOperation, t]
   );
 
   const columns = useMemo<Array<DataTableColumn<ExtensionRow>>>(
@@ -655,7 +714,7 @@ function GenericExtensionCenterSection({
                     activeOperationKey !== null && activeOperationKey !== key
                   }
                   onClick={() =>
-                    submitOperation({
+                    requestOperation({
                       kind: 'catalog',
                       entry: row,
                       update: row.installation_status !== 'not_installed'
@@ -684,7 +743,7 @@ function GenericExtensionCenterSection({
       activeOperationKey,
       activeTab,
       resolveInstalledUpdate,
-      submitOperation,
+      requestOperation,
       t,
       updateStates
     ]
@@ -962,6 +1021,49 @@ function GenericExtensionCenterSection({
           </Flex>
         ) : null}
       </Drawer>
+      <Modal
+        open={Boolean(pendingI18nUpdate)}
+        title={t('auto.update_translation_catalog')}
+        onCancel={() => setPendingI18nUpdate(null)}
+        footer={
+          <Space>
+            <Button onClick={() => setPendingI18nUpdate(null)}>
+              {t('auto.cancel')}
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendingI18nUpdate) return;
+                const operation = pendingI18nUpdate;
+                setPendingI18nUpdate(null);
+                submitOperation({
+                  ...operation,
+                  activateI18nAfterInstall: false
+                });
+              }}
+            >
+              {t('auto.install_new_version_only')}
+            </Button>
+            <Button
+              type="primary"
+              onClick={() => {
+                if (!pendingI18nUpdate) return;
+                const operation = pendingI18nUpdate;
+                setPendingI18nUpdate(null);
+                submitOperation({
+                  ...operation,
+                  activateI18nAfterInstall: true
+                });
+              }}
+            >
+              {t('auto.install_and_activate')}
+            </Button>
+          </Space>
+        }
+      >
+        <Typography.Paragraph>
+          {t('auto.translation_catalog_update_choice_description')}
+        </Typography.Paragraph>
+      </Modal>
       <ExtensionApplicationFlow
         target={applicationTarget}
         csrfToken={csrfToken ?? ''}

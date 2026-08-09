@@ -43,6 +43,78 @@ pub struct OfficialExtensionCatalogUnavailable {
     source: anyhow::Error,
 }
 
+#[derive(Debug, Error)]
+pub enum OfficialExtensionArtifactError {
+    #[error("extension release is not published on {host} (HTTP {status}); retry after the publisher completes the release")]
+    NotFound { host: String, status: u16 },
+    #[error("extension source {host} rejected the artifact request (HTTP {status}); retry or check the configured mirror")]
+    UpstreamRejected { host: String, status: u16 },
+    #[error(
+        "extension source {host} is unreachable; retry or check the configured mirror: {source}"
+    )]
+    NetworkUnavailable {
+        host: String,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error(
+        "extension source {host} interrupted the artifact response; retry the download: {source}"
+    )]
+    ResponseInterrupted {
+        host: String,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("extension artifact exceeds the allowed download size")]
+    DownloadBudgetExceeded,
+    #[error("extension source returned an empty artifact")]
+    EmptyArtifact,
+    #[error("extension artifact download failed; retry or check the configured source")]
+    DownloadUnavailable {
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("extension artifact checksum verification failed; the file was not installed")]
+    ChecksumMismatch,
+    #[error("extension artifact signature verification failed; the file was not installed")]
+    SignatureInvalid,
+}
+
+impl OfficialExtensionArtifactError {
+    pub fn api_code(&self) -> &'static str {
+        match self {
+            Self::NotFound { .. } => "extension_artifact_not_published",
+            Self::ChecksumMismatch => "extension_artifact_checksum_mismatch",
+            Self::SignatureInvalid => "extension_artifact_signature_invalid",
+            Self::UpstreamRejected { .. } => "extension_artifact_upstream_rejected",
+            Self::NetworkUnavailable { .. } | Self::ResponseInterrupted { .. } => {
+                "extension_artifact_network_unavailable"
+            }
+            Self::DownloadBudgetExceeded | Self::EmptyArtifact => {
+                "extension_artifact_invalid_response"
+            }
+            Self::DownloadUnavailable { .. } => "extension_artifact_download_unavailable",
+        }
+    }
+
+    pub fn host(&self) -> Option<&str> {
+        match self {
+            Self::NotFound { host, .. }
+            | Self::UpstreamRejected { host, .. }
+            | Self::NetworkUnavailable { host, .. }
+            | Self::ResponseInterrupted { host, .. } => Some(host),
+            _ => None,
+        }
+    }
+
+    pub fn upstream_status(&self) -> Option<u16> {
+        match self {
+            Self::NotFound { status, .. } | Self::UpstreamRejected { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+}
+
 impl OfficialExtensionCatalogUnavailable {
     pub fn new(source: anyhow::Error) -> Self {
         Self { source }
@@ -857,8 +929,8 @@ impl ApiOfficialExtensionCatalogSource {
                 }
             }
         }
-        Err(anyhow::Error::new(last_error.expect(
-            "artifact download loop always records a failed attempt",
+        Err(anyhow::Error::new(artifact_download_error(
+            last_error.expect("artifact download loop always records a failed attempt"),
         )))
     }
 
@@ -886,8 +958,11 @@ impl ApiOfficialExtensionCatalogSource {
         let mut stream = response.bytes_stream();
         let mut bytes = Vec::new();
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|source| ExtensionDownloadFailure::Body { resource, source })?;
+            let chunk = chunk.map_err(|source| ExtensionDownloadFailure::Body {
+                resource,
+                url: url.to_string(),
+                source,
+            })?;
             if bytes.len().saturating_add(chunk.len()) > max_bytes {
                 return Err(ExtensionDownloadFailure::Budget { resource });
             }
@@ -918,6 +993,7 @@ enum ExtensionDownloadFailure {
     #[error("failed to read {resource} response body: {source}")]
     Body {
         resource: &'static str,
+        url: String,
         #[source]
         source: reqwest::Error,
     },
@@ -925,6 +1001,48 @@ enum ExtensionDownloadFailure {
     Budget { resource: &'static str },
     #[error("{resource} is empty")]
     Empty { resource: &'static str },
+}
+
+fn artifact_download_error(error: ExtensionDownloadFailure) -> OfficialExtensionArtifactError {
+    match error {
+        ExtensionDownloadFailure::Request { url, source, .. } => {
+            OfficialExtensionArtifactError::NetworkUnavailable {
+                host: artifact_host(&url),
+                source,
+            }
+        }
+        ExtensionDownloadFailure::Status { url, status, .. }
+            if status == reqwest::StatusCode::NOT_FOUND =>
+        {
+            OfficialExtensionArtifactError::NotFound {
+                host: artifact_host(&url),
+                status: status.as_u16(),
+            }
+        }
+        ExtensionDownloadFailure::Status { url, status, .. } => {
+            OfficialExtensionArtifactError::UpstreamRejected {
+                host: artifact_host(&url),
+                status: status.as_u16(),
+            }
+        }
+        ExtensionDownloadFailure::Body { url, source, .. } => {
+            OfficialExtensionArtifactError::ResponseInterrupted {
+                host: artifact_host(&url),
+                source,
+            }
+        }
+        ExtensionDownloadFailure::Budget { .. } => {
+            OfficialExtensionArtifactError::DownloadBudgetExceeded
+        }
+        ExtensionDownloadFailure::Empty { .. } => OfficialExtensionArtifactError::EmptyArtifact,
+    }
+}
+
+fn artifact_host(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_string))
+        .unwrap_or_else(|| "configured extension source".to_string())
 }
 
 impl ExtensionDownloadFailure {
@@ -1237,7 +1355,11 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         let descriptor = self.resolve_artifact(entry)?;
         let artifact_bytes = self.download_artifact_bytes(&descriptor.locator).await?;
         if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
-            ensure_sha256(&artifact_bytes, expected_checksum)?;
+            if ensure_sha256(&artifact_bytes, expected_checksum).is_err() {
+                return Err(anyhow::Error::new(
+                    OfficialExtensionArtifactError::ChecksumMismatch,
+                ));
+            }
         }
         let file_name = descriptor
             .locator

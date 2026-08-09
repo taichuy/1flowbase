@@ -22,7 +22,8 @@ use crate::{
     config::ResolvedOfficialExtensionCatalogSourceConfig,
     official_extension_catalog::{
         ApiOfficialExtensionCatalogSource, ApiOfficialRuntimeExtensionSource,
-        OfficialExtensionCatalogSearchQuery, OfficialExtensionCatalogSourcePort,
+        OfficialExtensionArtifactError, OfficialExtensionCatalogSearchQuery,
+        OfficialExtensionCatalogSourcePort,
     },
 };
 
@@ -197,8 +198,57 @@ async fn publisher_cutover_checksum_mismatch_does_not_retry_artifact_request() {
         .await
         .unwrap_err();
 
-    assert!(error.to_string().contains("checksum mismatch"));
+    assert!(matches!(
+        error.downcast_ref::<OfficialExtensionArtifactError>(),
+        Some(OfficialExtensionArtifactError::ChecksumMismatch)
+    ));
     assert_eq!(artifact_requests.load(Ordering::SeqCst), 1);
+    server.abort();
+}
+
+#[tokio::test]
+async fn missing_release_asset_preserves_404_host_evidence_without_retrying() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let (documents, sources) = catalog_documents(&base_url);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let source = ApiOfficialExtensionCatalogSource::new(sources);
+    let page = source.list_page("i18n", None).await.unwrap();
+    let mut missing = page.entries[0].clone();
+    missing.download_locator = json!({
+        "kind": "https",
+        "locator": format!("{base_url}/missing-release.json")
+    });
+
+    let error = source.download_artifact(&missing).await.unwrap_err();
+    match error.downcast_ref::<OfficialExtensionArtifactError>() {
+        Some(OfficialExtensionArtifactError::NotFound { host, status }) => {
+            assert_eq!(host, "127.0.0.1");
+            assert_eq!(*status, 404);
+        }
+        other => panic!("expected typed 404 artifact error, got {other:?}"),
+    }
+    assert_eq!(
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.as_str() == "/missing-release.json")
+            .count(),
+        1
+    );
     server.abort();
 }
 

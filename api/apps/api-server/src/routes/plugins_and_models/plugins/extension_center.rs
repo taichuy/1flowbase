@@ -28,7 +28,8 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     official_extension_catalog::{
-        LocatedOfficialExtensionCatalogEntry, OfficialExtensionArtifactDescriptor,
+        DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
+        OfficialExtensionArtifactDescriptor, OfficialExtensionArtifactError,
         OfficialExtensionCatalogEntry, OfficialExtensionCatalogFreshness,
         OfficialExtensionCatalogSearchQuery,
     },
@@ -927,12 +928,19 @@ fn artifact_preflight_challenge(
             "The artifact does not include an expected checksum.",
         ));
     }
-    match descriptor
-        .signature
-        .as_ref()
-        .and_then(|signature| signature.get("key_id"))
-        .and_then(serde_json::Value::as_str)
-    {
+    let signing_key_id = if matches!(
+        entry.category.as_str(),
+        "host-extensions" | "runtime-extensions" | "capability-plugins"
+    ) {
+        descriptor
+            .signature
+            .as_ref()
+            .and_then(|signature| signature.get("key_id"))
+            .and_then(serde_json::Value::as_str)
+    } else {
+        complete_artifact_signature(descriptor).map(|(_, key_id, _)| key_id)
+    };
+    match signing_key_id {
         None => warnings.push(risk_warning(
             "signature_missing",
             "The artifact does not include a verifiable signature.",
@@ -1043,18 +1051,55 @@ fn signature_status_from_descriptor(
     descriptor: &OfficialExtensionArtifactDescriptor,
     trusted_key_ids: &[String],
 ) -> domain::ExtensionSignatureStatus {
-    match descriptor
-        .signature
-        .as_ref()
-        .and_then(|signature| signature.get("key_id"))
-        .and_then(serde_json::Value::as_str)
-    {
+    match complete_artifact_signature(descriptor).map(|(_, key_id, _)| key_id) {
         None => domain::ExtensionSignatureStatus::Missing,
         Some(key_id) if trusted_key_ids.iter().any(|trusted| trusted == key_id) => {
             domain::ExtensionSignatureStatus::Verified
         }
         Some(_) => domain::ExtensionSignatureStatus::UnknownKey,
     }
+}
+
+fn complete_artifact_signature(
+    descriptor: &OfficialExtensionArtifactDescriptor,
+) -> Option<(&str, &str, &str)> {
+    let signature = descriptor.signature.as_ref()?;
+    Some((
+        signature.get("algorithm")?.as_str()?.trim(),
+        signature.get("key_id")?.as_str()?.trim(),
+        signature.get("signature")?.as_str()?.trim(),
+    ))
+    .filter(|(algorithm, key_id, signature)| {
+        !algorithm.is_empty() && !key_id.is_empty() && !signature.is_empty()
+    })
+}
+
+fn verify_trusted_artifact_signature(
+    downloaded: &DownloadedOfficialExtensionArtifact,
+    trusted_public_keys: &[plugin_framework::TrustedPublicKey],
+) -> Result<(), ApiError> {
+    let Some((algorithm, key_id, signature)) = complete_artifact_signature(&downloaded.descriptor)
+    else {
+        return Ok(());
+    };
+    if !trusted_public_keys
+        .iter()
+        .any(|key| key.key_id == key_id && key.algorithm == algorithm)
+    {
+        return Ok(());
+    }
+    let Some(checksum) = downloaded.descriptor.expected_checksum.as_deref() else {
+        return Err(OfficialExtensionArtifactError::ChecksumMismatch.into());
+    };
+    plugin_framework::verify_trusted_ed25519_artifact(
+        &downloaded.artifact_bytes,
+        checksum,
+        algorithm,
+        key_id,
+        signature,
+        trusted_public_keys,
+    )
+    .map_err(|_| OfficialExtensionArtifactError::SignatureInvalid.into())
 }
 
 fn signature_status_from_intake(status: &str) -> domain::ExtensionSignatureStatus {
@@ -1180,9 +1225,8 @@ async fn install_or_update_official_extension(
     let descriptor = state
         .official_extension_catalog_source
         .resolve_artifact(&located.entry)?;
-    let trusted_key_ids = state
-        .official_plugin_source
-        .trusted_public_keys()
+    let trusted_public_keys = state.official_plugin_source.trusted_public_keys();
+    let trusted_key_ids = trusted_public_keys
         .iter()
         .map(|key| key.key_id.clone())
         .collect::<Vec<_>>();
@@ -1208,11 +1252,17 @@ async fn install_or_update_official_extension(
         .official_extension_catalog_source
         .download_artifact(&located.entry)
         .await
-        .map_err(|_| {
-            control_plane::errors::ControlPlaneError::UpstreamUnavailable(
-                "extension_artifact_download_unavailable",
-            )
+        .map_err(|error| {
+            if error
+                .downcast_ref::<OfficialExtensionArtifactError>()
+                .is_some()
+            {
+                ApiError(error)
+            } else {
+                OfficialExtensionArtifactError::DownloadUnavailable { source: error }.into()
+            }
         })?;
+    verify_trusted_artifact_signature(&downloaded, &trusted_public_keys)?;
     let mut signature_status =
         signature_status_from_descriptor(&downloaded.descriptor, &trusted_key_ids);
     let mut signature_algorithm = downloaded

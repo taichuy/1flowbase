@@ -8,7 +8,9 @@ use plugin_framework::error::PluginFrameworkError;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::official_extension_catalog::OfficialExtensionCatalogUnavailable;
+use crate::official_extension_catalog::{
+    OfficialExtensionArtifactError, OfficialExtensionCatalogUnavailable,
+};
 
 #[derive(Debug)]
 pub struct ApiError(pub anyhow::Error);
@@ -52,6 +54,24 @@ impl IntoResponse for ApiError {
                     StatusCode::SERVICE_UNAVAILABLE,
                     "extension_catalog_temporarily_inconsistent",
                 )
+            }
+            None if self
+                .0
+                .downcast_ref::<OfficialExtensionArtifactError>()
+                .is_some() =>
+            {
+                let error = self
+                    .0
+                    .downcast_ref::<OfficialExtensionArtifactError>()
+                    .expect("artifact error was matched above");
+                tracing::warn!(
+                    code = error.api_code(),
+                    upstream_host = ?error.host(),
+                    upstream_status = ?error.upstream_status(),
+                    error = %error,
+                    "official extension artifact operation failed"
+                );
+                (StatusCode::BAD_GATEWAY, error.api_code())
             }
             None => match self.0.downcast_ref::<PluginFrameworkError>() {
                 Some(PluginFrameworkError::RuntimeContract { .. }) => {
