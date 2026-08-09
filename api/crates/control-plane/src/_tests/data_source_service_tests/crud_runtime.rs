@@ -27,6 +27,9 @@ async fn map_resource_to_model_rejects_foreign_instance_workspace() {
             workspace_id: Uuid::from_u128(0x999),
             instance_id: created.instance.id,
             resource_key: "contacts".into(),
+            template_provider: "acme_hubspot_source".into(),
+            template_code: "contacts".into(),
+            template_version: "v1".into(),
         })
         .await
         .unwrap_err();

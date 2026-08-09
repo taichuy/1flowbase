@@ -4,9 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use plugin_framework::data_source_contract::{
     DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
-    DataSourceDeleteRecordOutput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
-    DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourceUpdateRecordInput,
-    DataSourceUpdateRecordOutput, NativeSqlExecutionItem, NativeSqlExecutionOutput,
+    DataSourceDeleteRecordOutput, DataSourceExecuteModelOperationInput, DataSourceGetRecordInput,
+    DataSourceGetRecordOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
+    DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput, NativeSqlExecutionItem,
+    NativeSqlExecutionOutput,
 };
 use runtime_core::runtime_engine::{DataSourceRuntimeRecordBackend, RuntimeEngine};
 
@@ -103,6 +104,16 @@ impl DataSourceRuntimeRecordBackend for SqlPreviewBackend {
         _input: DataSourceDeleteRecordInput,
     ) -> anyhow::Result<DataSourceDeleteRecordOutput> {
         Err(anyhow::anyhow!("unused delete_record test path"))
+    }
+
+    async fn execute_model_operation(
+        &self,
+        _workspace_id: Uuid,
+        _data_source_instance_id: Uuid,
+        _expected_capabilities: plugin_framework::DataSourceCrudCapabilities,
+        _input: DataSourceExecuteModelOperationInput,
+    ) -> anyhow::Result<Value> {
+        Err(anyhow::anyhow!("unused execute_model_operation test path"))
     }
 }
 

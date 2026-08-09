@@ -41,7 +41,11 @@ use argon2::{
     Argon2,
 };
 use axum::{middleware as axum_middleware, routing::get, Json, Router};
-use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
+use control_plane::{
+    bootstrap::{BootstrapConfig, BootstrapService},
+    plugin_management::ready_current_node_plugin_installation,
+    ports::{DataSourceRuntimePort, PluginRepository},
+};
 use rand_core::OsRng;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -85,6 +89,47 @@ async fn health() -> Json<HealthResponse> {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+async fn intake_active_data_source_templates_at_startup(
+    store: &storage_durable::MainDurableStore,
+    runtime: &ApiProviderRuntime,
+    api_node_id: &str,
+    provider_install_root: &str,
+) -> Result<()> {
+    let installations = store.list_installations().await?;
+    for installation in installations.into_iter().filter(|installation| {
+        installation.contract_version == "1flowbase.data_source/v1"
+            && installation.desired_state == domain::PluginDesiredState::ActiveRequested
+    }) {
+        let local_installation = match ready_current_node_plugin_installation(
+            store,
+            api_node_id,
+            std::path::Path::new(provider_install_root),
+            installation.id,
+        )
+        .await
+        {
+            Ok(installation) => installation,
+            Err(error) => {
+                tracing::warn!(
+                    installation_id = %installation.id,
+                    error = %error,
+                    "active data source template intake skipped"
+                );
+                continue;
+            }
+        };
+        if let Err(error) = DataSourceRuntimePort::ensure_loaded(runtime, &local_installation).await
+        {
+            tracing::warn!(
+                installation_id = %installation.id,
+                error = %error,
+                "active data source template intake failed; dependent models remain unavailable"
+            );
+        }
+    }
+    Ok(())
 }
 
 #[utoipa::path(
@@ -314,11 +359,12 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         )),
     ));
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
+    let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
     let runtime_metadata = store.list_runtime_model_metadata().await?;
     runtime_registry.rebuild(runtime_metadata);
     let runtime_engine = Arc::new(
-        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend(
+        runtime_core::runtime_engine::RuntimeEngine::new_with_data_source_backend_and_templates(
             runtime_registry,
             Arc::new(store.clone()),
             Arc::new(ApiDataSourceRuntimeRecordBackend::new(
@@ -327,6 +373,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
                 config.provider_secret_master_key.clone(),
                 config.api_node_id.clone(),
             )),
+            data_model_template_catalog,
         ),
     );
     let api_docs = Arc::new(
@@ -407,6 +454,13 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         )
         .await?;
     plugin_management.reconcile_all_installations().await?;
+    intake_active_data_source_templates_at_startup(
+        &store,
+        &api_provider_runtime,
+        &config.api_node_id,
+        &config.provider_install_root,
+    )
+    .await?;
     let mut prepared_host_extensions = prepare_host_extensions_at_startup(
         &store,
         &config.api_node_id,

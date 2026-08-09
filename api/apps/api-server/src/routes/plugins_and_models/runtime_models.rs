@@ -83,9 +83,25 @@ fn runtime_acl_denial_reason(error: &anyhow::Error) -> Option<&'static str> {
 
 #[derive(Debug, Clone)]
 struct ResolvedRuntimeOperation {
-    handler: runtime_core::general_data_model_template::CoreGeneralOperationHandler,
+    handler: ResolvedRuntimeOperationHandler,
+    operation_code: String,
     data_action: runtime_core::runtime_acl::RuntimeDataAction,
     path_parameters: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ResolvedRuntimeOperationHandler {
+    Core(runtime_core::general_data_model_template::CoreGeneralOperationHandler),
+    External,
+}
+
+impl ResolvedRuntimeOperation {
+    fn audit_action(&self) -> &str {
+        match &self.handler {
+            ResolvedRuntimeOperationHandler::Core(handler) => handler.audit_action(),
+            ResolvedRuntimeOperationHandler::External => &self.operation_code,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -268,24 +284,26 @@ async fn dispatch_runtime_operation(
             Err(error) => return error.into_response(),
         };
     let record_id = match resolved.handler {
-        runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord
-        | runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord
-        | runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord => {
-            match resolved.path_parameters.get("id").cloned() {
-                Some(record_id) => Some(record_id),
-                None => {
-                    return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "runtime_path",
-                    ))
-                    .into_response()
-                }
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord
+            | runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord
+            | runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord,
+        ) => match resolved.path_parameters.get("id").cloned() {
+            Some(record_id) => Some(record_id),
+            None => {
+                return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "runtime_path",
+                ))
+                .into_response()
             }
-        }
+        },
         _ => None,
     };
 
     match resolved.handler {
-        runtime_core::general_data_model_template::CoreGeneralOperationHandler::ListRecords => {
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::ListRecords,
+        ) => {
             let query = match Query::<RuntimeListQueryParams>::try_from_uri(&uri) {
                 Ok(query) => query,
                 Err(_) => {
@@ -299,59 +317,64 @@ async fn dispatch_runtime_operation(
                 .await
                 .into_response()
         }
-        runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord => {
-            get_record(
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord,
+        ) => get_record(
+            State(state),
+            headers,
+            Path((model_code, record_id.unwrap_or_default())),
+            resolved,
+        )
+        .await
+        .into_response(),
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::CreateRecord,
+        ) => match serde_json::from_slice::<Value>(&body) {
+            Ok(payload) => create_record(
                 State(state),
                 headers,
-                Path((model_code, record_id.unwrap_or_default())),
+                Path(model_code),
+                Json(payload),
                 resolved,
             )
             .await
-            .into_response()
-        }
-        runtime_core::general_data_model_template::CoreGeneralOperationHandler::CreateRecord => {
-            match serde_json::from_slice::<Value>(&body) {
-                Ok(payload) => create_record(
-                    State(state),
-                    headers,
-                    Path(model_code),
-                    Json(payload),
-                    resolved,
-                )
-                .await
-                .into_response(),
-                Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                    "payload",
-                ))
-                .into_response(),
-            }
-        }
-        runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord => {
-            match serde_json::from_slice::<Value>(&body) {
-                Ok(payload) => update_record(
-                    State(state),
-                    headers,
-                    Path((model_code, record_id.unwrap_or_default())),
-                    Json(payload),
-                    resolved,
-                )
-                .await
-                .into_response(),
-                Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                    "payload",
-                ))
-                .into_response(),
-            }
-        }
-        runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord => {
-            delete_record(
+            .into_response(),
+            Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                "payload",
+            ))
+            .into_response(),
+        },
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord,
+        ) => match serde_json::from_slice::<Value>(&body) {
+            Ok(payload) => update_record(
                 State(state),
                 headers,
                 Path((model_code, record_id.unwrap_or_default())),
+                Json(payload),
                 resolved,
             )
             .await
-            .into_response()
+            .into_response(),
+            Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
+                "payload",
+            ))
+            .into_response(),
+        },
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord,
+        ) => delete_record(
+            State(state),
+            headers,
+            Path((model_code, record_id.unwrap_or_default())),
+            resolved,
+        )
+        .await
+        .into_response(),
+        ResolvedRuntimeOperationHandler::External => {
+            execute_external_model_operation(state, headers, model_code, uri, body, resolved)
+                .await
+                .into_response()
         }
     }
 }
@@ -377,9 +400,8 @@ async fn resolve_runtime_operation(
     let handler = runtime_core::general_data_model_template::CoreGeneralOperationHandler::from_ref(
         &matched.operation.handler_ref,
     )
-    .ok_or(control_plane::errors::ControlPlaneError::Conflict(
-        "data_model_template_handler_unavailable",
-    ))?;
+    .map(ResolvedRuntimeOperationHandler::Core)
+    .unwrap_or(ResolvedRuntimeOperationHandler::External);
     let data_action = runtime_core::general_data_model_template::runtime_data_action(
         &matched.operation.permission_action,
     )
@@ -388,9 +410,61 @@ async fn resolve_runtime_operation(
     ))?;
     Ok(ResolvedRuntimeOperation {
         handler,
+        operation_code: matched.operation.code.clone(),
         data_action,
         path_parameters: matched.path_parameters,
     })
+}
+
+async fn execute_external_model_operation(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    model_code: String,
+    uri: Uri,
+    body: Bytes,
+    operation: ResolvedRuntimeOperation,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    let (credential, scope_grant) =
+        runtime_authorization(&state, &headers, &model_code, &operation).await?;
+    if operation.data_action != runtime_core::runtime_acl::RuntimeDataAction::View {
+        require_session_csrf_for_write(&headers, &credential)?;
+    }
+    let payload = if body.is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("payload"))?
+    };
+    let query = Query::<std::collections::BTreeMap<String, String>>::try_from_uri(&uri)
+        .map(|query| serde_json::to_value(query.0))
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("query"))??;
+    let result = state
+        .runtime_engine
+        .execute_model_operation(runtime_core::runtime_engine::RuntimeModelOperationInput {
+            actor: credential.actor().clone(),
+            model_code: model_code.clone(),
+            operation_code: operation.operation_code.clone(),
+            payload,
+            path: serde_json::to_value(&operation.path_parameters)?,
+            query,
+            scope_grant,
+        })
+        .await;
+    if let Err(error) = &result {
+        append_api_key_engine_acl_denied_audit(&state, &credential, &model_code, &operation, error)
+            .await?;
+    }
+    let output = result.map_err(map_runtime_error)?;
+    append_api_key_runtime_audit(
+        &state,
+        &credential,
+        &model_code,
+        &operation,
+        "state_model.api_key_runtime_operation_executed",
+        None,
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output)))
 }
 
 fn descriptor_method(method: &Method) -> Option<plugin_framework::DataModelOperationMethod> {
@@ -786,7 +860,7 @@ async fn append_api_key_runtime_audit(
             serde_json::json!({
                 "api_key_id": api_key.api_key.id,
                 "model_code": model_code,
-                "action": operation.handler.audit_action(),
+                "action": operation.audit_action(),
                 "scope_kind": api_key.api_key.scope_kind.as_str(),
                 "scope_id": api_key.api_key.scope_id,
                 "reason": reason,

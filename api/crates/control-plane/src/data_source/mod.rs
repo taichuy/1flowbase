@@ -100,6 +100,17 @@ pub struct MapDataSourceResourceToModelCommand {
     pub workspace_id: Uuid,
     pub instance_id: Uuid,
     pub resource_key: String,
+    pub template_provider: String,
+    pub template_code: String,
+    pub template_version: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListCompatibleDataModelTemplatesCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub instance_id: Uuid,
+    pub resource_key: String,
 }
 
 #[derive(Debug, Clone)]
@@ -195,6 +206,11 @@ pub struct MapDataSourceResourceToModelResult {
     pub fields: Vec<domain::ModelFieldRecord>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CompatibleDataModelTemplateView {
+    pub descriptor: plugin_framework::DataModelTemplateDescriptor,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeSqlDataSourceOption {
     pub data_source_instance_id: String,
@@ -275,6 +291,87 @@ where
             .load_role_console_policies_for_user(actor)
             .await?;
         ensure_console_simple_operation(&policies, group, operation_id).map_err(Into::into)
+    }
+
+    async fn ready_resource_descriptor(
+        &self,
+        workspace_id: Uuid,
+        instance_id: Uuid,
+        resource_key: String,
+    ) -> Result<(
+        domain::DataSourceInstanceRecord,
+        domain::LocalPluginInstallationRecord,
+        DataSourceResourceDescriptor,
+    )> {
+        let instance = self
+            .repository
+            .get_instance(workspace_id, instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        ensure_ready_connection(&instance, "data_source_resource")?;
+        let installation = self.ready_installation(instance.installation_id).await?;
+        ensure_installation_assigned(&self.repository, workspace_id, instance.installation_id)
+            .await?;
+        let resource_key = normalize_required_text(&resource_key, "resource_key")?;
+        let secret_json = self
+            .repository
+            .get_secret_json(instance.id, &self.secret_master_key)
+            .await?
+            .unwrap_or_else(|| json!({}));
+        let secret_values = collect_secret_strings(&secret_json);
+        self.ensure_runtime_loaded(&installation).await?;
+        let descriptor = self
+            .runtime
+            .describe_resource(
+                &installation,
+                DataSourceDescribeResourceInput {
+                    connection: DataSourceConfigInput {
+                        config_json: instance.config_json.clone(),
+                        secret_json,
+                    },
+                    resource_key,
+                },
+            )
+            .await?;
+        let descriptor = redact_value(&serde_json::to_value(descriptor)?, &secret_values);
+        let descriptor = serde_json::from_value(descriptor)?;
+        Ok((instance, installation, descriptor))
+    }
+
+    pub async fn compatible_data_model_templates(
+        &self,
+        command: ListCompatibleDataModelTemplatesCommand,
+    ) -> Result<Vec<CompatibleDataModelTemplateView>> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        ensure_workspace_matches(&actor, command.workspace_id)?;
+        let visibility = self.data_source_view_visibility(&actor).await?;
+        self.repository
+            .get_instance_for_visibility(
+                command.workspace_id,
+                command.instance_id,
+                actor.user_id,
+                visibility,
+            )
+            .await?
+            .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
+        let (instance, installation, descriptor) = self
+            .ready_resource_descriptor(
+                command.workspace_id,
+                command.instance_id,
+                command.resource_key,
+            )
+            .await?;
+        let source = plugin_framework::DataModelTemplateSource {
+            kind: plugin_framework::DataModelSourceKind::ExternalSource,
+            provider: Some(instance.source_code),
+        };
+        Ok(self
+            .runtime
+            .compatible_data_model_templates(&installation, &source, &descriptor.capabilities)
+            .await?
+            .into_iter()
+            .map(|descriptor| CompatibleDataModelTemplateView { descriptor })
+            .collect())
     }
 
     async fn data_source_view_visibility(
@@ -945,43 +1042,13 @@ where
         )
         .await?;
 
-        let instance = self
-            .repository
-            .get_instance(command.workspace_id, command.instance_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
-        ensure_ready_connection(&instance, "map_resource_to_model")?;
-        let installation = self.ready_installation(instance.installation_id).await?;
-        ensure_installation_assigned(
-            &self.repository,
-            command.workspace_id,
-            instance.installation_id,
-        )
-        .await?;
-
-        let resource_key = normalize_required_text(&command.resource_key, "resource_key")?;
-        let secret_json = self
-            .repository
-            .get_secret_json(instance.id, &self.secret_master_key)
-            .await?
-            .unwrap_or_else(|| json!({}));
-        let secret_values = collect_secret_strings(&secret_json);
-        self.ensure_runtime_loaded(&installation).await?;
-        let descriptor = self
-            .runtime
-            .describe_resource(
-                &installation,
-                DataSourceDescribeResourceInput {
-                    connection: DataSourceConfigInput {
-                        config_json: instance.config_json.clone(),
-                        secret_json,
-                    },
-                    resource_key,
-                },
+        let (instance, installation, descriptor) = self
+            .ready_resource_descriptor(
+                command.workspace_id,
+                command.instance_id,
+                command.resource_key,
             )
             .await?;
-        let descriptor = redact_value(&serde_json::to_value(descriptor)?, &secret_values);
-        let descriptor: DataSourceResourceDescriptor = serde_json::from_value(descriptor)?;
 
         let descriptor_resource_key =
             normalize_required_text(&descriptor.resource_key, "external_resource_key")?;
@@ -1001,18 +1068,22 @@ where
             kind: plugin_framework::DataModelSourceKind::ExternalSource,
             provider: Some(instance.source_code.clone()),
         };
-        let template_identity =
-            runtime_core::general_data_model_template::general_template_identity();
-        let template_capabilities = runtime_core::general_data_model_template::source_capabilities(
-            &template_source,
-            Some(&descriptor.capabilities),
-        );
-        if !runtime_core::general_data_model_template::template_is_compatible(
-            &template_identity,
-            &template_source,
-            &template_capabilities,
-        )
-        .map_err(|_| ControlPlaneError::Conflict("data_model_template_unavailable"))?
+        let template_identity = plugin_framework::DataModelTemplateIdentity {
+            provider: normalize_required_text(&command.template_provider, "template_provider")?,
+            code: normalize_required_text(&command.template_code, "template_code")?,
+            version: normalize_required_text(&command.template_version, "template_version")?,
+        };
+        let compatible = self
+            .runtime
+            .compatible_data_model_templates(
+                &installation,
+                &template_source,
+                &descriptor.capabilities,
+            )
+            .await?;
+        if !compatible
+            .iter()
+            .any(|template| template.identity == template_identity)
         {
             return Err(ControlPlaneError::InvalidInput("data_model_template_incompatible").into());
         }
@@ -1028,9 +1099,9 @@ where
                 external_resource_key: Some(descriptor_resource_key.clone()),
                 external_table_id: None,
                 external_capability_snapshot: Some(serde_json::to_value(&descriptor.capabilities)?),
-                template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
-                template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
-                template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
+                template_provider: template_identity.provider.clone(),
+                template_code: template_identity.code.clone(),
+                template_version: template_identity.version.clone(),
                 code: model_code,
                 title: model_title,
                 description: None,

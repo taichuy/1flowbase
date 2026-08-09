@@ -1,8 +1,8 @@
 use control_plane::{errors::ControlPlaneError, model_definition::ModelDefinitionService};
 use plugin_framework::{DataModelTemplateIdentity, DataModelTemplateOperation};
 use runtime_core::{
-    data_model_template_registry::CompiledDataModelTemplate,
-    general_data_model_template::{core_data_model_template_registry, CoreGeneralOperationHandler},
+    data_model_template_registry::{CompiledDataModelTemplate, DataModelTemplateCatalog},
+    general_data_model_template::CoreGeneralOperationHandler,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -90,16 +90,14 @@ pub async fn ready_model(
 
 fn template_for_model(
     model: &domain::ModelDefinitionRecord,
-) -> Option<&'static CompiledDataModelTemplate> {
+    catalog: &DataModelTemplateCatalog,
+) -> Option<CompiledDataModelTemplate> {
     let identity = DataModelTemplateIdentity {
         provider: model.template_provider.clone(),
         code: model.template_code.clone(),
         version: model.template_version.clone(),
     };
-    core_data_model_template_registry()
-        .ok()?
-        .resolve(&identity)
-        .ok()
+    catalog.resolve(&identity).ok()
 }
 
 fn operation_path(
@@ -109,10 +107,13 @@ fn operation_path(
     operation.path.replace("{model_code}", &model.code)
 }
 
-pub fn build_category(models: &[domain::ModelDefinitionRecord]) -> Option<DocsCatalogCategory> {
+pub fn build_category(
+    models: &[domain::ModelDefinitionRecord],
+    catalog: &DataModelTemplateCatalog,
+) -> Option<DocsCatalogCategory> {
     let operation_count = models
         .iter()
-        .filter_map(template_for_model)
+        .filter_map(|model| template_for_model(model, catalog))
         .map(|template| template.descriptor().operations.len())
         .sum();
     if operation_count == 0 {
@@ -127,6 +128,7 @@ pub fn build_category(models: &[domain::ModelDefinitionRecord]) -> Option<DocsCa
 
 pub fn build_category_operations(
     models: &[domain::ModelDefinitionRecord],
+    catalog: &DataModelTemplateCatalog,
 ) -> DocsCatalogCategoryOperations {
     let mut operations = Vec::new();
     for model in models {
@@ -135,7 +137,7 @@ pub fn build_category_operations(
         } else {
             model.title.clone()
         };
-        let Some(template) = template_for_model(model) else {
+        let Some(template) = template_for_model(model, catalog) else {
             continue;
         };
         for operation in &template.descriptor().operations {
@@ -161,8 +163,11 @@ pub fn build_category_operations(
     }
 }
 
-pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Option<Value> {
-    let template = template_for_model(model)?;
+pub fn build_model_openapi(
+    model: &domain::ModelDefinitionRecord,
+    catalog: &DataModelTemplateCatalog,
+) -> Option<Value> {
+    let template = template_for_model(model, catalog)?;
     let schema_name = record_schema_name(&model.code);
     let create_schema_name = format!("{schema_name}CreateInput");
     let update_schema_name = format!("{schema_name}UpdateInput");
@@ -206,7 +211,7 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Option<Valu
                 }
             },
             "schemas": {
-                schema_name: record_schema(model, template),
+                schema_name: record_schema(model, &template),
                 create_schema_name: record_write_schema(model, true),
                 update_schema_name: record_write_schema(model, false)
             }
@@ -223,11 +228,14 @@ pub fn build_model_openapi(model: &domain::ModelDefinitionRecord) -> Option<Valu
     }))
 }
 
-pub fn build_category_openapi(models: &[domain::ModelDefinitionRecord]) -> Value {
+pub fn build_category_openapi(
+    models: &[domain::ModelDefinitionRecord],
+    catalog: &DataModelTemplateCatalog,
+) -> Value {
     let mut paths = serde_json::Map::new();
     let mut schemas = serde_json::Map::new();
     for model in models {
-        let Some(spec) = build_model_openapi(model) else {
+        let Some(spec) = build_model_openapi(model, catalog) else {
             continue;
         };
         if let Some(spec_paths) = spec.get("paths").and_then(Value::as_object) {
@@ -273,10 +281,11 @@ pub fn build_category_openapi(models: &[domain::ModelDefinitionRecord]) -> Value
 pub fn build_operation_openapi(
     model: &domain::ModelDefinitionRecord,
     operation_code: &str,
+    catalog: &DataModelTemplateCatalog,
 ) -> Option<Value> {
-    let template = template_for_model(model)?;
+    let template = template_for_model(model, catalog)?;
     let operation_descriptor = template.operation(operation_code)?;
-    let full_spec = build_model_openapi(model)?;
+    let full_spec = build_model_openapi(model, catalog)?;
     let path = operation_path(model, operation_descriptor);
     let method = operation_descriptor.method.as_str().to_ascii_lowercase();
     let operation = full_spec
@@ -322,7 +331,7 @@ fn build_operation_definition(
     create_schema_ref: &str,
     update_schema_ref: &str,
 ) -> Option<Value> {
-    let handler = CoreGeneralOperationHandler::from_ref(&operation.handler_ref)?;
+    let handler = CoreGeneralOperationHandler::from_ref(&operation.handler_ref);
     let mut definition = serde_json::Map::from_iter([
         (
             "operationId".to_owned(),
@@ -340,25 +349,79 @@ fn build_operation_definition(
     ]);
 
     match handler {
-        CoreGeneralOperationHandler::ListRecords => {
+        None => {
+            let parameters = operation
+                .path
+                .split('/')
+                .filter_map(|segment| {
+                    segment
+                        .strip_prefix('{')
+                        .and_then(|value| value.strip_suffix('}'))
+                })
+                .filter(|parameter| *parameter != "model_code")
+                .map(|parameter| {
+                    json!({
+                        "name": parameter,
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string" }
+                    })
+                })
+                .collect::<Vec<_>>();
+            if !parameters.is_empty() {
+                definition.insert("parameters".to_owned(), Value::Array(parameters));
+            }
+            if !matches!(
+                operation.method,
+                plugin_framework::DataModelOperationMethod::Get
+            ) {
+                definition.insert(
+                    "requestBody".to_owned(),
+                    json!({
+                        "required": true,
+                        "content": {
+                            "application/json": { "schema": operation.input_schema.clone() }
+                        }
+                    }),
+                );
+            }
+            definition.insert(
+                "responses".to_owned(),
+                json!({
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": { "schema": operation.output_schema.clone() }
+                        }
+                    },
+                    "400": { "description": "Invalid operation input" },
+                    "401": { "description": "Missing or invalid API key" },
+                    "403": { "description": "Operation permission or scope grant denied" },
+                    "404": { "description": "Data Model operation not found" },
+                    "409": { "description": "Data Model, template, provider, or operation unavailable" },
+                    "502": { "description": "RuntimeExtension returned an invalid response" }
+                }),
+            );
+        }
+        Some(CoreGeneralOperationHandler::ListRecords) => {
             definition.insert("parameters".to_owned(), runtime_list_parameters());
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, true));
         }
-        CoreGeneralOperationHandler::GetRecord => {
+        Some(CoreGeneralOperationHandler::GetRecord) => {
             definition.insert(
                 "parameters".to_owned(),
                 json!([id_parameter(), expand_parameter()]),
             );
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
         }
-        CoreGeneralOperationHandler::CreateRecord => {
+        Some(CoreGeneralOperationHandler::CreateRecord) => {
             definition.insert(
                 "requestBody".to_owned(),
                 json_request_body(create_schema_ref),
             );
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
         }
-        CoreGeneralOperationHandler::UpdateRecord => {
+        Some(CoreGeneralOperationHandler::UpdateRecord) => {
             definition.insert("parameters".to_owned(), json!([id_parameter()]));
             definition.insert(
                 "requestBody".to_owned(),
@@ -366,7 +429,7 @@ fn build_operation_definition(
             );
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
         }
-        CoreGeneralOperationHandler::DeleteRecord => {
+        Some(CoreGeneralOperationHandler::DeleteRecord) => {
             definition.insert("parameters".to_owned(), json!([id_parameter()]));
             definition.insert("responses".to_owned(), runtime_delete_responses());
         }
@@ -599,8 +662,10 @@ mod tests {
     #[test]
     fn descriptor_drives_catalog_openapi_and_system_fields() {
         let model = model_fixture();
-        let template = template_for_model(&model).expect("production template must resolve");
-        let catalog = build_category_operations(std::slice::from_ref(&model));
+        let templates = DataModelTemplateCatalog::core();
+        let template =
+            template_for_model(&model, &templates).expect("production template must resolve");
+        let catalog = build_category_operations(std::slice::from_ref(&model), &templates);
 
         assert_eq!(
             catalog.operations.len(),
@@ -614,14 +679,15 @@ mod tests {
                 .expect("every descriptor operation must be cataloged");
             assert_eq!(catalog_operation.method, descriptor.method.as_str());
             assert_eq!(catalog_operation.path, operation_path(&model, descriptor));
-            let operation_spec = build_operation_openapi(&model, &descriptor.code)
+            let operation_spec = build_operation_openapi(&model, &descriptor.code, &templates)
                 .expect("every resolved handler must project OpenAPI");
             assert!(operation_spec["paths"][&catalog_operation.path]
                 [descriptor.method.as_str().to_ascii_lowercase()]
             .is_object());
         }
 
-        let spec = build_model_openapi(&model).expect("production template must project OpenAPI");
+        let spec = build_model_openapi(&model, &templates)
+            .expect("production template must project OpenAPI");
         let record_properties = &spec["components"]["schemas"]["OrdersRecord"]["properties"];
         for field in &template.descriptor().system_fields {
             assert_eq!(record_properties[&field.code], field.value_schema);
@@ -632,12 +698,69 @@ mod tests {
     fn unknown_template_identity_is_excluded_from_dynamic_docs() {
         let mut model = model_fixture();
         model.template_provider = "missing".to_owned();
+        let templates = DataModelTemplateCatalog::core();
 
-        assert!(build_category(&[model.clone()]).is_none());
-        assert!(build_category_operations(&[model.clone()])
+        assert!(build_category(&[model.clone()], &templates).is_none());
+        assert!(build_category_operations(&[model.clone()], &templates)
             .operations
             .is_empty());
-        assert!(build_model_openapi(&model).is_none());
+        assert!(build_model_openapi(&model, &templates).is_none());
+    }
+
+    #[test]
+    fn ac_013_external_custom_operation_uses_canonical_openapi_and_permission_metadata() {
+        let mut model = model_fixture();
+        model.source_kind = domain::DataModelSourceKind::ExternalSource;
+        model.data_source_instance_id = Some(Uuid::now_v7());
+        model.external_resource_key = Some("contacts".into());
+        model.template_provider = "acme_source".into();
+        model.template_code = "contact_archive".into();
+        model.template_version = "v1".into();
+        let templates = DataModelTemplateCatalog::core();
+        templates
+            .replace_provider(
+                "acme_source@1.0.0",
+                "acme_source",
+                vec![serde_json::from_value(json!({
+                    "descriptor_version": 1,
+                    "identity": { "provider": "acme_source", "code": "contact_archive", "version": "v1" },
+                    "source_selector": { "kind": "external_provider", "provider": "acme_source" },
+                    "required_capabilities": [{ "code": "update_record" }],
+                    "system_fields": [{
+                        "code": "id", "value_schema": { "type": "string" }, "required": true,
+                        "write_policy": "read_only_projection", "summary": "ID", "description": "External ID."
+                    }],
+                    "operations": [{
+                        "code": "archive_contact", "method": "POST",
+                        "path": "/api/runtime/models/{model_code}/archive/{id}",
+                        "input_schema": { "type": "object", "properties": { "reason": { "type": "string" } } },
+                        "output_schema": { "type": "object", "required": ["archived"], "properties": { "archived": { "type": "boolean" } } },
+                        "permission_action": "update",
+                        "handler_ref": { "provider": "acme_source", "code": "archive_contact", "version": "v1" },
+                        "summary": "Archive", "description": "Archive one contact."
+                    }],
+                    "summary": "Contact archive", "description": "External archive template."
+                }))
+                .unwrap()],
+            )
+            .unwrap();
+
+        let spec = build_operation_openapi(&model, "archive_contact", &templates).unwrap();
+        let operation = &spec["paths"]["/api/runtime/models/orders/archive/{id}"]["post"];
+        assert_eq!(
+            operation["requestBody"]["content"]["application/json"]["schema"]["properties"]
+                ["reason"]["type"],
+            "string"
+        );
+        assert_eq!(
+            operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
+                ["archived"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            operation["responses"]["403"]["description"],
+            "Operation permission or scope grant denied"
+        );
     }
 
     fn model_fixture() -> domain::ModelDefinitionRecord {

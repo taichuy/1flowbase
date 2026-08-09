@@ -657,67 +657,52 @@ pub async fn list_compatible_templates(
     Query(query): Query<CompatibleTemplateCatalogQuery>,
 ) -> Result<Json<ApiSuccess<Vec<CompatibleTemplateCatalogEntryResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let (source, external_capabilities) = if query.data_source_id == "main" {
-        (
-            plugin_framework::DataModelTemplateSource {
-                kind: plugin_framework::DataModelSourceKind::MainSource,
-                provider: None,
-            },
-            None,
-        )
+    let templates = if query.data_source_id == "main" {
+        let source = plugin_framework::DataModelTemplateSource {
+            kind: plugin_framework::DataModelSourceKind::MainSource,
+            provider: None,
+        };
+        let capabilities =
+            runtime_core::general_data_model_template::source_capabilities(&source, None);
+        state
+            .runtime_engine
+            .template_catalog()
+            .compatible_templates(&source, capabilities.iter().map(String::as_str))
+            .into_iter()
+            .map(|template| CompatibleTemplateCatalogEntryResponse {
+                template_provider: template.identity().provider.clone(),
+                template_code: template.identity().code.clone(),
+                template_version: template.identity().version.clone(),
+                summary: template.descriptor().summary.clone(),
+                description: template.descriptor().description.clone(),
+            })
+            .collect()
     } else {
         let instance_id = helpers::parse_uuid(&query.data_source_id, "data_source_id")?;
         let data_source_service = super::data_sources::service(&state, &context.actor);
-        let instance = data_source_service
-            .list_instances(context.user.id, context.actor.current_workspace_id)
-            .await?
-            .into_iter()
-            .find(|view| view.instance.id == instance_id)
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "data_source_instance",
-            ))?;
         let resource_key = query.resource_key.as_deref().ok_or(
             control_plane::errors::ControlPlaneError::InvalidInput("resource_key"),
         )?;
-        let resource = data_source_service
-            .list_resources(
-                context.user.id,
-                context.actor.current_workspace_id,
-                instance_id,
+        data_source_service
+            .compatible_data_model_templates(
+                control_plane::data_source::ListCompatibleDataModelTemplatesCommand {
+                    actor_user_id: context.user.id,
+                    workspace_id: context.actor.current_workspace_id,
+                    instance_id,
+                    resource_key: resource_key.to_owned(),
+                },
             )
             .await?
-            .entries
             .into_iter()
-            .find(|entry| entry.resource_key == resource_key)
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "data_source_resource",
-            ))?;
-        (
-            plugin_framework::DataModelTemplateSource {
-                kind: plugin_framework::DataModelSourceKind::ExternalSource,
-                provider: Some(instance.instance.source_code),
-            },
-            Some(resource.capabilities),
-        )
+            .map(|view| CompatibleTemplateCatalogEntryResponse {
+                template_provider: view.descriptor.identity.provider,
+                template_code: view.descriptor.identity.code,
+                template_version: view.descriptor.identity.version,
+                summary: view.descriptor.summary,
+                description: view.descriptor.description,
+            })
+            .collect()
     };
-    let capabilities = runtime_core::general_data_model_template::source_capabilities(
-        &source,
-        external_capabilities.as_ref(),
-    );
-    let templates = runtime_core::general_data_model_template::core_data_model_template_registry()
-        .map_err(|_| {
-            control_plane::errors::ControlPlaneError::Conflict("data_model_template_unavailable")
-        })?
-        .compatible_templates(&source, capabilities.iter().map(String::as_str))
-        .into_iter()
-        .map(|template| CompatibleTemplateCatalogEntryResponse {
-            template_provider: template.identity().provider.clone(),
-            template_code: template.identity().code.clone(),
-            template_version: template.identity().version.clone(),
-            summary: template.descriptor().summary.clone(),
-            description: template.descriptor().description.clone(),
-        })
-        .collect();
     Ok(Json(ApiSuccess::new(templates)))
 }
 

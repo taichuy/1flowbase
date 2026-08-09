@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, RwLock},
+};
 
 use plugin_framework::{
     DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelOperationMethod,
@@ -161,6 +164,163 @@ impl DataModelTemplateRegistry {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DataModelTemplateCatalog {
+    core_descriptors: Arc<Vec<DataModelTemplateDescriptor>>,
+    provider_descriptors: Arc<RwLock<BTreeMap<String, Vec<DataModelTemplateDescriptor>>>>,
+    compiled: Arc<RwLock<DataModelTemplateRegistry>>,
+}
+
+impl DataModelTemplateCatalog {
+    pub fn core() -> Self {
+        let core_registry = crate::general_data_model_template::core_data_model_template_registry()
+            .expect("Core data model template registry must compile");
+        let core_descriptors = core_registry
+            .templates()
+            .map(|template| template.descriptor().clone())
+            .collect::<Vec<_>>();
+        Self {
+            core_descriptors: Arc::new(core_descriptors),
+            provider_descriptors: Arc::new(RwLock::new(BTreeMap::new())),
+            compiled: Arc::new(RwLock::new(core_registry.clone())),
+        }
+    }
+
+    pub fn replace_provider(
+        &self,
+        provider_key: impl Into<String>,
+        provider_namespace: &str,
+        descriptors: Vec<DataModelTemplateDescriptor>,
+    ) -> Result<(), DataModelTemplateRegistryError> {
+        for descriptor in &descriptors {
+            if descriptor.identity.provider != provider_namespace
+                || descriptor
+                    .operations
+                    .iter()
+                    .any(|operation| operation.handler_ref.provider != provider_namespace)
+            {
+                return Err(DataModelTemplateRegistryError::ProviderNamespaceMismatch {
+                    provider_namespace: provider_namespace.to_owned(),
+                    identity: descriptor.identity.clone(),
+                });
+            }
+        }
+
+        let provider_key = provider_key.into();
+        let mut providers = self
+            .provider_descriptors
+            .write()
+            .expect("data model template provider catalog poisoned");
+        let previous = providers.insert(provider_key.clone(), descriptors);
+        let compiled = compile_catalog(&self.core_descriptors, &providers);
+        match compiled {
+            Ok(compiled) => {
+                *self
+                    .compiled
+                    .write()
+                    .expect("data model template compiled catalog poisoned") = compiled;
+                Ok(())
+            }
+            Err(error) => {
+                match previous {
+                    Some(previous) => {
+                        providers.insert(provider_key, previous);
+                    }
+                    None => {
+                        providers.remove(&provider_key);
+                    }
+                }
+                Err(error)
+            }
+        }
+    }
+
+    pub fn resolve(
+        &self,
+        identity: &DataModelTemplateIdentity,
+    ) -> Result<CompiledDataModelTemplate, DataModelTemplateRegistryError> {
+        self.compiled
+            .read()
+            .expect("data model template compiled catalog poisoned")
+            .resolve(identity)
+            .cloned()
+    }
+
+    pub fn compatible_templates<'a>(
+        &self,
+        source: &DataModelTemplateSource,
+        provided_capabilities: impl IntoIterator<Item = &'a str>,
+    ) -> Vec<CompiledDataModelTemplate> {
+        let provided_capabilities = provided_capabilities
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
+        self.compiled
+            .read()
+            .expect("data model template compiled catalog poisoned")
+            .templates
+            .values()
+            .filter(|template| template.descriptor.source_selector.matches(source))
+            .filter(|template| {
+                template
+                    .descriptor
+                    .required_capabilities
+                    .iter()
+                    .all(|required| provided_capabilities.contains(&required.code))
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+fn compile_catalog(
+    core_descriptors: &[DataModelTemplateDescriptor],
+    providers: &BTreeMap<String, Vec<DataModelTemplateDescriptor>>,
+) -> Result<DataModelTemplateRegistry, DataModelTemplateRegistryError> {
+    let descriptors = core_descriptors
+        .iter()
+        .chain(providers.values().flatten())
+        .cloned()
+        .collect::<Vec<_>>();
+    let resolution = CatalogResolution::new(&descriptors);
+    DataModelTemplateRegistry::compile(descriptors, &resolution)
+}
+
+struct CatalogResolution {
+    capabilities: BTreeSet<DataModelCapabilityRequirement>,
+    operation_handlers: BTreeSet<DataModelOperationHandlerRef>,
+}
+
+impl CatalogResolution {
+    fn new(descriptors: &[DataModelTemplateDescriptor]) -> Self {
+        Self {
+            capabilities: descriptors
+                .iter()
+                .flat_map(|descriptor| descriptor.required_capabilities.iter().cloned())
+                .collect(),
+            operation_handlers: descriptors
+                .iter()
+                .flat_map(|descriptor| {
+                    descriptor
+                        .operations
+                        .iter()
+                        .map(|operation| operation.handler_ref.clone())
+                })
+                .collect(),
+        }
+    }
+}
+
+impl DataModelTemplateResolutionContract for CatalogResolution {
+    fn contains_capability(&self, capability: &DataModelCapabilityRequirement) -> bool {
+        self.capabilities.contains(capability)
+    }
+
+    fn contains_operation_handler(&self, handler_ref: &DataModelOperationHandlerRef) -> bool {
+        self.operation_handlers.contains(handler_ref)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum DataModelTemplateRegistryError {
     #[error(transparent)]
@@ -169,6 +329,14 @@ pub enum DataModelTemplateRegistryError {
     DuplicateIdentity(DataModelTemplateIdentity),
     #[error("unknown data model template identity: {}", .0.canonical_name())]
     UnknownIdentity(DataModelTemplateIdentity),
+    #[error(
+        "data model template {} does not belong to provider namespace {provider_namespace}",
+        identity.canonical_name()
+    )]
+    ProviderNamespaceMismatch {
+        provider_namespace: String,
+        identity: DataModelTemplateIdentity,
+    },
     #[error(
         "unresolved capability {capability} for data model template {}",
         identity.canonical_name()

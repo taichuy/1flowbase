@@ -5,7 +5,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use control_plane::ports::ProviderRuntimePort;
+use control_plane::ports::{DataSourceRuntimePort, ProviderRuntimePort};
 use domain::{
     PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord, PluginRuntimeStatus,
     PluginVerificationStatus,
@@ -16,6 +16,9 @@ use plugin_framework::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderInvocationInput, ProviderRuntimeErrorKind, ProviderWireOperation,
     },
+    DataModelOperationHandlerRef, DataModelTemplateIdentity, DataSourceConfigInput,
+    DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
+    DataSourceModelOperationScopeContext,
 };
 use plugin_runner::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
@@ -435,6 +438,135 @@ fn fixture_installation(package: &TempProviderPackage) -> domain::LocalPluginIns
         },
         installation,
     }
+}
+
+fn checked_data_source_fixture_installation() -> domain::LocalPluginInstallationRecord {
+    let now = OffsetDateTime::now_utc();
+    let installation = PluginInstallationRecord {
+        id: Uuid::now_v7(),
+        scope_id: domain::SYSTEM_SCOPE_ID,
+        category: domain::ExtensionCategory::RuntimeExtensions,
+        organization: "test".to_string(),
+        provider_code: "data_source_http_fixture".to_string(),
+        plugin_id: "data_source_http_fixture@0.1.0".to_string(),
+        plugin_version: "0.1.0".to_string(),
+        contract_version: "1flowbase.data_source/v1".to_string(),
+        protocol: "stdio_json".to_string(),
+        display_name: "Data Source HTTP Fixture".to_string(),
+        source_kind: "filesystem_dropin".to_string(),
+        trust_level: "unverified".to_string(),
+        verification_status: PluginVerificationStatus::Valid,
+        desired_state: PluginDesiredState::ActiveRequested,
+        expected_checksum: None,
+        signature_status: domain::ExtensionSignatureStatus::Missing,
+        signature_algorithm: None,
+        signing_key_id: None,
+        legacy_manifest_compatibility: None,
+        metadata_json: json!({}),
+        is_system_reserved: false,
+        created_by: Uuid::now_v7(),
+        updated_by: None,
+        created_at: now,
+        updated_at: now,
+    };
+    domain::LocalPluginInstallationRecord {
+        artifact: domain::PluginArtifactInstanceRecord {
+            node_id: "test-node".to_string(),
+            installation_id: installation.id,
+            local_version: Some("0.1.0".to_string()),
+            local_checksum: None,
+            local_path: Some(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../plugins/templates/data_source_http_fixture")
+                    .display()
+                    .to_string(),
+            ),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Active,
+            availability_status: PluginAvailabilityStatus::Available,
+            checked_at: now,
+            last_error: None,
+            is_current: false,
+        },
+        installation,
+    }
+}
+
+fn checked_data_source_model_operation_input(
+    payload: serde_json::Value,
+) -> DataSourceExecuteModelOperationInput {
+    DataSourceExecuteModelOperationInput {
+        connection: DataSourceConfigInput::default(),
+        handler_ref: DataModelOperationHandlerRef {
+            provider: "data_source_http_fixture".to_string(),
+            code: "archive_contact".to_string(),
+            version: "v1".to_string(),
+        },
+        resource_key: "contacts".to_string(),
+        template_identity: DataModelTemplateIdentity {
+            provider: "data_source_http_fixture".to_string(),
+            code: "contact_archive".to_string(),
+            version: "v1".to_string(),
+        },
+        operation_code: "archive_contact".to_string(),
+        actor: DataSourceModelOperationActorContext {
+            actor_id: "user-1".to_string(),
+        },
+        scope: DataSourceModelOperationScopeContext {
+            scope_id: "workspace-1".to_string(),
+        },
+        payload,
+        path: json!({ "id": "contact-1" }),
+        query: json!({ "notify": false }),
+    }
+}
+
+#[tokio::test]
+async fn data_source_runtime_intakes_and_dispatches_checked_external_template() {
+    let services = Arc::new(ApiRuntimeServices::new(
+        Arc::new(RwLock::new(ProviderHost::default())),
+        Arc::new(RwLock::new(CapabilityHost::default())),
+        Arc::new(RwLock::new(DataSourceHost::default())),
+    ));
+    let runtime = ApiProviderRuntime::new(services.clone());
+    let installation = checked_data_source_fixture_installation();
+
+    DataSourceRuntimePort::ensure_loaded(&runtime, &installation)
+        .await
+        .expect("checked data source fixture should load");
+    let identity = DataModelTemplateIdentity {
+        provider: "data_source_http_fixture".to_string(),
+        code: "contact_archive".to_string(),
+        version: "v1".to_string(),
+    };
+    let template = services
+        .data_model_template_catalog()
+        .resolve(&identity)
+        .expect("checked external template should enter the shared catalog");
+    assert_eq!(template.descriptor().operations[0].code, "archive_contact");
+
+    let output = DataSourceRuntimePort::execute_model_operation(
+        &runtime,
+        &installation,
+        checked_data_source_model_operation_input(json!({ "reason": "duplicate" })),
+    )
+    .await
+    .expect("checked external operation should dispatch through the host");
+    assert_eq!(output["archived"], true);
+    assert_eq!(output["contact_id"], "contact-1");
+
+    let malformed_error = DataSourceRuntimePort::execute_model_operation(
+        &runtime,
+        &installation,
+        checked_data_source_model_operation_input(json!({ "malformed_response": true })),
+    )
+    .await
+    .expect_err("malformed external operation output must fail closed");
+    assert!(malformed_error
+        .to_string()
+        .contains("invalid data model operation output"));
 }
 
 fn compact_fixture_installation(

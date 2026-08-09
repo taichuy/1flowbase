@@ -125,6 +125,49 @@ async fn ac_005_data_source_view_own_filters_instance_enumeration_and_resource_r
 }
 
 #[tokio::test]
+async fn compatible_templates_rejects_a_data_source_outside_actor_visibility() {
+    let actor_user_id = user_id();
+    let peer_user_id = Uuid::from_u128(0x301);
+    let actor =
+        ActorContext::scoped_in_scope(actor_user_id, tenant_id(), workspace_id(), "member", []);
+    let repository = InMemoryDataSourceRepository::with_actor(actor);
+    repository
+        .set_console_policies(vec![data_models_console_policy(vec![
+            domain::ConsoleOperationPolicy::row(
+                data_source_operation_id(access_control::DATA_SOURCES_VIEW_OPERATION_ID),
+                domain::ConsoleOperationRowScope::Own,
+            ),
+        ])])
+        .await;
+    let peer = seed_instance(
+        &repository,
+        workspace_id(),
+        peer_user_id,
+        DataSourceInstanceStatus::Ready,
+    )
+    .await;
+    let service = DataSourceService::for_data_model_settings(
+        repository,
+        StubDataSourceRuntime::ready(),
+        "test-master-key",
+    );
+
+    let error = service
+        .compatible_data_model_templates(ListCompatibleDataModelTemplatesCommand {
+            actor_user_id,
+            workspace_id: workspace_id(),
+            instance_id: peer.id,
+            resource_key: "contacts".into(),
+        })
+        .await
+        .expect_err("data source visibility must guard live descriptor access");
+
+    assert!(error
+        .to_string()
+        .contains("resource not found: data_source_instance"));
+}
+
+#[tokio::test]
 async fn ac_007_data_source_simple_console_operations_do_not_fall_back_to_legacy_grants() {
     let actor = ActorContext::scoped_in_scope(user_id(), tenant_id(), workspace_id(), "member", []);
     let policy_repository = InMemoryDataSourceRepository::with_actor(actor);

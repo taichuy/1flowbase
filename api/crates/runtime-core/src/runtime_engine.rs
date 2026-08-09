@@ -8,11 +8,12 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use plugin_framework::data_source_contract::{
     DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
-    DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceGetRecordInput,
-    DataSourceGetRecordOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
-    DataSourceRecordFilter, DataSourceRecordPage, DataSourceRecordScopeContext,
-    DataSourceRecordSort, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
-    NativeSqlExecutionOutput,
+    DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput,
+    DataSourceExecuteModelOperationInput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
+    DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourceModelOperationActorContext,
+    DataSourceModelOperationScopeContext, DataSourceRecordFilter, DataSourceRecordPage,
+    DataSourceRecordScopeContext, DataSourceRecordSort, DataSourceUpdateRecordInput,
+    DataSourceUpdateRecordOutput, NativeSqlExecutionOutput,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -75,6 +76,17 @@ pub struct RuntimeDeleteInput {
     pub scope_grant: Option<RuntimeScopeGrant>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RuntimeModelOperationInput {
+    pub actor: domain::ActorContext,
+    pub model_code: String,
+    pub operation_code: String,
+    pub payload: Value,
+    pub path: Value,
+    pub query: Value,
+    pub scope_grant: Option<RuntimeScopeGrant>,
+}
+
 #[async_trait]
 pub trait DataSourceRuntimeRecordBackend: Send + Sync {
     async fn execute_sql(
@@ -123,6 +135,14 @@ pub trait DataSourceRuntimeRecordBackend: Send + Sync {
         data_source_instance_id: Uuid,
         input: DataSourceDeleteRecordInput,
     ) -> Result<DataSourceDeleteRecordOutput>;
+
+    async fn execute_model_operation(
+        &self,
+        workspace_id: Uuid,
+        data_source_instance_id: Uuid,
+        expected_capabilities: plugin_framework::DataSourceCrudCapabilities,
+        input: DataSourceExecuteModelOperationInput,
+    ) -> Result<Value>;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -250,11 +270,14 @@ fn ensure_create_api_required_fields(metadata: &ModelMetadata, payload: &Value) 
     )
 }
 
-fn ensure_runtime_payload_fields_writable(metadata: &ModelMetadata, payload: &Value) -> Result<()> {
+fn ensure_runtime_payload_fields_writable(
+    metadata: &ModelMetadata,
+    template: &crate::data_model_template_registry::CompiledDataModelTemplate,
+    payload: &Value,
+) -> Result<()> {
     let Some(payload) = payload.as_object() else {
         return Ok(());
     };
-    let template = resolve_compiled_template(metadata)?;
     let is_system_field = |field_code: &str| {
         template
             .descriptor()
@@ -285,6 +308,7 @@ pub struct RuntimeEngine {
     registry: RuntimeModelRegistry,
     records: Arc<dyn RuntimeRecordRepository>,
     data_source_records: Option<Arc<dyn DataSourceRuntimeRecordBackend>>,
+    template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog,
 }
 
 impl RuntimeEngine {
@@ -295,6 +319,7 @@ impl RuntimeEngine {
             registry,
             records,
             data_source_records: None,
+            template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog::core(),
         }
     }
 
@@ -309,6 +334,23 @@ impl RuntimeEngine {
             registry,
             records,
             data_source_records: Some(data_source_records),
+            template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog::core(),
+        }
+    }
+
+    pub fn new_with_data_source_backend_and_templates(
+        registry: RuntimeModelRegistry,
+        records: Arc<dyn RuntimeRecordRepository>,
+        data_source_records: Arc<dyn DataSourceRuntimeRecordBackend>,
+        template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog,
+    ) -> Self {
+        Self {
+            default_value_resolver: Arc::new(PassthroughValueResolver),
+            validator: Arc::new(NoopRecordValidator),
+            registry,
+            records,
+            data_source_records: Some(data_source_records),
+            template_catalog,
         }
     }
 
@@ -340,18 +382,95 @@ impl RuntimeEngine {
         )
     }
 
+    pub fn for_tests_with_models_data_source_backend_and_templates(
+        models: Vec<ModelMetadata>,
+        data_source_records: Arc<dyn DataSourceRuntimeRecordBackend>,
+        template_catalog: crate::data_model_template_registry::DataModelTemplateCatalog,
+    ) -> Self {
+        let registry = RuntimeModelRegistry::default();
+        registry.rebuild(models);
+        Self::new_with_data_source_backend_and_templates(
+            registry,
+            Arc::new(InMemoryRuntimeRecordRepository::default()),
+            data_source_records,
+            template_catalog,
+        )
+    }
+
     pub fn registry(&self) -> &RuntimeModelRegistry {
         &self.registry
+    }
+
+    pub fn template_catalog(
+        &self,
+    ) -> &crate::data_model_template_registry::DataModelTemplateCatalog {
+        &self.template_catalog
     }
 
     pub fn template_for_model(
         &self,
         model_code: &str,
         workspace_id: Uuid,
-    ) -> Result<&'static crate::data_model_template_registry::CompiledDataModelTemplate> {
+    ) -> Result<crate::data_model_template_registry::CompiledDataModelTemplate> {
         let runtime_model = self.load_runtime_model(model_code, workspace_id)?;
         self.ensure_available(&runtime_model)?;
         self.resolve_template(&runtime_model.metadata)
+    }
+
+    pub async fn execute_model_operation(
+        &self,
+        input: RuntimeModelOperationInput,
+    ) -> Result<Value> {
+        let metadata =
+            self.load_available_metadata(&input.model_code, input.actor.current_workspace_id)?;
+        if metadata.source_kind != domain::DataModelSourceKind::ExternalSource {
+            return Err(RuntimeModelError::unavailable(&input.model_code).into());
+        }
+        let template = self.resolve_template(&metadata)?;
+        let operation = template
+            .operation(&input.operation_code)
+            .ok_or_else(|| RuntimeModelError::unavailable(&input.model_code))?;
+        let data_action =
+            crate::general_data_model_template::runtime_data_action(&operation.permission_action)
+                .ok_or_else(|| RuntimeModelError::unavailable(&input.model_code))?;
+        ensure_runtime_record_action_allowed(&metadata, data_action)?;
+        let access_scope = resolve_access_scope(
+            &input.actor,
+            data_action,
+            metadata.model_id,
+            input.scope_grant.as_ref(),
+        )?;
+        let expected_capabilities = metadata
+            .external_capability_snapshot
+            .clone()
+            .ok_or_else(|| RuntimeModelError::unavailable(&input.model_code))?;
+        let backend = self.external_backend()?;
+        backend
+            .execute_model_operation(
+                input.actor.current_workspace_id,
+                external_data_source_instance_id(&metadata)?,
+                expected_capabilities,
+                DataSourceExecuteModelOperationInput {
+                    connection: DataSourceConfigInput::default(),
+                    handler_ref: operation.handler_ref.clone(),
+                    resource_key: external_resource_key(&metadata)?,
+                    template_identity: template.identity().clone(),
+                    operation_code: operation.code.clone(),
+                    actor: DataSourceModelOperationActorContext {
+                        actor_id: input.actor.user_id.to_string(),
+                    },
+                    scope: DataSourceModelOperationScopeContext {
+                        scope_id: access_scope
+                            .scope_id
+                            .unwrap_or(domain::SYSTEM_SCOPE_ID)
+                            .to_string(),
+                    },
+                    payload: input.payload,
+                    path: input.path,
+                    query: input.query,
+                },
+            )
+            .await
     }
 
     pub async fn execute_native_sql(
@@ -452,7 +571,8 @@ impl RuntimeEngine {
             .default_value_resolver
             .apply(input.actor.user_id, &input.model_code, input.payload)
             .await?;
-        ensure_runtime_payload_fields_writable(&metadata, &payload)?;
+        let template = self.resolve_template(&metadata)?;
+        ensure_runtime_payload_fields_writable(&metadata, &template, &payload)?;
         ensure_create_api_required_fields(&metadata, &payload)?;
         self.validator
             .validate(input.actor.user_id, &input.model_code, &payload)
@@ -487,7 +607,8 @@ impl RuntimeEngine {
             metadata.model_id,
             input.scope_grant.as_ref(),
         )?;
-        ensure_runtime_payload_fields_writable(&metadata, &input.payload)?;
+        let template = self.resolve_template(&metadata)?;
+        ensure_runtime_payload_fields_writable(&metadata, &template, &input.payload)?;
         self.validator
             .validate(input.actor.user_id, &input.model_code, &input.payload)
             .await?;
@@ -599,8 +720,15 @@ impl RuntimeEngine {
     fn resolve_template(
         &self,
         metadata: &ModelMetadata,
-    ) -> Result<&'static crate::data_model_template_registry::CompiledDataModelTemplate> {
-        resolve_compiled_template(metadata)
+    ) -> Result<crate::data_model_template_registry::CompiledDataModelTemplate> {
+        let identity = plugin_framework::DataModelTemplateIdentity {
+            provider: metadata.template_provider.clone(),
+            code: metadata.template_code.clone(),
+            version: metadata.template_version.clone(),
+        };
+        self.template_catalog
+            .resolve(&identity)
+            .map_err(|_| RuntimeModelError::unavailable(&metadata.model_code).into())
     }
 
     async fn list_external_records(
@@ -747,19 +875,6 @@ impl RuntimeEngine {
             .as_ref()
             .ok_or_else(|| anyhow!("external data source runtime backend is not configured"))
     }
-}
-
-fn resolve_compiled_template(
-    metadata: &ModelMetadata,
-) -> Result<&'static crate::data_model_template_registry::CompiledDataModelTemplate> {
-    let identity = plugin_framework::DataModelTemplateIdentity {
-        provider: metadata.template_provider.clone(),
-        code: metadata.template_code.clone(),
-        version: metadata.template_version.clone(),
-    };
-    crate::general_data_model_template::core_data_model_template_registry()
-        .and_then(|registry| registry.resolve(&identity))
-        .map_err(|_| RuntimeModelError::unavailable(&metadata.model_code).into())
 }
 
 fn external_data_source_instance_id(metadata: &ModelMetadata) -> Result<Uuid> {
@@ -1250,6 +1365,7 @@ fn test_model_metadata() -> ModelMetadata {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),

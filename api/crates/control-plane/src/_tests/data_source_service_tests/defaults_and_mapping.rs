@@ -42,6 +42,9 @@ async fn ac_004_preview_and_mapping_require_a_ready_connection_instance() {
             workspace_id: workspace_id(),
             instance_id: created.instance.id,
             resource_key: "contacts".into(),
+            template_provider: "acme_hubspot_source".into(),
+            template_code: "contacts".into(),
+            template_version: "v1".into(),
         })
         .await
         .unwrap_err();
@@ -177,6 +180,9 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
             workspace_id: workspace_id(),
             instance_id: created.instance.id,
             resource_key: "contacts".into(),
+            template_provider: "acme_hubspot_source".into(),
+            template_code: "contacts".into(),
+            template_version: "v1".into(),
         })
         .await
         .unwrap();
@@ -194,6 +200,9 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
         Some("contacts")
     );
     assert_eq!(mapped.model.external_table_id, None);
+    assert_eq!(mapped.model.template_provider, "acme_hubspot_source");
+    assert_eq!(mapped.model.template_code, "contacts");
+    assert_eq!(mapped.model.template_version, "v1");
     assert_eq!(
         mapped.model.external_capability_snapshot,
         Some(json!({
@@ -242,6 +251,95 @@ async fn map_resource_to_model_uses_descriptor_fields_capabilities_and_stored_se
 }
 
 #[tokio::test]
+async fn ac_004_compatible_templates_use_live_resource_capability_subset() {
+    let repository = InMemoryDataSourceRepository::default();
+    let runtime = StubDataSourceRuntime::ready();
+    let service = data_source_service(repository, runtime, "test-master-key");
+    let created = service
+        .create_instance(CreateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            installation_id: installation_id(),
+            source_code: "acme_hubspot_source".into(),
+            display_name: "HubSpot".into(),
+            config_json: json!({ "client_id": "abc" }),
+            secret_json: json!({ "client_secret": "secret" }),
+        })
+        .await
+        .unwrap();
+    service
+        .validate_instance(ValidateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
+
+    let templates = service
+        .compatible_data_model_templates(ListCompatibleDataModelTemplatesCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+            resource_key: "contacts".into(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(templates.len(), 1);
+    assert_eq!(
+        templates[0].descriptor.identity.provider,
+        "acme_hubspot_source"
+    );
+    assert_eq!(templates[0].descriptor.identity.code, "contacts");
+}
+
+#[tokio::test]
+async fn ac_004_mapping_fails_closed_for_unknown_template_version() {
+    let repository = InMemoryDataSourceRepository::default();
+    let runtime = StubDataSourceRuntime::ready();
+    let service = data_source_service(repository.clone(), runtime, "test-master-key");
+    let created = service
+        .create_instance(CreateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            installation_id: installation_id(),
+            source_code: "acme_hubspot_source".into(),
+            display_name: "HubSpot".into(),
+            config_json: json!({ "client_id": "abc" }),
+            secret_json: json!({ "client_secret": "secret" }),
+        })
+        .await
+        .unwrap();
+    service
+        .validate_instance(ValidateDataSourceInstanceCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+        })
+        .await
+        .unwrap();
+
+    let error = service
+        .map_resource_to_model(MapDataSourceResourceToModelCommand {
+            actor_user_id: user_id(),
+            workspace_id: workspace_id(),
+            instance_id: created.instance.id,
+            resource_key: "contacts".into(),
+            template_provider: "acme_hubspot_source".into(),
+            template_code: "contacts".into(),
+            template_version: "v2".into(),
+        })
+        .await
+        .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("data_model_template_incompatible"));
+    assert!(repository.mapped_models().await.is_empty());
+}
+
+#[tokio::test]
 async fn map_resource_to_model_redacts_descriptor_secret_echoes_before_mapping() {
     let repository = InMemoryDataSourceRepository::default();
     let runtime = StubDataSourceRuntime::echoing_secret();
@@ -276,6 +374,9 @@ async fn map_resource_to_model_redacts_descriptor_secret_echoes_before_mapping()
             workspace_id: workspace_id(),
             instance_id: created.instance.id,
             resource_key: "contacts".into(),
+            template_provider: "acme_hubspot_source".into(),
+            template_code: "contacts".into(),
+            template_version: "v1".into(),
         })
         .await
         .unwrap();

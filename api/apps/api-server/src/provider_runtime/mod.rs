@@ -52,6 +52,8 @@ pub struct ApiRuntimeServices {
     provider_host: Arc<RwLock<ProviderHost>>,
     capability_host: Arc<RwLock<CapabilityHost>>,
     data_source_host: Arc<RwLock<DataSourceHost>>,
+    data_model_template_catalog:
+        runtime_core::data_model_template_registry::DataModelTemplateCatalog,
 }
 
 impl ApiRuntimeServices {
@@ -64,7 +66,15 @@ impl ApiRuntimeServices {
             provider_host,
             capability_host,
             data_source_host,
+            data_model_template_catalog:
+                runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
         }
+    }
+
+    pub fn data_model_template_catalog(
+        &self,
+    ) -> runtime_core::data_model_template_registry::DataModelTemplateCatalog {
+        self.data_model_template_catalog.clone()
     }
 }
 
@@ -431,14 +441,24 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
-        let mut host = self.services.data_source_host.write().await;
-        match host.reload(&installation.plugin_id) {
-            Ok(_) => Ok(()),
-            Err(_) => host
-                .load(required_local_path(installation)?)
-                .map(|_| ())
-                .map_err(|error| map_framework_error(error, "data_source_runtime")),
-        }
+        self.ensure_data_source_loaded(installation).await
+    }
+
+    async fn compatible_data_model_templates(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        source: &plugin_framework::DataModelTemplateSource,
+        capabilities: &plugin_framework::DataSourceCrudCapabilities,
+    ) -> anyhow::Result<Vec<plugin_framework::DataModelTemplateDescriptor>> {
+        self.ensure_data_source_loaded(installation).await?;
+        let capability_codes = data_source_capability_codes(capabilities);
+        Ok(self
+            .services
+            .data_model_template_catalog
+            .compatible_templates(source, capability_codes.iter().map(String::as_str))
+            .into_iter()
+            .map(|template| template.descriptor().clone())
+            .collect())
     }
 
     async fn validate_config(
@@ -562,6 +582,22 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
                 .map_err(map_provider_framework_error)?
         };
         operation.await.map_err(map_provider_framework_error)
+    }
+
+    async fn execute_model_operation(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        input: plugin_framework::DataSourceExecuteModelOperationInput,
+    ) -> anyhow::Result<Value> {
+        self.ensure_data_source_loaded(installation).await?;
+        let operation = {
+            let host = self.services.data_source_host.read().await;
+            host.execute_model_operation_call(&installation.plugin_id, input)
+                .map_err(|error| map_framework_error(error, "data_source_runtime"))?
+        };
+        operation
+            .await
+            .map_err(|error| map_framework_error(error, "data_source_runtime"))
     }
 }
 
@@ -759,6 +795,61 @@ impl DataSourceRuntimeRecordBackend for ApiDataSourceRuntimeRecordBackend {
                 .await?;
         redact_data_source_output(output, &target.secret_values)
     }
+
+    async fn execute_model_operation(
+        &self,
+        workspace_id: Uuid,
+        data_source_instance_id: Uuid,
+        expected_capabilities: plugin_framework::DataSourceCrudCapabilities,
+        mut input: plugin_framework::DataSourceExecuteModelOperationInput,
+    ) -> anyhow::Result<Value> {
+        let target = self
+            .load_target(workspace_id, data_source_instance_id)
+            .await?;
+        let descriptor = DataSourceRuntimePort::describe_resource(
+            &self.runtime,
+            &target.installation,
+            DataSourceDescribeResourceInput {
+                connection: target.connection.clone(),
+                resource_key: input.resource_key.clone(),
+            },
+        )
+        .await?;
+        if descriptor.resource_key != input.resource_key
+            || descriptor.capabilities != expected_capabilities
+        {
+            return Err(ControlPlaneError::Conflict("data_source_capability_drift").into());
+        }
+        let source = plugin_framework::DataModelTemplateSource {
+            kind: plugin_framework::DataModelSourceKind::ExternalSource,
+            provider: Some(target.installation.provider_code.clone()),
+        };
+        let compatible = DataSourceRuntimePort::compatible_data_model_templates(
+            &self.runtime,
+            &target.installation,
+            &source,
+            &descriptor.capabilities,
+        )
+        .await?;
+        let operation_available = compatible.iter().any(|template| {
+            template.identity == input.template_identity
+                && template.operations.iter().any(|operation| {
+                    operation.code == input.operation_code
+                        && operation.handler_ref == input.handler_ref
+                })
+        });
+        if !operation_available {
+            return Err(ControlPlaneError::Conflict("data_model_operation_unavailable").into());
+        }
+        input.connection = target.connection;
+        let output = DataSourceRuntimePort::execute_model_operation(
+            &self.runtime,
+            &target.installation,
+            input,
+        )
+        .await?;
+        redact_data_source_output(output, &target.secret_values)
+    }
 }
 
 #[async_trait]
@@ -947,8 +1038,55 @@ impl ApiProviderRuntime {
                 .map(|_| ())
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))
             }
-        }
+        }?;
+        let templates = host
+            .data_model_templates(&installation.plugin_id)
+            .map_err(|error| map_framework_error(error, "data_source_runtime"))?;
+        drop(host);
+        self.services
+            .data_model_template_catalog
+            .replace_provider(
+                installation.plugin_id.clone(),
+                &installation.provider_code,
+                templates,
+            )
+            .map_err(|error| {
+                ControlPlaneError::Conflict(match error {
+                    runtime_core::data_model_template_registry::DataModelTemplateRegistryError::DuplicateIdentity(_) => "data_model_template_duplicate_identity",
+                    _ => "data_model_template_unavailable",
+                })
+            })?;
+        Ok(())
     }
+}
+
+fn data_source_capability_codes(
+    capabilities: &plugin_framework::DataSourceCrudCapabilities,
+) -> Vec<String> {
+    let mut codes = [
+        (capabilities.supports_list, "list_records"),
+        (capabilities.supports_get, "get_record"),
+        (capabilities.supports_create, "create_record"),
+        (capabilities.supports_update, "update_record"),
+        (capabilities.supports_delete, "delete_record"),
+        (capabilities.supports_filter, "filter_records"),
+        (capabilities.supports_sort, "sort_records"),
+        (capabilities.supports_pagination, "paginate_records"),
+        (capabilities.supports_owner_filter, "owner_filter"),
+        (capabilities.supports_scope_filter, "scope_filter"),
+        (capabilities.supports_write, "write_records"),
+        (capabilities.supports_transactions, "transactions"),
+    ]
+    .into_iter()
+    .filter(|(supported, _)| *supported)
+    .map(|(_, code)| code.to_owned())
+    .collect::<Vec<_>>();
+    if capabilities.supports_list && capabilities.supports_get {
+        codes.push(
+            runtime_core::general_data_model_template::GENERAL_RECORDS_READ_CAPABILITY.to_owned(),
+        );
+    }
+    codes
 }
 
 fn legacy_manifest_eligibility(

@@ -24,7 +24,7 @@ impl PgControlPlaneStore {
         let mut metadata = Vec::with_capacity(models.len());
         for model in models {
             if let Some(model) = self.refresh_runtime_model_health(model).await? {
-                metadata.push(to_runtime_model_metadata(model));
+                metadata.push(to_runtime_model_metadata(model)?);
             }
         }
         Ok(metadata)
@@ -36,10 +36,10 @@ impl PgControlPlaneStore {
         let Some(model) = model else {
             return Ok(None);
         };
-        Ok(self
-            .refresh_runtime_model_health(model)
+        self.refresh_runtime_model_health(model)
             .await?
-            .map(to_runtime_model_metadata))
+            .map(to_runtime_model_metadata)
+            .transpose()
     }
 
     async fn available_relation_target_metadata(
@@ -678,9 +678,19 @@ fn append_scope_clause(
     }
 }
 
-fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> ModelMetadata {
+fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> Result<ModelMetadata> {
     let record_capabilities = domain::data_model_capabilities(&model).record;
-    ModelMetadata {
+    let external_capability_snapshot = model
+        .external_capability_snapshot
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| {
+            anyhow!(
+                "invalid external capability snapshot for data model {}: {error}",
+                model.code
+            )
+        })?;
+    Ok(ModelMetadata {
         model_id: model.id,
         model_code: model.code.clone(),
         status: model.status,
@@ -689,6 +699,7 @@ fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> ModelMetad
         data_source_instance_id: model.data_source_instance_id,
         source_kind: model.source_kind,
         external_resource_key: model.external_resource_key,
+        external_capability_snapshot,
         template_provider: model.template_provider,
         template_code: model.template_code,
         template_version: model.template_version,
@@ -704,7 +715,7 @@ fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> ModelMetad
             &model.code,
             model.scope_kind,
         ),
-    }
+    })
 }
 
 fn append_filter_clause(

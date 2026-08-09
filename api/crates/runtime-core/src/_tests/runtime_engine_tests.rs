@@ -1,14 +1,15 @@
 use domain::ActorContext;
 use plugin_framework::data_source_contract::{
     DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
-    DataSourceDeleteRecordOutput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
-    DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourceUpdateRecordInput,
-    DataSourceUpdateRecordOutput,
+    DataSourceDeleteRecordOutput, DataSourceExecuteModelOperationInput, DataSourceGetRecordInput,
+    DataSourceGetRecordOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
+    DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
 };
 use runtime_core::runtime_acl::RuntimeScopeGrant;
 use runtime_core::runtime_engine::{
     DataSourceRuntimeRecordBackend, RuntimeCreateInput, RuntimeDeleteInput, RuntimeEngine,
-    RuntimeGetInput, RuntimeListInput, RuntimeModelError, RuntimeSortInput, RuntimeUpdateInput,
+    RuntimeGetInput, RuntimeListInput, RuntimeModelError, RuntimeModelOperationInput,
+    RuntimeSortInput, RuntimeUpdateInput,
 };
 use runtime_core::{model_metadata::ModelMetadata, resource_descriptor::ResourceDescriptor};
 use serde_json::json;
@@ -413,6 +414,81 @@ async fn external_source_runtime_rejects_unknown_fields_and_invalid_sort_directi
 }
 
 #[tokio::test]
+async fn ac_013_external_custom_operation_dispatches_canonical_handler_context() {
+    let backend = Arc::new(CapturingDataSourceBackend::default());
+    let model_id = Uuid::now_v7();
+    let workspace_id = Uuid::now_v7();
+    let data_source_instance_id = Uuid::now_v7();
+    let mut metadata = external_model_metadata(model_id, workspace_id, data_source_instance_id);
+    metadata.template_provider = "acme_source".into();
+    metadata.template_code = "contact_archive".into();
+    metadata.template_version = "v1".into();
+    let catalog = runtime_core::data_model_template_registry::DataModelTemplateCatalog::core();
+    catalog
+        .replace_provider(
+            "acme_source@1.0.0",
+            "acme_source",
+            vec![serde_json::from_value(json!({
+                "descriptor_version": 1,
+                "identity": { "provider": "acme_source", "code": "contact_archive", "version": "v1" },
+                "source_selector": { "kind": "external_provider", "provider": "acme_source" },
+                "required_capabilities": [{ "code": "update_record" }],
+                "system_fields": [{
+                    "code": "id",
+                    "value_schema": { "type": "string" },
+                    "required": true,
+                    "write_policy": "read_only_projection",
+                    "summary": "ID",
+                    "description": "External identifier."
+                }],
+                "operations": [{
+                    "code": "archive_contact",
+                    "method": "POST",
+                    "path": "/api/runtime/models/{model_code}/archive/{id}",
+                    "input_schema": { "type": "object" },
+                    "output_schema": { "type": "object" },
+                    "permission_action": "update",
+                    "handler_ref": { "provider": "acme_source", "code": "archive_contact", "version": "v1" },
+                    "summary": "Archive",
+                    "description": "Archive one contact."
+                }],
+                "summary": "Contact archive",
+                "description": "External archive operations."
+            }))
+            .unwrap()],
+        )
+        .unwrap();
+    let engine = RuntimeEngine::for_tests_with_models_data_source_backend_and_templates(
+        vec![metadata],
+        backend.clone(),
+        catalog,
+    );
+    let actor = ActorContext::scoped(Uuid::now_v7(), workspace_id, "member", Vec::<String>::new());
+
+    let output = engine
+        .execute_model_operation(RuntimeModelOperationInput {
+            actor: actor.clone(),
+            model_code: "external_contacts".into(),
+            operation_code: "archive_contact".into(),
+            payload: json!({ "reason": "duplicate" }),
+            path: json!({ "id": "external-1" }),
+            query: json!({ "notify": false }),
+            scope_grant: Some(scope_grant(model_id, workspace_id)),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output["archived"], true);
+    let calls = backend.calls.lock().unwrap();
+    let call = calls.last().unwrap();
+    assert_eq!(call.method, "model_operation");
+    assert_eq!(call.payload["handler_ref"]["provider"], "acme_source");
+    assert_eq!(call.payload["resource_key"], "crm.contacts");
+    assert_eq!(call.payload["actor"]["actor_id"], actor.user_id.to_string());
+    assert_eq!(call.payload["scope"]["scope_id"], workspace_id.to_string());
+}
+
+#[tokio::test]
 async fn runtime_engine_uses_fixed_system_scope_id_for_system_models() {
     let engine = RuntimeEngine::for_tests();
     let actor = ActorContext::root(Uuid::now_v7(), Uuid::now_v7(), "root");
@@ -427,6 +503,7 @@ async fn runtime_engine_uses_fixed_system_scope_id_for_system_models() {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -477,6 +554,7 @@ async fn runtime_engine_prefers_workspace_metadata_before_system_fallback() {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -498,6 +576,7 @@ async fn runtime_engine_prefers_workspace_metadata_before_system_fallback() {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -598,6 +677,7 @@ async fn runtime_create_validates_api_required_fields_not_metadata_required() {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -696,6 +776,7 @@ async fn runtime_create_and_update_reject_non_writable_system_payload_fields() {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -823,6 +904,7 @@ fn status_model_metadata(model_code: &str) -> ModelMetadata {
         data_source_instance_id: None,
         source_kind: domain::DataModelSourceKind::MainSource,
         external_resource_key: None,
+        external_capability_snapshot: None,
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -882,6 +964,12 @@ fn external_model_metadata(
         data_source_instance_id: Some(data_source_instance_id),
         source_kind: domain::DataModelSourceKind::ExternalSource,
         external_resource_key: Some("crm.contacts".into()),
+        external_capability_snapshot: Some(plugin_framework::DataSourceCrudCapabilities {
+            supports_list: true,
+            supports_get: true,
+            supports_update: true,
+            ..Default::default()
+        }),
         template_provider: domain::CORE_DATA_MODEL_TEMPLATE_PROVIDER.to_owned(),
         template_code: domain::GENERAL_DATA_MODEL_TEMPLATE_CODE.to_owned(),
         template_version: domain::GENERAL_DATA_MODEL_TEMPLATE_VERSION.to_owned(),
@@ -1073,6 +1161,17 @@ impl DataSourceRuntimeRecordBackend for CapturingDataSourceBackend {
             deleted: true,
             metadata: json!({}),
         })
+    }
+
+    async fn execute_model_operation(
+        &self,
+        _workspace_id: Uuid,
+        data_source_instance_id: Uuid,
+        _expected_capabilities: plugin_framework::DataSourceCrudCapabilities,
+        input: DataSourceExecuteModelOperationInput,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.capture("model_operation", data_source_instance_id, &input);
+        Ok(json!({ "archived": true, "contact_id": "external-1" }))
     }
 }
 

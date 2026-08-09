@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{
     data_model_template_registry::{
-        DataModelTemplateRegistry, DataModelTemplateRegistryError,
+        DataModelTemplateCatalog, DataModelTemplateRegistry, DataModelTemplateRegistryError,
         DataModelTemplateResolutionContract,
     },
     general_data_model_template::{core_data_model_template_registry, general_template_identity},
@@ -287,6 +287,69 @@ fn ac_004_compatibility_requires_selector_and_capability_subset() {
             .len(),
         1
     );
+}
+
+#[test]
+fn ac_004_external_provider_templates_replace_atomically_and_filter_by_capability_subset() {
+    let catalog = DataModelTemplateCatalog::core();
+    let descriptor = external_descriptor("acme_source", "contacts", "v1");
+    catalog
+        .replace_provider("acme_source@1.0.0", "acme_source", vec![descriptor.clone()])
+        .unwrap();
+
+    let source = DataModelTemplateSource {
+        kind: DataModelSourceKind::ExternalSource,
+        provider: Some("acme_source".to_owned()),
+    };
+    assert!(catalog.compatible_templates(&source, []).is_empty());
+    let compatible = catalog.compatible_templates(&source, ["runtime.crud"]);
+    assert_eq!(compatible.len(), 1);
+    assert_eq!(compatible[0].identity(), &descriptor.identity);
+
+    let replacement = external_descriptor("acme_source", "contacts", "v2");
+    catalog
+        .replace_provider(
+            "acme_source@1.0.0",
+            "acme_source",
+            vec![replacement.clone()],
+        )
+        .unwrap();
+    assert!(catalog.resolve(&descriptor.identity).is_err());
+    assert!(catalog.resolve(&replacement.identity).is_ok());
+}
+
+#[test]
+fn ac_004_external_provider_catalog_rejects_duplicate_identity_without_mutating_registry() {
+    let catalog = DataModelTemplateCatalog::core();
+    let descriptor = external_descriptor("acme_source", "contacts", "v1");
+    catalog
+        .replace_provider("installation-1", "acme_source", vec![descriptor.clone()])
+        .unwrap();
+
+    let error = catalog
+        .replace_provider("installation-2", "acme_source", vec![descriptor.clone()])
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        DataModelTemplateRegistryError::DuplicateIdentity(_)
+    ));
+    assert!(catalog.resolve(&descriptor.identity).is_ok());
+}
+
+fn external_descriptor(provider: &str, code: &str, version: &str) -> DataModelTemplateDescriptor {
+    let mut descriptor = general_v1_descriptor();
+    descriptor.identity = DataModelTemplateIdentity {
+        provider: provider.to_owned(),
+        code: code.to_owned(),
+        version: version.to_owned(),
+    };
+    descriptor.source_selector = DataModelTemplateSourceSelector::ExternalProvider {
+        provider: provider.to_owned(),
+    };
+    for operation in &mut descriptor.operations {
+        operation.handler_ref.provider = provider.to_owned();
+    }
+    descriptor
 }
 
 fn compile_with_descriptor_inventory(

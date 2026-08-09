@@ -127,7 +127,9 @@ pub async fn get_docs_catalog(
         .categories
         .extend(extension_docs.catalog().categories.iter().cloned());
     let models = runtime_data_model_docs::ready_models(&state, context.user.id).await?;
-    if let Some(category) = runtime_data_model_docs::build_category(&models) {
+    if let Some(category) =
+        runtime_data_model_docs::build_category(&models, state.runtime_engine.template_catalog())
+    {
         catalog.categories.push(category);
     }
 
@@ -147,7 +149,10 @@ pub async fn get_category_operations(
         if models.is_empty() {
             return Err(ControlPlaneError::NotFound("category_id").into());
         }
-        let operations = runtime_data_model_docs::build_category_operations(&models);
+        let operations = runtime_data_model_docs::build_category_operations(
+            &models,
+            state.runtime_engine.template_catalog(),
+        );
         let filtered_operations = filter_category_operations(&operations, query.search_query());
         return Ok(Json(ApiSuccess::new(paginate_category_operations(
             &filtered_operations,
@@ -192,6 +197,7 @@ pub async fn get_category_openapi(
         }
         return Ok(Json(runtime_data_model_docs::build_category_openapi(
             &models,
+            state.runtime_engine.template_catalog(),
         )));
     }
 
@@ -221,8 +227,12 @@ pub async fn get_operation_openapi(
         else {
             return Err(ControlPlaneError::NotFound("operation_id").into());
         };
-        let spec = runtime_data_model_docs::build_operation_openapi(&model, &operation_code)
-            .ok_or(ControlPlaneError::NotFound("operation_id"))?;
+        let spec = runtime_data_model_docs::build_operation_openapi(
+            &model,
+            &operation_code,
+            state.runtime_engine.template_catalog(),
+        )
+        .ok_or(ControlPlaneError::NotFound("operation_id"))?;
         return Ok(Json(spec));
     }
 
@@ -276,7 +286,10 @@ pub async fn get_data_model_openapi(
         return Err(ControlPlaneError::NotFound("model_id").into());
     }
 
-    let spec = runtime_data_model_docs::build_model_openapi(&model)
-        .ok_or(ControlPlaneError::NotFound("model_id"))?;
+    let spec = runtime_data_model_docs::build_model_openapi(
+        &model,
+        state.runtime_engine.template_catalog(),
+    )
+    .ok_or(ControlPlaneError::NotFound("model_id"))?;
     Ok(Json(spec))
 }

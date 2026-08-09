@@ -6,6 +6,12 @@ pub trait DataSourceRuntimePort: Send + Sync {
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()>;
+    async fn compatible_data_model_templates(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        source: &plugin_framework::DataModelTemplateSource,
+        capabilities: &plugin_framework::DataSourceCrudCapabilities,
+    ) -> anyhow::Result<Vec<plugin_framework::DataModelTemplateDescriptor>>;
     async fn validate_config(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
@@ -42,4 +48,9 @@ pub trait DataSourceRuntimePort: Send + Sync {
         let _ = (installation, input);
         anyhow::bail!("native SQL is not implemented by this data source runtime")
     }
+    async fn execute_model_operation(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        input: plugin_framework::DataSourceExecuteModelOperationInput,
+    ) -> anyhow::Result<serde_json::Value>;
 }

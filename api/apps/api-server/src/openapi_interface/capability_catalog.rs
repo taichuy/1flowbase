@@ -254,7 +254,10 @@ pub async fn build_openapi_capability_catalog(
     let mut models = state.store.list_model_definitions(workspace_id).await?;
     models.retain(|model| model.status == domain::DataModelStatus::Published);
     models.sort_by(|left, right| left.code.cmp(&right.code));
-    let operations = runtime_data_model_docs::build_category_operations(&models);
+    let operations = runtime_data_model_docs::build_category_operations(
+        &models,
+        state.runtime_engine.template_catalog(),
+    );
     for operation in operations.operations {
         let Ok(Some((model_id, operation_code))) =
             runtime_data_model_docs::parse_operation_id(&operation.id)
@@ -264,8 +267,11 @@ pub async fn build_openapi_capability_catalog(
         let Some(model) = models.iter().find(|model| model.id == model_id) else {
             continue;
         };
-        let Some(spec) = runtime_data_model_docs::build_operation_openapi(model, &operation_code)
-        else {
+        let Some(spec) = runtime_data_model_docs::build_operation_openapi(
+            model,
+            &operation_code,
+            state.runtime_engine.template_catalog(),
+        ) else {
             continue;
         };
         let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {

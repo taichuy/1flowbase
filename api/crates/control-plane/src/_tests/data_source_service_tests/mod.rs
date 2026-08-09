@@ -19,9 +19,9 @@ use uuid::Uuid;
 use crate::{
     data_source::{
         CreateDataSourceInstanceCommand, DataSourceService, DiscoverDataSourceResourcesCommand,
-        MapDataSourceResourceToModelCommand, PreviewDataSourceReadCommand,
-        RotateDataSourceSecretCommand, UpdateDataSourceDefaultsCommand,
-        ValidateDataSourceInstanceCommand,
+        ListCompatibleDataModelTemplatesCommand, MapDataSourceResourceToModelCommand,
+        PreviewDataSourceReadCommand, RotateDataSourceSecretCommand,
+        UpdateDataSourceDefaultsCommand, ValidateDataSourceInstanceCommand,
     },
     ports::{
         AddModelFieldInput, AuthRepository, CreateDataSourceInstanceInput,
@@ -1106,10 +1106,56 @@ impl StubDataSourceRuntime {
     }
 }
 
+fn stub_external_template() -> plugin_framework::DataModelTemplateDescriptor {
+    serde_json::from_value(json!({
+        "descriptor_version": 1,
+        "identity": { "provider": "acme_hubspot_source", "code": "contacts", "version": "v1" },
+        "source_selector": { "kind": "external_provider", "provider": "acme_hubspot_source" },
+        "required_capabilities": [{ "code": "list_records" }],
+        "system_fields": [{
+            "code": "id",
+            "value_schema": { "type": "string" },
+            "required": true,
+            "write_policy": "read_only_projection",
+            "summary": "Record ID",
+            "description": "External record identifier."
+        }],
+        "operations": [{
+            "code": "archive_contact",
+            "method": "POST",
+            "path": "/api/runtime/models/{model_code}/archive/{id}",
+            "input_schema": { "type": "object" },
+            "output_schema": { "type": "object" },
+            "permission_action": "update",
+            "handler_ref": { "provider": "acme_hubspot_source", "code": "archive_contact", "version": "v1" },
+            "summary": "Archive contact",
+            "description": "Archive an external contact."
+        }],
+        "summary": "Contacts",
+        "description": "External contacts template."
+    }))
+    .unwrap()
+}
+
 #[async_trait]
 impl DataSourceRuntimePort for StubDataSourceRuntime {
     async fn ensure_loaded(&self, _installation: &LocalPluginInstallationRecord) -> Result<()> {
         Ok(())
+    }
+
+    async fn compatible_data_model_templates(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+        source: &plugin_framework::DataModelTemplateSource,
+        capabilities: &plugin_framework::DataSourceCrudCapabilities,
+    ) -> Result<Vec<plugin_framework::DataModelTemplateDescriptor>> {
+        let template = stub_external_template();
+        Ok(
+            (template.source_selector.matches(source) && capabilities.supports_list)
+                .then_some(template)
+                .into_iter()
+                .collect(),
+        )
     }
 
     async fn validate_config(
@@ -1338,6 +1384,14 @@ impl DataSourceRuntimePort for StubDataSourceRuntime {
             rows: vec![json!({ "id": "1", "email": "person@example.com" })],
             next_cursor: None,
         })
+    }
+
+    async fn execute_model_operation(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+        _input: plugin_framework::DataSourceExecuteModelOperationInput,
+    ) -> Result<Value> {
+        Ok(json!({ "archived": true, "contact_id": "contact-1" }))
     }
 }
 

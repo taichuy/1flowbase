@@ -69,6 +69,9 @@ pub struct UpdateDataSourceDefaultsBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MapDataSourceResourceToModelBody {
     pub resource_key: String,
+    pub template_provider: String,
+    pub template_code: String,
+    pub template_version: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -751,6 +754,9 @@ pub async fn map_resource_to_model(
             workspace_id: context.actor.current_workspace_id,
             instance_id: parse_uuid(&data_source_id, "data_source_id")?,
             resource_key: body.resource_key,
+            template_provider: body.template_provider,
+            template_code: body.template_code,
+            template_version: body.template_version,
         })
         .await?;
     let mut model = result.model;
