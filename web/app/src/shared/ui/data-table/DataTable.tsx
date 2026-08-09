@@ -296,6 +296,7 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
 
   return (
     <section className={['data-table', className].filter(Boolean).join(' ')}>
+      {toolbar ? <div className="data-table__toolbar">{toolbar}</div> : null}
       <div className="data-table__scroll-area">
         <Table<T>
           rowKey={rowKey as string | ((record: T) => Key)}
@@ -310,11 +311,6 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
             }
           }}
           pagination={false}
-          title={
-            toolbar
-              ? () => <div className="data-table__toolbar">{toolbar}</div>
-              : undefined
-          }
           onRow={onRow}
           rowClassName={rowClassName}
           rowSelection={rowSelection}
