@@ -128,10 +128,11 @@ async fn cross_workspace_parent_is_rejected() {
     let other_workspace_id = seed_workspace(&database_url, "Other Workspace").await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
+    let other_csrf = switch_workspace(&app, &cookie, &csrf, &other_workspace_id.to_string()).await;
     let (other_group_status, other_group_payload) = create_group(
         &app,
         &cookie,
-        &csrf,
+        &other_csrf,
         &other_workspace_id.to_string(),
         Some("Other"),
         "a",
@@ -139,6 +140,7 @@ async fn cross_workspace_parent_is_rejected() {
     .await;
     assert_eq!(other_group_status, StatusCode::CREATED);
     let other_group_id = other_group_payload["data"]["id"].as_str().unwrap();
+    let csrf = switch_workspace(&app, &cookie, &other_csrf, &workspace_id).await;
 
     let (page_status, _) = create_page(
         &app,

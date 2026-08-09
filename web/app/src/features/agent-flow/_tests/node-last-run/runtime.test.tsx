@@ -1,5 +1,42 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>();
+
+  return {
+    ...actual,
+    Modal: ({
+      cancelText,
+      children,
+      okText,
+      open,
+      onCancel,
+      onOk,
+      title,
+    }: {
+      cancelText?: ReactNode;
+      children?: ReactNode;
+      okText?: ReactNode;
+      open?: boolean;
+      onCancel?: () => void;
+      onOk?: () => void;
+      title?: ReactNode;
+    }) =>
+      open ? (
+        <dialog
+          aria-label={String(title)}
+          className="ant-modal"
+          open
+        >
+          {children}
+          <button onClick={onCancel}>{cancelText}</button>
+          <button onClick={onOk}>{okText}</button>
+        </dialog>
+      ) : null
+  };
+});
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { appI18n } from '../../../../shared/i18n/app-i18n';

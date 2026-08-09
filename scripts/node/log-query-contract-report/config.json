@@ -31,7 +31,7 @@
           "description": "Application route scope and repository application_id filter.",
           "patterns": [
             "Path\\(id\\): Path<Uuid>",
-            "ensure_application_visible\\(&state, context\\.user\\.id, id\\)",
+            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
             "where application_id = \\$1"
           ]
         },
@@ -85,7 +85,7 @@
           "description": "Application route scope and repository application_id filter.",
           "patterns": [
             "Path\\(id\\): Path<Uuid>",
-            "ApplicationService::new\\(state\\.store\\.clone\\(\\)\\)",
+            "ApplicationService::new\\(state\\.store\\.for_actor\\(context\\.actor\\.clone\\(\\)\\)\\)",
             "get_application\\(context\\.user\\.id, id\\)",
             "where application_id = \\$1"
           ]
@@ -135,7 +135,7 @@
           "description": "Application scope plus external conversation id.",
           "patterns": [
             "Path\\(\\(id, conversation_id\\)\\): Path<\\(Uuid, String\\)>",
-            "ensure_application_visible\\(&state, context\\.user\\.id, id\\)",
+            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
             "where messages\\.application_id = \\$1",
             "conversations\\.external_conversation_id = \\$2"
           ]
@@ -176,7 +176,7 @@
           "description": "Application access is checked and repository filters by flow_run_id.",
           "patterns": [
             "Path\\(\\(id, run_id\\)\\): Path<\\(Uuid, Uuid\\)>",
-            "ensure_application_visible\\(&state, context\\.user\\.id, id\\)",
+            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
             "where flow_run_id = \\$1 and parent_trace_node_id is null"
           ]
         },
@@ -286,7 +286,7 @@
           "description": "Application access, flow_run ownership, and run-scoped runtime event page.",
           "patterns": [
             "Path\\(\\(id, run_id\\)\\): Path<\\(Uuid, Uuid\\)>",
-            "ensure_application_visible\\(&state, context\\.user\\.id, id\\)",
+            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
             "get_flow_run\\(&state\\.store, id, run_id\\)",
             "where flow_run_id = \\$1"
           ]
@@ -431,7 +431,7 @@
         "scope": {
           "description": "Batch artifact detail reads are scoped by workspace, application and artifact id.",
           "patterns": [
-            "ensure_application_visible\\(&state, context\\.user\\.id, id\\)",
+            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
             "context\\.actor\\.current_workspace_id",
             "artifact_id",
             "where id = \\$1",

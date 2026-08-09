@@ -79,6 +79,16 @@
       ]
     },
     {
+      "source": "web/app/src/features/applications/pages/ApplicationDetailPage.tsx",
+      "specifier": "./ApplicationStatisticsPage",
+      "smokePaths": [
+        {
+          "path": "/applications/vite-lazy-deps-application/statistics",
+          "requiresFixture": true
+        }
+      ]
+    },
+    {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
       "specifier": "../../components/ApiDocsPanel",
       "smokePaths": [

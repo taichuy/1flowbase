@@ -210,36 +210,6 @@ fn trace_finished_at(
         .max()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn llm_trace_uses_the_last_real_attempt_finish_time() {
-        let trace = orchestration_runtime::execution_state::NodeExecutionTrace {
-            node_id: "node-llm".to_string(),
-            node_type: "llm".to_string(),
-            node_alias: "LLM".to_string(),
-            input_payload: json!({}),
-            output_payload: json!({}),
-            error_payload: None,
-            metrics_payload: json!({
-                "attempts": [
-                    { "finished_at": "2026-08-06T10:00:04Z" },
-                    { "finished_at": "2026-08-06T10:00:09Z" }
-                ]
-            }),
-            debug_payload: json!({}),
-            provider_events: Vec::new(),
-        };
-
-        assert_eq!(
-            trace_finished_at(&trace),
-            Some(OffsetDateTime::parse("2026-08-06T10:00:09Z", &Rfc3339).unwrap())
-        );
-    }
-}
-
 async fn persist_visible_internal_llm_tool_route_events<R>(
     repository: &R,
     flow_run_id: Uuid,
@@ -272,4 +242,34 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn llm_trace_uses_the_last_real_attempt_finish_time() {
+        let trace = orchestration_runtime::execution_state::NodeExecutionTrace {
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "LLM".to_string(),
+            input_payload: json!({}),
+            output_payload: json!({}),
+            error_payload: None,
+            metrics_payload: json!({
+                "attempts": [
+                    { "finished_at": "2026-08-06T10:00:04Z" },
+                    { "finished_at": "2026-08-06T10:00:09Z" }
+                ]
+            }),
+            debug_payload: json!({}),
+            provider_events: Vec::new(),
+        };
+
+        assert_eq!(
+            trace_finished_at(&trace),
+            Some(OffsetDateTime::parse("2026-08-06T10:00:09Z", &Rfc3339).unwrap())
+        );
+    }
 }

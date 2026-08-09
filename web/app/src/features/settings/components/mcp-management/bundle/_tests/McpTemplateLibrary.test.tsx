@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { App } from 'antd';
 import {
   fireEvent,
   render,
@@ -77,7 +78,9 @@ function renderLibrary() {
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppI18nProvider>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <App>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </App>
     </AppI18nProvider>
   );
   return render(<McpTemplateLibrary variant="compact" />, { wrapper });

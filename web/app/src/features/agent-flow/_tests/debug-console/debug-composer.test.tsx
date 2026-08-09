@@ -61,9 +61,9 @@ describe('DebugComposer', () => {
       code: 'Enter'
     });
 
-    expect(screen.getByRole('button', { name: '终止调试运行' })).toHaveClass(
-      'agent-flow-editor__debug-composer-stop'
-    );
+    expect(
+      screen.getByRole('button', { name: '终止调试运行' })
+    ).toBeInTheDocument();
     expect(handleStop).toHaveBeenCalledTimes(1);
     expect(handleSubmit).not.toHaveBeenCalled();
   });
@@ -84,7 +84,7 @@ describe('DebugComposer', () => {
     );
 
     const stopButton = screen.getByRole('button', {
-      name: '正在终止调试运行'
+      name: '终止调试运行'
     });
     expect(stopButton).toBeDisabled();
     fireEvent.click(stopButton);

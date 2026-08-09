@@ -303,50 +303,6 @@ fn build_interface_arguments(
     Ok(arguments)
 }
 
-#[cfg(test)]
-mod server_binding_tests {
-    use super::*;
-    use domain::mcp_management::{McpInterfaceCatalogSource, McpRiskLevel};
-    use serde_json::json;
-
-    #[test]
-    fn assistant_mcp_server_workspace_binding_cannot_be_overridden() {
-        let trusted_workspace_id = Uuid::now_v7();
-        let interface = domain::McpInterfaceCatalogEntry {
-            interface_id: "frontstage_list_pages".into(),
-            source: McpInterfaceCatalogSource::StaticApi,
-            method: "GET".into(),
-            path: "/api/console/frontstage/{workspace_id}/pages".into(),
-            name: "List pages".into(),
-            short_description: String::new(),
-            parameter_descriptors: vec![McpParameterDescriptor {
-                name: "workspace_id".into(),
-                field_type: "string".into(),
-                parameter_type: McpParameterType::Url,
-                description: None,
-                required: true,
-                schema: json!({"type":"string"}),
-            }],
-            parameter_schema: json!({"type":"object","properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"}}}}}),
-            result_schema: json!({}),
-            permission_code: None,
-            security: json!({}),
-            risk_level: McpRiskLevel::Low,
-            bindable: true,
-            disabled_reason: None,
-        };
-        let mapped = build_interface_arguments(
-            &interface,
-            &json!({"mappings":[{"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true}]}),
-            &json!({"workspace_id":Uuid::nil()}),
-            McpServerBoundInputs { workspace_id: trusted_workspace_id },
-        )
-        .unwrap();
-
-        assert_eq!(mapped.path["workspace_id"], json!(trusted_workspace_id));
-    }
-}
-
 fn materialize_required_object_containers(schema: Option<&Value>, target: &mut Map<String, Value>) {
     let Some(schema) = schema else {
         return;
@@ -550,4 +506,48 @@ fn set_path_value(target: &mut Map<String, Value>, path: &str, value: Value) {
             .expect("entry was just initialized as an object");
     }
     cursor.insert(segments[segments.len() - 1].to_string(), value);
+}
+
+#[cfg(test)]
+mod server_binding_tests {
+    use super::*;
+    use domain::mcp_management::{McpInterfaceCatalogSource, McpRiskLevel};
+    use serde_json::json;
+
+    #[test]
+    fn assistant_mcp_server_workspace_binding_cannot_be_overridden() {
+        let trusted_workspace_id = Uuid::now_v7();
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "frontstage_list_pages".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "GET".into(),
+            path: "/api/console/frontstage/{workspace_id}/pages".into(),
+            name: "List pages".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![McpParameterDescriptor {
+                name: "workspace_id".into(),
+                field_type: "string".into(),
+                parameter_type: McpParameterType::Url,
+                description: None,
+                required: true,
+                schema: json!({"type":"string"}),
+            }],
+            parameter_schema: json!({"type":"object","properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"}}}}}),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::Low,
+            bindable: true,
+            disabled_reason: None,
+        };
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[{"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true}]}),
+            &json!({"workspace_id":Uuid::nil()}),
+            McpServerBoundInputs { workspace_id: trusted_workspace_id },
+        )
+        .unwrap();
+
+        assert_eq!(mapped.path["workspace_id"], json!(trusted_workspace_id));
+    }
 }

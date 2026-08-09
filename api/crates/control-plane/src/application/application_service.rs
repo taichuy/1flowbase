@@ -493,7 +493,7 @@ where
         } else {
             let policies = self
                 .repository
-                .load_role_console_policies_for_user(&actor)
+                .load_role_console_policies_for_user(actor)
                 .await?;
             resolve_application_console_visibility(
                 &policies,

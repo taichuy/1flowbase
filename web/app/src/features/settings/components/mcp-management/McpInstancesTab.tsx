@@ -125,11 +125,11 @@ export function McpInstancesTab({
     'description_short',
     groupForm
   );
-  const watchedGroupEnabled = Form.useWatch('enabled', groupForm);
+  Form.useWatch('enabled', groupForm);
 
   const watchedGroupPath = Form.useWatch('group_path', bindingForm);
   const watchedToolId = Form.useWatch('tool_id', bindingForm);
-  const watchedBindingVisible = Form.useWatch('visible', bindingForm);
+  Form.useWatch('visible', bindingForm);
 
   const [parentGroupPath, setParentGroupPath] = useState<string | null>(null);
   const [directoryEditorIntent, setDirectoryEditorIntent] = useState<
@@ -584,23 +584,26 @@ export function McpInstancesTab({
     if (directoryEditorMode === 'group') {
       const savedValues = groupSavedValuesRef.current;
       if (!savedValues) return false;
+      const currentValues = groupForm.getFieldsValue(true);
       return (
-        normalizeMcpDirectoryPath(watchedPath) !==
+        normalizeMcpDirectoryPath(currentValues.path) !==
           normalizeMcpDirectoryPath(savedValues.path) ||
-        (watchedDisplayName ?? '') !== (savedValues.display_name ?? '') ||
-        (watchedGroupDescriptionShort ?? null) !==
+        (currentValues.display_name ?? '') !==
+          (savedValues.display_name ?? '') ||
+        (currentValues.description_short ?? null) !==
           (savedValues.description_short ?? null) ||
-        watchedGroupEnabled !== savedValues.enabled
+        currentValues.enabled !== savedValues.enabled
       );
     }
 
     const savedValues = bindingSavedValuesRef.current;
     if (!savedValues) return false;
+    const currentValues = bindingForm.getFieldsValue(true);
     return (
-      normalizeMcpDirectoryPath(watchedGroupPath) !==
+      normalizeMcpDirectoryPath(currentValues.group_path) !==
         normalizeMcpDirectoryPath(savedValues.group_path) ||
-      watchedToolId !== savedValues.tool_id ||
-      watchedBindingVisible !== savedValues.visible
+      currentValues.tool_id !== savedValues.tool_id ||
+      currentValues.visible !== savedValues.visible
     );
   };
 

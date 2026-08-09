@@ -576,6 +576,14 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "assistant_conversations": {
+      "kind": "bounded_conversation_projection",
+      "reason": "assistant conversations use conversation_id as their stable identity and the scoped user application updated index matches the bounded listing contract",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
+    },
     "application_extension_sources": {
       "kind": "bounded_application_source",
       "reason": "one extension source row is bounded by its owning application and uses application_id as its stable identity",
@@ -745,6 +753,27 @@
       "reason": "operation policy snapshots are bounded children of one console policy migration run",
       "skip": [
         "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_console_settings_order_items": {
+      "kind": "bounded_workspace_order_child",
+      "reason": "console settings order items are bounded by the owning workspace order and use workspace plus group as their stable composite identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_console_settings_orders": {
+      "kind": "bounded_workspace_order_projection",
+      "reason": "one mutable console settings order row is bounded by each workspace and uses workspace_id as both owner and stable identity",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]

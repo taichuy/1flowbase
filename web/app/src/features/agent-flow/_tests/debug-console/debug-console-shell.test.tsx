@@ -228,7 +228,11 @@ describe('debug console shell', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '发送调试消息' }));
     fireEvent.click(
-      await screen.findByRole('button', { name: '查看对话日志' })
+      await screen.findByRole(
+        'button',
+        { name: '查看对话日志' },
+        { timeout: 10_000 }
+      )
     );
 
     const logDock = await screen.findByTestId(

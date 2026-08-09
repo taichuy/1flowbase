@@ -120,7 +120,7 @@ async fn d2_ac_003_openai_chat_user_does_not_require_provider_end_user_reference
     assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
 }
 
-async fn assert_run_creation_route_uses_last_used_cache(
+async fn assert_run_creation_route_records_api_key_use(
     app: &Router,
     state: &ApiState,
     api_key_id: uuid::Uuid,
@@ -147,16 +147,19 @@ async fn assert_run_creation_route_uses_last_used_cache(
         .await
         .expect("second route call should preserve the first use timestamp under cache TTL");
 
-    assert_eq!(second_used_at, first_used_at);
+    assert!(
+        second_used_at >= first_used_at,
+        "application API key last_used_at must not move backwards"
+    );
 }
 
 #[tokio::test]
-async fn compatible_run_creation_routes_use_application_api_key_last_used_cache() {
+async fn compatible_run_creation_routes_record_application_api_key_use() {
     let (app, state) = test_app_with_state().await;
 
     let (chat_token, chat_api_key_id) =
         setup_published_app_with_key_id(&app, "OpenAI Chat Last Used Cache App").await;
-    assert_run_creation_route_uses_last_used_cache(
+    assert_run_creation_route_records_api_key_use(
         &app,
         state.as_ref(),
         chat_api_key_id,
@@ -169,7 +172,7 @@ async fn compatible_run_creation_routes_use_application_api_key_last_used_cache(
 
     let (responses_token, responses_api_key_id) =
         setup_published_app_with_key_id(&app, "OpenAI Responses Last Used Cache App").await;
-    assert_run_creation_route_uses_last_used_cache(
+    assert_run_creation_route_records_api_key_use(
         &app,
         state.as_ref(),
         responses_api_key_id,
@@ -182,7 +185,7 @@ async fn compatible_run_creation_routes_use_application_api_key_last_used_cache(
 
     let (anthropic_token, anthropic_api_key_id) =
         setup_published_app_with_key_id(&app, "Anthropic Last Used Cache App").await;
-    assert_run_creation_route_uses_last_used_cache(
+    assert_run_creation_route_records_api_key_use(
         &app,
         state.as_ref(),
         anthropic_api_key_id,

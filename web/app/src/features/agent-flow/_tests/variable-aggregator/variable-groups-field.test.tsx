@@ -164,7 +164,7 @@ describe('VariableGroupsField', () => {
       );
 
       expect(screen.getByTestId('groups-value')).toHaveTextContent(
-        `\"key\":\"${key}\"`
+        `"key":"${key}"`
       );
       expect(
         screen.getByText(i18nText('agentFlow', messageKey))
@@ -259,8 +259,8 @@ describe('VariableGroupsField', () => {
     expect(stringSelector).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(await screen.findByText('Source'));
     expect(await screen.findByText('text')).toBeInTheDocument();
-    expect(screen.queryByText('count')).toBeNull();
-    expect(screen.queryByText('payload')).toBeNull();
+    expect(screen.queryByText('count')).not.toBeInTheDocument();
+    expect(screen.queryByText('payload')).not.toBeInTheDocument();
 
     rerender(
       <Harness
@@ -275,8 +275,8 @@ describe('VariableGroupsField', () => {
     expect(arraySelector).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(await screen.findByText('Source'));
     expect(await screen.findByText('items')).toBeInTheDocument();
-    expect(screen.queryByText('count')).toBeNull();
-    expect(screen.queryByText('payload')).toBeNull();
+    expect(screen.queryByText('count')).not.toBeInTheDocument();
+    expect(screen.queryByText('payload')).not.toBeInTheDocument();
   });
 
   test('AC-018 persists exact candidate order through the accessible keyboard drag handle', async () => {

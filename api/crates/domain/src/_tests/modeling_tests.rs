@@ -173,6 +173,8 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ("attempt_id", String, true, true),
         ("flow_run_id", ManyToOne, true, false),
         ("node_run_id", ManyToOne, false, false),
+        ("user_id", ManyToOne, false, false),
+        ("user_account", String, false, false),
         ("application_id", ManyToOne, false, false),
         ("conversation_id", String, false, false),
         ("application_name", String, true, false),
@@ -208,6 +210,9 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ),
         include_str!(
             "../../../storage-durable/postgres/migrations/20260802100000_add_node_run_to_provider_request_logs.sql"
+        ),
+        include_str!(
+            "../../../storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql"
         ),
     ];
     for (code, field_kind, is_required, is_unique) in expected {

@@ -579,11 +579,11 @@ describe('Variable Aggregator shared authoring fixtures', () => {
       { key: 'renamed_group', title: 'renamed_group', valueType: 'string' }
     ]);
     expect(serializedBindings).not.toContain(`${aggregator.id}.group1`);
-    expect(serializedBindings).not.toContain(`\"${aggregator.id}\",\"group1\"`);
+    expect(serializedBindings).not.toContain(`"${aggregator.id}","group1"`);
     expect(serializedBindings).toContain('renamed_group');
     expect(serializedBindings).toContain(`{{${aggregator.id}.other_group}}`);
     expect(serializedBindings).toContain(
-      `\"${aggregator.id}\",\"other_group\",\"same-node-unrelated-tail\"`
+      `"${aggregator.id}","other_group","same-node-unrelated-tail"`
     );
     for (const tail of [
       'template-tail',

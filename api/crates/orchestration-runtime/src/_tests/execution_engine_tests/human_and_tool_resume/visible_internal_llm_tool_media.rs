@@ -484,7 +484,7 @@ async fn client_read_image_callback_reenables_image_llm_retry_after_media_guidan
         .collect::<Vec<_>>();
     assert_eq!(
         before_read_tool_names,
-        vec!["Read"],
+        vec!["Read", "Read_run_0"],
         "image_llm should stay hidden until the client Read callback supplies media"
     );
 

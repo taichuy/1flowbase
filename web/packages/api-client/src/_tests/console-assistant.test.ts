@@ -439,7 +439,7 @@ describe('console assistant client', () => {
     const run = startConsoleAssistantRunWebSocket(
       { application_id: 'application-1', query: 'hello', history: [] },
       'csrf-token',
-      {},
+      { onEvent: vi.fn() },
       {
         baseUrl: 'http://127.0.0.1:3100',
         handshakeTimeoutMs: 25

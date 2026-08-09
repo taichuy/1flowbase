@@ -931,24 +931,26 @@ async fn assistant_run_capabilities(
                         .unwrap_or(false)
             })
         });
-    let models = model_selection_enabled
-        .then(|| extract_agent_model_catalog_from_start_node(&publication.document_snapshot))
-        .unwrap_or_default()
-        .into_iter()
-        .map(|model| AssistantModelOption {
-            id: model.id,
-            name: model.name,
-            context_window: model.context_window,
-            reasoning_efforts: model
-                .reasoning
-                .as_ref()
-                .map(|reasoning| reasoning.supported_efforts.clone())
-                .unwrap_or_default(),
-            default_reasoning_effort: model
-                .reasoning
-                .and_then(|reasoning| reasoning.default_effort),
-        })
-        .collect();
+    let models = if model_selection_enabled {
+        extract_agent_model_catalog_from_start_node(&publication.document_snapshot)
+    } else {
+        Vec::new()
+    }
+    .into_iter()
+    .map(|model| AssistantModelOption {
+        id: model.id,
+        name: model.name,
+        context_window: model.context_window,
+        reasoning_efforts: model
+            .reasoning
+            .as_ref()
+            .map(|reasoning| reasoning.supported_efforts.clone())
+            .unwrap_or_default(),
+        default_reasoning_effort: model
+            .reasoning
+            .and_then(|reasoning| reasoning.default_effort),
+    })
+    .collect();
     Ok(AssistantRunCapabilities {
         model_selection_enabled,
         reasoning_effort_enabled,

@@ -82,29 +82,6 @@ fn parameter_mapping(value: &Value) -> Option<ParameterMapping<'_>> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ac_001_mapped_schema_omits_server_bound_workspace_id() {
-        let schema = mapped_schema(
-            &json!({
-                "type":"object",
-                "properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"},"page_id":{"type":"string"}}}}
-            }),
-            &json!({"mappings":[
-                {"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true},
-                {"interface_param":"page_id","mcp_param":"page_id","required":true}
-            ]}),
-        );
-
-        assert!(schema.pointer("/properties/workspace_id").is_none());
-        assert!(schema.pointer("/properties/page_id").is_some());
-        assert_eq!(schema["required"], json!(["page_id"]));
-    }
-}
-
 fn source_field_schema(
     parameter_schema: &Value,
     input_mapping: &Value,
@@ -282,5 +259,28 @@ fn add_required_property(schema: &mut Value, property: &str) {
         .any(|existing| existing.as_str() == Some(property))
     {
         required.push(Value::String(property.to_owned()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ac_001_mapped_schema_omits_server_bound_workspace_id() {
+        let schema = mapped_schema(
+            &json!({
+                "type":"object",
+                "properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"},"page_id":{"type":"string"}}}}
+            }),
+            &json!({"mappings":[
+                {"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true},
+                {"interface_param":"page_id","mcp_param":"page_id","required":true}
+            ]}),
+        );
+
+        assert!(schema.pointer("/properties/workspace_id").is_none());
+        assert!(schema.pointer("/properties/page_id").is_some());
+        assert_eq!(schema["required"], json!(["page_id"]));
     }
 }
