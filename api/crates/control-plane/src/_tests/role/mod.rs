@@ -720,6 +720,47 @@ async fn role_service_console_policy_round_trips_disabled_full_custom_and_row_sc
 }
 
 #[tokio::test]
+async fn ac_001_root_can_replace_console_policy_for_editable_seeded_workspace_role() {
+    let repository = MemoryRoleRepository::default();
+    repository
+        .seed_role(domain::RoleTemplate {
+            code: "admin".to_string(),
+            name: "Admin".to_string(),
+            introduction: "Initial workspace administrator example".to_string(),
+            scope_kind: domain::RoleScopeKind::Workspace,
+            is_builtin: true,
+            is_editable: true,
+            auto_grant_new_permissions: true,
+            is_default_member_role: false,
+            permissions: Vec::new(),
+        })
+        .await;
+    let service = RoleService::new(repository.clone());
+
+    service
+        .replace_console_policy(
+            ReplaceRoleConsolePolicyCommand {
+                actor_user_id: repository.root_user_id(),
+                role_code: "admin".to_string(),
+                groups: vec![policy_group(
+                    "settings_feature",
+                    "system.applications",
+                    "full",
+                    vec![],
+                )],
+            },
+            &console_policy_inventory(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        repository.audit_events(),
+        vec!["role.console_policy_replaced"]
+    );
+}
+
+#[tokio::test]
 async fn role_service_console_policy_rejects_system_all_scope() {
     let repository = MemoryRoleRepository::default();
     let service = RoleService::new(repository.clone());

@@ -44,7 +44,14 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
         .unwrap();
     store.upsert_builtin_roles(workspace.id).await.unwrap();
     sqlx::query(
-        "update roles set code = 'manager', system_kind = 'manager' where workspace_id = $1 and code = 'member'",
+        r#"
+        update roles
+        set code = 'manager',
+            system_kind = 'manager',
+            is_builtin = true,
+            is_editable = false
+        where workspace_id = $1 and code = 'member'
+        "#,
     )
     .bind(workspace.id)
     .execute(store.pool())
@@ -134,8 +141,12 @@ async fn historical_manager_role_migrates_in_place_with_all_bindings() {
         .await
         .unwrap();
 
-    let migrated_role: (Uuid, String, Option<String>, bool) = sqlx::query_as(
-        "select id, code, system_kind, is_default_member_role from roles where workspace_id = $1 and code = 'member'",
+    let migrated_role: (Uuid, String, Option<String>, bool, bool, bool) = sqlx::query_as(
+        r#"
+        select id, code, system_kind, is_builtin, is_editable, is_default_member_role
+        from roles
+        where workspace_id = $1 and code = 'member'
+        "#,
     )
     .bind(workspace_id)
     .fetch_one(store.pool())
@@ -143,12 +154,7 @@ async fn historical_manager_role_migrates_in_place_with_all_bindings() {
     .unwrap();
     assert_eq!(
         migrated_role,
-        (
-            historical_role_id,
-            "member".into(),
-            Some("member".into()),
-            true
-        )
+        (historical_role_id, "member".into(), None, false, true, true)
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("select count(*) from role_permissions where role_id = $1")

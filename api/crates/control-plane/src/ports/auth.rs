@@ -156,14 +156,44 @@ pub trait BootstrapRepository: Send + Sync {
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
-    ) -> anyhow::Result<WorkspaceRecord>;
+    ) -> anyhow::Result<WorkspaceRecord> {
+        Ok(self
+            .upsert_workspace_for_bootstrap(tenant_id, workspace_name)
+            .await?
+            .workspace)
+    }
+    async fn upsert_workspace_for_bootstrap(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+    ) -> anyhow::Result<WorkspaceBootstrapResult>;
     async fn upsert_root_workspace_with_official_catalog(
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
         seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
-    ) -> anyhow::Result<WorkspaceRecord>;
-    async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> anyhow::Result<()>;
+    ) -> anyhow::Result<WorkspaceRecord> {
+        Ok(self
+            .upsert_root_workspace_with_official_catalog_for_bootstrap(
+                tenant_id,
+                workspace_name,
+                seed,
+            )
+            .await?
+            .workspace)
+    }
+    async fn upsert_root_workspace_with_official_catalog_for_bootstrap(
+        &self,
+        tenant_id: Uuid,
+        workspace_name: &str,
+        seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
+    ) -> anyhow::Result<WorkspaceBootstrapResult>;
+    async fn upsert_root_role(&self, workspace_id: Uuid) -> anyhow::Result<()>;
+    async fn seed_workspace_role_templates(&self, workspace_id: Uuid) -> anyhow::Result<()>;
+    async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> anyhow::Result<()> {
+        self.upsert_root_role(workspace_id).await?;
+        self.seed_workspace_role_templates(workspace_id).await
+    }
     async fn upsert_root_user(
         &self,
         workspace_id: Uuid,
@@ -173,6 +203,12 @@ pub trait BootstrapRepository: Send + Sync {
         name: &str,
         nickname: &str,
     ) -> anyhow::Result<UserRecord>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceBootstrapResult {
+    pub workspace: WorkspaceRecord,
+    pub created: bool,
 }
 
 #[async_trait]

@@ -161,7 +161,7 @@ pub fn permission_catalog() -> Vec<PermissionDefinition> {
     permissions
 }
 
-pub fn builtin_role_templates() -> Vec<RoleTemplate> {
+pub fn bootstrap_role_templates() -> Vec<RoleTemplate> {
     let all_codes = permission_catalog()
         .into_iter()
         .map(|permission| permission.code)
@@ -207,7 +207,7 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
             name: "Admin".to_string(),
             introduction: "工作区管理员角色".to_string(),
             scope_kind: RoleScopeKind::Workspace,
-            is_builtin: true,
+            is_builtin: false,
             is_editable: true,
             auto_grant_new_permissions: true,
             is_default_member_role: false,
@@ -218,7 +218,7 @@ pub fn builtin_role_templates() -> Vec<RoleTemplate> {
             name: "Member".to_string(),
             introduction: "工作区普通成员默认角色".to_string(),
             scope_kind: RoleScopeKind::Workspace,
-            is_builtin: true,
+            is_builtin: false,
             is_editable: true,
             auto_grant_new_permissions: false,
             is_default_member_role: true,

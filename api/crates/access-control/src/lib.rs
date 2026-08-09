@@ -6,7 +6,7 @@ mod evaluator;
 mod navigation;
 mod settings_features;
 
-pub use catalog::{builtin_role_templates, permission_catalog};
+pub use catalog::{bootstrap_role_templates, permission_catalog};
 pub use console_operations::{
     ConsoleAuthorization, ConsoleInterfaceInventoryEntry, ConsoleInterfaceRegistration,
     ConsoleLocaleCatalog, ConsoleLocaleCatalogContribution, ConsoleLocaleText,

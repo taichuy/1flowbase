@@ -1,4 +1,4 @@
-use access_control::{builtin_role_templates, permission_catalog};
+use access_control::{bootstrap_role_templates, permission_catalog};
 
 #[test]
 fn permission_catalog_seeds_expected_codes() {
@@ -56,18 +56,21 @@ fn permission_catalog_seeds_migrated_settings_feature_codes() {
 }
 
 #[test]
-fn builtin_roles_keep_root_internal_and_expose_admin_and_member_for_workspaces() {
-    let templates = builtin_role_templates();
+fn bootstrap_roles_protect_only_root_and_expose_workspace_examples() {
+    let templates = bootstrap_role_templates();
 
     let root = templates.iter().find(|role| role.code == "root").unwrap();
     let admin = templates.iter().find(|role| role.code == "admin").unwrap();
     let member = templates.iter().find(|role| role.code == "member").unwrap();
 
     assert_eq!(root.scope_kind, domain::RoleScopeKind::System);
+    assert!(root.is_builtin);
     assert!(!root.is_editable);
     assert_eq!(admin.scope_kind, domain::RoleScopeKind::Workspace);
+    assert!(!admin.is_builtin);
     assert!(admin.is_editable);
     assert_eq!(member.scope_kind, domain::RoleScopeKind::Workspace);
+    assert!(!member.is_builtin);
     assert!(member.is_editable);
     assert!(member.is_default_member_role);
     assert!(!templates.iter().any(|role| role.code == "manager"));
@@ -75,7 +78,7 @@ fn builtin_roles_keep_root_internal_and_expose_admin_and_member_for_workspaces()
 
 #[test]
 fn member_role_includes_frontstage_design_permission_by_default() {
-    let templates = builtin_role_templates();
+    let templates = bootstrap_role_templates();
     let member = templates.iter().find(|role| role.code == "member").unwrap();
 
     assert!(member
@@ -85,7 +88,7 @@ fn member_role_includes_frontstage_design_permission_by_default() {
 
 #[test]
 fn member_role_keeps_api_key_authentication_settings_feature_by_default() {
-    let templates = builtin_role_templates();
+    let templates = bootstrap_role_templates();
     let member = templates.iter().find(|role| role.code == "member").unwrap();
 
     assert!(member

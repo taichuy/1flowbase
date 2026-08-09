@@ -1,3 +1,4 @@
+use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use domain::PermissionDefinition;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
@@ -92,6 +93,44 @@ async fn upsert_builtin_roles_sets_admin_auto_grant_and_member_default_role() {
             ("member".to_string(), false, true),
         ]
     );
+}
+
+#[tokio::test]
+async fn ac_003_bootstrap_does_not_recreate_deleted_workspace_role_templates() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let config = BootstrapConfig {
+        workspace_name: "1flowbase".to_string(),
+        root_account: "root".to_string(),
+        root_email: "root@example.com".to_string(),
+        root_password_hash: "hash".to_string(),
+        root_name: "Root".to_string(),
+        root_nickname: "Root".to_string(),
+    };
+    let first = BootstrapService::new(store.clone())
+        .run(&config)
+        .await
+        .unwrap();
+
+    sqlx::query("delete from roles where workspace_id = $1 and code = 'admin'")
+        .bind(first.workspace_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    BootstrapService::new(store.clone())
+        .run(&config)
+        .await
+        .unwrap();
+
+    let admin_count: i64 =
+        sqlx::query_scalar("select count(*) from roles where workspace_id = $1 and code = 'admin'")
+            .bind(first.workspace_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(admin_count, 0);
 }
 
 #[tokio::test]

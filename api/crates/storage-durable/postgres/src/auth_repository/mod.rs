@@ -144,6 +144,128 @@ async fn find_user_by_account(pool: &PgPool, account: &str) -> Result<Option<Use
     }
 }
 
+async fn upsert_role_templates(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    roles: impl IntoIterator<Item = domain::RoleTemplate>,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+
+    for role in roles {
+        let scope_kind = match role.scope_kind {
+            RoleScopeKind::System => "system",
+            RoleScopeKind::Workspace => "workspace",
+        };
+        let scoped_workspace_id = if matches!(role.scope_kind, RoleScopeKind::Workspace) {
+            Some(workspace_id)
+        } else {
+            None
+        };
+        let system_kind =
+            matches!(role.scope_kind, RoleScopeKind::System).then_some(role.code.as_str());
+
+        let inserted_role_id: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            insert into roles (
+                id,
+                scope_id,
+                scope_kind,
+                workspace_id,
+                code,
+                name,
+                introduction,
+                is_builtin,
+                is_editable,
+                auto_grant_new_permissions,
+                is_default_member_role,
+                system_kind
+            )
+            values ($1, $2, $3, $4, $5, $6, '', $7, $8, $9, $10, $11)
+            on conflict do nothing
+            returning id
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(match role.scope_kind {
+            RoleScopeKind::System => domain::SYSTEM_SCOPE_ID,
+            RoleScopeKind::Workspace => workspace_id,
+        })
+        .bind(scope_kind)
+        .bind(scoped_workspace_id)
+        .bind(&role.code)
+        .bind(&role.name)
+        .bind(role.is_builtin)
+        .bind(role.is_editable)
+        .bind(role.auto_grant_new_permissions)
+        .bind(role.is_default_member_role)
+        .bind(system_kind)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let role_id: Uuid = match role.scope_kind {
+            RoleScopeKind::System => {
+                sqlx::query_scalar("select id from roles where scope_kind = 'system' and code = $1")
+                    .bind(&role.code)
+                    .fetch_one(&mut *tx)
+                    .await?
+            }
+            RoleScopeKind::Workspace => sqlx::query_scalar(
+                "select id from roles where scope_kind = 'workspace' and workspace_id = $1 and code = $2",
+            )
+            .bind(workspace_id)
+            .bind(&role.code)
+            .fetch_one(&mut *tx)
+            .await?,
+        };
+
+        if inserted_role_id.is_some() {
+            for permission_code in role.permissions {
+                sqlx::query(
+                    r#"
+                    insert into role_permissions (id, role_id, permission_id, scope_id)
+                    select $1, roles.id, permission_definitions.id, roles.scope_id
+                    from roles
+                    join permission_definitions on permission_definitions.code = $3
+                    where roles.id = $2
+                    on conflict (role_id, permission_id) do nothing
+                    "#,
+                )
+                .bind(Uuid::now_v7())
+                .bind(role_id)
+                .bind(permission_code)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        let (can_all, default_scope) = match role.code.as_str() {
+            "root" => (true, "system_all"),
+            "admin" => (true, "scope_all"),
+            "member" => (true, "own"),
+            _ => (false, "own"),
+        };
+        sqlx::query(
+            r#"
+            insert into role_data_policies (
+                id, role_id, can_view, can_create, can_update, can_delete,
+                default_view_scope, default_update_scope, default_delete_scope
+            )
+            values ($1, $2, $3, $3, $3, $3, $4, $4, $4)
+            on conflict (role_id) do nothing
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(role_id)
+        .bind(can_all)
+        .bind(default_scope)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
 #[async_trait]
 impl BootstrapRepository for PgControlPlaneStore {
     async fn replace_authenticator_public_ui_block_if_matches(
@@ -355,11 +477,11 @@ impl BootstrapRepository for PgControlPlaneStore {
         Ok(!initialized)
     }
 
-    async fn upsert_workspace(
+    async fn upsert_workspace_for_bootstrap(
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
-    ) -> Result<domain::WorkspaceRecord> {
+    ) -> Result<control_plane::ports::WorkspaceBootstrapResult> {
         let existing = sqlx::query(
             r#"
             select id, tenant_id, name, logo_url, introduction
@@ -375,13 +497,16 @@ impl BootstrapRepository for PgControlPlaneStore {
         .await?;
 
         if let Some(row) = existing {
-            return Ok(PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
-                id: row.get("id"),
-                tenant_id: row.get("tenant_id"),
-                name: row.get("name"),
-                logo_url: row.get("logo_url"),
-                introduction: row.get("introduction"),
-            }));
+            return Ok(control_plane::ports::WorkspaceBootstrapResult {
+                workspace: PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
+                    id: row.get("id"),
+                    tenant_id: row.get("tenant_id"),
+                    name: row.get("name"),
+                    logo_url: row.get("logo_url"),
+                    introduction: row.get("introduction"),
+                }),
+                created: false,
+            });
         }
 
         let has_workspace = sqlx::query_scalar::<_, bool>(
@@ -406,21 +531,24 @@ impl BootstrapRepository for PgControlPlaneStore {
         .execute(self.pool())
         .await?;
 
-        Ok(PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
-            id,
-            tenant_id,
-            name: workspace_name.to_string(),
-            logo_url: None,
-            introduction: String::new(),
-        }))
+        Ok(control_plane::ports::WorkspaceBootstrapResult {
+            workspace: PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
+                id,
+                tenant_id,
+                name: workspace_name.to_string(),
+                logo_url: None,
+                introduction: String::new(),
+            }),
+            created: true,
+        })
     }
 
-    async fn upsert_root_workspace_with_official_catalog(
+    async fn upsert_root_workspace_with_official_catalog_for_bootstrap(
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
         seed: &control_plane::i18n_catalog::VerifiedOfficialCatalogSeed,
-    ) -> Result<domain::WorkspaceRecord> {
+    ) -> Result<control_plane::ports::WorkspaceBootstrapResult> {
         let mut transaction = self.pool().begin().await?;
         let existing = sqlx::query(
             r#"
@@ -436,14 +564,17 @@ impl BootstrapRepository for PgControlPlaneStore {
         .bind(workspace_name)
         .fetch_optional(&mut *transaction)
         .await?;
-        let workspace = if let Some(row) = existing {
-            PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
-                id: row.get("id"),
-                tenant_id: row.get("tenant_id"),
-                name: row.get("name"),
-                logo_url: row.get("logo_url"),
-                introduction: row.get("introduction"),
-            })
+        let (workspace, created) = if let Some(row) = existing {
+            (
+                PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
+                    id: row.get("id"),
+                    tenant_id: row.get("tenant_id"),
+                    name: row.get("name"),
+                    logo_url: row.get("logo_url"),
+                    introduction: row.get("introduction"),
+                }),
+                false,
+            )
         } else {
             let has_workspace: bool =
                 sqlx::query_scalar("select exists(select 1 from workspaces where tenant_id = $1)")
@@ -465,13 +596,16 @@ impl BootstrapRepository for PgControlPlaneStore {
             .bind(workspace_name)
             .execute(&mut *transaction)
             .await?;
-            PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
-                id,
-                tenant_id,
-                name: workspace_name.to_owned(),
-                logo_url: None,
-                introduction: String::new(),
-            })
+            (
+                PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
+                    id,
+                    tenant_id,
+                    name: workspace_name.to_owned(),
+                    logo_url: None,
+                    introduction: String::new(),
+                }),
+                true,
+            )
         };
 
         let existing_release = sqlx::query(
@@ -519,125 +653,34 @@ impl BootstrapRepository for PgControlPlaneStore {
         .await?;
 
         transaction.commit().await?;
-        Ok(workspace)
+        Ok(control_plane::ports::WorkspaceBootstrapResult { workspace, created })
+    }
+
+    async fn upsert_root_role(&self, workspace_id: Uuid) -> Result<()> {
+        upsert_role_templates(
+            self.pool(),
+            workspace_id,
+            access_control::bootstrap_role_templates()
+                .into_iter()
+                .filter(|role| matches!(role.scope_kind, RoleScopeKind::System)),
+        )
+        .await
+    }
+
+    async fn seed_workspace_role_templates(&self, workspace_id: Uuid) -> Result<()> {
+        upsert_role_templates(
+            self.pool(),
+            workspace_id,
+            access_control::bootstrap_role_templates()
+                .into_iter()
+                .filter(|role| matches!(role.scope_kind, RoleScopeKind::Workspace)),
+        )
+        .await
     }
 
     async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> Result<()> {
-        let mut tx = self.pool().begin().await?;
-
-        for role in access_control::builtin_role_templates() {
-            let scope_kind = match role.scope_kind {
-                RoleScopeKind::System => "system",
-                RoleScopeKind::Workspace => "workspace",
-            };
-            let scoped_workspace_id = if matches!(role.scope_kind, RoleScopeKind::Workspace) {
-                Some(workspace_id)
-            } else {
-                None
-            };
-
-            let inserted_role_id: Option<Uuid> = sqlx::query_scalar(
-                r#"
-                insert into roles (
-                    id,
-                    scope_id,
-                    scope_kind,
-                    workspace_id,
-                    code,
-                    name,
-                    introduction,
-                    is_builtin,
-                    is_editable,
-                    auto_grant_new_permissions,
-                    is_default_member_role,
-                    system_kind
-                )
-                values ($1, $2, $3, $4, $5, $6, '', $7, $8, $9, $10, $11)
-                on conflict do nothing
-                returning id
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(match role.scope_kind {
-                RoleScopeKind::System => domain::SYSTEM_SCOPE_ID,
-                RoleScopeKind::Workspace => workspace_id,
-            })
-            .bind(scope_kind)
-            .bind(scoped_workspace_id)
-            .bind(&role.code)
-            .bind(&role.name)
-            .bind(role.is_builtin)
-            .bind(role.is_editable)
-            .bind(role.auto_grant_new_permissions)
-            .bind(role.is_default_member_role)
-            .bind(&role.code)
-            .fetch_optional(&mut *tx)
-            .await?;
-
-            let role_id: Uuid = match role.scope_kind {
-                RoleScopeKind::System => {
-                    sqlx::query_scalar(
-                        "select id from roles where scope_kind = 'system' and code = $1",
-                    )
-                    .bind(&role.code)
-                    .fetch_one(&mut *tx)
-                    .await?
-                }
-                RoleScopeKind::Workspace => sqlx::query_scalar(
-                    "select id from roles where scope_kind = 'workspace' and workspace_id = $1 and code = $2",
-                )
-                .bind(workspace_id)
-                .bind(&role.code)
-                .fetch_one(&mut *tx)
-                .await?,
-            };
-
-            if inserted_role_id.is_some() {
-                for permission_code in role.permissions {
-                    sqlx::query(
-                        r#"
-                        insert into role_permissions (id, role_id, permission_id, scope_id)
-                        select $1, roles.id, permission_definitions.id, roles.scope_id
-                        from roles
-                        join permission_definitions on permission_definitions.code = $3
-                        where roles.id = $2
-                        on conflict (role_id, permission_id) do nothing
-                        "#,
-                    )
-                    .bind(Uuid::now_v7())
-                    .bind(role_id)
-                    .bind(permission_code)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-            }
-
-            let (can_all, default_scope) = match role.code.as_str() {
-                "root" => (true, "system_all"),
-                "admin" => (true, "scope_all"),
-                "member" => (true, "own"),
-                _ => (false, "own"),
-            };
-            sqlx::query(
-                r#"
-                insert into role_data_policies (
-                    id, role_id, can_view, can_create, can_update, can_delete,
-                    default_view_scope, default_update_scope, default_delete_scope
-                )
-                values ($1, $2, $3, $3, $3, $3, $4, $4, $4)
-                on conflict (role_id) do nothing
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(role_id)
-            .bind(can_all)
-            .bind(default_scope)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-        Ok(())
+        self.upsert_root_role(workspace_id).await?;
+        self.seed_workspace_role_templates(workspace_id).await
     }
 
     async fn upsert_root_user(

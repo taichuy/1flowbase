@@ -158,6 +158,7 @@ async fn bootstrap_service_seeds_single_root_tenant_and_default_workspace() {
 
     assert_eq!(repository.root_tenant_upserts(), 2);
     assert_eq!(repository.workspace_upserts(), 2);
+    assert_eq!(repository.workspace_role_template_seeds(), 1);
     assert_eq!(repository.root_user_creates(), 1);
 }
 
