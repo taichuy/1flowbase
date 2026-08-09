@@ -88,6 +88,7 @@ pub async fn add_scalar_column(
         field.is_unique,
     )
     .await?;
+    maybe_create_ordered_tree_prefix_index(tx, model, field).await?;
     Ok(())
 }
 
@@ -276,6 +277,34 @@ async fn maybe_create_unique_index(
     let statement =
         format!("create unique index {index_name} on {quoted_table_name} ({quoted_column_name})");
     sqlx::query(&statement).execute(&mut **tx).await?;
+    Ok(())
+}
+
+async fn maybe_create_ordered_tree_prefix_index(
+    tx: &mut Transaction<'_, Postgres>,
+    model: &domain::ModelDefinitionRecord,
+    field: &domain::ModelFieldRecord,
+) -> Result<()> {
+    if !crate::ordered_tree::schema::matches(model)
+        || field.is_system
+        || !matches!(
+            field.field_kind,
+            domain::ModelFieldKind::String
+                | domain::ModelFieldKind::Enum
+                | domain::ModelFieldKind::Text
+        )
+    {
+        return Ok(());
+    }
+
+    let table_name = quote_identifier(&model.physical_table_name)?;
+    let column_name = quote_identifier(&field.physical_column_name)?;
+    let index_name = quote_identifier(&full_uuid_name("idx_ot_prefix", field.id))?;
+    sqlx::query(&format!(
+        "create index {index_name} on {table_name} (scope_id, (lower({column_name}) collate \"C\") text_pattern_ops)"
+    ))
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 

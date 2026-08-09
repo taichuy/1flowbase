@@ -861,7 +861,7 @@ fn append_default_sort_clause(
     Ok(())
 }
 
-fn projected_select_list(metadata: &ModelMetadata) -> Result<String> {
+pub(crate) fn projected_select_list(metadata: &ModelMetadata) -> Result<String> {
     if metadata.fields.is_empty() {
         return Ok("*".to_string());
     }
@@ -1001,7 +1001,7 @@ fn push_string_pattern_value(
     }
 }
 
-fn normalize_record(metadata: &ModelMetadata, value: Value) -> Value {
+pub(crate) fn normalize_record(metadata: &ModelMetadata, value: Value) -> Value {
     let Value::Object(mut object) = value else {
         return value;
     };

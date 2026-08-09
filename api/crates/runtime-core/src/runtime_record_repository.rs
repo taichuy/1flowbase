@@ -83,6 +83,60 @@ pub struct OrderedTreeSubtreeDeleteResult {
     pub deleted_count: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeBoundedListInput {
+    pub scope_id: Uuid,
+    pub result_limit: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeChildrenInput {
+    pub scope_id: Uuid,
+    pub parent_id: Uuid,
+    pub result_limit: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeNodeInput {
+    pub scope_id: Uuid,
+    pub node_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeDescendantsInput {
+    pub scope_id: Uuid,
+    pub node_id: Uuid,
+    pub max_depth: u32,
+    pub result_limit: u32,
+    pub include_path: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSearchInput {
+    pub scope_id: Uuid,
+    pub prefix: String,
+    pub match_limit: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderedTreeNodeProjection {
+    pub record: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderedTreeDescendantProjection {
+    pub record: Value,
+    pub depth: u32,
+    pub has_children: bool,
+    pub path: Option<Vec<Uuid>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderedTreeSearchProjection {
+    pub record: Value,
+    pub is_match: bool,
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum OrderedTreeCommandError {
     #[error("ordered-tree command requires core/ordered_tree/v1 metadata")]
@@ -107,6 +161,26 @@ pub enum OrderedTreeCommandError {
     PositionConflict,
     #[error("ordered-tree payload field is not writable: {0}")]
     FieldNotWritable(String),
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum OrderedTreeQueryError {
+    #[error("ordered-tree query requires core/ordered_tree/v1 metadata")]
+    WrongTemplate,
+    #[error("ordered-tree query node not found")]
+    NodeNotFound,
+    #[error("ordered-tree query parent not found")]
+    ParentNotFound,
+    #[error("ordered-tree query result limit must be between 1 and {max}")]
+    InvalidResultLimit { max: u32 },
+    #[error("ordered-tree descendant depth must be between 1 and {max}")]
+    InvalidMaxDepth { max: u32 },
+    #[error("ordered-tree ancestor depth exceeds hard limit {max}")]
+    AncestorDepthLimitExceeded { max: u32 },
+    #[error("ordered-tree search prefix must not be empty")]
+    EmptySearchPrefix,
+    #[error("ordered-tree model has no searchable text fields")]
+    NoSearchableFields,
 }
 
 impl OrderedTreeCommandError {
@@ -152,6 +226,39 @@ pub trait OrderedTreeStructureRepository: Send + Sync {
         metadata: &ModelMetadata,
         input: OrderedTreeSubtreeDeleteInput,
     ) -> Result<OrderedTreeSubtreeDeleteResult>;
+}
+
+#[async_trait]
+pub trait OrderedTreeQueryRepository: Send + Sync {
+    async fn list_ordered_tree_roots(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeBoundedListInput,
+    ) -> Result<Vec<OrderedTreeNodeProjection>>;
+
+    async fn list_ordered_tree_children(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeChildrenInput,
+    ) -> Result<Vec<OrderedTreeNodeProjection>>;
+
+    async fn list_ordered_tree_ancestors(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeNodeInput,
+    ) -> Result<Vec<OrderedTreeNodeProjection>>;
+
+    async fn list_ordered_tree_descendants(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeDescendantsInput,
+    ) -> Result<Vec<OrderedTreeDescendantProjection>>;
+
+    async fn search_ordered_tree_prefix(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeSearchInput,
+    ) -> Result<Vec<OrderedTreeSearchProjection>>;
 }
 
 #[async_trait]
