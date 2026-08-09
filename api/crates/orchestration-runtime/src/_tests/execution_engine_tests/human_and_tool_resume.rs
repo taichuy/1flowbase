@@ -988,6 +988,19 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
         .iter()
         .find(|trace| trace.node_id == "node-llm")
         .expect("llm trace should record the internal tool lifecycle");
+    assert_eq!(llm_trace.input_payload["tools"], json!(inputs[0].tools));
+    assert_eq!(
+        llm_trace.input_payload["tool_registrations"][0]["provider_name"],
+        json!("catalog_mcp_call")
+    );
+    assert_eq!(
+        llm_trace.input_payload["tool_registrations"][0]["execution_kind"],
+        json!("host_internal")
+    );
+    assert_eq!(
+        llm_trace.input_payload["tool_registrations"][0]["owner"]["instance_id"],
+        json!("catalog")
+    );
     assert_eq!(
         llm_trace.metrics_payload["internal_tool_call_count"],
         json!(1)
@@ -1072,6 +1085,16 @@ async fn runtime_internal_tool_snapshot_preserves_wire_name_without_duplicate_re
             .count(),
         1
     );
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should preserve the frozen provider wire name");
+    assert_eq!(llm_trace.input_payload["tools"], json!(inputs[0].tools));
+    assert_eq!(
+        llm_trace.input_payload["tool_registrations"][0]["provider_name"],
+        json!(frozen_name)
+    );
 }
 
 #[tokio::test]
@@ -1112,7 +1135,15 @@ async fn runtime_internal_tool_snapshot_is_not_exposed_without_an_active_invoker
         outcome.stop_reason,
         ExecutionStopReason::Completed
     ));
-    assert!(captured_inputs.lock().unwrap()[0].tools.is_empty());
+    let inputs = captured_inputs.lock().unwrap();
+    assert!(inputs[0].tools.is_empty());
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should record the effective empty tool input");
+    assert_eq!(llm_trace.input_payload["tools"], json!([]));
+    assert_eq!(llm_trace.input_payload["tool_registrations"], json!([]));
 }
 
 #[tokio::test]

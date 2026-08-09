@@ -730,6 +730,49 @@ pub(super) fn provider_tools(
     tools
 }
 
+pub(super) fn llm_node_input_payload(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+) -> Map<String, Value> {
+    let effective_tools = provider_tools(
+        plan,
+        node,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+    );
+    let active_tool_names = effective_tools
+        .iter()
+        .filter_map(provider_tool_name)
+        .collect::<HashSet<_>>();
+    let tool_registrations = runtime_context
+        .runtime_internal_tool_registrations(node)
+        .into_iter()
+        .filter(|registration| active_tool_names.contains(&registration.provider_name))
+        .map(|registration| {
+            json!({
+                "registration_id": registration.registration_id,
+                "provider_name": registration.provider_name,
+                "execution_kind": "host_internal",
+                "owner": registration.owner,
+                "node_ids": [node.node_id],
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut input_payload = resolved_inputs.clone();
+    input_payload.insert("tools".to_string(), Value::Array(effective_tools));
+    input_payload.insert(
+        "tool_registrations".to_string(),
+        Value::Array(tool_registrations),
+    );
+    input_payload
+}
+
 fn claude_code_control_run_blocks_tools(
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
