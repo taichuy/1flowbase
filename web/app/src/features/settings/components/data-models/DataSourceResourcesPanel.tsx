@@ -82,6 +82,11 @@ export function DataSourceResourcesPanel({
       ),
     enabled: Boolean(mappingTarget)
   });
+  const templatesReady =
+    compatibleTemplatesQuery.isSuccess && !compatibleTemplatesQuery.isFetching;
+  const compatibleTemplates = templatesReady
+    ? (compatibleTemplatesQuery.data ?? [])
+    : [];
 
   useEffect(() => {
     setSelectedTemplate(null);
@@ -104,9 +109,9 @@ export function DataSourceResourcesPanel({
           title={compatibleTemplatesQuery.error.message}
         />
       ) : null}
-      {!compatibleTemplatesQuery.isLoading &&
+      {templatesReady &&
       !compatibleTemplatesQuery.error &&
-      compatibleTemplatesQuery.data?.length === 0 ? (
+      compatibleTemplates.length === 0 ? (
         <Alert
           type="warning"
           showIcon
@@ -115,11 +120,12 @@ export function DataSourceResourcesPanel({
       ) : null}
       <Select
         aria-label={i18nText('settings', 'auto.data_model_template')}
-        loading={compatibleTemplatesQuery.isLoading}
+        aria-busy={compatibleTemplatesQuery.isFetching}
+        loading={compatibleTemplatesQuery.isFetching}
         disabled={
-          compatibleTemplatesQuery.isLoading ||
+          !templatesReady ||
           Boolean(compatibleTemplatesQuery.error) ||
-          compatibleTemplatesQuery.data?.length === 0
+          compatibleTemplates.length === 0
         }
         value={
           selectedTemplate
@@ -127,14 +133,14 @@ export function DataSourceResourcesPanel({
             : undefined
         }
         placeholder={i18nText('settings', 'auto.select_data_model_template')}
-        options={(compatibleTemplatesQuery.data ?? []).map((template) => ({
+        options={compatibleTemplates.map((template) => ({
           value: dataModelTemplateIdentity(template),
           label: `${dataModelTemplatePresentation(template).title} · ${dataModelTemplateIdentity(template)}`,
           title: dataModelTemplatePresentation(template).description
         }))}
         onChange={(identity) =>
           setSelectedTemplate(
-            compatibleTemplatesQuery.data?.find(
+            compatibleTemplates.find(
               (template) => dataModelTemplateIdentity(template) === identity
             ) ?? null
           )
@@ -151,7 +157,7 @@ export function DataSourceResourcesPanel({
         </Button>
         <Button
           type="primary"
-          disabled={!selectedTemplate || !mappingTarget}
+          disabled={!templatesReady || !selectedTemplate || !mappingTarget}
           onClick={() => {
             if (mappingTarget && selectedTemplate) {
               onMap(mappingTarget, selectedTemplate);

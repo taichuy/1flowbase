@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -8,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import type { SettingsCompatibleDataModelTemplate } from '../../api/data-models';
 import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
 import {
   SLOW_SETTINGS_PAGE_TEST_TIMEOUT,
@@ -1276,6 +1278,22 @@ describe('Settings data models page', () => {
   });
 
   test('AC-013 maps an external resource with the selected backend-compatible plugin template', async () => {
+    let resolveCompatibleTemplates!: (
+      templates: SettingsCompatibleDataModelTemplate[]
+    ) => void;
+    const compatibleTemplates = new Promise<
+      SettingsCompatibleDataModelTemplate[]
+    >((resolve) => {
+      resolveCompatibleTemplates = resolve;
+    });
+    dataModelsApi.fetchSettingsCompatibleDataModelTemplates.mockImplementation(
+      async (dataSourceId: string, resourceKey?: string) => {
+        if (dataSourceId === 'source-1' && resourceKey === 'contacts') {
+          return compatibleTemplates;
+        }
+        return [];
+      }
+    );
     renderApp('/settings/data-models?source=source-1');
 
     const mapButton = await screen.findByRole(
@@ -1287,7 +1305,32 @@ describe('Settings data models page', () => {
     const templateSelector = await screen.findByRole('combobox', {
       name: 'Data Model 模板'
     });
+    await waitFor(() =>
+      expect(
+        dataModelsApi.fetchSettingsCompatibleDataModelTemplates
+      ).toHaveBeenCalledWith('source-1', 'contacts')
+    );
+    expect(templateSelector).toBeDisabled();
+    expect(templateSelector).toHaveAttribute('aria-busy', 'true');
     expect(screen.queryByText('普通表')).not.toBeInTheDocument();
+    expect(
+      dataModelsApi.mapSettingsDataSourceResourceToModel
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveCompatibleTemplates([
+        {
+          template_provider: 'plugin.crm',
+          template_code: 'contact_tree',
+          template_version: 'v2',
+          summary: '联系人树',
+          description: '由 CRM 插件提供的联系人树。'
+        }
+      ]);
+      await compatibleTemplates;
+    });
+    await waitFor(() => expect(templateSelector).toBeEnabled());
+    expect(templateSelector).toHaveAttribute('aria-busy', 'false');
     fireEvent.mouseDown(templateSelector);
     fireEvent.click(
       await screen.findByText('联系人树 · plugin.crm/contact_tree/v2')
@@ -1311,6 +1354,66 @@ describe('Settings data models page', () => {
         'csrf-123'
       )
     );
+  });
+
+  test('AC-013 keeps external mapping fail closed when the compatible catalog is empty', async () => {
+    dataModelsApi.fetchSettingsCompatibleDataModelTemplates.mockResolvedValue(
+      []
+    );
+    renderApp('/settings/data-models?source=source-1');
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: '映射为 Data Model' },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    );
+
+    expect(
+      await screen.findByText('当前数据源没有可用的 Data Model 模板。')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Data Model 模板' })
+    ).toBeDisabled();
+    expect(screen.queryByText('普通表')).not.toBeInTheDocument();
+    const confirmButtons = screen.getAllByRole('button', {
+      name: '映射为 Data Model'
+    });
+    expect(confirmButtons[confirmButtons.length - 1]).toBeDisabled();
+    expect(
+      dataModelsApi.mapSettingsDataSourceResourceToModel
+    ).not.toHaveBeenCalled();
+  });
+
+  test('AC-013 keeps external mapping fail closed when the compatible catalog request fails', async () => {
+    dataModelsApi.fetchSettingsCompatibleDataModelTemplates.mockRejectedValue(
+      new Error('compatible catalog unavailable')
+    );
+    renderApp('/settings/data-models?source=source-1');
+
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: '映射为 Data Model' },
+        { timeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT }
+      )
+    );
+
+    expect(
+      await screen.findByText('compatible catalog unavailable')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Data Model 模板' })
+    ).toBeDisabled();
+    expect(screen.queryByText('普通表')).not.toBeInTheDocument();
+    const confirmButtons = screen.getAllByRole('button', {
+      name: '映射为 Data Model'
+    });
+    expect(confirmButtons[confirmButtons.length - 1]).toBeDisabled();
+    expect(
+      dataModelsApi.mapSettingsDataSourceResourceToModel
+    ).not.toHaveBeenCalled();
   });
 
   test('deletes a Data Model from the table operation column after confirmation', async () => {

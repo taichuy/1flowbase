@@ -100,6 +100,11 @@ describe('settings data models API wrappers', () => {
       'source-1',
       'contacts'
     ]);
+    expect(
+      settingsCompatibleDataModelTemplatesQueryKey('source-1', 'companies')
+    ).not.toEqual(
+      settingsCompatibleDataModelTemplatesQueryKey('source-1', 'contacts')
+    );
     expect(settingsDataModelScopeGrantsQueryKey('model-1')).toEqual([
       'settings',
       'data-models',
