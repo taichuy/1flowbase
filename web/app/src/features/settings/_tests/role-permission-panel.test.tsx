@@ -292,7 +292,7 @@ describe('RolePermissionPanel', () => {
         name: 'Member',
         introduction: '默认管理角色',
         scope_kind: 'workspace',
-        is_builtin: true,
+        is_builtin: false,
         is_editable: true,
         auto_grant_new_permissions: false,
         is_default_member_role: true,
