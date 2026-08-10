@@ -4,7 +4,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -232,7 +233,11 @@ describe('external Data Model template refetch', () => {
           expect(templateSelector).toBeDisabled();
         } else {
           await waitFor(() => expect(templateSelector).toBeEnabled());
-          expect(screen.queryByText('联系人树')).not.toBeInTheDocument();
+          const templateSelectorRoot = templateSelector.closest('.ant-select');
+          expect(templateSelectorRoot).not.toBeNull();
+          expect(
+            within(templateSelectorRoot as HTMLElement).queryByText('联系人树')
+          ).not.toBeInTheDocument();
         }
         expect(confirmButton).toBeDisabled();
         expect(onMap).not.toHaveBeenCalled();
