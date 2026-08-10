@@ -36,20 +36,6 @@ const systemFieldColumns: ColumnsType<
   SettingsCompatibleDataModelTemplate['system_fields'][number]
 > = [
   {
-    title: i18nText('settings', 'auto.field_title'),
-    dataIndex: 'summary',
-    key: 'summary',
-    render: (value: string) => <Typography.Text strong>{value}</Typography.Text>
-  },
-  {
-    title: i18nText('settings', 'auto.description'),
-    dataIndex: 'description',
-    key: 'description',
-    render: (value: string) => (
-      <Typography.Text type="secondary">{value}</Typography.Text>
-    )
-  },
-  {
     title: 'Code',
     dataIndex: 'code',
     key: 'code',
@@ -136,18 +122,18 @@ export function DataModelFormDrawer({
           required: true
         },
         {
-          key: 'description',
-          label: i18nText('settings', 'auto.description'),
-          type: 'string',
-          control: 'textarea'
-        },
-        {
           key: 'code',
           label: 'Code',
           description: dataModelCodeHelp,
           type: 'string',
           required: true,
           read_only: mode === 'edit'
+        },
+        {
+          key: 'description',
+          label: i18nText('settings', 'auto.description'),
+          type: 'string',
+          control: 'textarea'
         },
         {
           key: 'api_open',
@@ -177,59 +163,56 @@ export function DataModelFormDrawer({
     mode === 'create' &&
     (templatesLoading || Boolean(templatesError) || !selectedTemplate);
 
-  const templatePreview =
+  const templateSelector =
     mode === 'create' ? (
-      <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-        <Space orientation="vertical" size={6} style={{ width: '100%' }}>
-          <Typography.Text>
-            {i18nText('settings', 'auto.data_model_template')}
-          </Typography.Text>
-          <Select
-            aria-label={i18nText('settings', 'auto.data_model_template')}
-            loading={templatesLoading}
-            disabled={
-              templatesLoading ||
-              Boolean(templatesError) ||
-              compatibleTemplates.length === 0
-            }
-            value={
-              selectedTemplate
-                ? dataModelTemplateIdentity(selectedTemplate)
-                : undefined
-            }
-            placeholder={i18nText(
-              'settings',
-              'auto.select_data_model_template'
-            )}
-            options={compatibleTemplates.map((template) => ({
-              value: dataModelTemplateIdentity(template),
-              label: dataModelTemplatePresentation(template).title
-            }))}
-            optionRender={(option) => <span>{option.data.label}</span>}
-            onChange={(identity) =>
-              setSelectedTemplate(
-                compatibleTemplates.find(
-                  (template) => dataModelTemplateIdentity(template) === identity
-                ) ?? null
-              )
-            }
-          />
-        </Space>
-        {selectedTemplate ? (
-          <Space orientation="vertical" size={6} style={{ width: '100%' }}>
-            <Typography.Text strong>
-              {i18nText('settings', 'auto.default_fields')}
-            </Typography.Text>
-            <Table
-              rowKey="code"
-              size="small"
-              columns={systemFieldColumns}
-              dataSource={selectedTemplate.system_fields}
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-            />
-          </Space>
-        ) : null}
+      <Space orientation="vertical" size={6} style={{ width: '100%' }}>
+        <Typography.Text>
+          {i18nText('settings', 'auto.data_model_template')}
+        </Typography.Text>
+        <Select
+          aria-label={i18nText('settings', 'auto.data_model_template')}
+          loading={templatesLoading}
+          disabled={
+            templatesLoading ||
+            Boolean(templatesError) ||
+            compatibleTemplates.length === 0
+          }
+          value={
+            selectedTemplate
+              ? dataModelTemplateIdentity(selectedTemplate)
+              : undefined
+          }
+          placeholder={i18nText('settings', 'auto.select_data_model_template')}
+          options={compatibleTemplates.map((template) => ({
+            value: dataModelTemplateIdentity(template),
+            label: dataModelTemplatePresentation(template).title
+          }))}
+          optionRender={(option) => <span>{option.data.label}</span>}
+          onChange={(identity) =>
+            setSelectedTemplate(
+              compatibleTemplates.find(
+                (template) => dataModelTemplateIdentity(template) === identity
+              ) ?? null
+            )
+          }
+        />
+      </Space>
+    ) : undefined;
+
+  const defaultFieldsPreview =
+    mode === 'create' && selectedTemplate ? (
+      <Space orientation="vertical" size={6} style={{ width: '100%' }}>
+        <Typography.Text strong>
+          {i18nText('settings', 'auto.default_fields')}
+        </Typography.Text>
+        <Table
+          rowKey="code"
+          size="small"
+          columns={systemFieldColumns}
+          dataSource={selectedTemplate.system_fields}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+        />
       </Space>
     ) : undefined;
 
@@ -273,7 +256,8 @@ export function DataModelFormDrawer({
       width={560}
       schema={schema}
       initialValues={initialValues}
-      leadingContent={templatePreview}
+      leadingContent={templateSelector}
+      trailingContent={defaultFieldsPreview}
       statusMessages={statusMessages}
       submitDisabled={templateUnavailable}
       submitting={saving}

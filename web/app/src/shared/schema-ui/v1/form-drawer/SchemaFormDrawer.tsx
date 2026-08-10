@@ -80,6 +80,7 @@ export interface SchemaFormDrawerProps {
   submitting?: boolean;
   submitText?: string;
   cancelText?: string;
+  trailingContent?: ReactNode;
   width?: number | string;
   onSubmit: (
     values: SchemaFormValues,
@@ -228,6 +229,7 @@ export function SchemaFormDrawer({
   submitting,
   subtitle,
   title,
+  trailingContent,
   width = DEFAULT_SCHEMA_FORM_DRAWER_WIDTH
 }: SchemaFormDrawerProps) {
   const [form] = Form.useForm<SchemaFormValues>();
@@ -452,6 +454,7 @@ export function SchemaFormDrawer({
           </Form.Item>
         ))}
       </Form>
+      {trailingContent}
     </div>
   );
 
