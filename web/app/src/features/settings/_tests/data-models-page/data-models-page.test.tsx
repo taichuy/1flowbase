@@ -1250,8 +1250,15 @@ describe('Settings data models page', () => {
       })
     ).toBeVisible();
     expect(
-      within(apiOpenRow as HTMLElement).getByText(dataModelStatusHelp)
-    ).toBeVisible();
+      within(apiOpenRow as HTMLElement).queryByText(dataModelStatusHelp)
+    ).not.toBeInTheDocument();
+    const apiOpenDescription =
+      within(createDialog).getByText(dataModelStatusHelp);
+    expect(apiOpenDescription).toBeVisible();
+    expect(
+      (apiOpenRow as HTMLElement).compareDocumentPosition(apiOpenDescription) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(
       within(createDialog).getByRole('separator', {
         name: '调整 Data Model 抽屉宽度'
