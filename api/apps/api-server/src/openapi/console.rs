@@ -185,6 +185,7 @@ use utoipa::OpenApi;
         crate::routes::model_definitions::UpdateScopeGrantBody,
         crate::routes::model_definitions::ModelDefinitionResponse,
         crate::routes::model_definitions::CompatibleTemplateCatalogEntryResponse,
+        crate::routes::model_definitions::CompatibleTemplateSystemFieldResponse,
         crate::routes::model_definitions::AgentFlowDataModelFieldOptionResponse,
         crate::routes::model_definitions::AgentFlowDataModelOptionResponse,
         crate::routes::model_definitions::ModelFieldResponse,

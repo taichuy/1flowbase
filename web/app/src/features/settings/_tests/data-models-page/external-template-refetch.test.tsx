@@ -4,7 +4,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -61,7 +62,20 @@ const contacts: SettingsDataSourceRemoteResource = {
   resource_key: 'contacts',
   display_name: 'Contacts',
   resource_kind: 'object',
-  capabilities: {},
+  capabilities: {
+    supports_list: true,
+    supports_get: true,
+    supports_create: true,
+    supports_update: true,
+    supports_delete: true,
+    supports_filter: true,
+    supports_sort: true,
+    supports_pagination: true,
+    supports_owner_filter: false,
+    supports_scope_filter: false,
+    supports_write: true,
+    supports_transactions: true
+  },
   metadata: {}
 };
 
@@ -70,7 +84,16 @@ const selectedTemplate: SettingsCompatibleDataModelTemplate = {
   template_code: 'contact_tree',
   template_version: 'v2',
   summary: '联系人树',
-  description: '由 CRM 插件提供的联系人树。'
+  description: '由 CRM 插件提供的联系人树。',
+  system_fields: [
+    {
+      code: 'id',
+      summary: 'Contact identifier',
+      description: 'Stable external contact identifier.',
+      field_kind: 'string',
+      required: true
+    }
+  ]
 };
 
 beforeEach(() => {
@@ -126,12 +149,13 @@ describe('external Data Model template refetch', () => {
         });
         await waitFor(() => expect(templateSelector).toBeEnabled());
         fireEvent.mouseDown(templateSelector);
-        fireEvent.click(
-          await screen.findByText('联系人树 · plugin.crm/contact_tree/v2')
-        );
         expect(
-          screen.getByText(selectedTemplate.description)
-        ).toBeInTheDocument();
+          await screen.findByRole('option', { name: '联系人树' })
+        ).toHaveAccessibleName('联系人树');
+        fireEvent.click(await screen.findByText('联系人树'));
+        expect(
+          screen.queryByText('由 CRM 插件提供的联系人树。')
+        ).not.toBeInTheDocument();
         const confirmButtons = screen.getAllByRole('button', {
           name: '映射为 Data Model'
         });
@@ -189,7 +213,8 @@ describe('external Data Model template refetch', () => {
                     template_code: 'contact_list',
                     template_version: 'v1',
                     summary: '联系人列表',
-                    description: '不再包含先前选择的模板身份。'
+                    description: '不再包含先前选择的模板身份。',
+                    system_fields: []
                   }
                 ]
           );
@@ -208,7 +233,11 @@ describe('external Data Model template refetch', () => {
           expect(templateSelector).toBeDisabled();
         } else {
           await waitFor(() => expect(templateSelector).toBeEnabled());
-          expect(screen.queryByText('联系人树')).not.toBeInTheDocument();
+          const templateSelectorRoot = templateSelector.closest('.ant-select');
+          expect(templateSelectorRoot).not.toBeNull();
+          expect(
+            within(templateSelectorRoot as HTMLElement).queryByText('联系人树')
+          ).not.toBeInTheDocument();
         }
         expect(confirmButton).toBeDisabled();
         expect(onMap).not.toHaveBeenCalled();

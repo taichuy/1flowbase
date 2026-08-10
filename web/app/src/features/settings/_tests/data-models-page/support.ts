@@ -11,11 +11,47 @@ import { createElement } from 'react';
 import { expect, vi } from 'vitest';
 
 import type {
+  SettingsCompatibleDataModelTemplate,
   SettingsDataModel,
   SettingsDataModelField
 } from '../../api/data-models';
 
 export const SLOW_SETTINGS_PAGE_TEST_TIMEOUT = 20_000;
+
+export const generalTemplateSystemFields: SettingsCompatibleDataModelTemplate['system_fields'] =
+  [
+    ['id', 'string', true],
+    ['scope_id', 'string', true],
+    ['created_by', 'string', true],
+    ['updated_by', 'string', true],
+    ['created_at', 'datetime', true],
+    ['updated_at', 'datetime', true]
+  ].map(([code, field_kind, required]) => ({
+    code: code as string,
+    summary: `${code} system field`,
+    description: `Core-managed \`${code}\` field.`,
+    field_kind: field_kind as string,
+    required: required as boolean
+  }));
+
+export const orderedTreeTemplateSystemFields: SettingsCompatibleDataModelTemplate['system_fields'] =
+  [
+    ...generalTemplateSystemFields,
+    {
+      code: 'parent_id',
+      summary: 'parent_id system field',
+      description: 'Core-managed `parent_id` field.',
+      field_kind: 'string',
+      required: false
+    },
+    {
+      code: 'sibling_rank',
+      summary: 'sibling_rank system field',
+      description: 'Core-managed `sibling_rank` field.',
+      field_kind: 'string',
+      required: true
+    }
+  ];
 
 vi.setConfig({ testTimeout: SLOW_SETTINGS_PAGE_TEST_TIMEOUT });
 
@@ -836,14 +872,16 @@ export function setupDataModelsPageTest() {
               template_code: 'general',
               template_version: 'v1',
               summary: 'General data model',
-              description: 'Core general-purpose Data Model template.'
+              description: 'Core general-purpose Data Model template.',
+              system_fields: generalTemplateSystemFields
             },
             {
               template_provider: 'core',
               template_code: 'ordered_tree',
               template_version: 'v1',
               summary: 'Ordered tree data model',
-              description: 'Core main-source ordered-tree Data Model template.'
+              description: 'Core main-source ordered-tree Data Model template.',
+              system_fields: orderedTreeTemplateSystemFields
             }
           ]
         : resourceKey === 'contacts'
@@ -853,7 +891,16 @@ export function setupDataModelsPageTest() {
                 template_code: 'contact_tree',
                 template_version: 'v2',
                 summary: '联系人树',
-                description: '由 CRM 插件提供的联系人树。'
+                description: '由 CRM 插件提供的联系人树。',
+                system_fields: [
+                  {
+                    code: 'id',
+                    summary: 'Contact identifier',
+                    description: 'Stable external contact identifier.',
+                    field_kind: 'string',
+                    required: true
+                  }
+                ]
               }
             ]
           : []

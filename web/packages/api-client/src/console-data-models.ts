@@ -202,6 +202,15 @@ export interface ConsoleCompatibleDataModelTemplate {
   template_version: string;
   summary: string;
   description: string;
+  system_fields: ConsoleCompatibleDataModelTemplateSystemField[];
+}
+
+export interface ConsoleCompatibleDataModelTemplateSystemField {
+  code: string;
+  summary: string;
+  description: string;
+  field_kind: string;
+  required: boolean;
 }
 
 export type ConsoleAgentFlowDataModelOptionState =

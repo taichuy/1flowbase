@@ -1,3 +1,4 @@
+mod compatible_templates;
 mod external_mapping;
 mod scope_grant_acl;
 

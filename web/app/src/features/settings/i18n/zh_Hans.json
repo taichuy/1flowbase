@@ -321,6 +321,7 @@
     "detect_model_provider_instance_tip": "验证当前配置，并预览可用候选模型",
     "table_code": "表标识",
     "field_title": "字段标题",
+    "default_fields": "默认字段",
     "bound_storage": "绑定存储",
     "currently_from": "当前从",
     "refresh_candidate_model": "刷新候选模型 {{value1}}",
