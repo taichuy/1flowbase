@@ -440,7 +440,7 @@ export function SchemaFormDrawer({
       >
         {schema.fields.map((field) =>
           field.type === 'boolean' && field.control === 'inline-switch' ? (
-            <Form.Item key={field.key}>
+            <Form.Item extra={field.description} key={field.key}>
               <Flex
                 align="center"
                 className="schema-form-drawer__inline-switch"
@@ -455,14 +455,6 @@ export function SchemaFormDrawer({
                 >
                   <Switch aria-label={field.label} />
                 </Form.Item>
-                {field.description ? (
-                  <Typography.Text
-                    style={{ flex: 1, minWidth: 0 }}
-                    type="secondary"
-                  >
-                    {field.description}
-                  </Typography.Text>
-                ) : null}
               </Flex>
             </Form.Item>
           ) : (
