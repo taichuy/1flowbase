@@ -106,25 +106,40 @@ async fn add_search_field(
     (model, field)
 }
 
+struct TestNode<'a> {
+    id: Uuid,
+    parent_id: Option<Uuid>,
+    sibling_rank: &'a str,
+    title: &'a str,
+}
+
+impl<'a> TestNode<'a> {
+    fn new(id: Uuid, parent_id: Option<Uuid>, sibling_rank: &'a str, title: &'a str) -> Self {
+        Self {
+            id,
+            parent_id,
+            sibling_rank,
+            title,
+        }
+    }
+}
+
 async fn insert_node(
     store: &PgControlPlaneStore,
     model: &domain::ModelDefinitionRecord,
     field: &domain::ModelFieldRecord,
     scope_id: Uuid,
-    node_id: Uuid,
-    parent_id: Option<Uuid>,
-    sibling_rank: &str,
-    title: &str,
+    node: TestNode<'_>,
 ) {
     sqlx::query(&format!(
         "insert into \"{}\" (id, scope_id, parent_id, sibling_rank, \"{}\") values ($1, $2, $3, $4, $5)",
         model.physical_table_name, field.physical_column_name
     ))
-    .bind(node_id)
+    .bind(node.id)
     .bind(scope_id)
-    .bind(parent_id)
-    .bind(sibling_rank)
-    .bind(title)
+    .bind(node.parent_id)
+    .bind(node.sibling_rank)
+    .bind(node.title)
     .execute(store.pool())
     .await
     .unwrap();
@@ -160,11 +175,11 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
     let grandchild = Uuid::now_v7();
     let great_grandchild = Uuid::now_v7();
     insert_node(
-        &store, &model, &field, scope_id, root_b, None, "k", "Root B",
-    )
-    .await;
-    insert_node(
-        &store, &model, &field, scope_id, root_a, None, "F", "Root A",
+        &store,
+        &model,
+        &field,
+        scope_id,
+        TestNode::new(root_b, None, "k", "Root B"),
     )
     .await;
     insert_node(
@@ -172,10 +187,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
         &model,
         &field,
         scope_id,
-        child_b,
-        Some(root_a),
-        "k",
-        "Child B",
+        TestNode::new(root_a, None, "F", "Root A"),
     )
     .await;
     insert_node(
@@ -183,10 +195,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
         &model,
         &field,
         scope_id,
-        child_a,
-        Some(root_a),
-        "F",
-        "Child A",
+        TestNode::new(child_b, Some(root_a), "k", "Child B"),
     )
     .await;
     insert_node(
@@ -194,10 +203,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
         &model,
         &field,
         scope_id,
-        grandchild,
-        Some(child_a),
-        "U",
-        "Grandchild",
+        TestNode::new(child_a, Some(root_a), "F", "Child A"),
     )
     .await;
     insert_node(
@@ -205,10 +211,15 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
         &model,
         &field,
         scope_id,
-        great_grandchild,
-        Some(grandchild),
-        "U",
-        "Great Grandchild",
+        TestNode::new(grandchild, Some(child_a), "U", "Grandchild"),
+    )
+    .await;
+    insert_node(
+        &store,
+        &model,
+        &field,
+        scope_id,
+        TestNode::new(great_grandchild, Some(grandchild), "U", "Great Grandchild"),
     )
     .await;
     let foreign_node = Uuid::now_v7();
@@ -217,10 +228,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
         &model,
         &field,
         other_scope_id,
-        foreign_node,
-        None,
-        "U",
-        "Foreign",
+        TestNode::new(foreign_node, None, "U", "Foreign"),
     )
     .await;
 
@@ -268,10 +276,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &model,
             &field,
             scope_id,
-            node_id,
-            Some(root_b),
-            &format!("{index:04}U"),
-            "Wide Child",
+            TestNode::new(node_id, Some(root_b), &format!("{index:04}U"), "Wide Child"),
         )
         .await;
     }
@@ -414,7 +419,11 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
     let match_child = Uuid::now_v7();
     let nonmatch_descendant = Uuid::now_v7();
     insert_node(
-        &store, &model, &field, scope_id, root, None, "U", "Projects",
+        &store,
+        &model,
+        &field,
+        scope_id,
+        TestNode::new(root, None, "U", "Projects"),
     )
     .await;
     insert_node(
@@ -422,10 +431,7 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
         &model,
         &field,
         scope_id,
-        match_parent,
-        Some(root),
-        "U",
-        "Alpha Document",
+        TestNode::new(match_parent, Some(root), "U", "Alpha Document"),
     )
     .await;
     insert_node(
@@ -433,10 +439,7 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
         &model,
         &field,
         scope_id,
-        match_child,
-        Some(match_parent),
-        "F",
-        "ALPHA Notes",
+        TestNode::new(match_child, Some(match_parent), "F", "ALPHA Notes"),
     )
     .await;
     insert_node(
@@ -444,10 +447,12 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
         &model,
         &field,
         scope_id,
-        nonmatch_descendant,
-        Some(match_parent),
-        "k",
-        "Beta descendant",
+        TestNode::new(
+            nonmatch_descendant,
+            Some(match_parent),
+            "k",
+            "Beta descendant",
+        ),
     )
     .await;
 
