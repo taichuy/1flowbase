@@ -1231,6 +1231,27 @@ describe('Settings data models page', () => {
     });
     expect(within(createDialog).getByText('普通表')).toBeInTheDocument();
     const defaultFieldsTable = within(createDialog).getByRole('table');
+    expect(
+      within(defaultFieldsTable)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent)
+    ).toEqual(['Code', '类型', '必填']);
+    const orderedFormElements = [
+      within(createDialog).getByRole('combobox', {
+        name: 'Data Model 模板'
+      }),
+      within(createDialog).getByLabelText('标题'),
+      within(createDialog).getByLabelText('Code'),
+      within(createDialog).getByLabelText('说明'),
+      within(createDialog).getByRole('switch', { name: '开放 API' }),
+      defaultFieldsTable
+    ];
+    orderedFormElements.slice(0, -1).forEach((element, index) => {
+      expect(
+        element.compareDocumentPosition(orderedFormElements[index + 1]) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
     expect(within(defaultFieldsTable).getAllByRole('row')).toHaveLength(7);
     expect(within(defaultFieldsTable).getByText('id')).toBeInTheDocument();
     expect(screen.queryByText('适用于通用记录。')).not.toBeInTheDocument();

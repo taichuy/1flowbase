@@ -143,6 +143,31 @@ describe('SchemaFormDrawer', () => {
     expect(screen.getByRole('button', { name: /取\s*消/ })).toBeEnabled();
   });
 
+  test('renders supplementary content on both sides of the schema form', () => {
+    render(
+      <SchemaFormDrawer
+        open
+        title="Password 配置"
+        schema={schema}
+        initialValues={{ name: 'password-local', enabled: true }}
+        leadingContent={<div>表单之前</div>}
+        trailingContent={<div>表单之后</div>}
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const leading = screen.getByText('表单之前');
+    const field = screen.getByLabelText('标识');
+    const trailing = screen.getByText('表单之后');
+    expect(
+      leading.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      field.compareDocumentPosition(trailing) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   test('emits submit success and failure lifecycle events', async () => {
     const onSubmitSuccess = vi.fn();
     const onSubmitError = vi.fn();
