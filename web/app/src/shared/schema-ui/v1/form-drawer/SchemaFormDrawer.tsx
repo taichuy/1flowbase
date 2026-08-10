@@ -238,6 +238,8 @@ export function SchemaFormDrawer({
     defaultWidth ??
     (typeof width === 'number' ? width : DEFAULT_SCHEMA_FORM_DRAWER_WIDTH);
   const isSubmitting = submitting ?? localSubmitting;
+  const resolvedSubmitText = submitText ?? i18nText('schemaUi', 'auto.save');
+  const resolvedCancelText = cancelText ?? i18nText('schemaUi', 'auto.cancel');
   const resolvedInitialValues = useMemo(
     () => ({
       ...defaultValuesFromSchema(schema),
@@ -386,15 +388,20 @@ export function SchemaFormDrawer({
           </Button>
         ))}
         <Button
+          aria-label={resolvedSubmitText}
           disabled={disabled || submitDisabled}
           loading={isSubmitting}
           type="primary"
           onClick={() => void submitForm()}
         >
-          {submitText ?? i18nText('schemaUi', 'auto.save')}
+          {resolvedSubmitText}
         </Button>
-        <Button disabled={isSubmitting} onClick={confirmClose}>
-          {cancelText ?? i18nText('schemaUi', 'auto.cancel')}
+        <Button
+          aria-label={resolvedCancelText}
+          disabled={isSubmitting}
+          onClick={confirmClose}
+        >
+          {resolvedCancelText}
         </Button>
       </Space>
     </Flex>

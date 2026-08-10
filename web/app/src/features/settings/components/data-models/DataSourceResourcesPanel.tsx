@@ -165,6 +165,7 @@ export function DataSourceResourcesPanel({
           value: dataModelTemplateIdentity(template),
           label: dataModelTemplatePresentation(template).title
         }))}
+        optionRender={(option) => <span>{option.data.label}</span>}
         onChange={(identity) =>
           setSelectedTemplate(
             compatibleTemplates.find(

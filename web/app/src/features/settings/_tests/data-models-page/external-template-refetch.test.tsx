@@ -61,7 +61,20 @@ const contacts: SettingsDataSourceRemoteResource = {
   resource_key: 'contacts',
   display_name: 'Contacts',
   resource_kind: 'object',
-  capabilities: {},
+  capabilities: {
+    supports_list: true,
+    supports_get: true,
+    supports_create: true,
+    supports_update: true,
+    supports_delete: true,
+    supports_filter: true,
+    supports_sort: true,
+    supports_pagination: true,
+    supports_owner_filter: false,
+    supports_scope_filter: false,
+    supports_write: true,
+    supports_transactions: true
+  },
   metadata: {}
 };
 
