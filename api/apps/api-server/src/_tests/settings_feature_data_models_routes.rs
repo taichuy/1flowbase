@@ -206,12 +206,15 @@ async fn seed_foreign_workspace_model(database_url: &str, workspace_id: Uuid) ->
     sqlx::query(
         r#"
         insert into model_definitions (
-            id, scope_kind, scope_id, source_kind, code, title,
+            id, scope_kind, scope_id, source_kind,
+            template_provider, template_code, template_version,
+            code, title,
             physical_table_name, acl_namespace, audit_namespace,
             availability_status, status, owner_kind, is_protected,
             created_by, updated_by
         ) values (
-            $1, 'workspace', $2, 'main_source', $3, 'Foreign model',
+            $1, 'workspace', $2, 'main_source', 'core', 'general', 'v1',
+            $3, 'Foreign model',
             $4, $5, $6, 'available', 'published', 'core', false, $7, $7
         )
         "#,

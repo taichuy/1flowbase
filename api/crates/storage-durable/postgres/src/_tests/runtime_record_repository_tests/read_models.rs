@@ -132,6 +132,16 @@ async fn model_provider_request_log_migration_preserves_user_metadata_and_existi
     .await
     .unwrap();
 
+    // The historical seed is replayed only to exercise its conflict path. The
+    // current schema added required template identity after that migration ran.
+    sqlx::raw_sql(
+        "alter table model_definitions alter column template_provider set default 'core';
+         alter table model_definitions alter column template_code set default 'general';
+         alter table model_definitions alter column template_version set default 'v1';",
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
     sqlx::raw_sql(MODEL_PROVIDER_REQUEST_LOGS_METADATA_SQL)
         .execute(store.pool())
         .await

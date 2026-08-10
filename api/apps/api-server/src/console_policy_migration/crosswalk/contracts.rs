@@ -106,6 +106,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "model_scope_grants.create",
             "model_scope_grants.list",
             "model_scope_grants.update",
+            "model_templates.list",
             "settings_feature.access.system.data-models",
         ],
     ),

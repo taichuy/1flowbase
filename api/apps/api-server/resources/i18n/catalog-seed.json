@@ -374,6 +374,8 @@
           "List model definitions in the system backend.",
           "List model scope grants",
           "List model scope grants in the system backend.",
+          "List model templates",
+          "List model templates in the system backend.",
           "List roles",
           "List roles data model options",
           "List roles data model options in the system backend.",
@@ -653,7 +655,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:9f9a3e162592677bc8966aaea18575fa5c40df4c4580b0c980bc1b21b6e24fe8"
+        "sha256": "sha256:e943b7700bd58f9086163035c54738b4b24f4b0751525a649b99b1189e2cb6eb"
       },
       {
         "keys": [
@@ -965,6 +967,8 @@
           "List model definitions in the system backend.",
           "List model scope grants",
           "List model scope grants in the system backend.",
+          "List model templates",
+          "List model templates in the system backend.",
           "List roles",
           "List roles data model options",
           "List roles data model options in the system backend.",
@@ -1244,7 +1248,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:ef383556de38088c9ae01dec095d8e302cea7ec4eb32d2593e54842c0cf69b05"
+        "sha256": "sha256:1e9916f66e979a916ac7fe4c27c16a6bc394ca36e3d5ad6a9e571314f8f78bb5"
       },
       {
         "keys": [
@@ -1583,7 +1587,7 @@
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:b374a2481f457fa7299ebef64aaa3c88b8766d6ebff483e9a4f998503fd351fa",
+    "semantic_sha256": "sha256:1dfa3ede10d919e6461b3f017492586b5d73e02e4ad6da98ae0c3d687ffe6e4e",
     "source_locale": "en_US"
   },
   "messages": [
@@ -4175,6 +4179,20 @@
       "translations": {
         "en_US": "List model scope grants in the system backend.",
         "zh_Hans": "列出模型范围授权（系统后端）"
+      }
+    },
+    {
+      "key": "List model templates",
+      "translations": {
+        "en_US": "List model templates",
+        "zh_Hans": "列出模型模板"
+      }
+    },
+    {
+      "key": "List model templates in the system backend.",
+      "translations": {
+        "en_US": "List model templates in the system backend.",
+        "zh_Hans": "列出模型模板（系统后端）"
       }
     },
     {

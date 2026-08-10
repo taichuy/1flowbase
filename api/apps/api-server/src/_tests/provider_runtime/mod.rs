@@ -564,9 +564,12 @@ async fn data_source_runtime_intakes_and_dispatches_checked_external_template() 
     )
     .await
     .expect_err("malformed external operation output must fail closed");
-    assert!(malformed_error
-        .to_string()
-        .contains("invalid data model operation output"));
+    assert!(matches!(
+        malformed_error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+        Some(control_plane::errors::ControlPlaneError::InvalidInput(
+            "data_source_runtime"
+        ))
+    ));
 }
 
 fn compact_fixture_installation(

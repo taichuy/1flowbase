@@ -17,6 +17,9 @@ async fn model_definition_routes_require_data_models_feature() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "orders_acl",
                         "title": "Orders ACL"
                     })
@@ -151,6 +154,9 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "workspace_orders_scope_contract",
                         "title": "Workspace Orders Scope Contract"
                     })
@@ -188,6 +194,9 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "system",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "system_orders_scope_contract",
                         "title": "System Orders Scope Contract"
                     })
@@ -219,6 +228,9 @@ async fn create_model_route_accepts_workspace_and_system_scope_kinds_only() {
                 .body(Body::from(
                     json!({
                         "scope_kind": legacy_scope_kind,
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "legacy_team_scope_contract",
                         "title": "Legacy Team Scope Contract"
                     })
@@ -249,6 +261,9 @@ async fn model_definition_response_schemas_accept_nullable_and_dynamic_json_fiel
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "nullable_response_contract",
                         "title": "Nullable Response Contract"
                     })
@@ -400,6 +415,9 @@ async fn create_model_route_rejects_field_code_that_sanitizes_to_platform_column
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "platform_column_orders",
                         "title": "Platform Column Orders"
                     })

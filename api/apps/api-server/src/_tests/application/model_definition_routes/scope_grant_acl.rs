@@ -36,6 +36,9 @@ async fn create_model(app: &axum::Router, cookie: &str, csrf: &str, code: &str) 
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": code,
                         "title": code
                     })

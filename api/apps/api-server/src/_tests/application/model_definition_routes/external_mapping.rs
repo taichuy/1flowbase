@@ -116,10 +116,12 @@ async fn seed_existing_external_model(
         insert into model_definitions (
             id, scope_kind, scope_id, data_source_instance_id, source_kind,
             external_resource_key, external_table_id, external_capability_snapshot,
+            template_provider, template_code, template_version,
             code, title, physical_table_name, acl_namespace, audit_namespace,
             availability_status, status, owner_kind, is_protected, created_by, updated_by
         ) values (
             $1, 'system', $2, $3, 'external_source', $4, $5, '{}',
+            'core', 'general', 'v1',
             $6, 'External Contacts', $7, $8, $9,
             'available', 'published', 'core', false, $10, $10
         )

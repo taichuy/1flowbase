@@ -288,6 +288,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("model_definitions.create", "system.data-models"),
     settings("model_definitions.delete", "system.data-models"),
     settings("model_definitions.list", "system.data-models"),
+    settings("model_templates.list", "system.data-models"),
     settings("model_definitions.openapi.view", "system.data-models"),
     settings("model_definitions.update", "system.data-models"),
     settings("model_fields.create", "system.data-models"),

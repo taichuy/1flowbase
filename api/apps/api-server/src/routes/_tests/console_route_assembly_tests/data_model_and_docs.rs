@@ -71,6 +71,11 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
             ),
             (
                 "GET",
+                "/api/console/settings/data-models/model-templates",
+                "model_templates.list",
+            ),
+            (
+                "GET",
                 "/api/console/settings/data-models/model-definitions",
                 "model_definitions.list",
             ),

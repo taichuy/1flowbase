@@ -656,7 +656,12 @@ fn record_schema(
 ) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
-    for field in &template.descriptor().system_fields {
+    for field in template.descriptor().system_fields.iter().filter(|field| {
+        !model.protection.is_protected
+            || model.fields.iter().any(|model_field| {
+                model_field.code == field.code || model_field.physical_column_name == field.code
+            })
+    }) {
         properties.insert(field.code.clone(), field.value_schema.clone());
         if field.required {
             required.push(Value::String(field.code.clone()));

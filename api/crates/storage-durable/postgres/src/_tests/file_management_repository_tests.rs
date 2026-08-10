@@ -79,6 +79,9 @@ async fn seed_model_definition(
             id,
             scope_kind,
             scope_id,
+            template_provider,
+            template_code,
+            template_version,
             code,
             title,
             physical_table_name,
@@ -87,7 +90,7 @@ async fn seed_model_definition(
             created_by,
             updated_by
         ) values (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $9
+            $1, $2, $3, 'core', 'general', 'v1', $4, $5, $6, $7, $8, $9, $9
         )
         "#,
     )

@@ -115,7 +115,7 @@ impl DataModelTemplateRegistry {
                     return Err(DataModelTemplateRegistryError::UnresolvedOperationHandler {
                         identity: descriptor.identity.clone(),
                         operation: operation.code.clone(),
-                        handler_ref: operation.handler_ref.clone(),
+                        handler_ref: Box::new(operation.handler_ref.clone()),
                     });
                 }
             }
@@ -362,6 +362,6 @@ pub enum DataModelTemplateRegistryError {
     UnresolvedOperationHandler {
         identity: DataModelTemplateIdentity,
         operation: String,
-        handler_ref: DataModelOperationHandlerRef,
+        handler_ref: Box<DataModelOperationHandlerRef>,
     },
 }

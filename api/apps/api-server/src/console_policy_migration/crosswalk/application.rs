@@ -34,6 +34,7 @@ pub(super) const DATA_MODEL_SIMPLE_OPERATIONS: &[&str] = &[
     "model_scope_grants.create",
     "model_scope_grants.list",
     "model_scope_grants.update",
+    "model_templates.list",
     "settings_feature.access.system.data-models",
 ];
 
@@ -146,6 +147,7 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
             "model_definitions.list",
             "model_definitions.openapi.view",
             "model_scope_grants.list",
+            "model_templates.list",
         ],
         &[],
         &[],

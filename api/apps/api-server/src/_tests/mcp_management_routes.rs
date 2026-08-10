@@ -231,6 +231,9 @@ async fn create_exposed_published_model(
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": code,
                         "title": code,
                         "status": "published"
@@ -310,6 +313,9 @@ async fn mcp_interface_capabilities_include_bindable_runtime_data_model_crud_ope
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "mcp_hidden_orders",
                         "title": "mcp_hidden_orders",
                         "status": "draft"

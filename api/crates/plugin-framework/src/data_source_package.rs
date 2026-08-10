@@ -80,7 +80,7 @@ impl DataSourcePackage {
             )));
         }
         validate_data_model_templates(
-            &source_code,
+            source_code,
             &raw_definition.capabilities,
             &raw_definition.data_model_templates,
         )?;

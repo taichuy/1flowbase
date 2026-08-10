@@ -1019,7 +1019,13 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "resource_key": "contacts" }).to_string(),
+                    json!({
+                        "resource_key": "contacts",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1"
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )

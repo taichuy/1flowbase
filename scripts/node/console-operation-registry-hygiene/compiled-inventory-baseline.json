@@ -293,6 +293,16 @@
         "authorization_operation_id": "roles.delete"
       },
       {
+        "interface_id": "ui_management.templates.default.reset",
+        "route": {
+          "method": "DELETE",
+          "path": "/api/console/settings/ui-management/templates/default"
+        },
+        "summary": "Reset UI management templates default",
+        "description": "Reset UI management templates default in the system backend.",
+        "authorization_operation_id": "ui_management.templates.default.reset"
+      },
+      {
         "interface_id": "list_applications",
         "route": {
           "method": "GET",
@@ -883,6 +893,16 @@
         "authorization_operation_id": null
       },
       {
+        "interface_id": "list_frontstage_ui_templates",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/ui-templates"
+        },
+        "summary": "List frontstage UI templates",
+        "description": "List frontstage UI templates in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
         "interface_id": "console_health",
         "route": {
           "method": "GET",
@@ -1263,6 +1283,16 @@
         "authorization_operation_id": "model_scope_grants.list"
       },
       {
+        "interface_id": "model_templates.list",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/settings/data-models/model-templates"
+        },
+        "summary": "List model templates",
+        "description": "List model templates in the system backend.",
+        "authorization_operation_id": "model_templates.list"
+      },
+      {
         "interface_id": "extension_center.catalog.view",
         "route": {
           "method": "GET",
@@ -1641,6 +1671,26 @@
         "summary": "View roles permissions",
         "description": "View roles permissions in the system backend.",
         "authorization_operation_id": "roles.permissions.view"
+      },
+      {
+        "interface_id": "ui_management.components.list",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/settings/ui-management/components"
+        },
+        "summary": "List UI management components",
+        "description": "List UI management components in the system backend.",
+        "authorization_operation_id": "ui_management.components.list"
+      },
+      {
+        "interface_id": "ui_management.templates.list",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/settings/ui-management/templates"
+        },
+        "summary": "List UI management templates",
+        "description": "List UI management templates in the system backend.",
+        "authorization_operation_id": "ui_management.templates.list"
       },
       {
         "interface_id": "system.release_status.view",
@@ -3043,6 +3093,26 @@
         "authorization_operation_id": "roles.create"
       },
       {
+        "interface_id": "ui_management.templates.create",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/settings/ui-management/templates"
+        },
+        "summary": "Create UI management templates",
+        "description": "Create UI management templates in the system backend.",
+        "authorization_operation_id": "ui_management.templates.create"
+      },
+      {
+        "interface_id": "ui_management.templates.publish",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/settings/ui-management/templates/:id/publish"
+        },
+        "summary": "Publish UI management templates",
+        "description": "Publish UI management templates in the system backend.",
+        "authorization_operation_id": "ui_management.templates.publish"
+      },
+      {
         "interface_id": "create_user_api_key",
         "route": {
           "method": "POST",
@@ -3371,6 +3441,56 @@
         "summary": "Replace roles permissions",
         "description": "Replace roles permissions in the system backend.",
         "authorization_operation_id": "roles.permissions.replace"
+      },
+      {
+        "interface_id": "ui_management.components.contract.update",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/settings/ui-management/components/contract"
+        },
+        "summary": "Update UI management components contract",
+        "description": "Update UI management components contract in the system backend.",
+        "authorization_operation_id": "ui_management.components.contract.update"
+      },
+      {
+        "interface_id": "ui_management.components.state.update",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/settings/ui-management/components/state"
+        },
+        "summary": "Update UI management components state",
+        "description": "Update UI management components state in the system backend.",
+        "authorization_operation_id": "ui_management.components.state.update"
+      },
+      {
+        "interface_id": "ui_management.templates.update",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/settings/ui-management/templates/:id"
+        },
+        "summary": "Update UI management templates",
+        "description": "Update UI management templates in the system backend.",
+        "authorization_operation_id": "ui_management.templates.update"
+      },
+      {
+        "interface_id": "ui_management.templates.archive",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/settings/ui-management/templates/:id/archive"
+        },
+        "summary": "UI management templates archive",
+        "description": "UI management templates archive in the system backend.",
+        "authorization_operation_id": "ui_management.templates.archive"
+      },
+      {
+        "interface_id": "ui_management.templates.default.set",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/settings/ui-management/templates/:id/default"
+        },
+        "summary": "UI management templates default set",
+        "description": "UI management templates default set in the system backend.",
+        "authorization_operation_id": "ui_management.templates.default.set"
       }
     ],
     "operations": [
@@ -3380,7 +3500,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3403,7 +3523,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3426,7 +3546,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3449,7 +3569,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3474,7 +3594,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3497,7 +3617,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3520,7 +3640,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3543,7 +3663,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3566,7 +3686,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3589,7 +3709,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3612,7 +3732,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3635,7 +3755,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3658,7 +3778,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3681,13 +3801,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 126000,
+        "order": 136000,
         "routes": [
           {
             "method": "POST",
@@ -3704,7 +3824,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3727,7 +3847,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3750,7 +3870,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3773,7 +3893,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -3860,6 +3980,10 @@
           {
             "method": "GET",
             "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/ui-templates"
           },
           {
             "method": "GET",
@@ -4016,7 +4140,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4039,7 +4163,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4064,7 +4188,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4087,7 +4211,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4110,13 +4234,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 200001,
+        "order": 211001,
         "routes": [
           {
             "method": "POST",
@@ -4133,7 +4257,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4156,7 +4280,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4179,7 +4303,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4202,7 +4326,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4225,7 +4349,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4248,7 +4372,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4271,7 +4395,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4294,7 +4418,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4317,7 +4441,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4342,7 +4466,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4367,13 +4491,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 126001,
+        "order": 136001,
         "routes": [
           {
             "method": "DELETE",
@@ -4390,7 +4514,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4413,7 +4537,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4436,7 +4560,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4459,7 +4583,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4482,7 +4606,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4505,7 +4629,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4528,7 +4652,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4551,7 +4675,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4574,7 +4698,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4597,7 +4721,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4620,7 +4744,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4643,7 +4767,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4666,7 +4790,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4689,7 +4813,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4712,7 +4836,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4735,7 +4859,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4758,7 +4882,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4781,7 +4905,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4804,7 +4928,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4827,7 +4951,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4850,7 +4974,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4873,7 +4997,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4896,7 +5020,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4919,7 +5043,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4944,7 +5068,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4969,7 +5093,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -4994,7 +5118,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5019,7 +5143,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5044,7 +5168,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5069,7 +5193,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5094,7 +5218,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5117,7 +5241,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5142,7 +5266,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5167,7 +5291,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5192,7 +5316,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5217,7 +5341,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5242,7 +5366,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5267,7 +5391,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5292,7 +5416,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5317,7 +5441,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5342,7 +5466,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5367,13 +5491,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 199000,
+        "order": 210000,
         "routes": [
           {
             "method": "GET",
@@ -5390,13 +5514,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 199002,
+        "order": 210002,
         "routes": [
           {
             "method": "GET",
@@ -5413,13 +5537,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 199003,
+        "order": 210003,
         "routes": [
           {
             "method": "GET",
@@ -5436,7 +5560,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5461,7 +5585,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5486,7 +5610,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5509,7 +5633,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5532,7 +5656,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5555,7 +5679,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5578,7 +5702,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5601,7 +5725,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5624,7 +5748,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5647,7 +5771,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5672,7 +5796,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5697,7 +5821,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5720,7 +5844,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5745,7 +5869,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5770,7 +5894,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5795,7 +5919,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5818,7 +5942,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5841,7 +5965,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5864,7 +5988,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5887,7 +6011,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5910,7 +6034,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5933,7 +6057,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5956,7 +6080,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5979,7 +6103,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6002,7 +6126,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6025,7 +6149,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6048,7 +6172,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6071,7 +6195,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6094,7 +6218,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6117,7 +6241,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6140,7 +6264,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6163,7 +6287,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6186,7 +6310,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6209,7 +6333,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6232,7 +6356,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6257,7 +6381,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6282,7 +6406,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6307,7 +6431,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6332,7 +6456,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6357,7 +6481,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6382,7 +6506,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6407,13 +6531,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.docs"
         },
-        "order": 199001,
+        "order": 210001,
         "routes": [
           {
             "method": "GET",
@@ -6430,7 +6554,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6453,7 +6577,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6476,7 +6600,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6499,7 +6623,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6522,7 +6646,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6545,7 +6669,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6568,13 +6692,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 200002,
+        "order": 211002,
         "routes": [
           {
             "method": "GET",
@@ -6591,13 +6715,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 200000,
+        "order": 211000,
         "routes": [
           {
             "method": "GET",
@@ -6614,7 +6738,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6637,7 +6761,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6660,7 +6784,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6683,7 +6807,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6706,7 +6830,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6729,7 +6853,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6752,7 +6876,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6775,7 +6899,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6798,7 +6922,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6821,7 +6945,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6844,7 +6968,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6867,7 +6991,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6890,7 +7014,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6913,7 +7037,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6936,7 +7060,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6959,7 +7083,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6982,7 +7106,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7005,7 +7129,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7028,7 +7152,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7051,7 +7175,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7074,7 +7198,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7097,7 +7221,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7120,7 +7244,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7143,7 +7267,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7166,7 +7290,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7189,7 +7313,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7212,7 +7336,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7235,7 +7359,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7258,7 +7382,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7281,7 +7405,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7304,7 +7428,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7327,7 +7451,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7350,7 +7474,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7373,7 +7497,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7396,7 +7520,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7419,7 +7543,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7442,7 +7566,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7465,7 +7589,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7488,7 +7612,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7511,7 +7635,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7534,7 +7658,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7557,7 +7681,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7580,7 +7704,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7603,7 +7727,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7626,7 +7750,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7649,7 +7773,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7672,7 +7796,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7695,7 +7819,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7718,7 +7842,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7741,7 +7865,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7764,13 +7888,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 124,
+        "order": 134,
         "routes": [
           {
             "method": "GET",
@@ -7787,13 +7911,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 125,
+        "order": 135,
         "routes": [
           {
             "method": "POST",
@@ -7810,13 +7934,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 127,
+        "order": 137,
         "routes": [
           {
             "method": "GET",
@@ -7833,13 +7957,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 128,
+        "order": 139,
         "routes": [
           {
             "method": "GET",
@@ -7856,13 +7980,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 129,
+        "order": 140,
         "routes": [
           {
             "method": "PATCH",
@@ -7879,13 +8003,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 130,
+        "order": 141,
         "routes": [
           {
             "method": "POST",
@@ -7902,13 +8026,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 131,
+        "order": 142,
         "routes": [
           {
             "method": "DELETE",
@@ -7925,13 +8049,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 132,
+        "order": 143,
         "routes": [
           {
             "method": "PATCH",
@@ -7948,13 +8072,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 133,
+        "order": 144,
         "routes": [
           {
             "method": "POST",
@@ -7971,13 +8095,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 134,
+        "order": 145,
         "routes": [
           {
             "method": "POST",
@@ -7994,13 +8118,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 135,
+        "order": 146,
         "routes": [
           {
             "method": "DELETE",
@@ -8017,13 +8141,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 136,
+        "order": 147,
         "routes": [
           {
             "method": "POST",
@@ -8040,13 +8164,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 137,
+        "order": 148,
         "routes": [
           {
             "method": "POST",
@@ -8063,13 +8187,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 138,
+        "order": 149,
         "routes": [
           {
             "method": "GET",
@@ -8086,13 +8210,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 139,
+        "order": 150,
         "routes": [
           {
             "method": "POST",
@@ -8109,13 +8233,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 140,
+        "order": 151,
         "routes": [
           {
             "method": "POST",
@@ -8132,13 +8256,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 141,
+        "order": 152,
         "routes": [
           {
             "method": "GET",
@@ -8155,13 +8279,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 142,
+        "order": 153,
         "routes": [
           {
             "method": "GET",
@@ -8178,13 +8302,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.model-providers"
         },
-        "order": 143,
+        "order": 154,
         "routes": [
           {
             "method": "GET",
@@ -8201,13 +8325,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 144,
+        "order": 155,
         "routes": [
           {
             "method": "GET",
@@ -8224,13 +8348,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.model-providers"
         },
-        "order": 145,
+        "order": 156,
         "routes": [
           {
             "method": "GET",
@@ -8247,13 +8371,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 146,
+        "order": 157,
         "routes": [
           {
             "method": "POST",
@@ -8270,13 +8394,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 147,
+        "order": 158,
         "routes": [
           {
             "method": "DELETE",
@@ -8293,13 +8417,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 148,
+        "order": 159,
         "routes": [
           {
             "method": "POST",
@@ -8316,13 +8440,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 149,
+        "order": 160,
         "routes": [
           {
             "method": "GET",
@@ -8339,13 +8463,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 150,
+        "order": 161,
         "routes": [
           {
             "method": "POST",
@@ -8362,13 +8486,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 151,
+        "order": 162,
         "routes": [
           {
             "method": "PATCH",
@@ -8385,13 +8509,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 152,
+        "order": 163,
         "routes": [
           {
             "method": "POST",
@@ -8408,13 +8532,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 153,
+        "order": 164,
         "routes": [
           {
             "method": "GET",
@@ -8431,13 +8555,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 154,
+        "order": 165,
         "routes": [
           {
             "method": "PUT",
@@ -8454,13 +8578,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 155,
+        "order": 166,
         "routes": [
           {
             "method": "GET",
@@ -8477,13 +8601,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.model-providers"
         },
-        "order": 156,
+        "order": 167,
         "routes": [
           {
             "method": "GET",
@@ -8500,13 +8624,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 158,
+        "order": 169,
         "routes": [
           {
             "method": "POST",
@@ -8523,13 +8647,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 159,
+        "order": 170,
         "routes": [
           {
             "method": "POST",
@@ -8546,13 +8670,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 160,
+        "order": 171,
         "routes": [
           {
             "method": "DELETE",
@@ -8569,13 +8693,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 161,
+        "order": 172,
         "routes": [
           {
             "method": "GET",
@@ -8592,13 +8716,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.model-providers"
         },
-        "order": 157,
+        "order": 168,
         "routes": [
           {
             "method": "GET",
@@ -8615,13 +8739,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 162,
+        "order": 173,
         "routes": [
           {
             "method": "POST",
@@ -8638,13 +8762,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 163,
+        "order": 174,
         "routes": [
           {
             "method": "GET",
@@ -8661,17 +8785,40 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 164,
+        "order": 175,
         "routes": [
           {
             "method": "PATCH",
             "path": "/api/console/settings/data-models/model-definitions/:id/scope-grants/:grant_id"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "model_templates.list",
+        "authorization_profile_id": "model_templates.list",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.data-models"
+        },
+        "order": 138,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/settings/data-models/model-templates"
           }
         ],
         "authorization": {
@@ -8684,13 +8831,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.node-contributions"
         },
-        "order": 165,
+        "order": 176,
         "routes": [
           {
             "method": "GET",
@@ -8707,7 +8854,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8732,13 +8879,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 180001,
+        "order": 191001,
         "routes": [
           {
             "method": "GET",
@@ -8755,13 +8902,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 180000,
+        "order": 191000,
         "routes": [
           {
             "method": "GET",
@@ -8778,13 +8925,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 166,
+        "order": 177,
         "routes": [
           {
             "method": "POST",
@@ -8801,13 +8948,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 167,
+        "order": 178,
         "routes": [
           {
             "method": "POST",
@@ -8824,13 +8971,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 168,
+        "order": 179,
         "routes": [
           {
             "method": "POST",
@@ -8847,13 +8994,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 169,
+        "order": 180,
         "routes": [
           {
             "method": "GET",
@@ -8870,13 +9017,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 170,
+        "order": 181,
         "routes": [
           {
             "method": "POST",
@@ -8893,13 +9040,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 171,
+        "order": 182,
         "routes": [
           {
             "method": "POST",
@@ -8916,13 +9063,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 172,
+        "order": 183,
         "routes": [
           {
             "method": "DELETE",
@@ -8939,13 +9086,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 173,
+        "order": 184,
         "routes": [
           {
             "method": "POST",
@@ -8962,13 +9109,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 174,
+        "order": 185,
         "routes": [
           {
             "method": "POST",
@@ -8985,13 +9132,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 175,
+        "order": 186,
         "routes": [
           {
             "method": "GET",
@@ -9008,13 +9155,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 176,
+        "order": 187,
         "routes": [
           {
             "method": "POST",
@@ -9031,13 +9178,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 177,
+        "order": 188,
         "routes": [
           {
             "method": "POST",
@@ -9054,13 +9201,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 178,
+        "order": 189,
         "routes": [
           {
             "method": "POST",
@@ -9077,13 +9224,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.plugins"
         },
-        "order": 179,
+        "order": 190,
         "routes": [
           {
             "method": "GET",
@@ -9100,7 +9247,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9123,7 +9270,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9146,7 +9293,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9169,7 +9316,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9194,7 +9341,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9219,7 +9366,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9244,7 +9391,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9269,7 +9416,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9294,7 +9441,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9317,7 +9464,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9342,13 +9489,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.api-key-authentication"
         },
-        "order": 200003,
+        "order": 211003,
         "routes": [
           {
             "method": "POST",
@@ -9365,13 +9512,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 181,
+        "order": 192,
         "routes": [
           {
             "method": "PUT",
@@ -9388,13 +9535,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 183,
+        "order": 194,
         "routes": [
           {
             "method": "GET",
@@ -9411,13 +9558,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 184,
+        "order": 195,
         "routes": [
           {
             "method": "GET",
@@ -9434,13 +9581,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 182,
+        "order": 193,
         "routes": [
           {
             "method": "PUT",
@@ -9457,13 +9604,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 185,
+        "order": 196,
         "routes": [
           {
             "method": "POST",
@@ -9480,13 +9627,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 186,
+        "order": 197,
         "routes": [
           {
             "method": "GET",
@@ -9503,13 +9650,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 187,
+        "order": 198,
         "routes": [
           {
             "method": "PUT",
@@ -9526,13 +9673,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 188,
+        "order": 199,
         "routes": [
           {
             "method": "GET",
@@ -9549,13 +9696,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 189,
+        "order": 200,
         "routes": [
           {
             "method": "DELETE",
@@ -9572,13 +9719,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 190,
+        "order": 201,
         "routes": [
           {
             "method": "PUT",
@@ -9595,13 +9742,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 191,
+        "order": 202,
         "routes": [
           {
             "method": "GET",
@@ -9618,13 +9765,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 192,
+        "order": 203,
         "routes": [
           {
             "method": "GET",
@@ -9641,13 +9788,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 193,
+        "order": 204,
         "routes": [
           {
             "method": "GET",
@@ -9664,13 +9811,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 194,
+        "order": 205,
         "routes": [
           {
             "method": "PUT",
@@ -9687,13 +9834,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 195,
+        "order": 206,
         "routes": [
           {
             "method": "GET",
@@ -9710,13 +9857,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.roles"
         },
-        "order": 196,
+        "order": 207,
         "routes": [
           {
             "method": "PATCH",
@@ -9733,7 +9880,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9758,7 +9905,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9781,13 +9928,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.applications"
         },
-        "order": 197,
+        "order": 208,
         "routes": [
           {
             "method": "GET",
@@ -9804,13 +9951,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.data-models"
         },
-        "order": 198,
+        "order": 209,
         "routes": [
           {
             "method": "GET",
@@ -9827,7 +9974,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9850,7 +9997,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9873,7 +10020,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9896,7 +10043,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9921,13 +10068,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.system-runtime"
         },
-        "order": 201,
+        "order": 212,
         "routes": [
           {
             "method": "GET",
@@ -9944,13 +10091,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.system-runtime"
         },
-        "order": 202,
+        "order": 213,
         "routes": [
           {
             "method": "GET",
@@ -9967,7 +10114,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9990,7 +10137,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10008,12 +10155,242 @@
         }
       },
       {
+        "operation_id": "ui_management.components.contract.update",
+        "authorization_profile_id": "ui_management.components.contract.update",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 124,
+        "routes": [
+          {
+            "method": "PUT",
+            "path": "/api/console/settings/ui-management/components/contract"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.components.list",
+        "authorization_profile_id": "ui_management.components.list",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 125,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/settings/ui-management/components"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.components.state.update",
+        "authorization_profile_id": "ui_management.components.state.update",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 126,
+        "routes": [
+          {
+            "method": "PUT",
+            "path": "/api/console/settings/ui-management/components/state"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.archive",
+        "authorization_profile_id": "ui_management.templates.archive",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 127,
+        "routes": [
+          {
+            "method": "PUT",
+            "path": "/api/console/settings/ui-management/templates/:id/archive"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.create",
+        "authorization_profile_id": "ui_management.templates.create",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 128,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/settings/ui-management/templates"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.default.reset",
+        "authorization_profile_id": "ui_management.templates.default.reset",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 129,
+        "routes": [
+          {
+            "method": "DELETE",
+            "path": "/api/console/settings/ui-management/templates/default"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.default.set",
+        "authorization_profile_id": "ui_management.templates.default.set",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 130,
+        "routes": [
+          {
+            "method": "PUT",
+            "path": "/api/console/settings/ui-management/templates/:id/default"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.list",
+        "authorization_profile_id": "ui_management.templates.list",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 131,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/settings/ui-management/templates"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.publish",
+        "authorization_profile_id": "ui_management.templates.publish",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 132,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/settings/ui-management/templates/:id/publish"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "ui_management.templates.update",
+        "authorization_profile_id": "ui_management.templates.update",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.ui-management"
+        },
+        "order": 133,
+        "routes": [
+          {
+            "method": "PUT",
+            "path": "/api/console/settings/ui-management/templates/:id"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
         "operation_id": "unpublish_application_api",
         "authorization_profile_id": "applications.publish",
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10036,7 +10413,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10059,7 +10436,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10082,7 +10459,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10107,7 +10484,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10130,7 +10507,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10155,13 +10532,13 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "policy_group": {
           "other": "other.workspace"
         },
-        "order": 203,
+        "order": 214,
         "routes": [
           {
             "method": "PATCH",
@@ -10179,7 +10556,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "scope_kind": "workspace",
@@ -10216,7 +10593,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.3.3"
+          "version": "0.3.4"
         },
         "lifecycle": "active",
         "scope_kind": "workspace",
@@ -11230,6 +11607,16 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "data_sources.map_to_model"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/data-models/model-templates"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "model_templates.list"
       }
     },
     {
@@ -13040,6 +13427,15 @@
     {
       "route": {
         "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/ui-templates"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/api/console/frontstage/:workspace_id/component-capabilities/:component_id"
       },
       "ownership": {
@@ -13539,6 +13935,106 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "system.release_status.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/ui-management/templates"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.list"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/ui-management/templates"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.create"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/settings/ui-management/templates/default"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.default.reset"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/ui-management/templates/:id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.update"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/ui-management/templates/:id/publish"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.publish"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/ui-management/templates/:id/default"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.default.set"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/ui-management/templates/:id/archive"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.templates.archive"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/settings/ui-management/components"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.components.list"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/ui-management/components/contract"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.components.contract.update"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/settings/ui-management/components/state"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "ui_management.components.state.update"
       }
     },
     {

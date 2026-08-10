@@ -268,7 +268,10 @@ async fn invoke_runtime_create_model(
                     "body": {
                         "code": model_code,
                         "title": "Delegated model",
-                        "scope_kind": "workspace"
+                        "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1"
                     }
                 }
             }),
@@ -299,6 +302,21 @@ async fn create_model_probe_tool(app: &axum::Router, cookie: &str, csrf: &str) {
                 {
                     "interface_param": "scope_kind",
                     "mcp_param": "body.scope_kind",
+                    "required": true
+                },
+                {
+                    "interface_param": "template_provider",
+                    "mcp_param": "body.template_provider",
+                    "required": true
+                },
+                {
+                    "interface_param": "template_code",
+                    "mcp_param": "body.template_code",
+                    "required": true
+                },
+                {
+                    "interface_param": "template_version",
+                    "mcp_param": "body.template_version",
                     "required": true
                 }
             ]

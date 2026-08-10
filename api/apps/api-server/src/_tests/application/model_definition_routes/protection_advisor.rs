@@ -43,6 +43,9 @@ async fn protected_model_routes_reject_non_root_admin_mutations() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "protected_route_orders",
                         "title": "Protected Route Orders"
                     })
@@ -178,6 +181,9 @@ async fn model_definition_routes_expose_advisor_findings_and_dynamic_openapi_doc
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "advisor_doc_orders",
                         "title": "Advisor Doc Orders"
                     })

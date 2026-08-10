@@ -104,7 +104,14 @@ async fn create_published_model(
         "/api/console/settings/data-models/model-definitions",
         cookie,
         csrf,
-        json!({ "scope_kind": "workspace", "code": code, "title": code }),
+        json!({
+            "scope_kind": "workspace",
+            "template_provider": "core",
+            "template_code": "general",
+            "template_version": "v1",
+            "code": code,
+            "title": code
+        }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);

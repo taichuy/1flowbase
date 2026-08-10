@@ -1,6 +1,5 @@
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -102,7 +101,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
   vi.clearAllMocks();
 });
 

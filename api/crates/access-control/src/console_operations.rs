@@ -46,6 +46,7 @@ pub const DATA_SOURCES_SECRET_ROTATE_OPERATION_ID: &str = "data_sources.secret.r
 pub const AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID: &str =
     "agent_flow.data_source_options.list";
 pub const DATA_SOURCES_VIEW_ACTION_CODE: &str = "view";
+pub const MODEL_TEMPLATES_LIST_OPERATION_ID: &str = "model_templates.list";
 pub const MODEL_DEFINITIONS_LIST_OPERATION_ID: &str = "model_definitions.list";
 pub const MODEL_DEFINITIONS_CREATE_OPERATION_ID: &str = "model_definitions.create";
 pub const MODEL_DEFINITIONS_UPDATE_OPERATION_ID: &str = "model_definitions.update";

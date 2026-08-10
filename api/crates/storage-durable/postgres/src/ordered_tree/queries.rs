@@ -228,8 +228,9 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             for ancestor in ancestors {
                 let ancestor = normalize_record(metadata, ancestor);
                 let ancestor_id = record_id(&ancestor)?;
-                if !indexes.contains_key(&ancestor_id) {
-                    indexes.insert(ancestor_id, output.len());
+                if let std::collections::hash_map::Entry::Vacant(entry) = indexes.entry(ancestor_id)
+                {
+                    entry.insert(output.len());
                     output.push(OrderedTreeSearchProjection {
                         record: ancestor,
                         is_match: false,

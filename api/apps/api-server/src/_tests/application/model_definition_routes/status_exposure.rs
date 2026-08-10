@@ -46,6 +46,9 @@ async fn create_model_route_persists_draft_status_atomically_without_manage_perm
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "atomic_draft_orders",
                         "title": "Atomic Draft Orders",
                         "status": "draft"
@@ -113,6 +116,9 @@ async fn create_model_route_rejects_invalid_status_without_creating_model() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "invalid_status_orders",
                         "title": "Invalid Status Orders",
                         "status": "api_exposed_ready"
@@ -174,6 +180,9 @@ async fn model_definition_routes_return_status_without_model_level_api_exposure(
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "status_only_fact_orders",
                         "title": "Status Only Fact Orders"
                     })
@@ -243,6 +252,9 @@ async fn status_patch_opens_and_closes_runtime_api() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "status_runtime_orders",
                         "title": "Status Runtime Orders",
                         "status": "draft"

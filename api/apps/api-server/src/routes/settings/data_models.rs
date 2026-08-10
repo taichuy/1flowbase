@@ -11,7 +11,8 @@ use access_control::{
     MODEL_DEFINITIONS_UPDATE_OPERATION_ID, MODEL_FIELDS_CREATE_OPERATION_ID,
     MODEL_FIELDS_DELETE_OPERATION_ID, MODEL_FIELDS_UPDATE_OPERATION_ID,
     MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID, MODEL_SCOPE_GRANTS_LIST_OPERATION_ID,
-    MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID, SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
+    MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID, MODEL_TEMPLATES_LIST_OPERATION_ID,
+    SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
 };
 use axum::Router;
 
@@ -93,7 +94,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/data-models/model-templates",
             console_get(
                 model_definitions::list_compatible_templates,
-                ConsoleOperation(MODEL_DEFINITIONS_LIST_OPERATION_ID.to_string()),
+                ConsoleOperation(MODEL_TEMPLATES_LIST_OPERATION_ID.to_string()),
             ),
         )
         .route(

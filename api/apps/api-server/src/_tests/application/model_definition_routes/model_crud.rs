@@ -19,6 +19,9 @@ async fn create_model(
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": code,
                         "title": title
                     })
@@ -52,6 +55,9 @@ async fn model_definition_routes_manage_models_and_fields_without_publish() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "orders",
                         "title": "Orders",
                         "description": "Workspace order records"
@@ -680,6 +686,9 @@ async fn ac_005_generic_model_route_rejects_external_mapping_fields() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "external_resource_key": "contacts",
                         "code": "main_source_with_external_key",
                         "title": "Main Source With External Key"
@@ -707,6 +716,9 @@ async fn ac_005_generic_model_route_rejects_external_mapping_fields() {
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": "main_source_field_external_key",
                         "title": "Main Source Field External Key"
                     })

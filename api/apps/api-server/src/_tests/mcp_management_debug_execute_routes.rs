@@ -31,6 +31,9 @@ async fn create_exposed_published_model(
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "general",
+                        "template_version": "v1",
                         "code": code,
                         "title": code,
                         "status": "published"

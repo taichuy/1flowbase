@@ -94,7 +94,7 @@ pub fn rebalance(count: usize) -> Result<Vec<FractionalRank>, RankError> {
     (1..=count)
         .map(|position| {
             let mut value = step * position as u128;
-            if value % base == 0 {
+            if value.is_multiple_of(base) {
                 value += 1;
             }
             FractionalRank::parse(encode_fixed(value, width))
