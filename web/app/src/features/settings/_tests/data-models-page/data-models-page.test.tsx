@@ -551,10 +551,13 @@ describe('Settings data models page', () => {
       const summaryRows = within(editorDialog).getAllByTestId(
         'data-model-summary-row'
       );
-      expect(within(summaryRows[4]).getByText('物理表：')).toBeInTheDocument();
-      expect(within(summaryRows[5]).getByText('说明：')).toBeInTheDocument();
       expect(
-        within(summaryRows[5]).getByTestId('data-model-summary-item')
+        within(summaryRows[2]).getByText('分类表类型：')
+      ).toBeInTheDocument();
+      expect(within(summaryRows[3]).getByText('物理表：')).toBeInTheDocument();
+      expect(within(summaryRows[4]).getByText('说明：')).toBeInTheDocument();
+      expect(
+        within(summaryRows[4]).getByTestId('data-model-summary-item')
       ).toHaveClass('data-model-panel__meta-card--full-row');
 
       const detailActions = within(editorDialog).getByTestId(
@@ -697,7 +700,7 @@ describe('Settings data models page', () => {
       const summaryRows = within(detailSummary).getAllByTestId(
         'data-model-summary-row'
       );
-      expect(summaryRows).toHaveLength(6);
+      expect(summaryRows).toHaveLength(5);
       expect(within(summaryRows[0]).getByText('标题：')).toBeInTheDocument();
       expect(within(summaryRows[0]).getByText('来源：')).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('Code：')).toBeInTheDocument();
@@ -705,19 +708,22 @@ describe('Settings data models page', () => {
         within(summaryRows[1]).getByText('开放 API：')
       ).toBeInTheDocument();
       expect(within(summaryRows[1]).getByText('开放')).toBeInTheDocument();
-      expect(within(summaryRows[4]).getByText('数据源：')).toBeInTheDocument();
-      expect(within(summaryRows[5]).getByText('说明：')).toBeInTheDocument();
       expect(
-        within(summaryRows[5]).getByText('CRM contact records')
+        within(summaryRows[2]).getByText('分类表类型：')
+      ).toBeInTheDocument();
+      expect(within(summaryRows[3]).getByText('数据源：')).toBeInTheDocument();
+      expect(within(summaryRows[4]).getByText('说明：')).toBeInTheDocument();
+      expect(
+        within(summaryRows[4]).getByText('CRM contact records')
       ).toBeInTheDocument();
       expect(
-        within(summaryRows[5]).getByTestId('data-model-summary-item')
+        within(summaryRows[4]).getByTestId('data-model-summary-item')
       ).toHaveClass('data-model-panel__meta-card--full-row');
       expect(
         within(detailSummary).queryByText('状态：')
       ).not.toBeInTheDocument();
       expect(
-        within(summaryRows[5]).queryByText('published')
+        within(summaryRows[4]).queryByText('published')
       ).not.toBeInTheDocument();
       expect(within(detailSummary).getByText('available')).toBeInTheDocument();
       expect(
@@ -1067,9 +1073,17 @@ describe('Settings data models page', () => {
     expect(
       within(editorDialog).getByRole('tab', { name: '字段' })
     ).toBeInTheDocument();
-    expect(within(editorDialog).getByText('模板提供方：')).toBeInTheDocument();
-    expect(within(editorDialog).getByText('模板代码：')).toBeInTheDocument();
-    expect(within(editorDialog).getByText('模板版本：')).toBeInTheDocument();
+    expect(within(editorDialog).getByText('分类表类型：')).toBeInTheDocument();
+    expect(within(editorDialog).getByText('General data model')).toBeVisible();
+    expect(
+      within(editorDialog).queryByText('模板提供方：')
+    ).not.toBeInTheDocument();
+    expect(
+      within(editorDialog).queryByText('模板代码：')
+    ).not.toBeInTheDocument();
+    expect(
+      within(editorDialog).queryByText('模板版本：')
+    ).not.toBeInTheDocument();
     expect(within(editorDialog).getAllByText('contacts')).not.toHaveLength(0);
     fireEvent.click(
       within(detailActions).getByRole('button', { name: /编\s*辑/ })

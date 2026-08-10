@@ -250,21 +250,9 @@ export function DataModelDetail({
     ],
     [
       {
-        key: 'template_provider',
-        label: i18nText('settings', 'auto.template_provider'),
-        value: model.template_provider
-      },
-      {
-        key: 'template_code',
-        label: i18nText('settings', 'auto.template_code'),
-        value: model.template_code
-      }
-    ],
-    [
-      {
-        key: 'template_version',
-        label: i18nText('settings', 'auto.template_version'),
-        value: model.template_version
+        key: 'template_summary',
+        label: i18nText('settings', 'auto.classification_table_type'),
+        value: model.template_summary ?? '-'
       },
       {
         key: 'runtime_availability',
