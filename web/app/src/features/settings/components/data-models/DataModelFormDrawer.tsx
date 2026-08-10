@@ -139,7 +139,8 @@ export function DataModelFormDrawer({
           key: 'api_open',
           label: i18nText('settings', 'auto.open_api'),
           description: dataModelStatusHelp,
-          type: 'boolean'
+          type: 'boolean',
+          control: 'inline-switch'
         }
       ]
     }),
@@ -171,6 +172,7 @@ export function DataModelFormDrawer({
         </Typography.Text>
         <Select
           aria-label={i18nText('settings', 'auto.data_model_template')}
+          style={{ width: '100%' }}
           loading={templatesLoading}
           disabled={
             templatesLoading ||
@@ -254,6 +256,8 @@ export function DataModelFormDrawer({
           : i18nText('settings', 'auto.edit_data_model')
       }
       width={560}
+      resizable
+      resizeLabel="调整 Data Model 抽屉宽度"
       schema={schema}
       initialValues={initialValues}
       leadingContent={templateSelector}

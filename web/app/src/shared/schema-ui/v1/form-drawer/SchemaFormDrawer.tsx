@@ -9,7 +9,8 @@ import {
   Modal,
   Select,
   Space,
-  Switch
+  Switch,
+  Typography
 } from 'antd';
 import type { Rule } from 'antd/es/form';
 import {
@@ -437,22 +438,50 @@ export function SchemaFormDrawer({
           )
         }
       >
-        {schema.fields.map((field) => (
-          <Form.Item
-            extra={field.description}
-            key={field.key}
-            label={field.label}
-            name={field.key}
-            rules={fieldRules(field)}
-            valuePropName={field.type === 'boolean' ? 'checked' : 'value'}
-          >
-            {field.read_only ? (
-              <Input disabled placeholder={field.placeholder} />
-            ) : (
-              renderFieldControl(field)
-            )}
-          </Form.Item>
-        ))}
+        {schema.fields.map((field) =>
+          field.type === 'boolean' && field.control === 'inline-switch' ? (
+            <Form.Item key={field.key}>
+              <Flex
+                align="center"
+                className="schema-form-drawer__inline-switch"
+                gap="small"
+              >
+                <Typography.Text>{field.label}</Typography.Text>
+                <Form.Item
+                  noStyle
+                  name={field.key}
+                  rules={fieldRules(field)}
+                  valuePropName="checked"
+                >
+                  <Switch aria-label={field.label} />
+                </Form.Item>
+                {field.description ? (
+                  <Typography.Text
+                    style={{ flex: 1, minWidth: 0 }}
+                    type="secondary"
+                  >
+                    {field.description}
+                  </Typography.Text>
+                ) : null}
+              </Flex>
+            </Form.Item>
+          ) : (
+            <Form.Item
+              extra={field.description}
+              key={field.key}
+              label={field.label}
+              name={field.key}
+              rules={fieldRules(field)}
+              valuePropName={field.type === 'boolean' ? 'checked' : 'value'}
+            >
+              {field.read_only ? (
+                <Input disabled placeholder={field.placeholder} />
+              ) : (
+                renderFieldControl(field)
+              )}
+            </Form.Item>
+          )
+        )}
       </Form>
       {trailingContent}
     </div>

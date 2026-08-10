@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import type { SettingsCompatibleDataModelTemplate } from '../../api/data-models';
+import { dataModelStatusHelp } from '../../components/data-models/data-model-help-text';
 import { DataModelFormDrawer } from '../../components/data-models/DataModelFormDrawer';
 import {
   SLOW_SETTINGS_PAGE_TEST_TIMEOUT,
@@ -1230,6 +1231,32 @@ describe('Settings data models page', () => {
       name: '新建 Data Model'
     });
     expect(within(createDialog).getByText('普通表')).toBeInTheDocument();
+    const templateSelect = within(createDialog).getByRole('combobox', {
+      name: 'Data Model 模板'
+    });
+    expect(templateSelect.closest('.ant-select')).toHaveStyle({
+      width: '100%'
+    });
+    const apiOpenRow = createDialog.querySelector(
+      '.schema-form-drawer__inline-switch'
+    );
+    expect(apiOpenRow).not.toBeNull();
+    expect(
+      within(apiOpenRow as HTMLElement).getByText('开放 API')
+    ).toBeVisible();
+    expect(
+      within(apiOpenRow as HTMLElement).getByRole('switch', {
+        name: '开放 API'
+      })
+    ).toBeVisible();
+    expect(
+      within(apiOpenRow as HTMLElement).getByText(dataModelStatusHelp)
+    ).toBeVisible();
+    expect(
+      within(createDialog).getByRole('separator', {
+        name: '调整 Data Model 抽屉宽度'
+      })
+    ).toBeInTheDocument();
     const defaultFieldsTable = within(createDialog).getByRole('table');
     expect(
       within(defaultFieldsTable)
