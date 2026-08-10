@@ -125,6 +125,24 @@ describe('SchemaFormDrawer', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  test('disables only the primary action when submit is unavailable', () => {
+    render(
+      <SchemaFormDrawer
+        open
+        title="Password 配置"
+        schema={schema}
+        initialValues={{ name: 'password-local', enabled: true }}
+        submitDisabled
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /保\s*存/ })).toBeDisabled();
+    expect(screen.getByLabelText('标识')).toBeEnabled();
+    expect(screen.getByRole('button', { name: /取\s*消/ })).toBeEnabled();
+  });
+
   test('emits submit success and failure lifecycle events', async () => {
     const onSubmitSuccess = vi.fn();
     const onSubmitError = vi.fn();
@@ -147,18 +165,30 @@ describe('SchemaFormDrawer', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(onSubmitSuccess).toHaveBeenCalledWith({ saved: true }, expect.any(Object)));
+    await waitFor(() =>
+      expect(onSubmitSuccess).toHaveBeenCalledWith(
+        { saved: true },
+        expect.any(Object)
+      )
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
-    await waitFor(() => expect(onSubmitError).toHaveBeenCalledWith(expect.any(Error), expect.any(Object)));
+    await waitFor(() =>
+      expect(onSubmitError).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.any(Object)
+      )
+    );
     expect(await screen.findByText('保存失败')).toBeInTheDocument();
   });
 
   test('confirms close when the form has unsaved changes', () => {
     const onCancel = vi.fn();
-    antdMocks.modalConfirm.mockImplementation(({ onOk }: { onOk: () => void }) => {
-      onOk();
-    });
+    antdMocks.modalConfirm.mockImplementation(
+      ({ onOk }: { onOk: () => void }) => {
+        onOk();
+      }
+    );
 
     render(
       <SchemaFormDrawer
@@ -214,13 +244,14 @@ describe('SchemaFormDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
 
     await waitFor(() => expect(extraAction).toHaveBeenCalled());
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        description: '连接正常',
-        name: 'password-local'
-      }),
-      expect.any(Object)
-    ));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: '连接正常',
+          name: 'password-local'
+        }),
+        expect.any(Object)
+      )
+    );
   });
-
 });

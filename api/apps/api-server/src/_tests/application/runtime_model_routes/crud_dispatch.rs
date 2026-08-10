@@ -564,7 +564,14 @@ async fn runtime_model_data_model_template_maps_and_dispatches_external_operatio
             "template_code": "contact_tree",
             "template_version": "v2",
             "summary": "联系人树",
-            "description": "外部 CRM 联系人树。"
+            "description": "外部 CRM 联系人树。",
+            "system_fields": [{
+                "code": "id",
+                "summary": "Contact identifier",
+                "description": "Stable external contact identifier.",
+                "field_kind": "string",
+                "required": true
+            }]
         })
     );
 
@@ -799,7 +806,14 @@ async fn runtime_model_data_model_template_uses_checked_in_provider_catalog_and_
             "template_code": "contact_archive",
             "template_version": "v1",
             "summary": "Archived contact data model",
-            "description": "Non-Core data model template contributed by the HTTP fixture provider."
+            "description": "Non-Core data model template contributed by the HTTP fixture provider.",
+            "system_fields": [{
+                "code": "contact_id",
+                "summary": "Contact identifier",
+                "description": "Stable identifier projected from the external contact resource.",
+                "field_kind": "string",
+                "required": true
+            }]
         })]
     );
 

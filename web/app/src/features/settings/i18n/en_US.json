@@ -321,6 +321,7 @@
     "detect_model_provider_instance_tip": "Validate the current settings and preview available candidate models",
     "table_code": "Table identifier",
     "field_title": "Field title",
+    "default_fields": "Default fields",
     "bound_storage": "Bind storage",
     "currently_from": "Currently from",
     "refresh_candidate_model": "Refresh candidate model {{value1}}",

@@ -147,6 +147,69 @@ pub struct CompatibleTemplateCatalogEntryResponse {
     pub template_version: String,
     pub summary: String,
     pub description: String,
+    pub system_fields: Vec<CompatibleTemplateSystemFieldResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CompatibleTemplateSystemFieldResponse {
+    pub code: String,
+    pub summary: String,
+    pub description: String,
+    pub field_kind: String,
+    pub required: bool,
+}
+
+fn compatible_template_field_kind(value_schema: &serde_json::Value) -> &'static str {
+    if value_schema
+        .get("format")
+        .and_then(serde_json::Value::as_str)
+        == Some("date-time")
+    {
+        return "datetime";
+    }
+
+    if let Some(non_null_schema) = value_schema
+        .get("anyOf")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|schemas| {
+            schemas.iter().find(|schema| {
+                schema.get("type").and_then(serde_json::Value::as_str) != Some("null")
+            })
+        })
+    {
+        return compatible_template_field_kind(non_null_schema);
+    }
+
+    match value_schema.get("type").and_then(serde_json::Value::as_str) {
+        Some("boolean") => "boolean",
+        Some("integer" | "number") => "number",
+        Some("string") => "string",
+        Some("array" | "object") | None => "json",
+        Some(_) => "json",
+    }
+}
+
+fn compatible_template_response(
+    descriptor: &plugin_framework::DataModelTemplateDescriptor,
+) -> CompatibleTemplateCatalogEntryResponse {
+    CompatibleTemplateCatalogEntryResponse {
+        template_provider: descriptor.identity.provider.clone(),
+        template_code: descriptor.identity.code.clone(),
+        template_version: descriptor.identity.version.clone(),
+        summary: descriptor.summary.clone(),
+        description: descriptor.description.clone(),
+        system_fields: descriptor
+            .system_fields
+            .iter()
+            .map(|field| CompatibleTemplateSystemFieldResponse {
+                code: field.code.clone(),
+                summary: field.summary.clone(),
+                description: field.description.clone(),
+                field_kind: compatible_template_field_kind(&field.value_schema).to_owned(),
+                required: field.required,
+            })
+            .collect(),
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -669,13 +732,7 @@ pub async fn list_compatible_templates(
             .template_catalog()
             .compatible_templates(&source, capabilities.iter().map(String::as_str))
             .into_iter()
-            .map(|template| CompatibleTemplateCatalogEntryResponse {
-                template_provider: template.identity().provider.clone(),
-                template_code: template.identity().code.clone(),
-                template_version: template.identity().version.clone(),
-                summary: template.descriptor().summary.clone(),
-                description: template.descriptor().description.clone(),
-            })
+            .map(|template| compatible_template_response(template.descriptor()))
             .collect()
     } else {
         let instance_id = helpers::parse_uuid(&query.data_source_id, "data_source_id")?;
@@ -694,13 +751,7 @@ pub async fn list_compatible_templates(
             )
             .await?
             .into_iter()
-            .map(|view| CompatibleTemplateCatalogEntryResponse {
-                template_provider: view.descriptor.identity.provider,
-                template_code: view.descriptor.identity.code,
-                template_version: view.descriptor.identity.version,
-                summary: view.descriptor.summary,
-                description: view.descriptor.description,
-            })
+            .map(|view| compatible_template_response(&view.descriptor))
             .collect()
     };
     Ok(Json(ApiSuccess::new(templates)))

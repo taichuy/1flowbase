@@ -163,8 +163,7 @@ export function DataSourceResourcesPanel({
         placeholder={i18nText('settings', 'auto.select_data_model_template')}
         options={compatibleTemplates.map((template) => ({
           value: dataModelTemplateIdentity(template),
-          label: `${dataModelTemplatePresentation(template).title} · ${dataModelTemplateIdentity(template)}`,
-          title: dataModelTemplatePresentation(template).description
+          label: dataModelTemplatePresentation(template).title
         }))}
         onChange={(identity) =>
           setSelectedTemplate(
@@ -174,11 +173,6 @@ export function DataSourceResourcesPanel({
           )
         }
       />
-      {selectedTemplateIsCompatible ? (
-        <Typography.Text type="secondary">
-          {dataModelTemplatePresentation(selectedTemplate).description}
-        </Typography.Text>
-      ) : null}
       <Flex justify="flex-end" gap={8}>
         <Button onClick={closeTemplateSelection}>
           {i18nText('settings', 'auto.cancel')}

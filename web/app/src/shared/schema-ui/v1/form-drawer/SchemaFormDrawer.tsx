@@ -1,6 +1,25 @@
-import { Alert, Button, Drawer, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch } from 'antd';
+import {
+  Alert,
+  Button,
+  Drawer,
+  Flex,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Switch
+} from 'antd';
 import type { Rule } from 'antd/es/form';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react';
 
 import { i18nText } from '../../../i18n/text';
 import { ResizableDrawer } from '../../../ui/resizable-drawer/ResizableDrawer';
@@ -57,17 +76,18 @@ export interface SchemaFormDrawerProps {
   resizeLabel?: string;
   rootClassName?: string;
   statusMessages?: SchemaFormDrawerStatusMessage[];
+  submitDisabled?: boolean;
   submitting?: boolean;
   submitText?: string;
   cancelText?: string;
   width?: number | string;
   onSubmit: (
     values: SchemaFormValues,
-    context: SchemaFormDrawerContext,
+    context: SchemaFormDrawerContext
   ) => Promise<unknown> | unknown;
   onBeforeSubmit?: (
     values: SchemaFormValues,
-    context: SchemaFormDrawerContext,
+    context: SchemaFormDrawerContext
   ) => Promise<boolean | void> | boolean | void;
   onSubmitSuccess?: (result: unknown, context: SchemaFormDrawerContext) => void;
   onSubmitError?: (error: unknown, context: SchemaFormDrawerContext) => void;
@@ -75,7 +95,7 @@ export interface SchemaFormDrawerProps {
   onValuesChange?: (
     values: SchemaFormValues,
     changed: SchemaFormValues,
-    context: SchemaFormDrawerContext,
+    context: SchemaFormDrawerContext
   ) => void;
   extraActions?: SchemaFormDrawerAction[];
 }
@@ -143,7 +163,12 @@ function renderFieldControl(field: PluginFormFieldSchema) {
   }
 
   if (field.control === 'textarea') {
-    return <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} placeholder={field.placeholder} />;
+    return (
+      <Input.TextArea
+        autoSize={{ minRows: 3, maxRows: 8 }}
+        placeholder={field.placeholder}
+      />
+    );
   }
 
   return <Input placeholder={field.placeholder} />;
@@ -155,7 +180,11 @@ function drawerTitle(title: string, subtitle?: string) {
   }
 
   return (
-    <Space className="schema-form-drawer__title" orientation="vertical" size={0}>
+    <Space
+      className="schema-form-drawer__title"
+      orientation="vertical"
+      size={0}
+    >
       <span>{title}</span>
       <span className="schema-form-drawer__subtitle">{subtitle}</span>
     </Space>
@@ -194,6 +223,7 @@ export function SchemaFormDrawer({
   rootClassName,
   schema,
   statusMessages = [],
+  submitDisabled = false,
   submitText,
   submitting,
   subtitle,
@@ -280,7 +310,14 @@ export function SchemaFormDrawer({
     } finally {
       setLocalSubmitting(false);
     }
-  }, [currentContext, form, onBeforeSubmit, onSubmit, onSubmitError, onSubmitSuccess]);
+  }, [
+    currentContext,
+    form,
+    onBeforeSubmit,
+    onSubmit,
+    onSubmitError,
+    onSubmitSuccess
+  ]);
 
   const context = useMemo<SchemaFormDrawerContext>(
     () => ({
@@ -307,8 +344,12 @@ export function SchemaFormDrawer({
     setSubmitError(null);
   }, [form, open, resolvedInitialValues]);
 
-  const leftActions = extraActions.filter((action) => action.placement === 'left');
-  const rightActions = extraActions.filter((action) => action.placement !== 'left');
+  const leftActions = extraActions.filter(
+    (action) => action.placement === 'left'
+  );
+  const rightActions = extraActions.filter(
+    (action) => action.placement !== 'left'
+  );
 
   const footer = (
     <Flex
@@ -345,7 +386,7 @@ export function SchemaFormDrawer({
           </Button>
         ))}
         <Button
-          disabled={disabled}
+          disabled={disabled || submitDisabled}
           loading={isSubmitting}
           type="primary"
           onClick={() => void submitForm()}

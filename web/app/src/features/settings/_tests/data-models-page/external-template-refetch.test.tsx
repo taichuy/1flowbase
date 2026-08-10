@@ -70,7 +70,16 @@ const selectedTemplate: SettingsCompatibleDataModelTemplate = {
   template_code: 'contact_tree',
   template_version: 'v2',
   summary: '联系人树',
-  description: '由 CRM 插件提供的联系人树。'
+  description: '由 CRM 插件提供的联系人树。',
+  system_fields: [
+    {
+      code: 'id',
+      summary: 'Contact identifier',
+      description: 'Stable external contact identifier.',
+      field_kind: 'string',
+      required: true
+    }
+  ]
 };
 
 beforeEach(() => {
@@ -126,9 +135,13 @@ describe('external Data Model template refetch', () => {
         });
         await waitFor(() => expect(templateSelector).toBeEnabled());
         fireEvent.mouseDown(templateSelector);
-        fireEvent.click(
-          await screen.findByText('联系人树 · plugin.crm/contact_tree/v2')
-        );
+        fireEvent.click(await screen.findByText('联系人树'));
+        expect(
+          screen.queryByText('plugin.crm/contact_tree/v2')
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('由 CRM 插件提供的联系人树。')
+        ).not.toBeInTheDocument();
         expect(
           screen.getByText(selectedTemplate.description)
         ).toBeInTheDocument();
@@ -189,7 +202,8 @@ describe('external Data Model template refetch', () => {
                     template_code: 'contact_list',
                     template_version: 'v1',
                     summary: '联系人列表',
-                    description: '不再包含先前选择的模板身份。'
+                    description: '不再包含先前选择的模板身份。',
+                    system_fields: []
                   }
                 ]
           );

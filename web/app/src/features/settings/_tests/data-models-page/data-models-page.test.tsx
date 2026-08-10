@@ -17,8 +17,10 @@ import {
   contactsModel,
   dataModelsApi,
   findDataModelsNavigation,
+  generalTemplateSystemFields,
   openContactsDataModelEditor,
   openDataModelEditorByTitle,
+  orderedTreeTemplateSystemFields,
   renderApp,
   setDataModelsPageBreakpoint,
   setupDataModelsPageTest
@@ -615,6 +617,10 @@ describe('Settings data models page', () => {
     const createDialog = await screen.findByRole('dialog', {
       name: '新建 Data Model'
     });
+    expect(document.querySelector('.schema-form-drawer')).toBeInTheDocument();
+    expect(
+      within(createDialog).getByRole('button', { name: '取消' })
+    ).toBeInTheDocument();
     expect(within(createDialog).getByText('普通表')).toBeInTheDocument();
     fireEvent.change(within(createDialog).getByLabelText('标题'), {
       target: { value: 'Orders' }
@@ -1143,7 +1149,8 @@ describe('Settings data models page', () => {
             template_code: 'general',
             template_version: 'v1',
             summary: '普通表',
-            description: '适用于通用记录。'
+            description: '适用于通用记录。',
+            system_fields: generalTemplateSystemFields
           }
         ]}
         templatesLoading={false}
@@ -1198,14 +1205,16 @@ describe('Settings data models page', () => {
             template_code: 'general',
             template_version: 'v1',
             summary: '普通表',
-            description: '适用于通用记录。'
+            description: '适用于通用记录。',
+            system_fields: generalTemplateSystemFields
           },
           {
             template_provider: 'core',
             template_code: 'ordered_tree',
             template_version: 'v1',
             summary: 'Ordered tree data model',
-            description: 'Core main-source ordered-tree Data Model template.'
+            description: 'Core main-source ordered-tree Data Model template.',
+            system_fields: orderedTreeTemplateSystemFields
           }
         ]}
         templatesLoading={false}
@@ -1221,12 +1230,28 @@ describe('Settings data models page', () => {
       name: '新建 Data Model'
     });
     expect(within(createDialog).getByText('普通表')).toBeInTheDocument();
+    const defaultFieldsTable = within(createDialog).getByRole('table');
+    expect(within(defaultFieldsTable).getAllByRole('row')).toHaveLength(7);
+    expect(within(defaultFieldsTable).getByText('id')).toBeInTheDocument();
+    expect(screen.queryByText('core/general/v1')).not.toBeInTheDocument();
+    expect(screen.queryByText('适用于通用记录。')).not.toBeInTheDocument();
     fireEvent.mouseDown(
       within(createDialog).getByRole('combobox', {
         name: 'Data Model 模板'
       })
     );
     fireEvent.click(await screen.findByText('树状表'));
+    expect(within(defaultFieldsTable).getAllByRole('row')).toHaveLength(9);
+    expect(
+      within(defaultFieldsTable).getByText('parent_id')
+    ).toBeInTheDocument();
+    expect(
+      within(defaultFieldsTable).getByText('sibling_rank')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('core/ordered_tree/v1')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Core main-source ordered-tree Data Model template.')
+    ).not.toBeInTheDocument();
     fireEvent.change(within(createDialog).getByLabelText('标题'), {
       target: { value: 'Categories' }
     });
@@ -1274,6 +1299,10 @@ describe('Settings data models page', () => {
     expect(
       within(createDialog).getByRole('button', { name: '创建' })
     ).toBeDisabled();
+    expect(within(createDialog).getByLabelText('标题')).toBeEnabled();
+    expect(
+      within(createDialog).getByRole('button', { name: '取消' })
+    ).toBeEnabled();
     expect(onCreate).not.toHaveBeenCalled();
   });
 
@@ -1324,7 +1353,16 @@ describe('Settings data models page', () => {
           template_code: 'contact_tree',
           template_version: 'v2',
           summary: '联系人树',
-          description: '由 CRM 插件提供的联系人树。'
+          description: '由 CRM 插件提供的联系人树。',
+          system_fields: [
+            {
+              code: 'id',
+              summary: 'Contact identifier',
+              description: 'Stable external contact identifier.',
+              field_kind: 'string',
+              required: true
+            }
+          ]
         }
       ]);
       await compatibleTemplates;
@@ -1332,9 +1370,13 @@ describe('Settings data models page', () => {
     await waitFor(() => expect(templateSelector).toBeEnabled());
     expect(templateSelector).toHaveAttribute('aria-busy', 'false');
     fireEvent.mouseDown(templateSelector);
-    fireEvent.click(
-      await screen.findByText('联系人树 · plugin.crm/contact_tree/v2')
-    );
+    fireEvent.click(await screen.findByText('联系人树'));
+    expect(
+      screen.queryByText('plugin.crm/contact_tree/v2')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('由 CRM 插件提供的联系人树。')
+    ).not.toBeInTheDocument();
     const confirmButtons = screen.getAllByRole('button', {
       name: '映射为 Data Model'
     });
