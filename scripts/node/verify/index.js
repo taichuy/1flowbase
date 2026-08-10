@@ -712,8 +712,9 @@ function buildCoverageBackendCleanupCommands() {
     {
       label: 'backend-coverage-clean',
       command: 'cargo',
-      // Keep cached instrumented binaries, but never reuse execution profiles.
-      args: ['llvm-cov', 'clean', '--profraw-only'],
+      // Cached instrumented binaries can duplicate LLVM regions and inflate
+      // the denominator even when execution profiles are fresh.
+      args: ['llvm-cov', 'clean', '--workspace'],
       cwd: 'api',
     },
   ];

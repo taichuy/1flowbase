@@ -236,12 +236,12 @@ test('buildBackendCommands can restrict backend coverage to one package', () => 
   );
 });
 
-test('buildBackendCleanupCommands removes stale profiles without deleting cached instrumentation', () => {
+test('buildBackendCleanupCommands removes stale workspace instrumentation', () => {
   assert.deepEqual(buildBackendCleanupCommands(), [
     {
       label: 'backend-coverage-clean',
       command: 'cargo',
-      args: ['llvm-cov', 'clean', '--profraw-only'],
+      args: ['llvm-cov', 'clean', '--workspace'],
       cwd: 'api',
     },
   ]);
@@ -301,14 +301,14 @@ test('main cleans llvm-cov artifacts before and after backend coverage runs', as
   assert.deepEqual(
     calls.map((call) => call.args),
     [
-      ['llvm-cov', 'clean', '--profraw-only'],
+      ['llvm-cov', 'clean', '--workspace'],
       ...backendThresholds.flatMap((entry) => expectedBackendCoverageCommands({
         repoRoot,
         entry,
         cargoParallelism: 2,
         cargoTestThreads: 4,
       }).map((command) => command.args)),
-      ['llvm-cov', 'clean', '--profraw-only'],
+      ['llvm-cov', 'clean', '--workspace'],
     ]
   );
 });
@@ -348,7 +348,7 @@ test('main routes backend coverage through the heavy lock and uses configured ba
   assert.equal(capturedOptions.runtimeConfig.backend.cargoJobs, 3);
   assert.deepEqual(
     capturedOptions.commands[0].args,
-    ['llvm-cov', 'clean', '--profraw-only']
+    ['llvm-cov', 'clean', '--workspace']
   );
   assert.match(capturedOptions.commands[1].args.join(' '), /--package control-plane/u);
   assert.equal(capturedOptions.commands[1].env.CARGO_BUILD_JOBS, '3');
