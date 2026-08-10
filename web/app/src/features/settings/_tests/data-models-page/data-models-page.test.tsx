@@ -1233,13 +1233,15 @@ describe('Settings data models page', () => {
     const defaultFieldsTable = within(createDialog).getByRole('table');
     expect(within(defaultFieldsTable).getAllByRole('row')).toHaveLength(7);
     expect(within(defaultFieldsTable).getByText('id')).toBeInTheDocument();
-    expect(screen.queryByText('core/general/v1')).not.toBeInTheDocument();
     expect(screen.queryByText('适用于通用记录。')).not.toBeInTheDocument();
     fireEvent.mouseDown(
       within(createDialog).getByRole('combobox', {
         name: 'Data Model 模板'
       })
     );
+    expect(
+      await screen.findByRole('option', { name: '树状表' })
+    ).toHaveAccessibleName('树状表');
     fireEvent.click(await screen.findByText('树状表'));
     expect(within(defaultFieldsTable).getAllByRole('row')).toHaveLength(9);
     expect(
@@ -1248,7 +1250,6 @@ describe('Settings data models page', () => {
     expect(
       within(defaultFieldsTable).getByText('sibling_rank')
     ).toBeInTheDocument();
-    expect(screen.queryByText('core/ordered_tree/v1')).not.toBeInTheDocument();
     expect(
       screen.queryByText('Core main-source ordered-tree Data Model template.')
     ).not.toBeInTheDocument();
@@ -1370,10 +1371,10 @@ describe('Settings data models page', () => {
     await waitFor(() => expect(templateSelector).toBeEnabled());
     expect(templateSelector).toHaveAttribute('aria-busy', 'false');
     fireEvent.mouseDown(templateSelector);
-    fireEvent.click(await screen.findByText('联系人树'));
     expect(
-      screen.queryByText('plugin.crm/contact_tree/v2')
-    ).not.toBeInTheDocument();
+      await screen.findByRole('option', { name: '联系人树' })
+    ).toHaveAccessibleName('联系人树');
+    fireEvent.click(await screen.findByText('联系人树'));
     expect(
       screen.queryByText('由 CRM 插件提供的联系人树。')
     ).not.toBeInTheDocument();

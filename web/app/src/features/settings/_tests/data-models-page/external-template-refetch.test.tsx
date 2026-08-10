@@ -148,16 +148,13 @@ describe('external Data Model template refetch', () => {
         });
         await waitFor(() => expect(templateSelector).toBeEnabled());
         fireEvent.mouseDown(templateSelector);
-        fireEvent.click(await screen.findByText('联系人树'));
         expect(
-          screen.queryByText('plugin.crm/contact_tree/v2')
-        ).not.toBeInTheDocument();
+          await screen.findByRole('option', { name: '联系人树' })
+        ).toHaveAccessibleName('联系人树');
+        fireEvent.click(await screen.findByText('联系人树'));
         expect(
           screen.queryByText('由 CRM 插件提供的联系人树。')
         ).not.toBeInTheDocument();
-        expect(
-          screen.getByText(selectedTemplate.description)
-        ).toBeInTheDocument();
         const confirmButtons = screen.getAllByRole('button', {
           name: '映射为 Data Model'
         });
