@@ -38,6 +38,9 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
                 .body(Body::from(
                     json!({
                         "scope_kind": "workspace",
+                        "template_provider": "core",
+                        "template_code": "ordered_tree",
+                        "template_version": "v1",
                         "code": "scope_grant_route_orders",
                         "title": "Scope Grant Route Orders"
                     })
@@ -193,6 +196,10 @@ async fn model_definition_scope_grant_routes_do_not_return_model_level_api_expos
         .find(|model| model["id"].as_str() == Some(&model_id))
         .unwrap();
     assert_eq!(model_payload["status"], json!("published"));
+    assert_eq!(
+        model_payload["template_summary"],
+        json!("Ordered tree data model")
+    );
     assert!(!model_payload
         .as_object()
         .unwrap()

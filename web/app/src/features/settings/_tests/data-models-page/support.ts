@@ -479,6 +479,7 @@ function settingsDataModel(
     template_provider: 'core',
     template_code: 'general',
     template_version: 'v1',
+    template_summary: 'General data model',
     physical_table_name: `dm_${code}`,
     acl_namespace: `data_model.${code}`,
     audit_namespace: `data_model.${code}`,

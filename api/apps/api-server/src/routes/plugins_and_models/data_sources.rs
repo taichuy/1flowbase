@@ -771,6 +771,9 @@ pub async fn map_resource_to_model(
 
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_model_definition_response(model))),
+        Json(ApiSuccess::new(to_model_definition_response(
+            model,
+            state.runtime_engine.template_catalog(),
+        ))),
     ))
 }

@@ -291,6 +291,7 @@ pub struct ModelDefinitionResponse {
     pub template_provider: String,
     pub template_code: String,
     pub template_version: String,
+    pub template_summary: Option<String>,
     pub physical_table_name: String,
     pub acl_namespace: String,
     pub audit_namespace: String,
@@ -466,7 +467,25 @@ fn to_model_field_response(
 
 pub(super) fn to_model_definition_response(
     model: domain::ModelDefinitionRecord,
+    template_catalog: &runtime_core::data_model_template_registry::DataModelTemplateCatalog,
 ) -> ModelDefinitionResponse {
+    let template_identity = plugin_framework::DataModelTemplateIdentity {
+        provider: model.template_provider.clone(),
+        code: model.template_code.clone(),
+        version: model.template_version.clone(),
+    };
+    let template_summary = match template_catalog.resolve(&template_identity) {
+        Ok(template) => Some(template.descriptor().summary.clone()),
+        Err(error) => {
+            tracing::warn!(
+                model_id = %model.id,
+                template_identity = %template_identity.canonical_name(),
+                error = %error,
+                "data model template summary is unavailable"
+            );
+            None
+        }
+    };
     let builtin_kind =
         domain::builtin_contract_for_model(&model).map(|contract| contract.kind.as_str().into());
     let capabilities = domain::data_model_capabilities(&model);
@@ -499,6 +518,7 @@ pub(super) fn to_model_definition_response(
         template_provider: model.template_provider,
         template_code: model.template_code,
         template_version: model.template_version,
+        template_summary,
         physical_table_name: model.physical_table_name,
         acl_namespace: model.acl_namespace,
         audit_namespace: model.audit_namespace,
@@ -703,7 +723,9 @@ pub async fn list_models(
     Ok(helpers::ok(
         models
             .into_iter()
-            .map(to_model_definition_response)
+            .map(|model| {
+                to_model_definition_response(model, state.runtime_engine.template_catalog())
+            })
             .collect(),
     ))
 }
@@ -824,7 +846,10 @@ pub async fn create_model(
 
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_model_definition_response(model))),
+        Json(ApiSuccess::new(to_model_definition_response(
+            model,
+            state.runtime_engine.template_catalog(),
+        ))),
     ))
 }
 
@@ -938,7 +963,10 @@ pub async fn update_model(
         "model_update",
     ))?;
 
-    Ok(Json(ApiSuccess::new(to_model_definition_response(model))))
+    Ok(Json(ApiSuccess::new(to_model_definition_response(
+        model,
+        state.runtime_engine.template_catalog(),
+    ))))
 }
 
 #[utoipa::path(

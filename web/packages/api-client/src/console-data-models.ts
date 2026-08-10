@@ -188,6 +188,7 @@ export interface ConsoleDataModel {
   template_provider: string;
   template_code: string;
   template_version: string;
+  template_summary: string | null;
   physical_table_name: string;
   acl_namespace: string;
   audit_namespace: string;
