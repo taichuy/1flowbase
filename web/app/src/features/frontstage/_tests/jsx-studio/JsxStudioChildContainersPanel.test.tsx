@@ -95,18 +95,20 @@ describe('JSX Studio child containers panel', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '标题' }), {
       target: { value: 'Material editor' }
     });
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '挂载区块' }));
-
-    expect(screen.getByText('Launcher')).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    );
-    expect(screen.getByText('Assigned block')).toHaveAttribute(
-      'aria-disabled',
-      'true'
-    );
-    fireEvent.click(screen.getByText('Content A'));
-    fireEvent.click(screen.getByText('Content B'));
+    expect(screen.getByRole('checkbox', { name: 'Launcher' })).toBeDisabled();
+    expect(
+      screen.getByRole('checkbox', { name: 'Assigned block' })
+    ).toBeDisabled();
+    const contentACheckbox = screen.getByRole('checkbox', {
+      name: 'Content A'
+    });
+    const contentBCheckbox = screen.getByRole('checkbox', {
+      name: 'Content B'
+    });
+    expect(contentACheckbox).toBeEnabled();
+    expect(contentBCheckbox).toBeEnabled();
+    fireEvent.click(contentACheckbox);
+    fireEvent.click(contentBCheckbox);
     fireEvent.click(screen.getByRole('button', { name: '保存子容器' }));
 
     await waitFor(() => expect(onSaveChildContainers).toHaveBeenCalledTimes(1));

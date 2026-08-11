@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Divider,
   Input,
   Radio,
@@ -443,38 +444,39 @@ export function JsxStudioChildContainersPanel({
                   </option>
                 ))}
             </select>
-            <Select<string[]>
-              mode="multiple"
+            <Checkbox.Group<string>
               aria-label={i18nText('frontstage', 'auto.child_container_blocks')}
               disabled={!canEdit}
               value={selected.blockIds}
-              options={pageBlocks.map((block) => {
-                const assignedContainerId = assignedContainerByBlock.get(
-                  block.id
-                );
-                const disabled =
-                  forbiddenOwnerBlockIds.has(block.id) ||
-                  (assignedContainerId !== undefined &&
-                    assignedContainerId !== selected.id);
-                const label =
-                  typeof block.props.title === 'string'
-                    ? block.props.title
-                    : i18nText('frontstage', 'auto.block_with_id', {
-                        value1: block.id
-                      });
-                return {
-                  value: block.id,
-                  label,
-                  disabled
-                };
-              })}
-              optionRender={(option) => (
-                <span aria-disabled={option.data.disabled ? 'true' : undefined}>
-                  {option.label}
-                </span>
-              )}
               onChange={(blockIds) => updateSelected({ blockIds })}
-            />
+            >
+              <Space direction="vertical">
+                {pageBlocks.map((block) => {
+                  const assignedContainerId = assignedContainerByBlock.get(
+                    block.id
+                  );
+                  const disabled =
+                    forbiddenOwnerBlockIds.has(block.id) ||
+                    (assignedContainerId !== undefined &&
+                      assignedContainerId !== selected.id);
+                  const label =
+                    typeof block.props.title === 'string'
+                      ? block.props.title
+                      : i18nText('frontstage', 'auto.block_with_id', {
+                          value1: block.id
+                        });
+                  return (
+                    <Checkbox
+                      key={block.id}
+                      value={block.id}
+                      disabled={disabled}
+                    >
+                      {label}
+                    </Checkbox>
+                  );
+                })}
+              </Space>
+            </Checkbox.Group>
             <Alert
               showIcon
               type="info"
