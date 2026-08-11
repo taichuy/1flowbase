@@ -9,6 +9,7 @@ export type SettingsSectionKey =
   | 'memory-observation'
   | 'i18n'
   | 'applications'
+  | 'backups'
   | 'extension-center'
   | 'files'
   | 'data-models'
@@ -60,6 +61,7 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'memory-observation',
   'i18n',
   'applications',
+  'backups',
   'extension-center',
   'files',
   'data-models',
@@ -158,6 +160,11 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'applications',
     label_key: 'auto.application_management',
     to: '/settings/applications'
+  },
+  {
+    key: 'backups',
+    label_key: 'auto.backups',
+    to: '/settings/backups'
   },
   {
     key: 'extension-center',

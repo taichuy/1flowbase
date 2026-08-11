@@ -62,6 +62,13 @@ const ApplicationManagementPanel = lazy(() =>
     })
   )
 );
+const SystemBackupsPanel = lazy(() =>
+  import('../../components/system-backups/SystemBackupsPanel').then(
+    (module) => ({
+      default: module.SystemBackupsPanel
+    })
+  )
+);
 const I18nCatalogPage = lazy(() =>
   import('../i18n-catalog/I18nCatalogPage').then((module) => ({
     default: module.I18nCatalogPage
@@ -117,6 +124,12 @@ export function SettingsSectionBody({
       return (
         <SettingsSectionBoundary>
           <ApplicationManagementPanel />
+        </SettingsSectionBoundary>
+      );
+    case 'backups':
+      return (
+        <SettingsSectionBoundary>
+          <SystemBackupsPanel />
         </SettingsSectionBoundary>
       );
     case 'extension-center':

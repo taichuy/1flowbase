@@ -162,6 +162,12 @@ function getStyleBoundaryCommonResponse(
             surface_kind: 'system'
           },
           {
+            route_id: 'settings.backups',
+            surface_key: 'backups',
+            path: '/settings/backups',
+            surface_kind: 'system'
+          },
+          {
             route_id: 'settings.docs',
             surface_key: 'docs',
             path: '/settings/docs',
@@ -215,6 +221,14 @@ function getStyleBoundaryCommonResponse(
             label_key: 'auto.application_management',
             navigation_slot: 'settings',
             order: 2
+          },
+          {
+            item_id: 'backups',
+            route_id: 'settings.backups',
+            parent_item_id: 'settings',
+            label_key: 'auto.backups',
+            navigation_slot: 'settings',
+            order: 3
           },
           {
             item_id: 'docs',
@@ -582,8 +596,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      requestUrl.pathname ===
-        '/api/console/settings/ui-management/components'
+      requestUrl.pathname === '/api/console/settings/ui-management/components'
     ) {
       return createStyleBoundaryJsonResponse({
         data: [
@@ -677,6 +690,27 @@ export function seedStyleBoundarySettingsFetch() {
           headers: { 'content-type': 'application/json' }
         }
       );
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/settings/system-backups'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          items: [
+            {
+              backup_set_id: '0198f8e1-21e0-7000-8000-000000000001',
+              exact_backup_name: '0198f8e1-21e0-7000-8000-000000000001',
+              created_at: '2026-08-12T08:00:00Z',
+              availability: 'ready',
+              total_size_bytes: 2254857830,
+              envelope_digest: 'a'.repeat(64)
+            }
+          ]
+        },
+        meta: null
+      });
     }
 
     if (

@@ -1732,6 +1732,44 @@
     ]
   },
   {
+    "id": "page.settings-backups.desktop",
+    "kind": "page",
+    "title": "Settings Backups Desktop Page",
+    "viewport": { "width": 1440, "height": 900 },
+    "impactFiles": [
+      "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx",
+      "web/app/src/features/settings/components/system-backups/system-backups-panel.css",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "backup-table",
+        "selector": ".system-backups__table",
+        "propertyAssertions": [{ "property": "display", "expected": "block" }]
+      }
+    ]
+  },
+  {
+    "id": "page.settings-backups.mobile",
+    "kind": "page",
+    "title": "Settings Backups Mobile Page",
+    "viewport": { "width": 390, "height": 844 },
+    "impactFiles": [
+      "web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx",
+      "web/app/src/features/settings/components/system-backups/system-backups-panel.css",
+      "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
+      "web/app/src/features/settings/components/settings-section-surface.css"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "backup-table-mobile",
+        "selector": ".system-backups__table",
+        "propertyAssertions": [{ "property": "display", "expected": "block" }]
+      }
+    ]
+  },
+  {
     "id": "page.sign-in",
     "kind": "page",
     "title": "Sign In Page",

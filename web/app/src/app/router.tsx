@@ -389,6 +389,13 @@ const settingsApplicationsRoute = createRoute({
   component: () => renderSettingsRoute('applications')
 });
 
+const settingsBackupsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/backups',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('backups')
+});
+
 const settingsExtensionCenterRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/extension-center',
@@ -662,6 +669,7 @@ const routeTree = rootRoute.addChildren([
     settingsMemoryObservationRoute,
     settingsI18nRoute,
     settingsApplicationsRoute,
+    settingsBackupsRoute,
     settingsExtensionCenterRoute,
     settingsExtensionCenterCategoryRoute,
     settingsFilesRoute,

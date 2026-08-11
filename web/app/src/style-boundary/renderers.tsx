@@ -262,6 +262,14 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/applications');
   },
+  'page.settings-backups.desktop': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderRouterScene('/settings/backups');
+  },
+  'page.settings-backups.mobile': () => {
+    seedStyleBoundarySettingsFetch();
+    return renderRouterScene('/settings/backups');
+  },
   'page.settings-ui-components': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/ui-management/components');
