@@ -43,6 +43,7 @@ pub mod runtime_registry_sync;
 pub mod session_security;
 pub mod state_transition;
 pub mod system_agent;
+pub mod system_backup;
 pub mod system_metadata;
 pub mod system_runtime;
 pub mod ui_management;

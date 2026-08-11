@@ -49,6 +49,45 @@ fn api_config_does_not_require_ephemeral_backend_env() {
 
     assert_eq!(config.cookie_name, "flowbase_console_session");
     assert!(!config.runtime_table_name_policy.auto_prefix_enabled());
+    assert!(config
+        .system_backup_repository_root
+        .ends_with("tmp/system-backups"));
+}
+
+#[test]
+fn api_config_reads_explicit_system_backup_repository_and_key() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        (
+            "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
+            "/mnt/1flowbase-backups",
+        ),
+        (
+            "API_SYSTEM_BACKUP_KEY_BASE64",
+            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        ),
+    ]);
+
+    let config = ApiConfig::from_env_map(&env).unwrap();
+
+    assert_eq!(
+        config.system_backup_repository_root,
+        "/mnt/1flowbase-backups"
+    );
+    assert_eq!(
+        config.system_backup_key_base64,
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+    );
+}
+
+#[test]
+fn api_config_rejects_invalid_system_backup_key_length() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.push(("API_SYSTEM_BACKUP_KEY_BASE64", "c2hvcnQ="));
+
+    let error = ApiConfig::from_env_map(&env).unwrap_err();
+
+    assert!(error.to_string().contains("API_SYSTEM_BACKUP_KEY_BASE64"));
 }
 
 #[test]

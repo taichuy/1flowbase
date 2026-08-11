@@ -8,6 +8,8 @@ license.workspace = true
 anyhow.workspace = true
 argon2.workspace = true
 async-trait.workspace = true
+chacha20poly1305.workspace = true
+hmac.workspace = true
 access-control = { path = "../access-control" }
 domain = { path = "../domain" }
 observability = { path = "../observability" }
