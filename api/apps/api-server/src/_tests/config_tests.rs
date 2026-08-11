@@ -52,6 +52,7 @@ fn api_config_does_not_require_ephemeral_backend_env() {
     assert!(config
         .system_backup_repository_root
         .ends_with("tmp/system-backups"));
+    assert!(config.system_build_identity.starts_with("dev."));
 }
 
 #[test]
@@ -66,6 +67,7 @@ fn api_config_reads_explicit_system_backup_repository_and_key() {
             "API_SYSTEM_BACKUP_KEY_BASE64",
             "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         ),
+        ("API_SYSTEM_BUILD_IDENTITY", "git.5f906803"),
     ]);
 
     let config = ApiConfig::from_env_map(&env).unwrap();
@@ -78,6 +80,7 @@ fn api_config_reads_explicit_system_backup_repository_and_key() {
         config.system_backup_key_base64,
         "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
     );
+    assert_eq!(config.system_build_identity, "git.5f906803");
 }
 
 #[test]

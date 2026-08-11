@@ -41,7 +41,7 @@ ARG APP_GID=1000
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid "${APP_GID}" flowbase \
   && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin flowbase

@@ -21,10 +21,11 @@ runtime-core = { path = "../../runtime-core" }
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
+thiserror.workspace = true
 time.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 postgres-test-support = { path = "../../postgres-test-support" }
-tokio.workspace = true
