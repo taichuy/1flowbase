@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { App } from 'antd';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -59,14 +59,20 @@ describe('FrontstageBlockCodeTabs', () => {
     );
     const close = view.container.querySelector('.ant-tabs-tab-remove');
     fireEvent.click(close as Element);
-    expect(
-      await screen.findByText(/关闭未保存的区块|Close this unsaved block/u)
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /取消|Cancel/u }));
+    const cancelDialog = await screen.findByRole('dialog');
+    expect(cancelDialog).toHaveAccessibleName(
+      /关闭未保存的区块|Close this unsaved block/u
+    );
+    fireEvent.click(
+      within(cancelDialog).getByRole('button', { name: /取\s*消|Cancel/u })
+    );
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(close as Element);
-    fireEvent.click(screen.getByRole('button', { name: /关闭|Close/u }));
+    const confirmDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(confirmDialog).getByRole('button', { name: /关\s*闭|Close/u })
+    );
     expect(onClose).toHaveBeenCalledWith('child');
   });
 });

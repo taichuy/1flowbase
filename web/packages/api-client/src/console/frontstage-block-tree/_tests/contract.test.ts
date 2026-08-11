@@ -157,9 +157,14 @@ describe('frontstage block tree client contract', () => {
         after_block_id: null
       }
     });
-    await expect(
-      deleteConsoleFrontstageBlockLeaf('workspace-1', 'page-1', 'sales', 'csrf')
-    ).resolves.toMatchObject({ method: 'DELETE', body: undefined });
+    const leafDelete = await deleteConsoleFrontstageBlockLeaf(
+      'workspace-1',
+      'page-1',
+      'sales',
+      'csrf'
+    );
+    expect(leafDelete).toMatchObject({ method: 'DELETE' });
+    expect(leafDelete).not.toHaveProperty('body');
     await expect(
       deleteConsoleFrontstageBlockSubtree(
         'workspace-1',

@@ -131,8 +131,7 @@ export function BlockSchemaTreePanel({
   }, [searchInput]);
 
   const loadChildren = useCallback(
-    async (parent: FrontstageBlockNodeSummary, force = false) => {
-      if (!force && childrenByParent.has(parent.block_id)) return;
+    async (parent: FrontstageBlockNodeSummary) => {
       setChildrenError(null);
       try {
         const children = await queryClient.fetchQuery({
@@ -158,7 +157,7 @@ export function BlockSchemaTreePanel({
         throw error;
       }
     },
-    [childrenByParent, pageId, queryClient, workspaceId]
+    [pageId, queryClient, workspaceId]
   );
 
   useEffect(() => {
@@ -199,7 +198,7 @@ export function BlockSchemaTreePanel({
       return;
     }
     const parent = findSummary(treeData, parentBlockId);
-    if (parent) await loadChildren(parent, true);
+    if (parent) await loadChildren(parent);
   };
 
   const openCreateForm = (parent: FrontstageBlockNodeSummary) => {
@@ -445,7 +444,7 @@ export function BlockSchemaTreePanel({
         title={
           formTarget?.mode === 'create'
             ? i18nText('frontstage', 'auto.block_tree_create_child')
-            : i18nText('frontstage', 'auto.block_tree_edit')
+            : i18nText('frontstage', 'auto.edit_block')
         }
         confirmLoading={operationPending}
         okText={
@@ -530,7 +529,7 @@ function presentationOptions() {
   return [
     {
       value: 'page' as const,
-      label: i18nText('frontstage', 'auto.block_tree_page')
+      label: i18nText('frontstage', 'auto.page')
     },
     {
       value: 'drawer' as const,

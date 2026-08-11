@@ -494,7 +494,7 @@ async function ensurePage(client, workspaceId) {
         },
       },
     );
-    page = created;
+    page = created.page;
     defaultTab = created.default_tab;
   } else {
     if (page.kind !== "page")
@@ -509,42 +509,27 @@ async function ensurePage(client, workspaceId) {
   return { page, defaultTab };
 }
 
-function blockDescriptor(node, record) {
+function blockDescriptor(node) {
   return {
     acceptanceSeed: "architecture-material-editor",
     archiveSha256: manifest.source.archive_sha256,
-    dataModelCode: manifest.targets.model_code,
-    recordId: record.id,
     sourceKey: node.sourceKey,
     nodeKind: node.kind === "section" ? "content" : node.kind,
   };
 }
 
-function blockSource(recordId) {
-  const endpoint = `/api/runtime/models/${manifest.targets.model_code}/get/${recordId}`;
-  return `import { useEffect, useState } from 'react';
+function blockSource(node) {
+  const material = JSON.stringify({ title: node.title, content: node.content });
+  return `import React from 'react';
 
-type MaterialRecord = { title?: string; content?: string };
+const material = ${material};
 
-export default function ArchitectureMaterial({ ctx }: NativeReactBlockProps) {
-  const [record, setRecord] = useState<MaterialRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    ctx.api.get<MaterialRecord>(${JSON.stringify(endpoint)})
-      .then((value) => { if (active) setRecord(value); })
-      .catch((reason) => { if (active) setError(String(reason)); });
-    return () => { active = false; };
-  }, [ctx]);
-
-  if (error) return <div role="alert">{error}</div>;
-  if (!record) return <div>Loading…</div>;
+export default function ArchitectureMaterial() {
   return (
     <article style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-      <h1>{record.title ?? '教材内容'}</h1>
+      <h1>{material.title}</h1>
       <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit' }}>
-        {record.content ?? ''}
+        {material.content}
       </pre>
     </article>
   );
@@ -552,26 +537,19 @@ export default function ArchitectureMaterial({ ctx }: NativeReactBlockProps) {
 `;
 }
 
-function validateBlock(block, node, record, expectedParentId) {
+function validateBlock(block, node, expectedParentId) {
   const descriptor = block.runtime_descriptor || {};
   if (
     block.parent_block_id !== expectedParentId ||
     descriptor.acceptanceSeed !== "architecture-material-editor" ||
     descriptor.archiveSha256 !== manifest.source.archive_sha256 ||
-    descriptor.recordId !== record.id ||
     descriptor.sourceKey !== node.sourceKey
   ) {
     throw new Error(`既有 Frontstage Block link 不匹配：${node.sourceKey}`);
   }
 }
 
-async function findExistingBlock(
-  client,
-  basePath,
-  node,
-  record,
-  expectedParentId,
-) {
+async function findExistingBlock(client, basePath, node, expectedParentId) {
   const results = await apiRequest(
     client,
     `${basePath}/search?query=${encodeURIComponent(node.title)}&limit=100`,
@@ -586,7 +564,11 @@ async function findExistingBlock(
       client,
       `${basePath}/${encodeURIComponent(result.node.block_id)}`,
     );
-    if (block.runtime_descriptor?.recordId === record.id) return block;
+    if (
+      block.runtime_descriptor?.sourceKey === node.sourceKey &&
+      block.runtime_descriptor?.archiveSha256 === manifest.source.archive_sha256
+    )
+      return block;
   }
   return null;
 }
@@ -614,13 +596,7 @@ async function ensureBlocks(
       );
       if (!block?.block_id) block = null;
     } else {
-      block = await findExistingBlock(
-        client,
-        basePath,
-        node,
-        record,
-        expectedParentId,
-      );
+      block = await findExistingBlock(client, basePath, node, expectedParentId);
     }
     if (!block) {
       block = await apiRequest(client, basePath, {
@@ -633,12 +609,12 @@ async function ensureBlocks(
           parent_block_id: expectedParentId,
           before_block_id: null,
           after_block_id: null,
-          code: blockSource(record.id),
-          runtime_descriptor: blockDescriptor(node, record),
+          code: blockSource(node),
+          runtime_descriptor: blockDescriptor(node),
         },
       });
     }
-    validateBlock(block, node, record, expectedParentId);
+    validateBlock(block, node, expectedParentId);
     blocksByKey.set(node.sourceKey, block);
     if (record.frontstage_block_id !== block.block_id) {
       const updated = await apiRequest(
@@ -738,9 +714,11 @@ async function seedArchitectureMaterials(options, deps = {}) {
 module.exports = {
   DEFAULT_API_BASE_URL,
   apiRequest,
+  blockDescriptor,
   blockSource,
   dryRunResult,
   loadAndParseArchive,
+  ensurePage,
   parseMaterialTree,
   resolveAcceptanceZipPath,
   seedArchitectureMaterials,

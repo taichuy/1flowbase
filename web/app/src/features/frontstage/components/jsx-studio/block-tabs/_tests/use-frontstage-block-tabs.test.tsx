@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { readFile } from 'node:fs/promises';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -14,10 +13,16 @@ const api = vi.hoisted(() => ({
   saveFrontstageBlockNodeCode: vi.fn()
 }));
 
+const legacy = vi.hoisted(() => ({
+  useFrontstageBlockCode: vi.fn()
+}));
+
 vi.mock('../../../../api/block-tree', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../api/block-tree')>()),
   ...api
 }));
+
+vi.mock('../../../../hooks/use-frontstage-block-code', () => legacy);
 
 function detail(blockId: string): FrontstageBlockNode {
   return {
@@ -217,14 +222,15 @@ describe('useFrontstageBlockTabs', () => {
     expect(view.result.current.activeTab?.draft).toBe('unsaved root');
   });
 
-  test('AC-005 never imports the legacy code-ref hook or endpoint', async () => {
-    const source = await readFile(
-      new URL('../use-frontstage-block-tabs.ts', import.meta.url),
-      'utf8'
+  test('AC-005 stays on the public block-id dependency boundary', async () => {
+    const view = setup();
+    await waitFor(() => expect(view.result.current.activeTab?.loading).toBe(false));
+
+    expect(api.fetchFrontstageBlockNodeCode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'root'
     );
-    expect(source).not.toContain('useFrontstageBlockCode');
-    expect(source).not.toContain('codeRef');
-    expect(source).not.toContain('getFrontstageBlockCode');
-    expect(source).not.toContain('saveFrontstageBlockCode');
+    expect(legacy.useFrontstageBlockCode).not.toHaveBeenCalled();
   });
 });

@@ -285,6 +285,24 @@ function extractRustMethodBody(source, methodName) {
   return source.slice(openingBraceIndex + 1, closingBraceIndex);
 }
 
+function hasVisibilityGate(serviceSource, methodName) {
+  const body = extractRustMethodBody(serviceSource, methodName);
+  if (!body) return false;
+  if (/\bensure_page_visible\s*\(/u.test(body)) return true;
+  if (!/\bensure_page_tab_visible\s*\(/u.test(body)) return false;
+
+  const tabVisibilityBody = extractRustMethodBody(
+    serviceSource,
+    'ensure_page_tab_visible'
+  );
+  return Boolean(
+    tabVisibilityBody
+    && /\blist_frontstage_pages\s*\(/u.test(tabVisibilityBody)
+    && /\bFrontstagePageVisibilityContext::new\s*\(/u.test(tabVisibilityBody)
+    && /\.is_tab_visible\s*\(\s*page_id\s*,\s*tab_id\s*\)/u.test(tabVisibilityBody)
+  );
+}
+
 function parseBackendSettingsRoutePaths(source) {
   const paths = Array.from(
     source.matchAll(
@@ -473,14 +491,13 @@ function evaluateVisibilityRuleMigrations({ inventory, findings }) {
 
 function evaluateServiceVisibilityGates({ inventory, findings }) {
   for (const methodName of VISIBILITY_GATED_READ_SERVICE_METHODS) {
-    const body = extractRustMethodBody(inventory.serviceSource, methodName);
-    if (!body || !/\bensure_page_visible\s*\(/u.test(body)) {
+    if (!hasVisibilityGate(inventory.serviceSource, methodName)) {
       findings.push(createFinding({
         rule: 'frontstage-page-service-visibility-gate',
         sectionKey: methodName,
         file: inventory.paths.frontstageServicePath,
         message:
-          `FrontstagePageService.${methodName} must call ensure_page_visible before reading page detail/content/block-code data`,
+          `FrontstagePageService.${methodName} must call ensure_page_visible or a structurally verified ensure_page_tab_visible before reading page detail/content/block-code data`,
       }));
     }
   }
@@ -725,6 +742,7 @@ module.exports = {
   collectFrontstageGovernanceInventory,
   evaluateFrontstageGovernanceHygiene,
   extractRustMethodBody,
+  hasVisibilityGate,
   main,
   parseCliArgs,
   writeReport,

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from 'antd';
 import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -132,15 +132,20 @@ describe('BlockSchemaTreePanel', () => {
     ).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByText(/根容器|Root container/u)).not.toBeInTheDocument();
 
-    const switcher = document.querySelector('.ant-tree-switcher');
+    const rootTreeItem = screen
+      .getByText('Root page')
+      .closest('[role="treeitem"]');
+    const switcher = rootTreeItem?.querySelector('.ant-tree-switcher');
     expect(switcher).not.toBeNull();
     fireEvent.click(switcher as Element);
+    await waitFor(() => {
+      expect(api.fetchFrontstageBlockChildren).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-1',
+        'root-page'
+      );
+    });
     expect(await screen.findByText('Child page')).toBeInTheDocument();
-    expect(api.fetchFrontstageBlockChildren).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'root-page'
-    );
 
     fireEvent.click(screen.getByText('Child page'));
     expect(onOpenBlock).toHaveBeenCalledWith('child-page');
@@ -176,7 +181,12 @@ describe('BlockSchemaTreePanel', () => {
     });
     fireEvent.mouseDown(screen.getByLabelText(/展示方式|Presentation/u));
     fireEvent.click(await screen.findByText(/页面|Page/u, { selector: '.ant-select-item-option-content' }));
-    fireEvent.click(screen.getByRole('button', { name: /创建|Create/u }));
+    const createDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(createDialog).getByRole('button', {
+        name: /创\s*建|Create/u
+      })
+    );
 
     await waitFor(() => {
       expect(mutations.create.mutateAsync).toHaveBeenCalledWith({
@@ -206,7 +216,12 @@ describe('BlockSchemaTreePanel', () => {
         selector: '.ant-select-item-option-content'
       })
     );
-    fireEvent.click(screen.getByRole('button', { name: /更新|Update/u }));
+    const editDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(editDialog).getByRole('button', {
+        name: /更\s*新|Update/u
+      })
+    );
     await waitFor(() => {
       expect(mutations.update.mutateAsync).toHaveBeenCalledWith({
         block_id: 'root-page',
@@ -222,11 +237,14 @@ describe('BlockSchemaTreePanel', () => {
       'page-1',
       'root-page'
     );
+    const deleteDialog = await screen.findByRole('dialog');
     expect(
-      await screen.findByText(/2 个区块|2 blocks/u)
+      within(deleteDialog).getByText(/2 个区块|2 blocks/u)
     ).toBeInTheDocument();
     fireEvent.click(
-      screen.getAllByRole('button', { name: /删除|Delete/u }).at(-1) as Element
+      within(deleteDialog).getByRole('button', {
+        name: /删\s*除|Delete/u
+      })
     );
     await waitFor(() => {
       expect(mutations.deleteSubtree.mutateAsync).toHaveBeenCalledWith({
@@ -248,11 +266,14 @@ describe('BlockSchemaTreePanel', () => {
     const { onDeletedBlock } = renderPanel();
     await screen.findByText('Root page');
     fireEvent.click(screen.getByRole('button', { name: /删除|Delete/u }));
+    const deleteDialog = await screen.findByRole('dialog');
     expect(
-      await screen.findByText(/叶子区块|leaf block/u)
+      within(deleteDialog).getByText(/叶子区块|leaf block/u)
     ).toBeInTheDocument();
     fireEvent.click(
-      screen.getAllByRole('button', { name: /删除|Delete/u }).at(-1) as Element
+      within(deleteDialog).getByRole('button', {
+        name: /删\s*除|Delete/u
+      })
     );
     await waitFor(() => {
       expect(mutations.deleteLeaf.mutateAsync).toHaveBeenCalledWith({

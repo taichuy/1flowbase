@@ -132,7 +132,7 @@ async fn block_node_migration_backfills_legacy_roots_without_descriptor_loss() {
     let descriptor = json!({ "id": "hero", "codeRef": "hero-code" });
     let mut tx = pool.begin().await.unwrap();
     sqlx::query(
-        "insert into frontstage_pages (id, workspace_id, kind, title, placement, content_presentation, rank, slug) values ($1, $2, 'page', 'Legacy', 'sidebar', 'single', 'U', 'legacy-blocks')",
+        "insert into frontstage_pages (id, workspace_id, kind, title, placement, content_presentation, rank, slug) values ($1, $2, 'page', 'Legacy', 'topbar', 'single', 'U', 'legacy-blocks')",
     )
     .bind(page_id)
     .bind(workspace_id)
