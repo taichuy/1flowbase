@@ -229,7 +229,8 @@ where
         )
     })?;
     if runtime_context.operation() == domain::AiNativeOperation::CountTokens {
-        let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
+        let attempt_runtimes =
+            llm_request_runtimes(node, runtime, runtime_context, invoker).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("CountTokens LLM consumer has no selected runtime"))?;
@@ -249,7 +250,8 @@ where
         runtime_context.operation(),
         domain::AiNativeOperation::Compact(_)
     ) {
-        let attempt_runtimes = llm_request_runtimes(node, runtime, runtime_context).await?;
+        let attempt_runtimes =
+            llm_request_runtimes(node, runtime, runtime_context, invoker).await?;
         let selected_runtime = attempt_runtimes
             .first()
             .ok_or_else(|| anyhow!("Compact LLM consumer has no selected runtime"))?;

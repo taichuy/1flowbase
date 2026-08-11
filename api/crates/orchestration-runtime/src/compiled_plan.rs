@@ -173,14 +173,30 @@ pub struct CompiledLlmRouteTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompiledLlmRuntime {
+    // @field-contract-compat source=compiled_plan_v2 alias=provider_instance_id remove_by=2027-02-11
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider_instance_id: String,
-    #[serde(default)]
+    // @field-contract-compat source=compiled_plan_v2 alias=provider_instance_display_name remove_by=2027-02-11
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider_instance_display_name: String,
     pub provider_code: String,
+    // @field-contract-compat source=compiled_plan_v2 alias=protocol remove_by=2027-02-11
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub protocol: String,
     pub model: String,
+    // @field-contract-compat source=compiled_plan_v2 alias=routing remove_by=2027-02-11
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub routing: Option<CompiledLlmRouting>,
+}
+
+impl CompiledLlmRuntime {
+    pub fn targets_main_instance(&self) -> bool {
+        self.provider_instance_id.is_empty()
+            || self
+                .routing
+                .as_ref()
+                .is_some_and(|routing| routing.queue_template_id.is_none())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

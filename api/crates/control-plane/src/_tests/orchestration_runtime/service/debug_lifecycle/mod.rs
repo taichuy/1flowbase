@@ -88,7 +88,7 @@ async fn live_run_failure_keeps_answer_contract_unmaterialized() {
 }
 
 #[tokio::test]
-async fn start_node_debug_preview_uses_failover_queue_for_multi_instance_provider_model_binding() {
+async fn start_node_debug_preview_resolves_multi_instance_provider_through_current_main_instance() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service
         .seed_application_with_multi_instance_provider_flow("Support Agent")
@@ -112,7 +112,11 @@ async fn start_node_debug_preview_uses_failover_queue_for_multi_instance_provide
     assert_eq!(outcome.node_run.status, domain::NodeRunStatus::Succeeded);
     assert_eq!(
         outcome.preview_payload["metrics_payload"]["route"]["routing_mode"],
-        serde_json::json!("failover_queue")
+        serde_json::json!("fixed_model")
+    );
+    assert_eq!(
+        outcome.preview_payload["metrics_payload"]["route"]["fixed_model_target"]["routing_owner"],
+        serde_json::json!("main_instance")
     );
     assert!(outcome.preview_payload["metrics_payload"]["attempts"]
         .as_array()

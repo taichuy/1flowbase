@@ -1009,7 +1009,7 @@ fn compile_llm_node_ignores_removed_prompt_bindings() {
 }
 
 #[test]
-fn compile_llm_node_carries_context_policy_into_routing() {
+fn compile_llm_node_keeps_context_policy_in_node_config() {
     let flow_id = Uuid::now_v7();
     let mut document = sample_document(flow_id);
     document["graph"]["nodes"][1]["config"]["context_policy"] = json!({
@@ -1018,16 +1018,14 @@ fn compile_llm_node_carries_context_policy_into_routing() {
     });
 
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
-    let routing = plan.nodes["node-llm"]
-        .llm_runtime
-        .as_ref()
-        .and_then(|runtime| runtime.routing.as_ref())
-        .expect("llm routing should exist");
-
     assert_eq!(
-        routing.context_policy,
+        plan.nodes["node-llm"].config["context_policy"],
         json!({ "integration_context": "enabled", "context_selector": ["node-start", "history"] })
     );
+    assert!(plan.nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .is_some_and(|runtime| runtime.routing.is_none()));
 }
 
 #[test]

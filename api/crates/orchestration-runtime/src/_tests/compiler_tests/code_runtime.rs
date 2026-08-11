@@ -33,14 +33,12 @@ fn compile_flow_document_emits_topology_selector_dependencies_and_provider_runti
             .provider_code,
         "fixture_provider"
     );
-    assert_eq!(
-        plan.nodes["node-llm"]
-            .llm_runtime
-            .as_ref()
-            .unwrap()
-            .provider_instance_id,
-        "provider-selected"
-    );
+    assert!(plan.nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .unwrap()
+        .provider_instance_id
+        .is_empty());
     assert!(plan.compile_issues.is_empty());
 }
 
