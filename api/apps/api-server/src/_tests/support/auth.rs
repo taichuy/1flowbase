@@ -100,6 +100,10 @@ async fn test_state_with_runtime_profile_state(
         .join("dropins")
         .display()
         .to_string();
+    config.system_backup_repository_root = std::env::temp_dir()
+        .join(format!("api-system-backups-{}", Uuid::now_v7()))
+        .display()
+        .to_string();
     let mut pool_settings =
         storage_durable::PgPoolSettings::with_max_connections(config.database_pool_max_connections);
     pool_settings.acquire_timeout = Duration::from_secs(30);
@@ -229,6 +233,15 @@ async fn test_state_with_runtime_profile_state(
     let console_operation_registry =
         crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
             .expect("core console operation registry should compile");
+    let system_backup = Arc::new(
+        crate::system_backup::SystemBackupRuntime::open(
+            store.clone(),
+            file_storage_registry.clone(),
+            &config,
+        )
+        .await
+        .expect("test system backup runtime should assemble"),
+    );
 
     (
         Arc::new(ApiState {
@@ -238,9 +251,11 @@ async fn test_state_with_runtime_profile_state(
                     std::path::PathBuf::from(&config.business_file_local_root),
                     std::path::PathBuf::from(&config.provider_install_root),
                     std::path::PathBuf::from(&config.mcp_template_library_root),
+                    std::path::PathBuf::from(&config.system_backup_repository_root),
                 ],
             ))),
             store: store.clone(),
+            system_backup,
             system_maintenance: Arc::new(
                 control_plane::system_recovery::SystemMaintenance::default(),
             ),

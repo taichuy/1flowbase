@@ -286,6 +286,7 @@ pub struct ApiState {
     #[cfg(test)]
     pub(crate) test_resources: Option<Arc<TestResources>>,
     pub store: MainDurableStore,
+    pub system_backup: Arc<crate::system_backup::SystemBackupRuntime>,
     pub system_maintenance: Arc<control_plane::system_recovery::SystemMaintenance>,
     pub authenticator_registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
