@@ -5,7 +5,7 @@ use domain::{DataModelScopeKind, ModelFieldKind};
 use runtime_core::runtime_record_repository::{
     OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeDescendantsInput,
     OrderedTreeNodeInput, OrderedTreeQueryError, OrderedTreeQueryRepository,
-    OrderedTreeSearchInput,
+    OrderedTreeSearchInput, OrderedTreeSubtreeImpactInput,
 };
 use uuid::Uuid;
 
@@ -165,6 +165,147 @@ fn typed_error(error: anyhow::Error) -> OrderedTreeQueryError {
     error
         .downcast::<OrderedTreeQueryError>()
         .expect("ordered-tree query should preserve its typed business error")
+}
+
+// Packet A1c fixture: the product-neutral query owner counts the target and every reachable
+// descendant exactly once without crossing scope/partition boundaries, including corrupt cycles.
+#[tokio::test]
+async fn subtree_impact_counts_leaf_nested_partition_and_cycle_with_typed_not_found() {
+    let database = isolated_database().await;
+    let pool = database.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let scope_id = create_workspace(&store).await;
+    let model = create_model(&store, scope_id, "impact").await;
+    let (model, field) = add_search_field(&store, &model).await;
+    let metadata = metadata(&model);
+    let root = Uuid::now_v7();
+    let child = Uuid::now_v7();
+    let leaf = Uuid::now_v7();
+    for node in [
+        TestNode::new(root, None, "U", "Root"),
+        TestNode::new(child, Some(root), "U", "Child"),
+        TestNode::new(leaf, Some(child), "U", "Leaf"),
+    ] {
+        insert_node(&store, &model, &field, scope_id, node).await;
+    }
+    let other_partition_id = Uuid::now_v7();
+    let partition_root = Uuid::now_v7();
+    let partition_child = Uuid::now_v7();
+    insert_node_in_partition(
+        &store,
+        &model,
+        &field,
+        scope_id,
+        other_partition_id,
+        TestNode::new(partition_root, None, "U", "Partition Root"),
+    )
+    .await;
+    insert_node_in_partition(
+        &store,
+        &model,
+        &field,
+        scope_id,
+        other_partition_id,
+        TestNode::new(
+            partition_child,
+            Some(partition_root),
+            "U",
+            "Partition Child",
+        ),
+    )
+    .await;
+
+    let leaf_impact = store
+        .get_ordered_tree_subtree_impact(
+            &metadata,
+            OrderedTreeSubtreeImpactInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                node_id: leaf,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(leaf_impact.affected_count, 1);
+    let nested_impact = store
+        .get_ordered_tree_subtree_impact(
+            &metadata,
+            OrderedTreeSubtreeImpactInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                node_id: root,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(nested_impact.affected_count, 3);
+    let partition_impact = store
+        .get_ordered_tree_subtree_impact(
+            &metadata,
+            OrderedTreeSubtreeImpactInput {
+                scope_id,
+                tree_partition_id: other_partition_id,
+                node_id: partition_root,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(partition_impact.affected_count, 2);
+
+    for (tree_partition_id, node_id) in [(scope_id, partition_root), (scope_id, Uuid::now_v7())] {
+        let error = store
+            .get_ordered_tree_subtree_impact(
+                &metadata,
+                OrderedTreeSubtreeImpactInput {
+                    scope_id,
+                    tree_partition_id,
+                    node_id,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(typed_error(error), OrderedTreeQueryError::NodeNotFound);
+    }
+
+    sqlx::query(&format!(
+        "update \"{}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = $2 and id = $3",
+        model.physical_table_name
+    ))
+    .bind(leaf)
+    .bind(scope_id)
+    .bind(root)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let cycle_impact = store
+        .get_ordered_tree_subtree_impact(
+            &metadata,
+            OrderedTreeSubtreeImpactInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                node_id: root,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(cycle_impact.affected_count, 3);
+
+    let limit_error = store
+        .list_ordered_tree_roots(
+            &metadata,
+            OrderedTreeBoundedListInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                result_limit: 1_001,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        typed_error(limit_error),
+        OrderedTreeQueryError::InvalidResultLimit { .. }
+    ));
 }
 
 // AC-009/AC-014: bounded deep/wide projections preserve tree order and expose paths only opt-in.

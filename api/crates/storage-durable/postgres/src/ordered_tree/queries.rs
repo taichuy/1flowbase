@@ -8,7 +8,7 @@ use runtime_core::{
         OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeDescendantProjection,
         OrderedTreeDescendantsInput, OrderedTreeNodeInput, OrderedTreeNodeProjection,
         OrderedTreeQueryError, OrderedTreeQueryRepository, OrderedTreeSearchInput,
-        OrderedTreeSearchProjection,
+        OrderedTreeSearchProjection, OrderedTreeSubtreeImpactInput, OrderedTreeSubtreeImpactResult,
     },
 };
 use serde_json::Value;
@@ -29,6 +29,42 @@ const MAX_SEARCH_MATCHES: u32 = 100;
 
 #[async_trait]
 impl OrderedTreeQueryRepository for PgControlPlaneStore {
+    async fn get_ordered_tree_subtree_impact(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeSubtreeImpactInput,
+    ) -> Result<OrderedTreeSubtreeImpactResult> {
+        ensure_ordered_tree(metadata)?;
+        let table_name = quote_identifier(&metadata.physical_table_name)?;
+        let affected_count: i64 = sqlx::query_scalar(&format!(
+            r#"
+            with recursive subtree(id, path) as (
+                select id, array[id]
+                from {table_name}
+                where scope_id = $1 and tree_partition_id = $2 and id = $3
+                union all
+                select child.id, subtree.path || child.id
+                from {table_name} child
+                join subtree on child.parent_id = subtree.id
+                where child.scope_id = $1 and child.tree_partition_id = $2
+                  and not child.id = any(subtree.path)
+            )
+            select count(*)::bigint from subtree
+            "#,
+        ))
+        .bind(input.scope_id)
+        .bind(input.tree_partition_id)
+        .bind(input.node_id)
+        .fetch_one(self.pool())
+        .await?;
+        if affected_count == 0 {
+            return Err(OrderedTreeQueryError::NodeNotFound.into());
+        }
+        Ok(OrderedTreeSubtreeImpactResult {
+            affected_count: affected_count.try_into()?,
+        })
+    }
+
     async fn list_ordered_tree_roots(
         &self,
         metadata: &ModelMetadata,

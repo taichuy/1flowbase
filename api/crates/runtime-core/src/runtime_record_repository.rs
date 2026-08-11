@@ -110,6 +110,18 @@ pub struct OrderedTreeNodeInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSubtreeImpactInput {
+    pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
+    pub node_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSubtreeImpactResult {
+    pub affected_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeDescendantsInput {
     pub scope_id: Uuid,
     pub tree_partition_id: Uuid,
@@ -239,6 +251,12 @@ pub trait OrderedTreeStructureRepository: Send + Sync {
 
 #[async_trait]
 pub trait OrderedTreeQueryRepository: Send + Sync {
+    async fn get_ordered_tree_subtree_impact(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeSubtreeImpactInput,
+    ) -> Result<OrderedTreeSubtreeImpactResult>;
+
     async fn list_ordered_tree_roots(
         &self,
         metadata: &ModelMetadata,
