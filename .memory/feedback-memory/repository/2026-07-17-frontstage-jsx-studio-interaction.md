@@ -21,8 +21,8 @@ match_when:
   - 修改 Frontstage 页面、Tab 或区块的设计态操作入口
   - 修改 JSX 区块代码编辑、配置、接口绑定或变量注入体验
 created_at: 2026-07-17 23
-updated_at: 2026-07-25 23
-last_verified_at: 2026-07-25 23
+updated_at: 2026-08-11 16
+last_verified_at: 2026-08-11 16
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -47,6 +47,12 @@ scope:
 - 单次接口插入的阅读单位必须是一个可直接调用的函数或 callable 变量，参数与返回结构服务于这个入口；不要把响应对象每一层机械展开为一组顶层 `interface`，让类型声明淹没调用方法。
 - Frontstage 内部 HTTP/OpenAPI 接口的作者侧身份优先使用规范化 `method + path template`；不要把 `operationId`、`schemaDigest` 或 descriptor 对象泄漏到生成源码。绝对 URL、认证、权限、写授权和 Catalog 解析仍由受控 Host/Backend 吸收。
 - 生成的 callable 函数 / 变量名也是作者源码，只是可重命名的本地别名；必须使用可读业务语义，不得从 `interface_id`、`operationId` 或数据定义 UUID 生成。真正的运行接口身份仍是 `method + path template`。
+- JSX Studio 的树状资源编辑应复用 MCP 管理器的成熟语言：搜索位于树上方，节点 hover 显示上下文动作，拖拽负责排序/移动，创建动作进入完整表单而不是先在面板外选类型再生成匿名节点。
+- 当前区块是子容器树的概念根节点，但不持久化为一个 `child_container`；界面只提供“新增子容器”，顶层子容器是当前区块的直接孩子，不再暴露“新增根容器”。
+- 子容器展示类型除 Drawer、Modal、Inline 外还包括 Page；Page 仍是普通树节点，不额外禁止 Page 创建 Page。无限递归由有限数据、无环约束、惰性/有界查询和导航状态机控制，不用类型层级禁令削弱树表达能力。
+- Studio 工作区需要多 Tab 时，Tab 必须对应真实可维护对象。子容器自身若没有源码真值，不得伪造空的 TSX 代码 Tab；可打开容器配置 Tab，并从中继续打开其挂载 Block 的真实代码 Tab。只有明确引入 container source contract 后，容器才可拥有代码 Tab。
+- 子容器层级不能把全部节点 Schema、代码和子树塞进一条 Page Document 数据。每个子容器应是拥有独立 `block_id`、代码与 Schema 的真实区块记录，父子关系使用可查询的 ordered adjacency tree；Schema UI 查询树摘要，点击节点后按需加载该区块并打开真实代码 Tab。
+- 子区块间的代码引用不属于树结构的可维护外键：节点注册让 AI/Schema UI 可查询子区块，代码按 `block_id` 查询或打开；删除不因静态“事件引用”被数据层阻止。提供叶删除与显式子树删除，残留源码引用在运行时返回 node-not-found 诊断。
 
 ## 原因
 
