@@ -8,6 +8,10 @@ pub trait SessionStore: Send + Sync {
     async fn delete(&self, session_id: &str) -> anyhow::Result<()>;
     async fn touch(&self, session_id: &str, expires_at_unix: i64) -> anyhow::Result<()>;
 
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        anyhow::bail!("session_store_recovery_reset_unsupported")
+    }
+
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
         EphemeralInspectionCapabilities::unsupported()
     }
@@ -84,6 +88,10 @@ where
 
     async fn touch(&self, session_id: &str, expires_at_unix: i64) -> anyhow::Result<()> {
         (**self).touch(session_id, expires_at_unix).await
+    }
+
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        (**self).reset_for_system_recovery().await
     }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {

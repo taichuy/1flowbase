@@ -11,6 +11,7 @@ use super::{
 };
 
 mod coordinator_tests;
+mod reconcile_tests;
 
 #[tokio::test]
 async fn maintenance_fences_new_writes_and_waits_for_every_owner_to_drain() {

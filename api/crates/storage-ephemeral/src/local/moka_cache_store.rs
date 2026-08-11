@@ -379,6 +379,19 @@ impl CacheStore for MokaCacheStore {
         Ok(true)
     }
 
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        let keys = self
+            .visible_entries()
+            .await
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>();
+        for key in keys {
+            self.cache.invalidate(&self.namespaced_key(&key)).await;
+        }
+        Ok(())
+    }
+
     fn inspection_capabilities(&self) -> CacheInspectionCapabilities {
         CacheInspectionCapabilities::supported()
     }

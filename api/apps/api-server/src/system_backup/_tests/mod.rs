@@ -1,21 +1,26 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use control_plane::{
-    ports::{BackupComponentWriter, BackupKeyMaterial, BackupRepository},
+    ports::{
+        BackupComponentWriter, BackupKeyMaterial, BackupRepository, CacheStore, SessionStore,
+        TaskQueue,
+    },
     system_backup::authenticate_backup_manifest,
+    system_recovery::{PostRestoreRecoveryContext, RecoveryEphemeralState},
 };
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
     BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJobId,
     BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
     BackupManifest, BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint,
-    MigrationHead,
+    MigrationHead, RecoveryJobId, SessionRecord,
 };
+use storage_ephemeral::{MemoryTaskQueue, MokaCacheStore, MokaSessionStore};
 use time::OffsetDateTime;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-use super::LocalBackupRepository;
+use super::{ApiRecoveryEphemeralState, LocalBackupRepository};
 
 fn temporary_root(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("1flowbase-{label}-{}", Uuid::now_v7()))
@@ -118,4 +123,63 @@ async fn local_repository_rejects_overlapping_protected_root() {
     );
 
     tokio::fs::remove_dir_all(protected).await.unwrap();
+}
+
+#[tokio::test]
+async fn recovery_ephemeral_adapter_invalidates_old_sessions_cache_and_queue() {
+    let sessions = Arc::new(MokaSessionStore::new("recovery:sessions", 32));
+    let cache = Arc::new(MokaCacheStore::new("recovery:cache", 32));
+    let queue = Arc::new(MemoryTaskQueue::new("recovery:queue"));
+    let session_id = "session-before-restore";
+    sessions
+        .put(SessionRecord {
+            session_id: session_id.to_string(),
+            user_id: Uuid::now_v7(),
+            tenant_id: Uuid::now_v7(),
+            current_workspace_id: Uuid::now_v7(),
+            active_role_code: "root".to_string(),
+            session_version: 1,
+            csrf_token: "fixture-token".to_string(),
+            expires_at_unix: OffsetDateTime::now_utc().unix_timestamp() + 300,
+        })
+        .await
+        .unwrap();
+    CacheStore::set_json(
+        &*cache,
+        "catalog:old",
+        serde_json::json!({"old": true}),
+        None,
+    )
+    .await
+    .unwrap();
+    queue
+        .enqueue("durable-rebuild", serde_json::json!({"old": true}), None)
+        .await
+        .unwrap();
+    let adapter = ApiRecoveryEphemeralState::new(sessions.clone(), cache.clone(), queue.clone());
+    let context = PostRestoreRecoveryContext {
+        recovery_job_id: RecoveryJobId::new(),
+        backup_set_id: BackupSetId::new(),
+        safety_backup_set_id: BackupSetId::new(),
+        actor_user_id: Uuid::now_v7(),
+    };
+
+    adapter.invalidate_after_restore(&context).await.unwrap();
+
+    assert_eq!(sessions.get(session_id).await.unwrap(), None);
+    assert_eq!(
+        CacheStore::get_json(&*cache, "catalog:old").await.unwrap(),
+        None
+    );
+    assert_eq!(
+        queue
+            .claim(
+                "durable-rebuild",
+                "worker-after-restore",
+                time::Duration::seconds(30),
+            )
+            .await
+            .unwrap(),
+        None
+    );
 }
