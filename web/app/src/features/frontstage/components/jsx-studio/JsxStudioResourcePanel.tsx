@@ -16,6 +16,7 @@ import {
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
+import type { BlockStudioSection } from '../../../../shared/code-block/BlockStudioWorkspace';
 import { i18nText } from '../../../../shared/i18n/text';
 import { fetchFrontstageInterfaceCapability } from '../../api/interface-capabilities';
 import { useFrontstageInterfaceCapabilities } from '../../hooks/use-frontstage-interface-capabilities';
@@ -27,13 +28,7 @@ import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
 import { JsxStudioConfigurationPanel } from './JsxStudioConfigurationPanel';
 
-export type FrontstageJsxStudioSection =
-  | 'code'
-  | 'interfaces'
-  | 'variables'
-  | 'components'
-  | 'configuration'
-  | 'run';
+export type FrontstageJsxStudioSection = BlockStudioSection;
 
 export interface JsxStudioContextVariable {
   group?: 'configuration' | 'runtime';
@@ -71,7 +66,7 @@ export function JsxStudioResourcePanel({
   configurationPanel?: ReactNode;
   contextVariables?: readonly JsxStudioContextVariable[] | null;
   interfacePathPrefixes?: readonly string[];
-  section: Exclude<FrontstageJsxStudioSection, 'code'>;
+  section: Exclude<FrontstageJsxStudioSection, 'code' | 'templates'>;
 }) {
   if (section === 'interfaces') {
     return (

@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   CodeOutlined,
   DatabaseOutlined,
+  FileTextOutlined,
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -14,23 +15,53 @@ import { i18nText } from '../i18n/text';
 
 export type BlockStudioSection =
   | 'code'
+  | 'templates'
   | 'interfaces'
   | 'variables'
   | 'components'
   | 'configuration'
   | 'run';
 
-const STUDIO_SECTIONS: Array<{
+const STUDIO_SECTION_DEFINITIONS: Array<{
   key: BlockStudioSection;
   label: string;
   icon: ReactNode;
 }> = [
-  { key: 'code', label: i18nText('frontstage', 'auto.code'), icon: <CodeOutlined /> },
-  { key: 'interfaces', label: i18nText('frontstage', 'auto.interfaces'), icon: <ApiOutlined /> },
-  { key: 'variables', label: i18nText('frontstage', 'auto.variables'), icon: <DatabaseOutlined /> },
-  { key: 'components', label: i18nText('frontstage', 'auto.components'), icon: <AppstoreOutlined /> },
-  { key: 'configuration', label: i18nText('frontstage', 'auto.configuration'), icon: <SettingOutlined /> },
-  { key: 'run', label: i18nText('frontstage', 'auto.preview'), icon: <PlayCircleOutlined /> }
+  {
+    key: 'code',
+    label: i18nText('frontstage', 'auto.code'),
+    icon: <CodeOutlined />
+  },
+  {
+    key: 'templates',
+    label: i18nText('frontstage', 'auto.code_template'),
+    icon: <FileTextOutlined />
+  },
+  {
+    key: 'interfaces',
+    label: i18nText('frontstage', 'auto.interfaces'),
+    icon: <ApiOutlined />
+  },
+  {
+    key: 'variables',
+    label: i18nText('frontstage', 'auto.variables'),
+    icon: <DatabaseOutlined />
+  },
+  {
+    key: 'components',
+    label: i18nText('frontstage', 'auto.components'),
+    icon: <AppstoreOutlined />
+  },
+  {
+    key: 'configuration',
+    label: i18nText('frontstage', 'auto.configuration'),
+    icon: <SettingOutlined />
+  },
+  {
+    key: 'run',
+    label: i18nText('frontstage', 'auto.preview'),
+    icon: <PlayCircleOutlined />
+  }
 ];
 
 const DEFAULT_RESOURCE_PANEL_WIDTH = 320;
@@ -44,12 +75,14 @@ export function BlockStudioWorkspace({
   editor,
   onSectionChange,
   renderResource,
+  sections,
   windowWidth
 }: {
   activeSection: BlockStudioSection;
   editor: ReactNode;
   onSectionChange: (section: BlockStudioSection) => void;
   renderResource: (section: Exclude<BlockStudioSection, 'code'>) => ReactNode;
+  sections: readonly BlockStudioSection[];
   windowWidth: number;
 }) {
   const [resourcePanelWidth, setResourcePanelWidth] = useState(
@@ -120,7 +153,9 @@ export function BlockStudioWorkspace({
         aria-label={i18nText('frontstage', 'auto.jsx_studio_resources')}
         className="frontstage-jsx-studio__rail"
       >
-        {STUDIO_SECTIONS.map((section) => (
+        {STUDIO_SECTION_DEFINITIONS.filter((section) =>
+          sections.includes(section.key)
+        ).map((section) => (
           <Tooltip key={section.key} title={section.label} placement="left">
             <Button
               aria-label={section.label}
