@@ -84,7 +84,10 @@ pub use frontend_block_catalog::{
     FrontendComponentProp, FrontendComponentUpstream, FrontendModuleAsset, FrontendModuleAssetRole,
     FrontendModuleBinding,
 };
-pub use frontstage::{FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode};
+pub use frontstage::{
+    FrontstageBlockNodeRecord, FrontstageBlockNodeSummary, FrontstageBlockPresentation,
+    FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode,
+};
 pub use host_extension::{
     HostExtensionActivationStatus, HostExtensionInventoryRecord, HostExtensionTrustLevel,
     HostInfrastructureConfigStatus, HostInfrastructureProviderConfigRecord,

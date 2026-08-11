@@ -9,6 +9,7 @@ pub mod extension_installation_repository;
 pub mod file_management_repository;
 pub mod flow_repository;
 pub mod frontend_block_catalog_repository;
+pub mod frontstage_block_repository;
 pub mod frontstage_repository;
 pub mod host_extension_migration_repository;
 pub mod host_infrastructure_config_repository;

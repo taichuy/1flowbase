@@ -6,6 +6,7 @@ pub(super) const FRONTSTAGE_PAGE_OWNER_KIND_MIGRATION_VERSION: i64 = 20260710210
 pub(super) const FRONTSTAGE_PLACEMENT_INTEGRITY_MIGRATION_VERSION: i64 = 20260710223000;
 pub(super) const FRONTSTAGE_PAGE_TAB_OWNERSHIP_MIGRATION_VERSION: i64 = 20260718210000;
 pub(super) const FRONTSTAGE_BLOCK_RENDERER_VERSION_MIGRATION_VERSION: i64 = 20260718220000;
+pub(super) const FRONTSTAGE_BLOCK_NODES_MIGRATION_VERSION: i64 = 20260811140000;
 
 pub(super) fn page_tabs_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
@@ -71,6 +72,18 @@ pub(super) fn before_frontstage_block_renderer_version_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
         .iter()
         .filter(|migration| migration.version < FRONTSTAGE_BLOCK_RENDERER_VERSION_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+pub(super) fn before_frontstage_block_nodes_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version < FRONTSTAGE_BLOCK_NODES_MIGRATION_VERSION)
         .cloned()
         .collect::<Vec<_>>();
     Migrator {
