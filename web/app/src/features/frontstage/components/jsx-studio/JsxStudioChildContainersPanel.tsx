@@ -3,6 +3,7 @@ import {
   Button,
   Divider,
   Input,
+  Radio,
   Select,
   Space,
   Tag,
@@ -10,7 +11,7 @@ import {
   Typography
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import {
@@ -130,11 +131,9 @@ export function JsxStudioChildContainersPanel({
   pageBlocks
 }: JsxStudioChildContainersPanelProps) {
   const [draft, setDraft] = useState(() => cloneTree(childContainers));
-  const draftRef = useRef(draft);
   const [selectedId, setSelectedId] = useState<string>();
   const [newPresentation, setNewPresentation] =
     useState<ChildContainerPresentation>('drawer');
-  const newPresentationRef = useRef(newPresentation);
   const [targetContainerIds, setTargetContainerIds] = useState(
     ownerBlock.childContainerTargetIds ?? []
   );
@@ -146,7 +145,6 @@ export function JsxStudioChildContainersPanel({
 
   useEffect(() => {
     const nextDraft = cloneTree(childContainers);
-    draftRef.current = nextDraft;
     setDraft(nextDraft);
     setSelectedId((current) =>
       current && childContainers.some(({ id }) => id === current)
@@ -198,7 +196,6 @@ export function JsxStudioChildContainersPanel({
   const applyDraft = (next: ChildContainerNode[]) => {
     try {
       serializeChildContainerTree(next);
-      draftRef.current = next;
       setDraft(next);
       setDirty(true);
       setFeedback(null);
@@ -207,19 +204,18 @@ export function JsxStudioChildContainersPanel({
     }
   };
   const createDraft = () => {
-    const presentation = newPresentationRef.current;
     return {
       ownerBlockId: ownerBlock.id,
-      presentation,
+      presentation: newPresentation,
       title: i18nText('frontstage', 'auto.child_container_new_title', {
-        value1: presentationLabel(presentation)
+        value1: presentationLabel(newPresentation)
       }),
       blockIds: []
     };
   };
   const addRoot = () => {
     try {
-      applyDraft(addChildContainer(draftRef.current, null, createDraft()));
+      applyDraft(addChildContainer(draft, null, createDraft()));
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -227,9 +223,7 @@ export function JsxStudioChildContainersPanel({
   const addChild = () => {
     if (!selected) return;
     try {
-      applyDraft(
-        addChildContainer(draftRef.current, selected.id, createDraft())
-      );
+      applyDraft(addChildContainer(draft, selected.id, createDraft()));
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -237,9 +231,7 @@ export function JsxStudioChildContainersPanel({
   const addSibling = () => {
     if (!selected) return;
     try {
-      applyDraft(
-        addSiblingChildContainer(draftRef.current, selected.id, createDraft())
-      );
+      applyDraft(addSiblingChildContainer(draft, selected.id, createDraft()));
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -247,7 +239,7 @@ export function JsxStudioChildContainersPanel({
   const updateSelected = (change: Partial<ChildContainerNode>) => {
     if (!selected) return;
     applyDraft(
-      draftRef.current.map((container) =>
+      draft.map((container) =>
         container.id === selected.id ? { ...container, ...change } : container
       )
     );
@@ -283,22 +275,23 @@ export function JsxStudioChildContainersPanel({
       ) : null}
 
       <section className="frontstage-jsx-studio__resource-section">
-        <Select<ChildContainerPresentation>
+        <Radio.Group
           aria-label={i18nText(
             'frontstage',
             'auto.child_container_new_presentation'
           )}
           disabled={!canEdit}
           value={newPresentation}
-          options={(['drawer', 'modal', 'inline'] as const).map((value) => ({
-            value,
-            label: presentationLabel(value)
-          }))}
-          onChange={(presentation) => {
-            newPresentationRef.current = presentation;
-            setNewPresentation(presentation);
-          }}
-        />
+          onChange={(event) =>
+            setNewPresentation(event.target.value as ChildContainerPresentation)
+          }
+        >
+          {(['drawer', 'modal', 'inline'] as const).map((presentation) => (
+            <Radio.Button key={presentation} value={presentation}>
+              {presentationLabel(presentation)}
+            </Radio.Button>
+          ))}
+        </Radio.Group>
         <Space wrap>
           <Button disabled={!canEdit} onClick={addRoot}>
             {i18nText('frontstage', 'auto.child_container_add_root')}
@@ -393,52 +386,42 @@ export function JsxStudioChildContainersPanel({
                 updateSelected({ title: event.target.value })
               }
             />
-            <Select<ChildContainerPresentation>
+            <Radio.Group
               aria-label={i18nText(
                 'frontstage',
                 'auto.child_container_presentation'
               )}
               disabled={!canEdit}
               value={selected.presentation}
-              options={(['drawer', 'modal', 'inline'] as const).map(
-                (value) => ({
-                  value,
-                  label: presentationLabel(value)
+              onChange={(event) =>
+                updateSelected({
+                  presentation: event.target.value as ChildContainerPresentation
                 })
-              )}
-              onChange={(presentation) => updateSelected({ presentation })}
-            />
-            <Select<string>
+              }
+            >
+              {(['drawer', 'modal', 'inline'] as const).map((presentation) => (
+                <Radio.Button key={presentation} value={presentation}>
+                  {presentationLabel(presentation)}
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+            <select
               aria-label={i18nText('frontstage', 'auto.child_container_parent')}
               disabled={!canEdit}
               value={selected.parentId ?? '__page_root__'}
-              options={[
-                {
-                  value: '__page_root__',
-                  label: i18nText(
-                    'frontstage',
-                    'auto.child_container_page_root'
-                  )
-                },
-                ...draft
-                  .filter(({ id }) => id !== selected.id)
-                  .map((container) => ({
-                    value: container.id,
-                    label: container.title
-                  }))
-              ]}
-              onChange={(parentValue) => {
+              onChange={(event) => {
+                const parentValue = event.target.value;
                 const parentId =
                   parentValue === '__page_root__' ? null : parentValue;
                 try {
-                  const destinationSiblingCount = draftRef.current.filter(
+                  const destinationSiblingCount = draft.filter(
                     (container) =>
                       container.parentId === parentId &&
                       container.id !== selected.id
                   ).length;
                   applyDraft(
                     moveChildContainer(
-                      draftRef.current,
+                      draft,
                       selected.id,
                       parentId,
                       destinationSiblingCount
@@ -448,7 +431,18 @@ export function JsxStudioChildContainersPanel({
                   setFeedback({ type: 'error', message: errorMessage(error) });
                 }
               }}
-            />
+            >
+              <option value="__page_root__">
+                {i18nText('frontstage', 'auto.child_container_page_root')}
+              </option>
+              {draft
+                .filter(({ id }) => id !== selected.id)
+                .map((container) => (
+                  <option key={container.id} value={container.id}>
+                    {container.title}
+                  </option>
+                ))}
+            </select>
             <Select<string[]>
               mode="multiple"
               aria-label={i18nText('frontstage', 'auto.child_container_blocks')}
@@ -508,7 +502,7 @@ export function JsxStudioChildContainersPanel({
                 onClick={() =>
                   applyDraft(
                     reorderChildContainer(
-                      draftRef.current,
+                      draft,
                       selected.id,
                       selectedSiblingIndex - 1
                     )
@@ -524,7 +518,7 @@ export function JsxStudioChildContainersPanel({
                 onClick={() =>
                   applyDraft(
                     reorderChildContainer(
-                      draftRef.current,
+                      draft,
                       selected.id,
                       selectedSiblingIndex + 1
                     )
@@ -543,13 +537,9 @@ export function JsxStudioChildContainersPanel({
                 disabled={!canEdit}
                 onClick={() => {
                   try {
-                    const next = deleteChildContainer(
-                      draftRef.current,
-                      selected.id,
-                      {
-                        targetContainerIds: targetReferences
-                      }
-                    );
+                    const next = deleteChildContainer(draft, selected.id, {
+                      targetContainerIds: targetReferences
+                    });
                     applyDraft(next);
                     setSelectedId(undefined);
                   } catch (error) {
@@ -578,9 +568,7 @@ export function JsxStudioChildContainersPanel({
           setSaving(true);
           setFeedback(null);
           try {
-            const saved = await onSaveChildContainers(
-              cloneTree(draftRef.current)
-            );
+            const saved = await onSaveChildContainers(cloneTree(draft));
             if (saved !== false) {
               setDirty(false);
               setFeedback({

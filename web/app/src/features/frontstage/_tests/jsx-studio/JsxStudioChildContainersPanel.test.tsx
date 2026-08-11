@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -77,11 +83,13 @@ describe('JSX Studio child containers panel', () => {
     );
 
     fireEvent.click(screen.getAllByText('Root')[0]!);
-    fireEvent.mouseDown(
-      screen.getByRole('combobox', { name: '新容器展示方式' })
+    fireEvent.click(
+      within(
+        screen.getByRole('radiogroup', { name: '新容器展示方式' })
+      ).getByRole('radio', { name: '弹窗' })
     );
-    fireEvent.click(await screen.findByText('弹窗'));
     fireEvent.click(screen.getByRole('button', { name: '新增子级' }));
+    expect(screen.getByText('新建弹窗容器')).toBeInTheDocument();
     fireEvent.click(screen.getByText('新建弹窗容器'));
 
     fireEvent.change(screen.getByRole('textbox', { name: '标题' }), {
@@ -216,11 +224,17 @@ describe('JSX Studio child containers panel', () => {
     );
 
     fireEvent.click(screen.getByText('Movable'));
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '容器展示方式' }));
-    fireEvent.click(screen.getByRole('option', { name: '弹窗' }));
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: '父级容器' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Parent B' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存子容器' }));
+    const modalPresentation = within(
+      screen.getByRole('radiogroup', { name: '容器展示方式' })
+    ).getByRole('radio', { name: '弹窗' });
+    fireEvent.click(modalPresentation);
+    expect(modalPresentation).toBeChecked();
+    fireEvent.change(screen.getByRole('combobox', { name: '父级容器' }), {
+      target: { value: 'parent-b' }
+    });
+    const saveButton = screen.getByRole('button', { name: '保存子容器' });
+    expect(saveButton).toBeEnabled();
+    fireEvent.click(saveButton);
 
     await waitFor(() => expect(onSaveChildContainers).toHaveBeenCalledTimes(1));
     expect(onSaveChildContainers).toHaveBeenCalledWith(
