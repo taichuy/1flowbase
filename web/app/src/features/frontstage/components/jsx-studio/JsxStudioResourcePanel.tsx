@@ -26,6 +26,7 @@ import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-inserti
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
 import { BlockSchemaTreePanel } from '../block-schema-tree/BlockSchemaTreePanel';
+import type { FrontstageBlockDeletedEvent } from './block-tabs/types';
 import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
 import { JsxStudioConfigurationPanel } from './JsxStudioConfigurationPanel';
 
@@ -44,11 +45,12 @@ const INTERFACE_FILTER_POPUP_STYLES = {
 export function JsxStudioResourcePanel({
   block,
   codeSource,
+  currentBlockId,
   pageBlocks,
   pageId,
   workspaceId,
   onInsertCode,
-  onDeletedBlockIds,
+  onDeletedBlock,
   onOpenBlock,
   onSaveBlock,
   projection,
@@ -60,11 +62,12 @@ export function JsxStudioResourcePanel({
 }: {
   block: FrontstageBlockInstance;
   codeSource: string;
+  currentBlockId?: string;
   pageBlocks: readonly FrontstageBlockInstance[];
   pageId?: string;
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
-  onDeletedBlockIds?: (blockIds: string[]) => void;
+  onDeletedBlock?: (event: FrontstageBlockDeletedEvent) => void;
   onOpenBlock?: (blockId: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
@@ -100,10 +103,10 @@ export function JsxStudioResourcePanel({
   if (section === 'block-tree' && onOpenBlock && pageId) {
     return (
       <BlockSchemaTreePanel
-        currentBlockId={block.id}
+        currentBlockId={currentBlockId ?? block.id}
         pageId={pageId}
         workspaceId={workspaceId}
-        onDeletedBlockIds={onDeletedBlockIds}
+        onDeletedBlock={onDeletedBlock}
         onOpenBlock={onOpenBlock}
       />
     );

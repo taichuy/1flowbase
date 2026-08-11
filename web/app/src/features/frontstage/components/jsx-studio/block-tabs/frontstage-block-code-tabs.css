@@ -1,0 +1,35 @@
+.frontstage-block-code-tabs {
+  min-width: 0;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  overflow: hidden;
+  background: var(--ant-color-bg-container);
+}
+
+.frontstage-block-code-tabs__label {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 180px;
+  align-items: center;
+  gap: 6px;
+}
+
+.frontstage-block-code-tabs__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frontstage-block-code-tabs__dirty {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--ant-color-warning);
+}
+
+@media (max-width: 600px) {
+  .frontstage-block-code-tabs__label {
+    max-width: 120px;
+  }
+}

@@ -33,7 +33,6 @@ import {
   fetchFrontstageBlockAncestors,
   fetchFrontstageBlockChildren,
   fetchFrontstageBlockDeleteImpact,
-  fetchFrontstageBlockDescendants,
   fetchFrontstageBlockNode,
   fetchFrontstageBlockRoots,
   frontstageBlockTreeQueryKeys,
@@ -44,6 +43,7 @@ import {
 } from '../../api/block-tree';
 import { useFrontstageBlockTreeMutations } from '../../hooks/use-frontstage-block-tree-mutations';
 import { isForbiddenResponseError } from '../../lib/api-errors';
+import type { FrontstageBlockDeletedEvent } from '../jsx-studio/block-tabs/types';
 import {
   toBlockTreeMoveInput,
   type BlockSchemaTreeDropInfo,
@@ -69,7 +69,7 @@ export interface BlockSchemaTreePanelProps {
   pageId: string;
   currentBlockId: string;
   onOpenBlock: (blockId: string) => void;
-  onDeletedBlockIds?: (blockIds: string[]) => void;
+  onDeletedBlock?: (event: FrontstageBlockDeletedEvent) => void;
 }
 
 export function BlockSchemaTreePanel({
@@ -77,7 +77,7 @@ export function BlockSchemaTreePanel({
   pageId,
   currentBlockId,
   onOpenBlock,
-  onDeletedBlockIds
+  onDeletedBlock
 }: BlockSchemaTreePanelProps) {
   const { message, modal } = App.useApp();
   const [form] = Form.useForm<BlockFormValues>();
@@ -220,7 +220,7 @@ export function BlockSchemaTreePanel({
     const values = await form.validateFields();
     try {
       if (formTarget.mode === 'create') {
-        await mutations.create.mutateAsync({
+        const created = await mutations.create.mutateAsync({
           tab_id: formTarget.parent.tab_id,
           title: values.title,
           presentation: values.presentation,
@@ -239,6 +239,7 @@ export function BlockSchemaTreePanel({
         void message.success(
           i18nText('frontstage', 'auto.block_tree_created')
         );
+        onOpenBlock(created.block_id);
       } else {
         await mutations.update.mutateAsync({
           block_id: formTarget.node.block_id,
@@ -266,19 +267,6 @@ export function BlockSchemaTreePanel({
         pageId,
         node.block_id
       );
-      let deletedBlockIds = [node.block_id];
-      if (impact.affected_count > 1) {
-        const descendants = await fetchFrontstageBlockDescendants(
-          workspaceId,
-          pageId,
-          node.block_id,
-          { limit: impact.affected_count }
-        );
-        deletedBlockIds = [
-          node.block_id,
-          ...descendants.map(({ node: descendant }) => descendant.block_id)
-        ];
-      }
       modal.confirm({
         title:
           impact.affected_count === 1
@@ -312,7 +300,10 @@ export function BlockSchemaTreePanel({
               });
             }
             await refreshOwner(node.parent_block_id);
-            onDeletedBlockIds?.(deletedBlockIds);
+            onDeletedBlock?.({
+              block_id: node.block_id,
+              subtree: impact.affected_count > 1
+            });
             void message.success(
               i18nText('frontstage', 'auto.block_tree_deleted')
             );

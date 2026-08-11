@@ -1232,18 +1232,14 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
             pageBlocks={displayedPageDocument?.blocks}
             catalogEntry={matchingJsBlockCatalogEntry}
             onClose={() => setIsJsxStudioOpen(false)}
-            onDeletedBlockIds={(blockIds) => {
-              if (blockIds.includes(selectedBlock.id)) {
-                setIsJsxStudioOpen(false);
-                setSelectedBlockId(null);
-              }
-            }}
-            onOpenBlock={setSelectedBlockId}
             onSaveBlock={saveStudioBlock}
-            runPanel={({ code, runRevision }) =>
-              runRevision === null ? undefined : (
+            runPanel={({ blockId, code, runRevision }) => {
+              const activeStudioBlock = displayedPageDocument?.blocks.find(
+                (candidate) => candidate.id === blockId
+              );
+              return runRevision === null || !activeStudioBlock ? undefined : (
                 <JsxStudioRunPanel
-                  block={selectedBlock}
+                  block={activeStudioBlock}
                   code={code}
                   createBlockContext={createTrialBlockContext}
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
@@ -1256,8 +1252,8 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
                   }
                   revision={`run:${runRevision}`}
                 />
-              )
-            }
+              );
+            }}
           />
         ) : null}
       </>

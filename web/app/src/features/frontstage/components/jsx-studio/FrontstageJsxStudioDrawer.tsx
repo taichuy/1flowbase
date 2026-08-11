@@ -10,8 +10,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
-import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import { isForbiddenResponseError } from '../../lib/api-errors';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
 import {
@@ -20,6 +20,9 @@ import {
   type FrontstageJsxInsertion
 } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
+import { FrontstageBlockCodeTabs } from './block-tabs/FrontstageBlockCodeTabs';
+import type { FrontstageBlockDeletedEvent } from './block-tabs/types';
+import { useFrontstageBlockTabs } from './block-tabs/use-frontstage-block-tabs';
 import {
   JsxStudioResourcePanel,
   type FrontstageJsxStudioSection
@@ -37,10 +40,12 @@ export interface FrontstageJsxStudioDrawerProps {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   runPanel?:
     | ReactNode
-    | ((context: { code: string; runRevision: number | null }) => ReactNode);
+    | ((context: {
+        blockId: string;
+        code: string;
+        runRevision: number | null;
+      }) => ReactNode);
   onClose: () => void;
-  onOpenBlock?: (blockId: string) => void;
-  onDeletedBlockIds?: (blockIds: string[]) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
 
@@ -49,8 +54,6 @@ export function FrontstageJsxStudioDrawer({
   catalogEntry,
   initialSection,
   onClose,
-  onDeletedBlockIds,
-  onOpenBlock,
   onSaveBlock,
   open,
   pageBlocks = [],
@@ -61,35 +64,38 @@ export function FrontstageJsxStudioDrawer({
 }: FrontstageJsxStudioDrawerProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [runRevision, setRunRevision] = useState<number | null>(null);
-  const {
-    draft,
-    dirty,
-    error,
-    loading,
-    permissionDenied,
-    reset,
-    save,
-    saving,
-    setDraft
-  } = useFrontstageBlockCode({
+  const blockTabs = useFrontstageBlockTabs({
     workspaceId,
     pageId,
-    codeRef: block.codeRef
+    initialBlockId: block.id,
+    open
   });
+  const activeTab = blockTabs.activeTab;
+  const activeBlockId = activeTab?.block_id ?? block.id;
+  const draft = activeTab?.draft ?? '';
+  const permissionDenied = isForbiddenResponseError(activeTab?.error);
+  const notFound =
+    activeTab?.error !== null &&
+    typeof activeTab?.error === 'object' &&
+    activeTab.error !== null &&
+    'status' in activeTab.error &&
+    activeTab.error.status === 404;
   const projection = useMemo(
     () => createFrontstageJsxEditorProjection({ catalogEntry }),
     [catalogEntry]
   );
   useEffect(() => {
     if (open) setRunRevision(null);
-  }, [block.id, open]);
+  }, [activeBlockId, open]);
   const compileDiagnostics = useMemo(() => {
-    if (!tabId || draft.trim().length === 0) return [];
+    const activeTabId = activeTab?.detail?.tab_id;
+    if (!activeTabId || draft.trim().length === 0) return [];
     const legacyDiagnostic = diagnoseLegacyBlockModuleSource(draft);
     if (legacyDiagnostic) {
-      return createJsBlockDiagnostics({ pageId, tabId, blockId: block.id }, [
-        legacyDiagnostic
-      ]);
+      return createJsBlockDiagnostics(
+        { pageId, tabId: activeTabId, blockId: activeBlockId },
+        [legacyDiagnostic]
+      );
     }
     const validation = validateNativeTrustedBlockSource(draft, {
       allowedImportSources: projection.allowedImportSources
@@ -97,10 +103,16 @@ export function FrontstageJsxStudioDrawer({
     return validation.ok
       ? []
       : createJsBlockDiagnostics(
-          { pageId, tabId, blockId: block.id },
+          { pageId, tabId: activeTabId, blockId: activeBlockId },
           validation.errors
         );
-  }, [block.id, draft, pageId, projection.allowedImportSources, tabId]);
+  }, [
+    activeBlockId,
+    activeTab?.detail?.tab_id,
+    draft,
+    pageId,
+    projection.allowedImportSources
+  ]);
   const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
@@ -144,59 +156,80 @@ export function FrontstageJsxStudioDrawer({
       selection: { start: source.length, end: source.length },
       insertion
     });
-    setDraft(`${applyFrontstageJsxInsertionPlan(source, plan)}\n`);
+    blockTabs.setActiveDraft(
+      `${applyFrontstageJsxInsertionPlan(source, plan)}\n`
+    );
   };
   const resolvedRunPanel =
     typeof runPanel === 'function'
-      ? runPanel({ code: draft, runRevision })
+      ? runPanel({ blockId: activeBlockId, code: draft, runRevision })
       : runPanel;
+  const handleDeletedBlock = async (event: FrontstageBlockDeletedEvent) => {
+    const result = await blockTabs.handleDeletedBlock(event);
+    if (result === 'initial_root_deleted') onClose();
+  };
 
   return (
     <BlockSourceStudio
       contextComment={projection.contextComment}
-      dirty={dirty}
+      dirty={blockTabs.anyDirty}
       errorMessage={
-        error && !permissionDenied
-          ? i18nText('frontstage', 'auto.code_load_or_save_failed')
-          : null
+        notFound
+          ? i18nText('frontstage', 'auto.block_tab_not_found')
+          : activeTab?.error && !permissionDenied
+            ? activeTab.error instanceof Error
+              ? activeTab.error.message
+              : i18nText('frontstage', 'auto.code_load_or_save_failed')
+            : null
+      }
+      editorHeader={
+        <FrontstageBlockCodeTabs
+          activeBlockId={activeBlockId}
+          initialBlockId={block.id}
+          tabs={blockTabs.tabs}
+          onActivate={blockTabs.activateBlock}
+          onClose={blockTabs.closeBlock}
+        />
       }
       extraLibs={projection.monacoExtraLibs}
       initialSection={initialSection}
-      loading={loading}
+      loading={activeTab?.loading ?? true}
       open={open}
       owner={`frontstage:${pageId}:${tabId ?? 'tab'}`}
-      path={`file:///frontstage/${pageId}/${tabId ?? 'tab'}/${block.id}.tsx`}
-      readOnly={permissionDenied}
-      saving={saving}
+      path={`file:///frontstage/${pageId}/blocks/${encodeURIComponent(activeBlockId)}.tsx`}
+      readOnly={permissionDenied || notFound}
+      saving={activeTab?.saving ?? false}
       sections={[
         'code',
         'templates',
         'interfaces',
         'variables',
-        ...(onOpenBlock ? (['block-tree'] as const) : []),
+        'block-tree',
         'components',
         'configuration',
         'run'
       ]}
       source={draft}
-      testId={`frontstage-jsx-studio-${block.codeRef}`}
-      windowId={`frontstage-jsx-studio:${block.codeRef}`}
+      testId={`frontstage-jsx-studio-${block.id}`}
+      windowId={`frontstage-jsx-studio:${block.id}`}
       editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
       editorDiagnostics={compileDiagnostics}
-      onChange={setDraft}
+      onChange={blockTabs.setActiveDraft}
       onClose={onClose}
       onEditorMount={(editor) => {
         editorRef.current = editor;
       }}
       onInjectContext={injectFrontstageContextComment}
-      onReset={reset}
+      onReset={blockTabs.resetActive}
       onRun={() => {
         if (!hasLegacySource) {
           setRunRevision((current) => (current ?? 0) + 1);
         }
       }}
       onSave={() => {
-        if (!hasLegacySource) void save().catch(() => undefined);
+        if (!hasLegacySource) {
+          void blockTabs.saveActive().catch(() => undefined);
+        }
       }}
       renderResource={(section) =>
         section === 'templates' ? (
@@ -204,18 +237,19 @@ export function FrontstageJsxStudioDrawer({
             catalogEntry={catalogEntry}
             readOnly={permissionDenied}
             workspaceId={workspaceId}
-            onReplaceCode={setDraft}
+            onReplaceCode={blockTabs.setActiveDraft}
           />
         ) : (
           <JsxStudioResourcePanel
             block={block}
             codeSource={draft}
+            currentBlockId={activeBlockId}
             pageBlocks={pageBlocks}
             pageId={pageId}
             workspaceId={workspaceId}
             onInsertCode={insertCode}
-            onDeletedBlockIds={onDeletedBlockIds}
-            onOpenBlock={onOpenBlock}
+            onDeletedBlock={(event) => void handleDeletedBlock(event)}
+            onOpenBlock={blockTabs.openBlock}
             onSaveBlock={onSaveBlock}
             projection={projection}
             runPanel={resolvedRunPanel}

@@ -14,7 +14,6 @@ const api = vi.hoisted(() => ({
   fetchFrontstageBlockAncestors: vi.fn(),
   fetchFrontstageBlockChildren: vi.fn(),
   fetchFrontstageBlockDeleteImpact: vi.fn(),
-  fetchFrontstageBlockDescendants: vi.fn(),
   fetchFrontstageBlockNode: vi.fn(),
   fetchFrontstageBlockRoots: vi.fn(),
   searchFrontstageBlocks: vi.fn()
@@ -86,19 +85,19 @@ function renderPanel(
   props: Partial<ComponentProps<typeof BlockSchemaTreePanel>> = {}
 ) {
   const onOpenBlock = vi.fn();
-  const onDeletedBlockIds = vi.fn();
+  const onDeletedBlock = vi.fn();
   render(
     <BlockSchemaTreePanel
       workspaceId="workspace-1"
       pageId="page-1"
       currentBlockId="root-page"
       onOpenBlock={onOpenBlock}
-      onDeletedBlockIds={onDeletedBlockIds}
+      onDeletedBlock={onDeletedBlock}
       {...props}
     />,
     { wrapper: Wrapper }
   );
-  return { onDeletedBlockIds, onOpenBlock };
+  return { onDeletedBlock, onOpenBlock };
 }
 
 describe('BlockSchemaTreePanel', () => {
@@ -114,9 +113,6 @@ describe('BlockSchemaTreePanel', () => {
     api.fetchFrontstageBlockDeleteImpact.mockResolvedValue({
       affected_count: 2
     });
-    api.fetchFrontstageBlockDescendants.mockResolvedValue([
-      { node: child, depth: 1, has_children: false, path: ['child-page'] }
-    ]);
     mutations.create.mutateAsync.mockResolvedValue(detail(child));
     mutations.update.mutateAsync.mockResolvedValue(detail(root));
     mutations.deleteLeaf.mutateAsync.mockResolvedValue(undefined);
@@ -170,7 +166,7 @@ describe('BlockSchemaTreePanel', () => {
   });
 
   test('AC-004 creates a Page child with inherited tab and stable valid source', async () => {
-    renderPanel();
+    const { onOpenBlock } = renderPanel();
     await screen.findByText('Root page');
     fireEvent.click(
       screen.getByRole('button', { name: /新增子区块|Create child block/u })
@@ -193,11 +189,12 @@ describe('BlockSchemaTreePanel', () => {
         code: 'export default function Block() { return null; }\n',
         runtime_descriptor: null
       });
+      expect(onOpenBlock).toHaveBeenCalledWith('child-page');
     });
   });
 
   test('AC-004 edits title/presentation and confirms subtree impact', async () => {
-    const { onDeletedBlockIds } = renderPanel();
+    const { onDeletedBlock } = renderPanel();
     await screen.findByText('Root page');
     fireEvent.click(screen.getByRole('button', { name: /编辑|Edit/u }));
     fireEvent.change(screen.getByLabelText(/标题|Title/u), {
@@ -237,10 +234,10 @@ describe('BlockSchemaTreePanel', () => {
         parent_block_id: null,
         input: { expected_affected_count: 2 }
       });
-      expect(onDeletedBlockIds).toHaveBeenCalledWith([
-        'root-page',
-        'child-page'
-      ]);
+      expect(onDeletedBlock).toHaveBeenCalledWith({
+        block_id: 'root-page',
+        subtree: true
+      });
     });
   });
 
@@ -248,7 +245,7 @@ describe('BlockSchemaTreePanel', () => {
     api.fetchFrontstageBlockDeleteImpact.mockResolvedValueOnce({
       affected_count: 1
     });
-    const { onDeletedBlockIds } = renderPanel();
+    const { onDeletedBlock } = renderPanel();
     await screen.findByText('Root page');
     fireEvent.click(screen.getByRole('button', { name: /删除|Delete/u }));
     expect(
@@ -262,7 +259,10 @@ describe('BlockSchemaTreePanel', () => {
         block_id: 'root-page',
         parent_block_id: null
       });
-      expect(onDeletedBlockIds).toHaveBeenCalledWith(['root-page']);
+      expect(onDeletedBlock).toHaveBeenCalledWith({
+        block_id: 'root-page',
+        subtree: false
+      });
     });
   });
 
