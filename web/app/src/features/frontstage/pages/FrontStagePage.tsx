@@ -41,13 +41,6 @@ import {
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
 import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
-import type { ChildContainerNode } from '../lib/child-container-tree';
-import {
-  getRootPageBlockIds,
-  resolveChildContainerCloseTarget,
-  resolveChildContainerEvent,
-  resolveChildContainerRuntime
-} from '../lib/child-container-runtime';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
@@ -90,25 +83,18 @@ import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMe
 import { usePageTreeWorkspace } from './frontstage-page/use-page-tree-workspace';
 import './frontstage-page.css';
 
-type FrontStagePageContainerProps = FrontStagePageProps & {
-  containerId?: string;
-  onContainerIdChange?: (
-    containerId: string | null,
-    mode: 'push' | 'replace'
-  ) => void;
-};
-const EMPTY_CHILD_CONTAINERS: readonly ChildContainerNode[] = [];
-
-export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
+export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
   pageId,
   tabId,
+  blockRuntime,
+  isBlockRuntimeLoading = false,
+  hasBlockRuntimeLoadError = false,
+  onNavigateBlock,
   showSidebar = true,
   autoSelectFirstPage = true,
   onNavigatePage,
   onNavigateTab,
-  containerId,
-  onContainerIdChange,
   initialPageTree,
   isPageTreeLoading,
   hasPageTreeLoadError,
@@ -183,9 +169,6 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
   const blockCreationPendingRef = useRef(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
-  const [childContainerRuntimeError, setChildContainerRuntimeError] = useState<
-    string | null
-  >(null);
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
   const pageContentSave = useFrontstagePageContentSave({
     workspaceId,
@@ -206,19 +189,9 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
         : null,
     [activePageContent]
   );
-  const childContainers =
-    displayedPageDocument?.childContainers ?? EMPTY_CHILD_CONTAINERS;
-  const childContainerRuntime = useMemo(
-    () => resolveChildContainerRuntime(childContainers, containerId),
-    [childContainers, containerId]
-  );
   const rootPageBlockIds = useMemo(
-    () =>
-      getRootPageBlockIds(
-        (displayedPageDocument?.blocks ?? []).map((block) => block.id),
-        childContainers
-      ),
-    [childContainers, displayedPageDocument?.blocks]
+    () => (displayedPageDocument?.blocks ?? []).map((block) => block.id),
+    [displayedPageDocument?.blocks]
   );
   const pageSignalSession = useMemo(
     () => createFrontstagePageSignalSession(),
@@ -245,36 +218,6 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
   useEffect(
     () => () => pageSignalCoordinator?.dispose(),
     [pageSignalCoordinator]
-  );
-  useEffect(() => {
-    setChildContainerRuntimeError(
-      childContainerRuntime.diagnostics[0]?.message ?? null
-    );
-  }, [childContainerRuntime.diagnostics]);
-  const openChildContainer = useCallback(
-    (
-      sourceBlockId: string,
-      name: string,
-      payload?: Record<string, unknown>
-    ) => {
-      const resolution = resolveChildContainerEvent(childContainers, {
-        sourceBlockId,
-        sourceTargetContainerIds:
-          displayedPageDocument?.blocks.find(({ id }) => id === sourceBlockId)
-            ?.childContainerTargetIds ?? [],
-        name,
-        payload
-      });
-      if (resolution.diagnostic) {
-        setChildContainerRuntimeError(resolution.diagnostic.message);
-        return;
-      }
-      if (resolution.containerId) {
-        setChildContainerRuntimeError(null);
-        onContainerIdChange?.(resolution.containerId, 'push');
-      }
-    },
-    [childContainers, displayedPageDocument?.blocks, onContainerIdChange]
   );
   const confirmRuntimeWrite = useCallback(
     ({ method, path }: { method: string; path: string }) =>
@@ -329,12 +272,6 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
       jsBlockCapabilityHandlers && selectedPageId && tabId
         ? {
             interface: jsBlockCapabilityHandlers.interface,
-            emitEvent: (event) =>
-              openChildContainer(
-                event.requestId.split(':')[1] ?? '',
-                event.name,
-                event.payload
-              ),
             observeApiCall: (observation) =>
               recordFrontstageRuntimeObservation({
                 actorId: actor?.id ?? 'anonymous',
@@ -354,14 +291,7 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
               })
           }
         : undefined,
-    [
-      actor?.id,
-      jsBlockCapabilityHandlers,
-      openChildContainer,
-      selectedPageId,
-      tabId,
-      workspaceId
-    ]
+    [actor?.id, jsBlockCapabilityHandlers, selectedPageId, tabId, workspaceId]
   );
   const activePageRenderPlan = useMemo(
     () =>
@@ -938,14 +868,24 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
       onSelectPage={handleSelectPage}
     />
   );
-  const renderChildContainerLayers = (index = 0): ReactNode => {
-    const container = childContainerRuntime.renderPath[index];
-    if (!container) return null;
-    const closeContainer = () =>
-      onContainerIdChange?.(
-        resolveChildContainerCloseTarget(childContainers, container.id),
-        'replace'
-      );
+  const blockRuntimePath = blockRuntime
+    ? [...blockRuntime.ancestors, blockRuntime.current]
+    : null;
+  let runtimePageIndex = -1;
+  blockRuntimePath?.forEach((node, index) => {
+    if (node.presentation === 'page') runtimePageIndex = index;
+  });
+  const runtimeBaseBlockId =
+    runtimePageIndex >= 0
+      ? blockRuntimePath?.[runtimePageIndex]?.block_id
+      : undefined;
+  const runtimeLayerOffset = runtimePageIndex + 1;
+  const runtimeLayers = blockRuntimePath?.slice(runtimeLayerOffset) ?? [];
+  const renderBlockRuntimeLayers = (index = 0): ReactNode => {
+    const node = runtimeLayers[index];
+    if (!node) return null;
+    const parent = blockRuntimePath?.[runtimeLayerOffset + index - 1];
+    const closeBlock = () => onNavigateBlock?.(parent?.block_id ?? null);
     const content = (
       <>
         <PageCanvas
@@ -965,7 +905,7 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
           runtimePreparations={pageCanvasNativePreparations.preparations}
           runtimeContext={nativeBlockRuntimeContext}
           nativeContextHost={nativeContextHost}
-          renderBlockIds={container.blockIds}
+          renderBlockIds={[node.block_id]}
           sharedSignalCoordinator={pageSignalCoordinator}
           onRuntimeDemandChange={handleRuntimeDemandChange}
           onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
@@ -979,31 +919,31 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
           }
           showTitle={false}
         />
-        {renderChildContainerLayers(index + 1)}
+        {renderBlockRuntimeLayers(index + 1)}
       </>
     );
 
-    if (container.presentation === 'drawer') {
+    if (node.presentation === 'drawer') {
       return (
         <Drawer
           open
-          title={container.title}
+          title={node.title}
           width="min(720px, 92vw)"
-          onClose={closeContainer}
+          onClose={closeBlock}
         >
           {content}
         </Drawer>
       );
     }
-    if (container.presentation === 'modal') {
+    if (node.presentation === 'modal') {
       return (
         <Modal
           open
           destroyOnHidden
           footer={null}
-          title={container.title}
+          title={node.title}
           width={720}
-          onCancel={closeContainer}
+          onCancel={closeBlock}
         >
           {content}
         </Modal>
@@ -1011,7 +951,7 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
     }
     return (
       <section
-        aria-label={container.title}
+        aria-label={node.title ?? node.block_id}
         style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}
       >
         <div
@@ -1023,8 +963,8 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
             marginBottom: 8
           }}
         >
-          <Typography.Text strong>{container.title}</Typography.Text>
-          <Button size="small" onClick={closeContainer}>
+          <Typography.Text strong>{node.title}</Typography.Text>
+          <Button size="small" onClick={closeBlock}>
             {i18nText('frontstage', 'auto.close')}
           </Button>
         </div>
@@ -1051,22 +991,19 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
           showIcon
         />
       ) : null}
-      {childContainerRuntimeError ? (
-        <Alert
-          showIcon
-          type="error"
-          title={childContainerRuntimeError}
-          style={{ marginBottom: 12 }}
-        />
-      ) : null}
       <PageCanvas
         content={
           selectedPageNode && hasLoadedSelectedPageContent
             ? displayedPageContent
             : undefined
         }
-        isLoading={Boolean(selectedPageNode && isPageContentLoading)}
-        hasError={Boolean(selectedPageNode && hasPageContentLoadError)}
+        isLoading={Boolean(
+          selectedPageNode && (isPageContentLoading || isBlockRuntimeLoading)
+        )}
+        hasError={Boolean(
+          selectedPageNode &&
+          (hasPageContentLoadError || hasBlockRuntimeLoadError)
+        )}
         isPermissionDenied={Boolean(
           selectedPageNode && isPageContentPermissionDenied
         )}
@@ -1086,7 +1023,13 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
         runtimePreparations={pageCanvasNativePreparations.preparations}
         runtimeContext={nativeBlockRuntimeContext}
         nativeContextHost={nativeContextHost}
-        renderBlockIds={rootPageBlockIds}
+        renderBlockIds={
+          blockRuntime
+            ? runtimeBaseBlockId
+              ? [runtimeBaseBlockId]
+              : []
+            : rootPageBlockIds
+        }
         sharedSignalCoordinator={pageSignalCoordinator}
         onRuntimeDemandChange={handleRuntimeDemandChange}
         onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
@@ -1100,7 +1043,7 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
         }
         showTitle={false}
       />
-      {renderChildContainerLayers()}
+      {renderBlockRuntimeLayers()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <Button
           size="middle"

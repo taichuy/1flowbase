@@ -5,7 +5,6 @@ import {
   CodeOutlined,
   DatabaseOutlined,
   FileTextOutlined,
-  PartitionOutlined,
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -21,7 +20,6 @@ export type BlockStudioSection =
   | 'interfaces'
   | 'variables'
   | 'block-tree'
-  | 'child-containers'
   | 'components'
   | 'configuration'
   | 'run';
@@ -50,11 +48,6 @@ const STUDIO_SECTION_DEFINITIONS: Array<{
     key: 'variables',
     label: i18nText('frontstage', 'auto.variables'),
     icon: <DatabaseOutlined />
-  },
-  {
-    key: 'child-containers',
-    label: i18nText('frontstage', 'auto.child_containers'),
-    icon: <PartitionOutlined />
   },
   {
     key: 'block-tree',

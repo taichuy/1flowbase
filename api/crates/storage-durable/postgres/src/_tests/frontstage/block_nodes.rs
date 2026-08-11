@@ -192,67 +192,6 @@ async fn block_node_migration_backfills_legacy_roots_without_descriptor_loss() {
     assert_eq!(row.8, descriptor);
 }
 
-// AC-009: child-container state has no lossless block-node mapping and must stop the migration.
-#[tokio::test]
-async fn block_node_migration_rejects_nonempty_legacy_child_containers() {
-    let pool = isolated_database().await.connect().await.unwrap();
-    before_frontstage_block_nodes_migrator()
-        .run(&pool)
-        .await
-        .unwrap();
-    let (workspace_id, _) = insert_frontstage_test_workspaces(&pool).await;
-    let page_id = Uuid::now_v7();
-    let tab_id = Uuid::now_v7();
-    let mut tx = pool.begin().await.unwrap();
-    sqlx::query(
-        "insert into frontstage_pages (id, workspace_id, kind, title, placement, content_presentation, rank, slug) values ($1, $2, 'page', 'Legacy', 'sidebar', 'single', 'U', 'legacy-child')",
-    )
-    .bind(page_id)
-    .bind(workspace_id)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    sqlx::query(
-        "insert into frontstage_page_tabs (id, workspace_id, page_id, rank, is_default, document_root_uid) values ($1, $2, $3, 'U', true, $4)",
-    )
-    .bind(tab_id)
-    .bind(workspace_id)
-    .bind(page_id)
-    .bind(format!("frontstage.tab.{tab_id}.root"))
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    let dirty = json!({
-        "version": 1,
-        "blocks": [],
-        "child_containers": [{ "id": "drawer", "block_ids": ["hero"] }]
-    });
-    sqlx::query(
-        "insert into frontstage_page_schemas (id, scope_id, workspace_id, tab_id, root_uid, schema_payload, root_payload, document_payload) values ($1, $2, $2, $3, $4, $5, $5, $5)",
-    )
-    .bind(Uuid::now_v7())
-    .bind(workspace_id)
-    .bind(tab_id)
-    .bind(format!("frontstage.tab.{tab_id}.root"))
-    .bind(dirty)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-
-    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("frontstage block node migration rejected legacy child-container data"));
-    let table_exists: bool = sqlx::query_scalar(
-        "select to_regclass(current_schema() || '.frontstage_block_nodes') is not null",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert!(!table_exists);
-}
-
 // AC-008/009: structure, code and audit share one transaction; public identities remain page and
 // tab scoped; subtree deletion removes its exclusively-owned source rows.
 #[tokio::test]

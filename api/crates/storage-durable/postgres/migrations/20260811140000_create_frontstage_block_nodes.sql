@@ -1,6 +1,6 @@
 -- Frontstage block nodes use the ordered-tree storage contract without becoming
--- user-visible model metadata. Existing tab documents remain as a migration
--- snapshot until the frontend cutover removes the legacy document projection.
+-- user-visible model metadata. Existing tab block documents are imported once
+-- as source snapshots for independently stored Block Node Descriptor v1 rows.
 do $$
 begin
   if exists (
@@ -11,29 +11,8 @@ begin
          schemas.document_payload ? 'blocks'
          and jsonb_typeof(schemas.document_payload -> 'blocks') <> 'array'
        )
-       or (
-         jsonb_typeof(schemas.document_payload -> 'child_containers') = 'array'
-         and jsonb_array_length(schemas.document_payload -> 'child_containers') > 0
-       )
-       or exists (
-         select 1
-         from jsonb_array_elements(
-           case when jsonb_typeof(schemas.document_payload -> 'blocks') = 'array'
-             then schemas.document_payload -> 'blocks' else '[]'::jsonb end
-         ) block
-         where (
-             jsonb_typeof(block -> 'block_ids') = 'array'
-             and jsonb_array_length(block -> 'block_ids') > 0
-           ) or (
-             jsonb_typeof(block -> 'child_container_target_ids') = 'array'
-             and jsonb_array_length(block -> 'child_container_target_ids') > 0
-           ) or (
-             jsonb_typeof(block -> 'childContainerTargetIds') = 'array'
-             and jsonb_array_length(block -> 'childContainerTargetIds') > 0
-           )
-       )
   ) then
-    raise exception 'frontstage block node migration rejected legacy child-container data';
+    raise exception 'frontstage block node migration rejected invalid document payload';
   end if;
 
   if exists (

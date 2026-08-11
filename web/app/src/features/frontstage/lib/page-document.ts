@@ -4,11 +4,6 @@ import type {
   SaveFrontstageTabDocumentInput
 } from '../api/page-content';
 import type { FrontstageBlockPorts } from './page-signals/types';
-import {
-  normalizeChildContainerTree,
-  serializeChildContainerTree,
-  type ChildContainerNode
-} from './child-container-tree';
 
 export type FrontstagePageDocumentDiagnosticSeverity = 'warning' | 'error';
 
@@ -60,7 +55,6 @@ export interface FrontstageBlockInstance {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   ports?: FrontstageBlockPorts;
-  childContainerTargetIds?: string[];
   presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   order: number;
@@ -72,14 +66,11 @@ export interface FrontstagePageDocument {
   rootUid: string;
   layoutMode: FrontstagePageLayoutMode;
   blocks: FrontstageBlockInstance[];
-  childContainers?: ChildContainerNode[];
   isEmpty: boolean;
   diagnostics: FrontstagePageDocumentDiagnostic[];
 }
 
-export interface NormalizedFrontstagePageDocument extends FrontstagePageDocument {
-  childContainers: ChildContainerNode[];
-}
+export type NormalizedFrontstagePageDocument = FrontstagePageDocument;
 
 function resolvePageLayoutMode(
   content: FrontstagePageContent
@@ -96,7 +87,6 @@ interface FrontstageBlockPayload {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   ports: FrontstageBlockPorts;
-  child_container_target_ids?: string[];
   'x-presentation': FrontstageBlockPresentation;
   'x-layout': FrontstageBlockLayout;
   runtime: FrontstageBlockRuntimeHint;
@@ -271,28 +261,6 @@ function normalizePorts(
     inputs: normalizePortList(block.ports.inputs, true),
     outputs: normalizePortList(block.ports.outputs, false)
   } as FrontstageBlockPorts;
-}
-
-function normalizeChildContainerTargetIds(
-  block: Record<string, unknown>
-): string[] | undefined {
-  const key = Object.hasOwn(block, 'child_container_target_ids')
-    ? 'child_container_target_ids'
-    : // @field-contract-compat source=child_container_target_ids alias=childContainerTargetIds remove_by=2027-02-11
-      Object.hasOwn(block, 'childContainerTargetIds')
-      ? 'childContainerTargetIds'
-      : null;
-  if (!key) return undefined;
-  const value = block[key];
-  if (!Array.isArray(value)) return [];
-  return [
-    ...new Set(
-      value.flatMap((item) => {
-        const targetId = asOptionalString(item);
-        return targetId ? [targetId] : [];
-      })
-    )
-  ];
 }
 
 function normalizePortList(value: unknown, input: boolean): unknown[] {
@@ -527,7 +495,6 @@ function normalizeBlock(
 
   const props = normalizeProps(block, path, diagnostics);
   const ports = normalizePorts(block, path, diagnostics);
-  const childContainerTargetIds = normalizeChildContainerTargetIds(block);
   const presentation = normalizePresentation(block, path, diagnostics);
   const layout = normalizeLayout(block, blockIndex, path, diagnostics);
   const rendererVersion = normalizeRendererVersion(block, path, diagnostics);
@@ -561,9 +528,6 @@ function normalizeBlock(
     },
     props,
     ports,
-    ...(childContainerTargetIds !== undefined
-      ? { childContainerTargetIds }
-      : {}),
     presentation,
     layout,
     order: layout.order,
@@ -583,10 +547,6 @@ export function createFrontstagePageDocument(
   const usedCodeRefs = new Set<string>();
   const runtimeDiagnostics: FrontstagePageDocumentDiagnostic[] = [];
   const blocks: FrontstageBlockInstance[] = [];
-  const payload = getPayloadRecord(content.document.payload, 'document', []);
-  const childContainerNormalization = normalizeChildContainerTree(
-    payload?.child_containers
-  );
 
   rawBlocks.forEach((rawBlock, index) => {
     if (!isRecord(rawBlock)) {
@@ -612,14 +572,11 @@ export function createFrontstagePageDocument(
   });
 
   diagnostics.push(...runtimeDiagnostics);
-  diagnostics.push(...childContainerNormalization.diagnostics);
-
   return {
     page: content.page,
     rootUid: resolveRootUid(content),
     layoutMode: resolvePageLayoutMode(content),
     blocks,
-    childContainers: childContainerNormalization.containers,
     isEmpty: blocks.length === 0,
     diagnostics
   };
@@ -650,11 +607,6 @@ function createBlockPayload(
         schema: { ...port.schema }
       }))
     },
-    ...(block.childContainerTargetIds !== undefined
-      ? {
-          child_container_target_ids: [...block.childContainerTargetIds]
-        }
-      : {}),
     'x-presentation': {
       ...(block.presentation ?? { heightMode: 'auto', height: null })
     },
@@ -669,18 +621,13 @@ function createBlockPayload(
 function createPayloadWithBlocks(
   payload: unknown,
   blocks: FrontstageBlockPayload[],
-  layoutMode: FrontstagePageLayoutMode,
-  childContainers: ChildContainerNode[]
+  layoutMode: FrontstagePageLayoutMode
 ): Record<string, unknown> {
   const payloadRecord = createPayloadRecord(payload);
   return {
     ...payloadRecord,
     'x-layout-mode': layoutMode,
-    blocks,
-    ...(childContainers.length > 0 ||
-    Object.hasOwn(payloadRecord, 'child_containers')
-      ? { child_containers: serializeChildContainerTree(childContainers) }
-      : {})
+    blocks
   };
 }
 
@@ -692,8 +639,7 @@ export function createFrontstagePageDocumentSaveInput(
     payload: createPayloadWithBlocks(
       content.document.payload,
       document.blocks.map(createBlockPayload),
-      document.layoutMode,
-      document.childContainers ?? []
+      document.layoutMode
     )
   };
 }

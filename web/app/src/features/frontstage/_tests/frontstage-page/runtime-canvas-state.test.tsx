@@ -58,22 +58,6 @@ const blockCodeApi = vi.hoisted(() => ({
   ),
   saveFrontstageBlockCode: vi.fn()
 }));
-const jsxStudioDrawerView = vi.hoisted(() => ({
-  onSaveChildContainers: null as
-    | null
-    | ((
-        containers: Array<{
-          id: string;
-          ownerBlockId: string;
-          parentId: string | null;
-          rank: string;
-          presentation: 'drawer' | 'modal' | 'inline';
-          title: string;
-          blockIds: string[];
-        }>
-      ) => Promise<boolean>)
-}));
-
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
   () => pageContentSaveHook
@@ -86,14 +70,7 @@ vi.mock(
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
-  FrontstageJsxStudioDrawer: (props: {
-    onSaveChildContainers: NonNullable<
-      typeof jsxStudioDrawerView.onSaveChildContainers
-    >;
-  }) => {
-    jsxStudioDrawerView.onSaveChildContainers = props.onSaveChildContainers;
-    return <div data-testid="jsx-studio-drawer" />;
-  }
+  FrontstageJsxStudioDrawer: () => <div data-testid="jsx-studio-drawer" />
 }));
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
@@ -431,7 +408,6 @@ describe('FrontStagePage - runtime canvas state', () => {
     resetAuthStore();
     resetFrontstageDesignModeStore();
     vi.clearAllMocks();
-    jsxStudioDrawerView.onSaveChildContainers = null;
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
@@ -501,66 +477,6 @@ describe('FrontStagePage - runtime canvas state', () => {
         }),
         dependencyLocksByBlockId: expect.objectContaining({
           'frontstage-js-block-1': []
-        })
-      })
-    );
-  });
-
-  test('AC-003 saves Studio child containers through the page document write path', async () => {
-    authenticate(['frontstage.page.design']);
-    useFrontstageDesignModeStore.getState().setDesignMode(true);
-    const pageContentSaveState = mockPageContentSaveState();
-    mockFrontstageBlockCatalog([createCatalogEntry()]);
-
-    render(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent({
-            root: {
-              uid: 'root-1',
-              payload: {
-                blocks: [createCatalogMatchedBlockPayload()]
-              }
-            }
-          })}
-        />
-      </AppProviders>
-    );
-
-    fireEvent.click(
-      await screen.findByTestId('block-slot-frontstage-js-block-1')
-    );
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
-    expect(jsxStudioDrawerView.onSaveChildContainers).toEqual(
-      expect.any(Function)
-    );
-
-    await act(async () => {
-      await jsxStudioDrawerView.onSaveChildContainers?.([
-        {
-          id: 'details-drawer',
-          ownerBlockId: 'frontstage-js-block-1',
-          parentId: null,
-          rank: '001000',
-          presentation: 'drawer',
-          title: 'Details',
-          blockIds: ['details-content']
-        }
-      ]);
-    });
-
-    expect(pageContentSaveState.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: expect.objectContaining({
-          child_containers: [
-            expect.objectContaining({
-              container_id: 'details-drawer',
-              owner_block_id: 'frontstage-js-block-1',
-              block_ids: ['details-content']
-            })
-          ]
         })
       })
     );

@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
-import { readFile } from 'node:fs/promises';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -73,15 +72,17 @@ describe('frontstage block tree feature mutations', () => {
   });
 
   test('AC-009 keeps query ownership page-scoped', () => {
-    expect(frontstageBlockTreeQueryKeys.roots('workspace-1', 'page-1')).toEqual([
-      'frontstage',
-      'workspace-1',
-      'pages',
-      'page-1',
-      'block-tree',
-      'roots',
-      {}
-    ]);
+    expect(frontstageBlockTreeQueryKeys.roots('workspace-1', 'page-1')).toEqual(
+      [
+        'frontstage',
+        'workspace-1',
+        'pages',
+        'page-1',
+        'block-tree',
+        'roots',
+        {}
+      ]
+    );
     expect(
       frontstageBlockTreeQueryKeys.block(
         'workspace-1',
@@ -180,33 +181,8 @@ describe('frontstage block tree feature mutations', () => {
     });
     expect(invalidateQueries).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: frontstageBlockTreeQueryKeys.page(
-          'workspace-1',
-          'page-1'
-        )
+        queryKey: frontstageBlockTreeQueryKeys.page('workspace-1', 'page-1')
       })
     );
-  });
-
-  test('AC-009 removes the embedded child-container save entry from Studio', async () => {
-    const drawerSource = await readFile(
-      new URL(
-        '../components/jsx-studio/FrontstageJsxStudioDrawer.tsx',
-        import.meta.url
-      ),
-      'utf8'
-    );
-    const resourceSource = await readFile(
-      new URL(
-        '../components/jsx-studio/JsxStudioResourcePanel.tsx',
-        import.meta.url
-      ),
-      'utf8'
-    );
-
-    expect(drawerSource).not.toContain("'child-containers'");
-    expect(drawerSource).not.toContain('onSaveChildContainers');
-    expect(resourceSource).not.toContain('JsxStudioChildContainersPanel');
-    expect(resourceSource).not.toContain('onSaveChildContainers');
   });
 });

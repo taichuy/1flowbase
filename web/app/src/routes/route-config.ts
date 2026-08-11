@@ -2,6 +2,8 @@ import type { AppRouteId } from '@1flowbase/shared-types';
 
 export const FRONTSTAGE_SLUG_PATH = '/$slug';
 export const FRONTSTAGE_SLUG_PAGE_PATH = '/$slug/pages/$pageId';
+export const FRONTSTAGE_SLUG_PAGE_BLOCK_PATH =
+  '/$slug/pages/$pageId/blocks/$blockId';
 export const FRONTSTAGE_SLUG_PAGE_TAB_PATH =
   '/$slug/pages/$pageId/tabs/$tabRef';
 
@@ -19,7 +21,7 @@ export const APP_ROUTES: AppRouteDefinition[] = [
   {
     id: 'home',
     path: '/',
-    navLabelKey: "auto.workbench",
+    navLabelKey: 'auto.workbench',
     chromeSlot: 'primary',
     selectedMatchers: [(pathname) => pathname === '/'],
     permissionKey: null,
@@ -30,7 +32,9 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     path: '/applications',
     navLabelKey: null,
     chromeSlot: 'hidden',
-    selectedMatchers: [(pathname) => /^\/applications\/[^/]+(\/|$)/.test(pathname)],
+    selectedMatchers: [
+      (pathname) => /^\/applications\/[^/]+(\/|$)/.test(pathname)
+    ],
     permissionKey: null,
     guard: 'session-required'
   },
@@ -38,10 +42,11 @@ export const APP_ROUTES: AppRouteDefinition[] = [
   {
     id: 'templates',
     path: '/templates',
-    navLabelKey: "auto.templates",
+    navLabelKey: 'auto.templates',
     chromeSlot: 'primary',
     selectedMatchers: [
-      (pathname) => pathname === '/templates' || pathname.startsWith('/templates/')
+      (pathname) =>
+        pathname === '/templates' || pathname.startsWith('/templates/')
     ],
     permissionKey: null,
     guard: 'session-required'
@@ -49,9 +54,12 @@ export const APP_ROUTES: AppRouteDefinition[] = [
   {
     id: 'settings',
     path: '/settings',
-    navLabelKey: "auto.settings",
+    navLabelKey: 'auto.settings',
     chromeSlot: 'secondary',
-    selectedMatchers: [(pathname) => pathname === '/settings' || pathname.startsWith('/settings/')],
+    selectedMatchers: [
+      (pathname) =>
+        pathname === '/settings' || pathname.startsWith('/settings/')
+    ],
     permissionKey: null,
     guard: 'session-required'
   },
@@ -60,7 +68,9 @@ export const APP_ROUTES: AppRouteDefinition[] = [
     path: '/me',
     navLabelKey: null,
     chromeSlot: 'hidden',
-    selectedMatchers: [(pathname) => pathname === '/me' || pathname.startsWith('/me/')],
+    selectedMatchers: [
+      (pathname) => pathname === '/me' || pathname.startsWith('/me/')
+    ],
     permissionKey: null,
     guard: 'session-required'
   },
@@ -77,8 +87,9 @@ export const APP_ROUTES: AppRouteDefinition[] = [
 
 export function getSelectedRouteId(pathname: string): AppRouteId {
   const matchedRouteId =
-    APP_ROUTES.find((route) => route.selectedMatchers.some((match) => match(pathname)))?.id ??
-    'home';
+    APP_ROUTES.find((route) =>
+      route.selectedMatchers.some((match) => match(pathname))
+    )?.id ?? 'home';
 
   return matchedRouteId === 'application-detail' ? 'home' : matchedRouteId;
 }

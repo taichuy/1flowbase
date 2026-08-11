@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const pageTreeApi = vi.hoisted(() => ({
@@ -26,6 +26,27 @@ const pageContentApi = vi.hoisted(() => ({
   fetchFrontstagePageContent: vi.fn()
 }));
 
+const blockApi = vi.hoisted(() => ({
+  frontstageBlockTreeQueryKeys: {
+    block: (workspaceId: string, pageId: string, blockId: string) => [
+      'frontstage',
+      workspaceId,
+      pageId,
+      blockId,
+      'detail'
+    ],
+    ancestors: (workspaceId: string, pageId: string, blockId: string) => [
+      'frontstage',
+      workspaceId,
+      pageId,
+      blockId,
+      'ancestors'
+    ]
+  },
+  fetchFrontstageBlockNode: vi.fn(),
+  fetchFrontstageBlockAncestors: vi.fn()
+}));
+
 const pageTreeMutations = vi.hoisted(() => {
   const moveNode = vi.fn();
   return {
@@ -45,11 +66,11 @@ const pageTreeMutations = vi.hoisted(() => {
 
 const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
-    containerId?: string;
-    onContainerIdChange?: (
-      containerId: string | null,
-      mode: 'push' | 'replace'
-    ) => void;
+    blockRuntime?: {
+      current: { block_id: string };
+      ancestors: Array<{ block_id: string }>;
+    };
+    onNavigateBlock?: (blockId: string | null, replace?: boolean) => void;
     onMovePageNode?: (
       nodeId: string,
       input: { parentId: string | null; rank: string }
@@ -80,6 +101,7 @@ const consoleNavigationApi = vi.hoisted(() => ({
 vi.mock('../api/page-tree', () => pageTreeApi);
 vi.mock('../api/page-tabs', () => pageTabsApi);
 vi.mock('../api/page-content', () => pageContentApi);
+vi.mock('../api/block-tree', () => blockApi);
 vi.mock('../hooks/use-frontstage-page-tree-mutations', () => pageTreeMutations);
 vi.mock('../../settings/api/console-navigation', () => consoleNavigationApi);
 vi.mock('../pages/FrontStagePage', () => ({
@@ -297,26 +319,63 @@ describe('frontstage topbar root routing', () => {
     });
   });
 
-  test('AC-005 restores child container history while preserving unrelated URL state', async () => {
+  test('AC-006 restores a canonical block deep link and browser history from backend ancestry', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
-    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
+    blockApi.fetchFrontstageBlockNode.mockResolvedValue({
+      block_id: 'block-child',
+      workspace_id: 'workspace-1',
+      page_id: 'page-top-level',
+      tab_id: 'tab-overview',
+      parent_block_id: 'block-parent',
+      rank: '002000',
+      presentation: 'drawer',
+      title: 'Child',
+      schema_version: 1,
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: {},
+      created_at: '2026-08-12T00:00:00Z',
+      updated_at: '2026-08-12T00:00:00Z'
+    });
+    blockApi.fetchFrontstageBlockAncestors.mockResolvedValue([
       {
-        id: 'tab-overview',
+        block_id: 'block-parent',
+        workspace_id: 'workspace-1',
         page_id: 'page-top-level',
-        title: 'Overview',
+        tab_id: 'tab-overview',
+        parent_block_id: null,
         rank: '001000',
-        is_default: true,
-        route_segment: null,
-        document_root_uid: 'root-overview'
+        presentation: 'page',
+        title: 'Parent',
+        schema_version: 1,
+        created_at: '2026-08-12T00:00:00Z',
+        updated_at: '2026-08-12T00:00:00Z'
       }
     ]);
-    pageContentApi.fetchFrontstagePageContent.mockReturnValue(
-      new Promise(() => undefined)
-    );
+    pageContentApi.fetchFrontstagePageContent.mockResolvedValue({
+      page: {
+        id: 'page-top-level',
+        title: 'Top-level page',
+        kind: 'page',
+        parentId: 'group-sales',
+        rank: '001000',
+        contentPresentation: 'single'
+      },
+      tab: {
+        id: 'tab-overview',
+        pageId: 'page-top-level',
+        title: 'Overview',
+        rank: '001000',
+        isDefault: true,
+        routeSegment: null,
+        documentRootUid: 'root-overview'
+      },
+      document: { rootUid: 'root-overview', payload: { blocks: [] } }
+    });
     window.history.pushState(
       {},
       '',
-      '/sales/pages/page-top-level?view=table#section'
+      '/sales/pages/page-top-level/blocks/block-child'
     );
 
     render(
@@ -326,60 +385,46 @@ describe('frontstage topbar root routing', () => {
     );
 
     await waitFor(() => {
-      expect(frontStagePageView.props?.onContainerIdChange).toEqual(
-        expect.any(Function)
+      expect(frontStagePageView.props?.blockRuntime?.current.block_id).toBe(
+        'block-child'
       );
     });
+    expect(frontStagePageView.props?.blockRuntime?.ancestors).toEqual([
+      expect.objectContaining({ block_id: 'block-parent' })
+    ]);
+    expect(pageTabsApi.fetchFrontstagePageTabs).not.toHaveBeenCalled();
+    expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-top-level',
+      'tab-overview'
+    );
 
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.('root-drawer', 'push');
-    });
+    act(() => frontStagePageView.props?.onNavigateBlock?.('block-parent'));
     await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
+      expect(window.location.pathname).toBe(
+        '/sales/pages/page-top-level/blocks/block-parent'
+      );
     });
-
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.('child-modal', 'push');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('child-modal');
-    });
-
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.('root-drawer', 'replace');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
-    });
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.(null, 'replace');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
-    });
-    expect(window.location.search).toBe('?view=table');
-    expect(window.location.hash).toBe('#section');
-
     act(() => window.history.back());
     await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
-    });
-    act(() => window.history.forward());
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
+      expect(window.location.pathname).toBe(
+        '/sales/pages/page-top-level/blocks/block-child'
+      );
     });
   });
 
-  test('AC-005/008 keeps a cold direct URL through auth hydration', async () => {
-    resetAuthStore();
+  test('AC-008 renders controlled NotFound for a missing block deep link', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
-    pageTabsApi.fetchFrontstagePageTabs.mockReturnValue(
-      new Promise(() => undefined)
+    blockApi.fetchFrontstageBlockNode.mockRejectedValue(
+      Object.assign(new Error('block_node_not_found'), { status: 404 })
+    );
+    blockApi.fetchFrontstageBlockAncestors.mockRejectedValue(
+      Object.assign(new Error('block_node_not_found'), { status: 404 })
     );
     window.history.pushState(
       {},
       '',
-      '/sales/pages/page-top-level?view=table&container_id=root-drawer#section'
+      '/sales/pages/page-top-level/blocks/missing-block'
     );
 
     render(
@@ -388,38 +433,9 @@ describe('frontstage topbar root routing', () => {
       </AppProviders>
     );
 
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(window.location.href).toContain(
-      '/sales/pages/page-top-level?view=table&container_id=root-drawer#section'
+    expect(await screen.findByText('页面不存在')).toBeInTheDocument();
+    expect(window.location.pathname).toBe(
+      '/sales/pages/page-top-level/blocks/missing-block'
     );
-    act(() => {
-      useAuthStore.getState().setAuthenticated({
-        csrfToken: 'csrf-hydrated',
-        actor: {
-          id: 'actor-1',
-          account: 'root',
-          effective_display_role: 'root',
-          current_workspace_id: 'workspace-1'
-        },
-        me: null
-      });
-    });
-
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
-    });
-    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
-    expect(window.location.search).toContain('view=table');
-    expect(window.location.hash).toBe('#section');
-
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.(null, 'replace');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
-    });
-    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
   });
 });
