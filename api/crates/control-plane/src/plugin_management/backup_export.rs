@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -9,7 +9,7 @@ use tokio::{
 };
 
 use crate::{
-    ports::BackupComponentWriter,
+    ports::{BackupComponentWriter, ExtensionInstallationRepository, PluginRepository},
     system_backup::{BackupComponentDescriptor, BackupComponentSource, BackupSourceError},
 };
 
@@ -156,6 +156,33 @@ pub fn build_backup_artifact_inventory(
         }
     }
     Ok(inventory.into_values().collect())
+}
+
+pub async fn load_backup_artifact_sources<R>(
+    repository: &R,
+    node_id: &str,
+) -> Result<Vec<Arc<dyn BackupComponentSource>>>
+where
+    R: PluginRepository + ExtensionInstallationRepository,
+{
+    let installations = repository
+        .list_installations()
+        .await
+        .context("failed to list plugin backup inventory")?;
+    let instances = repository
+        .list_artifact_instances(node_id)
+        .await
+        .context("failed to list plugin artifact backup inventory")?;
+    let extensions = repository
+        .list_extension_installations_for_node(node_id)
+        .await
+        .context("failed to list extension backup inventory")?;
+    Ok(
+        build_backup_artifact_inventory(node_id, installations, instances, extensions)?
+            .into_iter()
+            .map(|entry| Arc::new(entry) as Arc<dyn BackupComponentSource>)
+            .collect(),
+    )
 }
 
 fn classify_source(source_kind: &str) -> BackupArtifactDisposition {
