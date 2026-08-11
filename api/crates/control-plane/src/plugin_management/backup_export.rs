@@ -268,7 +268,6 @@ pub fn backup_artifact_component_id(entry: &BackupArtifactEntry) -> String {
 #[async_trait]
 impl BackupComponentSource for BackupArtifactEntry {
     fn descriptor(&self) -> BackupComponentDescriptor {
-        let component_id = backup_artifact_component_id(self);
         let kind = match self.kind {
             BackupArtifactKind::Mcp => domain::BackupComponentKind::McpArtifact,
             BackupArtifactKind::Extension | BackupArtifactKind::HostExtension => {
@@ -286,13 +285,11 @@ impl BackupComponentSource for BackupArtifactEntry {
             ),
         };
         BackupComponentDescriptor {
-            component_id: domain::BackupComponentId::try_from(component_id.clone())
+            component_id: domain::BackupComponentId::try_from(backup_artifact_component_id(self))
                 .expect("sha256-derived backup component id"),
             kind,
-            source_identity: domain::BackupSourceIdentity::try_from(format!(
-                "artifact/{component_id}"
-            ))
-            .expect("sha256-derived backup source identity"),
+            source_identity: domain::BackupSourceIdentity::try_from(self.identity.clone())
+                .expect("validated artifact backup identity"),
             content_type: "application/vnd.1flowbase.extension-artifact".to_string(),
             disposition,
             rebuildability,

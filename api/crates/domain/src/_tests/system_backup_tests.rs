@@ -63,6 +63,17 @@ fn manifest_freezes_streaming_and_exclusion_contract() {
 }
 
 #[test]
+fn source_identity_preserves_rebuildable_artifact_coordinates() {
+    let identity =
+        BackupSourceIdentity::try_from("plugin:capability-plugins/taichuy/fixture_provider@0.1.0")
+            .unwrap();
+    assert_eq!(
+        identity.as_str(),
+        "plugin:capability-plugins/taichuy/fixture_provider@0.1.0"
+    );
+}
+
+#[test]
 fn manifest_deserialization_rejects_missing_postgres_and_incomplete_exclusions() {
     let manifest_json = serde_json::to_value(manifest()).unwrap();
 

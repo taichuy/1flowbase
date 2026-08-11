@@ -76,6 +76,15 @@ fn valid_identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'/'))
 }
 
+fn valid_source_identity(value: &str) -> bool {
+    !value.is_empty()
+        && value.trim() == value
+        && value.len() <= 512
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'/' | b':' | b'@')
+        })
+}
+
 fn valid_fingerprint(value: &str) -> bool {
     value.len() >= 16 && value.len() <= 128 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -118,7 +127,7 @@ checked_string!(BackupComponentId, "backup component id", valid_identifier);
 checked_string!(
     BackupSourceIdentity,
     "backup source identity",
-    valid_identifier
+    valid_source_identity
 );
 checked_string!(ApplicationBuild, "application build", valid_identifier);
 checked_string!(MigrationHead, "migration head", valid_identifier);
