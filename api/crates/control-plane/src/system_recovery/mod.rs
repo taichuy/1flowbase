@@ -1,6 +1,8 @@
+mod coordinator;
 mod maintenance;
 mod preflight;
 
+pub use coordinator::*;
 pub use maintenance::*;
 pub use preflight::*;
 

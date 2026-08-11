@@ -7,6 +7,8 @@ use super::{
     SystemMaintenance, SystemMaintenanceDrainError, SystemMaintenancePhase, SystemWriteOwner,
 };
 
+mod coordinator_tests;
+
 #[tokio::test]
 async fn maintenance_fences_new_writes_and_waits_for_every_owner_to_drain() {
     let maintenance = Arc::new(SystemMaintenance::default());
