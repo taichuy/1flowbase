@@ -452,20 +452,27 @@ export function JsxStudioChildContainersPanel({
                 const assignedContainerId = assignedContainerByBlock.get(
                   block.id
                 );
+                const disabled =
+                  forbiddenOwnerBlockIds.has(block.id) ||
+                  (assignedContainerId !== undefined &&
+                    assignedContainerId !== selected.id);
+                const label =
+                  typeof block.props.title === 'string'
+                    ? block.props.title
+                    : i18nText('frontstage', 'auto.block_with_id', {
+                        value1: block.id
+                      });
                 return {
                   value: block.id,
-                  label:
-                    typeof block.props.title === 'string'
-                      ? block.props.title
-                      : i18nText('frontstage', 'auto.block_with_id', {
-                          value1: block.id
-                        }),
-                  disabled:
-                    forbiddenOwnerBlockIds.has(block.id) ||
-                    (assignedContainerId !== undefined &&
-                      assignedContainerId !== selected.id)
+                  label,
+                  disabled
                 };
               })}
+              optionRender={(option) => (
+                <span aria-disabled={option.data.disabled ? 'true' : undefined}>
+                  {option.label}
+                </span>
+              )}
               onChange={(blockIds) => updateSelected({ blockIds })}
             />
             <Alert

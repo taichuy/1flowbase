@@ -97,12 +97,14 @@ describe('JSX Studio child containers panel', () => {
     });
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '挂载区块' }));
 
-    expect(
-      screen.getByText('Launcher').closest('[aria-disabled="true"]')
-    ).not.toBeNull();
-    expect(
-      screen.getByText('Assigned block').closest('[aria-disabled="true"]')
-    ).not.toBeNull();
+    expect(screen.getByText('Launcher')).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByText('Assigned block')).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
     fireEvent.click(screen.getByText('Content A'));
     fireEvent.click(screen.getByText('Content B'));
     fireEvent.click(screen.getByRole('button', { name: '保存子容器' }));
@@ -146,13 +148,14 @@ describe('JSX Studio child containers panel', () => {
       />
     );
 
-    fireEvent.click(screen.getByText('Root'));
+    const tree = screen.getByRole('tree');
+    fireEvent.click(within(tree).getByText('Root'));
     fireEvent.click(screen.getByRole('button', { name: '删除容器 Root' }));
     expect(
       screen.getByText('请先移动或删除下级容器，再删除当前容器。')
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Child'));
+    fireEvent.click(within(tree).getByText('Child'));
     fireEvent.click(screen.getByRole('button', { name: '删除容器 Child' }));
     expect(
       screen.getByText('请先移除全部挂载区块，再删除当前容器。')
