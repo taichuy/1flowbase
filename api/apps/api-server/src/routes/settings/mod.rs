@@ -13,6 +13,7 @@ pub mod permissions;
 mod release_status;
 pub mod roles;
 pub mod system;
+pub mod system_backups;
 pub mod ui_management;
 pub mod workspace;
 pub mod workspaces;

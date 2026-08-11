@@ -1,4 +1,6 @@
 mod artifact_instance;
+mod backup_export;
+mod backup_restore;
 mod bootstrap;
 mod catalog;
 mod catalog_projection;
@@ -7,6 +9,9 @@ mod family;
 mod filesystem;
 mod install;
 mod package_router;
+
+#[cfg(test)]
+mod _tests;
 
 use std::{
     cmp::Ordering,
@@ -57,6 +62,8 @@ use crate::{
 };
 
 pub use artifact_instance::*;
+pub use backup_export::*;
+pub use backup_restore::*;
 pub use bootstrap::*;
 pub use catalog::*;
 pub use catalog_projection::*;

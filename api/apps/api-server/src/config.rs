@@ -45,6 +45,9 @@ pub struct ApiConfig {
     pub mcp_template_library_root: String,
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
+    pub system_backup_repository_root: String,
+    pub system_backup_key_base64: String,
+    pub system_build_identity: String,
     pub allow_unverified_filesystem_dropins: bool,
     pub allow_uploaded_host_extensions: bool,
     pub official_plugin_repository: String,
@@ -175,6 +178,18 @@ impl ApiConfig {
                     .display()
                     .to_string()
             });
+        let system_backup_repository_root = map
+            .get("API_SYSTEM_BACKUP_REPOSITORY_ROOT")
+            .cloned()
+            .unwrap_or_else(default_system_backup_repository_root);
+        let system_backup_key_base64 = map
+            .get("API_SYSTEM_BACKUP_KEY_BASE64")
+            .cloned()
+            .unwrap_or_else(default_system_backup_key_base64);
+        let system_build_identity = map
+            .get("API_SYSTEM_BUILD_IDENTITY")
+            .cloned()
+            .unwrap_or_else(|| format!("dev.{}", env!("CARGO_PKG_VERSION")));
         let allow_unverified_filesystem_dropins = parse_bool_flag(
             "API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS",
             map.get("API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS"),
@@ -282,6 +297,33 @@ impl ApiConfig {
                 "invalid env API_PROVIDER_SECRET_MASTER_KEY when API_ENV=production"
             ));
         }
+        if env == ApiEnvironment::Production
+            && !map.contains_key("API_SYSTEM_BACKUP_REPOSITORY_ROOT")
+        {
+            return Err(anyhow!(
+                "missing env API_SYSTEM_BACKUP_REPOSITORY_ROOT when API_ENV=production"
+            ));
+        }
+        if env == ApiEnvironment::Production && !map.contains_key("API_SYSTEM_BACKUP_KEY_BASE64") {
+            return Err(anyhow!(
+                "missing env API_SYSTEM_BACKUP_KEY_BASE64 when API_ENV=production"
+            ));
+        }
+        validate_system_backup_key(&system_backup_key_base64)?;
+        if env == ApiEnvironment::Production
+            && system_backup_key_is_placeholder(&system_backup_key_base64)
+        {
+            return Err(anyhow!(
+                "invalid env API_SYSTEM_BACKUP_KEY_BASE64 when API_ENV=production"
+            ));
+        }
+        if env == ApiEnvironment::Production && !map.contains_key("API_SYSTEM_BUILD_IDENTITY") {
+            return Err(anyhow!(
+                "missing env API_SYSTEM_BUILD_IDENTITY when API_ENV=production"
+            ));
+        }
+        domain::ApplicationBuild::try_from(system_build_identity.clone())
+            .map_err(|_| anyhow!("invalid env API_SYSTEM_BUILD_IDENTITY"))?;
 
         Ok(Self {
             env,
@@ -316,6 +358,9 @@ impl ApiConfig {
             mcp_template_library_root,
             provider_secret_master_key,
             host_extension_dropin_root,
+            system_backup_repository_root,
+            system_backup_key_base64,
+            system_build_identity,
             allow_unverified_filesystem_dropins,
             allow_uploaded_host_extensions,
             official_plugin_repository,
@@ -587,6 +632,42 @@ fn default_business_file_local_root() -> String {
         .join("storage")
         .display()
         .to_string()
+}
+
+fn default_system_backup_repository_root() -> String {
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    find_workspace_root(&current_dir)
+        .unwrap_or(current_dir)
+        .join("tmp")
+        .join("system-backups")
+        .display()
+        .to_string()
+}
+
+fn default_system_backup_key_base64() -> String {
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned()
+}
+
+fn validate_system_backup_key(value: &str) -> Result<()> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let decoded = STANDARD
+        .decode(value.trim())
+        .map_err(|_| anyhow!("invalid env API_SYSTEM_BACKUP_KEY_BASE64: expected base64"))?;
+    if decoded.len() != 32 {
+        return Err(anyhow!(
+            "invalid env API_SYSTEM_BACKUP_KEY_BASE64: expected 32 decoded bytes"
+        ));
+    }
+    Ok(())
+}
+
+fn system_backup_key_is_placeholder(value: &str) -> bool {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    STANDARD
+        .decode(value.trim())
+        .is_ok_and(|decoded| decoded.iter().all(|byte| *byte == 0))
 }
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {

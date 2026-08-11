@@ -31,6 +31,8 @@ import schemaUiZhHans from '../../shared/schema-ui/v1/i18n/zh_Hans.json';
 import schemaUiEnUS from '../../shared/schema-ui/v1/i18n/en_US.json';
 import settingsApplicationManagementZhHans from '../../features/settings/components/application-management/i18n/zh_Hans.json';
 import settingsApplicationManagementEnUS from '../../features/settings/components/application-management/i18n/en_US.json';
+import settingsSystemBackupsZhHans from '../../features/settings/components/system-backups/i18n/zh_Hans.json';
+import settingsSystemBackupsEnUS from '../../features/settings/components/system-backups/i18n/en_US.json';
 import settingsMcpManagementZhHans from '../../features/settings/components/mcp-management/i18n/zh_Hans.json';
 import settingsMcpManagementEnUS from '../../features/settings/components/mcp-management/i18n/en_US.json';
 import settingsUiManagementZhHans from '../../features/settings/components/ui-management/i18n/zh_Hans.json';
@@ -58,6 +60,7 @@ const appTranslationResources = {
     me: meZhHans,
     schemaUi: schemaUiZhHans,
     settingsApplicationManagement: settingsApplicationManagementZhHans,
+    settingsSystemBackups: settingsSystemBackupsZhHans,
     settingsMcpManagement: settingsMcpManagementZhHans,
     settingsUiManagement: settingsUiManagementZhHans,
     settings: settingsZhHans,
@@ -77,6 +80,7 @@ const appTranslationResources = {
     me: meEnUS,
     schemaUi: schemaUiEnUS,
     settingsApplicationManagement: settingsApplicationManagementEnUS,
+    settingsSystemBackups: settingsSystemBackupsEnUS,
     settingsMcpManagement: settingsMcpManagementEnUS,
     settingsUiManagement: settingsUiManagementEnUS,
     settings: settingsEnUS,

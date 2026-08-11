@@ -25,12 +25,15 @@ pub mod openapi;
 pub mod openapi_docs;
 pub mod openapi_interface;
 pub mod provider_runtime;
+pub mod recovery_authorization;
 pub mod response;
 pub mod routes;
 pub mod runtime_activity;
 pub mod runtime_data_model_docs;
 pub mod runtime_profile_client;
 pub mod runtime_registry_sync;
+pub mod system_backup;
+pub mod system_recovery;
 pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
@@ -206,6 +209,10 @@ fn console_router_with_assembly(
     include_openapi: bool,
     console_route_assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
 ) -> Router {
+    let maintenance_classifier =
+        middleware::system_maintenance::SystemMaintenanceRequestClassifier::new(
+            console_route_assembly.maintenance_control_routes().to_vec(),
+        );
     let router = Router::new()
         .merge(routes::application_public_api::compatible_router())
         .nest("/api/agent/v1", routes::application_public_api::router())
@@ -225,6 +232,14 @@ fn console_router_with_assembly(
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_settings_feature_permission::require_settings_feature_permission,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::system_maintenance::fence_mutating_requests,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            maintenance_classifier,
+            middleware::system_maintenance::classify_system_maintenance_request,
         ))
         .with_state(state)
 }
@@ -495,11 +510,23 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await?;
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
+    let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
+    let system_backup = Arc::new(
+        system_backup::SystemBackupRuntime::open(
+            store.clone(),
+            file_storage_registry.clone(),
+            system_maintenance.clone(),
+            config,
+        )
+        .await?,
+    );
 
     let state = Arc::new(ApiState {
         #[cfg(test)]
         test_resources: None,
         store,
+        system_backup,
+        system_maintenance,
         authenticator_registry,
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),

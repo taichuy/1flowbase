@@ -17,6 +17,9 @@ pub const SYSTEM_API_KEY_AUTHENTICATION_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID: &str = "system.auth-center";
 pub const SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.auth-center";
+pub const SYSTEM_BACKUPS_SETTINGS_FEATURE_ID: &str = "system.backups";
+pub const SYSTEM_BACKUPS_SETTINGS_FEATURE_PERMISSION: &str =
+    "settings_feature.access.system.backups";
 pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID: &str = "system.data-models";
 pub const SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.data-models";
@@ -112,6 +115,37 @@ impl SettingsFeatureRegistration {
 
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_BACKUPS_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.backups".to_string(),
+                surface_key: "backups".to_string(),
+                path: "/settings/backups".to_string(),
+                label_key: "auto.backups".to_string(),
+                description_key: "console.policy_groups.settings.system.backups.description"
+                    .to_string(),
+                order: 575,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/system-backups"),
+                ("POST", "/api/console/settings/system-backups"),
+                ("POST", "/api/console/settings/system-backups/import"),
+                ("POST", "/api/console/settings/system-backups/recovery/reauth"),
+                ("GET", "/api/console/settings/system-backups/recovery/status"),
+                ("GET", "/api/console/settings/system-backups/{backup_set_id}"),
+                ("DELETE", "/api/console/settings/system-backups/{backup_set_id}"),
+                ("POST", "/api/console/settings/system-backups/{backup_set_id}/verify"),
+                ("GET", "/api/console/settings/system-backups/{backup_set_id}/download"),
+                ("POST", "/api/console/settings/system-backups/{backup_set_id}/recovery/preflight"),
+                ("POST", "/api/console/settings/system-backups/{backup_set_id}/recovery/intents"),
+            ]),
+        },
         SettingsFeatureRegistration {
             feature_id: SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {

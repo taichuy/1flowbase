@@ -265,6 +265,11 @@ impl TaskQueue for MemoryTaskQueue {
         Ok(true)
     }
 
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        *self.inner.lock().await = TaskQueueState::default();
+        Ok(())
+    }
+
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
         EphemeralInspectionCapabilities::supported()
     }

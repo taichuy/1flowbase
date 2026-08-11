@@ -117,6 +117,11 @@ impl SessionStore for MokaSessionStore {
             .await
     }
 
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        <MokaCacheStore as control_plane::ports::CacheStore>::reset_for_system_recovery(&self.kv)
+            .await
+    }
+
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
         EphemeralInspectionCapabilities::supported()
     }

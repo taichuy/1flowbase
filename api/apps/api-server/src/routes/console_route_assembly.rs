@@ -31,7 +31,11 @@ use crate::app_state::ApiState;
 
 pub struct ConsoleMethodRouter<S> {
     router: MethodRouter<S, Infallible>,
-    methods: Vec<(&'static str, ConsoleRouteOwnership)>,
+    methods: Vec<(
+        &'static str,
+        ConsoleRouteOwnership,
+        Option<crate::middleware::system_maintenance::SystemMaintenanceRequestClass>,
+    )>,
 }
 
 pub fn console_get<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> ConsoleMethodRouter<S>
@@ -42,7 +46,7 @@ where
 {
     ConsoleMethodRouter {
         router: get(handler),
-        methods: vec![("GET", ownership)],
+        methods: vec![("GET", ownership, None)],
     }
 }
 
@@ -57,7 +61,7 @@ where
 {
     ConsoleMethodRouter {
         router: axum::routing::delete(handler),
-        methods: vec![("DELETE", ownership)],
+        methods: vec![("DELETE", ownership, None)],
     }
 }
 
@@ -72,7 +76,7 @@ where
 {
     ConsoleMethodRouter {
         router: patch(handler),
-        methods: vec![("PATCH", ownership)],
+        methods: vec![("PATCH", ownership, None)],
     }
 }
 
@@ -84,7 +88,7 @@ where
 {
     ConsoleMethodRouter {
         router: post(handler),
-        methods: vec![("POST", ownership)],
+        methods: vec![("POST", ownership, None)],
     }
 }
 
@@ -96,7 +100,7 @@ where
 {
     ConsoleMethodRouter {
         router: axum::routing::put(handler),
-        methods: vec![("PUT", ownership)],
+        methods: vec![("PUT", ownership, None)],
     }
 }
 
@@ -110,7 +114,7 @@ where
         T: 'static,
     {
         self.router = self.router.delete(handler);
-        self.methods.push(("DELETE", ownership));
+        self.methods.push(("DELETE", ownership, None));
         self
     }
 
@@ -120,7 +124,7 @@ where
         T: 'static,
     {
         self.router = self.router.patch(handler);
-        self.methods.push(("PATCH", ownership));
+        self.methods.push(("PATCH", ownership, None));
         self
     }
 
@@ -130,7 +134,7 @@ where
         T: 'static,
     {
         self.router = self.router.post(handler);
-        self.methods.push(("POST", ownership));
+        self.methods.push(("POST", ownership, None));
         self
     }
 
@@ -140,7 +144,16 @@ where
         T: 'static,
     {
         self.router = self.router.put(handler);
-        self.methods.push(("PUT", ownership));
+        self.methods.push(("PUT", ownership, None));
+        self
+    }
+
+    pub fn coordinator_control(mut self) -> Self {
+        if let Some((_, _, request_class)) = self.methods.last_mut() {
+            *request_class = Some(
+                crate::middleware::system_maintenance::SystemMaintenanceRequestClass::CoordinatorControl,
+            );
+        }
         self
     }
 }
@@ -148,6 +161,7 @@ where
 pub struct ConsoleRouteAssembly<S> {
     router: Router<S>,
     bindings: Vec<ConsoleRouteAssemblyBinding>,
+    maintenance_control_routes: Vec<ConsoleRouteBinding>,
 }
 
 impl<S> Default for ConsoleRouteAssembly<S>
@@ -167,32 +181,41 @@ where
         Self {
             router: Router::new(),
             bindings: Vec::new(),
+            maintenance_control_routes: Vec::new(),
         }
     }
 
     pub fn route(mut self, path: &'static str, methods: ConsoleMethodRouter<S>) -> Self {
-        self.bindings
-            .extend(methods.methods.into_iter().map(|(method, ownership)| {
-                ConsoleRouteAssemblyBinding {
-                    route: ConsoleRouteBinding {
-                        method: method.to_string(),
-                        path: format!("/api/console{path}"),
-                    },
-                    ownership,
-                }
-            }));
-        self.router = self.router.route(path, methods.router);
+        let ConsoleMethodRouter { router, methods } = methods;
+        for (method, ownership, request_class) in methods {
+            let route = ConsoleRouteBinding {
+                method: method.to_string(),
+                path: format!("/api/console{path}"),
+            };
+            if request_class.is_some() {
+                self.maintenance_control_routes.push(route.clone());
+            }
+            self.bindings
+                .push(ConsoleRouteAssemblyBinding { route, ownership });
+        }
+        self.router = self.router.route(path, router);
         self
     }
 
     pub fn merge(mut self, other: Self) -> Self {
         self.router = self.router.merge(other.router);
         self.bindings.extend(other.bindings);
+        self.maintenance_control_routes
+            .extend(other.maintenance_control_routes);
         self
     }
 
     pub fn bindings(&self) -> &[ConsoleRouteAssemblyBinding] {
         &self.bindings
+    }
+
+    pub fn maintenance_control_routes(&self) -> &[ConsoleRouteBinding] {
+        &self.maintenance_control_routes
     }
 
     pub fn into_router(self) -> Router<S> {
@@ -242,6 +265,7 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
         .merge(super::plugins::route_assembly())
         .merge(super::auth_center::route_assembly())
         .merge(super::system::route_assembly())
+        .merge(super::system_backups::route_assembly())
         .merge(super::ui_management::route_assembly())
         .merge(super::workspaces::route_assembly())
 }

@@ -2,6 +2,7 @@ use control_plane::ports::{
     ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository, ProviderRequestLogTask,
     PROVIDER_REQUEST_LOG_QUEUE,
 };
+use domain::RecoveryJobId;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -160,4 +161,41 @@ async fn provider_request_log_worker_batches_valid_payloads_and_acks_each_task()
     assert!(entries
         .iter()
         .all(|entry| entry.key != first_task_id && entry.key != second_task_id));
+}
+
+#[tokio::test]
+async fn provider_request_log_worker_does_not_claim_tasks_during_maintenance() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let task_queue = state.infrastructure.task_queue();
+    let task_id = task_queue
+        .enqueue(
+            PROVIDER_REQUEST_LOG_QUEUE,
+            serde_json::to_value(request_log_task(Uuid::now_v7(), Uuid::now_v7())).unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+    let _lease = state
+        .system_maintenance
+        .begin(RecoveryJobId::new(), OffsetDateTime::now_utc())
+        .unwrap();
+
+    let outcome = consume_provider_request_log_batch(
+        state.clone(),
+        "provider-request-log-test",
+        Duration::seconds(10),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome,
+        ProviderRequestLogWorkerOutcome::PausedForMaintenance
+    );
+    assert!(task_queue
+        .list_ephemeral_entries()
+        .await
+        .unwrap()
+        .iter()
+        .any(|entry| entry.key == task_id));
 }

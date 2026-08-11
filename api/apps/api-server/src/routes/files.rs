@@ -135,6 +135,19 @@ fn map_file_storage_error(error: storage_object::FileStorageError) -> ApiError {
         storage_object::FileStorageError::ObjectNotFound => {
             control_plane::errors::ControlPlaneError::NotFound("file_content").into()
         }
+        storage_object::FileStorageError::ObjectChanged => {
+            control_plane::errors::ControlPlaneError::Conflict("file_content_changed").into()
+        }
+        storage_object::FileStorageError::ObjectLengthMismatch => {
+            control_plane::errors::ControlPlaneError::InvalidInput("file_size").into()
+        }
+        storage_object::FileStorageError::ObjectSnapshotUnavailable => {
+            control_plane::errors::ControlPlaneError::Conflict("file_storage_snapshot_unavailable")
+                .into()
+        }
+        storage_object::FileStorageError::ObjectTooLarge => {
+            control_plane::errors::ControlPlaneError::InvalidInput("file_size").into()
+        }
         storage_object::FileStorageError::UnsupportedDriver(_) => {
             control_plane::errors::ControlPlaneError::Conflict("storage_driver_not_registered")
                 .into()

@@ -1,0 +1,24 @@
+.system-backups__table .ant-table-row {
+  cursor: pointer;
+}
+.system-backups__restore-body {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+.system-backups__impact {
+  margin-top: 4px;
+}
+@media (max-width: 767px) {
+  .system-backups__restore {
+    top: 8px;
+    max-width: calc(100vw - 16px);
+    margin: 0 8px;
+  }
+  .system-backups__restore .ant-modal-content {
+    padding: 16px;
+  }
+  .system-backups__restore .ant-steps-item-title {
+    font-size: 12px;
+  }
+}

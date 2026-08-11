@@ -632,6 +632,10 @@ pub trait CacheStore: Send + Sync {
 
     async fn touch(&self, key: &str, ttl: time::Duration) -> anyhow::Result<bool>;
 
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        anyhow::bail!("cache_store_recovery_reset_unsupported")
+    }
+
     fn inspection_capabilities(&self) -> CacheInspectionCapabilities {
         CacheInspectionCapabilities::unsupported()
     }
@@ -882,6 +886,10 @@ pub trait TaskQueue: Send + Sync {
         worker: &str,
         reason: &str,
     ) -> anyhow::Result<bool>;
+
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        anyhow::bail!("task_queue_recovery_reset_unsupported")
+    }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {
         EphemeralInspectionCapabilities::unsupported()

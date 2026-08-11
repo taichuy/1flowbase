@@ -38,6 +38,7 @@
     "translation_catalog_revision_conflict": "翻译目录已在其他会话中变更。已重新加载最新值，请复核后再次保存。",
     "translation_catalog_load_failed": "无法加载翻译目录。",
     "application_management": "应用管理",
+    "backups": "备份与恢复",
     "workflow_trigger_schedule": "定时任务",
     "workflow_trigger_extension": "接口扩展",
     "unpublished": "未发布",

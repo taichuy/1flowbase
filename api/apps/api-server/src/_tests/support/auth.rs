@@ -79,6 +79,43 @@ async fn isolated_database(base_url: &str) -> PostgresTestSchema {
     PostgresTestSchema::create(base_url).await.unwrap()
 }
 
+async fn isolated_postgres_toolchain(
+    store: &storage_durable::MainDurableStore,
+) -> (storage_durable::PostgreSqlToolchain, std::path::PathBuf) {
+    let server_version: String = sqlx::query_scalar("show server_version_num")
+        .fetch_one(store.pool())
+        .await
+        .expect("test PostgreSQL server version should be readable");
+    let server_major = server_version
+        .parse::<u32>()
+        .expect("test PostgreSQL server version should be numeric")
+        / 10_000;
+    let root = std::env::temp_dir().join(format!("api-postgres-toolchain-{}", Uuid::now_v7()));
+    std::fs::create_dir_all(&root).expect("test PostgreSQL toolchain root should be created");
+    let script = format!(
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"PostgreSQL tool {server_major}.0\"\n  exit 0\nfi\nif [ \"$1\" = \"--list\" ]; then\n  cat >/dev/null\n  exit 0\nfi\ndd if=/dev/zero bs=65536 count=20 2>/dev/null\n"
+    );
+    let pg_dump = root.join("pg_dump");
+    let pg_restore = root.join("pg_restore");
+    for path in [&pg_dump, &pg_restore] {
+        std::fs::write(path, &script).expect("test PostgreSQL tool should be written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(path)
+                .expect("test PostgreSQL tool metadata should be readable")
+                .permissions();
+            permissions.set_mode(0o700);
+            std::fs::set_permissions(path, permissions)
+                .expect("test PostgreSQL tool should be executable");
+        }
+    }
+    let toolchain = storage_durable::PostgreSqlToolchain::discover(&pg_dump, &pg_restore)
+        .await
+        .expect("isolated PostgreSQL toolchain should be discoverable");
+    (toolchain, root)
+}
+
 async fn test_state_with_runtime_profile_state(
     process_started_at: OffsetDateTime,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
@@ -100,6 +137,10 @@ async fn test_state_with_runtime_profile_state(
         .join("dropins")
         .display()
         .to_string();
+    config.system_backup_repository_root = std::env::temp_dir()
+        .join(format!("api-system-backups-{}", Uuid::now_v7()))
+        .display()
+        .to_string();
     let mut pool_settings =
         storage_durable::PgPoolSettings::with_max_connections(config.database_pool_max_connections);
     pool_settings.acquire_timeout = Duration::from_secs(30);
@@ -112,6 +153,7 @@ async fn test_state_with_runtime_profile_state(
     .await
     .unwrap();
     let store = durable.store.clone();
+    let (postgres_toolchain, postgres_toolchain_root) = isolated_postgres_toolchain(&store).await;
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
     let salt = SaltString::generate(&mut rand_core::OsRng);
     let root_password_hash = Argon2::default()
@@ -229,6 +271,18 @@ async fn test_state_with_runtime_profile_state(
     let console_operation_registry =
         crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
             .expect("core console operation registry should compile");
+    let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
+    let system_backup = Arc::new(
+        crate::system_backup::SystemBackupRuntime::open_with_postgres_toolchain(
+            store.clone(),
+            file_storage_registry.clone(),
+            system_maintenance.clone(),
+            &config,
+            postgres_toolchain,
+        )
+        .await
+        .expect("test system backup runtime should assemble"),
+    );
 
     (
         Arc::new(ApiState {
@@ -238,9 +292,13 @@ async fn test_state_with_runtime_profile_state(
                     std::path::PathBuf::from(&config.business_file_local_root),
                     std::path::PathBuf::from(&config.provider_install_root),
                     std::path::PathBuf::from(&config.mcp_template_library_root),
+                    std::path::PathBuf::from(&config.system_backup_repository_root),
+                    postgres_toolchain_root,
                 ],
             ))),
             store: store.clone(),
+            system_backup,
+            system_maintenance,
             authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
             settings_feature_registry,
             console_operation_registry,

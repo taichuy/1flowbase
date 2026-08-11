@@ -27,6 +27,7 @@ export * from './console-permissions';
 export * from './console-plugins';
 export * from './console-roles';
 export * from './console/session';
+export * from './console/system-backups';
 export * from './console-system';
 export * from './console-ui-management';
 export * from './errors';

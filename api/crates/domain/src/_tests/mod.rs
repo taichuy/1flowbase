@@ -10,4 +10,5 @@ mod modeling_tests;
 mod resource_tests;
 mod runtime_observability_tests;
 mod scope_tests;
+mod system_backup_tests;
 mod ui_management_tests;

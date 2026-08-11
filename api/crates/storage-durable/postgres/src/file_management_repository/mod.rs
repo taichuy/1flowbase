@@ -1,3 +1,8 @@
+mod backup_export;
+
+#[cfg(test)]
+mod _tests;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::ports::{

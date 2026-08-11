@@ -290,6 +290,7 @@ async fn switch_role_replaces_the_session_authorization_scope() {
             "system.mcp-management",
             "system.members",
             "system.ui-management",
+            "system.backups",
             "system.roles",
             "system.docs",
             "system.api-key-authentication",

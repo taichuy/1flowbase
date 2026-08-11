@@ -7,6 +7,7 @@ use control_plane::{
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::TaskQueue,
+    system_recovery::SystemWriteOwner,
 };
 use serde::Deserialize;
 use std::time::Duration as StdDuration;
@@ -24,6 +25,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowScheduleWorkerOutcome {
+    PausedForMaintenance,
     QueueUnavailable,
     NoTask,
     Executed {
@@ -51,6 +53,13 @@ pub async fn consume_one_workflow_schedule_run(
     worker_id: &str,
     visibility_timeout: Duration,
 ) -> Result<WorkflowScheduleWorkerOutcome> {
+    let _write_permit = match state
+        .system_maintenance
+        .try_enter_write(SystemWriteOwner::WorkflowScheduleExecution)
+    {
+        Ok(permit) => permit,
+        Err(_) => return Ok(WorkflowScheduleWorkerOutcome::PausedForMaintenance),
+    };
     let Some(task_queue) = state.infrastructure.registered_task_queue() else {
         return Ok(WorkflowScheduleWorkerOutcome::QueueUnavailable);
     };
@@ -163,6 +172,16 @@ async fn run_workflow_schedule_dispatch_loop(state: Arc<ApiState>) {
 
     loop {
         interval.tick().await;
+        let _write_permit = match state
+            .system_maintenance
+            .try_enter_write(SystemWriteOwner::WorkflowScheduleDispatch)
+        {
+            Ok(permit) => permit,
+            Err(_) => {
+                state.system_maintenance.wait_until_online().await;
+                continue;
+            }
+        };
         let task_queue = state.infrastructure.registered_task_queue();
         let service = WorkflowScheduleTriggerService::new(state.store.clone());
         match service
@@ -199,10 +218,18 @@ async fn run_workflow_schedule_worker_loop(state: Arc<ApiState>) {
         .await
         {
             Ok(
-                WorkflowScheduleWorkerOutcome::NoTask
+                WorkflowScheduleWorkerOutcome::PausedForMaintenance
+                | WorkflowScheduleWorkerOutcome::NoTask
                 | WorkflowScheduleWorkerOutcome::QueueUnavailable,
             ) => {
-                tokio::time::sleep(WORKFLOW_SCHEDULE_IDLE_SLEEP).await;
+                if matches!(
+                    state.system_maintenance.snapshot().phase,
+                    control_plane::system_recovery::SystemMaintenancePhase::Online
+                ) {
+                    tokio::time::sleep(WORKFLOW_SCHEDULE_IDLE_SLEEP).await;
+                } else {
+                    state.system_maintenance.wait_until_online().await;
+                }
             }
             Ok(_) => {}
             Err(worker_error) => {

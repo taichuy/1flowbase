@@ -608,6 +608,8 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
     let state = Arc::new(ApiState {
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
+        system_backup: base_state.system_backup.clone(),
+        system_maintenance: base_state.system_maintenance.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),
@@ -712,6 +714,8 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
     let state = Arc::new(ApiState {
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
+        system_backup: base_state.system_backup.clone(),
+        system_maintenance: base_state.system_maintenance.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),

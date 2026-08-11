@@ -31,6 +31,8 @@ pub mod plugin_worker_repository;
 pub mod repositories;
 pub mod role_repository;
 pub mod runtime_record_repository;
+pub mod system_backup;
+pub mod system_recovery;
 mod secret_crypto;
 pub mod ui_management_repository;
 pub mod workspace_repository;
@@ -41,6 +43,8 @@ pub use connection::{
 pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
 pub use repositories::PgControlPlaneStore;
+pub use system_backup::*;
+pub use system_recovery::PostgreSqlRecoveryTarget;
 
 use anyhow::Result;
 use sqlx::PgPool;

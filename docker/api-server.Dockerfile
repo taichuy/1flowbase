@@ -19,8 +19,9 @@ RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/lo
     --mount=type=cache,id=1flowbase-cargo-git,sharing=locked,target=/usr/local/cargo/git \
     --mount=type=cache,id=1flowbase-rust-target-${TARGETOS}-${TARGETARCH},sharing=locked,target=/workspace/api/target-cache \
     CARGO_TARGET_DIR=/workspace/api/target-cache \
-      cargo build --release -p api-server --bin api-server \
-    && cp /workspace/api/target-cache/release/api-server /workspace/api/api-server
+      cargo build --release -p api-server --bin api-server --bin system_recovery \
+    && cp /workspace/api/target-cache/release/api-server /workspace/api/api-server \
+    && cp /workspace/api/target-cache/release/system_recovery /workspace/api/system_recovery
 
 FROM alpine:3.22 AS default-extension
 
@@ -41,7 +42,7 @@ ARG APP_GID=1000
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid "${APP_GID}" flowbase \
   && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin flowbase
@@ -65,9 +66,11 @@ ENTRYPOINT ["/usr/local/bin/api-server"]
 FROM runtime-base AS runtime
 
 COPY --from=builder /workspace/api/api-server /usr/local/bin/api-server
+COPY --from=builder /workspace/api/system_recovery /usr/local/bin/system_recovery
 
 FROM runtime-base AS runtime-prebuilt
 
 ARG TARGETARCH
 
 COPY --from=api_server_binaries /${TARGETARCH}/api-server /usr/local/bin/api-server
+COPY --from=api_server_binaries /${TARGETARCH}/system_recovery /usr/local/bin/system_recovery

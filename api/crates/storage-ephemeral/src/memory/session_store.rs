@@ -79,4 +79,9 @@ impl SessionStore for MemorySessionStore {
             .await?;
         Ok(())
     }
+
+    async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
+        self.kv.clear_namespace().await;
+        Ok(())
+    }
 }

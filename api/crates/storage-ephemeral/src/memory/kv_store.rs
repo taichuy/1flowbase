@@ -45,6 +45,14 @@ impl MemoryKvStore {
         );
         Ok(())
     }
+
+    pub async fn clear_namespace(&self) {
+        let prefix = format!("{}:", self.namespace);
+        self.inner
+            .write()
+            .await
+            .retain(|key, _| !key.starts_with(&prefix));
+    }
 }
 
 #[async_trait]

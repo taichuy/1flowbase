@@ -28,6 +28,7 @@ pub mod resource_filter;
 pub mod runtime_observability;
 pub mod scope;
 pub mod system_defaults;
+pub mod system_backup;
 pub mod ui_management;
 
 pub use ai_native_operation::{AiNativeCompactProfile, AiNativeGenerateProfile, AiNativeOperation};
@@ -168,6 +169,7 @@ pub use system_defaults::{
     DefaultUpgradePolicy, DEFAULT_AUTO_INCLUDE_NEW_PROVIDER_INSTANCES,
     DEFAULT_CODE_ISOLATION_TIMEOUT_MS,
 };
+pub use system_backup::*;
 pub use ui_management::{
     validate_ui_code_template, validate_ui_component_contract, UiCodeTemplate,
     UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentContractRevision,

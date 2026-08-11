@@ -4,7 +4,8 @@ use crate::{
     errors::FileStorageResult,
     types::{
         DeleteObjectInput, FileStorageHealthcheck, FileStoragePutInput, FileStoragePutResult,
-        GenerateAccessUrlInput, OpenReadInput, OpenReadResult,
+        FileStoragePutStreamInput, GenerateAccessUrlInput, OpenReadInput, OpenReadResult,
+        OpenReadStreamResult, VerifyReadUnchangedInput,
     },
 };
 
@@ -24,9 +25,24 @@ pub trait FileStorageDriver: Send + Sync {
         input: FileStoragePutInput<'_>,
     ) -> FileStorageResult<FileStoragePutResult>;
 
+    async fn put_object_stream(
+        &self,
+        input: FileStoragePutStreamInput<'_>,
+    ) -> FileStorageResult<FileStoragePutResult>;
+
     async fn delete_object(&self, input: DeleteObjectInput<'_>) -> FileStorageResult<()>;
 
     async fn open_read(&self, input: OpenReadInput<'_>) -> FileStorageResult<OpenReadResult>;
+
+    async fn open_read_stream(
+        &self,
+        input: OpenReadInput<'_>,
+    ) -> FileStorageResult<OpenReadStreamResult>;
+
+    async fn verify_read_unchanged(
+        &self,
+        input: VerifyReadUnchangedInput<'_>,
+    ) -> FileStorageResult<()>;
 
     async fn generate_access_url(
         &self,
