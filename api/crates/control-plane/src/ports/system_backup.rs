@@ -18,7 +18,7 @@ pub struct BackupSetCatalogEntry {
     pub created_at: OffsetDateTime,
     pub availability: BackupSetAvailability,
     pub total_size_bytes: u64,
-    pub envelope_digest: ContentDigest,
+    pub envelope_digest: Option<ContentDigest>,
 }
 
 #[derive(Debug, Error)]
