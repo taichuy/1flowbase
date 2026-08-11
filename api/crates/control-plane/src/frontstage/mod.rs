@@ -19,8 +19,10 @@ use crate::{
 };
 
 mod block_creation;
+mod block_tree;
 
 pub use block_creation::CreateFrontstageBlockCommand;
+pub use block_tree::*;
 
 pub struct CreateFrontstageGroupCommand {
     pub actor_user_id: Uuid,
@@ -423,27 +425,14 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         ensure_page_record(&detail.page)?;
-        self.ensure_page_visible(
+        self.ensure_page_tab_visible(
             &actor,
             command.actor_user_id,
             command.workspace_id,
             command.page_id,
+            detail.tab.id,
         )
         .await?;
-        if !actor.is_root {
-            let pages = self
-                .repository
-                .list_frontstage_pages(command.workspace_id)
-                .await?;
-            let rules = self
-                .visibility_rules_for_actor(&actor, command.actor_user_id, command.workspace_id)
-                .await?;
-            if !FrontstagePageVisibilityContext::new(&pages, &rules)
-                .is_tab_visible(command.page_id, detail.tab.id)
-            {
-                return Err(ControlPlaneError::NotFound("frontstage_page_tab").into());
-            }
-        }
 
         Ok(detail)
     }
@@ -870,6 +859,34 @@ where
         }
 
         Err(ControlPlaneError::NotFound("frontstage_page").into())
+    }
+
+    async fn ensure_page_tab_visible(
+        &self,
+        actor: &domain::ActorContext,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        tab_id: Uuid,
+    ) -> Result<()> {
+        if actor.is_root {
+            return Ok(());
+        }
+
+        let pages = self.repository.list_frontstage_pages(workspace_id).await?;
+        let page = pages
+            .iter()
+            .find(|page| page.id == page_id)
+            .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
+        ensure_page_record(page)?;
+        let rules = self
+            .visibility_rules_for_actor(actor, actor_user_id, workspace_id)
+            .await?;
+        if FrontstagePageVisibilityContext::new(&pages, &rules).is_tab_visible(page_id, tab_id) {
+            return Ok(());
+        }
+
+        Err(ControlPlaneError::NotFound("frontstage_page_tab").into())
     }
 
     async fn visibility_rules_for_actor(

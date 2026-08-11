@@ -53,6 +53,62 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
             ("GET", "/api/console/frontstage/:workspace_id/pages"),
             ("POST", "/api/console/frontstage/:workspace_id/pages"),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/search",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id",
+            ),
+            (
+                "PATCH",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id",
+            ),
+            (
+                "DELETE",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/children",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/ancestors",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/descendants",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-impact",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/move",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-subtree",
+            ),
+            (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
+            ),
+            (
+                "PUT",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
+            ),
             ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),
             (
                 "PATCH",
@@ -339,6 +395,7 @@ async fn dispatch_capability(
 }
 
 mod authoring;
+mod block_tree;
 mod content;
 mod listing;
 mod placement;

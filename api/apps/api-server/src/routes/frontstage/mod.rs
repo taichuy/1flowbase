@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+pub mod block_tree;
 pub mod callable_interfaces;
 pub mod component_capabilities;
 pub mod data_capabilities;
@@ -267,7 +268,7 @@ pub fn router() -> Router<Arc<ApiState>> {
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
 
-    ConsoleRouteAssembly::new()
+    block_tree::route_assembly()
         .route(
             "/frontstage/:workspace_id/pages",
             console_get(list_frontstage_pages, Authenticated)
