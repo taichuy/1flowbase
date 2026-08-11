@@ -77,7 +77,7 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   border-bottom: none !important;
   background: transparent !important;
   flex: 1 1 auto;
@@ -96,7 +96,7 @@
   align-items: center;
   height: 56px;
   margin: 0 !important;
-  padding-inline: 0 !important;
+  padding-inline: 6px !important;
   color: var(--text-secondary) !important;
   transition:
     color 160ms ease,

@@ -342,4 +342,25 @@ describe('AppShellFrame', () => {
     expect(mobileMenuRule).toContain('flex: none;');
     expect(mobileMenuRule).toContain('min-width: max-content;');
   });
+
+  test('AC-001 lets the primary menu collect overflow before it reaches fixed header actions', () => {
+    const navigationSource = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../Navigation.tsx'),
+      'utf8'
+    );
+    const appShellCss = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../app-shell.css'),
+      'utf8'
+    );
+    const menuRule = appShellCss.match(
+      /\.app-shell-menu\.ant-menu-horizontal \{([\s\S]*?)\n\}/
+    )?.[1];
+    const menuItemRule = appShellCss.match(
+      /\.app-shell-menu\.ant-menu-horizontal > \.ant-menu-item,\n\.app-shell-menu\.ant-menu-horizontal > \.ant-menu-overflow-item \{([\s\S]*?)\n\}/
+    )?.[1];
+
+    expect(navigationSource).not.toContain('disabledOverflow');
+    expect(menuRule).toContain('gap: 0;');
+    expect(menuItemRule).toContain('padding-inline: 6px !important;');
+  });
 });

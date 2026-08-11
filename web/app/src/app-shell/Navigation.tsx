@@ -239,7 +239,6 @@ export function Navigation({
               : []
         }
         items={items}
-        disabledOverflow
       />
       {isDesignMode && workspaceId ? (
         <TopbarNavigationDesigner
