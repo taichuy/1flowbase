@@ -15,7 +15,9 @@ use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use tokio::{io::AsyncWriteExt, process::Command};
 use url::Url;
 
-use crate::system_backup::{migration_head, read_bounded_stderr, PostgreSqlToolchain};
+use crate::system_backup::{
+    migration_head, read_bounded_stderr, PostgreSqlCommandConnection, PostgreSqlToolchain,
+};
 
 const POSTGRES_IDENTIFIER_LIMIT: usize = 63;
 
@@ -105,16 +107,20 @@ impl PostgreSqlRecoveryTarget {
         names: &RecoveryDatabaseNames,
         mut source: BackupComponentReader,
     ) -> Result<(), RecoveryStepTargetError> {
-        let mut child = Command::new(self.toolchain.pg_restore())
+        let connection = PostgreSqlCommandConnection::parse(&self.database_url(&names.staging))
+            .map_err(|_| RecoveryStepTargetError::InvalidTarget)?;
+        let mut command = Command::new(self.toolchain.pg_restore());
+        command
             .args(["--exit-on-error", "--no-owner", "--no-privileges"])
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("LC_ALL", "C")
-            .env("PGDATABASE", self.database_url(&names.staging))
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+        connection.apply(&mut command);
+        let mut child = command
             .spawn()
             .map_err(|_| RecoveryStepTargetError::Unavailable)?;
         let mut stdin = child

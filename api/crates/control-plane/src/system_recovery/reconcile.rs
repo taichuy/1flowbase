@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use domain::{
-    BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupSetId, RecoveryJobId,
-    RecoveryJobState, RecoveryStepKind,
+    ApplicationBuild, BackupComponentDisposition, BackupComponentId, BackupComponentKind,
+    BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupManifest, BackupSetId,
+    ContentDigest, MigrationHead, RecoveryJobId, RecoveryJobState, RecoveryStepKind,
 };
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -11,22 +12,16 @@ use uuid::Uuid;
 
 use crate::ports::BackupRepository;
 
-use super::{ExecuteOfflineRecoveryCommand, OfflineRecoveryExecutor, OfflineRecoveryHandoff};
+use super::{
+    ExecuteOfflineRecoveryCommand, OfflineRecoveryError, OfflineRecoveryExecutor,
+    OfflineRecoveryHandoff,
+};
 
 const OFFLINE_RESTORE_STEPS: [RecoveryStepKind; 3] = [
     RecoveryStepKind::PostgreSql,
     RecoveryStepKind::BusinessObjects,
     RecoveryStepKind::ExtensionArtifacts,
 ];
-const ALL_RECOVERY_STEPS: [RecoveryStepKind; 6] = [
-    RecoveryStepKind::PostgreSql,
-    RecoveryStepKind::BusinessObjects,
-    RecoveryStepKind::ExtensionArtifacts,
-    RecoveryStepKind::Reconcile,
-    RecoveryStepKind::HealthVerification,
-    RecoveryStepKind::AuditProjection,
-];
-
 #[derive(Debug, Clone, Copy, Error, PartialEq, Eq)]
 #[error("post-restore dependency failed")]
 pub struct PostRestoreDependencyError;
@@ -43,6 +38,72 @@ pub struct PostRestoreRecoveryContext {
 ///
 /// `audit_id` is deliberately identical to `source_event_id`; durable adapters must treat a
 /// repeated, byte-equivalent projection as success and reject a conflicting row with the same id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecoveryAuditOutcome {
+    Succeeded,
+    RolledBack,
+    ManualRecoveryRequired,
+}
+
+impl RecoveryAuditOutcome {
+    pub const fn event_code(self) -> &'static str {
+        match self {
+            Self::Succeeded => "system.recovery.succeeded",
+            Self::RolledBack => "system.recovery.rolled_back",
+            Self::ManualRecoveryRequired => "system.recovery.manual_recovery_required",
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::RolledBack => "rolled_back",
+            Self::ManualRecoveryRequired => "manual_recovery_required",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RecoveryAuditComponentSnapshot {
+    pub component_id: BackupComponentId,
+    pub kind: BackupComponentKind,
+    pub content_digest: ContentDigest,
+    pub size_bytes: u64,
+    pub disposition: BackupComponentDisposition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RecoveryAuditSnapshot {
+    pub backup_set_id: BackupSetId,
+    pub application_build: ApplicationBuild,
+    pub migration_head: MigrationHead,
+    pub components: Vec<RecoveryAuditComponentSnapshot>,
+}
+
+impl RecoveryAuditSnapshot {
+    fn from_manifest(manifest: &BackupManifest) -> Self {
+        let mut components = manifest
+            .components()
+            .iter()
+            .map(|component| RecoveryAuditComponentSnapshot {
+                component_id: component.component_id.clone(),
+                kind: component.kind,
+                content_digest: component.content_digest.clone(),
+                size_bytes: component.size_bytes,
+                disposition: component.disposition,
+            })
+            .collect::<Vec<_>>();
+        components.sort_by(|left, right| left.component_id.cmp(&right.component_id));
+        Self {
+            backup_set_id: manifest.backup_set_id(),
+            application_build: manifest.application_build().clone(),
+            migration_head: manifest.migration_head().clone(),
+            components,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryAuditProjection {
     pub audit_id: Uuid,
@@ -51,7 +112,12 @@ pub struct RecoveryAuditProjection {
     pub backup_set_id: BackupSetId,
     pub safety_backup_set_id: BackupSetId,
     pub actor_user_id: Uuid,
-    pub verified_at: OffsetDateTime,
+    pub outcome: RecoveryAuditOutcome,
+    pub failure_code: Option<String>,
+    pub before_snapshot: RecoveryAuditSnapshot,
+    pub requested_target_snapshot: RecoveryAuditSnapshot,
+    pub effective_after_snapshot: Option<RecoveryAuditSnapshot>,
+    pub occurred_at: OffsetDateTime,
 }
 
 #[async_trait]
@@ -149,6 +215,12 @@ pub enum PostRestoreRecoveryOutcome {
     RolledBack,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OfflineFailureSettlement {
+    RolledBack,
+    ManualRecoveryRequired,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostRestoreRecoveryReceipt {
     pub recovery_job_id: RecoveryJobId,
@@ -220,22 +292,10 @@ impl PostRestoreRecoveryService {
         };
 
         match progress.state {
-            RecoveryJobState::Succeeded => {
-                lease.release();
-                return Ok(progress.receipt(PostRestoreRecoveryOutcome::Succeeded, None));
-            }
-            RecoveryJobState::RolledBack => {
-                lease.release();
-                return Ok(progress.receipt(
-                    PostRestoreRecoveryOutcome::RolledBack,
-                    progress.last_failure_code.clone(),
-                ));
-            }
-            RecoveryJobState::ManualRecoveryRequired => {
-                lease.retain();
-                return Err(PostRestoreRecoveryError::ManualRecoveryRequired {
-                    code: "manual_recovery_required",
-                });
+            RecoveryJobState::Succeeded
+            | RecoveryJobState::RolledBack
+            | RecoveryJobState::ManualRecoveryRequired => {
+                return self.complete_terminal(&mut progress, lease).await;
             }
             RecoveryJobState::Reconciling | RecoveryJobState::Verifying => {}
             _ => {
@@ -296,48 +356,15 @@ impl PostRestoreRecoveryService {
             }
         }
 
-        if !progress
-            .completed_steps
-            .contains(&RecoveryStepKind::AuditProjection)
+        if self
+            .ephemeral
+            .invalidate_after_restore(&context)
+            .await
+            .is_err()
         {
-            if self
-                .ephemeral
-                .invalidate_after_restore(&context)
-                .await
-                .is_err()
-            {
-                return self
-                    .fail_and_rollback(&mut progress, lease, "post_restore_ephemeral_reset_failed")
-                    .await;
-            }
-            let Some((source_event_id, verified_at)) = progress.health_verification_event else {
-                lease.retain();
-                return Err(PostRestoreRecoveryError::InvalidJournal);
-            };
-            let projection = RecoveryAuditProjection {
-                audit_id: source_event_id,
-                source_event_id,
-                recovery_job_id: context.recovery_job_id,
-                backup_set_id: context.backup_set_id,
-                safety_backup_set_id: context.safety_backup_set_id,
-                actor_user_id: context.actor_user_id,
-                verified_at,
-            };
-            if self.audit.project(&projection).await.is_err() {
-                return self
-                    .fail_and_rollback(&mut progress, lease, "post_restore_audit_projection_failed")
-                    .await;
-            }
-            if progress
-                .append_step(self.repository.as_ref(), RecoveryStepKind::AuditProjection)
-                .await
-                .is_err()
-            {
-                // Projection uses the health journal event id, so a retry is safe and cannot
-                // duplicate the durable audit row.
-                lease.retain();
-                return Err(PostRestoreRecoveryError::Journal);
-            }
+            return self
+                .fail_and_rollback(&mut progress, lease, "post_restore_ephemeral_reset_failed")
+                .await;
         }
 
         if self
@@ -359,9 +386,61 @@ impl PostRestoreRecoveryService {
                 .enter_manual(&mut progress, lease, "post_restore_success_journal_failed")
                 .await;
         }
+        self.complete_terminal(&mut progress, lease).await
+    }
 
-        lease.release();
-        Ok(progress.receipt(PostRestoreRecoveryOutcome::Succeeded, None))
+    /// Converts an offline executor failure into a durable, auditable terminal recovery outcome.
+    ///
+    /// Only errors whose executor contract proves that the previous target remains effective (or
+    /// that compensation completed) may release maintenance as `RolledBack`. Journal ambiguity
+    /// and failed compensation always fail closed as `ManualRecoveryRequired`.
+    pub async fn settle_offline_failure(
+        &self,
+        command: ExecuteOfflineRecoveryCommand,
+        error: OfflineRecoveryError,
+        lease: Box<dyn RecoveryCompletionLease>,
+    ) -> Result<PostRestoreRecoveryReceipt, PostRestoreRecoveryError> {
+        let events = match self
+            .repository
+            .read_journal(BackupJournalSubject::Recovery(command.recovery_job_id))
+            .await
+        {
+            Ok(events) => events,
+            Err(_) => {
+                lease.retain();
+                return Err(PostRestoreRecoveryError::Journal);
+            }
+        };
+        let mut progress =
+            match PostRestoreJournalProgress::try_from_offline_failure_events(command, &events) {
+                Ok(progress) => progress,
+                Err(error) => {
+                    lease.retain();
+                    return Err(error);
+                }
+            };
+        let failure_code = offline_failure_code(&error);
+
+        match offline_failure_settlement(&error) {
+            OfflineFailureSettlement::RolledBack => {
+                if progress
+                    .append_failure(self.repository.as_ref(), failure_code)
+                    .await
+                    .is_err()
+                    || progress
+                        .append_state(self.repository.as_ref(), RecoveryJobState::RolledBack)
+                        .await
+                        .is_err()
+                {
+                    lease.retain();
+                    return Err(PostRestoreRecoveryError::Journal);
+                }
+                self.complete_terminal(&mut progress, lease).await
+            }
+            OfflineFailureSettlement::ManualRecoveryRequired => {
+                self.enter_manual(&mut progress, lease, failure_code).await
+            }
+        }
     }
 
     async fn fail_and_rollback(
@@ -392,11 +471,7 @@ impl PostRestoreRecoveryService {
                 lease.retain();
                 return Err(PostRestoreRecoveryError::Journal);
             }
-            lease.release();
-            return Ok(progress.receipt(
-                PostRestoreRecoveryOutcome::RolledBack,
-                Some(failure_code.to_string()),
-            ));
+            return self.complete_terminal(progress, lease).await;
         }
         self.enter_manual(progress, lease, "post_restore_compensation_failed")
             .await
@@ -408,18 +483,145 @@ impl PostRestoreRecoveryService {
         lease: Box<dyn RecoveryCompletionLease>,
         code: &'static str,
     ) -> Result<PostRestoreRecoveryReceipt, PostRestoreRecoveryError> {
-        let _ = progress
+        if progress
             .append_failure(self.repository.as_ref(), code)
-            .await;
-        let _ = progress
+            .await
+            .is_err()
+        {
+            lease.retain();
+            return Err(PostRestoreRecoveryError::Journal);
+        }
+        if progress
             .append_state(
                 self.repository.as_ref(),
                 RecoveryJobState::ManualRecoveryRequired,
             )
-            .await;
+            .await
+            .is_err()
+        {
+            lease.retain();
+            return Err(PostRestoreRecoveryError::Journal);
+        }
+        // A manual terminal state is already the durable safety decision. Projection remains
+        // retryable from the terminal event and must never disguise the need for intervention.
+        let _ = self.project_terminal_audit(progress).await;
         lease.retain();
         Err(PostRestoreRecoveryError::ManualRecoveryRequired { code })
     }
+
+    async fn complete_terminal(
+        &self,
+        progress: &mut PostRestoreJournalProgress,
+        lease: Box<dyn RecoveryCompletionLease>,
+    ) -> Result<PostRestoreRecoveryReceipt, PostRestoreRecoveryError> {
+        if !progress
+            .completed_steps
+            .contains(&RecoveryStepKind::AuditProjection)
+            && self.project_terminal_audit(progress).await.is_err()
+        {
+            lease.retain();
+            return match progress.state {
+                RecoveryJobState::ManualRecoveryRequired => {
+                    Err(PostRestoreRecoveryError::ManualRecoveryRequired {
+                        code: "manual_recovery_required",
+                    })
+                }
+                _ => Err(PostRestoreRecoveryError::Journal),
+            };
+        }
+
+        match progress.state {
+            RecoveryJobState::Succeeded => {
+                lease.release();
+                Ok(progress.receipt(PostRestoreRecoveryOutcome::Succeeded, None))
+            }
+            RecoveryJobState::RolledBack => {
+                lease.release();
+                Ok(progress.receipt(
+                    PostRestoreRecoveryOutcome::RolledBack,
+                    progress.last_failure_code.clone(),
+                ))
+            }
+            RecoveryJobState::ManualRecoveryRequired => {
+                lease.retain();
+                Err(PostRestoreRecoveryError::ManualRecoveryRequired {
+                    code: "manual_recovery_required",
+                })
+            }
+            _ => {
+                lease.retain();
+                Err(PostRestoreRecoveryError::InvalidJournal)
+            }
+        }
+    }
+
+    async fn project_terminal_audit(
+        &self,
+        progress: &mut PostRestoreJournalProgress,
+    ) -> Result<(), PostRestoreRecoveryError> {
+        let terminal = progress
+            .terminal_event
+            .ok_or(PostRestoreRecoveryError::InvalidJournal)?;
+        let target = self
+            .repository
+            .load_manifest(progress.command.backup_set_id)
+            .await
+            .map_err(|_| PostRestoreRecoveryError::Journal)?;
+        let safety = self
+            .repository
+            .load_manifest(progress.safety_backup_set_id)
+            .await
+            .map_err(|_| PostRestoreRecoveryError::Journal)?;
+        if target.manifest().backup_set_id() != progress.command.backup_set_id
+            || safety.manifest().backup_set_id() != progress.safety_backup_set_id
+        {
+            return Err(PostRestoreRecoveryError::InvalidJournal);
+        }
+
+        let outcome = match terminal.state {
+            RecoveryJobState::Succeeded => RecoveryAuditOutcome::Succeeded,
+            RecoveryJobState::RolledBack => RecoveryAuditOutcome::RolledBack,
+            RecoveryJobState::ManualRecoveryRequired => {
+                RecoveryAuditOutcome::ManualRecoveryRequired
+            }
+            _ => return Err(PostRestoreRecoveryError::InvalidJournal),
+        };
+        let before_snapshot = RecoveryAuditSnapshot::from_manifest(safety.manifest());
+        let requested_target_snapshot = RecoveryAuditSnapshot::from_manifest(target.manifest());
+        let effective_after_snapshot = match outcome {
+            RecoveryAuditOutcome::Succeeded => Some(requested_target_snapshot.clone()),
+            RecoveryAuditOutcome::RolledBack => Some(before_snapshot.clone()),
+            RecoveryAuditOutcome::ManualRecoveryRequired => None,
+        };
+        let projection = RecoveryAuditProjection {
+            audit_id: terminal.event_id,
+            source_event_id: terminal.event_id,
+            recovery_job_id: progress.command.recovery_job_id,
+            backup_set_id: progress.command.backup_set_id,
+            safety_backup_set_id: progress.safety_backup_set_id,
+            actor_user_id: progress.actor_user_id,
+            outcome,
+            failure_code: progress.last_failure_code.clone(),
+            before_snapshot,
+            requested_target_snapshot,
+            effective_after_snapshot,
+            occurred_at: terminal.occurred_at,
+        };
+        self.audit
+            .project(&projection)
+            .await
+            .map_err(|_| PostRestoreRecoveryError::Journal)?;
+        progress
+            .append_step(self.repository.as_ref(), RecoveryStepKind::AuditProjection)
+            .await
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RecoveryTerminalEvent {
+    event_id: Uuid,
+    occurred_at: OffsetDateTime,
+    state: RecoveryJobState,
 }
 
 struct PostRestoreJournalProgress {
@@ -429,8 +631,14 @@ struct PostRestoreJournalProgress {
     next_sequence: u64,
     state: RecoveryJobState,
     completed_steps: Vec<RecoveryStepKind>,
-    health_verification_event: Option<(Uuid, OffsetDateTime)>,
+    terminal_event: Option<RecoveryTerminalEvent>,
     last_failure_code: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+enum JournalProgressExpectation {
+    PostRestoreOrTerminal,
+    OfflineFailure,
 }
 
 impl PostRestoreJournalProgress {
@@ -438,19 +646,36 @@ impl PostRestoreJournalProgress {
         command: ExecuteOfflineRecoveryCommand,
         events: &[BackupJournalEvent],
     ) -> Result<Self, PostRestoreRecoveryError> {
+        Self::try_from_events_for(
+            command,
+            events,
+            JournalProgressExpectation::PostRestoreOrTerminal,
+        )
+    }
+
+    fn try_from_offline_failure_events(
+        command: ExecuteOfflineRecoveryCommand,
+        events: &[BackupJournalEvent],
+    ) -> Result<Self, PostRestoreRecoveryError> {
+        Self::try_from_events_for(command, events, JournalProgressExpectation::OfflineFailure)
+    }
+
+    fn try_from_events_for(
+        command: ExecuteOfflineRecoveryCommand,
+        events: &[BackupJournalEvent],
+        expectation: JournalProgressExpectation,
+    ) -> Result<Self, PostRestoreRecoveryError> {
         let subject = BackupJournalSubject::Recovery(command.recovery_job_id);
         let mut actor_user_id = None;
         let mut safety_backup_set_id = None;
         let mut handoff_ready = false;
         let mut state = None;
         let mut completed_steps = Vec::new();
-        let mut health_verification_event = None;
+        let mut terminal_event = None;
         let mut last_failure_code = None;
-        let mut terminal_seen = false;
 
         for (index, event) in events.iter().enumerate() {
-            if terminal_seen
-                || event.sequence != index as u64
+            if event.sequence != index as u64
                 || event.subject != subject
                 || event.backup_set_id != command.backup_set_id
             {
@@ -466,13 +691,33 @@ impl PostRestoreJournalProgress {
                 return Err(PostRestoreRecoveryError::InvalidJournal);
             }
 
+            if terminal_event.is_some() {
+                if matches!(
+                    event.event,
+                    BackupJournalEventKind::RecoveryStepCompleted {
+                        step: RecoveryStepKind::AuditProjection
+                    }
+                ) && !completed_steps.contains(&RecoveryStepKind::AuditProjection)
+                {
+                    completed_steps.push(RecoveryStepKind::AuditProjection);
+                    continue;
+                }
+                return Err(PostRestoreRecoveryError::InvalidJournal);
+            }
+
             match &event.event {
                 BackupJournalEventKind::RecoveryStateChanged { state: next } => {
                     if state.is_some_and(|current| !valid_state_transition(current, *next)) {
                         return Err(PostRestoreRecoveryError::InvalidJournal);
                     }
                     state = Some(*next);
-                    terminal_seen = next.is_terminal();
+                    if next.is_terminal() {
+                        terminal_event = Some(RecoveryTerminalEvent {
+                            event_id: event.event_id,
+                            occurred_at: event.occurred_at,
+                            state: *next,
+                        });
+                    }
                 }
                 BackupJournalEventKind::RecoverySafetyBackupVerified {
                     safety_backup_set_id: current,
@@ -496,15 +741,36 @@ impl PostRestoreJournalProgress {
                     handoff_ready = true;
                 }
                 BackupJournalEventKind::RecoveryStepCompleted { step } => {
-                    if completed_steps.len() >= ALL_RECOVERY_STEPS.len()
-                        || *step != ALL_RECOVERY_STEPS[completed_steps.len()]
-                    {
+                    let valid = match step {
+                        RecoveryStepKind::PostgreSql => completed_steps.is_empty(),
+                        RecoveryStepKind::BusinessObjects => {
+                            completed_steps.as_slice() == [RecoveryStepKind::PostgreSql]
+                        }
+                        RecoveryStepKind::ExtensionArtifacts => {
+                            completed_steps.as_slice()
+                                == [
+                                    RecoveryStepKind::PostgreSql,
+                                    RecoveryStepKind::BusinessObjects,
+                                ]
+                        }
+                        RecoveryStepKind::Reconcile => {
+                            completed_steps.as_slice() == OFFLINE_RESTORE_STEPS
+                        }
+                        RecoveryStepKind::HealthVerification => {
+                            completed_steps.as_slice()
+                                == [
+                                    RecoveryStepKind::PostgreSql,
+                                    RecoveryStepKind::BusinessObjects,
+                                    RecoveryStepKind::ExtensionArtifacts,
+                                    RecoveryStepKind::Reconcile,
+                                ]
+                        }
+                        RecoveryStepKind::AuditProjection => false,
+                    };
+                    if !valid {
                         return Err(PostRestoreRecoveryError::InvalidJournal);
                     }
                     completed_steps.push(*step);
-                    if *step == RecoveryStepKind::HealthVerification {
-                        health_verification_event = Some((event.event_id, event.occurred_at));
-                    }
                 }
                 BackupJournalEventKind::RecoveryIntentConfirmed {
                     target_backup_set_id,
@@ -523,17 +789,43 @@ impl PostRestoreJournalProgress {
         }
 
         let state = state.ok_or(PostRestoreRecoveryError::InvalidJournal)?;
+        let reconciled = completed_steps.contains(&RecoveryStepKind::Reconcile);
+        let health_verified = completed_steps.contains(&RecoveryStepKind::HealthVerification);
+        let audit_projected = completed_steps.contains(&RecoveryStepKind::AuditProjection);
+        let offline_restore_completed = completed_steps.starts_with(&OFFLINE_RESTORE_STEPS);
+        let expectation_invalid = match expectation {
+            JournalProgressExpectation::PostRestoreOrTerminal => match state {
+                RecoveryJobState::Reconciling => {
+                    !offline_restore_completed || health_verified || audit_projected
+                }
+                RecoveryJobState::Verifying => {
+                    !offline_restore_completed || !reconciled || audit_projected
+                }
+                RecoveryJobState::Succeeded => {
+                    !offline_restore_completed || !reconciled || !health_verified
+                }
+                RecoveryJobState::RolledBack | RecoveryJobState::ManualRecoveryRequired => false,
+                _ => true,
+            },
+            JournalProgressExpectation::OfflineFailure => {
+                !matches!(
+                    state,
+                    RecoveryJobState::Draining | RecoveryJobState::Restoring
+                ) || reconciled
+                    || health_verified
+                    || audit_projected
+                    || terminal_event.is_some()
+                    || (state == RecoveryJobState::Draining && !completed_steps.is_empty())
+            }
+        };
         if !handoff_ready
-            || completed_steps.len() < OFFLINE_RESTORE_STEPS.len()
-            || completed_steps[..OFFLINE_RESTORE_STEPS.len()] != OFFLINE_RESTORE_STEPS
-            || matches!(state, RecoveryJobState::Reconciling)
-                && completed_steps.len() > OFFLINE_RESTORE_STEPS.len() + 1
-            || matches!(state, RecoveryJobState::Verifying)
-                && !completed_steps.contains(&RecoveryStepKind::Reconcile)
-            || matches!(state, RecoveryJobState::Succeeded)
-                && completed_steps.len() != ALL_RECOVERY_STEPS.len()
-            || completed_steps.contains(&RecoveryStepKind::HealthVerification)
-                && health_verification_event.is_none()
+            || expectation_invalid
+            || (state.is_terminal() != terminal_event.is_some())
+            || (audit_projected && !state.is_terminal())
+            || (matches!(
+                state,
+                RecoveryJobState::RolledBack | RecoveryJobState::ManualRecoveryRequired
+            ) && last_failure_code.is_none())
         {
             return Err(PostRestoreRecoveryError::InvalidJournal);
         }
@@ -546,7 +838,7 @@ impl PostRestoreJournalProgress {
             next_sequence: events.len() as u64,
             state,
             completed_steps,
-            health_verification_event,
+            terminal_event,
             last_failure_code,
         })
     }
@@ -578,16 +870,12 @@ impl PostRestoreJournalProgress {
         repository: &dyn BackupRepository,
         step: RecoveryStepKind,
     ) -> Result<(), PostRestoreRecoveryError> {
-        let event = self
-            .append(
-                repository,
-                BackupJournalEventKind::RecoveryStepCompleted { step },
-            )
-            .await?;
+        self.append(
+            repository,
+            BackupJournalEventKind::RecoveryStepCompleted { step },
+        )
+        .await?;
         self.completed_steps.push(step);
-        if step == RecoveryStepKind::HealthVerification {
-            self.health_verification_event = Some((event.event_id, event.occurred_at));
-        }
         Ok(())
     }
 
@@ -596,12 +884,20 @@ impl PostRestoreJournalProgress {
         repository: &dyn BackupRepository,
         state: RecoveryJobState,
     ) -> Result<(), PostRestoreRecoveryError> {
-        self.append(
-            repository,
-            BackupJournalEventKind::RecoveryStateChanged { state },
-        )
-        .await?;
+        let event = self
+            .append(
+                repository,
+                BackupJournalEventKind::RecoveryStateChanged { state },
+            )
+            .await?;
         self.state = state;
+        if state.is_terminal() {
+            self.terminal_event = Some(RecoveryTerminalEvent {
+                event_id: event.event_id,
+                occurred_at: event.occurred_at,
+                state,
+            });
+        }
         Ok(())
     }
 
@@ -610,6 +906,9 @@ impl PostRestoreJournalProgress {
         repository: &dyn BackupRepository,
         code: &'static str,
     ) -> Result<(), PostRestoreRecoveryError> {
+        if self.last_failure_code.as_deref() == Some(code) {
+            return Ok(());
+        }
         self.append(
             repository,
             BackupJournalEventKind::TerminalFailure {
@@ -662,6 +961,7 @@ fn valid_state_transition(current: RecoveryJobState, next: RecoveryJobState) -> 
             | (RecoveryJobState::Restoring, RecoveryJobState::Reconciling)
             | (RecoveryJobState::Reconciling, RecoveryJobState::Verifying)
             | (RecoveryJobState::Verifying, RecoveryJobState::Succeeded)
+            | (RecoveryJobState::Draining, RecoveryJobState::RolledBack)
             | (RecoveryJobState::Restoring, RecoveryJobState::RolledBack)
             | (RecoveryJobState::Reconciling, RecoveryJobState::RolledBack)
             | (RecoveryJobState::Verifying, RecoveryJobState::RolledBack)
@@ -671,4 +971,58 @@ fn valid_state_transition(current: RecoveryJobState, next: RecoveryJobState) -> 
             RecoveryJobState::Preflight | RecoveryJobState::AwaitingConfirmation
         )
         && next == RecoveryJobState::ManualRecoveryRequired)
+}
+
+fn offline_failure_settlement(error: &OfflineRecoveryError) -> OfflineFailureSettlement {
+    match error {
+        OfflineRecoveryError::Repository
+        | OfflineRecoveryError::Key
+        | OfflineRecoveryError::Manifest
+        | OfflineRecoveryError::Component
+        | OfflineRecoveryError::Step { .. } => OfflineFailureSettlement::RolledBack,
+        OfflineRecoveryError::Journal
+        | OfflineRecoveryError::InvalidJournal
+        | OfflineRecoveryError::Compensation { .. } => {
+            OfflineFailureSettlement::ManualRecoveryRequired
+        }
+    }
+}
+
+fn offline_failure_code(error: &OfflineRecoveryError) -> &'static str {
+    match error {
+        OfflineRecoveryError::Journal => "offline_restore_journal_failed",
+        OfflineRecoveryError::InvalidJournal => "offline_restore_invalid_journal",
+        OfflineRecoveryError::Repository => "offline_restore_repository_failed",
+        OfflineRecoveryError::Key => "offline_restore_key_failed",
+        OfflineRecoveryError::Manifest => "offline_restore_manifest_failed",
+        OfflineRecoveryError::Component => "offline_restore_component_failed",
+        OfflineRecoveryError::Step { step } => offline_step_failure_code(*step),
+        OfflineRecoveryError::Compensation { step } => offline_compensation_failure_code(*step),
+    }
+}
+
+fn offline_step_failure_code(step: RecoveryStepKind) -> &'static str {
+    match step {
+        RecoveryStepKind::PostgreSql => "offline_restore_postgresql_failed",
+        RecoveryStepKind::BusinessObjects => "offline_restore_business_objects_failed",
+        RecoveryStepKind::ExtensionArtifacts => "offline_restore_extension_artifacts_failed",
+        RecoveryStepKind::Reconcile => "offline_restore_reconcile_failed",
+        RecoveryStepKind::HealthVerification => "offline_restore_health_verification_failed",
+        RecoveryStepKind::AuditProjection => "offline_restore_audit_projection_failed",
+    }
+}
+
+fn offline_compensation_failure_code(step: RecoveryStepKind) -> &'static str {
+    match step {
+        RecoveryStepKind::PostgreSql => "offline_restore_postgresql_compensation_failed",
+        RecoveryStepKind::BusinessObjects => "offline_restore_business_objects_compensation_failed",
+        RecoveryStepKind::ExtensionArtifacts => {
+            "offline_restore_extension_artifacts_compensation_failed"
+        }
+        RecoveryStepKind::Reconcile => "offline_restore_reconcile_compensation_failed",
+        RecoveryStepKind::HealthVerification => {
+            "offline_restore_health_verification_compensation_failed"
+        }
+        RecoveryStepKind::AuditProjection => "offline_restore_audit_projection_compensation_failed",
+    }
 }

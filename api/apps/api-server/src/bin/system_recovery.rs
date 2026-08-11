@@ -1,12 +1,19 @@
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
 };
 
 use anyhow::{anyhow, bail, Context, Result};
 use api_server::{
     config::ApiConfig,
-    system_backup::{EnvironmentBackupKeyProvider, LocalBackupRepository},
+    system_backup::{
+        EnvironmentBackupKeyProvider, LocalBackupRepository, PostgreSqlPostRestoreHealthVerifier,
+        PostgreSqlPostRestoreReconciler, PostgreSqlRecoveryAuditProjector,
+        StoppedServerRecoveryEphemeralState,
+    },
 };
 use async_trait::async_trait;
 use control_plane::{
@@ -20,12 +27,13 @@ use control_plane::{
     system_backup::SystemBackupService,
     system_recovery::{
         ExecuteOfflineRecoveryCommand, OfflineRecoveryExecutor, OfflineRecoveryTargets,
-        RecoveryStepTargetError,
+        PostRestoreRecoveryError, PostRestoreRecoveryOutcome, PostRestoreRecoveryService,
+        RecoveryCompletionLease, RecoveryStepTargetError,
     },
 };
 use domain::{
     ApplicationBuild, BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint,
-    RecoveryJobId,
+    RecoveryJobId, RecoveryJobState,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -81,24 +89,15 @@ async fn main() -> Result<()> {
                 recovery_job_id: required_recovery_job_id(&arguments)?,
                 backup_set_id: required_backup_set_id(&arguments)?,
             };
-            let executor = build_executor(&config, repository, key_provider).await?;
+            let runtime = build_recovery_runtime(&config, repository, key_provider).await?;
             match arguments.command {
-                Command::Restore | Command::Resume => {
-                    let receipt = executor.execute(command).await?;
-                    json!({
-                        "status": "reconciling",
-                        "recovery_job_id": receipt.recovery_job_id,
-                        "backup_set_id": receipt.backup_set_id,
-                        "executed_steps": receipt.executed_steps,
-                        "resumed_steps": receipt.resumed_steps,
-                    })
-                }
+                Command::Restore | Command::Resume => runtime.restore_or_resume(command).await?,
                 Command::Rollback => {
-                    executor.rollback_promoted_targets(command).await?;
+                    runtime.executor.rollback_promoted_targets(command).await?;
                     json!({"status": "rolled_back", "recovery_job_id": command.recovery_job_id})
                 }
                 Command::Finalize => {
-                    executor.finalize_promoted_targets(command).await?;
+                    runtime.executor.finalize_promoted_targets(command).await?;
                     json!({"status": "finalized", "recovery_job_id": command.recovery_job_id})
                 }
                 _ => unreachable!(),
@@ -195,7 +194,7 @@ async fn preflight(
     let service = SystemBackupService::new(repository, key_provider);
     service.verify(backup_set_id).await?;
     let sealed = service.get(backup_set_id).await?;
-    let toolchain = PostgreSqlToolchain::discover_from_path().await?;
+    let toolchain = discover_postgres_toolchain().await?;
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&config.database_url)
@@ -269,12 +268,12 @@ async fn recovery_events(
         })
 }
 
-async fn build_executor(
+async fn build_recovery_runtime(
     config: &ApiConfig,
     repository: Arc<LocalBackupRepository>,
     key_provider: Arc<EnvironmentBackupKeyProvider>,
-) -> Result<OfflineRecoveryExecutor> {
-    let toolchain = PostgreSqlToolchain::discover_from_path().await?;
+) -> Result<StoppedServerRecoveryRuntime> {
+    let toolchain = discover_postgres_toolchain().await?;
     let compatibility_pool = PgPoolOptions::new()
         .max_connections(1)
         .connect(&config.database_url)
@@ -291,30 +290,177 @@ async fn build_executor(
     let database = Arc::new(OfflineDatabaseResolver {
         database_url: config.database_url.clone(),
     });
+    let object_registry = Arc::new(storage_object::builtin_driver_registry());
     let business_objects = Arc::new(BusinessObjectRecoveryTarget::new(
         database.clone(),
-        Arc::new(storage_object::builtin_driver_registry()),
+        object_registry.clone(),
     ));
-    let extension_artifacts = Arc::new(FilesystemArtifactRecoveryTarget::new(Arc::new(
-        OfflineArtifactResolver {
-            database,
-            node_id: config.api_node_id.clone(),
-            allowed_roots: vec![
-                PathBuf::from(&config.provider_install_root),
-                PathBuf::from(&config.mcp_template_library_root),
-                PathBuf::from(&config.host_extension_dropin_root),
-            ],
-        },
-    )));
-    Ok(OfflineRecoveryExecutor::new(
-        repository,
+    let artifact_resolver = Arc::new(OfflineArtifactResolver {
+        database: database.clone(),
+        node_id: config.api_node_id.clone(),
+        allowed_roots: vec![
+            PathBuf::from(&config.provider_install_root),
+            PathBuf::from(&config.mcp_template_library_root),
+            PathBuf::from(&config.host_extension_dropin_root),
+        ],
+    });
+    let extension_artifacts = Arc::new(FilesystemArtifactRecoveryTarget::new(
+        artifact_resolver.clone(),
+    ));
+    let executor = Arc::new(OfflineRecoveryExecutor::new(
+        repository.clone(),
         key_provider,
         OfflineRecoveryTargets {
             postgres,
             business_objects,
             extension_artifacts,
         },
-    ))
+    ));
+    let post_restore = PostRestoreRecoveryService::new(
+        repository.clone(),
+        executor.clone(),
+        Arc::new(PostgreSqlPostRestoreReconciler::new(
+            &config.database_url,
+            &config.api_node_id,
+            &config.provider_install_root,
+        )),
+        Arc::new(PostgreSqlPostRestoreHealthVerifier::new(
+            &config.database_url,
+            &config.api_node_id,
+            repository.clone(),
+            database,
+            object_registry,
+            artifact_resolver,
+        )),
+        Arc::new(StoppedServerRecoveryEphemeralState::new(
+            &config.database_url,
+        )),
+        Arc::new(PostgreSqlRecoveryAuditProjector::new(&config.database_url)),
+    );
+    Ok(StoppedServerRecoveryRuntime {
+        repository,
+        executor,
+        post_restore,
+    })
+}
+
+struct StoppedServerRecoveryRuntime {
+    repository: Arc<LocalBackupRepository>,
+    executor: Arc<OfflineRecoveryExecutor>,
+    post_restore: PostRestoreRecoveryService,
+}
+
+impl StoppedServerRecoveryRuntime {
+    async fn restore_or_resume(&self, command: ExecuteOfflineRecoveryCommand) -> Result<Value> {
+        let events = recovery_events(self.repository.as_ref(), command.recovery_job_id).await?;
+        let state = events
+            .iter()
+            .rev()
+            .find_map(|event| match event.event {
+                domain::BackupJournalEventKind::RecoveryStateChanged { state } => Some(state),
+                _ => None,
+            })
+            .context("external recovery journal has no state")?;
+        let (executed_steps, resumed_steps, offline_failure) = match state {
+            RecoveryJobState::Draining | RecoveryJobState::Restoring => {
+                match self.executor.execute(command).await {
+                    Ok(receipt) => (receipt.executed_steps, receipt.resumed_steps, None),
+                    Err(error) => (Vec::new(), Vec::new(), Some(error)),
+                }
+            }
+            RecoveryJobState::Reconciling
+            | RecoveryJobState::Verifying
+            | RecoveryJobState::Succeeded
+            | RecoveryJobState::RolledBack
+            | RecoveryJobState::ManualRecoveryRequired => (Vec::new(), Vec::new(), None),
+            _ => bail!("external recovery journal is not ready for offline restore"),
+        };
+
+        let lease_state = Arc::new(AtomicU8::new(LEASE_PENDING));
+        let lease = Box::new(StoppedServerRecoveryLease {
+            state: lease_state.clone(),
+        });
+        let result = match offline_failure {
+            Some(error) => {
+                self.post_restore
+                    .settle_offline_failure(command, error, lease)
+                    .await
+            }
+            None => self.post_restore.run(command, lease).await,
+        };
+        let maintenance_fence = lease_disposition(&lease_state)?;
+        match result {
+            Ok(receipt) => {
+                let status = match receipt.outcome {
+                    PostRestoreRecoveryOutcome::Succeeded => "succeeded",
+                    PostRestoreRecoveryOutcome::RolledBack => "rolled_back",
+                };
+                Ok(json!({
+                    "status": status,
+                    "recovery_job_id": receipt.recovery_job_id,
+                    "backup_set_id": receipt.backup_set_id,
+                    "failure_code": receipt.failure_code,
+                    "executed_steps": executed_steps,
+                    "resumed_steps": resumed_steps,
+                    "maintenance_fence": maintenance_fence,
+                }))
+            }
+            Err(PostRestoreRecoveryError::ManualRecoveryRequired { code }) => Ok(json!({
+                "status": "manual_recovery_required",
+                "recovery_job_id": command.recovery_job_id,
+                "backup_set_id": command.backup_set_id,
+                "failure_code": code,
+                "executed_steps": executed_steps,
+                "resumed_steps": resumed_steps,
+                "maintenance_fence": maintenance_fence,
+            })),
+            Err(error) => Err(anyhow!(error)),
+        }
+    }
+}
+
+const LEASE_PENDING: u8 = 0;
+const LEASE_RELEASED: u8 = 1;
+const LEASE_RETAINED: u8 = 2;
+
+struct StoppedServerRecoveryLease {
+    state: Arc<AtomicU8>,
+}
+
+impl RecoveryCompletionLease for StoppedServerRecoveryLease {
+    fn release(self: Box<Self>) {
+        self.state.store(LEASE_RELEASED, Ordering::SeqCst);
+    }
+
+    fn retain(self: Box<Self>) {
+        self.state.store(LEASE_RETAINED, Ordering::SeqCst);
+    }
+}
+
+fn lease_disposition(state: &AtomicU8) -> Result<&'static str> {
+    match state.load(Ordering::SeqCst) {
+        LEASE_RELEASED => Ok("released"),
+        LEASE_RETAINED => Ok("retained"),
+        _ => bail!("post-restore service did not settle the maintenance fence"),
+    }
+}
+
+async fn discover_postgres_toolchain() -> Result<PostgreSqlToolchain> {
+    let pg_dump = std::env::var_os("API_POSTGRES_PG_DUMP_PATH");
+    let pg_restore = std::env::var_os("API_POSTGRES_PG_RESTORE_PATH");
+    match (pg_dump, pg_restore) {
+        (Some(pg_dump), Some(pg_restore)) if !pg_dump.is_empty() && !pg_restore.is_empty() => {
+            PostgreSqlToolchain::discover(PathBuf::from(pg_dump), PathBuf::from(pg_restore))
+                .await
+                .map_err(Into::into)
+        }
+        (None, None) => PostgreSqlToolchain::discover_from_path()
+            .await
+            .map_err(Into::into),
+        _ => bail!(
+            "API_POSTGRES_PG_DUMP_PATH and API_POSTGRES_PG_RESTORE_PATH must be configured together"
+        ),
+    }
 }
 
 struct OfflineDatabaseResolver {

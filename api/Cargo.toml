@@ -40,6 +40,7 @@ hmac = "0.12"
 http = "1"
 jsonschema = "0.46.5"
 moka = { version = "0.12.15", features = ["future"] }
+percent-encoding = "2"
 rand_core = { version = "0.6", features = ["std"] }
 rand = "0.10"
 rand_regex = { version = "0.19", default-features = false }

@@ -3,6 +3,7 @@ mod metadata;
 mod toolchain;
 mod verify;
 
+pub(crate) use dump::PostgreSqlCommandConnection;
 pub use dump::*;
 pub use metadata::*;
 pub use toolchain::*;

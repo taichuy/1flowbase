@@ -10,11 +10,13 @@ use domain::{
     ArtifactRebuildability, BackupComponentDisposition, BackupComponentId, BackupComponentKind,
     BackupComponentRestoreTarget, BackupSourceIdentity,
 };
+use percent_encoding::percent_decode_str;
 use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
     process::Command,
 };
+use url::Url;
 
 use super::{read_bounded_stderr, PostgreSqlBackupError, PostgreSqlToolchain};
 
@@ -22,6 +24,63 @@ use super::{read_bounded_stderr, PostgreSqlBackupError, PostgreSqlToolchain};
 pub struct PostgreSqlDumpReceipt {
     pub size_bytes: u64,
     pub content_digest: ContentDigest,
+}
+
+pub(crate) struct PostgreSqlCommandConnection {
+    database_argument: String,
+    password: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PostgreSqlCommandConnectionError;
+
+impl PostgreSqlCommandConnection {
+    pub(crate) fn parse(database_url: &str) -> Result<Self, PostgreSqlCommandConnectionError> {
+        let mut parsed = Url::parse(database_url).map_err(|_| PostgreSqlCommandConnectionError)?;
+        if !matches!(parsed.scheme(), "postgres" | "postgresql") || parsed.fragment().is_some() {
+            return Err(PostgreSqlCommandConnectionError);
+        }
+        let password = parsed
+            .password()
+            .map(|encoded| {
+                percent_decode_str(encoded)
+                    .decode_utf8()
+                    .map(|decoded| decoded.into_owned())
+                    .map_err(|_| PostgreSqlCommandConnectionError)
+            })
+            .transpose()?;
+        let supported_query = parsed
+            .query_pairs()
+            .filter(|(key, _)| key != "statement-cache-capacity")
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect::<Vec<_>>();
+        let removed_sqlx_query = parsed.query_pairs().count() != supported_query.len();
+        if removed_sqlx_query {
+            parsed
+                .query_pairs_mut()
+                .clear()
+                .extend_pairs(supported_query);
+        }
+        let database_argument = if password.is_some() || removed_sqlx_query {
+            parsed
+                .set_password(None)
+                .map_err(|_| PostgreSqlCommandConnectionError)?;
+            parsed.to_string()
+        } else {
+            database_url.to_owned()
+        };
+        Ok(Self {
+            database_argument,
+            password,
+        })
+    }
+
+    pub(crate) fn apply(&self, command: &mut Command) {
+        command.arg("--dbname").arg(&self.database_argument);
+        if let Some(password) = &self.password {
+            command.env("PGPASSWORD", password);
+        }
+    }
 }
 
 pub struct PostgreSqlLogicalBackup {
@@ -41,7 +100,13 @@ impl PostgreSqlLogicalBackup {
         &self,
         mut destination: impl AsyncWrite + Unpin,
     ) -> Result<PostgreSqlDumpReceipt, PostgreSqlBackupError> {
-        let mut child = Command::new(self.toolchain.pg_dump())
+        let connection = PostgreSqlCommandConnection::parse(&self.database_url).map_err(|_| {
+            PostgreSqlBackupError::CommandFailed {
+                code: "database_url_invalid".to_owned(),
+            }
+        })?;
+        let mut command = Command::new(self.toolchain.pg_dump());
+        command
             .args([
                 "--format=custom",
                 "--compress=0",
@@ -52,11 +117,12 @@ impl PostgreSqlLogicalBackup {
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("LC_ALL", "C")
-            .env("PGDATABASE", &self.database_url)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+        connection.apply(&mut command);
+        let mut child = command
             .spawn()
             .map_err(|_| PostgreSqlBackupError::ToolUnavailable)?;
         let mut stdout = child

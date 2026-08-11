@@ -8,23 +8,27 @@ use std::{
 
 use async_trait::async_trait;
 use domain::{
-    BackupComponentId, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
-    BackupSetId, ContentDigest, RecoveryJobId, RecoveryJobState, RecoveryStepKind,
-    SealedBackupManifest,
+    ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
+    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJournalEvent,
+    BackupJournalEventKind, BackupJournalSubject, BackupManifest, BackupSetId,
+    BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead, RecoveryJobId,
+    RecoveryJobState, RecoveryStepKind, SealedBackupManifest,
 };
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
     ports::{
-        BackupComponentReader, BackupComponentWriter, BackupRepository, BackupRepositoryError,
-        BackupSetCatalogEntry,
+        BackupComponentReader, BackupComponentWriter, BackupKeyMaterial, BackupRepository,
+        BackupRepositoryError, BackupSetCatalogEntry,
     },
+    system_backup::authenticate_backup_manifest,
     system_recovery::{
-        ExecuteOfflineRecoveryCommand, PostRestoreDependencyError, PostRestoreHealthVerifier,
-        PostRestoreReconcileTarget, PostRestoreRecoveryError, PostRestoreRecoveryOutcome,
-        PostRestoreRecoveryService, RecoveryAuditProjection, RecoveryAuditProjector,
-        RecoveryCompletionLease, RecoveryEphemeralState, RecoveryRestoreControl,
+        ExecuteOfflineRecoveryCommand, OfflineRecoveryError, PostRestoreDependencyError,
+        PostRestoreHealthVerifier, PostRestoreReconcileTarget, PostRestoreRecoveryError,
+        PostRestoreRecoveryOutcome, PostRestoreRecoveryService, RecoveryAuditOutcome,
+        RecoveryAuditProjection, RecoveryAuditProjector, RecoveryCompletionLease,
+        RecoveryEphemeralState, RecoveryRestoreControl,
     },
 };
 
@@ -41,8 +45,8 @@ async fn healthy_restore_reconciles_resets_ephemeral_projects_audit_finalizes_an
             "reconcile",
             "health",
             "ephemeral",
-            "audit",
             "finalize",
+            "audit",
             "release",
         ]
     );
@@ -55,6 +59,24 @@ async fn healthy_restore_reconciles_resets_ephemeral_projects_audit_finalizes_an
         }
     );
     assert_eq!(fixture.scenario.projections().len(), 1);
+    let projection = fixture.scenario.projections().into_values().next().unwrap();
+    assert_eq!(
+        projection.source_event_id,
+        fixture
+            .terminal_state_event(RecoveryJobState::Succeeded)
+            .event_id,
+        "the terminal external journal event is the audit idempotency source"
+    );
+    assert_eq!(projection.outcome, RecoveryAuditOutcome::Succeeded);
+    assert_eq!(projection.failure_code, None);
+    assert_eq!(
+        projection.effective_after_snapshot,
+        Some(projection.requested_target_snapshot.clone())
+    );
+    assert_ne!(
+        projection.before_snapshot.application_build,
+        projection.requested_target_snapshot.application_build
+    );
     assert_eq!(fixture.journal_state(), RecoveryJobState::Succeeded);
     assert_eq!(
         fixture.completed_post_restore_steps(),
@@ -80,10 +102,25 @@ async fn unhealthy_restore_rolls_every_promoted_target_back_before_releasing_mai
     );
     assert_eq!(
         fixture.scenario.calls(),
-        vec!["reconcile", "health", "rollback", "release"]
+        vec!["reconcile", "health", "rollback", "audit", "release"]
     );
     assert_eq!(fixture.journal_state(), RecoveryJobState::RolledBack);
-    assert!(fixture.scenario.projections().is_empty());
+    let projection = fixture.scenario.projections().into_values().next().unwrap();
+    assert_eq!(
+        projection.source_event_id,
+        fixture
+            .terminal_state_event(RecoveryJobState::RolledBack)
+            .event_id
+    );
+    assert_eq!(projection.outcome, RecoveryAuditOutcome::RolledBack);
+    assert_eq!(
+        projection.failure_code.as_deref(),
+        Some("post_restore_health_failed")
+    );
+    assert_eq!(
+        projection.effective_after_snapshot,
+        Some(projection.before_snapshot.clone())
+    );
 }
 
 #[tokio::test]
@@ -102,12 +139,24 @@ async fn rollback_failure_enters_manual_recovery_and_retains_maintenance() {
     );
     assert_eq!(
         fixture.scenario.calls(),
-        vec!["reconcile", "health", "rollback", "retain"]
+        vec!["reconcile", "health", "rollback", "audit", "retain"]
     );
     assert_eq!(
         fixture.journal_state(),
         RecoveryJobState::ManualRecoveryRequired
     );
+    let projection = fixture.scenario.projections().into_values().next().unwrap();
+    assert_eq!(
+        projection.source_event_id,
+        fixture
+            .terminal_state_event(RecoveryJobState::ManualRecoveryRequired)
+            .event_id
+    );
+    assert_eq!(
+        projection.outcome,
+        RecoveryAuditOutcome::ManualRecoveryRequired
+    );
+    assert_eq!(projection.effective_after_snapshot, None);
 }
 
 #[tokio::test]
@@ -129,14 +178,21 @@ async fn finalize_failure_enters_manual_recovery_without_claiming_rollback_is_sa
             "reconcile",
             "health",
             "ephemeral",
-            "audit",
             "finalize",
+            "audit",
             "retain",
         ]
     );
     assert_eq!(
         fixture.journal_state(),
         RecoveryJobState::ManualRecoveryRequired
+    );
+    let projection = fixture.scenario.projections().into_values().next().unwrap();
+    assert_eq!(
+        projection.source_event_id,
+        fixture
+            .terminal_state_event(RecoveryJobState::ManualRecoveryRequired)
+            .event_id
     );
 }
 
@@ -152,6 +208,7 @@ async fn retrying_after_audit_step_journal_failure_reuses_event_id_without_dupli
         fixture.run().await.unwrap_err(),
         PostRestoreRecoveryError::Journal
     );
+    assert_eq!(fixture.journal_state(), RecoveryJobState::Succeeded);
     assert_eq!(fixture.scenario.projections().len(), 1);
 
     let receipt = fixture.run().await.unwrap();
@@ -165,6 +222,143 @@ async fn retrying_after_audit_step_journal_failure_reuses_event_id_without_dupli
     assert_eq!(projection.backup_set_id, fixture.command.backup_set_id);
 }
 
+#[tokio::test]
+async fn offline_executor_errors_settle_from_explicit_compensation_evidence() {
+    struct Case {
+        name: &'static str,
+        phase: FixturePhase,
+        error: OfflineRecoveryError,
+        expected_state: RecoveryJobState,
+        expected_outcome: RecoveryAuditOutcome,
+        expected_failure_code: &'static str,
+    }
+
+    let cases = vec![
+        Case {
+            name: "journal ambiguity",
+            phase: FixturePhase::Restoring,
+            error: OfflineRecoveryError::Journal,
+            expected_state: RecoveryJobState::ManualRecoveryRequired,
+            expected_outcome: RecoveryAuditOutcome::ManualRecoveryRequired,
+            expected_failure_code: "offline_restore_journal_failed",
+        },
+        Case {
+            name: "invalid journal",
+            phase: FixturePhase::Restoring,
+            error: OfflineRecoveryError::InvalidJournal,
+            expected_state: RecoveryJobState::ManualRecoveryRequired,
+            expected_outcome: RecoveryAuditOutcome::ManualRecoveryRequired,
+            expected_failure_code: "offline_restore_invalid_journal",
+        },
+        Case {
+            name: "repository before restore",
+            phase: FixturePhase::Draining,
+            error: OfflineRecoveryError::Repository,
+            expected_state: RecoveryJobState::RolledBack,
+            expected_outcome: RecoveryAuditOutcome::RolledBack,
+            expected_failure_code: "offline_restore_repository_failed",
+        },
+        Case {
+            name: "key before restore",
+            phase: FixturePhase::Draining,
+            error: OfflineRecoveryError::Key,
+            expected_state: RecoveryJobState::RolledBack,
+            expected_outcome: RecoveryAuditOutcome::RolledBack,
+            expected_failure_code: "offline_restore_key_failed",
+        },
+        Case {
+            name: "manifest before restore",
+            phase: FixturePhase::Draining,
+            error: OfflineRecoveryError::Manifest,
+            expected_state: RecoveryJobState::RolledBack,
+            expected_outcome: RecoveryAuditOutcome::RolledBack,
+            expected_failure_code: "offline_restore_manifest_failed",
+        },
+        Case {
+            name: "component inventory before restore",
+            phase: FixturePhase::Draining,
+            error: OfflineRecoveryError::Component,
+            expected_state: RecoveryJobState::RolledBack,
+            expected_outcome: RecoveryAuditOutcome::RolledBack,
+            expected_failure_code: "offline_restore_component_failed",
+        },
+        Case {
+            name: "step compensation completed",
+            phase: FixturePhase::Restoring,
+            error: OfflineRecoveryError::Step {
+                step: RecoveryStepKind::PostgreSql,
+            },
+            expected_state: RecoveryJobState::RolledBack,
+            expected_outcome: RecoveryAuditOutcome::RolledBack,
+            expected_failure_code: "offline_restore_postgresql_failed",
+        },
+        Case {
+            name: "step compensation failed",
+            phase: FixturePhase::Restoring,
+            error: OfflineRecoveryError::Compensation {
+                step: RecoveryStepKind::BusinessObjects,
+            },
+            expected_state: RecoveryJobState::ManualRecoveryRequired,
+            expected_outcome: RecoveryAuditOutcome::ManualRecoveryRequired,
+            expected_failure_code: "offline_restore_business_objects_compensation_failed",
+        },
+    ];
+
+    for case in cases {
+        let fixture = Fixture::at_phase(case.phase);
+        let result = fixture.settle_offline_failure(case.error).await;
+
+        assert_eq!(
+            fixture.journal_state(),
+            case.expected_state,
+            "{}",
+            case.name
+        );
+        match case.expected_state {
+            RecoveryJobState::RolledBack => {
+                let receipt = result.unwrap_or_else(|error| {
+                    panic!("{} must settle as rolled back: {error}", case.name)
+                });
+                assert_eq!(receipt.outcome, PostRestoreRecoveryOutcome::RolledBack);
+                assert_eq!(fixture.scenario.calls(), vec!["audit", "release"]);
+            }
+            RecoveryJobState::ManualRecoveryRequired => {
+                assert_eq!(
+                    result.unwrap_err(),
+                    PostRestoreRecoveryError::ManualRecoveryRequired {
+                        code: case.expected_failure_code,
+                    },
+                    "{}",
+                    case.name
+                );
+                assert_eq!(fixture.scenario.calls(), vec!["audit", "retain"]);
+            }
+            state => panic!("unexpected test terminal state {state:?}"),
+        }
+        let projection = fixture.scenario.projections().into_values().next().unwrap();
+        assert_eq!(projection.outcome, case.expected_outcome, "{}", case.name);
+        assert_eq!(
+            projection.failure_code.as_deref(),
+            Some(case.expected_failure_code),
+            "{}",
+            case.name
+        );
+        assert_eq!(
+            projection.source_event_id,
+            fixture.terminal_state_event(case.expected_state).event_id,
+            "{}",
+            case.name
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FixturePhase {
+    PostRestore,
+    Draining,
+    Restoring,
+}
+
 struct Fixture {
     command: ExecuteOfflineRecoveryCommand,
     repository: Arc<JournalRepository>,
@@ -174,14 +368,37 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::at_phase(FixturePhase::PostRestore)
+    }
+
+    fn at_phase(phase: FixturePhase) -> Self {
         let recovery_job_id = RecoveryJobId::new();
         let backup_set_id = BackupSetId::new();
+        let safety_backup_set_id = BackupSetId::new();
         let actor_user_id = Uuid::now_v7();
-        let repository = Arc::new(JournalRepository::new(recovery_journal(
+        let mut journal = recovery_journal(
             recovery_job_id,
             backup_set_id,
+            safety_backup_set_id,
             actor_user_id,
-        )));
+        );
+        match phase {
+            FixturePhase::PostRestore => {}
+            FixturePhase::Draining => journal.truncate(8),
+            FixturePhase::Restoring => journal.truncate(9),
+        }
+        let repository = Arc::new(JournalRepository::new(
+            journal,
+            [
+                (backup_set_id, sealed_manifest(backup_set_id, 'a')),
+                (
+                    safety_backup_set_id,
+                    sealed_manifest(safety_backup_set_id, 'b'),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ));
         let scenario = Arc::new(Scenario::default());
         let service = PostRestoreRecoveryService::new(
             repository.clone(),
@@ -208,6 +425,19 @@ impl Fixture {
         self.service
             .run(
                 self.command,
+                Box::new(TestLease::new(self.scenario.clone())),
+            )
+            .await
+    }
+
+    async fn settle_offline_failure(
+        &self,
+        error: OfflineRecoveryError,
+    ) -> Result<crate::system_recovery::PostRestoreRecoveryReceipt, PostRestoreRecoveryError> {
+        self.service
+            .settle_offline_failure(
+                self.command,
+                error,
                 Box::new(TestLease::new(self.scenario.clone())),
             )
             .await
@@ -243,6 +473,19 @@ impl Fixture {
                 _ => None,
             })
             .collect()
+    }
+
+    fn terminal_state_event(&self, expected: RecoveryJobState) -> BackupJournalEvent {
+        self.repository
+            .events()
+            .into_iter()
+            .find(|event| {
+                matches!(
+                    event.event,
+                    BackupJournalEventKind::RecoveryStateChanged { state } if state == expected
+                )
+            })
+            .expect("expected terminal recovery state event")
     }
 }
 
@@ -404,13 +647,18 @@ impl RecoveryCompletionLease for TestLease {
 
 struct JournalRepository {
     events: Mutex<Vec<BackupJournalEvent>>,
+    manifests: BTreeMap<BackupSetId, SealedBackupManifest>,
     fail_next_audit_step: AtomicBool,
 }
 
 impl JournalRepository {
-    fn new(events: Vec<BackupJournalEvent>) -> Self {
+    fn new(
+        events: Vec<BackupJournalEvent>,
+        manifests: BTreeMap<BackupSetId, SealedBackupManifest>,
+    ) -> Self {
         Self {
             events: Mutex::new(events),
+            manifests,
             fail_next_audit_step: AtomicBool::new(false),
         }
     }
@@ -454,9 +702,12 @@ impl BackupRepository for JournalRepository {
 
     async fn load_manifest(
         &self,
-        _backup_set_id: BackupSetId,
+        backup_set_id: BackupSetId,
     ) -> Result<SealedBackupManifest, BackupRepositoryError> {
-        Err(BackupRepositoryError::Unavailable)
+        self.manifests
+            .get(&backup_set_id)
+            .cloned()
+            .ok_or(BackupRepositoryError::NotFound)
     }
 
     async fn open_component(
@@ -507,9 +758,9 @@ impl BackupRepository for JournalRepository {
 fn recovery_journal(
     recovery_job_id: RecoveryJobId,
     backup_set_id: BackupSetId,
+    safety_backup_set_id: BackupSetId,
     actor_user_id: Uuid,
 ) -> Vec<BackupJournalEvent> {
-    let safety_backup_set_id = BackupSetId::new();
     let plan_digest = ContentDigest::try_from("a".repeat(64)).unwrap();
     let intent_id = Uuid::now_v7();
     let events = vec![
@@ -573,4 +824,33 @@ fn recovery_journal(
             event,
         })
         .collect()
+}
+
+fn sealed_manifest(backup_set_id: BackupSetId, digest_seed: char) -> SealedBackupManifest {
+    let fingerprint = KeyFingerprint::try_from("c".repeat(64)).unwrap();
+    let key = BackupKeyMaterial::new(fingerprint.clone(), vec![7; 32]).unwrap();
+    let content_digest = ContentDigest::try_from(digest_seed.to_string().repeat(64)).unwrap();
+    let manifest = BackupManifest::try_new(
+        backup_set_id,
+        OffsetDateTime::UNIX_EPOCH,
+        ApplicationBuild::try_from(format!("build-{digest_seed}")).unwrap(),
+        MigrationHead::try_from(format!("schema-{digest_seed}")).unwrap(),
+        KeyFingerprint::try_from("d".repeat(64)).unwrap(),
+        fingerprint,
+        vec![BackupComponent {
+            component_id: BackupComponentId::try_from("postgresql").unwrap(),
+            kind: BackupComponentKind::PostgreSql,
+            source_identity: BackupSourceIdentity::try_from("postgresql/durable").unwrap(),
+            content_type: "application/vnd.postgresql.custom-dump".to_owned(),
+            size_bytes: 1,
+            content_digest,
+            disposition: BackupComponentDisposition::Embedded,
+            rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
+        }],
+        1,
+        ContentDigest::try_from("e".repeat(64)).unwrap(),
+    )
+    .unwrap();
+    authenticate_backup_manifest(manifest, &key).unwrap()
 }

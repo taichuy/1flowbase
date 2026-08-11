@@ -3841,6 +3841,7 @@ dependencies = [
  "control-plane",
  "domain",
  "futures-util",
+ "percent-encoding",
  "plugin-framework",
  "postgres-test-support",
  "rand 0.10.2",
