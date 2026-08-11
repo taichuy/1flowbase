@@ -332,20 +332,31 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       canonicalBlockRuntime.diagnostics
     ]
   );
-  const [runtimeDemandsByBlockId, setRuntimeDemandsByBlockId] =
-    useState<FrontstageRuntimeDemandByBlockId>({});
-  useEffect(() => {
-    setRuntimeDemandsByBlockId({});
-  }, [activePageContent?.page.id, canonicalBlockId]);
+  const runtimeDemandScope =
+    canonicalBlockId ?? activePageContent?.page.id ?? '';
+  const [runtimeDemandState, setRuntimeDemandState] = useState<{
+    scope: string;
+    demands: FrontstageRuntimeDemandByBlockId;
+  }>(() => ({ scope: runtimeDemandScope, demands: {} }));
+  const runtimeDemandsByBlockId =
+    runtimeDemandState.scope === runtimeDemandScope
+      ? runtimeDemandState.demands
+      : {};
   const handleRuntimeDemandChange = useCallback(
     (blockId: string, priority: FrontstageRuntimeDemandPriority) => {
-      setRuntimeDemandsByBlockId((current) =>
-        current[blockId] === priority
+      setRuntimeDemandState((current) => {
+        const demands =
+          current.scope === runtimeDemandScope ? current.demands : {};
+        return demands[blockId] === priority &&
+          current.scope === runtimeDemandScope
           ? current
-          : { ...current, [blockId]: priority }
-      );
+          : {
+              scope: runtimeDemandScope,
+              demands: { ...demands, [blockId]: priority }
+            };
+      });
     },
-    []
+    [runtimeDemandScope]
   );
   const pageCanvasCodeReadPlan = useMemo(
     () =>
