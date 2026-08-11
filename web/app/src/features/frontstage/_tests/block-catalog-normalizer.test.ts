@@ -167,6 +167,32 @@ describe('frontstage block catalog normalizer', () => {
     });
   });
 
+  test('AC-003 preserves a manifest-owned external npm asset URL', () => {
+    const externalUrl = `/external-npm/assets/dayjs-${'b'.repeat(64)}.js`;
+    const { items } = normalizeFrontstageBlockCatalog([
+      createCatalogEntry({
+        code_modules: [
+          {
+            source: 'dayjs',
+            version: '1.11.21',
+            binding: 'fetched',
+            assets: [{ ...browserAsset('b'), url: externalUrl }],
+            exports: ['default'],
+            type_declarations:
+              'declare module "dayjs" { const value: unknown; export default value; }'
+          }
+        ]
+      })
+    ]);
+
+    expect(
+      resolveFrontstageNativeDependencyLock({
+        catalogEntry: items[0] ?? null,
+        workspaceId: 'workspace-1'
+      }).dependencyLock[0]?.assets[0]?.url
+    ).toBe(externalUrl);
+  });
+
   test('D2-P2F exposes incomplete catalog module metadata as a contract error', () => {
     const result = normalizeFrontstageBlockCatalog([
       createCatalogEntry({

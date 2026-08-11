@@ -121,8 +121,23 @@ API_COOKIE_SECURE=false
 - `api/plugins/installed/`: 插件安装产物
 - `api/plugins/host-extension/dropins/`: HostExtension drop-in 目录
 - `web/nginx.conf`: web 镜像的 nginx 覆盖配置
+- `web/external-npm/`: 当前 External npm Pack 的唯一只读挂载目录
 
 注意：不要把整个 `api/plugins` 挂载到容器里；镜像内置的 `api/plugins/host-extensions` 和 `api/plugins/sets` 是启动所需的官方插件工作区，只挂载上面的可写子目录。
+
+### 部署 External npm Pack
+
+扩展依赖由 [`taichuy/1flowbase-web-external-npm`](https://github.com/taichuy/1flowbase-web-external-npm) 在本地或 CI 预构建。服务器不运行 npm，也不保存扩展包历史：
+
+```bash
+docker compose stop web
+rm -f web/external-npm/manifest.json
+rm -rf web/external-npm/assets
+tar -xzf external-npm-pack.tar.gz -C web/external-npm/
+docker compose up -d web
+```
+
+归档内只有当前 `manifest.json` 和 `assets/`。更新时应先清空 `web/external-npm/` 中旧的 manifest 与资产，再整体解压新归档；需要回退时重新部署运维侧保留的旧归档。
 
 ## 本地构建缓存
 

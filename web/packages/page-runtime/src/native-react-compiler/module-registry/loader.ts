@@ -459,7 +459,7 @@ function isRegisteredAssetUrl(
   try {
     const url = new URL(value, 'https://1flowbase.invalid');
     const segments = url.pathname.split('/').filter(Boolean);
-    return (
+    const backendAsset =
       url.origin === 'https://1flowbase.invalid' &&
       url.search.length === 0 &&
       url.hash.length === 0 &&
@@ -469,8 +469,18 @@ function isRegisteredAssetUrl(
       segments[2] === 'frontstage' &&
       segments[3]!.length > 0 &&
       segments[4] === 'component-module-assets' &&
-      segments[5] === asset.sha256
-    );
+      segments[5] === asset.sha256;
+    const externalAsset =
+      url.origin === 'https://1flowbase.invalid' &&
+      url.search.length === 0 &&
+      url.hash.length === 0 &&
+      segments.length === 3 &&
+      segments[0] === 'external-npm' &&
+      segments[1] === 'assets' &&
+      new RegExp(`^[A-Za-z0-9._-]+-${asset.sha256}\\.[A-Za-z0-9]+$`, 'u').test(
+        segments[2] ?? ''
+      );
+    return backendAsset || externalAsset;
   } catch {
     return false;
   }

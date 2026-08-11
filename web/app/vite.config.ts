@@ -72,6 +72,9 @@ export default defineConfig(({ mode }) => {
     env.VITE_API_BASE_URL ||
     'http://127.0.0.1:7800'
   ).replace(/\/$/, '');
+  const externalNpmProxyTarget = (
+    env.VITE_EXTERNAL_NPM_PROXY_TARGET || 'http://127.0.0.1:4174'
+  ).replace(/\/$/, '');
 
   return {
     plugins: [react()],
@@ -133,6 +136,10 @@ export default defineConfig(({ mode }) => {
         ]
       },
       proxy: {
+        '/external-npm': {
+          target: externalNpmProxyTarget,
+          changeOrigin: true
+        },
         '/api': {
           target: apiProxyTarget,
           changeOrigin: true,

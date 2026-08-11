@@ -62,6 +62,7 @@ export interface NormalizedFrontstageBlockCodeModule {
     role: 'browser_module' | 'shadow_style' | 'support';
     media_type: string;
     sha256: string;
+    url?: string;
   }>;
   exports: string[];
   type_declarations: string;
@@ -227,7 +228,9 @@ export function resolveFrontstageNativeDependencyLock({
       binding: codeModule.binding,
       assets: codeModule.assets.map((asset) => ({
         ...asset,
-        url: frontstageComponentModuleAssetPath(workspaceId, asset.sha256)
+        url:
+          asset.url ??
+          frontstageComponentModuleAssetPath(workspaceId, asset.sha256)
       })),
       exports: codeModule.exports
     }))
@@ -411,7 +414,8 @@ function normalizeModuleAssets(
     assets.push({
       role: item.role,
       media_type: item.media_type,
-      sha256: item.sha256
+      sha256: item.sha256,
+      ...(isNonEmptyString(item.url) ? { url: item.url } : {})
     });
   }
   return assets;

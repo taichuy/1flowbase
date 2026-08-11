@@ -186,6 +186,25 @@ export const importedReact = React;
     );
   });
 
+  test('AC-005 loads a digest-named asset from the same-origin external npm directory', async () => {
+    const source = 'export const value = 7;';
+    const registration = await fetchedLock(source, ['value'], 'dayjs');
+    const externalRegistration = {
+      ...registration,
+      assets: registration.assets.map((asset) => ({
+        ...asset,
+        url: `/external-npm/assets/dayjs-${asset.sha256}.js`
+      }))
+    };
+    const registry = createNativeReactModuleRegistry({
+      dependencyLock: [externalRegistration],
+      hostModules,
+      fetchAsset: async () => response(source)
+    });
+
+    await expect(registry.load('dayjs')).resolves.toMatchObject({ value: 7 });
+  });
+
   test('keeps digest mismatch and a late failed fetch stable', async () => {
     const source = 'export const Surface = 1;';
     const registration = await fetchedLock(source, ['Surface']);

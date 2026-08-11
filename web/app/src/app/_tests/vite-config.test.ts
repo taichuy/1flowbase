@@ -19,6 +19,28 @@ describe('vite config', () => {
     expect(source.match(/ws: true/gu)).toHaveLength(2);
   });
 
+  test('AC-004 proxies the fixed external npm path in development', async () => {
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
+
+    expect(source).toContain('VITE_EXTERNAL_NPM_PROXY_TARGET');
+    expect(source).toContain("'/external-npm'");
+    expect(source).toContain('target: externalNpmProxyTarget');
+  });
+
+  test('AC-004 keeps production external npm misses out of the SPA fallback', async () => {
+    const source = await readFile(
+      path.resolve(process.cwd(), '../../docker/web/nginx.conf'),
+      'utf8'
+    );
+
+    expect(source).toContain('location = /external-npm/manifest.json');
+    expect(source).toContain('location /external-npm/assets/');
+    expect(source.match(/try_files \$uri =404;/gu)).toHaveLength(3);
+  });
+
   test('can expose the dev proxy to configured frontend origins', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'vite.config.ts'),

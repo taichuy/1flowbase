@@ -5,7 +5,25 @@ import {
   type ConsoleFrontendBlockCatalogEntry
 } from '@1flowbase/api-client';
 
-export type FrontstageBlockCatalogEntry = ConsoleFrontendBlockCatalogEntry;
+import {
+  fetchExternalNpmModules,
+  mergeExternalNpmModules
+} from './external-npm';
+
+export type FrontstageBlockCatalogEntry = Omit<
+  ConsoleFrontendBlockCatalogEntry,
+  'code_modules'
+> & {
+  code_modules: Array<
+    Omit<ConsoleFrontendBlockCatalogEntry['code_modules'][number], 'assets'> & {
+      assets: Array<
+        ConsoleFrontendBlockCatalogEntry['code_modules'][number]['assets'][number] & {
+          url?: string;
+        }
+      >;
+    }
+  >;
+};
 
 export const frontstageBlockCatalogQueryKeyPrefix = [
   'frontstage',
@@ -39,8 +57,12 @@ export function getFrontstageBlockCatalogApiBaseUrl(
   );
 }
 
-export function fetchFrontstageBlockCatalog(): Promise<
+export async function fetchFrontstageBlockCatalog(): Promise<
   FrontstageBlockCatalogEntry[]
 > {
-  return listConsoleFrontendBlocks(getFrontstageBlockCatalogApiBaseUrl());
+  const [entries, externalModules] = await Promise.all([
+    listConsoleFrontendBlocks(getFrontstageBlockCatalogApiBaseUrl()),
+    fetchExternalNpmModules()
+  ]);
+  return mergeExternalNpmModules(entries, externalModules);
 }

@@ -182,6 +182,17 @@ Frontend:
 http://127.0.0.1:3100
 ```
 
+To develop Native React blocks with the optional External npm Pack, start the companion repository in another terminal. Vite proxies the same production path, `/external-npm/`, to port `4174` by default:
+
+```bash
+git clone https://github.com/taichuy/1flowbase-web-external-npm.git
+cd 1flowbase-web-external-npm
+pnpm install --ignore-scripts
+pnpm dev
+```
+
+Override `VITE_EXTERNAL_NPM_PROXY_TARGET` in `web/app/.env` when the pack server uses another address.
+
 Start backend services:
 
 ```bash

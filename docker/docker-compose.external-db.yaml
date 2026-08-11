@@ -64,3 +64,4 @@ services:
       - "${WEB_PORT:-3100}:80"
     volumes:
       - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web/external-npm:/usr/share/nginx/html/external-npm:ro
