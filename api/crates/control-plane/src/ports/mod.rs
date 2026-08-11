@@ -14,6 +14,7 @@ mod model_definition;
 mod model_provider;
 mod plugin;
 mod runtime;
+mod system_backup;
 mod ui_management;
 
 use std::collections::BTreeMap;
@@ -48,4 +49,5 @@ pub use model_definition::*;
 pub use model_provider::*;
 pub use plugin::*;
 pub use runtime::*;
+pub use system_backup::*;
 pub use ui_management::*;
