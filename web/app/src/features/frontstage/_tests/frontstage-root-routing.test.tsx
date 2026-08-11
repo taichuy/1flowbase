@@ -45,6 +45,11 @@ const pageTreeMutations = vi.hoisted(() => {
 
 const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
+    containerId?: string;
+    onContainerIdChange?: (
+      containerId: string | null,
+      mode: 'push' | 'replace'
+    ) => void;
     onMovePageNode?: (
       nodeId: string,
       input: { parentId: string | null; rank: string }
@@ -290,5 +295,72 @@ describe('frontstage topbar root routing', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/sales/pages/page-top-level');
     });
+  });
+
+  test('AC-005 restores child container history while preserving unrelated URL state', async () => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
+      {
+        id: 'tab-overview',
+        page_id: 'page-top-level',
+        title: 'Overview',
+        rank: '001000',
+        is_default: true,
+        route_segment: null,
+        document_root_uid: 'root-overview'
+      }
+    ]);
+    pageContentApi.fetchFrontstagePageContent.mockReturnValue(
+      new Promise(() => undefined)
+    );
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level?view=table#section'
+    );
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.onContainerIdChange).toEqual(
+        expect.any(Function)
+      );
+    });
+
+    act(() => {
+      frontStagePageView.props?.onContainerIdChange?.('root-drawer', 'push');
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
+    });
+
+    act(() => {
+      frontStagePageView.props?.onContainerIdChange?.('child-modal', 'push');
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBe('child-modal');
+    });
+
+    act(() => {
+      window.history.back();
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
+    });
+    expect(window.location.search).toContain('view=table');
+    expect(window.location.hash).toBe('#section');
+
+    act(() => {
+      frontStagePageView.props?.onContainerIdChange?.(null, 'replace');
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBeUndefined();
+    });
+    expect(window.location.search).toBe('?view=table');
+    expect(window.location.hash).toBe('#section');
   });
 });

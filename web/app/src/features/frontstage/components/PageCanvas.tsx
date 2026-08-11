@@ -97,6 +97,8 @@ type PageCanvasProps = {
   runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
+  renderBlockIds?: readonly string[];
+  sharedSignalCoordinator?: FrontstageSignalRuntimeCoordinator;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
   /** Actions triggered from the design mode hover toolbar */
@@ -647,6 +649,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   runtimePreparations,
   runtimeContext,
   nativeContextHost,
+  renderBlockIds,
+  sharedSignalCoordinator,
   isDesignMode = false,
   designActions,
   toolbarDisabled = false,
@@ -655,10 +659,18 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   onRuntimeDemandChange,
   onRuntimeRetry
 }) => {
-  const document = useMemo(
+  const pageDocument = useMemo(
     () => (content ? createFrontstagePageDocument(content) : null),
     [content]
   );
+  const document = useMemo(() => {
+    if (!pageDocument || renderBlockIds === undefined) return pageDocument;
+    const visibleBlockIds = new Set(renderBlockIds);
+    const blocks = pageDocument.blocks.filter((block) =>
+      visibleBlockIds.has(block.id)
+    );
+    return { ...pageDocument, blocks, isEmpty: blocks.length === 0 };
+  }, [pageDocument, renderBlockIds]);
   const renderPlan = useMemo(
     () => (document ? createFrontstagePageRenderPlan(document) : null),
     [document]
@@ -668,21 +680,32 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     () => createFrontstagePageSignalSession(),
     [content?.page.id]
   );
-  const signalCoordinator = useMemo(
+  const localSignalCoordinator = useMemo(
     () =>
-      document && content
+      !sharedSignalCoordinator && pageDocument && content
         ? new FrontstageSignalRuntimeCoordinator(
-            document.blocks,
+            pageDocument.blocks,
             content.tab.id,
             signalSession
           )
         : null,
-    [content?.tab.id, document?.page.id, signalSession]
+    [
+      content?.tab.id,
+      pageDocument?.page.id,
+      sharedSignalCoordinator,
+      signalSession
+    ]
   );
+  const signalCoordinator = sharedSignalCoordinator ?? localSignalCoordinator;
   useEffect(() => {
-    signalCoordinator?.updateBlocks(document?.blocks ?? []);
-  }, [document?.blocks, signalCoordinator]);
-  useEffect(() => () => signalCoordinator?.dispose(), [signalCoordinator]);
+    if (!sharedSignalCoordinator) {
+      localSignalCoordinator?.updateBlocks(pageDocument?.blocks ?? []);
+    }
+  }, [localSignalCoordinator, pageDocument?.blocks, sharedSignalCoordinator]);
+  useEffect(
+    () => () => localSignalCoordinator?.dispose(),
+    [localSignalCoordinator]
+  );
   const { width: measuredWidth, containerRef } = useContainerWidth({
     initialWidth: 1280
   });

@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useNavigate } from '@tanstack/react-router';
+import {
+  Navigate,
+  useNavigate,
+  useRouter,
+  useRouterState
+} from '@tanstack/react-router';
 import { Result } from 'antd';
 import { Suspense } from 'react';
 
@@ -26,6 +31,7 @@ import {
 } from '../api/page-tree';
 import { useFrontstagePageTreeMutations } from '../hooks/use-frontstage-page-tree-mutations';
 import { isForbiddenResponseError } from '../lib/api-errors';
+import { createChildContainerUrl } from '../lib/child-container-runtime';
 import {
   getFirstTopLevelPageId,
   resolveSelectedPageId
@@ -46,6 +52,15 @@ export function FrontstageWorkspacePage({
   rootNode
 }: FrontstageWorkspacePageProps) {
   const navigate = useNavigate();
+  const router = useRouter();
+  const locationSearch = useRouterState({
+    select: (state) => state.location.search as Record<string, unknown>
+  });
+  const containerId =
+    typeof locationSearch.container_id === 'string' &&
+    locationSearch.container_id.trim().length > 0
+      ? locationSearch.container_id
+      : undefined;
   const pageTreeQuery = useQuery({
     queryKey: frontstagePageTreeQueryKey(workspaceId),
     queryFn: () => fetchFrontstagePageTree(workspaceId),
@@ -126,6 +141,10 @@ export function FrontstageWorkspacePage({
       <Navigate
         to={FRONTSTAGE_SLUG_PAGE_PATH}
         params={{ slug: rootNode.slug, pageId: rootNode.id }}
+        search={(current) => ({
+          ...current,
+          container_id: current.container_id
+        })}
         replace
       />
     );
@@ -141,6 +160,10 @@ export function FrontstageWorkspacePage({
       <Navigate
         to={FRONTSTAGE_SLUG_PAGE_PATH}
         params={{ slug: rootNode.slug, pageId: selectedPageId }}
+        search={(current) => ({
+          ...current,
+          container_id: current.container_id
+        })}
         replace
       />
     );
@@ -171,6 +194,10 @@ export function FrontstageWorkspacePage({
         <Navigate
           to={FRONTSTAGE_SLUG_PAGE_PATH}
           params={{ slug: rootNode.slug, pageId: selectedPageId }}
+          search={(current) => ({
+            ...current,
+            container_id: current.container_id
+          })}
           replace
         />
       );
@@ -185,6 +212,10 @@ export function FrontstageWorkspacePage({
             pageId: selectedPageId,
             tabRef: resolvedTab.routeSegment
           }}
+          search={(current) => ({
+            ...current,
+            container_id: current.container_id
+          })}
           replace
         />
       );
@@ -197,6 +228,14 @@ export function FrontstageWorkspacePage({
         workspaceId={workspaceId}
         pageId={effectivePageId}
         tabId={resolvedTab?.id}
+        containerId={containerId}
+        onContainerIdChange={(nextContainerId, mode) => {
+          const href = createChildContainerUrl(
+            router.state.location.href,
+            nextContainerId
+          );
+          router.history[mode](href);
+        }}
         showSidebar={rootNode?.kind !== 'page'}
         autoSelectFirstPage={rootNode?.kind !== 'group' || Boolean(pageId)}
         initialPageTree={pageTreeFromApi}
@@ -243,9 +282,20 @@ export function FrontstageWorkspacePage({
             nextPageId
               ? {
                   to: FRONTSTAGE_SLUG_PAGE_PATH,
-                  params: { slug: rootNode.slug, pageId: nextPageId }
+                  params: { slug: rootNode.slug, pageId: nextPageId },
+                  search: (current) => ({
+                    ...current,
+                    container_id: undefined
+                  })
                 }
-              : { to: FRONTSTAGE_SLUG_PATH, params: { slug: rootNode.slug } }
+              : {
+                  to: FRONTSTAGE_SLUG_PATH,
+                  params: { slug: rootNode.slug },
+                  search: (current) => ({
+                    ...current,
+                    container_id: undefined
+                  })
+                }
           );
         }}
         onNavigateTab={(nextTab: FrontstagePageTab) => {
@@ -254,7 +304,11 @@ export function FrontstageWorkspacePage({
           if (nextTab.is_default) {
             void navigate({
               to: FRONTSTAGE_SLUG_PAGE_PATH,
-              params: { slug: rootNode.slug, pageId: selectedPageId }
+              params: { slug: rootNode.slug, pageId: selectedPageId },
+              search: (current) => ({
+                ...current,
+                container_id: undefined
+              })
             });
             return;
           }
@@ -265,7 +319,11 @@ export function FrontstageWorkspacePage({
               slug: rootNode.slug,
               pageId: selectedPageId,
               tabRef: nextTab.route_segment
-            }
+            },
+            search: (current) => ({
+              ...current,
+              container_id: undefined
+            })
           });
         }}
       />

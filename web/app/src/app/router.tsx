@@ -299,6 +299,17 @@ function FrontStageSlugRoute({
   );
 }
 
+function validateFrontstageSearch(search: Record<string, unknown>) {
+  return {
+    ...search,
+    container_id:
+      typeof search.container_id === 'string' &&
+      search.container_id.trim().length > 0
+        ? search.container_id
+        : undefined
+  };
+}
+
 const settingsIndexRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings',
@@ -572,6 +583,7 @@ const meSecurityRoute = createRoute({
 const frontstageSlugRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PATH,
+  validateSearch: validateFrontstageSearch,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug } = frontstageSlugRoute.useParams();
@@ -582,6 +594,7 @@ const frontstageSlugRoute = createRoute({
 const frontstageSlugPageRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PAGE_PATH,
+  validateSearch: validateFrontstageSearch,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug, pageId } = frontstageSlugPageRoute.useParams();
@@ -592,6 +605,7 @@ const frontstageSlugPageRoute = createRoute({
 const frontstageSlugPageTabRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+  validateSearch: validateFrontstageSearch,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug, pageId, tabRef } = frontstageSlugPageTabRoute.useParams();

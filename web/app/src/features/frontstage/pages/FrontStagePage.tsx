@@ -3,10 +3,12 @@ import {
   App as AntdApp,
   Button,
   Divider,
+  Drawer,
   Empty,
+  Modal,
   Typography
 } from 'antd';
-import type { CSSProperties, FC } from 'react';
+import type { CSSProperties, FC, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
 
@@ -39,6 +41,13 @@ import {
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
 import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
+import type { ChildContainerNode } from '../lib/child-container-tree';
+import {
+  getRootPageBlockIds,
+  resolveChildContainerCloseTarget,
+  resolveChildContainerEvent,
+  resolveChildContainerRuntime
+} from '../lib/child-container-runtime';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
@@ -46,6 +55,7 @@ import {
   createFrontstagePageDocument,
   createFrontstagePageDocumentSaveInput,
   type FrontstageBlockInstance,
+  type FrontstageBlockPresentation,
   type FrontstagePageLayoutMode
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
@@ -57,9 +67,14 @@ import type {
 import type { FrontstageNativeBlockContextHost } from '../lib/page-canvas/native-block-context-host';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 import {
+  createFrontstagePageSignalSession,
+  FrontstageSignalRuntimeCoordinator
+} from '../lib/page-canvas/signal-runtime';
+import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
-  normalizeFrontstageAutomaticResponsiveLayouts
+  normalizeFrontstageAutomaticResponsiveLayouts,
+  type FrontstagePersistedGridLayout
 } from '../lib/responsive-grid-layout';
 import { getPageDisplayTitle } from '../lib/page-tree';
 import { i18nText } from '../../../shared/i18n/text';
@@ -75,7 +90,16 @@ import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMe
 import { usePageTreeWorkspace } from './frontstage-page/use-page-tree-workspace';
 import './frontstage-page.css';
 
-export const FrontStagePage: FC<FrontStagePageProps> = ({
+type FrontStagePageContainerProps = FrontStagePageProps & {
+  containerId?: string;
+  onContainerIdChange?: (
+    containerId: string | null,
+    mode: 'push' | 'replace'
+  ) => void;
+};
+const EMPTY_CHILD_CONTAINERS: readonly ChildContainerNode[] = [];
+
+export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
   workspaceId,
   pageId,
   tabId,
@@ -83,6 +107,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   autoSelectFirstPage = true,
   onNavigatePage,
   onNavigateTab,
+  containerId,
+  onContainerIdChange,
   initialPageTree,
   isPageTreeLoading,
   hasPageTreeLoadError,
@@ -157,6 +183,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
   const blockCreationPendingRef = useRef(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
+  const [childContainerRuntimeError, setChildContainerRuntimeError] = useState<
+    string | null
+  >(null);
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
   const pageContentSave = useFrontstagePageContentSave({
     workspaceId,
@@ -176,6 +205,73 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         ? createFrontstagePageDocument(activePageContent)
         : null,
     [activePageContent]
+  );
+  const childContainers =
+    displayedPageDocument?.childContainers ?? EMPTY_CHILD_CONTAINERS;
+  const childContainerRuntime = useMemo(
+    () => resolveChildContainerRuntime(childContainers, containerId),
+    [childContainers, containerId]
+  );
+  const rootPageBlockIds = useMemo(
+    () =>
+      getRootPageBlockIds(
+        (displayedPageDocument?.blocks ?? []).map((block) => block.id),
+        childContainers
+      ),
+    [childContainers, displayedPageDocument?.blocks]
+  );
+  const pageSignalSession = useMemo(
+    () => createFrontstagePageSignalSession(),
+    [activePageContent?.tab.id]
+  );
+  const pageSignalCoordinator = useMemo(
+    () =>
+      displayedPageDocument && activePageContent
+        ? new FrontstageSignalRuntimeCoordinator(
+            displayedPageDocument.blocks,
+            activePageContent.tab.id,
+            pageSignalSession
+          )
+        : undefined,
+    [
+      activePageContent?.tab.id,
+      displayedPageDocument?.rootUid,
+      pageSignalSession
+    ]
+  );
+  useEffect(() => {
+    pageSignalCoordinator?.updateBlocks(displayedPageDocument?.blocks ?? []);
+  }, [displayedPageDocument?.blocks, pageSignalCoordinator]);
+  useEffect(
+    () => () => pageSignalCoordinator?.dispose(),
+    [pageSignalCoordinator]
+  );
+  useEffect(() => {
+    setChildContainerRuntimeError(
+      childContainerRuntime.diagnostics[0]?.message ?? null
+    );
+  }, [childContainerRuntime.diagnostics]);
+  const openChildContainer = useCallback(
+    (
+      sourceBlockId: string,
+      name: string,
+      payload?: Record<string, unknown>
+    ) => {
+      const resolution = resolveChildContainerEvent(childContainers, {
+        sourceBlockId,
+        name,
+        payload
+      });
+      if (resolution.diagnostic) {
+        setChildContainerRuntimeError(resolution.diagnostic.message);
+        return;
+      }
+      if (resolution.containerId) {
+        setChildContainerRuntimeError(null);
+        onContainerIdChange?.(resolution.containerId, 'push');
+      }
+    },
+    [childContainers, onContainerIdChange]
   );
   const confirmRuntimeWrite = useCallback(
     ({ method, path }: { method: string; path: string }) =>
@@ -230,6 +326,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       jsBlockCapabilityHandlers && selectedPageId && tabId
         ? {
             interface: jsBlockCapabilityHandlers.interface,
+            emitEvent: (event) =>
+              openChildContainer(
+                event.requestId.split(':')[1] ?? '',
+                event.name,
+                event.payload
+              ),
             observeApiCall: (observation) =>
               recordFrontstageRuntimeObservation({
                 actorId: actor?.id ?? 'anonymous',
@@ -249,7 +351,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               })
           }
         : undefined,
-    [actor?.id, jsBlockCapabilityHandlers, selectedPageId, tabId, workspaceId]
+    [
+      actor?.id,
+      jsBlockCapabilityHandlers,
+      openChildContainer,
+      selectedPageId,
+      tabId,
+      workspaceId
+    ]
   );
   const activePageRenderPlan = useMemo(
     () =>
@@ -539,6 +648,24 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     },
     [activePageContent, blockCompositionState, saveBlockComposition]
   );
+  const saveStudioChildContainers = useCallback(
+    async (nextChildContainers: ChildContainerNode[]) => {
+      if (!blockCompositionState || !activePageContent) {
+        return false;
+      }
+      return saveBlockComposition(activePageContent, {
+        ...blockCompositionState,
+        document: {
+          ...blockCompositionState.document,
+          childContainers: nextChildContainers.map((container) => ({
+            ...container,
+            blockIds: [...container.blockIds]
+          }))
+        }
+      });
+    },
+    [activePageContent, blockCompositionState, saveBlockComposition]
+  );
 
   const designActions = useMemo(() => {
     if (!canEnterDesignMode || !isDesignMode) {
@@ -786,6 +913,27 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   };
 
   const canEditPageTree = canEnterDesignMode && isDesignMode;
+  const handleCanvasResponsiveLayoutSave = (
+    layouts: FrontstagePersistedGridLayout,
+    presentationPatch?: {
+      blockId: string;
+      presentation: FrontstageBlockPresentation;
+    }
+  ) => {
+    if (!blockCompositionState || !activePageContent) return;
+    let next = blockCompositionState;
+    for (const [blockId, blockLayouts] of Object.entries(layouts)) {
+      next = updateFrontstageBlockLayout(next, blockId, blockLayouts);
+    }
+    if (presentationPatch) {
+      next = updateFrontstageBlockPresentation(
+        next,
+        presentationPatch.blockId,
+        presentationPatch.presentation
+      );
+    }
+    void saveBlockComposition(activePageContent, next);
+  };
   const frontstageSidebar = (
     <FrontStagePageTreeSidebar
       pageTree={pageTree}
@@ -806,6 +954,100 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       onSelectPage={handleSelectPage}
     />
   );
+  const renderChildContainerLayers = (index = 0): ReactNode => {
+    const container = childContainerRuntime.renderPath[index];
+    if (!container) return null;
+    const closeContainer = () =>
+      onContainerIdChange?.(
+        resolveChildContainerCloseTarget(childContainers, container.id),
+        'replace'
+      );
+    const content = (
+      <>
+        <PageCanvas
+          content={activePageContent}
+          selectedBlockId={
+            canEnterDesignMode && isDesignMode ? selectedBlockId : null
+          }
+          onSelectBlock={
+            canEnterDesignMode && isDesignMode
+              ? (blockId) => {
+                  setSelectedBlockId((currentBlockId) =>
+                    currentBlockId === blockId ? null : blockId
+                  );
+                }
+              : undefined
+          }
+          runtimePreparations={pageCanvasNativePreparations.preparations}
+          runtimeContext={nativeBlockRuntimeContext}
+          nativeContextHost={nativeContextHost}
+          renderBlockIds={container.blockIds}
+          sharedSignalCoordinator={pageSignalCoordinator}
+          onRuntimeDemandChange={handleRuntimeDemandChange}
+          onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
+          isDesignMode={canEnterDesignMode && isDesignMode}
+          designActions={designActions}
+          toolbarDisabled={isPageContentSavePending}
+          onResponsiveLayoutSave={
+            canEnterDesignMode && isDesignMode
+              ? handleCanvasResponsiveLayoutSave
+              : undefined
+          }
+          showTitle={false}
+        />
+        {renderChildContainerLayers(index + 1)}
+      </>
+    );
+
+    if (container.presentation === 'drawer') {
+      return (
+        <Drawer
+          open
+          title={container.title}
+          width="min(720px, 92vw)"
+          onClose={closeContainer}
+        >
+          {content}
+        </Drawer>
+      );
+    }
+    if (container.presentation === 'modal') {
+      return (
+        <Modal
+          open
+          destroyOnHidden
+          footer={null}
+          title={container.title}
+          width={720}
+          onCancel={closeContainer}
+        >
+          {content}
+        </Modal>
+      );
+    }
+    return (
+      <section
+        aria-label={container.title}
+        style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            marginBottom: 8
+          }}
+        >
+          <Typography.Text strong>{container.title}</Typography.Text>
+          <Button size="small" onClick={closeContainer}>
+            {i18nText('frontstage', 'auto.close')}
+          </Button>
+        </div>
+        {content}
+      </section>
+    );
+  };
   const frontstageTabContent = (
     <>
       {canEnterDesignMode && isDesignMode && isPageContentSavePending ? (
@@ -823,6 +1065,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           description={pageContentSaveError}
           type="error"
           showIcon
+        />
+      ) : null}
+      {childContainerRuntimeError ? (
+        <Alert
+          showIcon
+          type="error"
+          title={childContainerRuntimeError}
+          style={{ marginBottom: 12 }}
         />
       ) : null}
       <PageCanvas
@@ -852,6 +1102,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         runtimePreparations={pageCanvasNativePreparations.preparations}
         runtimeContext={nativeBlockRuntimeContext}
         nativeContextHost={nativeContextHost}
+        renderBlockIds={rootPageBlockIds}
+        sharedSignalCoordinator={pageSignalCoordinator}
         onRuntimeDemandChange={handleRuntimeDemandChange}
         onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
@@ -859,29 +1111,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         toolbarDisabled={isPageContentSavePending}
         onResponsiveLayoutSave={
           canEnterDesignMode && isDesignMode
-            ? (layouts, presentationPatch) => {
-                if (!blockCompositionState || !activePageContent) return;
-                let next = blockCompositionState;
-                for (const [blockId, blockLayouts] of Object.entries(layouts)) {
-                  next = updateFrontstageBlockLayout(
-                    next,
-                    blockId,
-                    blockLayouts
-                  );
-                }
-                if (presentationPatch) {
-                  next = updateFrontstageBlockPresentation(
-                    next,
-                    presentationPatch.blockId,
-                    presentationPatch.presentation
-                  );
-                }
-                void saveBlockComposition(activePageContent, next);
-              }
+            ? handleCanvasResponsiveLayoutSave
             : undefined
         }
         showTitle={false}
       />
+      {renderChildContainerLayers()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <Button
           size="middle"
@@ -1011,9 +1246,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             tabId={tabId}
             block={selectedBlock}
             pageBlocks={displayedPageDocument?.blocks}
+            childContainers={childContainers}
             catalogEntry={matchingJsBlockCatalogEntry}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
+            onSaveChildContainers={saveStudioChildContainers}
             runPanel={({ code, runRevision }) =>
               runRevision === null ? undefined : (
                 <JsxStudioRunPanel
