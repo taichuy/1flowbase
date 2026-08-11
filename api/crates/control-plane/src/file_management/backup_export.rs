@@ -7,7 +7,7 @@ use std::{
 use async_trait::async_trait;
 use domain::{
     ArtifactRebuildability, BackupComponentDisposition, BackupComponentId, BackupComponentKind,
-    BackupSourceIdentity,
+    BackupComponentRestoreTarget, BackupSourceIdentity,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -344,6 +344,10 @@ fn object_descriptor(
         content_type: object.content_type().to_string(),
         disposition: BackupComponentDisposition::Embedded,
         rebuildability: ArtifactRebuildability::NotApplicable,
+        restore_target: BackupComponentRestoreTarget::BusinessObject {
+            storage_id: object.identity().storage_id,
+            object_path: object.identity().object_path.clone(),
+        },
     })
 }
 

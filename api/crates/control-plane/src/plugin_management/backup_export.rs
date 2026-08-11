@@ -32,6 +32,9 @@ pub enum BackupArtifactDisposition {
 pub struct BackupArtifactEntry {
     pub identity: String,
     pub kind: BackupArtifactKind,
+    pub category: String,
+    pub organization: String,
+    pub artifact_id: String,
     pub source_kind: String,
     pub version: String,
     pub expected_checksum: Option<String>,
@@ -103,6 +106,9 @@ pub fn build_backup_artifact_inventory(
             BackupArtifactEntry {
                 identity,
                 kind,
+                category: installation.category.as_str().to_string(),
+                organization: installation.organization,
+                artifact_id: installation.plugin_id,
                 source_kind: installation.source_kind,
                 version: installation.plugin_version,
                 expected_checksum: instance.local_checksum.or(installation.expected_checksum),
@@ -138,6 +144,9 @@ pub fn build_backup_artifact_inventory(
             BackupArtifactEntry {
                 identity,
                 kind,
+                category: installation.identity.category.as_str().to_string(),
+                organization: installation.identity.organization,
+                artifact_id: installation.identity.artifact_id,
                 source_kind: installation.source_kind,
                 version: installation.identity.version,
                 expected_checksum: installation.local_checksum,
@@ -320,6 +329,12 @@ impl BackupComponentSource for BackupArtifactEntry {
             content_type: "application/vnd.1flowbase.extension-artifact".to_string(),
             disposition,
             rebuildability,
+            restore_target: domain::BackupComponentRestoreTarget::Artifact {
+                category: self.category.clone(),
+                organization: self.organization.clone(),
+                artifact_id: self.artifact_id.clone(),
+                version: self.version.clone(),
+            },
         }
     }
 
@@ -362,6 +377,9 @@ mod tests {
         let entry = BackupArtifactEntry {
             identity: "extension:mcp/acme/example@1.0.0".to_string(),
             kind: BackupArtifactKind::Mcp,
+            category: "mcp".to_string(),
+            organization: "acme".to_string(),
+            artifact_id: "example".to_string(),
             source_kind: "uploaded".to_string(),
             version: "1.0.0".to_string(),
             expected_checksum: None,

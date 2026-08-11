@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, error::Error, fmt};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use super::{
     ApplicationBuild, BackupComponentId, BackupSetId, BackupSourceIdentity, ContentDigest,
@@ -38,6 +39,22 @@ pub enum ArtifactRebuildability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "target_kind", rename_all = "snake_case")]
+pub enum BackupComponentRestoreTarget {
+    PostgreSql,
+    BusinessObject {
+        storage_id: Uuid,
+        object_path: String,
+    },
+    Artifact {
+        category: String,
+        organization: String,
+        artifact_id: String,
+        version: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct BackupComponent {
     pub component_id: BackupComponentId,
     pub kind: BackupComponentKind,
@@ -47,6 +64,7 @@ pub struct BackupComponent {
     pub content_digest: ContentDigest,
     pub disposition: BackupComponentDisposition,
     pub rebuildability: ArtifactRebuildability,
+    pub restore_target: BackupComponentRestoreTarget,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
@@ -295,6 +313,9 @@ impl BackupManifest {
                     }
                 }
             }
+            if !restore_target_matches(component) {
+                return Err(BackupManifestError::InvalidComponentMetadata);
+            }
             if component.rebuildability == ArtifactRebuildability::NonRebuildable
                 && component.disposition != BackupComponentDisposition::Embedded
             {
@@ -319,6 +340,28 @@ impl BackupManifest {
             .components
             .sort_by(|left, right| left.component_id.cmp(&right.component_id));
         Ok(manifest)
+    }
+}
+
+fn restore_target_matches(component: &BackupComponent) -> bool {
+    match (&component.kind, &component.restore_target) {
+        (BackupComponentKind::PostgreSql, BackupComponentRestoreTarget::PostgreSql) => true,
+        (
+            BackupComponentKind::BusinessObject,
+            BackupComponentRestoreTarget::BusinessObject { object_path, .. },
+        ) => !object_path.is_empty() && object_path.trim() == object_path,
+        (
+            BackupComponentKind::ExtensionArtifact | BackupComponentKind::McpArtifact,
+            BackupComponentRestoreTarget::Artifact {
+                category,
+                organization,
+                artifact_id,
+                version,
+            },
+        ) => [category, organization, artifact_id, version]
+            .into_iter()
+            .all(|value| !value.is_empty() && value.trim() == value),
+        _ => false,
     }
 }
 

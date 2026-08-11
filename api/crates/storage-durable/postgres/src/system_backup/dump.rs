@@ -8,7 +8,7 @@ use control_plane::{
 use domain::ContentDigest;
 use domain::{
     ArtifactRebuildability, BackupComponentDisposition, BackupComponentId, BackupComponentKind,
-    BackupSourceIdentity,
+    BackupComponentRestoreTarget, BackupSourceIdentity,
 };
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -125,6 +125,7 @@ impl BackupComponentSource for PostgreSqlLogicalBackup {
             content_type: "application/vnd.postgresql.custom-dump".to_string(),
             disposition: BackupComponentDisposition::Embedded,
             rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
         }
     }
 

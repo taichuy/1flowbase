@@ -3,10 +3,10 @@ use std::{collections::BTreeSet, sync::Arc};
 use async_trait::async_trait;
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
-    BackupComponentId, BackupComponentKind, BackupJob, BackupJobId, BackupJobState,
-    BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupManifest, BackupSetId,
-    BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead, SealedBackupManifest,
-    SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
+    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJob, BackupJobId,
+    BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
+    BackupManifest, BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint,
+    MigrationHead, SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -34,6 +34,7 @@ pub struct BackupComponentDescriptor {
     pub content_type: String,
     pub disposition: BackupComponentDisposition,
     pub rebuildability: ArtifactRebuildability,
+    pub restore_target: BackupComponentRestoreTarget,
 }
 
 #[derive(Debug, Error)]
@@ -417,6 +418,7 @@ impl SystemBackupService {
                     content_digest: receipt.plaintext_digest,
                     disposition: descriptor.disposition,
                     rebuildability: descriptor.rebuildability,
+                    restore_target: descriptor.restore_target,
                 }
             };
             self.append_event(
@@ -576,6 +578,7 @@ fn identity_only_component(
         content_digest: digest,
         disposition: descriptor.disposition,
         rebuildability: descriptor.rebuildability,
+        restore_target: descriptor.restore_target,
     })
 }
 

@@ -1,7 +1,8 @@
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
-    BackupComponentId, BackupComponentKind, BackupManifest, BackupSetId, BackupSourceIdentity,
-    ContentDigest, KeyFingerprint, MigrationHead, SealedBackupManifest,
+    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupManifest,
+    BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead,
+    SealedBackupManifest,
 };
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -46,6 +47,7 @@ fn manifest() -> BackupManifest {
             content_digest: ContentDigest::try_from(fingerprint('d')).unwrap(),
             disposition: BackupComponentDisposition::Embedded,
             rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
         }],
         1,
         ContentDigest::try_from(fingerprint('e')).unwrap(),

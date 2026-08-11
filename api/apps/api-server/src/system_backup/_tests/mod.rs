@@ -6,9 +6,10 @@ use control_plane::{
 };
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
-    BackupComponentId, BackupComponentKind, BackupJobId, BackupJobState, BackupJournalEvent,
-    BackupJournalEventKind, BackupJournalSubject, BackupManifest, BackupSetId,
-    BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead,
+    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJobId,
+    BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
+    BackupManifest, BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint,
+    MigrationHead,
 };
 use time::OffsetDateTime;
 use tokio::io::AsyncWriteExt;
@@ -41,6 +42,7 @@ fn manifest(backup_set_id: BackupSetId) -> BackupManifest {
             content_digest: ContentDigest::try_from(fingerprint('c')).unwrap(),
             disposition: BackupComponentDisposition::Embedded,
             rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
         }],
         4,
         ContentDigest::try_from(fingerprint('d')).unwrap(),

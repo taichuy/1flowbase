@@ -5,10 +5,10 @@ use time::OffsetDateTime;
 use crate::{
     strict_backup_compatibility, ApplicationBuild, ArtifactRebuildability,
     BackupCompatibilityTarget, BackupComponent, BackupComponentDisposition, BackupComponentId,
-    BackupComponentKind, BackupExcludedDomain, BackupIncompatibility, BackupJob, BackupJobId,
-    BackupJobState, BackupJobTransitionError, BackupManifest, BackupSetId, BackupSourceIdentity,
-    ContentDigest, KeyFingerprint, MigrationHead, RecoveryJob, RecoveryJobId, RecoveryJobState,
-    SYSTEM_BACKUP_CHUNK_SIZE_BYTES, SYSTEM_BACKUP_FORMAT_VERSION,
+    BackupComponentKind, BackupComponentRestoreTarget, BackupExcludedDomain, BackupIncompatibility,
+    BackupJob, BackupJobId, BackupJobState, BackupJobTransitionError, BackupManifest, BackupSetId,
+    BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead, RecoveryJob, RecoveryJobId,
+    RecoveryJobState, SYSTEM_BACKUP_CHUNK_SIZE_BYTES, SYSTEM_BACKUP_FORMAT_VERSION,
     SYSTEM_BACKUP_MAX_PARALLEL_STREAMS,
 };
 
@@ -26,6 +26,7 @@ fn postgres_component() -> BackupComponent {
         content_digest: ContentDigest::try_from(fingerprint('a')).unwrap(),
         disposition: BackupComponentDisposition::Embedded,
         rebuildability: ArtifactRebuildability::NotApplicable,
+        restore_target: BackupComponentRestoreTarget::PostgreSql,
     }
 }
 
@@ -92,6 +93,12 @@ fn non_rebuildable_artifact_must_be_embedded() {
     let mut artifact = postgres_component();
     artifact.component_id = BackupComponentId::try_from("extension/uploaded.demo").unwrap();
     artifact.kind = BackupComponentKind::ExtensionArtifact;
+    artifact.restore_target = BackupComponentRestoreTarget::Artifact {
+        category: "capability-plugins".to_string(),
+        organization: "acme".to_string(),
+        artifact_id: "demo".to_string(),
+        version: "1.0.0".to_string(),
+    };
     artifact.source_identity = BackupSourceIdentity::try_from("extension/uploaded.demo").unwrap();
     artifact.disposition = BackupComponentDisposition::IdentityOnly;
     artifact.rebuildability = ArtifactRebuildability::NonRebuildable;
@@ -115,6 +122,10 @@ fn empty_business_object_is_valid_but_empty_postgres_is_not() {
     let mut empty_object = postgres_component();
     empty_object.component_id = BackupComponentId::try_from("object/empty").unwrap();
     empty_object.kind = BackupComponentKind::BusinessObject;
+    empty_object.restore_target = BackupComponentRestoreTarget::BusinessObject {
+        storage_id: uuid::Uuid::now_v7(),
+        object_path: "empty".to_string(),
+    };
     empty_object.source_identity = BackupSourceIdentity::try_from("object/empty").unwrap();
     empty_object.size_bytes = 0;
     let valid = BackupManifest::try_new(
