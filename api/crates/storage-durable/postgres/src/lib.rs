@@ -32,6 +32,7 @@ pub mod repositories;
 pub mod role_repository;
 pub mod runtime_record_repository;
 pub mod system_backup;
+pub mod system_recovery;
 mod secret_crypto;
 pub mod ui_management_repository;
 pub mod workspace_repository;

@@ -1,5 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
+mod executor_tests;
+
 use domain::RecoveryJobId;
 use time::OffsetDateTime;
 
