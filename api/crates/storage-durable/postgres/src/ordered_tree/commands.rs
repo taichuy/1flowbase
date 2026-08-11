@@ -64,51 +64,10 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeCreateInput,
     ) -> Result<OrderedTreeCreateResult> {
-        ensure_ordered_tree(metadata)?;
-        let position = StructurePosition::from(&input.position);
-        ensure_position_shape(&position)?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(
-            &mut tx,
-            metadata.model_id,
-            input.scope_id,
-            input.tree_partition_id,
-        )
-        .await?;
-        ensure_parent(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            position.parent_id,
-        )
-        .await?;
-        let sibling_rank = allocate_position(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            &position,
-            None,
-        )
-        .await?;
-        let node_id = Uuid::now_v7();
-        insert_node(
-            &mut tx,
-            metadata,
-            &table_name,
-            node_id,
-            input.actor_user_id,
-            input.scope_id,
-            input.tree_partition_id,
-            position.parent_id,
-            &sibling_rank,
-            input.payload,
-        )
-        .await?;
+        let result = create_ordered_tree_node_in_transaction(&mut tx, metadata, input).await?;
         tx.commit().await?;
-        Ok(OrderedTreeCreateResult { node_id })
+        Ok(result)
     }
 
     async fn move_ordered_tree_node(
@@ -116,71 +75,8 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeMoveInput,
     ) -> Result<()> {
-        ensure_ordered_tree(metadata)?;
-        let position = StructurePosition::from(&input.position);
-        ensure_position_shape(&position)?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(
-            &mut tx,
-            metadata.model_id,
-            input.scope_id,
-            input.tree_partition_id,
-        )
-        .await?;
-        ensure_node(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            input.node_id,
-        )
-        .await?;
-        ensure_parent(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            position.parent_id,
-        )
-        .await?;
-        ensure_acyclic_move(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            input.node_id,
-            position.parent_id,
-        )
-        .await?;
-        if position.before_id == Some(input.node_id) || position.after_id == Some(input.node_id) {
-            return Err(OrderedTreeCommandError::AnchorSiblingGroupConflict.into());
-        }
-        let sibling_rank = allocate_position(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            &position,
-            Some(input.node_id),
-        )
-        .await?;
-
-        let result = sqlx::query(&format!(
-            "update {table_name} set parent_id = $1, sibling_rank = $2, updated_by = $3, updated_at = now() where scope_id = $4 and tree_partition_id = $5 and id = $6"
-        ))
-        .bind(position.parent_id)
-        .bind(sibling_rank.as_str())
-        .bind(nullable_actor(input.actor_user_id))
-        .bind(input.scope_id)
-        .bind(input.tree_partition_id)
-        .bind(input.node_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_structure_write_error)?;
-        if result.rows_affected() != 1 {
-            return Err(OrderedTreeCommandError::NodeNotFound.into());
-        }
+        move_ordered_tree_node_in_transaction(&mut tx, metadata, input).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -190,50 +86,10 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeLeafDeleteInput,
     ) -> Result<bool> {
-        ensure_ordered_tree(metadata)?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(
-            &mut tx,
-            metadata.model_id,
-            input.scope_id,
-            input.tree_partition_id,
-        )
-        .await?;
-        if !node_exists(
-            &mut tx,
-            &table_name,
-            input.scope_id,
-            input.tree_partition_id,
-            input.node_id,
-        )
-        .await?
-        {
-            tx.commit().await?;
-            return Ok(false);
-        }
-        let has_children: bool = sqlx::query_scalar(&format!(
-            "select exists(select 1 from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id = $3)"
-        ))
-        .bind(input.scope_id)
-        .bind(input.tree_partition_id)
-        .bind(input.node_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if has_children {
-            return Err(OrderedTreeCommandError::TreeNodeHasChildren.into());
-        }
-        let result = sqlx::query(&format!(
-            "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
-        ))
-        .bind(input.scope_id)
-        .bind(input.tree_partition_id)
-        .bind(input.node_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_leaf_delete_error)?;
+        let result = delete_ordered_tree_leaf_in_transaction(&mut tx, metadata, input).await?;
         tx.commit().await?;
-        Ok(result.rows_affected() == 1)
+        Ok(result)
     }
 
     async fn delete_ordered_tree_subtree(
@@ -241,71 +97,250 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         metadata: &ModelMetadata,
         input: OrderedTreeSubtreeDeleteInput,
     ) -> Result<OrderedTreeSubtreeDeleteResult> {
-        ensure_ordered_tree(metadata)?;
-        let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(
-            &mut tx,
-            metadata.model_id,
-            input.scope_id,
-            input.tree_partition_id,
+        let result = delete_ordered_tree_subtree_in_transaction(&mut tx, metadata, input).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+}
+
+pub(crate) async fn create_ordered_tree_node_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    metadata: &ModelMetadata,
+    input: OrderedTreeCreateInput,
+) -> Result<OrderedTreeCreateResult> {
+    ensure_ordered_tree(metadata)?;
+    let position = StructurePosition::from(&input.position);
+    ensure_position_shape(&position)?;
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
+    lock_structure(
+        tx,
+        metadata.model_id,
+        input.scope_id,
+        input.tree_partition_id,
+    )
+    .await?;
+    ensure_parent(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        position.parent_id,
+    )
+    .await?;
+    let sibling_rank = allocate_position(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        &position,
+        None,
+    )
+    .await?;
+    let node_id = Uuid::now_v7();
+    insert_node(
+        tx,
+        metadata,
+        &table_name,
+        node_id,
+        input.actor_user_id,
+        input.scope_id,
+        input.tree_partition_id,
+        position.parent_id,
+        &sibling_rank,
+        input.payload,
+    )
+    .await?;
+    Ok(OrderedTreeCreateResult { node_id })
+}
+
+pub(crate) async fn move_ordered_tree_node_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    metadata: &ModelMetadata,
+    input: OrderedTreeMoveInput,
+) -> Result<()> {
+    ensure_ordered_tree(metadata)?;
+    let position = StructurePosition::from(&input.position);
+    ensure_position_shape(&position)?;
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
+    lock_structure(
+        tx,
+        metadata.model_id,
+        input.scope_id,
+        input.tree_partition_id,
+    )
+    .await?;
+    ensure_node(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        input.node_id,
+    )
+    .await?;
+    ensure_parent(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        position.parent_id,
+    )
+    .await?;
+    ensure_acyclic_move(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        input.node_id,
+        position.parent_id,
+    )
+    .await?;
+    if position.before_id == Some(input.node_id) || position.after_id == Some(input.node_id) {
+        return Err(OrderedTreeCommandError::AnchorSiblingGroupConflict.into());
+    }
+    let sibling_rank = allocate_position(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        &position,
+        Some(input.node_id),
+    )
+    .await?;
+
+    let result = sqlx::query(&format!(
+        "update {table_name} set parent_id = $1, sibling_rank = $2, updated_by = $3, updated_at = now() where scope_id = $4 and tree_partition_id = $5 and id = $6"
+    ))
+    .bind(position.parent_id)
+    .bind(sibling_rank.as_str())
+    .bind(nullable_actor(input.actor_user_id))
+    .bind(input.scope_id)
+    .bind(input.tree_partition_id)
+    .bind(input.node_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_structure_write_error)?;
+    if result.rows_affected() != 1 {
+        return Err(OrderedTreeCommandError::NodeNotFound.into());
+    }
+    Ok(())
+}
+
+pub(crate) async fn delete_ordered_tree_leaf_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    metadata: &ModelMetadata,
+    input: OrderedTreeLeafDeleteInput,
+) -> Result<bool> {
+    ensure_ordered_tree(metadata)?;
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
+    lock_structure(
+        tx,
+        metadata.model_id,
+        input.scope_id,
+        input.tree_partition_id,
+    )
+    .await?;
+    if !node_exists(
+        tx,
+        &table_name,
+        input.scope_id,
+        input.tree_partition_id,
+        input.node_id,
+    )
+    .await?
+    {
+        return Ok(false);
+    }
+    let has_children: bool = sqlx::query_scalar(&format!(
+        "select exists(select 1 from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id = $3)"
+    ))
+    .bind(input.scope_id)
+    .bind(input.tree_partition_id)
+    .bind(input.node_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if has_children {
+        return Err(OrderedTreeCommandError::TreeNodeHasChildren.into());
+    }
+    let result = sqlx::query(&format!(
+        "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
+    ))
+    .bind(input.scope_id)
+    .bind(input.tree_partition_id)
+    .bind(input.node_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_leaf_delete_error)?;
+    Ok(result.rows_affected() == 1)
+}
+
+pub(crate) async fn delete_ordered_tree_subtree_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    metadata: &ModelMetadata,
+    input: OrderedTreeSubtreeDeleteInput,
+) -> Result<OrderedTreeSubtreeDeleteResult> {
+    ensure_ordered_tree(metadata)?;
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
+    lock_structure(
+        tx,
+        metadata.model_id,
+        input.scope_id,
+        input.tree_partition_id,
+    )
+    .await?;
+    let nodes: Vec<(Uuid, i32)> = sqlx::query_as(&format!(
+        r#"
+        with recursive subtree(id, depth, path) as (
+            select id, 0, array[id]
+            from {table_name}
+            where scope_id = $1 and tree_partition_id = $2 and id = $3
+            union all
+            select child.id, subtree.depth + 1, subtree.path || child.id
+            from {table_name} child
+            join subtree on child.parent_id = subtree.id
+            where child.scope_id = $1 and child.tree_partition_id = $2
+              and not child.id = any(subtree.path)
         )
-        .await?;
-        let nodes: Vec<(Uuid, i32)> = sqlx::query_as(&format!(
-            r#"
-            with recursive subtree(id, depth, path) as (
-                select id, 0, array[id]
-                from {table_name}
-                where scope_id = $1 and tree_partition_id = $2 and id = $3
-                union all
-                select child.id, subtree.depth + 1, subtree.path || child.id
-                from {table_name} child
-                join subtree on child.parent_id = subtree.id
-                where child.scope_id = $1 and child.tree_partition_id = $2
-                  and not child.id = any(subtree.path)
-            )
-            select id, depth from subtree order by depth desc, id
-            "#
+        select id, depth from subtree order by depth desc, id
+        "#
+    ))
+    .bind(input.scope_id)
+    .bind(input.tree_partition_id)
+    .bind(input.node_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    if nodes.is_empty() {
+        return Err(OrderedTreeCommandError::NodeNotFound.into());
+    }
+    let actual = nodes.len() as u64;
+    if actual != input.expected_affected_count {
+        return Err(OrderedTreeCommandError::ExpectedAffectedCountMismatch {
+            expected: input.expected_affected_count,
+            actual,
+        }
+        .into());
+    }
+
+    let mut deleted_count = 0_u64;
+    for (node_id, _) in nodes {
+        let result = sqlx::query(&format!(
+            "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
         ))
         .bind(input.scope_id)
         .bind(input.tree_partition_id)
-        .bind(input.node_id)
-        .fetch_all(&mut *tx)
+        .bind(node_id)
+        .execute(&mut **tx)
         .await?;
-        if nodes.is_empty() {
-            return Err(OrderedTreeCommandError::NodeNotFound.into());
-        }
-        let actual = nodes.len() as u64;
-        if actual != input.expected_affected_count {
-            return Err(OrderedTreeCommandError::ExpectedAffectedCountMismatch {
-                expected: input.expected_affected_count,
-                actual,
-            }
-            .into());
-        }
-
-        let mut deleted_count = 0_u64;
-        for (node_id, _) in nodes {
-            let result = sqlx::query(&format!(
-                "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
-            ))
-            .bind(input.scope_id)
-            .bind(input.tree_partition_id)
-            .bind(node_id)
-            .execute(&mut *tx)
-            .await?;
-            deleted_count += result.rows_affected();
-        }
-        if deleted_count != actual {
-            return Err(OrderedTreeCommandError::ExpectedAffectedCountMismatch {
-                expected: actual,
-                actual: deleted_count,
-            }
-            .into());
-        }
-        tx.commit().await?;
-        Ok(OrderedTreeSubtreeDeleteResult { deleted_count })
+        deleted_count += result.rows_affected();
     }
+    if deleted_count != actual {
+        return Err(OrderedTreeCommandError::ExpectedAffectedCountMismatch {
+            expected: actual,
+            actual: deleted_count,
+        }
+        .into());
+    }
+    Ok(OrderedTreeSubtreeDeleteResult { deleted_count })
 }
 
 fn ensure_ordered_tree(metadata: &ModelMetadata) -> Result<()> {

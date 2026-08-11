@@ -15,7 +15,13 @@ use tokio::sync::Barrier;
 use uuid::Uuid;
 
 use super::runtime_metadata as metadata;
-use crate::{run_migrations, PgControlPlaneStore};
+use crate::{
+    ordered_tree::commands::{
+        create_ordered_tree_node_in_transaction, delete_ordered_tree_leaf_in_transaction,
+        delete_ordered_tree_subtree_in_transaction, move_ordered_tree_node_in_transaction,
+    },
+    run_migrations, PgControlPlaneStore,
+};
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -134,6 +140,209 @@ fn typed_error(error: anyhow::Error) -> OrderedTreeCommandError {
     error
         .downcast::<OrderedTreeCommandError>()
         .expect("ordered-tree command should preserve its typed business error")
+}
+
+// Packet A1b fixture: crate-internal commands compose into a caller-owned transaction while the
+// existing acceptance matrix continues to exercise the atomic public begin/commit boundary.
+#[tokio::test]
+async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollback() {
+    let database = isolated_database().await;
+    let pool = database.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let scope_id = create_workspace(&store).await;
+    let tree_partition_id = scope_id;
+    let model = create_model(&store, scope_id, "caller_tx").await;
+    let metadata = metadata(&model);
+
+    let mut tx = store.pool().begin().await.unwrap();
+    let rolled_back_create = create_ordered_tree_node_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeCreateInput {
+            actor_user_id: Uuid::nil(),
+            scope_id,
+            tree_partition_id,
+            payload: json!({}),
+            position: position(None, None, None),
+        },
+    )
+    .await
+    .unwrap()
+    .node_id;
+    tx.rollback().await.unwrap();
+    let create_rollback_count: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(rolled_back_create)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(create_rollback_count, 0);
+
+    let mut tx = store.pool().begin().await.unwrap();
+    let committed_root = create_ordered_tree_node_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeCreateInput {
+            actor_user_id: Uuid::nil(),
+            scope_id,
+            tree_partition_id,
+            payload: json!({}),
+            position: position(None, None, None),
+        },
+    )
+    .await
+    .unwrap()
+    .node_id;
+    tx.commit().await.unwrap();
+    let create_commit_count: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(committed_root)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(create_commit_count, 1);
+
+    let committed_child = create_node(
+        &store,
+        &metadata,
+        scope_id,
+        position(Some(committed_root), None, None),
+    )
+    .await;
+    let alternate_parent =
+        create_node(&store, &metadata, scope_id, position(None, None, None)).await;
+    let leaf = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
+    let before_move: (Option<Uuid>, String) = sqlx::query_as(&format!(
+        "select parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(committed_child)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+
+    let mut tx = store.pool().begin().await.unwrap();
+    move_ordered_tree_node_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeMoveInput {
+            actor_user_id: Uuid::nil(),
+            scope_id,
+            tree_partition_id,
+            node_id: committed_child,
+            position: move_position(Some(alternate_parent), None, None),
+        },
+    )
+    .await
+    .unwrap();
+    tx.rollback().await.unwrap();
+    let after_move_rollback: (Option<Uuid>, String) = sqlx::query_as(&format!(
+        "select parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(committed_child)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(after_move_rollback, before_move);
+
+    let mut tx = store.pool().begin().await.unwrap();
+    assert!(delete_ordered_tree_leaf_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeLeafDeleteInput {
+            scope_id,
+            tree_partition_id,
+            node_id: leaf,
+        },
+    )
+    .await
+    .unwrap());
+    tx.rollback().await.unwrap();
+    let leaf_after_rollback: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(leaf)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(leaf_after_rollback, 1);
+
+    let mut tx = store.pool().begin().await.unwrap();
+    let error = delete_ordered_tree_subtree_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeSubtreeDeleteInput {
+            scope_id,
+            tree_partition_id,
+            node_id: committed_root,
+            expected_affected_count: 1,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        typed_error(error),
+        OrderedTreeCommandError::ExpectedAffectedCountMismatch {
+            expected: 1,
+            actual: 2,
+        }
+    );
+    tx.rollback().await.unwrap();
+    let subtree_after_mismatch: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(vec![committed_root, committed_child])
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(subtree_after_mismatch, 2);
+
+    let mut tx = store.pool().begin().await.unwrap();
+    let deleted = delete_ordered_tree_subtree_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeSubtreeDeleteInput {
+            scope_id,
+            tree_partition_id,
+            node_id: committed_root,
+            expected_affected_count: 2,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(deleted.deleted_count, 2);
+    tx.commit().await.unwrap();
+    let subtree_after_commit: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(vec![committed_root, committed_child])
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(subtree_after_commit, 0);
 }
 
 // AC-007/AC-008/AC-011: real transactions enforce positioning, cycles, write isolation,
