@@ -28,6 +28,7 @@ import {
 } from '../components/PageCanvas';
 import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
+import { useFrontstageCanonicalBlockRuntime } from '../hooks/use-frontstage-canonical-block-runtime';
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
 import {
@@ -51,8 +52,12 @@ import {
   type FrontstageBlockPresentation,
   type FrontstagePageLayoutMode
 } from '../lib/page-document';
-import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
+import {
+  createFrontstageBlockRenderPlanItems,
+  createFrontstagePageRenderPlan
+} from '../lib/page-canvas/render-plan';
 import { createFrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
+import { fetchFrontstageBlockNodeCode } from '../api/block-tree';
 import type {
   FrontstageRuntimeDemandByBlockId,
   FrontstageRuntimeDemandPriority
@@ -189,6 +194,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : null,
     [activePageContent]
   );
+  const canonicalBlockRuntime = useFrontstageCanonicalBlockRuntime({
+    workspaceId,
+    current: blockRuntime?.current,
+    ancestors: blockRuntime?.ancestors
+  });
+  const canonicalBlockId = blockRuntime?.current.block_id;
+  const canonicalBlockPageId = blockRuntime?.current.page_id;
   const rootPageBlockIds = useMemo(
     () => (displayedPageDocument?.blocks ?? []).map((block) => block.id),
     [displayedPageDocument?.blocks]
@@ -300,11 +312,31 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         : null,
     [displayedPageDocument]
   );
+  const canonicalBlockRenderPlan = useMemo(
+    () =>
+      canonicalBlockId && canonicalBlockPageId
+        ? {
+            pageId: canonicalBlockPageId,
+            rootUid: canonicalBlockRuntime.blocks[0]?.id ?? canonicalBlockId,
+            isEmpty: canonicalBlockRuntime.blocks.length === 0,
+            diagnostics: canonicalBlockRuntime.diagnostics,
+            items: createFrontstageBlockRenderPlanItems(
+              canonicalBlockRuntime.blocks
+            )
+          }
+        : null,
+    [
+      canonicalBlockId,
+      canonicalBlockPageId,
+      canonicalBlockRuntime.blocks,
+      canonicalBlockRuntime.diagnostics
+    ]
+  );
   const [runtimeDemandsByBlockId, setRuntimeDemandsByBlockId] =
     useState<FrontstageRuntimeDemandByBlockId>({});
   useEffect(() => {
     setRuntimeDemandsByBlockId({});
-  }, [activePageContent?.page.id]);
+  }, [activePageContent?.page.id, canonicalBlockId]);
   const handleRuntimeDemandChange = useCallback(
     (blockId: string, priority: FrontstageRuntimeDemandPriority) => {
       setRuntimeDemandsByBlockId((current) =>
@@ -317,18 +349,54 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   );
   const pageCanvasCodeReadPlan = useMemo(
     () =>
-      activePageRenderPlan
+      (canonicalBlockRenderPlan ?? activePageRenderPlan)
         ? createFrontstagePageCanvasBlockCodeReadPlan({
             workspaceId,
-            renderPlan: activePageRenderPlan
+            renderPlan: canonicalBlockRenderPlan ?? activePageRenderPlan!
           })
         : null,
-    [activePageRenderPlan, workspaceId]
+    [activePageRenderPlan, canonicalBlockRenderPlan, workspaceId]
+  );
+  const fetchCanonicalBlockRuntimeSource = useCallback(
+    async (
+      request: NonNullable<typeof pageCanvasCodeReadPlan>['requests'][number],
+      signal: AbortSignal
+    ) => {
+      if (signal.aborted) {
+        throw new DOMException('Preparation aborted.', 'AbortError');
+      }
+      const source = await fetchFrontstageBlockNodeCode(
+        request.workspaceId,
+        request.pageId,
+        request.blockId
+      );
+      if (signal.aborted) {
+        throw new DOMException('Preparation aborted.', 'AbortError');
+      }
+      if (!source.code?.trim() || !source.source_sha256?.trim()) {
+        throw new Error(
+          `Canonical Block code is empty for ${request.blockId}.`
+        );
+      }
+      return { code: source.code, source_sha256: source.source_sha256 };
+    },
+    []
+  );
+  const runtimeBlocks = useMemo(
+    () =>
+      canonicalBlockId
+        ? canonicalBlockRuntime.blocks
+        : (displayedPageDocument?.blocks ?? []),
+    [
+      canonicalBlockId,
+      canonicalBlockRuntime.blocks,
+      displayedPageDocument?.blocks
+    ]
   );
   const nativeDependencyLocksByBlockId = useMemo(
     () =>
       Object.fromEntries(
-        (displayedPageDocument?.blocks ?? []).map((block) => {
+        runtimeBlocks.map((block) => {
           const catalogEntry = findMatchingFrontstageBlockCatalogEntry(
             block,
             blockCatalog.items
@@ -342,7 +410,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           ];
         })
       ),
-    [blockCatalog.items, displayedPageDocument?.blocks, workspaceId]
+    [blockCatalog.items, runtimeBlocks, workspaceId]
   );
   const pageCanvasNativePreparations =
     useFrontstagePageCanvasNativePreparations({
@@ -350,7 +418,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       actorWorkspaceId: actor?.current_workspace_id,
       readPlan: pageCanvasCodeReadPlan,
       dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
-      demandsByBlockId: runtimeDemandsByBlockId
+      demandsByBlockId: runtimeDemandsByBlockId,
+      fetchSource: canonicalBlockId
+        ? fetchCanonicalBlockRuntimeSource
+        : undefined
     });
   const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
     () => ({
@@ -447,15 +518,18 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           (block) => block.id === selectedBlockId
         )
       : -1;
-  const selectedBlock =
-    selectedBlockIndex >= 0
+  const selectedBlock = blockRuntime
+    ? (canonicalBlockRuntime.blocks.find(
+        (block) => block.id === selectedBlockId
+      ) ?? null)
+    : selectedBlockIndex >= 0
       ? blockCompositionState?.document.blocks[selectedBlockIndex]
       : null;
   const canShowSelectedBlockActions = Boolean(
     canEnterDesignMode &&
     isDesignMode &&
     activePageContent &&
-    blockCompositionState &&
+    (blockRuntime || blockCompositionState) &&
     selectedBlock
   );
   const matchingJsBlockCatalogEntry = useMemo(
@@ -484,6 +558,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   useEffect(() => {
     setSavedPageContent(null);
     setSelectedBlockId((currentBlockId) => {
+      if (canonicalBlockId) {
+        return currentBlockId;
+      }
       if (!currentBlockId || !pageContent) {
         setIsJsxStudioOpen(false);
         return null;
@@ -499,7 +576,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
       return hasCurrentBlock ? currentBlockId : null;
     });
-  }, [pageContent]);
+  }, [canonicalBlockId, pageContent]);
 
   useEffect(() => {
     if (!canShowSelectedBlockActions) {
@@ -890,6 +967,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       <>
         <PageCanvas
           content={activePageContent}
+          runtimeBlocks={canonicalBlockRuntime.blocks}
           selectedBlockId={
             canEnterDesignMode && isDesignMode ? selectedBlockId : null
           }
@@ -906,7 +984,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           runtimeContext={nativeBlockRuntimeContext}
           nativeContextHost={nativeContextHost}
           renderBlockIds={[node.block_id]}
-          sharedSignalCoordinator={pageSignalCoordinator}
+          sharedSignalCoordinator={undefined}
           onRuntimeDemandChange={handleRuntimeDemandChange}
           onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
           isDesignMode={canEnterDesignMode && isDesignMode}
@@ -998,11 +1076,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             : undefined
         }
         isLoading={Boolean(
-          selectedPageNode && (isPageContentLoading || isBlockRuntimeLoading)
+          selectedPageNode &&
+          (isPageContentLoading ||
+            isBlockRuntimeLoading ||
+            canonicalBlockRuntime.loading)
         )}
         hasError={Boolean(
           selectedPageNode &&
-          (hasPageContentLoadError || hasBlockRuntimeLoadError)
+          (hasPageContentLoadError ||
+            hasBlockRuntimeLoadError ||
+            canonicalBlockRuntime.error)
         )}
         isPermissionDenied={Boolean(
           selectedPageNode && isPageContentPermissionDenied
@@ -1030,7 +1113,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               : []
             : rootPageBlockIds
         }
-        sharedSignalCoordinator={pageSignalCoordinator}
+        runtimeBlocks={blockRuntime ? canonicalBlockRuntime.blocks : undefined}
+        sharedSignalCoordinator={
+          blockRuntime ? undefined : pageSignalCoordinator
+        }
         onRuntimeDemandChange={handleRuntimeDemandChange}
         onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
@@ -1043,7 +1129,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         }
         showTitle={false}
       />
-      {renderBlockRuntimeLayers()}
+      {canonicalBlockRuntime.error ? null : renderBlockRuntimeLayers()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <Button
           size="middle"
@@ -1172,12 +1258,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             pageId={selectedPageId}
             tabId={tabId}
             block={selectedBlock}
-            pageBlocks={displayedPageDocument?.blocks}
+            pageBlocks={runtimeBlocks}
             catalogEntry={matchingJsBlockCatalogEntry}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
             runPanel={({ blockId, code, runRevision }) => {
-              const activeStudioBlock = displayedPageDocument?.blocks.find(
+              const activeStudioBlock = runtimeBlocks.find(
                 (candidate) => candidate.id === blockId
               );
               return runRevision === null || !activeStudioBlock ? undefined : (

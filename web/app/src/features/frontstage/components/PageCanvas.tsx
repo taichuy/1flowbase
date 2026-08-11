@@ -31,6 +31,7 @@ import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
 import { createFrontstagePageDocument } from '../lib/page-document';
 import {
+  createFrontstageBlockRenderPlanItems,
   createFrontstagePageRenderPlan,
   type FrontstageBlockRenderPlanItem
 } from '../lib/page-canvas/render-plan';
@@ -51,7 +52,10 @@ import {
   type FrontstageGridBreakpoint,
   type FrontstagePersistedGridLayout
 } from '../lib/responsive-grid-layout';
-import type { FrontstageBlockPresentation } from '../lib/page-document';
+import type {
+  FrontstageBlockInstance,
+  FrontstageBlockPresentation
+} from '../lib/page-document';
 import {
   createFrontstageInteractionCompactor,
   frontstageLayoutsEqualForCommit
@@ -98,6 +102,7 @@ type PageCanvasProps = {
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   renderBlockIds?: readonly string[];
+  runtimeBlocks?: readonly FrontstageBlockInstance[];
   sharedSignalCoordinator?: FrontstageSignalRuntimeCoordinator;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
@@ -650,6 +655,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   runtimeContext,
   nativeContextHost,
   renderBlockIds,
+  runtimeBlocks,
   sharedSignalCoordinator,
   isDesignMode = false,
   designActions,
@@ -671,11 +677,25 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     );
     return { ...pageDocument, blocks, isEmpty: blocks.length === 0 };
   }, [pageDocument, renderBlockIds]);
+  const canonicalRenderItems = useMemo(() => {
+    if (!runtimeBlocks) return null;
+    const visibleBlockIds =
+      renderBlockIds === undefined ? null : new Set(renderBlockIds);
+    return createFrontstageBlockRenderPlanItems(
+      visibleBlockIds
+        ? runtimeBlocks.filter((block) => visibleBlockIds.has(block.id))
+        : runtimeBlocks
+    );
+  }, [renderBlockIds, runtimeBlocks]);
   const renderPlan = useMemo(
     () => (document ? createFrontstagePageRenderPlan(document) : null),
     [document]
   );
-  const renderItems = useMemo(() => renderPlan?.items ?? [], [renderPlan]);
+  const renderItems = useMemo(
+    () => canonicalRenderItems ?? renderPlan?.items ?? [],
+    [canonicalRenderItems, renderPlan]
+  );
+  const isRenderEmpty = renderItems.length === 0;
   const signalSession = useMemo(
     () => createFrontstagePageSignalSession(),
     [content?.page.id]
@@ -684,7 +704,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     () =>
       !sharedSignalCoordinator && pageDocument && content
         ? new FrontstageSignalRuntimeCoordinator(
-            pageDocument.blocks,
+            runtimeBlocks ?? pageDocument.blocks,
             content.tab.id,
             signalSession
           )
@@ -692,6 +712,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     [
       content?.tab.id,
       pageDocument?.page.id,
+      runtimeBlocks,
       sharedSignalCoordinator,
       signalSession
     ]
@@ -699,9 +720,16 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   const signalCoordinator = sharedSignalCoordinator ?? localSignalCoordinator;
   useEffect(() => {
     if (!sharedSignalCoordinator) {
-      localSignalCoordinator?.updateBlocks(pageDocument?.blocks ?? []);
+      localSignalCoordinator?.updateBlocks(
+        runtimeBlocks ?? pageDocument?.blocks ?? []
+      );
     }
-  }, [localSignalCoordinator, pageDocument?.blocks, sharedSignalCoordinator]);
+  }, [
+    localSignalCoordinator,
+    pageDocument?.blocks,
+    runtimeBlocks,
+    sharedSignalCoordinator
+  ]);
   useEffect(
     () => () => localSignalCoordinator?.dispose(),
     [localSignalCoordinator]
@@ -826,9 +854,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         className="frontstage-page-canvas-grid"
         data-testid="page-canvas-render-slots"
       >
-        {renderPlan.isEmpty && isDesignMode ? (
+        {isRenderEmpty && isDesignMode ? (
           <div data-testid="page-canvas-design-empty-state" />
-        ) : renderPlan.isEmpty ? (
+        ) : isRenderEmpty ? (
           <div
             style={{
               background: '#fafafa',

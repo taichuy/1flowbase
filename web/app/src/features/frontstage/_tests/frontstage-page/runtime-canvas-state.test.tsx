@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, vi } from 'vitest';
 
@@ -58,6 +58,10 @@ const blockCodeApi = vi.hoisted(() => ({
   ),
   saveFrontstageBlockCode: vi.fn()
 }));
+const blockTreeApi = vi.hoisted(() => ({
+  fetchFrontstageBlockNode: vi.fn(),
+  fetchFrontstageBlockNodeCode: vi.fn()
+}));
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
   () => pageContentSaveHook
@@ -69,8 +73,16 @@ vi.mock(
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
+vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
-  FrontstageJsxStudioDrawer: () => <div data-testid="jsx-studio-drawer" />
+  FrontstageJsxStudioDrawer: ({
+    block,
+    open
+  }: {
+    block: { id: string };
+    open: boolean;
+  }) =>
+    open ? <div data-testid="jsx-studio-drawer">studio:{block.id}</div> : null
 }));
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
@@ -191,7 +203,8 @@ function FrontStagePageHarness({
   initialPageTree,
   pageContent,
   isPageContentLoading,
-  hasPageContentLoadError
+  hasPageContentLoadError,
+  blockRuntime
 }: {
   workspaceId?: string;
   pageId?: string;
@@ -200,6 +213,7 @@ function FrontStagePageHarness({
   pageContent?: FrontstagePageContent;
   isPageContentLoading?: boolean;
   hasPageContentLoadError?: boolean;
+  blockRuntime?: React.ComponentProps<typeof FrontStagePage>['blockRuntime'];
 }) {
   const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
     initialPageTree ?? []
@@ -214,6 +228,7 @@ function FrontStagePageHarness({
       pageContent={pageContent}
       isPageContentLoading={isPageContentLoading}
       hasPageContentLoadError={hasPageContentLoadError}
+      blockRuntime={blockRuntime}
       onCreateGroupNode={(input) => {
         const groupNode = {
           id: createTestNodeId(),
@@ -416,6 +431,82 @@ describe('FrontStagePage - runtime canvas state', () => {
       codeRef: 'frontstage-js-block-1-code',
       code: 'saved template'
     });
+  });
+
+  test('assembles a canonical Block into the empty page canvas and reads code by public block_id', async () => {
+    authenticate(['frontstage.page.design']);
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+    const blockId = 'canonical-root';
+    const current = {
+      block_id: blockId,
+      workspace_id: 'workspace-1',
+      page_id: 'page-1',
+      tab_id: 'tab-1',
+      parent_block_id: null,
+      rank: '000001',
+      presentation: 'page' as const,
+      title: 'Canonical root',
+      schema_version: 1,
+      created_at: '2026-08-12T00:00:00Z',
+      updated_at: '2026-08-12T00:00:00Z',
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: {
+        id: blockId,
+        rendererVersion: 'v1',
+        codeRef: `frontstage.block.${blockId}`,
+        acceptanceSeed: 'architecture-material-editor'
+      }
+    };
+    blockTreeApi.fetchFrontstageBlockNodeCode.mockResolvedValue({
+      block_id: blockId,
+      page_id: 'page-1',
+      code: 'export default function Root() { return <div>Seeded root</div>; }',
+      source_sha256: 'digest'
+    });
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+          blockRuntime={{ current, ancestors: [] }}
+        />
+      </AppProviders>
+    );
+
+    const slot = await screen.findByTestId(`block-slot-${blockId}`);
+    expect(slot).toBeInTheDocument();
+    const preparationInput = (
+      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mock
+        .calls as unknown as Array<
+        [
+          {
+            readPlan: { requests: Array<{ blockId: string }> };
+            fetchSource: (
+              request: { blockId: string },
+              signal: AbortSignal
+            ) => Promise<unknown>;
+          }
+        ]
+      >
+    ).at(-1)?.[0];
+    expect(preparationInput).toBeDefined();
+    if (!preparationInput) throw new Error('missing Native preparation input');
+    const request = preparationInput.readPlan.requests[0];
+    await preparationInput.fetchSource(request, new AbortController().signal);
+    expect(blockTreeApi.fetchFrontstageBlockNodeCode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      blockId
+    );
+
+    fireEvent.click(slot);
+    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
+    expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
+      `studio:${blockId}`
+    );
   });
 
   test('shows manager shell and canvas placeholders', () => {
