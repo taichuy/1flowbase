@@ -47,6 +47,8 @@ pub trait BackupRepository: Send + Sync {
         component_id: &BackupComponentId,
     ) -> Result<BackupComponentWriter, BackupRepositoryError>;
 
+    async fn abort_staging(&self, backup_set_id: BackupSetId) -> Result<(), BackupRepositoryError>;
+
     async fn seal(&self, manifest: &SealedBackupManifest) -> Result<(), BackupRepositoryError>;
 
     async fn list(&self) -> Result<Vec<BackupSetCatalogEntry>, BackupRepositoryError>;

@@ -127,6 +127,14 @@ impl BackupRepository for LocalBackupRepository {
         Ok(Box::pin(file))
     }
 
+    async fn abort_staging(&self, backup_set_id: BackupSetId) -> Result<(), BackupRepositoryError> {
+        match fs::remove_dir_all(self.staging_path(backup_set_id)).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err(BackupRepositoryError::Unavailable),
+        }
+    }
+
     async fn seal(&self, sealed: &SealedBackupManifest) -> Result<(), BackupRepositoryError> {
         let manifest = sealed.manifest();
         let staging = self.staging_path(manifest.backup_set_id());

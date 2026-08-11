@@ -1,10 +1,16 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use tokio::{
     fs,
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
+};
+
+use crate::{
+    ports::BackupComponentWriter,
+    system_backup::{BackupComponentDescriptor, BackupComponentSource, BackupSourceError},
 };
 
 const ARTIFACT_STREAM_BUFFER_BYTES: usize = 256 * 1024;
@@ -257,6 +263,51 @@ pub fn backup_artifact_component_id(entry: &BackupArtifactEntry) -> String {
     let mut hasher = Sha256::new();
     hasher.update(entry.identity.as_bytes());
     format!("artifact-{:x}", hasher.finalize())
+}
+
+#[async_trait]
+impl BackupComponentSource for BackupArtifactEntry {
+    fn descriptor(&self) -> BackupComponentDescriptor {
+        let component_id = backup_artifact_component_id(self);
+        let kind = match self.kind {
+            BackupArtifactKind::Mcp => domain::BackupComponentKind::McpArtifact,
+            BackupArtifactKind::Extension | BackupArtifactKind::HostExtension => {
+                domain::BackupComponentKind::ExtensionArtifact
+            }
+        };
+        let (disposition, rebuildability) = match self.disposition {
+            BackupArtifactDisposition::RebuildableIdentity => (
+                domain::BackupComponentDisposition::IdentityOnly,
+                domain::ArtifactRebuildability::Rebuildable,
+            ),
+            BackupArtifactDisposition::Embedded => (
+                domain::BackupComponentDisposition::Embedded,
+                domain::ArtifactRebuildability::NonRebuildable,
+            ),
+        };
+        BackupComponentDescriptor {
+            component_id: domain::BackupComponentId::try_from(component_id.clone())
+                .expect("sha256-derived backup component id"),
+            kind,
+            source_identity: domain::BackupSourceIdentity::try_from(format!(
+                "artifact/{component_id}"
+            ))
+            .expect("sha256-derived backup source identity"),
+            content_type: "application/vnd.1flowbase.extension-artifact".to_string(),
+            disposition,
+            rebuildability,
+        }
+    }
+
+    async fn write_to(
+        &self,
+        mut destination: BackupComponentWriter,
+    ) -> Result<(), BackupSourceError> {
+        export_backup_artifact(self, &mut destination)
+            .await
+            .map(|_| ())
+            .map_err(|_| BackupSourceError::Changed)
+    }
 }
 
 #[cfg(test)]

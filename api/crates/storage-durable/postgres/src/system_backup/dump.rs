@@ -1,6 +1,15 @@
 use std::process::Stdio;
 
+use async_trait::async_trait;
+use control_plane::{
+    ports::BackupComponentWriter,
+    system_backup::{BackupComponentDescriptor, BackupComponentSource, BackupSourceError},
+};
 use domain::ContentDigest;
+use domain::{
+    ArtifactRebuildability, BackupComponentDisposition, BackupComponentId, BackupComponentKind,
+    BackupSourceIdentity,
+};
 use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -102,5 +111,27 @@ impl PostgreSqlLogicalBackup {
             content_digest: ContentDigest::try_from(digest)
                 .map_err(|_| PostgreSqlBackupError::InvalidToolVersion)?,
         })
+    }
+}
+
+#[async_trait]
+impl BackupComponentSource for PostgreSqlLogicalBackup {
+    fn descriptor(&self) -> BackupComponentDescriptor {
+        BackupComponentDescriptor {
+            component_id: BackupComponentId::try_from("postgresql").expect("static backup id"),
+            kind: BackupComponentKind::PostgreSql,
+            source_identity: BackupSourceIdentity::try_from("postgresql/durable")
+                .expect("static backup source identity"),
+            content_type: "application/vnd.postgresql.custom-dump".to_string(),
+            disposition: BackupComponentDisposition::Embedded,
+            rebuildability: ArtifactRebuildability::NotApplicable,
+        }
+    }
+
+    async fn write_to(&self, destination: BackupComponentWriter) -> Result<(), BackupSourceError> {
+        self.dump_to(destination)
+            .await
+            .map(|_| ())
+            .map_err(|_| BackupSourceError::Unavailable)
     }
 }
