@@ -19,6 +19,7 @@ use crate::{
     ordered_tree::commands::{
         create_ordered_tree_node_in_transaction, delete_ordered_tree_leaf_in_transaction,
         delete_ordered_tree_subtree_in_transaction, move_ordered_tree_node_in_transaction,
+        snapshot_ordered_tree_subtree_in_transaction,
     },
     run_migrations, PgControlPlaneStore,
 };
@@ -343,6 +344,256 @@ async fn caller_owned_transaction_controls_ordered_tree_command_commit_and_rollb
     .await
     .unwrap();
     assert_eq!(subtree_after_commit, 0);
+}
+
+// Packet A1d fixture: the crate-internal snapshot is inclusive, partition-scoped and ordered
+// child-before-parent; delete consumes the same locked traversal and caller rollback owns effects.
+#[tokio::test]
+async fn subtree_snapshot_matches_delete_ids_count_order_and_partition() {
+    let database = isolated_database().await;
+    let pool = database.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let scope_id = create_workspace(&store).await;
+    let tree_partition_id = scope_id;
+    let other_partition_id = Uuid::now_v7();
+    let model = create_model(&store, scope_id, "subtree_snapshot").await;
+    let metadata = metadata(&model);
+
+    let root = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
+    let child = create_node(
+        &store,
+        &metadata,
+        scope_id,
+        position(Some(root), None, None),
+    )
+    .await;
+    let grandchild = create_node(
+        &store,
+        &metadata,
+        scope_id,
+        position(Some(child), None, None),
+    )
+    .await;
+    let unrelated = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
+    let partition_root = create_node_in_partition(
+        &store,
+        &metadata,
+        scope_id,
+        other_partition_id,
+        position(None, None, None),
+    )
+    .await;
+
+    let mut tx = store.pool().begin().await.unwrap();
+    let snapshot = snapshot_ordered_tree_subtree_in_transaction(
+        &mut tx,
+        &metadata,
+        scope_id,
+        tree_partition_id,
+        root,
+    )
+    .await
+    .unwrap();
+    assert_eq!(snapshot.affected_count(), 3);
+    assert_eq!(
+        snapshot.node_ids_child_before_parent(),
+        &[grandchild, child, root]
+    );
+
+    let deleted = delete_ordered_tree_subtree_in_transaction(
+        &mut tx,
+        &metadata,
+        OrderedTreeSubtreeDeleteInput {
+            scope_id,
+            tree_partition_id,
+            node_id: root,
+            expected_affected_count: snapshot.affected_count(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(deleted.deleted_count, snapshot.affected_count());
+    let remaining_snapshot_ids: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(snapshot.node_ids_child_before_parent())
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(remaining_snapshot_ids, 0);
+    let unrelated_in_tx: bool = sqlx::query_scalar(&format!(
+        "select exists(select 1 from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = $3)",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(unrelated)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert!(unrelated_in_tx);
+    tx.rollback().await.unwrap();
+
+    let restored: i64 = sqlx::query_scalar(&format!(
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(vec![root, child, grandchild, unrelated])
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(restored, 4);
+
+    let mut partition_tx = store.pool().begin().await.unwrap();
+    let error = snapshot_ordered_tree_subtree_in_transaction(
+        &mut partition_tx,
+        &metadata,
+        scope_id,
+        other_partition_id,
+        root,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(typed_error(error), OrderedTreeCommandError::NodeNotFound);
+    let partition_snapshot = snapshot_ordered_tree_subtree_in_transaction(
+        &mut partition_tx,
+        &metadata,
+        scope_id,
+        other_partition_id,
+        partition_root,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        partition_snapshot.node_ids_child_before_parent(),
+        &[partition_root]
+    );
+    partition_tx.rollback().await.unwrap();
+}
+
+// Packet A1d fixture: snapshot holds the structure lock through the caller transaction, so
+// concurrent create/move cannot change the ID set between snapshot and delete.
+#[tokio::test]
+async fn subtree_snapshot_lock_prevents_concurrent_structure_drift_until_transaction_end() {
+    let database = isolated_database().await;
+    let pool = database.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let scope_id = create_workspace(&store).await;
+    let tree_partition_id = scope_id;
+    let model = create_model(&store, scope_id, "snapshot_lock").await;
+    let metadata = metadata(&model);
+
+    let root = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
+    let child = create_node(
+        &store,
+        &metadata,
+        scope_id,
+        position(Some(root), None, None),
+    )
+    .await;
+    let moving_root = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
+
+    let mut snapshot_tx = store.pool().begin().await.unwrap();
+    let snapshot = snapshot_ordered_tree_subtree_in_transaction(
+        &mut snapshot_tx,
+        &metadata,
+        scope_id,
+        tree_partition_id,
+        root,
+    )
+    .await
+    .unwrap();
+    assert_eq!(snapshot.node_ids_child_before_parent(), &[child, root]);
+
+    let start = Arc::new(Barrier::new(3));
+    let waiting_create = {
+        let store = store.clone();
+        let metadata = metadata.clone();
+        let start = Arc::clone(&start);
+        tokio::spawn(async move {
+            start.wait().await;
+            store
+                .create_ordered_tree_node(
+                    &metadata,
+                    OrderedTreeCreateInput {
+                        actor_user_id: Uuid::nil(),
+                        scope_id,
+                        tree_partition_id,
+                        payload: json!({}),
+                        position: position(Some(root), None, None),
+                    },
+                )
+                .await
+        })
+    };
+    let waiting_move = {
+        let store = store.clone();
+        let metadata = metadata.clone();
+        let start = Arc::clone(&start);
+        tokio::spawn(async move {
+            start.wait().await;
+            store
+                .move_ordered_tree_node(
+                    &metadata,
+                    OrderedTreeMoveInput {
+                        actor_user_id: Uuid::nil(),
+                        scope_id,
+                        tree_partition_id,
+                        node_id: moving_root,
+                        position: move_position(Some(root), None, None),
+                    },
+                )
+                .await
+        })
+    };
+    start.wait().await;
+    tokio::task::yield_now().await;
+    assert!(!waiting_create.is_finished());
+    assert!(!waiting_move.is_finished());
+
+    let deleted = delete_ordered_tree_subtree_in_transaction(
+        &mut snapshot_tx,
+        &metadata,
+        OrderedTreeSubtreeDeleteInput {
+            scope_id,
+            tree_partition_id,
+            node_id: root,
+            expected_affected_count: snapshot.affected_count(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(deleted.deleted_count, 2);
+    snapshot_tx.rollback().await.unwrap();
+
+    let created = waiting_create.await.unwrap().unwrap().node_id;
+    waiting_move.await.unwrap().unwrap();
+    let rows: Vec<(Uuid, Option<Uuid>)> = sqlx::query_as(&format!(
+        "select id, parent_id from \"{}\" where scope_id = $1 and tree_partition_id = $2 and id = any($3)",
+        model.physical_table_name
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(vec![root, child, moving_root, created])
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 4);
+    assert!(rows
+        .iter()
+        .any(|(id, parent_id)| *id == root && parent_id.is_none()));
+    for node_id in [child, moving_root, created] {
+        assert!(rows
+            .iter()
+            .any(|(id, parent_id)| *id == node_id && *parent_id == Some(root)));
+    }
 }
 
 // AC-007/AC-008/AC-011: real transactions enforce positioning, cycles, write isolation,

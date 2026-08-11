@@ -25,6 +25,21 @@ const TEMPLATE_PROVIDER: &str = "core";
 const TEMPLATE_CODE: &str = "ordered_tree";
 const TEMPLATE_VERSION: &str = "v1";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OrderedTreeSubtreeSnapshot {
+    node_ids_child_before_parent: Vec<Uuid>,
+}
+
+impl OrderedTreeSubtreeSnapshot {
+    pub(crate) fn node_ids_child_before_parent(&self) -> &[Uuid] {
+        &self.node_ids_child_before_parent
+    }
+
+    pub(crate) fn affected_count(&self) -> u64 {
+        self.node_ids_child_before_parent.len() as u64
+    }
+}
+
 #[derive(Debug)]
 struct Sibling {
     id: Uuid,
@@ -279,40 +294,15 @@ pub(crate) async fn delete_ordered_tree_subtree_in_transaction(
     metadata: &ModelMetadata,
     input: OrderedTreeSubtreeDeleteInput,
 ) -> Result<OrderedTreeSubtreeDeleteResult> {
-    ensure_ordered_tree(metadata)?;
-    let table_name = quote_identifier(&metadata.physical_table_name)?;
-    lock_structure(
+    let snapshot = snapshot_ordered_tree_subtree_in_transaction(
         tx,
-        metadata.model_id,
+        metadata,
         input.scope_id,
         input.tree_partition_id,
+        input.node_id,
     )
     .await?;
-    let nodes: Vec<(Uuid, i32)> = sqlx::query_as(&format!(
-        r#"
-        with recursive subtree(id, depth, path) as (
-            select id, 0, array[id]
-            from {table_name}
-            where scope_id = $1 and tree_partition_id = $2 and id = $3
-            union all
-            select child.id, subtree.depth + 1, subtree.path || child.id
-            from {table_name} child
-            join subtree on child.parent_id = subtree.id
-            where child.scope_id = $1 and child.tree_partition_id = $2
-              and not child.id = any(subtree.path)
-        )
-        select id, depth from subtree order by depth desc, id
-        "#
-    ))
-    .bind(input.scope_id)
-    .bind(input.tree_partition_id)
-    .bind(input.node_id)
-    .fetch_all(&mut **tx)
-    .await?;
-    if nodes.is_empty() {
-        return Err(OrderedTreeCommandError::NodeNotFound.into());
-    }
-    let actual = nodes.len() as u64;
+    let actual = snapshot.affected_count();
     if actual != input.expected_affected_count {
         return Err(OrderedTreeCommandError::ExpectedAffectedCountMismatch {
             expected: input.expected_affected_count,
@@ -321,8 +311,9 @@ pub(crate) async fn delete_ordered_tree_subtree_in_transaction(
         .into());
     }
 
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
     let mut deleted_count = 0_u64;
-    for (node_id, _) in nodes {
+    for node_id in snapshot.node_ids_child_before_parent().iter().copied() {
         let result = sqlx::query(&format!(
             "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
         ))
@@ -341,6 +332,57 @@ pub(crate) async fn delete_ordered_tree_subtree_in_transaction(
         .into());
     }
     Ok(OrderedTreeSubtreeDeleteResult { deleted_count })
+}
+
+/// Acquires the partition structure lock before traversing; the snapshot stays structurally
+/// stable until the caller commits or rolls back the supplied transaction.
+pub(crate) async fn snapshot_ordered_tree_subtree_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    metadata: &ModelMetadata,
+    scope_id: Uuid,
+    tree_partition_id: Uuid,
+    node_id: Uuid,
+) -> Result<OrderedTreeSubtreeSnapshot> {
+    ensure_ordered_tree(metadata)?;
+    let table_name = quote_identifier(&metadata.physical_table_name)?;
+    lock_structure(tx, metadata.model_id, scope_id, tree_partition_id).await?;
+    load_ordered_tree_subtree_snapshot(tx, &table_name, scope_id, tree_partition_id, node_id).await
+}
+
+async fn load_ordered_tree_subtree_snapshot(
+    tx: &mut Transaction<'_, Postgres>,
+    table_name: &str,
+    scope_id: Uuid,
+    tree_partition_id: Uuid,
+    node_id: Uuid,
+) -> Result<OrderedTreeSubtreeSnapshot> {
+    let node_ids_child_before_parent: Vec<Uuid> = sqlx::query_scalar(&format!(
+        r#"
+        with recursive subtree(id, depth, path) as (
+            select id, 0, array[id]
+            from {table_name}
+            where scope_id = $1 and tree_partition_id = $2 and id = $3
+            union all
+            select child.id, subtree.depth + 1, subtree.path || child.id
+            from {table_name} child
+            join subtree on child.parent_id = subtree.id
+            where child.scope_id = $1 and child.tree_partition_id = $2
+              and not child.id = any(subtree.path)
+        )
+        select id from subtree order by depth desc, id
+        "#
+    ))
+    .bind(scope_id)
+    .bind(tree_partition_id)
+    .bind(node_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    if node_ids_child_before_parent.is_empty() {
+        return Err(OrderedTreeCommandError::NodeNotFound.into());
+    }
+    Ok(OrderedTreeSubtreeSnapshot {
+        node_ids_child_before_parent,
+    })
 }
 
 fn ensure_ordered_tree(metadata: &ModelMetadata) -> Result<()> {
