@@ -112,6 +112,7 @@ pub enum BackupManifestError {
     MissingPostgreSqlComponent,
     DuplicateComponentId,
     InvalidComponentDisposition,
+    InvalidComponentMetadata,
     IncompleteExclusionContract,
     SizeMismatch,
     InvalidStreamingLimits,
@@ -270,14 +271,36 @@ impl BackupManifest {
             if !component_ids.insert(component.component_id.clone()) {
                 return Err(BackupManifestError::DuplicateComponentId);
             }
-            if component.kind == BackupComponentKind::PostgreSql {
-                has_postgres = true;
-                if component.disposition != BackupComponentDisposition::Embedded {
-                    return Err(BackupManifestError::InvalidComponentDisposition);
+            if component.content_type.trim().is_empty()
+                || (component.disposition == BackupComponentDisposition::Embedded
+                    && component.size_bytes == 0)
+            {
+                return Err(BackupManifestError::InvalidComponentMetadata);
+            }
+            match component.kind {
+                BackupComponentKind::PostgreSql | BackupComponentKind::BusinessObject => {
+                    if component.kind == BackupComponentKind::PostgreSql {
+                        has_postgres = true;
+                    }
+                    if component.disposition != BackupComponentDisposition::Embedded
+                        || component.rebuildability != ArtifactRebuildability::NotApplicable
+                    {
+                        return Err(BackupManifestError::InvalidComponentDisposition);
+                    }
+                }
+                BackupComponentKind::ExtensionArtifact | BackupComponentKind::McpArtifact => {
+                    if component.rebuildability == ArtifactRebuildability::NotApplicable {
+                        return Err(BackupManifestError::InvalidComponentDisposition);
+                    }
                 }
             }
             if component.rebuildability == ArtifactRebuildability::NonRebuildable
                 && component.disposition != BackupComponentDisposition::Embedded
+            {
+                return Err(BackupManifestError::InvalidComponentDisposition);
+            }
+            if component.rebuildability == ArtifactRebuildability::Rebuildable
+                && component.disposition != BackupComponentDisposition::IdentityOnly
             {
                 return Err(BackupManifestError::InvalidComponentDisposition);
             }
