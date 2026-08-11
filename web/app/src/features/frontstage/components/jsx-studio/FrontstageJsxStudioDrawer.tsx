@@ -178,6 +178,7 @@ export function FrontstageJsxStudioDrawer({
         'templates',
         'interfaces',
         'variables',
+        'child-containers',
         'components',
         'configuration',
         'run'
