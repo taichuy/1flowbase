@@ -11,8 +11,10 @@ pub use drivers::{local::LocalFileStorageDriver, rustfs::RustfsFileStorageDriver
 pub use errors::{FileStorageError, FileStorageResult};
 pub use registry::{builtin_driver_registry, FileStorageDriverRegistry};
 pub use types::{
-    DeleteObjectInput, FileStorageHealthcheck, FileStoragePutInput, FileStoragePutResult,
-    GenerateAccessUrlInput, OpenReadInput, OpenReadResult,
+    DeleteObjectInput, FileStorageHealthcheck, FileStorageObjectSnapshot, FileStoragePutInput,
+    FileStoragePutResult, FileStoragePutStreamInput, FileStorageStreamReader,
+    GenerateAccessUrlInput, OpenReadInput, OpenReadResult, OpenReadStreamResult,
+    VerifyReadUnchangedInput, FILE_STORAGE_STREAM_BUFFER_BYTES,
 };
 
 pub fn crate_name() -> &'static str {

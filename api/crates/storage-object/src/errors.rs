@@ -10,6 +10,14 @@ pub enum FileStorageError {
     InvalidConfig(&'static str),
     #[error("object not found")]
     ObjectNotFound,
+    #[error("object changed while it was being read")]
+    ObjectChanged,
+    #[error("object length does not match the declared stream length")]
+    ObjectLengthMismatch,
+    #[error("object storage did not provide a stable read validator")]
+    ObjectSnapshotUnavailable,
+    #[error("object is too large for the fixed multipart stream contract")]
+    ObjectTooLarge,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
