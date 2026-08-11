@@ -42,6 +42,7 @@ struct AnswerPresentationCandidateCursor {
     next_segment_index: usize,
     emitted_text: BTreeMap<usize, String>,
     completed_outputs: BTreeMap<(String, Vec<String>), CompletedOutput>,
+    selected_stream_sources: BTreeMap<usize, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -290,11 +291,18 @@ impl AnswerPresentationCandidateCursor {
             next_segment_index: 0,
             emitted_text: BTreeMap::new(),
             completed_outputs: BTreeMap::new(),
+            selected_stream_sources: BTreeMap::new(),
         }
     }
 
     fn is_waiting_for_source(&self, source_node_id: &str) -> bool {
-        for segment in self.plan.segments.iter().skip(self.next_segment_index) {
+        for (segment_index, segment) in self
+            .plan
+            .segments
+            .iter()
+            .enumerate()
+            .skip(self.next_segment_index)
+        {
             match segment {
                 AnswerPresentationSegment::StaticText(_) => continue,
                 AnswerPresentationSegment::NodeOutput {
@@ -307,7 +315,8 @@ impl AnswerPresentationCandidateCursor {
                     {
                         continue;
                     }
-                    return node_id == source_node_id;
+                    return node_id == source_node_id
+                        || self.is_stream_source(segment_index, source_node_id);
                 }
             }
         }
@@ -321,7 +330,12 @@ impl AnswerPresentationCandidateCursor {
                 AnswerPresentationSegment::NodeOutput { node_id, .. }
                     if node_id == source_node_id
             )
-        })
+        }) || self
+            .plan
+            .stream_sources
+            .values()
+            .flatten()
+            .any(|source| source.node_id == source_node_id)
     }
 
     pub(super) fn push_provider_event(
@@ -393,7 +407,6 @@ impl AnswerPresentationCandidateCursor {
         else {
             return events;
         };
-        let output_key = output_key.to_string();
         if !reasoning {
             self.emitted_text
                 .entry(segment_index)
@@ -412,7 +425,7 @@ impl AnswerPresentationCandidateCursor {
         events
     }
 
-    fn current_node_output_segment(&self, source_node_id: &str) -> Option<(usize, &str)> {
+    fn current_node_output_segment(&mut self, source_node_id: &str) -> Option<(usize, String)> {
         let segment_index = self.next_segment_index;
         let segment = self.plan.segments.get(segment_index)?;
         match segment {
@@ -421,9 +434,40 @@ impl AnswerPresentationCandidateCursor {
                 output_path,
             } if node_id == source_node_id => output_path
                 .first()
-                .map(|output_key| (segment_index, output_key.as_str())),
+                .map(|output_key| (segment_index, output_key.clone())),
+            AnswerPresentationSegment::NodeOutput { .. } => {
+                let output_key = self
+                    .plan
+                    .stream_sources
+                    .get(&segment_index)?
+                    .iter()
+                    .find(|source| source.node_id == source_node_id)?
+                    .output_key
+                    .clone();
+                if self
+                    .selected_stream_sources
+                    .get(&segment_index)
+                    .is_some_and(|selected| selected != source_node_id)
+                {
+                    return None;
+                }
+                self.selected_stream_sources
+                    .insert(segment_index, source_node_id.to_string());
+                Some((segment_index, output_key))
+            }
             _ => None,
         }
+    }
+
+    fn is_stream_source(&self, segment_index: usize, source_node_id: &str) -> bool {
+        self.plan
+            .stream_sources
+            .get(&segment_index)
+            .is_some_and(|sources| {
+                sources
+                    .iter()
+                    .any(|source| source.node_id == source_node_id)
+            })
     }
 
     fn drain_ready_segments(&mut self) -> Vec<RuntimeEventPayload> {
@@ -462,6 +506,14 @@ impl AnswerPresentationCandidateCursor {
                         events.extend(self.answer_deltas_from_final_text(
                             segment_index,
                             &completed.value,
+                            Some(node_id),
+                            completed.node_run_id,
+                            output_path.first().map(String::as_str),
+                        ));
+                    } else if let Some(remaining) = completed.value.strip_prefix(already) {
+                        events.extend(self.answer_deltas_from_final_text(
+                            segment_index,
+                            remaining,
                             Some(node_id),
                             completed.node_run_id,
                             output_path.first().map(String::as_str),
@@ -600,11 +652,131 @@ mod tests {
         .expect("branching answer plan should deserialize")
     }
 
+    fn aggregated_branch_answer_plan(
+        mutually_exclusive: bool,
+    ) -> orchestration_runtime::compiled_plan::CompiledPlan {
+        let mut plan = branching_answer_plan();
+        plan.topological_order = vec![
+            "node-if".to_string(),
+            "node-llm".to_string(),
+            "node-llm-1".to_string(),
+            "node-aggregator".to_string(),
+            "node-answer".to_string(),
+        ];
+        plan.nodes.remove("node-answer-1");
+        plan.nodes.insert(
+            "node-if".to_string(),
+            serde_json::from_value(json!({
+                "node_id": "node-if",
+                "node_type": "if_else",
+                "alias": "If/Else",
+                "container_id": null,
+                "dependency_node_ids": [],
+                "downstream_node_ids": ["node-llm", "node-llm-1"],
+                "bindings": {},
+                "outputs": [],
+                "config": {}
+            }))
+            .expect("if node should deserialize"),
+        );
+        for node_id in ["node-llm", "node-llm-1"] {
+            plan.nodes.insert(
+                node_id.to_string(),
+                serde_json::from_value(json!({
+                    "node_id": node_id,
+                    "node_type": "llm",
+                    "alias": node_id,
+                    "container_id": null,
+                    "dependency_node_ids": ["node-if"],
+                    "downstream_node_ids": ["node-aggregator"],
+                    "bindings": {},
+                    "outputs": [{
+                        "key": "text",
+                        "title": "Text",
+                        "value_type": "string",
+                        "selector": ["text"]
+                    }],
+                    "config": {}
+                }))
+                .expect("llm node should deserialize"),
+            );
+        }
+        plan.nodes.insert(
+            "node-aggregator".to_string(),
+            serde_json::from_value(json!({
+                "node_id": "node-aggregator",
+                "node_type": "variable_aggregator",
+                "alias": "Variable Aggregator",
+                "container_id": null,
+                "dependency_node_ids": ["node-llm", "node-llm-1"],
+                "downstream_node_ids": ["node-answer"],
+                "bindings": {
+                    "groups": {
+                        "kind": "variable_groups",
+                        "raw_value": [{
+                            "key": "group1",
+                            "valueType": "string",
+                            "candidates": [
+                                ["node-llm", "text"],
+                                ["node-llm-1", "text"]
+                            ]
+                        }],
+                        "selector_paths": [
+                            ["node-llm", "text"],
+                            ["node-llm-1", "text"]
+                        ]
+                    }
+                },
+                "outputs": [{
+                    "key": "group1",
+                    "title": "group1",
+                    "value_type": "string",
+                    "selector": ["group1"]
+                }],
+                "config": {}
+            }))
+            .expect("aggregator node should deserialize"),
+        );
+        let answer = plan.nodes.get_mut("node-answer").expect("answer node");
+        answer.dependency_node_ids = vec!["node-aggregator".to_string()];
+        answer.bindings.insert(
+            "answer_template".to_string(),
+            serde_json::from_value(json!({
+                "kind": "selector",
+                "raw_value": ["node-aggregator", "group1"],
+                "selector_paths": [["node-aggregator", "group1"]]
+            }))
+            .expect("answer binding should deserialize"),
+        );
+        plan.edges = if mutually_exclusive {
+            vec![
+                serde_json::from_value(json!({
+                    "edge_id": "edge-if-first",
+                    "source": "node-if",
+                    "target": "node-llm",
+                    "source_handle": "if"
+                }))
+                .expect("first branch edge should deserialize"),
+                serde_json::from_value(json!({
+                    "edge_id": "edge-if-second",
+                    "source": "node-if",
+                    "target": "node-llm-1",
+                    "source_handle": "else"
+                }))
+                .expect("second branch edge should deserialize"),
+            ]
+        } else {
+            Vec::new()
+        };
+        plan
+    }
+
     fn cursor_with_segments(segments: Vec<AnswerPresentationSegment>) -> AnswerPresentationCursor {
         AnswerPresentationCursor::from_presentation(AnswerPresentationPlan {
             answer_node_id: "node-answer".to_string(),
             answer_output_key: "answer".to_string(),
             segments,
+            stream_sources: BTreeMap::new(),
         })
     }
 
@@ -660,6 +832,64 @@ mod tests {
         assert_eq!(text.len(), 1);
         assert_eq!(text[0].event_type, "text_delta");
         assert_eq!(text[0].payload["text"], json!("最终回答"));
+    }
+
+    #[test]
+    fn mutually_exclusive_variable_aggregator_projects_selected_source_before_terminal() {
+        let mut cursor = AnswerPresentationCursor::from_plan(&aggregated_branch_answer_plan(true))
+            .expect("aggregated answer plan should expose Answer Presentation");
+        let node_run_id = Uuid::now_v7();
+
+        let first = cursor.push_provider_event(
+            "node-llm-1",
+            node_run_id,
+            &ProviderStreamEvent::TextDelta {
+                delta: "selected ".to_string(),
+            },
+        );
+        let unselected = cursor.push_provider_event(
+            "node-llm",
+            Uuid::now_v7(),
+            &ProviderStreamEvent::TextDelta {
+                delta: "must not leak".to_string(),
+            },
+        );
+        let second = cursor.push_provider_event(
+            "node-llm-1",
+            node_run_id,
+            &ProviderStreamEvent::TextDelta {
+                delta: "branch".to_string(),
+            },
+        );
+        let completion = cursor.complete_node(
+            "node-aggregator",
+            Uuid::now_v7(),
+            &json!({ "group1": "selected branch" }),
+        );
+
+        assert_eq!(first[0].payload["text"], json!("selected "));
+        assert!(unselected.is_empty());
+        assert_eq!(second[0].payload["text"], json!("branch"));
+        assert!(
+            completion.is_empty(),
+            "terminal value must not be duplicated"
+        );
+    }
+
+    #[test]
+    fn ambiguous_variable_aggregator_does_not_project_candidate_deltas() {
+        let mut cursor = AnswerPresentationCursor::from_plan(&aggregated_branch_answer_plan(false))
+            .expect("aggregated answer plan should expose Answer Presentation");
+
+        let events = cursor.push_provider_event(
+            "node-llm-1",
+            Uuid::now_v7(),
+            &ProviderStreamEvent::TextDelta {
+                delta: "untrusted".to_string(),
+            },
+        );
+
+        assert!(events.is_empty());
     }
 
     #[test]
