@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "source": {
+    "logical_path": "docs/ziliao/xitonjiagoushi.zip",
+    "archive_sha256": "c1ddf3115b1a1d6658bbefacdd15fe2b423f4f60fdee4cc5cf181a82bd53e321",
+    "uncompressed_bytes": 2111504,
+    "concatenated_sha256": "688cd6d480ff29cc408a559991ecd97de00e9e450153f83d2a47052c67822d14",
+    "members": [
+      {
+        "name": "1-200.md",
+        "bytes": 602015,
+        "sha256": "0dbae153e1939d36986a99bbf039c0e1c22f976ff292907388ee4085910238a1"
+      },
+      {
+        "name": "201-400.md",
+        "bytes": 589701,
+        "sha256": "09f9ad0ecaa3ffc88b7a071deb4556450fa46f98d8c9944212d38c73a0f9e4d8"
+      },
+      {
+        "name": "401-600.md",
+        "bytes": 589941,
+        "sha256": "06faf2091840bfed7a93f1c1597e3f6dae4ab1e5d48e60ac35d80886b470e5b0"
+      },
+      {
+        "name": "600-722.md",
+        "bytes": 329847,
+        "sha256": "91ad58b4c7f7476d98ad0dedf7fdce3b083757e66a032895ef4923f6665efce9"
+      }
+    ]
+  },
+  "derived": {
+    "root_count": 1,
+    "chapter_count": 20,
+    "section_count": 119,
+    "node_count": 140,
+    "sections_per_chapter": [
+      3, 9, 8, 8, 7, 5, 5, 3, 6, 7, 6, 4, 7, 4, 10, 4, 5, 8, 6, 4
+    ],
+    "superseded_expected_chapter_count": 17,
+    "superseded_expected_section_count": 104,
+    "discrepancy": "The authorized second-edition source contains 20 sequential body chapters and 119 chapter-matching top-level sections; the earlier 17/104 expectation is not supported by the source."
+  },
+  "targets": {
+    "model_code": "architecture_teaching_material_nodes",
+    "page_slug": "architecture-materials",
+    "root_source_key": "architecture-material-editor"
+  }
+}
