@@ -16,10 +16,10 @@ async fn page_presentation_and_tab_route_segments_are_persisted_and_resolved() {
     )
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let default_tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
     assert_eq!(
-        page_payload["data"]["content_presentation"],
+        page_payload["data"]["page"]["content_presentation"],
         json!("single"),
         "AC-001: new pages default to the persisted single presentation"
     );
@@ -126,7 +126,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         "a",
     )
     .await;
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
     let code_path =
         format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/hero");
@@ -193,7 +193,7 @@ async fn ac_010_capability_dispatch_rejects_unknown_ids_and_rechecks_action_perm
         "a",
     )
     .await;
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
 
     let (unknown_query_status, unknown_query_payload) = dispatch_capability(

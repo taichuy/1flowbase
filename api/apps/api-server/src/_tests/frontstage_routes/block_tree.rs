@@ -52,7 +52,7 @@ async fn create_block_page(
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
     (
-        payload["data"]["id"].as_str().unwrap().to_owned(),
+        payload["data"]["page"]["id"].as_str().unwrap().to_owned(),
         payload["data"]["default_tab"]["id"]
             .as_str()
             .unwrap()

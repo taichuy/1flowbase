@@ -229,7 +229,7 @@ export function BlockSchemaTreePanel({
           code: INITIAL_BLOCK_SOURCE,
           runtime_descriptor: null
         });
-        await loadChildren(formTarget.parent, true);
+        await loadChildren(formTarget.parent);
         setExpandedKeys((current) =>
           current.includes(formTarget.parent.block_id)
             ? current

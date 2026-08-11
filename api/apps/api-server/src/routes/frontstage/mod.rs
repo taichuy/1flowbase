@@ -102,7 +102,6 @@ pub struct FrontstagePageTabResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FrontstagePageCreationResponse {
-    #[serde(flatten)]
     pub page: FrontstagePageResponse,
     pub default_tab: FrontstagePageTabResponse,
 }

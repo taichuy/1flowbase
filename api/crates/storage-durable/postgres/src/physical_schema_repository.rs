@@ -289,9 +289,7 @@ async fn maybe_create_ordered_tree_prefix_index(
         || field.is_system
         || !matches!(
             field.field_kind,
-            domain::ModelFieldKind::String
-                | domain::ModelFieldKind::Enum
-                | domain::ModelFieldKind::Text
+            domain::ModelFieldKind::String | domain::ModelFieldKind::Enum
         )
     {
         return Ok(());

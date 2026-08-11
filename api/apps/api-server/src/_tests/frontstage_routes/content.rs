@@ -19,7 +19,7 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
     )
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
     let schema_root_uid = page_payload["data"]["default_tab"]["document_root_uid"]
         .as_str()
@@ -100,7 +100,7 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
         "b",
     )
     .await;
-    let other_page_id = other_page_payload["data"]["id"].as_str().unwrap();
+    let other_page_id = other_page_payload["data"]["page"]["id"].as_str().unwrap();
     let (other_page_code_status, _) = get_json(
         &app,
         &format!("/api/console/frontstage/{workspace_id}/pages/{other_page_id}/block-codes/hero"),
@@ -131,7 +131,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         "a",
     )
     .await;
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
     let schema_root_uid = page_payload["data"]["default_tab"]["document_root_uid"]
         .as_str()
@@ -188,7 +188,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         "b",
     )
     .await;
-    let sibling_page_id = sibling_payload["data"]["id"].as_str().unwrap();
+    let sibling_page_id = sibling_payload["data"]["page"]["id"].as_str().unwrap();
     let sibling_tab_id = sibling_payload["data"]["default_tab"]["id"]
         .as_str()
         .unwrap();
@@ -217,7 +217,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         "a",
     )
     .await;
-    let other_page_id = other_page_payload["data"]["id"].as_str().unwrap();
+    let other_page_id = other_page_payload["data"]["page"]["id"].as_str().unwrap();
     let other_tab_id = other_page_payload["data"]["default_tab"]["id"]
         .as_str()
         .unwrap();
@@ -250,7 +250,7 @@ async fn page_content_save_rejects_missing_or_unsupported_block_renderer_version
         "a",
     )
     .await;
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
 
     let (missing_status, missing_payload) = save_page_content(
@@ -359,7 +359,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     )
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let default_tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
     assert_eq!(
         page_payload["data"]["default_tab"]["is_default"],

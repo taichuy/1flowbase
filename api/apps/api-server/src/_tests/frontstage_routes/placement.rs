@@ -49,7 +49,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     )
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
 
     let (move_status, move_payload) = send_json(
         &app,
@@ -174,7 +174,7 @@ async fn moving_page_keeps_get_tree_order_stable() {
         "a",
     )
     .await;
-    let first_page_id = first_payload["data"]["id"].as_str().unwrap();
+    let first_page_id = first_payload["data"]["page"]["id"].as_str().unwrap();
     let (_, second_payload) = create_page(
         &app,
         &cookie,
@@ -185,7 +185,7 @@ async fn moving_page_keeps_get_tree_order_stable() {
         "b",
     )
     .await;
-    let second_page_id = second_payload["data"]["id"].as_str().unwrap();
+    let second_page_id = second_payload["data"]["page"]["id"].as_str().unwrap();
 
     let (move_status, _) = send_json(
         &app,
@@ -243,7 +243,7 @@ async fn deleting_group_removes_child_page_from_tree() {
         "a",
     )
     .await;
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
 
     let delete_status = delete_node(&app, &cookie, &csrf, &workspace_id, group_id).await;
     assert_eq!(delete_status, StatusCode::NO_CONTENT);

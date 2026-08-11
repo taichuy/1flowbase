@@ -84,7 +84,7 @@ async fn create_page(
     .await;
     assert_eq!(status, StatusCode::CREATED);
     (
-        payload["data"]["id"].as_str().unwrap().to_string(),
+        payload["data"]["page"]["id"].as_str().unwrap().to_string(),
         payload["data"]["default_tab"]["id"]
             .as_str()
             .unwrap()
