@@ -1143,7 +1143,7 @@ fn model_group_llm_runtime(
         routing: Some(CompiledLlmRouting {
             routing_mode: LlmRoutingMode::FailoverQueue,
             fixed_model_target: None,
-            queue_template_id: None,
+            queue_template_id: Some("model-group-test".to_string()),
             queue_snapshot_id: None,
             queue_targets: provider_instance_ids
                 .iter()

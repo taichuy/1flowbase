@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 模型供应商主实例分组顺序与 ephemeral 路由目录
-summary: 用户确认采用 durable 模型路由策略 + ephemeral 有效路由投影；设置页保留分组列和分发规则快速编辑，新增操作列编辑弹窗，顺序从下一次编译、调试或重新发布生效，现有发布快照不热变更。
+summary: 用户确认 durable 主实例模型路由策略是唯一真值；普通 LLM 运行每次读取当前顺序与分发规则，无需重新编译或发布，显式 failover_queue 才保留冻结语义。
 keywords:
   - model-provider
   - routing-order
@@ -9,8 +9,8 @@ keywords:
   - ephemeral-cache
   - compiled-plan
 created_at: 2026-07-31 16
-updated_at: 2026-07-31 16
-last_verified_at: 2026-07-31 16
+updated_at: 2026-08-11 14
+last_verified_at: 2026-08-11 14
 decision_policy: verify_before_decision
 scope:
   - web/app/src/features/settings/components/model-providers
@@ -38,7 +38,8 @@ scope:
 - 保留“分发规则”列的快速下拉编辑。
 - 新增“操作”列和“编辑”弹窗，原子编辑当前模型的分发规则与分组顺序。
 - 两个入口共享同一 durable `model_routing_policy` 与 revision；ephemeral 只是可重建投影，不是第二真值。
-- 顺序从下一次编译、调试运行或重新发布开始生效；现有发布 `CompiledPlan` 和运行中的 FlowRun 不热变更。
+- 2026-08-11 用户修正运行边界：普通 LLM 的顺序、纳入/排除和分发规则从下一次运行立即生效，无需重新编译或发布；`CompiledPlan` 不冻结这些主实例状态。
+- 显式用户定义的 `failover_queue` 是独立功能，仍按队列快照执行，不等同于普通主实例分发。
 - 不新增模型供应商专属内存观察权限；缓存内容不包含 secret。
 
 ## 为什么要做
@@ -47,4 +48,4 @@ scope:
 
 ## 截止日期与下一步
 
-无固定截止日期。下一步是用户批准 grade:g4 existing-codebase Single Issue 后进入 TDD 与跨前后端实现；若要求保存后立即改变已发布应用，应返回需求对齐并改为动态路由设计。
+无固定截止日期。2026-08-11 动态主实例路由方向已获用户批准并进入实现；后续判断以当前代码和集中测试结果复核。

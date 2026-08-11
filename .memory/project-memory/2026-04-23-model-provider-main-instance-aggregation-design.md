@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 模型供应商主实例改为虚拟聚合实例
-summary: 模型供应商的主实例不再指向某个真实子实例，而是改为供应商级固定存在的虚拟聚合实例；节点保存来源实例与模型标识，真实执行命中具体子实例。
+summary: 模型供应商主实例是供应商级虚拟聚合与运行时路由唯一真值；普通 LLM 节点只保存 provider_code + model_id，每次运行由主实例选择当前注册实例。
 keywords:
   - model-provider
   - main-instance
@@ -14,8 +14,8 @@ match_when:
   - 需要调整 LLM 节点模型选择合同
   - 需要修改模型供应商运行时解析方式
 created_at: 2026-04-23 00
-updated_at: 2026-04-23 00
-last_verified_at: 2026-04-23 00
+updated_at: 2026-08-11 14
+last_verified_at: 2026-08-11 14
 decision_policy: verify_before_decision
 scope:
   - web/app/src/features/settings
@@ -58,9 +58,11 @@ scope:
 - 主实例按实时派生聚合子实例模型，不做快照复制。
 - 子实例只支持按整实例接入主实例，不支持按单模型粒度接入。
 - 供应商级新增 `auto_include_new_instances` 默认规则；子实例新增 `included_in_main` 开关。
-- LLM 节点保存 `provider_code + source_instance_id + model_id`。
+- 2026-08-11 用户进一步确认：普通 LLM 节点只保存 `provider_code + model_id`，不保存 `source_instance_id`。
+- 主实例拥有当前注册实例集合、纳入/排除、模型路由、顺序、分发规则、可用性与故障转移；每次运行实时解析。
+- `CompiledPlan` 不保存普通路由的具体实例、实例队列、协议或分发策略；实际选择、主实例 revision 与命中规则写运行证据。
 - LLM 选择器按实例分组展示模型，但单个模型项只显示模型名。
-- 实例被移出主实例后，已有节点保留旧值，由校验和运行时报错提示管理员调整。
+- 实例被移出主实例后，已有普通节点无需调整或重新发布，下一次运行按主实例当前规则选择其他可运行实例。
 - 当前项目阶段按开发初期处理，不做旧 `manual_primary` 兼容、迁移和回退逻辑。
 
 ## 关联文档

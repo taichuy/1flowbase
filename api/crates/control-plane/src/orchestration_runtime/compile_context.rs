@@ -1191,8 +1191,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orchestration_runtime_compile_context_uses_failover_queue_for_multi_instance_stable_model(
-    ) {
+    async fn orchestration_runtime_compile_context_keeps_multi_instance_stable_model_logical() {
         let repository =
             super::super::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(
                 vec![],
@@ -1217,18 +1216,20 @@ mod tests {
         .expect("plan should compile");
 
         ensure_compiled_plan_runnable(&compiled_plan).expect("multi-instance provider should run");
-        let routing = compiled_plan.nodes["node-llm"]
+        let runtime = compiled_plan.nodes["node-llm"]
             .llm_runtime
             .as_ref()
-            .expect("llm runtime")
-            .routing
-            .as_ref()
-            .expect("llm routing");
-        assert_eq!(
-            routing.routing_mode,
-            orchestration_runtime::compiled_plan::LlmRoutingMode::FailoverQueue
-        );
-        assert_eq!(routing.queue_targets.len(), 2);
+            .expect("llm runtime");
+        assert_eq!(runtime.provider_code, "fixture_provider");
+        assert_eq!(runtime.model, "gpt-5.4-mini");
+        assert!(runtime.provider_instance_id.is_empty());
+        assert!(runtime.protocol.is_empty());
+        assert!(runtime.routing.is_none());
+
+        let serialized = serde_json::to_value(runtime).expect("runtime should serialize");
+        assert!(serialized.get("provider_instance_id").is_none());
+        assert!(serialized.get("protocol").is_none());
+        assert!(serialized.get("routing").is_none());
     }
 
     #[tokio::test]

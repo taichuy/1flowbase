@@ -1,7 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 
-use sha2::{Digest, Sha256};
-
 use super::code_runtime_config::{
     code_import_aliases, compile_code_isolation_profile, trimmed_config_string,
     validate_code_imports,
@@ -289,7 +287,7 @@ fn compile_llm_runtime(
     let routing_policy = context
         .model_routing_policies
         .get(&(provider_code.clone(), model.clone()));
-    let provider_instances = resolve_fixed_model_provider_instances(
+    resolve_fixed_model_provider_instances(
         node_id,
         &provider_code,
         &model,
@@ -297,27 +295,14 @@ fn compile_llm_runtime(
         context,
         compile_issues,
     )?;
-    let provider_instance = provider_instances.first().copied()?;
-
-    let context_policy = compile_llm_context_policy(config);
-    let distribution_rule = routing_policy
-        .map(|policy| policy.distribution_rule)
-        .unwrap_or_default();
 
     Some(CompiledLlmRuntime {
-        provider_instance_id: provider_instance.provider_instance_id.clone(),
-        provider_instance_display_name: provider_instance.display_name.clone(),
-        provider_code: provider_instance.provider_code.clone(),
-        protocol: provider_instance.protocol.clone(),
-        model: model.clone(),
-        routing: Some(fixed_model_routing(
-            &provider_instances,
-            context.workspace_id,
-            &provider_code,
-            &model,
-            distribution_rule,
-            context_policy,
-        )),
+        provider_instance_id: String::new(),
+        provider_instance_display_name: String::new(),
+        provider_code,
+        protocol: String::new(),
+        model,
+        routing: None,
     })
 }
 
@@ -427,88 +412,6 @@ fn provider_instance_supports_model(instance: &FlowCompileProviderInstance, mode
     instance.allow_custom_models
         || instance.available_models.is_empty()
         || instance.available_models.contains(model)
-}
-
-fn fixed_model_routing(
-    provider_instances: &[&FlowCompileProviderInstance],
-    workspace_id: Option<uuid::Uuid>,
-    provider_code: &str,
-    model: &str,
-    distribution_rule: LlmDistributionRule,
-    context_policy: Value,
-) -> CompiledLlmRouting {
-    if provider_instances.len() > 1 {
-        let queue_targets = provider_instances
-            .iter()
-            .map(|provider_instance| CompiledLlmRouteTarget {
-                provider_instance_id: provider_instance.provider_instance_id.clone(),
-                provider_instance_display_name: provider_instance.display_name.clone(),
-                provider_code: provider_instance.provider_code.clone(),
-                protocol: provider_instance.protocol.clone(),
-                upstream_model_id: model.to_string(),
-            })
-            .collect::<Vec<_>>();
-        let distribution_key = (distribution_rule == LlmDistributionRule::RoundRobin)
-            .then(|| llm_distribution_key(workspace_id, provider_code, model, &queue_targets));
-
-        return CompiledLlmRouting {
-            routing_mode: LlmRoutingMode::FailoverQueue,
-            fixed_model_target: None,
-            queue_template_id: None,
-            queue_snapshot_id: None,
-            queue_targets,
-            distribution_rule,
-            distribution_key,
-            context_policy,
-            stream_policy: serde_json::json!({}),
-        };
-    }
-
-    let provider_instance = provider_instances[0];
-
-    CompiledLlmRouting {
-        routing_mode: LlmRoutingMode::FixedModel,
-        fixed_model_target: Some(serde_json::json!({
-            "provider_instance_id": provider_instance.provider_instance_id.clone(),
-            "provider_code": provider_instance.provider_code.clone(),
-            "protocol": provider_instance.protocol.clone(),
-            "upstream_model_id": model,
-        })),
-        queue_template_id: None,
-        queue_snapshot_id: None,
-        queue_targets: Vec::new(),
-        distribution_rule: LlmDistributionRule::None,
-        distribution_key: None,
-        context_policy,
-        stream_policy: serde_json::json!({}),
-    }
-}
-
-fn llm_distribution_key(
-    workspace_id: Option<uuid::Uuid>,
-    provider_code: &str,
-    model: &str,
-    targets: &[CompiledLlmRouteTarget],
-) -> String {
-    let workspace_segment = workspace_id
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "unscoped".to_string());
-    let mut target_fingerprint = Sha256::new();
-    for target in targets {
-        target_fingerprint.update(target.provider_instance_id.as_bytes());
-        target_fingerprint.update(b"\0");
-        target_fingerprint.update(target.provider_code.as_bytes());
-        target_fingerprint.update(b"\0");
-        target_fingerprint.update(target.protocol.as_bytes());
-        target_fingerprint.update(b"\0");
-        target_fingerprint.update(target.upstream_model_id.as_bytes());
-        target_fingerprint.update(b"\0");
-    }
-    let target_fingerprint = format!("{:x}", target_fingerprint.finalize());
-
-    format!(
-        "llm-router:workspace:{workspace_segment}:provider:{provider_code}:model:{model}:targets:{target_fingerprint}"
-    )
 }
 
 fn compile_failover_queue_runtime(

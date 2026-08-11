@@ -588,6 +588,54 @@ impl InMemoryOrchestrationRuntimeRepository {
         instance_id
     }
 
+    pub(crate) fn set_instance_included_in_main(&self, instance_id: Uuid, included_in_main: bool) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .instances_by_id
+            .get_mut(&instance_id)
+            .expect("provider instance should exist")
+            .included_in_main = included_in_main;
+    }
+
+    pub(crate) fn set_main_model_routing_policy(
+        &self,
+        provider_code: &str,
+        model_id: &str,
+        distribution_rule: domain::ModelProviderDistributionRule,
+        provider_instance_ids: Vec<Uuid>,
+        excluded_provider_instance_ids: Vec<Uuid>,
+    ) {
+        let now = OffsetDateTime::now_utc();
+        let record = domain::ModelProviderMainInstanceRecord {
+            workspace_id: Uuid::nil(),
+            provider_code: provider_code.to_string(),
+            auto_include_new_instances: true,
+            revision: 1,
+            model_routing_policies: vec![domain::ModelProviderMainModelRoutingPolicyRecord {
+                workspace_id: Uuid::nil(),
+                provider_code: provider_code.to_string(),
+                model_id: model_id.to_string(),
+                distribution_rule,
+                provider_instance_ids,
+                excluded_provider_instance_ids,
+                created_by: Uuid::nil(),
+                updated_by: Uuid::nil(),
+                created_at: now,
+                updated_at: now,
+            }],
+            created_by: Uuid::nil(),
+            updated_by: Uuid::nil(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .main_instances_by_provider
+            .insert((Uuid::nil(), provider_code.to_string()), record);
+    }
+
     pub(crate) fn seed_catalog_entries_for_instance(
         &self,
         instance_id: Uuid,
