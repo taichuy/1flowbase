@@ -11,12 +11,12 @@ use control_plane::{
     system_recovery::{
         ConfirmedRecoveryIntent, OfflineRecoveryHandoffReady, PrepareRecoveryCommand,
         RecoveryCoordinator, RecoveryCoordinatorError, RecoveryPlan, RecoveryPreflightService,
-        SystemMaintenance, SystemMaintenanceSnapshot,
+        SystemMaintenance, SystemMaintenanceOperation, SystemMaintenanceSnapshot,
     },
 };
 use domain::{
-    ApplicationBuild, BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint,
-    RecoveryJobId, SealedBackupManifest,
+    ApplicationBuild, BackupJobId, BackupJournalEvent, BackupJournalSubject, BackupSetId,
+    KeyFingerprint, RecoveryJobId, SealedBackupManifest,
 };
 use sha2::{Digest, Sha256};
 use storage_durable::{MainDurableStore, PostgreSqlToolchain};
@@ -61,6 +61,10 @@ pub enum SystemBackupRuntimeError {
     PostgreSqlPreflight,
     #[error("system backup source inventory is unavailable")]
     SourceInventory,
+    #[error("system maintenance is already active")]
+    MaintenanceBusy,
+    #[error("system writes did not drain before backup")]
+    Drain,
     #[error("system backup operation failed")]
     Service(#[from] SystemBackupServiceError),
     #[error("system recovery preparation failed")]
@@ -150,12 +154,24 @@ impl SystemBackupRuntime {
         &self,
         actor_user_id: Uuid,
     ) -> Result<SealedBackupManifest, SystemBackupRuntimeError> {
-        let (command, sources) = self.backup_inputs(actor_user_id).await?;
-
-        self.service
-            .create(command, sources)
+        let backup_job_id = BackupJobId::new();
+        let lease = self
+            .maintenance
+            .begin(
+                SystemMaintenanceOperation::Backup(backup_job_id),
+                time::OffsetDateTime::now_utc(),
+            )
+            .map_err(|_| SystemBackupRuntimeError::MaintenanceBusy)?;
+        lease
+            .wait_for_drain(std::time::Duration::from_secs(30))
             .await
-            .map_err(Into::into)
+            .map_err(|_| SystemBackupRuntimeError::Drain)?;
+
+        let result = self
+            .create_under_existing_maintenance(backup_job_id, actor_user_id)
+            .await;
+        lease.finish();
+        result
     }
 
     pub async fn list(&self) -> Result<Vec<BackupSetCatalogEntry>, SystemBackupRuntimeError> {
@@ -286,6 +302,22 @@ impl SystemBackupRuntime {
             },
             sources,
         ))
+    }
+
+    async fn create_under_existing_maintenance(
+        &self,
+        backup_job_id: BackupJobId,
+        actor_user_id: Uuid,
+    ) -> Result<SealedBackupManifest, SystemBackupRuntimeError> {
+        let (command, sources) = self.backup_inputs(actor_user_id).await?;
+        let manifest = self
+            .service
+            .create_under_existing_maintenance(backup_job_id, command, sources)
+            .await?;
+        self.service
+            .verify(manifest.manifest().backup_set_id())
+            .await?;
+        Ok(manifest)
     }
 }
 

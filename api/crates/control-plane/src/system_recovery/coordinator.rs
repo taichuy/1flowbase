@@ -4,8 +4,8 @@ use std::{
 };
 
 use domain::{
-    BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupSetId, ContentDigest,
-    RecoveryJob, RecoveryJobId, RecoveryJobState,
+    BackupJobId, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupSetId,
+    ContentDigest, RecoveryJob, RecoveryJobId, RecoveryJobState,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -20,7 +20,7 @@ use crate::{
 
 use super::{
     RecoveryPlan, RecoveryPreflightFailure, RecoveryPreflightService, SystemMaintenance,
-    SystemMaintenanceLease,
+    SystemMaintenanceLease, SystemMaintenanceOperation,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,7 +222,10 @@ impl RecoveryCoordinator {
 
         let lease = self
             .maintenance
-            .begin(job.job_id(), OffsetDateTime::now_utc())
+            .begin(
+                SystemMaintenanceOperation::Recovery(job.job_id()),
+                OffsetDateTime::now_utc(),
+            )
             .map_err(|_| RecoveryCoordinatorError::MaintenanceBusy)?;
         lease
             .wait_for_drain(command.drain_timeout)
@@ -230,10 +233,11 @@ impl RecoveryCoordinator {
             .map_err(|_| RecoveryCoordinatorError::Drain)?;
 
         let safety_manifest = self
-            .backups
-            .create(command.safety_backup_command, command.safety_backup_sources)
-            .await
-            .map_err(|_| RecoveryCoordinatorError::SafetyBackup)?;
+            .create_safety_backup_under_existing_maintenance(
+                command.safety_backup_command,
+                command.safety_backup_sources,
+            )
+            .await?;
         let safety_backup_set_id = safety_manifest.manifest().backup_set_id();
         self.backups
             .verify(safety_backup_set_id)
@@ -291,6 +295,17 @@ impl RecoveryCoordinator {
         }
         *slot = Some(active);
         Ok(ready)
+    }
+
+    async fn create_safety_backup_under_existing_maintenance(
+        &self,
+        command: CreateSystemBackupCommand,
+        sources: Vec<Arc<dyn BackupComponentSource>>,
+    ) -> Result<domain::SealedBackupManifest, RecoveryCoordinatorError> {
+        self.backups
+            .create_under_existing_maintenance(BackupJobId::new(), command, sources)
+            .await
+            .map_err(|_| RecoveryCoordinatorError::SafetyBackup)
     }
 
     pub fn active_handoff(&self) -> Option<OfflineRecoveryHandoffReady> {

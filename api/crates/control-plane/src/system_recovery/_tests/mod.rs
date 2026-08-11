@@ -2,11 +2,12 @@ use std::{sync::Arc, time::Duration};
 
 mod executor_tests;
 
-use domain::RecoveryJobId;
+use domain::{BackupJobId, RecoveryJobId};
 use time::OffsetDateTime;
 
 use super::{
-    SystemMaintenance, SystemMaintenanceDrainError, SystemMaintenancePhase, SystemWriteOwner,
+    SystemMaintenance, SystemMaintenanceDrainError, SystemMaintenanceOperation,
+    SystemMaintenancePhase, SystemWriteOwner,
 };
 
 mod coordinator_tests;
@@ -29,8 +30,8 @@ async fn maintenance_fences_new_writes_and_waits_for_every_owner_to_drain() {
         maintenance
             .try_enter_write(SystemWriteOwner::ProviderRequestLogPersistence)
             .unwrap_err()
-            .recovery_job_id,
-        job_id
+            .operation,
+        SystemMaintenanceOperation::Recovery(job_id)
     );
     assert_eq!(maintenance.snapshot().active_write_count(), 2);
     assert_eq!(
@@ -58,4 +59,25 @@ async fn dropping_the_current_lease_reopens_writes() {
     maintenance
         .try_enter_write(SystemWriteOwner::ApiMutation)
         .unwrap();
+}
+
+#[tokio::test]
+async fn backup_maintenance_uses_a_backup_job_identity_without_faking_recovery() {
+    let maintenance = Arc::new(SystemMaintenance::default());
+    let job_id = BackupJobId::new();
+    let lease = maintenance
+        .begin(
+            SystemMaintenanceOperation::Backup(job_id),
+            OffsetDateTime::now_utc(),
+        )
+        .unwrap();
+    let snapshot = lease.wait_for_drain(Duration::from_secs(1)).await.unwrap();
+
+    assert_eq!(
+        snapshot.operation,
+        Some(SystemMaintenanceOperation::Backup(job_id))
+    );
+    assert_eq!(snapshot.recovery_job_id, None);
+    drop(lease);
+    assert_eq!(maintenance.snapshot().phase, SystemMaintenancePhase::Online);
 }

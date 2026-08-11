@@ -330,11 +330,22 @@ impl SystemBackupService {
     pub async fn create(
         &self,
         command: CreateSystemBackupCommand,
+        sources: Vec<Arc<dyn BackupComponentSource>>,
+    ) -> Result<SealedBackupManifest, SystemBackupServiceError> {
+        self.create_under_existing_maintenance(BackupJobId::new(), command, sources)
+            .await
+    }
+
+    /// Creates a backup when the host has already acquired and drained the maintenance fence.
+    /// Callers must not use this as the public manual-backup entry point.
+    pub async fn create_under_existing_maintenance(
+        &self,
+        job_id: BackupJobId,
+        command: CreateSystemBackupCommand,
         mut sources: Vec<Arc<dyn BackupComponentSource>>,
     ) -> Result<SealedBackupManifest, SystemBackupServiceError> {
         sources.sort_by_key(|source| source.descriptor().component_id);
         let backup_set_id = BackupSetId::new();
-        let job_id = BackupJobId::new();
         let now = OffsetDateTime::now_utc();
         let mut job = BackupJob::new(job_id, backup_set_id, now);
         self.repository

@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use domain::RecoveryJobId;
+use domain::{BackupJobId, RecoveryJobId};
 use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Notify;
@@ -46,6 +46,33 @@ pub enum SystemMaintenancePhase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemMaintenanceOperation {
+    Backup(BackupJobId),
+    Recovery(RecoveryJobId),
+}
+
+impl SystemMaintenanceOperation {
+    pub const fn recovery_job_id(self) -> Option<RecoveryJobId> {
+        match self {
+            Self::Backup(_) => None,
+            Self::Recovery(job_id) => Some(job_id),
+        }
+    }
+}
+
+impl From<BackupJobId> for SystemMaintenanceOperation {
+    fn from(job_id: BackupJobId) -> Self {
+        Self::Backup(job_id)
+    }
+}
+
+impl From<RecoveryJobId> for SystemMaintenanceOperation {
+    fn from(job_id: RecoveryJobId) -> Self {
+        Self::Recovery(job_id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SystemWriteOwnerActivity {
     pub owner: SystemWriteOwner,
     pub active_writes: usize,
@@ -54,6 +81,8 @@ pub struct SystemWriteOwnerActivity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemMaintenanceSnapshot {
     pub phase: SystemMaintenancePhase,
+    pub operation: Option<SystemMaintenanceOperation>,
+    /// Compatibility projection for existing recovery-status responses.
     pub recovery_job_id: Option<RecoveryJobId>,
     pub started_at: Option<OffsetDateTime>,
     pub write_owners: Vec<SystemWriteOwnerActivity>,
@@ -69,15 +98,15 @@ impl SystemMaintenanceSnapshot {
 }
 
 #[derive(Debug, Clone, Copy, Error, PartialEq, Eq)]
-#[error("system maintenance is already owned by recovery job {recovery_job_id:?}")]
+#[error("system maintenance is already owned by {operation:?}")]
 pub struct SystemMaintenanceLeaseConflict {
-    pub recovery_job_id: RecoveryJobId,
+    pub operation: SystemMaintenanceOperation,
 }
 
 #[derive(Debug, Clone, Copy, Error, PartialEq, Eq)]
-#[error("system writes are fenced for recovery job {recovery_job_id:?}")]
+#[error("system writes are fenced by {operation:?}")]
 pub struct SystemWriteFenced {
-    pub recovery_job_id: RecoveryJobId,
+    pub operation: SystemMaintenanceOperation,
 }
 
 #[derive(Debug, Clone, Copy, Error, PartialEq, Eq)]
@@ -93,12 +122,12 @@ enum InternalPhase {
     Online,
     Draining {
         lease_token: Uuid,
-        recovery_job_id: RecoveryJobId,
+        operation: SystemMaintenanceOperation,
         started_at: OffsetDateTime,
     },
     Active {
         lease_token: Uuid,
-        recovery_job_id: RecoveryJobId,
+        operation: SystemMaintenanceOperation,
         started_at: OffsetDateTime,
     },
 }
@@ -169,22 +198,20 @@ impl SystemMaintenance {
                     owner,
                 })
             }
-            InternalPhase::Draining {
-                recovery_job_id, ..
+            InternalPhase::Draining { operation, .. } | InternalPhase::Active { operation, .. } => {
+                Err(SystemWriteFenced {
+                    operation: *operation,
+                })
             }
-            | InternalPhase::Active {
-                recovery_job_id, ..
-            } => Err(SystemWriteFenced {
-                recovery_job_id: *recovery_job_id,
-            }),
         }
     }
 
     pub fn begin(
         self: &Arc<Self>,
-        recovery_job_id: RecoveryJobId,
+        operation: impl Into<SystemMaintenanceOperation>,
         started_at: OffsetDateTime,
     ) -> Result<SystemMaintenanceLease, SystemMaintenanceLeaseConflict> {
+        let operation = operation.into();
         let mut state = self
             .state
             .lock()
@@ -194,7 +221,7 @@ impl SystemMaintenance {
                 let lease_token = Uuid::now_v7();
                 state.phase = InternalPhase::Draining {
                     lease_token,
-                    recovery_job_id,
+                    operation,
                     started_at,
                 };
                 drop(state);
@@ -205,14 +232,11 @@ impl SystemMaintenance {
                     released: false,
                 })
             }
-            InternalPhase::Draining {
-                recovery_job_id, ..
+            InternalPhase::Draining { operation, .. } | InternalPhase::Active { operation, .. } => {
+                Err(SystemMaintenanceLeaseConflict {
+                    operation: *operation,
+                })
             }
-            | InternalPhase::Active {
-                recovery_job_id, ..
-            } => Err(SystemMaintenanceLeaseConflict {
-                recovery_job_id: *recovery_job_id,
-            }),
         }
     }
 
@@ -287,13 +311,13 @@ impl SystemMaintenanceLease {
                 match &state.phase {
                     InternalPhase::Draining {
                         lease_token,
-                        recovery_job_id,
+                        operation,
                         started_at,
                     } if *lease_token == self.lease_token => {
                         if state.active_writes.iter().all(|count| *count == 0) {
                             state.phase = InternalPhase::Active {
                                 lease_token: *lease_token,
-                                recovery_job_id: *recovery_job_id,
+                                operation: *operation,
                                 started_at: *started_at,
                             };
                             return Ok(snapshot_from(&state));
@@ -329,24 +353,24 @@ impl Drop for SystemMaintenanceLease {
 }
 
 fn snapshot_from(state: &MaintenanceState) -> SystemMaintenanceSnapshot {
-    let (phase, recovery_job_id, started_at) = match &state.phase {
+    let (phase, operation, started_at) = match &state.phase {
         InternalPhase::Online => (SystemMaintenancePhase::Online, None, None),
         InternalPhase::Draining {
-            recovery_job_id,
+            operation,
             started_at,
             ..
         } => (
             SystemMaintenancePhase::Draining,
-            Some(*recovery_job_id),
+            Some(*operation),
             Some(*started_at),
         ),
         InternalPhase::Active {
-            recovery_job_id,
+            operation,
             started_at,
             ..
         } => (
             SystemMaintenancePhase::Active,
-            Some(*recovery_job_id),
+            Some(*operation),
             Some(*started_at),
         ),
     };
@@ -360,7 +384,8 @@ fn snapshot_from(state: &MaintenanceState) -> SystemMaintenanceSnapshot {
 
     SystemMaintenanceSnapshot {
         phase,
-        recovery_job_id,
+        operation,
+        recovery_job_id: operation.and_then(SystemMaintenanceOperation::recovery_job_id),
         started_at,
         write_owners,
     }
