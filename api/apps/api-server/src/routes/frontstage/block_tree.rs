@@ -169,6 +169,11 @@ pub struct FrontstageBlockNodeCodeResponse {
     pub source_sha256: String,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageBlockOpenResponse {
+    pub canonical_url: String,
+}
+
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
 
@@ -213,13 +218,51 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(delete_frontstage_block_subtree, Authenticated),
         )
         .route(
+            "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/open",
+            console_get(open_frontstage_block, Authenticated),
+        )
+        .route(
             "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             console_get(get_frontstage_block_node_code, Authenticated)
                 .put(save_frontstage_block_node_code, Authenticated),
         )
 }
 
-#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks", params(("workspace_id" = String, Path), ("page_id" = String, Path), FrontstageBlockListQuery), responses((status = 200, body = Vec<FrontstageBlockNodeSummaryResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/open",
+    summary = "Open a Frontstage block",
+    description = "Resolves a visible block to its canonical Frontstage URL. The backend restores page ancestry and presentation; callers only provide the public block id.",
+    responses(
+        (status = 200, body = FrontstageBlockOpenResponse),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn open_frontstage_block(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, block_id)): Path<(String, String, String)>,
+) -> Result<Json<ApiSuccess<FrontstageBlockOpenResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let target = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .open_block(FrontstageBlockScopeCommand {
+            actor_user_id: context.user.id,
+            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+            page_id: parse_uuid(&page_id, "page_id")?,
+            block_id,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(FrontstageBlockOpenResponse {
+        canonical_url: format!(
+            "/{}/pages/{}/blocks/{}",
+            target.slug,
+            target.page_id,
+            encode_block_path_segment(&target.block_id)
+        ),
+    })))
+}
+
+#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks", summary = "List Frontstage block roots", description = "Lists public Block Node Descriptor v1 roots in the page ordered-tree partition.", params(("workspace_id" = String, Path), ("page_id" = String, Path), FrontstageBlockListQuery), responses((status = 200, body = Vec<FrontstageBlockNodeSummaryResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody)))]
 pub async fn list_frontstage_block_roots(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -240,7 +283,7 @@ pub async fn list_frontstage_block_roots(
     )))
 }
 
-#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks", request_body = CreateFrontstageBlockNodeBody, responses((status = 201, body = FrontstageBlockNodeResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks", summary = "Create a Frontstage block", description = "Creates one independently stored Block Node Descriptor v1 in the page ordered-tree partition.", request_body = CreateFrontstageBlockNodeBody, responses((status = 201, body = FrontstageBlockNodeResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn create_frontstage_block_node(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -306,7 +349,7 @@ pub async fn search_frontstage_blocks(
     )))
 }
 
-#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}", responses((status = 200, body = FrontstageBlockNodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}", summary = "Get a Frontstage block", description = "Gets one public Block Node Descriptor v1 without exposing internal ordered-tree identity or model codes.", responses((status = 200, body = FrontstageBlockNodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
 pub async fn get_frontstage_block_node(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -341,7 +384,7 @@ pub async fn update_frontstage_block_node(
     Ok(Json(ApiSuccess::new(to_node_response(node))))
 }
 
-#[utoipa::path(delete, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}", responses((status = 204), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(delete, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}", summary = "Delete a Frontstage block leaf", description = "Deletes one leaf block; nodes with children require the explicit subtree action.", responses((status = 204), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn delete_frontstage_block_leaf(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -432,7 +475,7 @@ pub async fn get_frontstage_block_delete_impact(
     })))
 }
 
-#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/move", request_body = MoveFrontstageBlockNodeBody, responses((status = 200, body = FrontstageBlockNodeResponse), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/move", summary = "Move a Frontstage block", description = "Moves one block within its page ordered-tree partition using public block positions.", request_body = MoveFrontstageBlockNodeBody, responses((status = 200, body = FrontstageBlockNodeResponse), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn move_frontstage_block_node(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -454,7 +497,7 @@ pub async fn move_frontstage_block_node(
     Ok(Json(ApiSuccess::new(to_node_response(node))))
 }
 
-#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/delete-subtree", request_body = DeleteFrontstageBlockSubtreeBody, responses((status = 200, body = FrontstageBlockSubtreeDeleteResponse), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/delete-subtree", summary = "Delete a Frontstage block subtree", description = "Explicitly deletes a block subtree after the caller confirms the backend impact count.", request_body = DeleteFrontstageBlockSubtreeBody, responses((status = 200, body = FrontstageBlockSubtreeDeleteResponse), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn delete_frontstage_block_subtree(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -537,6 +580,19 @@ fn default_result_limit() -> u32 {
 
 fn default_max_depth() -> u32 {
     64
+}
+
+fn encode_block_path_segment(block_id: &str) -> String {
+    block_id
+        .bytes()
+        .flat_map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                vec![byte as char]
+            } else {
+                format!("%{byte:02X}").chars().collect()
+            }
+        })
+        .collect()
 }
 
 fn to_domain_presentation(

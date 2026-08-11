@@ -18,8 +18,7 @@ export interface ConsoleFrontstageBlockNodeSummary {
   updated_at: string;
 }
 
-export interface ConsoleFrontstageBlockNode
-  extends ConsoleFrontstageBlockNodeSummary {
+export interface ConsoleFrontstageBlockNode extends ConsoleFrontstageBlockNodeSummary {
   input_mapping: Record<string, string>;
   output_mapping: Record<string, string>;
   runtime_descriptor: unknown;
@@ -50,6 +49,10 @@ export interface ConsoleFrontstageBlockNodeCode {
   page_id: string;
   code: string;
   source_sha256: string;
+}
+
+export interface ConsoleFrontstageBlockOpenTarget {
+  canonical_url: string;
 }
 
 export interface CreateConsoleFrontstageBlockNodeInput {

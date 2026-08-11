@@ -53,6 +53,16 @@
         "authorization_operation_id": null
       },
       {
+        "interface_id": "delete_frontstage_block_leaf",
+        "route": {
+          "method": "DELETE",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+        },
+        "summary": "Delete frontstage block leaf",
+        "description": "Delete frontstage block leaf in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
         "interface_id": "delete_frontstage_page_tab",
         "route": {
           "method": "DELETE",
@@ -870,6 +880,96 @@
         },
         "summary": "Get frontstage block code",
         "description": "Get frontstage block code in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "list_frontstage_block_roots",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks"
+        },
+        "summary": "List frontstage block roots",
+        "description": "List frontstage block roots in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "search_frontstage_blocks",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/search"
+        },
+        "summary": "Search frontstage blocks",
+        "description": "Search frontstage blocks in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "get_frontstage_block_node",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+        },
+        "summary": "Get frontstage block node",
+        "description": "Get frontstage block node in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "list_frontstage_block_ancestors",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/ancestors"
+        },
+        "summary": "List frontstage block ancestors",
+        "description": "List frontstage block ancestors in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "list_frontstage_block_children",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/children"
+        },
+        "summary": "List frontstage block children",
+        "description": "List frontstage block children in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "get_frontstage_block_node_code",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code"
+        },
+        "summary": "Get frontstage block node code",
+        "description": "Get frontstage block node code in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "get_frontstage_block_delete_impact",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-impact"
+        },
+        "summary": "Get frontstage block delete impact",
+        "description": "Get frontstage block delete impact in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "list_frontstage_block_descendants",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/descendants"
+        },
+        "summary": "List frontstage block descendants",
+        "description": "List frontstage block descendants in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "open_frontstage_block",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/open"
+        },
+        "summary": "Open frontstage block",
+        "description": "Open frontstage block in the system backend.",
         "authorization_operation_id": null
       },
       {
@@ -1803,6 +1903,16 @@
         "authorization_operation_id": null
       },
       {
+        "interface_id": "update_frontstage_block_node",
+        "route": {
+          "method": "PATCH",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+        },
+        "summary": "Update frontstage block node",
+        "description": "Update frontstage block node in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
         "interface_id": "update_frontstage_page_tab",
         "route": {
           "method": "PATCH",
@@ -2190,6 +2300,36 @@
         },
         "summary": "Create frontstage group",
         "description": "Create frontstage group in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "create_frontstage_block_node",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks"
+        },
+        "summary": "Create frontstage block node",
+        "description": "Create frontstage block node in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "delete_frontstage_block_subtree",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-subtree"
+        },
+        "summary": "Delete frontstage block subtree",
+        "description": "Delete frontstage block subtree in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
+        "interface_id": "move_frontstage_block_node",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/move"
+        },
+        "summary": "Move frontstage block node",
+        "description": "Move frontstage block node in the system backend.",
         "authorization_operation_id": null
       },
       {
@@ -3213,6 +3353,16 @@
         "authorization_operation_id": null
       },
       {
+        "interface_id": "save_frontstage_block_node_code",
+        "route": {
+          "method": "PUT",
+          "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code"
+        },
+        "summary": "Save frontstage block node code",
+        "description": "Save frontstage block node code in the system backend.",
+        "authorization_operation_id": null
+      },
+      {
         "interface_id": "save_frontstage_tab_document",
         "route": {
           "method": "PUT",
@@ -3907,6 +4057,10 @@
           },
           {
             "method": "DELETE",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+          },
+          {
+            "method": "DELETE",
             "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference"
           },
           {
@@ -3975,6 +4129,42 @@
           },
           {
             "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/ancestors"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/children"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-impact"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/descendants"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/open"
+          },
+          {
+            "method": "GET",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/search"
+          },
+          {
+            "method": "GET",
             "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs"
           },
           {
@@ -4027,6 +4217,10 @@
           },
           {
             "method": "PATCH",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+          },
+          {
+            "method": "PATCH",
             "path": "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference"
           },
           {
@@ -4068,6 +4262,18 @@
           {
             "method": "POST",
             "path": "/api/console/frontstage/:workspace_id/pages"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-subtree"
+          },
+          {
+            "method": "POST",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/move"
           },
           {
             "method": "POST",
@@ -4124,6 +4330,10 @@
           {
             "method": "PUT",
             "path": "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code"
           },
           {
             "method": "PUT",
@@ -13251,6 +13461,141 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "roles.permission_options.list"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/search"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "DELETE",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/children"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/ancestors"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/descendants"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-impact"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/move"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-subtree"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/open"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code"
+      },
+      "ownership": {
+        "kind": "authenticated"
+      }
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code"
+      },
+      "ownership": {
+        "kind": "authenticated"
       }
     },
     {

@@ -93,6 +93,12 @@ pub struct SaveFrontstageBlockNodeCodeCommand {
     pub code: String,
 }
 
+pub struct FrontstageBlockOpenTarget {
+    pub slug: String,
+    pub page_id: Uuid,
+    pub block_id: String,
+}
+
 impl<R> FrontstagePageService<R>
 where
     R: FrontstagePageRepository + FrontstageBlockTreeRepository,
@@ -142,6 +148,41 @@ where
     ) -> Result<domain::FrontstageBlockNodeRecord> {
         let (_, node) = self.load_visible_block(&command).await?;
         Ok(node)
+    }
+
+    pub async fn open_block(
+        &self,
+        command: FrontstageBlockScopeCommand,
+    ) -> Result<FrontstageBlockOpenTarget> {
+        let (_, node) = self.load_visible_block(&command).await?;
+        let pages = self
+            .repository
+            .list_frontstage_pages(command.workspace_id)
+            .await?;
+        let pages_by_id = pages
+            .iter()
+            .map(|page| (page.id, page))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut root = pages_by_id
+            .get(&command.page_id)
+            .copied()
+            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+        while let Some(parent_id) = root.parent_id {
+            root = pages_by_id
+                .get(&parent_id)
+                .copied()
+                .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+        }
+        let slug = root
+            .slug
+            .clone()
+            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+
+        Ok(FrontstageBlockOpenTarget {
+            slug,
+            page_id: command.page_id,
+            block_id: node.block_id,
+        })
     }
 
     pub async fn list_block_children(

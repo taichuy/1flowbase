@@ -36,14 +36,18 @@ async fn create_block_page(
     csrf: &str,
     workspace_id: &str,
 ) -> (String, String) {
-    let (status, payload) = create_page(
+    let (status, payload) = send_json(
         app,
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages"),
         cookie,
         csrf,
-        workspace_id,
-        Some("Block tree"),
-        None,
-        "a",
+        json!({
+            "title": "Block tree",
+            "rank": "a",
+            "placement": "topbar",
+            "slug": "block-tree"
+        }),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
@@ -107,6 +111,14 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     assert_eq!(
         root["runtime_descriptor"]["customRendererOption"],
         json!(true)
+    );
+
+    let (open_status, open_payload) =
+        get_json(&app, &format!("{blocks_path}/{root_id}/open"), &cookie).await;
+    assert_eq!(open_status, StatusCode::OK, "{open_payload}");
+    assert_eq!(
+        open_payload["data"]["canonical_url"],
+        json!(format!("/block-tree/pages/{page_id}/blocks/{root_id}"))
     );
 
     let (_, child_payload) = create_block(
@@ -372,6 +384,7 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
         format!("{blocks_path}/{block_id}"),
         format!("{blocks_path}/{block_id}/ancestors"),
         format!("{blocks_path}/{block_id}/code"),
+        format!("{blocks_path}/{block_id}/open"),
     ] {
         let (status, payload) = get_json(&app, &runtime_path, &viewer_cookie).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{runtime_path}: {payload}");

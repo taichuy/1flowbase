@@ -103,6 +103,10 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
             (
                 "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/open",
+            ),
+            (
+                "GET",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             ),
             (

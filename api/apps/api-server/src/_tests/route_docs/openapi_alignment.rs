@@ -630,6 +630,7 @@ async fn openapi_contains_canonical_frontstage_block_tree_routes() {
         (format!("{base}/{{block_id}}/delete-impact"), &["get"][..]),
         (format!("{base}/{{block_id}}/move"), &["post"][..]),
         (format!("{base}/{{block_id}}/delete-subtree"), &["post"][..]),
+        (format!("{base}/{{block_id}}/open"), &["get"][..]),
         (format!("{base}/{{block_id}}/code"), &["get", "put"][..]),
     ];
 
@@ -648,6 +649,10 @@ async fn openapi_contains_canonical_frontstage_block_tree_routes() {
     assert_eq!(
         search["get"]["operationId"],
         json!("search_frontstage_blocks")
+    );
+    assert_eq!(
+        paths[&format!("{base}/{{block_id}}/open")]["get"]["operationId"],
+        json!("open_frontstage_block")
     );
     assert_eq!(
         paths[base]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],

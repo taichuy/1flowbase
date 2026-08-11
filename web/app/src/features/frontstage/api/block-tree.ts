@@ -10,6 +10,7 @@ import {
   listConsoleFrontstageBlockDescendants,
   listConsoleFrontstageBlockRoots,
   moveConsoleFrontstageBlockNode,
+  openConsoleFrontstageBlock,
   saveConsoleFrontstageBlockNodeCode,
   searchConsoleFrontstageBlocks,
   updateConsoleFrontstageBlockNode,
@@ -130,6 +131,19 @@ export function fetchFrontstageBlockNode(
   blockId: string
 ) {
   return getConsoleFrontstageBlockNode(
+    workspaceId,
+    pageId,
+    blockId,
+    getFrontstageApiBaseUrl()
+  );
+}
+
+export function openFrontstageBlock(
+  workspaceId: string,
+  pageId: string,
+  blockId: string
+) {
+  return openConsoleFrontstageBlock(
     workspaceId,
     pageId,
     blockId,

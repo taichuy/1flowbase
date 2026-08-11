@@ -13,6 +13,7 @@ import {
   listConsoleFrontstageBlockDescendants,
   listConsoleFrontstageBlockRoots,
   moveConsoleFrontstageBlockNode,
+  openConsoleFrontstageBlock,
   saveConsoleFrontstageBlockNodeCode,
   searchConsoleFrontstageBlocks,
   updateConsoleFrontstageBlockNode,
@@ -60,11 +61,7 @@ describe('frontstage block tree client contract', () => {
       path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/children?limit=30'
     });
     await expect(
-      listConsoleFrontstageBlockAncestors(
-        'workspace 1',
-        'page/1',
-        'block/root'
-      )
+      listConsoleFrontstageBlockAncestors('workspace 1', 'page/1', 'block/root')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/ancestors'
     });
@@ -88,13 +85,15 @@ describe('frontstage block tree client contract', () => {
       path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/delete-impact'
     });
     await expect(
-      getConsoleFrontstageBlockNodeCode(
-        'workspace 1',
-        'page/1',
-        'block/root'
-      )
+      getConsoleFrontstageBlockNodeCode('workspace 1', 'page/1', 'block/root')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/code',
+      method: 'GET'
+    });
+    await expect(
+      openConsoleFrontstageBlock('workspace 1', 'page/1', 'block/root')
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/open',
       method: 'GET'
     });
   });
@@ -159,12 +158,7 @@ describe('frontstage block tree client contract', () => {
       }
     });
     await expect(
-      deleteConsoleFrontstageBlockLeaf(
-        'workspace-1',
-        'page-1',
-        'sales',
-        'csrf'
-      )
+      deleteConsoleFrontstageBlockLeaf('workspace-1', 'page-1', 'sales', 'csrf')
     ).resolves.toMatchObject({ method: 'DELETE', body: undefined });
     await expect(
       deleteConsoleFrontstageBlockSubtree(

@@ -7,6 +7,7 @@ import type {
   ConsoleFrontstageBlockListQuery,
   ConsoleFrontstageBlockNode,
   ConsoleFrontstageBlockNodeCode,
+  ConsoleFrontstageBlockOpenTarget,
   ConsoleFrontstageBlockNodeSummary,
   ConsoleFrontstageBlockSearchQuery,
   ConsoleFrontstageBlockSearchResult,
@@ -30,10 +31,7 @@ function blockPath(
   return `${blockTreePath(workspaceId, pageId)}/${encodeURIComponent(blockId)}`;
 }
 
-function withQuery(
-  path: string,
-  values: object
-): string {
+function withQuery(path: string, values: object): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
     if (value !== undefined) query.set(key, String(value));
@@ -136,7 +134,10 @@ export function listConsoleFrontstageBlockChildren(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNodeSummary[]> {
   return apiFetch({
-    path: withQuery(`${blockPath(workspaceId, pageId, blockId)}/children`, query),
+    path: withQuery(
+      `${blockPath(workspaceId, pageId, blockId)}/children`,
+      query
+    ),
     method: 'GET',
     baseUrl
   });
@@ -229,6 +230,19 @@ export function getConsoleFrontstageBlockNodeCode(
     path: `${blockPath(workspaceId, pageId, blockId)}/code`,
     method: 'GET',
     baseUrl
+  });
+}
+
+export function openConsoleFrontstageBlock(
+  workspaceId: string,
+  pageId: string,
+  blockId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageBlockOpenTarget> {
+  return apiFetch<ConsoleFrontstageBlockOpenTarget>({
+    path: `${blockPath(workspaceId, pageId, blockId)}/open`,
+    method: 'GET',
+    ...(baseUrl ? { baseUrl } : {})
   });
 }
 
