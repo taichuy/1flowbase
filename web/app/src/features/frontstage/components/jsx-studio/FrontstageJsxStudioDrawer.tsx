@@ -20,14 +20,11 @@ import {
   type FrontstageJsxInsertion
 } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
-import type { ChildContainerNode } from '../../lib/child-container-tree';
 import {
   JsxStudioResourcePanel,
   type FrontstageJsxStudioSection
 } from './JsxStudioResourcePanel';
 import { JsxStudioTemplatesPanel } from './JsxStudioTemplatesPanel';
-
-const EMPTY_CHILD_CONTAINERS: readonly ChildContainerNode[] = [];
 
 export interface FrontstageJsxStudioDrawerProps {
   open: boolean;
@@ -37,26 +34,20 @@ export interface FrontstageJsxStudioDrawerProps {
   tabId: string | null | undefined;
   block: FrontstageBlockInstance;
   pageBlocks?: readonly FrontstageBlockInstance[];
-  childContainers?: readonly ChildContainerNode[];
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   runPanel?:
     | ReactNode
     | ((context: { code: string; runRevision: number | null }) => ReactNode);
   onClose: () => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
-  onSaveChildContainers?: (
-    containers: ChildContainerNode[]
-  ) => Promise<boolean | void>;
 }
 
 export function FrontstageJsxStudioDrawer({
   block,
   catalogEntry,
-  childContainers = EMPTY_CHILD_CONTAINERS,
   initialSection,
   onClose,
   onSaveBlock,
-  onSaveChildContainers,
   open,
   pageBlocks = [],
   pageId,
@@ -178,7 +169,6 @@ export function FrontstageJsxStudioDrawer({
         'templates',
         'interfaces',
         'variables',
-        'child-containers',
         'components',
         'configuration',
         'run'
@@ -214,13 +204,11 @@ export function FrontstageJsxStudioDrawer({
         ) : (
           <JsxStudioResourcePanel
             block={block}
-            childContainers={childContainers}
             codeSource={draft}
             pageBlocks={pageBlocks}
             workspaceId={workspaceId}
             onInsertCode={insertCode}
             onSaveBlock={onSaveBlock}
-            onSaveChildContainers={onSaveChildContainers}
             projection={projection}
             runPanel={resolvedRunPanel}
             section={section}

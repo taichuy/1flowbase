@@ -331,7 +331,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
   });
 
-  test('AC-001 exposes the child-container rail and fails visibly without a save callback', () => {
+  test('AC-009 does not expose the legacy child-container write rail', () => {
     render(
       <FrontstageJsxStudioDrawer
         open
@@ -341,18 +341,15 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         pageBlocks={[block]}
-        childContainers={[]}
         catalogEntry={catalogEntry}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '子容器' }));
-
-    expect(screen.getByRole('heading', { name: '子容器' })).toBeInTheDocument();
-    expect(screen.getByText('子容器编辑不可用')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '新增根容器' })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: '子容器' })
+    ).not.toBeInTheDocument();
   });
 
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {

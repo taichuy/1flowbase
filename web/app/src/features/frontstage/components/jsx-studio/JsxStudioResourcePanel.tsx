@@ -25,8 +25,6 @@ import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-
 import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
-import type { ChildContainerNode } from '../../lib/child-container-tree';
-import { JsxStudioChildContainersPanel } from './JsxStudioChildContainersPanel';
 import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
 import { JsxStudioConfigurationPanel } from './JsxStudioConfigurationPanel';
 
@@ -42,8 +40,6 @@ export interface JsxStudioContextVariable {
 const INTERFACE_FILTER_POPUP_STYLES = {
   popup: { root: { zIndex: 1400 } }
 };
-const EMPTY_CHILD_CONTAINERS: readonly ChildContainerNode[] = [];
-
 export function JsxStudioResourcePanel({
   block,
   codeSource,
@@ -56,8 +52,6 @@ export function JsxStudioResourcePanel({
   configurationPanel,
   contextVariables,
   interfacePathPrefixes,
-  childContainers = EMPTY_CHILD_CONTAINERS,
-  onSaveChildContainers,
   section
 }: {
   block: FrontstageBlockInstance;
@@ -71,10 +65,6 @@ export function JsxStudioResourcePanel({
   configurationPanel?: ReactNode;
   contextVariables?: readonly JsxStudioContextVariable[] | null;
   interfacePathPrefixes?: readonly string[];
-  childContainers?: readonly ChildContainerNode[];
-  onSaveChildContainers?: (
-    containers: ChildContainerNode[]
-  ) => Promise<boolean | void>;
   section: Exclude<FrontstageJsxStudioSection, 'code' | 'templates'>;
 }) {
   if (section === 'interfaces') {
@@ -96,19 +86,6 @@ export function JsxStudioResourcePanel({
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
         contextVariables={contextVariables}
-      />
-    );
-  }
-
-  if (section === 'child-containers') {
-    return (
-      <JsxStudioChildContainersPanel
-        childContainers={childContainers}
-        ownerBlock={block}
-        pageBlocks={pageBlocks}
-        onInsertCode={onInsertCode}
-        onSaveBlock={onSaveBlock}
-        onSaveChildContainers={onSaveChildContainers}
       />
     );
   }

@@ -651,25 +651,6 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
     },
     [activePageContent, blockCompositionState, saveBlockComposition]
   );
-  const saveStudioChildContainers = useCallback(
-    async (nextChildContainers: ChildContainerNode[]) => {
-      if (!blockCompositionState || !activePageContent) {
-        return false;
-      }
-      return saveBlockComposition(activePageContent, {
-        ...blockCompositionState,
-        document: {
-          ...blockCompositionState.document,
-          childContainers: nextChildContainers.map((container) => ({
-            ...container,
-            blockIds: [...container.blockIds]
-          }))
-        }
-      });
-    },
-    [activePageContent, blockCompositionState, saveBlockComposition]
-  );
-
   const designActions = useMemo(() => {
     if (!canEnterDesignMode || !isDesignMode) {
       return undefined;
@@ -1249,11 +1230,9 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
             tabId={tabId}
             block={selectedBlock}
             pageBlocks={displayedPageDocument?.blocks}
-            childContainers={childContainers}
             catalogEntry={matchingJsBlockCatalogEntry}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
-            onSaveChildContainers={saveStudioChildContainers}
             runPanel={({ code, runRevision }) =>
               runRevision === null ? undefined : (
                 <JsxStudioRunPanel
