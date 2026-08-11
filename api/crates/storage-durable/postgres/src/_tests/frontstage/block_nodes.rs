@@ -9,7 +9,7 @@ use control_plane::{
     },
 };
 use domain::FrontstageBlockPresentation;
-use runtime_core::runtime_record_repository::OrderedTreeQueryError;
+use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
 
 use super::*;
 use crate::PgControlPlaneStore;
@@ -277,7 +277,6 @@ async fn block_node_repository_is_atomic_scoped_and_cleans_subtree_codes() {
         .await
         .unwrap();
     assert_eq!(root.block_id, "root");
-
     let failed = store
         .create_frontstage_block_node(&create_input(
             workspace_id,
@@ -315,6 +314,19 @@ async fn block_node_repository_is_atomic_scoped_and_cleans_subtree_codes() {
         ))
         .await;
     assert!(cross_page.is_err());
+    store
+        .create_frontstage_block_node(&create_input(
+            workspace_id,
+            actor_user_id,
+            other_page_id,
+            other_tab_id,
+            "root",
+            "other-root-code",
+            FrontstageBlockPosition::default(),
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
 
     let second_tab_id = Uuid::now_v7();
     store
@@ -364,6 +376,22 @@ async fn block_node_repository_is_atomic_scoped_and_cleans_subtree_codes() {
         ))
         .await
         .unwrap();
+    store
+        .create_frontstage_block_node(&create_input(
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            "grandchild",
+            "grandchild-code",
+            FrontstageBlockPosition {
+                parent_block_id: Some("child".to_owned()),
+                ..Default::default()
+            },
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
     let mut delete_audit = audit_log(
         Some(workspace_id),
         Some(actor_user_id),
@@ -378,22 +406,298 @@ async fn block_node_repository_is_atomic_scoped_and_cleans_subtree_codes() {
             workspace_id,
             page_id,
             block_id: "root".to_owned(),
-            expected_affected_count: 2,
+            expected_affected_count: 3,
             audit_log: delete_audit,
         })
         .await
         .unwrap();
-    assert_eq!(deleted.deleted_count, 2);
-    let remaining: (i64, i64) = sqlx::query_as(
-        "select (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = any($3))",
+    assert_eq!(deleted.deleted_count, 3);
+    let remaining: (i64, i64, i64, i64) = sqlx::query_as(
+        "select (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = any($3)), (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $4 and block_id = 'root'), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $4 and code_ref = 'other-root-code')",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(vec!["root-code", "child-code", "grandchild-code"])
+    .bind(other_page_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(remaining, (0, 0, 1, 1));
+}
+
+// AC-008/009: expected-count, audit and code-cleanup failures roll back the locked subtree write
+// instead of leaving structure, code or audit in a partially-applied state.
+#[tokio::test]
+async fn block_subtree_delete_failures_roll_back_structure_code_and_audit() {
+    let (pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "delete-rollback").await;
+    let root_audit_id = Uuid::now_v7();
+    store
+        .create_frontstage_block_node(&create_input(
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            "root",
+            "root-code",
+            FrontstageBlockPosition::default(),
+            root_audit_id,
+        ))
+        .await
+        .unwrap();
+    store
+        .create_frontstage_block_node(&create_input(
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            "child",
+            "child-code",
+            FrontstageBlockPosition {
+                parent_block_id: Some("root".to_owned()),
+                ..Default::default()
+            },
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
+
+    let mismatch_audit_id = Uuid::now_v7();
+    let mut mismatch_audit = audit_log(
+        Some(workspace_id),
+        Some(actor_user_id),
+        "frontstage_block",
+        Some(page_id),
+        "frontstage.block_subtree_deleted",
+        json!({ "block_id": "root" }),
+    );
+    mismatch_audit.id = mismatch_audit_id;
+    let error = store
+        .delete_frontstage_block_subtree(&DeleteFrontstageBlockSubtreeInput {
+            workspace_id,
+            page_id,
+            block_id: "root".to_owned(),
+            expected_affected_count: 1,
+            audit_log: mismatch_audit,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<OrderedTreeCommandError>(),
+        Some(&OrderedTreeCommandError::ExpectedAffectedCountMismatch {
+            expected: 1,
+            actual: 2,
+        })
+    );
+    let after_mismatch: (i64, i64, i64) = sqlx::query_as(
+        "select (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = any($3)), (select count(*) from audit_logs where id = $4)",
     )
     .bind(workspace_id)
     .bind(page_id)
     .bind(vec!["root-code", "child-code"])
+    .bind(mismatch_audit_id)
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(remaining, (0, 0));
+    assert_eq!(after_mismatch, (2, 2, 0));
+
+    let mut conflicting_audit = audit_log(
+        Some(workspace_id),
+        Some(actor_user_id),
+        "frontstage_block",
+        Some(page_id),
+        "frontstage.block_subtree_deleted",
+        json!({ "block_id": "root" }),
+    );
+    conflicting_audit.id = root_audit_id;
+    assert!(store
+        .delete_frontstage_block_subtree(&DeleteFrontstageBlockSubtreeInput {
+            workspace_id,
+            page_id,
+            block_id: "root".to_owned(),
+            expected_affected_count: 2,
+            audit_log: conflicting_audit,
+        })
+        .await
+        .is_err());
+    let after_audit_failure: (i64, i64, i64) = sqlx::query_as(
+        "select (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = any($3)), (select count(*) from audit_logs where id = $4)",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(vec!["root-code", "child-code"])
+    .bind(root_audit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(after_audit_failure, (2, 2, 1));
+
+    // Controlled corruption: remove the normal FK guard so the adapter's cleanup-count invariant
+    // is exercised independently of the schema constraint.
+    sqlx::query(
+        "alter table frontstage_block_nodes drop constraint frontstage_block_nodes_code_fkey",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "delete from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = 'child-code'",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let cleanup_audit_id = Uuid::now_v7();
+    let mut cleanup_audit = audit_log(
+        Some(workspace_id),
+        Some(actor_user_id),
+        "frontstage_block",
+        Some(page_id),
+        "frontstage.block_subtree_deleted",
+        json!({ "block_id": "root" }),
+    );
+    cleanup_audit.id = cleanup_audit_id;
+    let error = store
+        .delete_frontstage_block_subtree(&DeleteFrontstageBlockSubtreeInput {
+            workspace_id,
+            page_id,
+            block_id: "root".to_owned(),
+            expected_affected_count: 2,
+            audit_log: cleanup_audit,
+        })
+        .await
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("code cleanup does not match deleted nodes"));
+    let after_cleanup_failure: (i64, i64, i64) = sqlx::query_as(
+        "select (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = 'root-code'), (select count(*) from audit_logs where id = $3)",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(cleanup_audit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(after_cleanup_failure, (2, 1, 0));
+}
+
+// AC-008/011: a structural write committed while delete waits for the ordered-tree advisory lock
+// is included in the locked snapshot, so stale expected counts fail before any cleanup or audit.
+#[tokio::test]
+async fn block_subtree_delete_revalidates_after_waiting_for_structure_lock() {
+    let (pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "delete-race").await;
+    store
+        .create_frontstage_block_node(&create_input(
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            "root",
+            "root-code",
+            FrontstageBlockPosition::default(),
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
+    let root_internal_id: Uuid = sqlx::query_scalar(
+        "select id from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2 and block_id = 'root'",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let mut lock_tx = pool.begin().await.unwrap();
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))")
+        .bind(Uuid::from_u128(
+            0xe6aa0cc5_dfc0_8d8d_b6c8_b9bd0113a61a,
+        ))
+        .bind(workspace_id)
+        .bind(page_id)
+        .execute(&mut *lock_tx)
+        .await
+        .unwrap();
+    let delete_audit_id = Uuid::now_v7();
+    let waiting_delete = {
+        let store = store.clone();
+        tokio::spawn(async move {
+            let mut delete_audit = audit_log(
+                Some(workspace_id),
+                Some(actor_user_id),
+                "frontstage_block",
+                Some(page_id),
+                "frontstage.block_subtree_deleted",
+                json!({ "block_id": "root" }),
+            );
+            delete_audit.id = delete_audit_id;
+            store
+                .delete_frontstage_block_subtree(&DeleteFrontstageBlockSubtreeInput {
+                    workspace_id,
+                    page_id,
+                    block_id: "root".to_owned(),
+                    expected_affected_count: 1,
+                    audit_log: delete_audit,
+                })
+                .await
+        })
+    };
+    tokio::task::yield_now().await;
+    assert!(!waiting_delete.is_finished());
+
+    let raced_node_id = Uuid::now_v7();
+    sqlx::query(
+        "insert into frontstage_block_codes (id, workspace_id, page_id, code_ref, code) values ($1, $2, $3, 'raced-code', 'export default null;')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(page_id)
+    .execute(&mut *lock_tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into frontstage_block_nodes (
+            id, scope_id, tree_partition_id, parent_id, sibling_rank, block_id, tab_id,
+            presentation, code_ref, runtime_descriptor
+        ) values ($1, $2, $3, $4, 'U', 'raced-child', $5, 'page', 'raced-code', '{}')
+        "#,
+    )
+    .bind(raced_node_id)
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(root_internal_id)
+    .bind(tab_id)
+    .execute(&mut *lock_tx)
+    .await
+    .unwrap();
+    lock_tx.commit().await.unwrap();
+
+    let error = waiting_delete.await.unwrap().unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<OrderedTreeCommandError>(),
+        Some(&OrderedTreeCommandError::ExpectedAffectedCountMismatch {
+            expected: 1,
+            actual: 2,
+        })
+    );
+    let after_race: (i64, i64, i64) = sqlx::query_as(
+        "select (select count(*) from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2 and id = any($3)), (select count(*) from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = any($4)), (select count(*) from audit_logs where id = $5)",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(vec![root_internal_id, raced_node_id])
+    .bind(vec!["root-code", "raced-code"])
+    .bind(delete_audit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(after_race, (2, 2, 0));
 }
 
 // AC-003/008: frontstage structural reads preserve generic ordered-tree semantics while exposing

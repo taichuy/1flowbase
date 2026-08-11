@@ -33,6 +33,7 @@ use crate::{
     ordered_tree::commands::{
         create_ordered_tree_node_in_transaction, delete_ordered_tree_leaf_in_transaction,
         delete_ordered_tree_subtree_in_transaction, move_ordered_tree_node_in_transaction,
+        snapshot_ordered_tree_subtree_in_transaction,
     },
     repositories::PgControlPlaneStore,
 };
@@ -218,34 +219,6 @@ async fn insert_audit(
     .execute(&mut **tx)
     .await?;
     Ok(())
-}
-
-async fn internal_id(
-    tx: &mut Transaction<'_, Postgres>,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    block_id: &str,
-) -> Result<Option<Uuid>> {
-    Ok(sqlx::query_scalar(
-        "select id from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2 and block_id = $3 for update",
-    )
-    .bind(workspace_id)
-    .bind(page_id)
-    .bind(block_id)
-    .fetch_optional(&mut **tx)
-    .await?)
-}
-
-async fn required_internal_id(
-    tx: &mut Transaction<'_, Postgres>,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    block_id: &str,
-    error: OrderedTreeCommandError,
-) -> Result<Uuid> {
-    internal_id(tx, workspace_id, page_id, block_id)
-        .await?
-        .ok_or_else(|| anyhow::Error::new(error))
 }
 
 async fn required_internal_id_in_tab(
@@ -1171,35 +1144,40 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         validate_audit(input.workspace_id, &input.audit_log)?;
         let metadata = frontstage_block_metadata(input.workspace_id);
         let mut tx = self.pool().begin().await?;
-        let node_id = required_internal_id(
+        let node_id = sqlx::query_scalar(
+            "select id from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2 and block_id = $3",
+        )
+        .bind(input.workspace_id)
+        .bind(input.page_id)
+        .bind(&input.block_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| anyhow::Error::new(OrderedTreeCommandError::NodeNotFound))?;
+        let snapshot = snapshot_ordered_tree_subtree_in_transaction(
             &mut tx,
+            &metadata,
             input.workspace_id,
             input.page_id,
-            &input.block_id,
-            OrderedTreeCommandError::NodeNotFound,
+            node_id,
         )
         .await?;
         let code_refs: Vec<String> = sqlx::query_scalar(
             r#"
-            with recursive subtree(id, path) as (
-                select id, array[id]
-                from frontstage_block_nodes
-                where scope_id = $1 and tree_partition_id = $2 and id = $3
-                union all
-                select child.id, subtree.path || child.id
-                from subtree
-                join frontstage_block_nodes child
-                  on child.scope_id = $1 and child.tree_partition_id = $2 and child.parent_id = subtree.id
-                where not child.id = any(subtree.path)
-            )
-            select node.code_ref from subtree join frontstage_block_nodes node on node.id = subtree.id
+            select code_ref
+            from frontstage_block_nodes
+            where scope_id = $1 and tree_partition_id = $2 and id = any($3)
             "#,
         )
         .bind(input.workspace_id)
         .bind(input.page_id)
-        .bind(node_id)
+        .bind(snapshot.node_ids_child_before_parent())
         .fetch_all(&mut *tx)
         .await?;
+        if code_refs.len() as u64 != snapshot.affected_count() {
+            return Err(anyhow!(
+                "frontstage block subtree code snapshot does not match the locked structure"
+            ));
+        }
         let deleted = delete_ordered_tree_subtree_in_transaction(
             &mut tx,
             &metadata,
@@ -1211,7 +1189,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             },
         )
         .await?;
-        sqlx::query(
+        let deleted_codes = sqlx::query(
             "delete from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = any($3)",
         )
         .bind(input.workspace_id)
@@ -1219,6 +1197,11 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .bind(code_refs)
         .execute(&mut *tx)
         .await?;
+        if deleted_codes.rows_affected() != deleted.deleted_count {
+            return Err(anyhow!(
+                "frontstage block subtree code cleanup does not match deleted nodes"
+            ));
+        }
         insert_audit(&mut tx, &input.audit_log).await?;
         tx.commit().await?;
         Ok(FrontstageBlockSubtreeDeleteResult {
