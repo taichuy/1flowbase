@@ -23,6 +23,7 @@ pub struct ApiRecoveryTargetProbe {
     repository_root: PathBuf,
     roots_separated: bool,
     maintenance: Arc<SystemMaintenance>,
+    postgres_toolchain: PostgreSqlToolchain,
 }
 
 impl ApiRecoveryTargetProbe {
@@ -33,6 +34,7 @@ impl ApiRecoveryTargetProbe {
         repository_root: impl Into<PathBuf>,
         roots_separated: bool,
         maintenance: Arc<SystemMaintenance>,
+        postgres_toolchain: PostgreSqlToolchain,
     ) -> Result<Self, RecoveryPreflightError> {
         let fingerprint = format!(
             "{:x}",
@@ -47,6 +49,7 @@ impl ApiRecoveryTargetProbe {
             repository_root: repository_root.into(),
             roots_separated,
             maintenance,
+            postgres_toolchain,
         })
     }
 }
@@ -57,10 +60,8 @@ impl RecoveryTargetProbe for ApiRecoveryTargetProbe {
         let migration_head = migration_head(&self.pool)
             .await
             .map_err(|_| RecoveryPreflightError::TargetProbe)?;
-        let toolchain = PostgreSqlToolchain::discover_from_path()
-            .await
-            .map_err(|_| RecoveryPreflightError::TargetProbe)?;
-        let postgres_toolchain_compatible = toolchain
+        let postgres_toolchain_compatible = self
+            .postgres_toolchain
             .verify_server_compatibility(&self.pool)
             .await
             .is_ok();

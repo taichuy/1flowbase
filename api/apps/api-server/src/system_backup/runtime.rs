@@ -15,8 +15,9 @@ use control_plane::{
     },
 };
 use domain::{
-    ApplicationBuild, BackupJobId, BackupJournalEvent, BackupJournalSubject, BackupSetId,
-    KeyFingerprint, RecoveryJobId, SealedBackupManifest,
+    strict_backup_compatibility, ApplicationBuild, BackupIncompatibility, BackupJobId,
+    BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint, RecoveryJobId,
+    SealedBackupManifest,
 };
 use sha2::{Digest, Sha256};
 use storage_durable::{MainDurableStore, PostgreSqlToolchain};
@@ -26,7 +27,10 @@ use uuid::Uuid;
 
 use crate::{
     config::ApiConfig,
-    system_backup::{EnvironmentBackupKeyProvider, LocalBackupRepository},
+    system_backup::{
+        local_repository::BackupVerificationReceipt, EnvironmentBackupKeyProvider,
+        LocalBackupRepository,
+    },
     system_recovery::ApiRecoveryTargetProbe,
 };
 
@@ -47,6 +51,14 @@ pub struct SystemBackupRuntime {
     recovery: Arc<RecoveryCoordinator>,
     maintenance: Arc<SystemMaintenance>,
     repository: Arc<LocalBackupRepository>,
+}
+
+pub(crate) struct SystemBackupDetail {
+    pub sealed: SealedBackupManifest,
+    pub compatibility_failures: Vec<BackupIncompatibility>,
+    pub verification: Option<BackupVerificationReceipt>,
+    pub creation_journal: Vec<BackupJournalEvent>,
+    pub recovery_history: Vec<BackupJournalEvent>,
 }
 
 #[derive(Debug, Error)]
@@ -78,6 +90,26 @@ impl SystemBackupRuntime {
         maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
     ) -> Result<Self, SystemBackupRuntimeError> {
+        let postgres_toolchain = PostgreSqlToolchain::discover_from_path()
+            .await
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        Self::open_with_postgres_toolchain(
+            store,
+            file_storage_registry,
+            maintenance,
+            config,
+            postgres_toolchain,
+        )
+        .await
+    }
+
+    pub(crate) async fn open_with_postgres_toolchain(
+        store: MainDurableStore,
+        file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+        maintenance: Arc<SystemMaintenance>,
+        config: &ApiConfig,
+        postgres_toolchain: PostgreSqlToolchain,
+    ) -> Result<Self, SystemBackupRuntimeError> {
         let protected_roots = protected_data_roots(config);
         let target_roots_separated = protected_roots.iter().enumerate().all(|(index, root)| {
             protected_roots
@@ -99,9 +131,6 @@ impl SystemBackupRuntime {
             EnvironmentBackupKeyProvider::from_base64(&config.system_backup_key_base64)
                 .map_err(|_| SystemBackupRuntimeError::Key)?,
         );
-        let postgres_toolchain = PostgreSqlToolchain::discover_from_path()
-            .await
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         postgres_toolchain
             .verify_server_compatibility(store.pool())
             .await
@@ -123,6 +152,7 @@ impl SystemBackupRuntime {
                 &config.system_backup_repository_root,
                 target_roots_separated,
                 maintenance.clone(),
+                postgres_toolchain.clone(),
             )
             .map_err(|_| SystemBackupRuntimeError::Configuration)?,
         );
@@ -185,8 +215,54 @@ impl SystemBackupRuntime {
         self.service.get(backup_set_id).await.map_err(Into::into)
     }
 
+    pub(crate) async fn detail(
+        &self,
+        backup_set_id: BackupSetId,
+    ) -> Result<SystemBackupDetail, SystemBackupRuntimeError> {
+        let sealed = self.service.get(backup_set_id).await?;
+        let migration_head = storage_durable::migration_head(self.store.pool())
+            .await
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        let target = domain::BackupCompatibilityTarget {
+            format_version: domain::SYSTEM_BACKUP_FORMAT_VERSION,
+            application_build: self.application_build.clone(),
+            migration_head,
+            master_key_fingerprint: self.master_key_fingerprint.clone(),
+        };
+        let compatibility_failures = strict_backup_compatibility(sealed.manifest(), &target)
+            .err()
+            .unwrap_or_default();
+        let verification = self
+            .repository
+            .read_verification(backup_set_id)
+            .await
+            .map_err(|_| SystemBackupRuntimeError::Repository)?;
+        let (creation_journal, recovery_history) = self
+            .repository
+            .events_for_backup_set(backup_set_id)
+            .await
+            .map_err(|_| SystemBackupRuntimeError::Repository)?;
+        Ok(SystemBackupDetail {
+            sealed,
+            compatibility_failures,
+            verification,
+            creation_journal,
+            recovery_history,
+        })
+    }
+
     pub async fn verify(&self, backup_set_id: BackupSetId) -> Result<(), SystemBackupRuntimeError> {
-        self.service.verify(backup_set_id).await.map_err(Into::into)
+        let verification = self.service.verify(backup_set_id).await;
+        let verified = verification.is_ok();
+        let receipt = self
+            .repository
+            .record_verification(backup_set_id, verified)
+            .await;
+        match (verification, receipt) {
+            (Err(error), _) => Err(error.into()),
+            (Ok(()), Err(_)) => Err(SystemBackupRuntimeError::Repository),
+            (Ok(()), Ok(_)) => Ok(()),
+        }
     }
 
     pub async fn delete(&self, backup_set_id: BackupSetId) -> Result<(), SystemBackupRuntimeError> {
@@ -214,7 +290,12 @@ impl SystemBackupRuntime {
     where
         R: AsyncRead + Unpin + Send,
     {
-        self.service.import(source).await.map_err(Into::into)
+        let sealed = self.service.import(source).await?;
+        self.repository
+            .record_verification(sealed.manifest().backup_set_id(), true)
+            .await
+            .map_err(|_| SystemBackupRuntimeError::Repository)?;
+        Ok(sealed)
     }
 
     pub async fn preflight(&self, backup_set_id: BackupSetId) -> RecoveryPlan {
@@ -317,12 +398,16 @@ impl SystemBackupRuntime {
         self.service
             .verify(manifest.manifest().backup_set_id())
             .await?;
+        self.repository
+            .record_verification(manifest.manifest().backup_set_id(), true)
+            .await
+            .map_err(|_| SystemBackupRuntimeError::Repository)?;
         Ok(manifest)
     }
 }
 
 fn protected_data_roots(config: &ApiConfig) -> Vec<PathBuf> {
-    [
+    let mut roots = [
         &config.business_file_local_root,
         &config.provider_install_root,
         &config.mcp_template_library_root,
@@ -330,7 +415,14 @@ fn protected_data_roots(config: &ApiConfig) -> Vec<PathBuf> {
     ]
     .into_iter()
     .map(PathBuf::from)
-    .collect()
+    .collect::<Vec<_>>();
+    roots.sort_by_key(|root| root.components().count());
+    roots.into_iter().fold(Vec::new(), |mut protected, root| {
+        if !protected.iter().any(|parent| root.starts_with(parent)) {
+            protected.push(root);
+        }
+        protected
+    })
 }
 
 fn paths_overlap(left: &std::path::Path, right: &std::path::Path) -> bool {

@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc};
+use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
 
 use argon2::{
     password_hash::{PasswordHash, PasswordVerifier},
@@ -54,7 +54,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route(
             "/settings/system-backups",
-            console_get(list_backups, owned(LIST)).post(create_backup, owned(CREATE)),
+            console_get(list_backups, owned(LIST))
+                .post(create_backup, owned(CREATE))
+                .coordinator_control(),
         )
         .route(
             "/settings/system-backups/import",
@@ -62,31 +64,31 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/settings/system-backups/recovery/reauth",
-            console_post(reauthenticate_recovery, owned(RECOVERY_REAUTH)),
+            console_post(reauthenticate_recovery, owned(RECOVERY_REAUTH)).coordinator_control(),
         )
         .route(
             "/settings/system-backups/recovery/status",
             console_get(get_recovery_status, owned(RECOVERY_STATUS)),
         )
         .route(
-            "/settings/system-backups/{backup_set_id}",
+            "/settings/system-backups/:backup_set_id",
             console_get(get_backup, owned(DETAIL)).delete(delete_backup, owned(DELETE)),
         )
         .route(
-            "/settings/system-backups/{backup_set_id}/verify",
+            "/settings/system-backups/:backup_set_id/verify",
             console_post(verify_backup, owned(VERIFY)),
         )
         .route(
-            "/settings/system-backups/{backup_set_id}/download",
+            "/settings/system-backups/:backup_set_id/download",
             console_get(download_backup, owned(DOWNLOAD)),
         )
         .route(
-            "/settings/system-backups/{backup_set_id}/recovery/preflight",
-            console_post(preflight_recovery, owned(RECOVERY_PREFLIGHT)),
+            "/settings/system-backups/:backup_set_id/recovery/preflight",
+            console_post(preflight_recovery, owned(RECOVERY_PREFLIGHT)).coordinator_control(),
         )
         .route(
-            "/settings/system-backups/{backup_set_id}/recovery/intents",
-            console_post(create_recovery_intent, owned(RECOVERY_INTENT)),
+            "/settings/system-backups/:backup_set_id/recovery/intents",
+            console_post(create_recovery_intent, owned(RECOVERY_INTENT)).coordinator_control(),
         )
 }
 
@@ -109,8 +111,74 @@ pub struct BackupSetListResponse {
 pub struct BackupSetDetailResponse {
     pub backup_set_id: BackupSetId,
     pub exact_backup_name: String,
-    #[schema(value_type = Object)]
-    pub sealed_manifest: serde_json::Value,
+    pub created_at: String,
+    pub content: BackupContentSummaryResponse,
+    pub components: Vec<BackupComponentDetailResponse>,
+    pub compatibility: BackupCompatibilityResponse,
+    pub verification: BackupVerificationDetailResponse,
+    pub creation_journal: Vec<BackupCreationJournalEntryResponse>,
+    pub recovery_history: Vec<BackupRecoveryHistoryEntryResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupContentSummaryResponse {
+    pub component_count: u64,
+    pub postgresql_count: u64,
+    pub business_object_count: u64,
+    pub extension_artifact_count: u64,
+    pub mcp_artifact_count: u64,
+    pub embedded_component_count: u64,
+    pub identity_only_component_count: u64,
+    pub total_size_bytes: u64,
+    #[schema(value_type = Vec<String>)]
+    pub excluded_domains: Vec<domain::BackupExcludedDomain>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupComponentDetailResponse {
+    pub component_id: String,
+    pub kind: domain::BackupComponentKind,
+    pub source_identity: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+    pub content_digest: String,
+    pub disposition: domain::BackupComponentDisposition,
+    pub rebuildability: domain::ArtifactRebuildability,
+    pub restore_target: domain::BackupComponentRestoreTarget,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupCompatibilityResponse {
+    pub compatible: bool,
+    pub failures: Vec<domain::BackupIncompatibility>,
+    pub format_version: u32,
+    pub application_build: String,
+    pub migration_head: String,
+    pub master_key_fingerprint: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupVerificationDetailResponse {
+    pub verified: Option<bool>,
+    pub checked_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupCreationJournalEntryResponse {
+    pub sequence: u64,
+    pub occurred_at: String,
+    pub state: Option<domain::BackupJobState>,
+    pub component_id: Option<String>,
+    pub failure_code: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupRecoveryHistoryEntryResponse {
+    pub recovery_job_id: RecoveryJobId,
+    pub status: Option<domain::RecoveryJobState>,
+    pub started_at: String,
+    pub updated_at: String,
+    pub failure_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -231,12 +299,8 @@ pub async fn get_backup(
 ) -> Result<Json<ApiSuccess<BackupSetDetailResponse>>, ApiError> {
     require_session(&state, &headers).await?;
     let id = BackupSetId::from_uuid(backup_set_id);
-    let sealed = state.system_backup.get(id).await?;
-    Ok(Json(ApiSuccess::new(BackupSetDetailResponse {
-        backup_set_id: id,
-        exact_backup_name: canonical_backup_name(id),
-        sealed_manifest: serde_json::to_value(sealed)?,
-    })))
+    let detail = state.system_backup.detail(id).await?;
+    Ok(Json(ApiSuccess::new(detail_response(id, detail))))
 }
 
 #[utoipa::path(delete, path = "/api/console/settings/system-backups/{backup_set_id}", params(("backup_set_id" = Uuid, Path)), responses((status = 204)))]
@@ -278,6 +342,13 @@ pub async fn import_backup(
 ) -> Result<Json<ApiSuccess<BackupMutationResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    if headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        != Some("application/octet-stream")
+    {
+        return Err(ControlPlaneError::InvalidInput("backup_content_type").into());
+    }
     let (mut reader, mut writer) = tokio::io::duplex(256 * 1024);
     tokio::spawn(async move {
         let mut stream = body.into_data_stream();
@@ -493,6 +564,129 @@ pub async fn get_recovery_status(
 
 fn canonical_backup_name(id: BackupSetId) -> String {
     id.as_uuid().to_string()
+}
+
+fn detail_response(
+    backup_set_id: BackupSetId,
+    detail: crate::system_backup::SystemBackupDetail,
+) -> BackupSetDetailResponse {
+    let manifest = detail.sealed.manifest();
+    let mut content = BackupContentSummaryResponse {
+        component_count: manifest.components().len() as u64,
+        postgresql_count: 0,
+        business_object_count: 0,
+        extension_artifact_count: 0,
+        mcp_artifact_count: 0,
+        embedded_component_count: 0,
+        identity_only_component_count: 0,
+        total_size_bytes: manifest.total_size_bytes(),
+        excluded_domains: manifest.excluded_domains().iter().copied().collect(),
+    };
+    let components = manifest
+        .components()
+        .iter()
+        .map(|component| {
+            match component.kind {
+                domain::BackupComponentKind::PostgreSql => content.postgresql_count += 1,
+                domain::BackupComponentKind::BusinessObject => content.business_object_count += 1,
+                domain::BackupComponentKind::ExtensionArtifact => {
+                    content.extension_artifact_count += 1
+                }
+                domain::BackupComponentKind::McpArtifact => content.mcp_artifact_count += 1,
+            }
+            match component.disposition {
+                domain::BackupComponentDisposition::Embedded => {
+                    content.embedded_component_count += 1
+                }
+                domain::BackupComponentDisposition::IdentityOnly => {
+                    content.identity_only_component_count += 1
+                }
+            }
+            BackupComponentDetailResponse {
+                component_id: component.component_id.as_str().to_owned(),
+                kind: component.kind,
+                source_identity: component.source_identity.as_str().to_owned(),
+                content_type: component.content_type.clone(),
+                size_bytes: component.size_bytes,
+                content_digest: component.content_digest.as_str().to_owned(),
+                disposition: component.disposition,
+                rebuildability: component.rebuildability,
+                restore_target: component.restore_target.clone(),
+            }
+        })
+        .collect();
+    let creation_journal = detail
+        .creation_journal
+        .into_iter()
+        .map(|event| {
+            let (state, component_id, failure_code) = match event.event {
+                domain::BackupJournalEventKind::BackupStateChanged { state } => {
+                    (Some(state), None, None)
+                }
+                domain::BackupJournalEventKind::ComponentSealed { component_id } => {
+                    (None, Some(component_id.as_str().to_owned()), None)
+                }
+                domain::BackupJournalEventKind::TerminalFailure { code } => {
+                    (None, None, Some(code))
+                }
+                _ => (None, None, None),
+            };
+            BackupCreationJournalEntryResponse {
+                sequence: event.sequence,
+                occurred_at: event.occurred_at.to_string(),
+                state,
+                component_id,
+                failure_code,
+            }
+        })
+        .collect();
+    let mut recovery_history = BTreeMap::<RecoveryJobId, BackupRecoveryHistoryEntryResponse>::new();
+    for event in detail.recovery_history {
+        let domain::BackupJournalSubject::Recovery(recovery_job_id) = event.subject else {
+            continue;
+        };
+        let entry = recovery_history.entry(recovery_job_id).or_insert_with(|| {
+            BackupRecoveryHistoryEntryResponse {
+                recovery_job_id,
+                status: None,
+                started_at: event.occurred_at.to_string(),
+                updated_at: event.occurred_at.to_string(),
+                failure_code: None,
+            }
+        });
+        entry.updated_at = event.occurred_at.to_string();
+        match event.event {
+            domain::BackupJournalEventKind::RecoveryStateChanged { state } => {
+                entry.status = Some(state)
+            }
+            domain::BackupJournalEventKind::TerminalFailure { code } => {
+                entry.failure_code = Some(code)
+            }
+            _ => {}
+        }
+    }
+    let verification = detail.verification;
+    BackupSetDetailResponse {
+        backup_set_id,
+        exact_backup_name: canonical_backup_name(backup_set_id),
+        created_at: manifest.created_at().to_string(),
+        content,
+        components,
+        compatibility: BackupCompatibilityResponse {
+            compatible: detail.compatibility_failures.is_empty(),
+            failures: detail.compatibility_failures,
+            format_version: manifest.format_version(),
+            application_build: manifest.application_build().as_str().to_owned(),
+            migration_head: manifest.migration_head().as_str().to_owned(),
+            master_key_fingerprint: manifest.master_key_fingerprint().as_str().to_owned(),
+        },
+        verification: BackupVerificationDetailResponse {
+            verified: verification.as_ref().map(|receipt| receipt.verified),
+            checked_at: verification.map(|receipt| receipt.checked_at.to_string()),
+        },
+        creation_journal,
+        recovery_history: recovery_history.into_values().collect(),
+    }
 }
 
 fn validate_exact_name(id: BackupSetId, actual: &str) -> Result<(), ApiError> {

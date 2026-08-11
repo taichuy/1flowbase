@@ -209,6 +209,10 @@ fn console_router_with_assembly(
     include_openapi: bool,
     console_route_assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
 ) -> Router {
+    let maintenance_classifier =
+        middleware::system_maintenance::SystemMaintenanceRequestClassifier::new(
+            console_route_assembly.maintenance_control_routes().to_vec(),
+        );
     let router = Router::new()
         .merge(routes::application_public_api::compatible_router())
         .nest("/api/agent/v1", routes::application_public_api::router())
@@ -232,6 +236,10 @@ fn console_router_with_assembly(
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::system_maintenance::fence_mutating_requests,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            maintenance_classifier,
+            middleware::system_maintenance::classify_system_maintenance_request,
         ))
         .with_state(state)
 }

@@ -398,7 +398,6 @@ pub fn recovery_plan_digest(
     struct DigestInput<'a> {
         backup_set_id: BackupSetId,
         required_space_bytes: u64,
-        available_space_bytes: u64,
         database_replaced: bool,
         business_object_count: u64,
         extension_artifact_count: u64,
@@ -410,7 +409,6 @@ pub fn recovery_plan_digest(
     let bytes = serde_json::to_vec(&DigestInput {
         backup_set_id: plan.backup_set_id,
         required_space_bytes: plan.required_space_bytes,
-        available_space_bytes: plan.available_space_bytes,
         database_replaced: plan.impact.database_replaced,
         business_object_count: plan.impact.business_object_count,
         extension_artifact_count: plan.impact.extension_artifact_count,

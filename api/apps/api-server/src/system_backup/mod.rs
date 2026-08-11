@@ -5,7 +5,12 @@ mod runtime;
 
 pub use key_provider::EnvironmentBackupKeyProvider;
 pub use local_repository::LocalBackupRepository;
-pub use recovery_adapters::{ApiRecoveryEphemeralState, PostgreSqlRecoveryAuditProjector};
+pub use recovery_adapters::{
+    ApiRecoveryEphemeralState, PostgreSqlPostRestoreHealthVerifier,
+    PostgreSqlPostRestoreReconciler, PostgreSqlRecoveryAuditProjector,
+    StoppedServerRecoveryEphemeralState,
+};
+pub(crate) use runtime::SystemBackupDetail;
 pub use runtime::{SystemBackupRuntime, SystemBackupRuntimeError};
 
 #[cfg(test)]

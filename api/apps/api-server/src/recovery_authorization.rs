@@ -112,6 +112,30 @@ pub const fn recovery_intent_ttl() -> Duration {
 }
 
 #[cfg(test)]
+pub(crate) fn expire_reauth_challenge(token: Uuid) {
+    if let Some(challenge) = state()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .challenges
+        .get_mut(&token)
+    {
+        challenge.expires_at = OffsetDateTime::now_utc() - Duration::seconds(1);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
+    if let Some(challenge) = state()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .challenges
+        .get_mut(&token)
+    {
+        challenge.consumed = true;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

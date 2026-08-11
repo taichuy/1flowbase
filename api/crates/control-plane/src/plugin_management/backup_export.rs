@@ -75,8 +75,18 @@ pub fn build_backup_artifact_inventory(
 
     let mut inventory = BTreeMap::<String, BackupArtifactEntry>::new();
     for installation in plugin_installations {
-        let Some(instance) = instances.remove(&installation.id) else {
-            bail!("plugin artifact instance is missing");
+        let disposition = classify_source(&installation.source_kind);
+        let instance = instances.remove(&installation.id);
+        if disposition == BackupArtifactDisposition::RebuildableIdentity {
+            validate_rebuildable_identity(&installation)?;
+        }
+        let instance = match disposition {
+            BackupArtifactDisposition::RebuildableIdentity => instance.as_ref(),
+            BackupArtifactDisposition::Embedded => Some(
+                instance
+                    .as_ref()
+                    .context("non-rebuildable plugin artifact instance is missing")?,
+            ),
         };
         let identity = format!(
             "plugin:{}/{}/{}@{}",
@@ -85,13 +95,15 @@ pub fn build_backup_artifact_inventory(
             installation.plugin_id,
             installation.plugin_version
         );
-        let disposition = classify_source(&installation.source_kind);
         let artifact_path = match disposition {
             BackupArtifactDisposition::RebuildableIdentity => None,
             BackupArtifactDisposition::Embedded => instance
-                .package_path
-                .as_deref()
-                .or(instance.local_path.as_deref())
+                .and_then(|instance| {
+                    instance
+                        .package_path
+                        .as_deref()
+                        .or(instance.local_path.as_deref())
+                })
                 .map(PathBuf::from),
         };
         let kind = if installation.category == domain::ExtensionCategory::Mcp {
@@ -111,7 +123,9 @@ pub fn build_backup_artifact_inventory(
                 artifact_id: installation.plugin_id,
                 source_kind: installation.source_kind,
                 version: installation.plugin_version,
-                expected_checksum: instance.local_checksum.or(installation.expected_checksum),
+                expected_checksum: instance
+                    .and_then(|instance| instance.local_checksum.clone())
+                    .or(installation.expected_checksum),
                 disposition,
                 artifact_path,
             },
@@ -203,6 +217,17 @@ fn classify_source(source_kind: &str) -> BackupArtifactDisposition {
         | "mirror_registry" => BackupArtifactDisposition::RebuildableIdentity,
         _ => BackupArtifactDisposition::Embedded,
     }
+}
+
+fn validate_rebuildable_identity(installation: &domain::PluginInstallationRecord) -> Result<()> {
+    if installation.organization.trim().is_empty()
+        || installation.plugin_id.trim().is_empty()
+        || installation.plugin_version.trim().is_empty()
+        || installation.verification_status != domain::PluginVerificationStatus::Valid
+    {
+        bail!("rebuildable plugin identity is not verifiable");
+    }
+    Ok(())
 }
 
 fn insert_unique(

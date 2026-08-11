@@ -19,6 +19,12 @@ use tokio::{
 };
 use uuid::Uuid;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct BackupVerificationReceipt {
+    pub verified: bool,
+    pub checked_at: time::OffsetDateTime,
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalBackupRepository {
     root: PathBuf,
@@ -90,6 +96,79 @@ impl LocalBackupRepository {
                 _ => BackupRepositoryError::Unavailable,
             })?;
         serde_json::from_slice(&bytes).map_err(|_| BackupRepositoryError::Integrity)
+    }
+
+    pub(crate) async fn record_verification(
+        &self,
+        backup_set_id: BackupSetId,
+        verified: bool,
+    ) -> Result<BackupVerificationReceipt, BackupRepositoryError> {
+        let receipt = BackupVerificationReceipt {
+            verified,
+            checked_at: time::OffsetDateTime::now_utc(),
+        };
+        let target = self.set_path(backup_set_id).join("verification.json");
+        let temporary = self
+            .set_path(backup_set_id)
+            .join(format!("verification-{}.tmp", Uuid::now_v7()));
+        let bytes = serde_json::to_vec(&receipt).map_err(|_| BackupRepositoryError::Integrity)?;
+        fs::write(&temporary, bytes)
+            .await
+            .map_err(|_| BackupRepositoryError::Unavailable)?;
+        fs::rename(&temporary, target)
+            .await
+            .map_err(|_| BackupRepositoryError::Unavailable)?;
+        Ok(receipt)
+    }
+
+    pub(crate) async fn read_verification(
+        &self,
+        backup_set_id: BackupSetId,
+    ) -> Result<Option<BackupVerificationReceipt>, BackupRepositoryError> {
+        match fs::read(self.set_path(backup_set_id).join("verification.json")).await {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map(Some)
+                .map_err(|_| BackupRepositoryError::Integrity),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(_) => Err(BackupRepositoryError::Unavailable),
+        }
+    }
+
+    pub(crate) async fn events_for_backup_set(
+        &self,
+        backup_set_id: BackupSetId,
+    ) -> Result<(Vec<BackupJournalEvent>, Vec<BackupJournalEvent>), BackupRepositoryError> {
+        let mut journal_dirs = fs::read_dir(self.root.join("journal"))
+            .await
+            .map_err(|_| BackupRepositoryError::Unavailable)?;
+        let mut backup_events = Vec::new();
+        let mut recovery_events = Vec::new();
+        while let Some(entry) = journal_dirs
+            .next_entry()
+            .await
+            .map_err(|_| BackupRepositoryError::Unavailable)?
+        {
+            if !entry
+                .file_type()
+                .await
+                .map_err(|_| BackupRepositoryError::Unavailable)?
+                .is_dir()
+            {
+                continue;
+            }
+            for event in read_journal_directory(&entry.path()).await? {
+                if event.backup_set_id != backup_set_id {
+                    continue;
+                }
+                match event.subject {
+                    BackupJournalSubject::Backup(_) => backup_events.push(event),
+                    BackupJournalSubject::Recovery(_) => recovery_events.push(event),
+                }
+            }
+        }
+        backup_events.sort_by_key(|event| (event.occurred_at, event.sequence));
+        recovery_events.sort_by_key(|event| (event.occurred_at, event.sequence));
+        Ok((backup_events, recovery_events))
     }
 }
 
@@ -320,36 +399,47 @@ impl BackupRepository for LocalBackupRepository {
         {
             return Ok(Vec::new());
         }
-        let mut entries = fs::read_dir(journal)
-            .await
-            .map_err(|_| BackupRepositoryError::Unavailable)?;
-        let mut paths = Vec::new();
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|_| BackupRepositoryError::Unavailable)?
-        {
-            paths.push(entry.path().join("event.json"));
-        }
-        paths.sort();
-        let mut events = Vec::with_capacity(paths.len());
-        for path in paths {
-            let bytes = fs::read(path)
-                .await
-                .map_err(|_| BackupRepositoryError::Integrity)?;
-            let event = serde_json::from_slice::<BackupJournalEvent>(&bytes)
-                .map_err(|_| BackupRepositoryError::Integrity)?;
-            if event.subject != subject
-                || events.last().is_some_and(|previous: &BackupJournalEvent| {
-                    previous.sequence >= event.sequence
-                })
-            {
+        let events = read_journal_directory(&journal).await?;
+        for event in &events {
+            if event.subject != subject {
                 return Err(BackupRepositoryError::Integrity);
             }
-            events.push(event);
         }
         Ok(events)
     }
+}
+
+async fn read_journal_directory(
+    journal: &Path,
+) -> Result<Vec<BackupJournalEvent>, BackupRepositoryError> {
+    let mut entries = fs::read_dir(journal)
+        .await
+        .map_err(|_| BackupRepositoryError::Unavailable)?;
+    let mut paths = Vec::new();
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|_| BackupRepositoryError::Unavailable)?
+    {
+        paths.push(entry.path().join("event.json"));
+    }
+    paths.sort();
+    let mut events = Vec::with_capacity(paths.len());
+    for path in paths {
+        let bytes = fs::read(path)
+            .await
+            .map_err(|_| BackupRepositoryError::Integrity)?;
+        let event = serde_json::from_slice::<BackupJournalEvent>(&bytes)
+            .map_err(|_| BackupRepositoryError::Integrity)?;
+        if events
+            .last()
+            .is_some_and(|previous: &BackupJournalEvent| previous.sequence >= event.sequence)
+        {
+            return Err(BackupRepositoryError::Integrity);
+        }
+        events.push(event);
+    }
+    Ok(events)
 }
 
 fn paths_overlap(left: &Path, right: &Path) -> bool {

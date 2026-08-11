@@ -10,6 +10,9 @@ mod filesystem;
 mod install;
 mod package_router;
 
+#[cfg(test)]
+mod _tests;
+
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap, HashSet},

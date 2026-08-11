@@ -30,7 +30,8 @@ use crate::{
     },
     system_recovery::{
         recovery_plan_digest, ConfirmedRecoveryIntent, PrepareRecoveryCommand, RecoveryActiveWork,
-        RecoveryCoordinator, RecoveryPreflightError, RecoveryPreflightService, RecoveryTargetProbe,
+        RecoveryCoordinator, RecoveryImpactPreview, RecoveryPlan, RecoveryPreflightError,
+        RecoveryPreflightFailure, RecoveryPreflightService, RecoveryTargetProbe,
         RecoveryTargetSnapshot, SystemMaintenance, SystemMaintenancePhase,
     },
 };
@@ -341,6 +342,37 @@ async fn confirmed_intent(
         now + time::Duration::minutes(5),
     )
     .unwrap()
+}
+
+#[test]
+fn plan_digest_ignores_capacity_drift_while_the_space_decision_is_unchanged() {
+    let backup_set_id = BackupSetId::new();
+    let plan = |available_space_bytes, failures| RecoveryPlan {
+        backup_set_id,
+        required_space_bytes: 100,
+        available_space_bytes,
+        impact: RecoveryImpactPreview {
+            database_replaced: true,
+            business_object_count: 1,
+            extension_artifact_count: 2,
+            mcp_artifact_count: 3,
+            active_work: Vec::new(),
+        },
+        failures,
+    };
+
+    let sufficient = plan(200, Vec::new());
+    let sufficient_after_drift = plan(300, Vec::new());
+    assert_eq!(
+        recovery_plan_digest(&sufficient).unwrap(),
+        recovery_plan_digest(&sufficient_after_drift).unwrap()
+    );
+
+    let insufficient = plan(99, vec![RecoveryPreflightFailure::InsufficientSpace]);
+    assert_ne!(
+        recovery_plan_digest(&sufficient).unwrap(),
+        recovery_plan_digest(&insufficient).unwrap()
+    );
 }
 
 #[tokio::test]
