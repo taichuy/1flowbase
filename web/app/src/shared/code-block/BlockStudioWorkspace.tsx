@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   CodeOutlined,
   DatabaseOutlined,
+  PartitionOutlined,
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -16,6 +17,7 @@ export type BlockStudioSection =
   | 'code'
   | 'interfaces'
   | 'variables'
+  | 'child-containers'
   | 'components'
   | 'configuration'
   | 'run';
@@ -25,12 +27,41 @@ const STUDIO_SECTIONS: Array<{
   label: string;
   icon: ReactNode;
 }> = [
-  { key: 'code', label: i18nText('frontstage', 'auto.code'), icon: <CodeOutlined /> },
-  { key: 'interfaces', label: i18nText('frontstage', 'auto.interfaces'), icon: <ApiOutlined /> },
-  { key: 'variables', label: i18nText('frontstage', 'auto.variables'), icon: <DatabaseOutlined /> },
-  { key: 'components', label: i18nText('frontstage', 'auto.components'), icon: <AppstoreOutlined /> },
-  { key: 'configuration', label: i18nText('frontstage', 'auto.configuration'), icon: <SettingOutlined /> },
-  { key: 'run', label: i18nText('frontstage', 'auto.preview'), icon: <PlayCircleOutlined /> }
+  {
+    key: 'code',
+    label: i18nText('frontstage', 'auto.code'),
+    icon: <CodeOutlined />
+  },
+  {
+    key: 'interfaces',
+    label: i18nText('frontstage', 'auto.interfaces'),
+    icon: <ApiOutlined />
+  },
+  {
+    key: 'variables',
+    label: i18nText('frontstage', 'auto.variables'),
+    icon: <DatabaseOutlined />
+  },
+  {
+    key: 'child-containers',
+    label: i18nText('frontstage', 'auto.child_containers'),
+    icon: <PartitionOutlined />
+  },
+  {
+    key: 'components',
+    label: i18nText('frontstage', 'auto.components'),
+    icon: <AppstoreOutlined />
+  },
+  {
+    key: 'configuration',
+    label: i18nText('frontstage', 'auto.configuration'),
+    icon: <SettingOutlined />
+  },
+  {
+    key: 'run',
+    label: i18nText('frontstage', 'auto.preview'),
+    icon: <PlayCircleOutlined />
+  }
 ];
 
 const DEFAULT_RESOURCE_PANEL_WIDTH = 320;

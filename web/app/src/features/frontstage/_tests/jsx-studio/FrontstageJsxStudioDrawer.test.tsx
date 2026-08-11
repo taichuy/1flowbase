@@ -331,6 +331,30 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
   });
 
+  test('AC-001 exposes the child-container rail and fails visibly without a save callback', () => {
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        pageBlocks={[block]}
+        childContainers={[]}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '子容器' }));
+
+    expect(screen.getByRole('heading', { name: '子容器' })).toBeInTheDocument();
+    expect(screen.getByText('子容器编辑不可用')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新增根容器' })).toBeDisabled();
+  });
+
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {
     const onSaveBlock = vi.fn().mockResolvedValue(true);
 
