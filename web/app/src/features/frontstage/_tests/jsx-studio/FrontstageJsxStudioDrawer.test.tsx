@@ -331,7 +331,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
   });
 
-  test('AC-009 does not expose the legacy child-container write rail', () => {
+  test('AC-004/009 exposes block tree without the legacy child-container write rail', () => {
     render(
       <FrontstageJsxStudioDrawer
         open
@@ -343,6 +343,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         pageBlocks={[block]}
         catalogEntry={catalogEntry}
         onClose={vi.fn()}
+        onOpenBlock={vi.fn()}
         onSaveBlock={vi.fn()}
       />
     );
@@ -350,6 +351,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(
       screen.queryByRole('button', { name: '子容器' })
     ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '区块树' })).toBeInTheDocument();
   });
 
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {

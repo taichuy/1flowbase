@@ -39,6 +39,8 @@ export interface FrontstageJsxStudioDrawerProps {
     | ReactNode
     | ((context: { code: string; runRevision: number | null }) => ReactNode);
   onClose: () => void;
+  onOpenBlock?: (blockId: string) => void;
+  onDeletedBlockIds?: (blockIds: string[]) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
 
@@ -47,6 +49,8 @@ export function FrontstageJsxStudioDrawer({
   catalogEntry,
   initialSection,
   onClose,
+  onDeletedBlockIds,
+  onOpenBlock,
   onSaveBlock,
   open,
   pageBlocks = [],
@@ -169,6 +173,7 @@ export function FrontstageJsxStudioDrawer({
         'templates',
         'interfaces',
         'variables',
+        ...(onOpenBlock ? (['block-tree'] as const) : []),
         'components',
         'configuration',
         'run'
@@ -206,8 +211,11 @@ export function FrontstageJsxStudioDrawer({
             block={block}
             codeSource={draft}
             pageBlocks={pageBlocks}
+            pageId={pageId}
             workspaceId={workspaceId}
             onInsertCode={insertCode}
+            onDeletedBlockIds={onDeletedBlockIds}
+            onOpenBlock={onOpenBlock}
             onSaveBlock={onSaveBlock}
             projection={projection}
             runPanel={resolvedRunPanel}

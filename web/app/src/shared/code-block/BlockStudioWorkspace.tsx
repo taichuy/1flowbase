@@ -1,6 +1,7 @@
 import {
   ApiOutlined,
   AppstoreOutlined,
+  ApartmentOutlined,
   CodeOutlined,
   DatabaseOutlined,
   FileTextOutlined,
@@ -19,6 +20,7 @@ export type BlockStudioSection =
   | 'templates'
   | 'interfaces'
   | 'variables'
+  | 'block-tree'
   | 'child-containers'
   | 'components'
   | 'configuration'
@@ -53,6 +55,11 @@ const STUDIO_SECTION_DEFINITIONS: Array<{
     key: 'child-containers',
     label: i18nText('frontstage', 'auto.child_containers'),
     icon: <PartitionOutlined />
+  },
+  {
+    key: 'block-tree',
+    label: i18nText('frontstage', 'auto.block_tree'),
+    icon: <ApartmentOutlined />
   },
   {
     key: 'components',

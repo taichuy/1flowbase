@@ -25,6 +25,7 @@ import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-
 import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
+import { BlockSchemaTreePanel } from '../block-schema-tree/BlockSchemaTreePanel';
 import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
 import { JsxStudioConfigurationPanel } from './JsxStudioConfigurationPanel';
 
@@ -44,8 +45,11 @@ export function JsxStudioResourcePanel({
   block,
   codeSource,
   pageBlocks,
+  pageId,
   workspaceId,
   onInsertCode,
+  onDeletedBlockIds,
+  onOpenBlock,
   onSaveBlock,
   projection,
   runPanel,
@@ -57,8 +61,11 @@ export function JsxStudioResourcePanel({
   block: FrontstageBlockInstance;
   codeSource: string;
   pageBlocks: readonly FrontstageBlockInstance[];
+  pageId?: string;
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
+  onDeletedBlockIds?: (blockIds: string[]) => void;
+  onOpenBlock?: (blockId: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
@@ -86,6 +93,18 @@ export function JsxStudioResourcePanel({
         onInsertCode={onInsertCode}
         onSaveBlock={onSaveBlock}
         contextVariables={contextVariables}
+      />
+    );
+  }
+
+  if (section === 'block-tree' && onOpenBlock && pageId) {
+    return (
+      <BlockSchemaTreePanel
+        currentBlockId={block.id}
+        pageId={pageId}
+        workspaceId={workspaceId}
+        onDeletedBlockIds={onDeletedBlockIds}
+        onOpenBlock={onOpenBlock}
       />
     );
   }
