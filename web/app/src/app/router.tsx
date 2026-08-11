@@ -275,6 +275,7 @@ function FrontStageSlugRoute({
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
+  const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const pageTreeQuery = useQuery({
     queryKey: frontstagePageTreeQueryKey(workspaceId ?? ''),
     queryFn: () => fetchFrontstagePageTree(workspaceId ?? ''),
@@ -284,6 +285,14 @@ function FrontStageSlugRoute({
   const rootNode = pageTreeQuery.data?.find(
     (node) => node.placement === 'topbar' && node.slug === slug
   );
+  if (sessionStatus === 'unknown') return <RouteLoadingFallback />;
+  if (sessionStatus === 'anonymous') {
+    return (
+      <SessionGuard>
+        <RouteLoadingFallback />
+      </SessionGuard>
+    );
+  }
   if (!workspaceId) return <Navigate to="/" replace />;
   if (pageTreeQuery.isLoading) return <RouteLoadingFallback />;
   if (!rootNode) return <NotFoundPage />;

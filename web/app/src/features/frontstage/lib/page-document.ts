@@ -60,6 +60,7 @@ export interface FrontstageBlockInstance {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   ports?: FrontstageBlockPorts;
+  childContainerTargetIds?: string[];
   presentation: FrontstageBlockPresentation;
   layout: FrontstageBlockLayout;
   order: number;
@@ -95,6 +96,7 @@ interface FrontstageBlockPayload {
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;
   ports: FrontstageBlockPorts;
+  child_container_target_ids?: string[];
   'x-presentation': FrontstageBlockPresentation;
   'x-layout': FrontstageBlockLayout;
   runtime: FrontstageBlockRuntimeHint;
@@ -269,6 +271,28 @@ function normalizePorts(
     inputs: normalizePortList(block.ports.inputs, true),
     outputs: normalizePortList(block.ports.outputs, false)
   } as FrontstageBlockPorts;
+}
+
+function normalizeChildContainerTargetIds(
+  block: Record<string, unknown>
+): string[] | undefined {
+  const key = Object.hasOwn(block, 'child_container_target_ids')
+    ? 'child_container_target_ids'
+    : // @field-contract-compat source=child_container_target_ids alias=childContainerTargetIds remove_by=2027-02-11
+      Object.hasOwn(block, 'childContainerTargetIds')
+      ? 'childContainerTargetIds'
+      : null;
+  if (!key) return undefined;
+  const value = block[key];
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.flatMap((item) => {
+        const targetId = asOptionalString(item);
+        return targetId ? [targetId] : [];
+      })
+    )
+  ];
 }
 
 function normalizePortList(value: unknown, input: boolean): unknown[] {
@@ -503,6 +527,7 @@ function normalizeBlock(
 
   const props = normalizeProps(block, path, diagnostics);
   const ports = normalizePorts(block, path, diagnostics);
+  const childContainerTargetIds = normalizeChildContainerTargetIds(block);
   const presentation = normalizePresentation(block, path, diagnostics);
   const layout = normalizeLayout(block, blockIndex, path, diagnostics);
   const rendererVersion = normalizeRendererVersion(block, path, diagnostics);
@@ -536,6 +561,9 @@ function normalizeBlock(
     },
     props,
     ports,
+    ...(childContainerTargetIds !== undefined
+      ? { childContainerTargetIds }
+      : {}),
     presentation,
     layout,
     order: layout.order,
@@ -622,6 +650,11 @@ function createBlockPayload(
         schema: { ...port.schema }
       }))
     },
+    ...(block.childContainerTargetIds !== undefined
+      ? {
+          child_container_target_ids: [...block.childContainerTargetIds]
+        }
+      : {}),
     'x-presentation': {
       ...(block.presentation ?? { heightMode: 'auto', height: null })
     },

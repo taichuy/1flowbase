@@ -112,6 +112,8 @@ export function JsxStudioResourcePanel({
         childContainers={childContainers}
         ownerBlock={block}
         pageBlocks={pageBlocks}
+        onInsertCode={onInsertCode}
+        onSaveBlock={onSaveBlock}
         onSaveChildContainers={onSaveChildContainers}
       />
     );

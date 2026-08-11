@@ -346,11 +346,71 @@ describe('frontstage topbar root routing', () => {
     });
 
     act(() => {
-      window.history.back();
+      frontStagePageView.props?.onContainerIdChange?.('root-drawer', 'replace');
     });
     await waitFor(() => {
       expect(frontStagePageView.props?.containerId).toBe('root-drawer');
     });
+    act(() => {
+      frontStagePageView.props?.onContainerIdChange?.(null, 'replace');
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBeUndefined();
+    });
+    expect(window.location.search).toBe('?view=table');
+    expect(window.location.hash).toBe('#section');
+
+    act(() => window.history.back());
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBeUndefined();
+    });
+    act(() => window.history.forward());
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBeUndefined();
+    });
+  });
+
+  test('AC-005/008 keeps a cold direct URL through auth hydration', async () => {
+    resetAuthStore();
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockReturnValue(
+      new Promise(() => undefined)
+    );
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level?view=table&container_id=root-drawer#section'
+    );
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.location.href).toContain(
+      '/sales/pages/page-top-level?view=table&container_id=root-drawer#section'
+    );
+    act(() => {
+      useAuthStore.getState().setAuthenticated({
+        csrfToken: 'csrf-hydrated',
+        actor: {
+          id: 'actor-1',
+          account: 'root',
+          effective_display_role: 'root',
+          current_workspace_id: 'workspace-1'
+        },
+        me: null
+      });
+    });
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
+    });
+    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
     expect(window.location.search).toContain('view=table');
     expect(window.location.hash).toBe('#section');
 
@@ -360,7 +420,6 @@ describe('frontstage topbar root routing', () => {
     await waitFor(() => {
       expect(frontStagePageView.props?.containerId).toBeUndefined();
     });
-    expect(window.location.search).toBe('?view=table');
-    expect(window.location.hash).toBe('#section');
+    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
   });
 });

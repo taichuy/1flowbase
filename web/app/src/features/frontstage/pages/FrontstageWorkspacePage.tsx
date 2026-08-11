@@ -45,6 +45,46 @@ export interface FrontstageWorkspacePageProps {
   rootNode?: FrontstagePageTreeNode;
 }
 
+const CHILD_CONTAINER_HISTORY_STATE_KEY = '__frontstage_child_container';
+
+interface ChildContainerHistoryMarker {
+  currentContainerId: string;
+  previousContainerId: string | null;
+  backDistance: number;
+}
+
+function readChildContainerHistoryMarker(
+  state: unknown
+): ChildContainerHistoryMarker | null {
+  if (typeof state !== 'object' || state === null) return null;
+  const marker = (state as Record<string, unknown>)[
+    CHILD_CONTAINER_HISTORY_STATE_KEY
+  ];
+  if (typeof marker !== 'object' || marker === null) return null;
+  const currentContainerId = (marker as Record<string, unknown>)
+    .currentContainerId;
+  const previousContainerId = (marker as Record<string, unknown>)
+    .previousContainerId;
+  const backDistance = (marker as Record<string, unknown>).backDistance;
+  if (
+    typeof currentContainerId !== 'string' ||
+    (previousContainerId !== null && typeof previousContainerId !== 'string') ||
+    typeof backDistance !== 'number' ||
+    !Number.isInteger(backDistance) ||
+    backDistance < 1
+  ) {
+    return null;
+  }
+  return { currentContainerId, previousContainerId, backDistance };
+}
+
+function clearChildContainerHistoryMarker(state: unknown) {
+  if (typeof state !== 'object' || state === null) return {};
+  const next = { ...(state as Record<string, unknown>) };
+  delete next[CHILD_CONTAINER_HISTORY_STATE_KEY];
+  return next;
+}
+
 export function FrontstageWorkspacePage({
   workspaceId,
   pageId,
@@ -234,7 +274,68 @@ export function FrontstageWorkspacePage({
             router.state.location.href,
             nextContainerId
           );
-          router.history[mode](href);
+          if (mode === 'push' && nextContainerId) {
+            router.history.push(href, {
+              ...router.history.location.state,
+              [CHILD_CONTAINER_HISTORY_STATE_KEY]: {
+                currentContainerId: nextContainerId,
+                previousContainerId: containerId ?? null,
+                backDistance: 1
+              } satisfies ChildContainerHistoryMarker
+            });
+            return;
+          }
+
+          const marker = readChildContainerHistoryMarker(
+            router.history.location.state
+          );
+          if (
+            marker !== null &&
+            marker.currentContainerId === containerId &&
+            marker.previousContainerId === nextContainerId &&
+            router.history.canGoBack()
+          ) {
+            router.history.flush();
+            let completed = false;
+            let unsubscribe: () => void = () => undefined;
+            unsubscribe = router.history.subscribe(({ action, location }) => {
+              if (
+                completed ||
+                action.type === 'PUSH' ||
+                action.type === 'REPLACE'
+              ) {
+                return;
+              }
+              completed = true;
+              unsubscribe();
+              const destinationMarker = readChildContainerHistoryMarker(
+                location.state
+              );
+              const destinationState = clearChildContainerHistoryMarker(
+                location.state
+              );
+              router.history.push(
+                createChildContainerUrl(location.href, nextContainerId),
+                nextContainerId &&
+                  destinationMarker?.currentContainerId === nextContainerId
+                  ? {
+                      ...destinationState,
+                      [CHILD_CONTAINER_HISTORY_STATE_KEY]: {
+                        ...destinationMarker,
+                        backDistance: destinationMarker.backDistance + 1
+                      } satisfies ChildContainerHistoryMarker
+                    }
+                  : destinationState
+              );
+            });
+            router.history.go(-marker.backDistance);
+            return;
+          }
+
+          router.history.replace(
+            href,
+            clearChildContainerHistoryMarker(router.history.location.state)
+          );
         }}
         showSidebar={rootNode?.kind !== 'page'}
         autoSelectFirstPage={rootNode?.kind !== 'group' || Boolean(pageId)}

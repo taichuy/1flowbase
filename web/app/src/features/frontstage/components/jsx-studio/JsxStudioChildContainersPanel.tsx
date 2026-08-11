@@ -10,7 +10,7 @@ import {
   Typography
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import {
@@ -18,6 +18,7 @@ import {
   addChildContainer,
   addSiblingChildContainer,
   deleteChildContainer,
+  moveChildContainer,
   reorderChildContainer,
   resolveChildContainerPath,
   serializeChildContainerTree,
@@ -25,11 +26,14 @@ import {
   type ChildContainerPresentation
 } from '../../lib/child-container-tree';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
+import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 
 export interface JsxStudioChildContainersPanelProps {
   childContainers: readonly ChildContainerNode[];
   ownerBlock: FrontstageBlockInstance;
   pageBlocks: readonly FrontstageBlockInstance[];
+  onInsertCode?: (insertion: FrontstageJsxInsertion) => void;
+  onSaveBlock?: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   onSaveChildContainers?: (
     containers: ChildContainerNode[]
   ) => Promise<boolean | void>;
@@ -119,21 +123,31 @@ function createTreeData(containers: readonly ChildContainerNode[]): DataNode[] {
 
 export function JsxStudioChildContainersPanel({
   childContainers,
+  onInsertCode,
+  onSaveBlock,
   onSaveChildContainers,
   ownerBlock,
   pageBlocks
 }: JsxStudioChildContainersPanelProps) {
   const [draft, setDraft] = useState(() => cloneTree(childContainers));
+  const draftRef = useRef(draft);
   const [selectedId, setSelectedId] = useState<string>();
   const [newPresentation, setNewPresentation] =
     useState<ChildContainerPresentation>('drawer');
+  const newPresentationRef = useRef(newPresentation);
+  const [targetContainerIds, setTargetContainerIds] = useState(
+    ownerBlock.childContainerTargetIds ?? []
+  );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingTargets, setSavingTargets] = useState(false);
   const [feedback, setFeedback] = useState<PanelFeedback | null>(null);
   const canEdit = Boolean(onSaveChildContainers);
 
   useEffect(() => {
-    setDraft(cloneTree(childContainers));
+    const nextDraft = cloneTree(childContainers);
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
     setSelectedId((current) =>
       current && childContainers.some(({ id }) => id === current)
         ? current
@@ -142,6 +156,9 @@ export function JsxStudioChildContainersPanel({
     setDirty(false);
     setFeedback(null);
   }, [childContainers]);
+  useEffect(() => {
+    setTargetContainerIds(ownerBlock.childContainerTargetIds ?? []);
+  }, [ownerBlock.childContainerTargetIds]);
 
   const selected = draft.find(({ id }) => id === selectedId);
   const selectedPath = useMemo(
@@ -157,6 +174,14 @@ export function JsxStudioChildContainersPanel({
       assignedContainerByBlock.set(blockId, container.id);
     }
   }
+  const ownedContainers = draft.filter(
+    ({ ownerBlockId }) => ownerBlockId === ownerBlock.id
+  );
+  const targetReferences = [
+    ...new Set(
+      pageBlocks.flatMap((block) => block.childContainerTargetIds ?? [])
+    )
+  ];
   const siblings = selected
     ? draft
         .filter(({ parentId }) => parentId === selected.parentId)
@@ -173,6 +198,7 @@ export function JsxStudioChildContainersPanel({
   const applyDraft = (next: ChildContainerNode[]) => {
     try {
       serializeChildContainerTree(next);
+      draftRef.current = next;
       setDraft(next);
       setDirty(true);
       setFeedback(null);
@@ -180,17 +206,20 @@ export function JsxStudioChildContainersPanel({
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
   };
-  const createDraft = () => ({
-    ownerBlockId: ownerBlock.id,
-    presentation: newPresentation,
-    title: i18nText('frontstage', 'auto.child_container_new_title', {
-      value1: presentationLabel(newPresentation)
-    }),
-    blockIds: []
-  });
+  const createDraft = () => {
+    const presentation = newPresentationRef.current;
+    return {
+      ownerBlockId: ownerBlock.id,
+      presentation,
+      title: i18nText('frontstage', 'auto.child_container_new_title', {
+        value1: presentationLabel(presentation)
+      }),
+      blockIds: []
+    };
+  };
   const addRoot = () => {
     try {
-      applyDraft(addChildContainer(draft, null, createDraft()));
+      applyDraft(addChildContainer(draftRef.current, null, createDraft()));
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -198,7 +227,9 @@ export function JsxStudioChildContainersPanel({
   const addChild = () => {
     if (!selected) return;
     try {
-      applyDraft(addChildContainer(draft, selected.id, createDraft()));
+      applyDraft(
+        addChildContainer(draftRef.current, selected.id, createDraft())
+      );
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -206,7 +237,9 @@ export function JsxStudioChildContainersPanel({
   const addSibling = () => {
     if (!selected) return;
     try {
-      applyDraft(addSiblingChildContainer(draft, selected.id, createDraft()));
+      applyDraft(
+        addSiblingChildContainer(draftRef.current, selected.id, createDraft())
+      );
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -214,7 +247,7 @@ export function JsxStudioChildContainersPanel({
   const updateSelected = (change: Partial<ChildContainerNode>) => {
     if (!selected) return;
     applyDraft(
-      draft.map((container) =>
+      draftRef.current.map((container) =>
         container.id === selected.id ? { ...container, ...change } : container
       )
     );
@@ -261,7 +294,10 @@ export function JsxStudioChildContainersPanel({
             value,
             label: presentationLabel(value)
           }))}
-          onChange={setNewPresentation}
+          onChange={(presentation) => {
+            newPresentationRef.current = presentation;
+            setNewPresentation(presentation);
+          }}
         />
         <Space wrap>
           <Button disabled={!canEdit} onClick={addRoot}>
@@ -291,6 +327,60 @@ export function JsxStudioChildContainersPanel({
         )}
       </section>
 
+      <Divider />
+      <section className="frontstage-jsx-studio__resource-section">
+        <Typography.Text strong>
+          {i18nText('frontstage', 'auto.child_container_targets')}
+        </Typography.Text>
+        <Select<string[]>
+          mode="multiple"
+          aria-label={i18nText('frontstage', 'auto.child_container_targets')}
+          disabled={!onSaveBlock}
+          value={targetContainerIds}
+          options={ownedContainers.map((container) => ({
+            value: container.id,
+            label: container.title
+          }))}
+          onChange={setTargetContainerIds}
+        />
+        <Button
+          disabled={!onSaveBlock}
+          loading={savingTargets}
+          onClick={async () => {
+            if (!onSaveBlock) return;
+            setSavingTargets(true);
+            setFeedback(null);
+            try {
+              const saved = await onSaveBlock({
+                ...ownerBlock,
+                childContainerTargetIds: [...targetContainerIds]
+              });
+              if (saved !== false) {
+                setFeedback({
+                  type: 'success',
+                  message: i18nText(
+                    'frontstage',
+                    'auto.child_container_targets_saved'
+                  )
+                });
+              }
+            } catch {
+              setFeedback({
+                type: 'error',
+                message: i18nText(
+                  'frontstage',
+                  'auto.child_container_targets_save_failed'
+                )
+              });
+            } finally {
+              setSavingTargets(false);
+            }
+          }}
+        >
+          {i18nText('frontstage', 'auto.save_child_container_targets')}
+        </Button>
+      </section>
+
       {selected ? (
         <>
           <Divider />
@@ -317,6 +407,47 @@ export function JsxStudioChildContainersPanel({
                 })
               )}
               onChange={(presentation) => updateSelected({ presentation })}
+            />
+            <Select<string>
+              aria-label={i18nText('frontstage', 'auto.child_container_parent')}
+              disabled={!canEdit}
+              value={selected.parentId ?? '__page_root__'}
+              options={[
+                {
+                  value: '__page_root__',
+                  label: i18nText(
+                    'frontstage',
+                    'auto.child_container_page_root'
+                  )
+                },
+                ...draft
+                  .filter(({ id }) => id !== selected.id)
+                  .map((container) => ({
+                    value: container.id,
+                    label: container.title
+                  }))
+              ]}
+              onChange={(parentValue) => {
+                const parentId =
+                  parentValue === '__page_root__' ? null : parentValue;
+                try {
+                  const destinationSiblingCount = draftRef.current.filter(
+                    (container) =>
+                      container.parentId === parentId &&
+                      container.id !== selected.id
+                  ).length;
+                  applyDraft(
+                    moveChildContainer(
+                      draftRef.current,
+                      selected.id,
+                      parentId,
+                      destinationSiblingCount
+                    )
+                  );
+                } catch (error) {
+                  setFeedback({ type: 'error', message: errorMessage(error) });
+                }
+              }}
             />
             <Select<string[]>
               mode="multiple"
@@ -352,12 +483,32 @@ export function JsxStudioChildContainersPanel({
               )}
             />
             <Space wrap>
+              {selected.ownerBlockId === ownerBlock.id && onInsertCode ? (
+                <Button
+                  aria-label={i18nText(
+                    'frontstage',
+                    'auto.insert_open_child_container_event_with_title',
+                    { value1: selected.title }
+                  )}
+                  onClick={() =>
+                    onInsertCode({
+                      kind: 'source',
+                      source: `ctx.events.emit('open_child_container', { container_id: ${JSON.stringify(selected.id)} });`
+                    })
+                  }
+                >
+                  {i18nText(
+                    'frontstage',
+                    'auto.insert_open_child_container_event'
+                  )}
+                </Button>
+              ) : null}
               <Button
                 disabled={!canEdit || selectedSiblingIndex <= 0}
                 onClick={() =>
                   applyDraft(
                     reorderChildContainer(
-                      draft,
+                      draftRef.current,
                       selected.id,
                       selectedSiblingIndex - 1
                     )
@@ -373,7 +524,7 @@ export function JsxStudioChildContainersPanel({
                 onClick={() =>
                   applyDraft(
                     reorderChildContainer(
-                      draft,
+                      draftRef.current,
                       selected.id,
                       selectedSiblingIndex + 1
                     )
@@ -384,12 +535,21 @@ export function JsxStudioChildContainersPanel({
               </Button>
               <Button
                 danger
+                aria-label={i18nText(
+                  'frontstage',
+                  'auto.delete_child_container_with_title',
+                  { value1: selected.title }
+                )}
                 disabled={!canEdit}
                 onClick={() => {
                   try {
-                    const next = deleteChildContainer(draft, selected.id, {
-                      targetContainerIds: []
-                    });
+                    const next = deleteChildContainer(
+                      draftRef.current,
+                      selected.id,
+                      {
+                        targetContainerIds: targetReferences
+                      }
+                    );
                     applyDraft(next);
                     setSelectedId(undefined);
                   } catch (error) {
@@ -418,7 +578,9 @@ export function JsxStudioChildContainersPanel({
           setSaving(true);
           setFeedback(null);
           try {
-            const saved = await onSaveChildContainers(cloneTree(draft));
+            const saved = await onSaveChildContainers(
+              cloneTree(draftRef.current)
+            );
             if (saved !== false) {
               setDirty(false);
               setFeedback({

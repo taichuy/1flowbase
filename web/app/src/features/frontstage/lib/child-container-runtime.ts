@@ -21,6 +21,7 @@ export interface ChildContainerRuntimeResolution {
 
 export interface OpenChildContainerEvent {
   sourceBlockId: string;
+  sourceTargetContainerIds: readonly string[];
   name: string;
   payload?: Record<string, unknown>;
 }
@@ -124,6 +125,16 @@ export function resolveChildContainerEvent(
         code: 'child_container_owner_mismatch',
         containerId,
         message: `Block "${event.sourceBlockId}" does not own child container "${containerId}".`
+      }
+    };
+  }
+  if (!event.sourceTargetContainerIds.includes(containerId)) {
+    return {
+      containerId: null,
+      diagnostic: {
+        code: 'child_container_unregistered',
+        containerId,
+        message: `Block "${event.sourceBlockId}" has not registered child container "${containerId}" as a target.`
       }
     };
   }

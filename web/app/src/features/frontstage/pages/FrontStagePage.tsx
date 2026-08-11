@@ -259,6 +259,9 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
     ) => {
       const resolution = resolveChildContainerEvent(childContainers, {
         sourceBlockId,
+        sourceTargetContainerIds:
+          displayedPageDocument?.blocks.find(({ id }) => id === sourceBlockId)
+            ?.childContainerTargetIds ?? [],
         name,
         payload
       });
@@ -271,7 +274,7 @@ export const FrontStagePage: FC<FrontStagePageContainerProps> = ({
         onContainerIdChange?.(resolution.containerId, 'push');
       }
     },
-    [childContainers, onContainerIdChange]
+    [childContainers, displayedPageDocument?.blocks, onContainerIdChange]
   );
   const confirmRuntimeWrite = useCallback(
     ({ method, path }: { method: string; path: string }) =>

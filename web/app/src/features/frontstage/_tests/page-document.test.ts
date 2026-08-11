@@ -83,6 +83,54 @@ describe('frontstage page document', () => {
     });
   });
 
+  test('AC-004/009 normalizes snake/camel child container targets and persists the canonical field', () => {
+    const content = createPageContent({
+      document: {
+        payload: {
+          blocks: [
+            {
+              id: 'launcher',
+              renderer_version: 'v1',
+              codeRef: 'launcher-code',
+              contribution: { code: 'test.launcher' },
+              child_container_target_ids: ['drawer-a', 'drawer-a', 'modal-b'],
+              runtime: { kind: 'native_react' }
+            },
+            {
+              id: 'legacy-launcher',
+              renderer_version: 'v1',
+              codeRef: 'legacy-launcher-code',
+              contribution: { code: 'test.launcher' },
+              childContainerTargetIds: ['legacy-drawer'],
+              runtime: { kind: 'native_react' }
+            }
+          ]
+        }
+      }
+    });
+    const document = createFrontstagePageDocument(content);
+
+    expect(document.blocks[0]?.childContainerTargetIds).toEqual([
+      'drawer-a',
+      'modal-b'
+    ]);
+    expect(document.blocks[1]?.childContainerTargetIds).toEqual([
+      'legacy-drawer'
+    ]);
+    expect(
+      createFrontstagePageDocumentSaveInput(content, document).payload
+    ).toMatchObject({
+      blocks: [
+        expect.objectContaining({
+          child_container_target_ids: ['drawer-a', 'modal-b']
+        }),
+        expect.objectContaining({
+          child_container_target_ids: ['legacy-drawer']
+        })
+      ]
+    });
+  });
+
   test('AC-009 preserves an explicit free layout mode in the tab document payload', () => {
     const content = createPageContent({
       root: {

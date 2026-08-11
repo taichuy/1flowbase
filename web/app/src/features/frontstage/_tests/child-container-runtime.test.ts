@@ -27,6 +27,15 @@ const containers: ChildContainerNode[] = [
     presentation: 'modal',
     title: 'Child',
     blockIds: ['modal-content']
+  },
+  {
+    id: 'nested-inline',
+    ownerBlockId: 'modal-content',
+    parentId: 'child-modal',
+    rank: '001000',
+    presentation: 'inline',
+    title: 'Nested inline',
+    blockIds: ['inline-content']
   }
 ];
 
@@ -54,12 +63,16 @@ describe('frontstage child container runtime contract', () => {
     expect(
       resolveChildContainerEvent(containers, {
         sourceBlockId: 'launcher',
+        sourceTargetContainerIds: ['root-drawer'],
         name: 'open_child_container',
         payload: { container_id: 'root-drawer', context: { material: 1 } }
       })
     ).toEqual({ containerId: 'root-drawer', diagnostic: null });
     expect(resolveChildContainerCloseTarget(containers, 'child-modal')).toBe(
       'root-drawer'
+    );
+    expect(resolveChildContainerCloseTarget(containers, 'nested-inline')).toBe(
+      'child-modal'
     );
     expect(resolveChildContainerCloseTarget(containers, 'root-drawer')).toBe(
       null
@@ -70,16 +83,33 @@ describe('frontstage child container runtime contract', () => {
     expect(
       resolveChildContainerEvent(containers, {
         sourceBlockId: 'launcher',
+        sourceTargetContainerIds: ['root-drawer'],
         name: 'open_child_container',
         payload: { container_id: 'missing' }
       }).diagnostic
     ).toEqual(expect.objectContaining({ code: 'unknown_child_container' }));
+    expect(
+      resolveChildContainerEvent(containers, {
+        sourceBlockId: 'launcher',
+        sourceTargetContainerIds: [],
+        name: 'open_child_container',
+        payload: { container_id: 'root-drawer' }
+      }).diagnostic
+    ).toEqual(
+      expect.objectContaining({ code: 'child_container_unregistered' })
+    );
   });
 
   test('AC-003/007 filters assigned blocks from the root while historical pages remain unchanged', () => {
     expect(
       getRootPageBlockIds(
-        ['launcher', 'drawer-content', 'modal-content', 'footer'],
+        [
+          'launcher',
+          'drawer-content',
+          'modal-content',
+          'inline-content',
+          'footer'
+        ],
         containers
       )
     ).toEqual(['launcher', 'footer']);
