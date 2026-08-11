@@ -1,15 +1,6 @@
 .system-backups__table .ant-table-row {
   cursor: pointer;
 }
-.system-backups__manifest {
-  max-height: 55vh;
-  overflow: auto;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--ant-color-fill-tertiary);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
 .system-backups__restore-body {
   display: grid;
   gap: 16px;

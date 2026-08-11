@@ -16,7 +16,67 @@ export interface BackupSetListResponse {
 export interface BackupSetDetailResponse {
   backup_set_id: string;
   exact_backup_name: string;
-  sealed_manifest: Record<string, unknown>;
+  created_at: string;
+  content: BackupContentSummaryResponse;
+  components: BackupComponentDetailResponse[];
+  compatibility: BackupCompatibilityResponse;
+  verification: BackupVerificationDetailResponse;
+  creation_journal: BackupCreationJournalEntryResponse[];
+  recovery_history: BackupRecoveryHistoryEntryResponse[];
+}
+
+export interface BackupContentSummaryResponse {
+  component_count: number;
+  postgresql_count: number;
+  business_object_count: number;
+  extension_artifact_count: number;
+  mcp_artifact_count: number;
+  embedded_component_count: number;
+  identity_only_component_count: number;
+  total_size_bytes: number;
+  excluded_domains: string[];
+}
+
+export interface BackupComponentDetailResponse {
+  component_id: string;
+  kind: string;
+  source_identity: string;
+  content_type: string;
+  size_bytes: number;
+  content_digest: string;
+  disposition: string;
+  rebuildability: string;
+  restore_target: Record<string, unknown>;
+}
+
+export interface BackupCompatibilityResponse {
+  compatible: boolean;
+  failures: string[];
+  format_version: number;
+  application_build: string;
+  migration_head: string;
+  master_key_fingerprint: string;
+}
+
+export interface BackupVerificationDetailResponse {
+  verified: boolean | null;
+  checked_at: string | null;
+}
+
+export interface BackupCreationJournalEntryResponse {
+  sequence: number;
+  occurred_at: string;
+  state: string | null;
+  component_id: string | null;
+  failure_code: string | null;
+}
+
+export interface BackupRecoveryHistoryEntryResponse {
+  recovery_job_id: string;
+  status: string | null;
+  started_at: string;
+  updated_at: string;
+  failure_code: string | null;
 }
 
 export interface BackupMutationResponse {

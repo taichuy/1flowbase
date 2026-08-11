@@ -2,7 +2,7 @@ import {
   createSystemBackup,
   createSystemRecoveryIntent,
   deleteSystemBackup,
-  downloadSystemBackup,
+  getSystemBackupDownloadUrl,
   getSystemBackup,
   getSystemRecoveryStatus,
   importSystemBackup,
@@ -59,13 +59,12 @@ function formatBytes(value: number) {
   return `${(value / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function saveDownload(blob: Blob, filename: string | null) {
-  const url = URL.createObjectURL(blob);
+function startDirectDownload(backupSetId: string) {
   const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename ?? 'system.1fb-backup';
+  anchor.href = getSystemBackupDownloadUrl(backupSetId);
+  anchor.download = '';
+  anchor.rel = 'noopener';
   anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 export function SystemBackupsPanel() {
@@ -126,11 +125,6 @@ export function SystemBackupsPanel() {
     },
     onError: notifyError
   });
-  const downloadMutation = useMutation({
-    mutationFn: (backupSetId: string) => downloadSystemBackup(backupSetId),
-    onSuccess: (value) => saveDownload(value.blob, value.filename),
-    onError: notifyError
-  });
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteSystemBackup(id, csrfToken),
     onSuccess: async () => {
@@ -187,6 +181,9 @@ export function SystemBackupsPanel() {
       }),
     [availability, backups.data?.items, keyword]
   );
+  const detailSummary = backups.data?.items.find(
+    (item) => item.backup_set_id === detailId
+  );
 
   const closeRestore = () => {
     setRestoreTarget(undefined);
@@ -220,7 +217,7 @@ export function SystemBackupsPanel() {
               aria-label={t('availability')}
               options={['ready', 'corrupt', 'incompatible'].map((value) => ({
                 value,
-              label: availabilityLabel(value)
+                label: availabilityLabel(value)
               }))}
               placeholder={t('availability')}
               value={availability}
@@ -280,7 +277,7 @@ export function SystemBackupsPanel() {
             width: 120,
             render: (value: string) => (
               <Tag color={value === 'ready' ? 'green' : 'red'}>
-                  {availabilityLabel(value)}
+                {availabilityLabel(value)}
               </Tag>
             )
           },
@@ -322,7 +319,7 @@ export function SystemBackupsPanel() {
                       key: 'download',
                       icon: <DownloadOutlined />,
                       label: t('download'),
-                      onClick: () => downloadMutation.mutate(item.backup_set_id)
+                      onClick: () => startDirectDownload(item.backup_set_id)
                     },
                     {
                       key: 'restore',
@@ -383,13 +380,193 @@ export function SystemBackupsPanel() {
                   key: 'backup_set_id',
                   label: 'ID',
                   children: detail.data.backup_set_id
+                },
+                {
+                  key: 'availability',
+                  label: t('status'),
+                  children: detailSummary
+                    ? availabilityLabel(detailSummary.availability)
+                    : '—'
+                },
+                {
+                  key: 'created_at',
+                  label: t('created_at'),
+                  children: detailSummary
+                    ? formatDateTime(detailSummary.created_at)
+                    : '—'
+                },
+                {
+                  key: 'size',
+                  label: t('size'),
+                  children: detailSummary
+                    ? formatBytes(detailSummary.total_size_bytes)
+                    : '—'
+                },
+                {
+                  key: 'digest',
+                  label: t('digest'),
+                  children: detailSummary?.envelope_digest ?? '—'
                 }
               ]}
             />
-            <Typography.Title level={5}>{t('manifest')}</Typography.Title>
-            <pre className="system-backups__manifest">
-              {JSON.stringify(detail.data.sealed_manifest, null, 2)}
-            </pre>
+            <Typography.Title level={5}>{t('content_scope')}</Typography.Title>
+            <Descriptions
+              column={{ xs: 1, sm: 2 }}
+              size="small"
+              items={[
+                {
+                  key: 'components',
+                  label: t('component_count'),
+                  children: detail.data.content.component_count
+                },
+                {
+                  key: 'postgresql',
+                  label: t('postgresql_count'),
+                  children: detail.data.content.postgresql_count
+                },
+                {
+                  key: 'objects',
+                  label: t('business_objects'),
+                  children: detail.data.content.business_object_count
+                },
+                {
+                  key: 'extensions',
+                  label: t('extension_artifacts'),
+                  children: detail.data.content.extension_artifact_count
+                },
+                {
+                  key: 'mcp',
+                  label: t('mcp_artifacts'),
+                  children: detail.data.content.mcp_artifact_count
+                },
+                {
+                  key: 'excluded',
+                  label: t('excluded_domains'),
+                  children:
+                    detail.data.content.excluded_domains.join(', ') || '—'
+                }
+              ]}
+            />
+            <Alert
+              showIcon
+              type={detail.data.compatibility.compatible ? 'success' : 'error'}
+              title={
+                detail.data.compatibility.compatible
+                  ? t('detail_compatible')
+                  : t('detail_incompatible')
+              }
+              description={
+                detail.data.compatibility.failures.join(', ') ||
+                t('compatibility_passed')
+              }
+            />
+            <Descriptions
+              column={1}
+              size="small"
+              items={[
+                {
+                  key: 'build',
+                  label: t('application_build'),
+                  children: detail.data.compatibility.application_build
+                },
+                {
+                  key: 'migration',
+                  label: t('migration_head'),
+                  children: detail.data.compatibility.migration_head
+                },
+                {
+                  key: 'verification',
+                  label: t('verification_result'),
+                  children:
+                    detail.data.verification.verified === null
+                      ? t('not_verified')
+                      : detail.data.verification.verified
+                        ? t('verified')
+                        : t('verification_failed')
+                },
+                {
+                  key: 'checked',
+                  label: t('verification_time'),
+                  children: detail.data.verification.checked_at
+                    ? formatDateTime(detail.data.verification.checked_at)
+                    : '—'
+                }
+              ]}
+            />
+            <Typography.Title level={5}>{t('components')}</Typography.Title>
+            <Table
+              dataSource={detail.data.components}
+              pagination={false}
+              rowKey="component_id"
+              scroll={{ x: 640 }}
+              size="small"
+              columns={[
+                {
+                  title: t('component'),
+                  dataIndex: 'component_id',
+                  ellipsis: true
+                },
+                { title: t('kind'), dataIndex: 'kind', width: 140 },
+                {
+                  title: t('size'),
+                  dataIndex: 'size_bytes',
+                  width: 100,
+                  render: formatBytes
+                },
+                {
+                  title: t('digest'),
+                  dataIndex: 'content_digest',
+                  ellipsis: true
+                }
+              ]}
+            />
+            <Typography.Title level={5}>{t('creation_log')}</Typography.Title>
+            <Table
+              dataSource={detail.data.creation_journal}
+              pagination={false}
+              rowKey="sequence"
+              size="small"
+              columns={[
+                { title: '#', dataIndex: 'sequence', width: 56 },
+                {
+                  title: t('created_at'),
+                  dataIndex: 'occurred_at',
+                  render: (value: string) => formatDateTime(value)
+                },
+                {
+                  title: t('journal_state'),
+                  dataIndex: 'state',
+                  render: (value: string | null) => value ?? '—'
+                },
+                {
+                  title: t('failure_code'),
+                  dataIndex: 'failure_code',
+                  render: (value: string | null) => value ?? '—'
+                }
+              ]}
+            />
+            <Typography.Title level={5}>
+              {t('recovery_history')}
+            </Typography.Title>
+            <Table
+              dataSource={detail.data.recovery_history}
+              pagination={false}
+              rowKey="recovery_job_id"
+              size="small"
+              columns={[
+                { title: 'ID', dataIndex: 'recovery_job_id', ellipsis: true },
+                {
+                  title: t('journal_state'),
+                  dataIndex: 'status',
+                  render: (value: string | null) => value ?? '—'
+                },
+                {
+                  title: t('created_at'),
+                  dataIndex: 'started_at',
+                  render: (value: string) => formatDateTime(value)
+                }
+              ]}
+            />
           </>
         ) : null}
       </Drawer>

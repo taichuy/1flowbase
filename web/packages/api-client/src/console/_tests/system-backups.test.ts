@@ -1,0 +1,23 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { getSystemBackupDownloadUrl } from '../system-backups';
+
+describe('system backup transport contract', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  test('returns a same-origin authenticated download URL without fetching or buffering a Blob', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const blobSpy = vi.spyOn(Response.prototype, 'blob');
+
+    expect(
+      getSystemBackupDownloadUrl(
+        '0198f8e1-21e0-7000-8000-000000000001',
+        'https://console.example.test'
+      )
+    ).toBe(
+      'https://console.example.test/api/console/settings/system-backups/0198f8e1-21e0-7000-8000-000000000001/download'
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(blobSpy).not.toHaveBeenCalled();
+  });
+});

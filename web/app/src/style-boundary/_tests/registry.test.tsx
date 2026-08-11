@@ -117,7 +117,9 @@ describe('style boundary registry', () => {
       'page.settings-system-runtime',
       'page.settings-applications',
       'page.settings-mcp-management',
-      'page.settings-docs'
+      'page.settings-docs',
+      'page.settings-backups.desktop',
+      'page.settings-backups.mobile'
     ]);
     expect(
       getSceneIdsForFiles([
@@ -137,6 +139,14 @@ describe('style boundary registry', () => {
     ).toEqual(['page.settings-applications']);
     expect(
       getSceneIdsForFiles([
+        'web/app/src/features/settings/components/system-backups/SystemBackupsPanel.tsx'
+      ])
+    ).toEqual([
+      'page.settings-backups.desktop',
+      'page.settings-backups.mobile'
+    ]);
+    expect(
+      getSceneIdsForFiles([
         'web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx'
       ])
     ).toEqual([
@@ -146,6 +156,17 @@ describe('style boundary registry', () => {
     expect(
       getSceneIdsForFiles(['web/app/src/features/me/pages/me-page.css'])
     ).toEqual(['page.me']);
+  });
+
+  test('registers responsive system backup scenes', () => {
+    expect(getRuntimeScene('page.settings-backups.desktop').viewport).toEqual({
+      width: 1440,
+      height: 900
+    });
+    expect(getRuntimeScene('page.settings-backups.mobile').viewport).toEqual({
+      width: 390,
+      height: 844
+    });
   });
 
   test('registers the translation catalog page readiness and responsive browse boundaries', () => {

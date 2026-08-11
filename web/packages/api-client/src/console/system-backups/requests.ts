@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchBlob, type ApiBlobResponse } from '../../transport';
+import { apiFetch, getDefaultApiBaseUrl } from '../../transport';
 import type {
   BackupMutationResponse,
   BackupSetDetailResponse,
@@ -62,11 +62,10 @@ export const deleteSystemBackup = (
     csrfToken,
     baseUrl
   });
-export const downloadSystemBackup = (
+export const getSystemBackupDownloadUrl = (
   backupSetId: string,
-  baseUrl?: string
-): Promise<ApiBlobResponse> =>
-  apiFetchBlob({ path: `${backupPath(backupSetId)}/download`, baseUrl });
+  baseUrl = getDefaultApiBaseUrl()
+) => `${baseUrl}${backupPath(backupSetId)}/download`;
 export const preflightSystemRecovery = (
   backupSetId: string,
   csrfToken: string,
