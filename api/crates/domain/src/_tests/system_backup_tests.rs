@@ -100,6 +100,42 @@ fn non_rebuildable_artifact_must_be_embedded() {
 }
 
 #[test]
+fn empty_business_object_is_valid_but_empty_postgres_is_not() {
+    let mut empty_object = postgres_component();
+    empty_object.component_id = BackupComponentId::try_from("object/empty").unwrap();
+    empty_object.kind = BackupComponentKind::BusinessObject;
+    empty_object.source_identity = BackupSourceIdentity::try_from("object/empty").unwrap();
+    empty_object.size_bytes = 0;
+    let valid = BackupManifest::try_new(
+        BackupSetId::new(),
+        OffsetDateTime::UNIX_EPOCH,
+        ApplicationBuild::try_from("git.5f906803").unwrap(),
+        MigrationHead::try_from("202608110001").unwrap(),
+        KeyFingerprint::try_from(fingerprint('b')).unwrap(),
+        KeyFingerprint::try_from(fingerprint('c')).unwrap(),
+        vec![postgres_component(), empty_object],
+        42,
+        ContentDigest::try_from(fingerprint('d')).unwrap(),
+    );
+    assert!(valid.is_ok());
+
+    let mut empty_postgres = postgres_component();
+    empty_postgres.size_bytes = 0;
+    assert!(BackupManifest::try_new(
+        BackupSetId::new(),
+        OffsetDateTime::UNIX_EPOCH,
+        ApplicationBuild::try_from("git.5f906803").unwrap(),
+        MigrationHead::try_from("202608110001").unwrap(),
+        KeyFingerprint::try_from(fingerprint('b')).unwrap(),
+        KeyFingerprint::try_from(fingerprint('c')).unwrap(),
+        vec![empty_postgres],
+        0,
+        ContentDigest::try_from(fingerprint('d')).unwrap(),
+    )
+    .is_err());
+}
+
+#[test]
 fn backup_job_rejects_skipped_and_post_terminal_transitions() {
     let now = OffsetDateTime::UNIX_EPOCH;
     let mut job = BackupJob::new(BackupJobId::new(), BackupSetId::new(), now);

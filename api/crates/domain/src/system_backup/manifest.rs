@@ -271,10 +271,11 @@ impl BackupManifest {
             if !component_ids.insert(component.component_id.clone()) {
                 return Err(BackupManifestError::DuplicateComponentId);
             }
-            if component.content_type.trim().is_empty()
-                || (component.disposition == BackupComponentDisposition::Embedded
-                    && component.size_bytes == 0)
-            {
+            let empty_embedded_payload_is_invalid = component.disposition
+                == BackupComponentDisposition::Embedded
+                && component.size_bytes == 0
+                && component.kind != BackupComponentKind::BusinessObject;
+            if component.content_type.trim().is_empty() || empty_embedded_payload_is_invalid {
                 return Err(BackupManifestError::InvalidComponentMetadata);
             }
             match component.kind {
