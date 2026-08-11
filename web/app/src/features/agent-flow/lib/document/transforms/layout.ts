@@ -1,9 +1,15 @@
-import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
+import type {
+  FlowAuthoringDocument,
+  FlowNodeDocument
+} from '@1flowbase/flow-schema';
 import { getNodeById, getOutgoingEdges } from '../selectors';
 import { isLlmToolSourceHandle } from '../../llm-node-config';
+import {
+  CANVAS_NODE_BASE_HEIGHT,
+  CANVAS_NODE_WIDTH,
+  getCanvasNodeMinimumHeightForDocument
+} from '../../canvas/node-dimensions';
 
-const NODE_WIDTH = 196;
-const NODE_HEIGHT = 96;
 const ARRANGE_ORIGIN_X = 120;
 const ARRANGE_ORIGIN_Y = 160;
 const ARRANGE_GAP_X = 280;
@@ -99,9 +105,7 @@ function collectMountLaneIds(
  */
 function resolveAABBCollisions(
   positions: Record<string, { x: number; y: number }>,
-  containerNodes: Array<{ id: string; containerId: string | null }>,
-  nodeWidth = NODE_WIDTH,
-  nodeHeight = NODE_HEIGHT,
+  containerNodes: FlowNodeDocument[],
   gapY = 40,
   maxIterations = 8
 ): Set<string> {
@@ -111,35 +115,36 @@ function resolveAABBCollisions(
     let anyCollisionResolved = false;
 
     for (let i = 0; i < containerNodes.length; i++) {
-      const idA = containerNodes[i].id;
+      const nodeA = containerNodes[i];
+      const idA = nodeA.id;
       const posA = positions[idA];
       if (!posA) continue;
 
       for (let j = i + 1; j < containerNodes.length; j++) {
-        const idB = containerNodes[j].id;
+        const nodeB = containerNodes[j];
+        const idB = nodeB.id;
         const posB = positions[idB];
         if (!posB) continue;
 
-        // 检测 2D 包围盒重叠量
-        const dx = nodeWidth + 30 - Math.abs(posB.x - posA.x); // X 轴安全边距
-        const dy = nodeHeight + gapY - Math.abs(posB.y - posA.y);
+        const dx =
+          CANVAS_NODE_WIDTH + 30 - Math.abs(posB.x - posA.x);
 
-        if (dx > 0 && dy > 0) {
-          // 发生空间碰撞，计算 Y 轴平移向量推开
-          let shiftId = idB;
-          let targetYSign = 1;
+        if (dx <= 0) {
+          continue;
+        }
 
-          if (posB.y < posA.y) {
-            shiftId = idA;
-            targetYSign = -1;
-          } else if (posB.y === posA.y) {
-            shiftId = idB;
-            targetYSign = 1;
-          }
+        const heightA = getCanvasNodeMinimumHeightForDocument(nodeA);
+        const heightB = getCanvasNodeMinimumHeightForDocument(nodeB);
+        const shiftId = posB.y < posA.y ? idA : idB;
+        const shiftDistance =
+          posB.y < posA.y
+            ? posB.y + heightB + gapY - posA.y
+            : posA.y + heightA + gapY - posB.y;
 
+        if (shiftDistance > 0) {
           positions[shiftId] = {
             x: positions[shiftId].x,
-            y: positions[shiftId].y + targetYSign * dy
+            y: positions[shiftId].y + shiftDistance
           };
           shiftedIds.add(shiftId);
           anyCollisionResolved = true;
@@ -278,7 +283,7 @@ export function shiftDownstreamNodesBFS(
   const shiftedNodeIds = new Set<string>();
 
   // 3. 执行阶段一：动态尺寸感知 BFS 拓扑推移
-  const netGapX = Math.max(0, gapX - NODE_WIDTH); // 保证 280 默认步长完美兼容
+  const netGapX = Math.max(0, gapX - CANVAS_NODE_WIDTH); // 保证 280 默认步长完美兼容
 
   while (queue.length > 0) {
     const currentNodeId = queue.shift()!;
@@ -302,7 +307,7 @@ export function shiftDownstreamNodesBFS(
       if (!targetCurrentPos) continue;
 
       // 计算目标节点的最小 X 坐标 (父节点 X 坐标 + 节点宽度 + 净间隙)
-      const targetMinX = currentPos.x + NODE_WIDTH + netGapX;
+      const targetMinX = currentPos.x + CANVAS_NODE_WIDTH + netGapX;
 
       if (targetCurrentPos.x < targetMinX) {
         positions[targetNodeId] = {
@@ -329,8 +334,6 @@ export function shiftDownstreamNodesBFS(
     shiftedAABBNodeIds = resolveAABBCollisions(
       positions,
       containerNodes,
-      NODE_WIDTH,
-      NODE_HEIGHT,
       40,
       8
     );
@@ -504,15 +507,25 @@ export function arrangeCanvasLeftToRight(
     }
 
     const layerHeight =
-      sortedLayerNodes.length * NODE_HEIGHT +
-      Math.max(0, sortedLayerNodes.length - 1) * ARRANGE_GAP_Y;
-    const layerTop = ARRANGE_ORIGIN_Y - (layerHeight - NODE_HEIGHT) / 2;
+      sortedLayerNodes.reduce(
+        (height, node) =>
+          height + getCanvasNodeMinimumHeightForDocument(node),
+        0
+      ) + Math.max(0, sortedLayerNodes.length - 1) * ARRANGE_GAP_Y;
+    const layerTop =
+      ARRANGE_ORIGIN_Y + CANVAS_NODE_BASE_HEIGHT / 2 - layerHeight / 2;
+    let nextNodeTop = layerTop;
 
-    sortedLayerNodes.forEach((node, index) => {
+    sortedLayerNodes.forEach((node) => {
+      const nodeTop = snapToGrid(nextNodeTop);
       positions[node.id] = {
         x: snapToGrid(ARRANGE_ORIGIN_X + layer * ARRANGE_GAP_X),
-        y: snapToGrid(layerTop + index * (NODE_HEIGHT + ARRANGE_GAP_Y))
+        y: nodeTop
       };
+      nextNodeTop =
+        nodeTop +
+        getCanvasNodeMinimumHeightForDocument(node) +
+        ARRANGE_GAP_Y;
     });
   }
 
@@ -552,10 +565,11 @@ export function arrangeCanvasLeftToRight(
   );
 
   for (const sourceId of sourceIdsWithMounts) {
+    const sourceNode = getNodeById(document, sourceId);
     const sourcePosition =
-      positions[sourceId] ?? getNodeById(document, sourceId)?.position;
+      positions[sourceId] ?? sourceNode?.position;
 
-    if (!sourcePosition) {
+    if (!sourcePosition || !sourceNode) {
       continue;
     }
 
@@ -579,19 +593,19 @@ export function arrangeCanvasLeftToRight(
       }
     );
 
-    mountEdges.forEach((edge, index) => {
+    let nextLaneTop =
+      sourcePosition.y +
+      getCanvasNodeMinimumHeightForDocument(sourceNode) +
+      ARRANGE_GAP_Y;
+
+    mountEdges.forEach((edge) => {
       const laneNodes = nodesByMountLaneId.get(edge.id);
 
       if (!laneNodes) {
         return;
       }
 
-      const laneTop = snapToGrid(
-        sourcePosition.y +
-          NODE_HEIGHT +
-          ARRANGE_GAP_Y +
-          index * (NODE_HEIGHT + ARRANGE_GAP_Y)
-      );
+      const laneTop = snapToGrid(nextLaneTop);
 
       for (const node of laneNodes.sort(
         (leftNode, rightNode) =>
@@ -606,14 +620,21 @@ export function arrangeCanvasLeftToRight(
           y: laneTop
         };
       }
+
+      nextLaneTop =
+        laneTop +
+        Math.max(
+          ...laneNodes.map((node) =>
+            getCanvasNodeMinimumHeightForDocument(node)
+          )
+        ) +
+        ARRANGE_GAP_Y;
     });
   }
 
   resolveAABBCollisions(
     positions,
     containerNodes,
-    NODE_WIDTH,
-    NODE_HEIGHT,
     ARRANGE_GAP_Y,
     8
   );

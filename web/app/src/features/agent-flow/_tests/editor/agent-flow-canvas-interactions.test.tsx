@@ -348,19 +348,18 @@ describe('AgentFlowCanvas interactions', () => {
     ).toEqual({ x: 480, y: 250 });
   });
 
-  test('projects stable measured dimensions for controlled React Flow nodes', () => {
+  test('lets React Flow measure controlled node heights from the DOM', () => {
     renderCanvas();
 
-    expect(latestReactFlowProps?.nodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'node-llm',
-          height: 96,
-          measured: { height: 96, width: 196 },
-          width: 196
-        })
-      ])
+    const llmNode = latestReactFlowProps?.nodes?.find(
+      (node) => node.id === 'node-llm'
     );
+
+    expect(llmNode).toEqual(
+      expect.objectContaining({ id: 'node-llm', width: 196 })
+    );
+    expect(llmNode?.height).toBeUndefined();
+    expect(llmNode?.measured).toBeUndefined();
   });
 
   test('projects default main edges to the right source handle when mounted tool handles exist', () => {
