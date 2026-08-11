@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 
 use super::{
     ApplicationBuild, BackupComponentId, BackupSetId, BackupSourceIdentity, ContentDigest,
-    KeyFingerprint, MigrationHead,
+    KeyFingerprint, ManifestAuthenticationTag, MigrationHead,
 };
 
 pub const SYSTEM_BACKUP_FORMAT_VERSION: u32 = 1;
@@ -250,7 +250,7 @@ impl BackupManifest {
         })
     }
 
-    pub fn try_from_parts(manifest: Self) -> Result<Self, BackupManifestError> {
+    pub fn try_from_parts(mut manifest: Self) -> Result<Self, BackupManifestError> {
         if manifest.format_version != SYSTEM_BACKUP_FORMAT_VERSION {
             return Err(BackupManifestError::UnsupportedFormatVersion);
         }
@@ -314,6 +314,36 @@ impl BackupManifest {
         if component_size != manifest.total_size_bytes {
             return Err(BackupManifestError::SizeMismatch);
         }
+        manifest
+            .components
+            .sort_by(|left, right| left.component_id.cmp(&right.component_id));
         Ok(manifest)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedBackupManifest {
+    manifest: BackupManifest,
+    authentication_tag: ManifestAuthenticationTag,
+}
+
+impl SealedBackupManifest {
+    pub fn new(manifest: BackupManifest, authentication_tag: ManifestAuthenticationTag) -> Self {
+        Self {
+            manifest,
+            authentication_tag,
+        }
+    }
+
+    pub fn manifest(&self) -> &BackupManifest {
+        &self.manifest
+    }
+
+    pub fn authentication_tag(&self) -> &ManifestAuthenticationTag {
+        &self.authentication_tag
+    }
+
+    pub fn into_manifest(self) -> BackupManifest {
+        self.manifest
     }
 }

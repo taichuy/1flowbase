@@ -2,8 +2,8 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use domain::{
-    BackupComponentId, BackupJournalEvent, BackupJournalSubject, BackupManifest,
-    BackupSetAvailability, BackupSetId, ContentDigest, KeyFingerprint,
+    BackupComponentId, BackupJournalEvent, BackupJournalSubject, BackupSetAvailability,
+    BackupSetId, ContentDigest, KeyFingerprint, SealedBackupManifest,
 };
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -47,14 +47,14 @@ pub trait BackupRepository: Send + Sync {
         component_id: &BackupComponentId,
     ) -> Result<BackupComponentWriter, BackupRepositoryError>;
 
-    async fn seal(&self, manifest: &BackupManifest) -> Result<(), BackupRepositoryError>;
+    async fn seal(&self, manifest: &SealedBackupManifest) -> Result<(), BackupRepositoryError>;
 
     async fn list(&self) -> Result<Vec<BackupSetCatalogEntry>, BackupRepositoryError>;
 
     async fn load_manifest(
         &self,
         backup_set_id: BackupSetId,
-    ) -> Result<BackupManifest, BackupRepositoryError>;
+    ) -> Result<SealedBackupManifest, BackupRepositoryError>;
 
     async fn open_component(
         &self,

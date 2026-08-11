@@ -124,3 +124,8 @@ checked_string!(ApplicationBuild, "application build", valid_identifier);
 checked_string!(MigrationHead, "migration head", valid_identifier);
 checked_string!(ContentDigest, "content digest", valid_fingerprint);
 checked_string!(KeyFingerprint, "key fingerprint", valid_fingerprint);
+checked_string!(
+    ManifestAuthenticationTag,
+    "manifest authentication tag",
+    valid_fingerprint
+);
