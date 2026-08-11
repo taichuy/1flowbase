@@ -10,7 +10,7 @@ pub use runtime::{
 };
 pub use storage_postgres::{
     execute_native_sql, migration_head, PgPoolSettings, PostgreSqlLogicalBackup,
-    PostgreSqlToolchain, RuntimeTableNamePolicy,
+    PostgreSqlRecoveryTarget, PostgreSqlToolchain, RuntimeTableNamePolicy,
 };
 
 pub fn crate_name() -> &'static str {

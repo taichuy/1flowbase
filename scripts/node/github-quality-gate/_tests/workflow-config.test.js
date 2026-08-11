@@ -273,6 +273,11 @@ test("Rust workflow caches are dependency-keyed and bounded across branches", ()
   );
 
   assert.match(containerWorkflow, /cargo build --release -p api-server --bin api-server/u);
+  assert.match(containerWorkflow, /--bin system_recovery/u);
+  assert.match(
+    containerWorkflow,
+    /system_recovery --help[\s\S]*?pg_dump --version[\s\S]*?pg_restore --version/u,
+  );
   assert.match(containerWorkflow, /- arch: amd64[\s\S]*?- arch: arm64/u);
   assert.match(containerWorkflow, /Enforce CRITICAL Trivy release gate/u);
 });
@@ -847,6 +852,10 @@ test("container image publishing avoids deprecated artifact runtime and qemu cac
   assert.match(
     apiServerDockerfile,
     /COPY --from=api_server_binaries \/\$\{TARGETARCH\}\/api-server \/usr\/local\/bin\/api-server/u,
+  );
+  assert.match(
+    apiServerDockerfile,
+    /COPY --from=api_server_binaries \/\$\{TARGETARCH\}\/system_recovery \/usr\/local\/bin\/system_recovery/u,
   );
 });
 

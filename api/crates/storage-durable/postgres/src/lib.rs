@@ -44,6 +44,7 @@ pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
 pub use repositories::PgControlPlaneStore;
 pub use system_backup::*;
+pub use system_recovery::PostgreSqlRecoveryTarget;
 
 use anyhow::Result;
 use sqlx::PgPool;

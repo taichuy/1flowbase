@@ -459,11 +459,13 @@ jobs:
               apt-get update
               apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config
               rm -rf /var/lib/apt/lists/*
-              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p api-server --bin api-server
-              install -Dm755 /workspace/target-cache/release/api-server /workspace/out/api-server'
+              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p api-server --bin api-server --bin system_recovery
+              install -Dm755 /workspace/target-cache/release/api-server /workspace/out/api-server
+              install -Dm755 /workspace/target-cache/release/system_recovery /workspace/out/system_recovery'
 
           sha256sum "$artifact_root/api-server" | tee "$artifact_root/api-server.sha256"
-          ls -lh "$artifact_root/api-server"
+          sha256sum "$artifact_root/system_recovery" | tee "$artifact_root/system_recovery.sha256"
+          ls -lh "$artifact_root/api-server" "$artifact_root/system_recovery"
           sudo chown -R "$(id -u):$(id -g)" "$cache_root"
 
       - name: Upload api-server binary artifact
@@ -515,8 +517,18 @@ jobs:
           mkdir -p tmp/api-server-binaries/amd64 tmp/api-server-binaries/arm64
           cp tmp/api-server-binary-artifacts/api-server-binary-amd64/api-server tmp/api-server-binaries/amd64/api-server
           cp tmp/api-server-binary-artifacts/api-server-binary-arm64/api-server tmp/api-server-binaries/arm64/api-server
-          chmod 0755 tmp/api-server-binaries/amd64/api-server tmp/api-server-binaries/arm64/api-server
-          sha256sum tmp/api-server-binaries/amd64/api-server tmp/api-server-binaries/arm64/api-server
+          cp tmp/api-server-binary-artifacts/api-server-binary-amd64/system_recovery tmp/api-server-binaries/amd64/system_recovery
+          cp tmp/api-server-binary-artifacts/api-server-binary-arm64/system_recovery tmp/api-server-binaries/arm64/system_recovery
+          chmod 0755 \
+            tmp/api-server-binaries/amd64/api-server \
+            tmp/api-server-binaries/arm64/api-server \
+            tmp/api-server-binaries/amd64/system_recovery \
+            tmp/api-server-binaries/arm64/system_recovery
+          sha256sum \
+            tmp/api-server-binaries/amd64/api-server \
+            tmp/api-server-binaries/arm64/api-server \
+            tmp/api-server-binaries/amd64/system_recovery \
+            tmp/api-server-binaries/arm64/system_recovery
 
       - name: Prepare api-server image references
         id: image_refs
@@ -556,6 +568,16 @@ jobs:
           cache-to: |
             type=gha,mode=max,scope=1flowbase-api-server-runtime
             type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }},mode=max
+
+      - name: Verify offline recovery and PostgreSQL tool provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 "${{ steps.image_refs.outputs.scan_image_ref }}"
+          docker run --rm --platform linux/amd64 \
+            --entrypoint /bin/sh \
+            "${{ steps.image_refs.outputs.scan_image_ref }}" \
+            -c 'system_recovery --help >/dev/null && pg_dump --version && pg_restore --version'
 
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance
