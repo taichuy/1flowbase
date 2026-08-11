@@ -342,6 +342,12 @@ impl SystemMaintenanceLease {
         self.maintenance.release(self.lease_token);
         self.released = true;
     }
+
+    /// Keeps the active fence after handing control to a terminal state that requires manual
+    /// intervention. Consuming the lease prevents its Drop implementation from reopening writes.
+    pub fn retain(mut self) {
+        self.released = true;
+    }
 }
 
 impl Drop for SystemMaintenanceLease {

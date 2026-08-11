@@ -105,7 +105,15 @@ pub struct OfflineRecoveryHandoff {
 
 impl OfflineRecoveryHandoff {
     pub fn abort(self) {
+        self.finish();
+    }
+
+    pub fn finish(self) {
         self.lease.finish();
+    }
+
+    pub fn retain(self) {
+        self.lease.retain();
     }
 }
 
