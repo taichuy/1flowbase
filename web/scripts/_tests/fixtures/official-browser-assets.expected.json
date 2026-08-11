@@ -4,7 +4,8 @@
     "@1flowbase/charts",
     "@1flowbase/native-components",
     "@1flowbase/rich-text",
-    "@ant-design/icons"
+    "@ant-design/icons",
+    "tailwindcss"
   ],
   "exports": {
     "@1flowbase/charts": ["EChart"],
@@ -51,6 +52,7 @@
       "UploadOutlined",
       "UserOutlined",
       "WarningOutlined"
-    ]
+    ],
+    "tailwindcss": ["default"]
   }
 }

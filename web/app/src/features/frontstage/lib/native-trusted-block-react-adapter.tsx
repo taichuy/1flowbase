@@ -317,13 +317,17 @@ function wrapWithHostProviders(
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
 ): ReactNode {
   const getShadowContainer = () => context.shadowRoot;
+  const isolatedTheme = {
+    ...providerScope?.theme,
+    hashed: createShadowThemeHash(context.plan.blockId)
+  } satisfies ConfigProviderProps['theme'];
   const scopedChildren = (
     <StyleProvider cache={styleCache} container={context.shadowRoot}>
       <ConfigProvider
         getPopupContainer={getShadowContainer}
         getTargetContainer={getShadowContainer}
         locale={providerScope?.locale}
-        theme={providerScope?.theme}
+        theme={isolatedTheme}
       >
         <AntdApp>{children}</AntdApp>
       </ConfigProvider>
@@ -333,4 +337,13 @@ function wrapWithHostProviders(
   return providerWrapper
     ? providerWrapper(scopedChildren, context)
     : scopedChildren;
+}
+
+function createShadowThemeHash(blockId: string): string {
+  let hash = 2166136261;
+  for (const character of blockId) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return `native-${(hash >>> 0).toString(36)}`;
 }

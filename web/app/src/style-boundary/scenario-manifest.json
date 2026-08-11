@@ -1,5 +1,114 @@
 [
   {
+    "id": "component.native-tailwind-boundary",
+    "kind": "component",
+    "title": "Native React Tailwind Shadow Boundary",
+    "impactFiles": [
+      "web/packages/tailwindcss-catalog/src/styles.css",
+      "web/packages/tailwindcss-catalog/src/inventory.ts",
+      "web/app/src/features/frontstage/lib/native-trusted-block-react-adapter.tsx",
+      "web/app/src/style-boundary/TailwindStyleBoundaryScenes.tsx",
+      "web/app/src/style-boundary/renderers.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "tailwind-wrapper",
+        "selector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-utility-wrapper']",
+        "propertyAssertions": [
+          { "property": "display", "expected": "grid" },
+          { "property": "gap", "expected": "16px" },
+          { "property": "padding", "expected": "16px" }
+        ]
+      },
+      {
+        "id": "baseline-wrapper",
+        "selector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-utility-wrapper']",
+        "propertyAssertions": [
+          { "property": "display", "expected": "block" },
+          { "property": "gap", "expected": "normal" },
+          { "property": "padding", "expected": "0px" }
+        ]
+      },
+      {
+        "id": "host-leak-probe",
+        "selector": "[data-testid='tailwind-host-leak-probe']",
+        "propertyAssertions": [
+          { "property": "display", "expected": "block" },
+          { "property": "gap", "expected": "normal" },
+          { "property": "padding", "expected": "0px" }
+        ]
+      }
+    ],
+    "comparisonAssertions": [
+      {
+        "id": "button-baseline",
+        "subjectSelector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-ant-button']",
+        "referenceSelector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-ant-button']",
+        "properties": ["font-size", "line-height", "border-radius", "padding-inline", "color", "background-color", "border-width"]
+      },
+      {
+        "id": "input-baseline",
+        "subjectSelector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-ant-input']",
+        "referenceSelector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-ant-input']",
+        "properties": ["font-size", "line-height", "border-radius", "padding-inline", "color", "background-color", "border-width"]
+      },
+      {
+        "id": "select-baseline",
+        "subjectSelector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-ant-select']",
+        "referenceSelector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-ant-select']",
+        "properties": ["font-size", "line-height", "color"]
+      },
+      {
+        "id": "table-baseline",
+        "subjectSelector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-ant-table']",
+        "referenceSelector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-ant-table']",
+        "properties": ["font-size", "line-height", "color", "background-color"]
+      },
+      {
+        "id": "modal-baseline",
+        "subjectSelector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-ant-modal']",
+        "referenceSelector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-ant-modal']",
+        "properties": ["font-size", "line-height", "color", "background-color", "border-radius"]
+      },
+      {
+        "id": "typography-baseline",
+        "subjectSelector": "[data-testid='tailwind-shadow-host'] [data-testid='tailwind-ant-typography']",
+        "referenceSelector": "[data-testid='baseline-shadow-host'] [data-testid='tailwind-ant-typography']",
+        "properties": ["font-size", "line-height", "font-weight", "color", "margin-block-end"]
+      }
+    ]
+  },
+  {
+    "id": "component.main-tailwind-module-boundary",
+    "kind": "component",
+    "title": "Main Repository Tailwind CSS Module Boundary",
+    "impactFiles": [
+      "web/app/src/style-boundary/tailwind-css-module-boundary.module.css",
+      "web/app/src/style-boundary/TailwindStyleBoundaryScenes.tsx",
+      "web/app/src/style-boundary/renderers.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "module-owner",
+        "selector": "[data-testid='tailwind-css-module-owner']",
+        "propertyAssertions": [
+          { "property": "display", "expected": "flex" },
+          { "property": "gap", "expected": "16px" },
+          { "property": "padding", "expected": "16px" }
+        ]
+      },
+      {
+        "id": "module-sibling",
+        "selector": "[data-testid='tailwind-css-module-sibling']",
+        "propertyAssertions": [
+          { "property": "display", "expected": "block" },
+          { "property": "gap", "expected": "normal" },
+          { "property": "padding", "expected": "0px" }
+        ]
+      }
+    ]
+  },
+  {
     "id": "component.embedded-agent-assistant-preview",
     "kind": "component",
     "title": "Embedded Agent Assistant Preview",

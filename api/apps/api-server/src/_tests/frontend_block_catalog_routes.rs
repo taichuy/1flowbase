@@ -388,11 +388,13 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .expect("system bootstrap must register the built-in JSX block");
 
     assert_eq!(jsx_block["code_template_language"], "tsx");
-    assert_eq!(jsx_block["code_template_version"], "5.0.0");
+    assert_eq!(jsx_block["code_template_version"], "6.0.0");
     let code_template = jsx_block["code_template"].as_str().unwrap();
     assert!(code_template.contains("export default function ExampleBlock"));
     assert!(code_template.contains("useState"));
     assert!(code_template.contains("onClick"));
+    assert!(code_template.contains("import 'tailwindcss'"));
+    assert!(code_template.contains("className=\"grid gap-4 p-4\""));
     assert!(!code_template.contains("BlockModule"));
     let sdk_declarations = jsx_block["code_modules"]
         .as_array()
@@ -456,6 +458,7 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         vec![
             "react",
             "antd",
+            "tailwindcss",
             "@1flowbase/block-sdk",
             "@1flowbase/native-components",
             "@ant-design/icons",
@@ -463,6 +466,16 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
             "@1flowbase/rich-text"
         ]
     );
+    let tailwind_module = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "tailwindcss")
+        .unwrap();
+    assert_eq!(tailwind_module["version"], "4.3.3");
+    assert_eq!(tailwind_module["exports"], json!(["default"]));
+    assert_eq!(tailwind_module["assets"][0]["role"], "shadow_style");
+    assert_eq!(tailwind_module["assets"][1]["role"], "browser_module");
     for module in jsx_block["code_modules"].as_array().unwrap() {
         let source = module["source"].as_str().unwrap();
         if matches!(source, "react" | "antd") {

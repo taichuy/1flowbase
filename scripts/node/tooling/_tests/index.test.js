@@ -31,6 +31,20 @@ test('tooling index dispatches check-style-boundary subcommand', async () => {
   assert.deepEqual(capturedArgv, ['all-pages']);
 });
 
+test('tooling index dispatches tailwind-boundary subcommand', async () => {
+  let capturedArgv = null;
+
+  const status = await main(['tailwind-boundary'], {
+    runTailwindBoundaryImpl(argv) {
+      capturedArgv = argv;
+      return 0;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.deepEqual(capturedArgv, []);
+});
+
 test('tooling index dispatches api-debug subcommand', async () => {
   let capturedArgv = null;
 

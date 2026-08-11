@@ -1,0 +1,27 @@
+{
+  "name": "@1flowbase/tailwindcss-catalog",
+  "version": "0.3.4",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./inventory": {
+      "types": "./dist/inventory.d.ts",
+      "default": "./src/inventory.ts"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "tailwindcss": "4.3.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
+  }
+}

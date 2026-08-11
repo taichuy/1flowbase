@@ -5,6 +5,7 @@ import { Surface } from '@1flowbase/native-components';
 import { MarkdownEditor, MarkdownPreview } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
+import tailwindCss from '@1flowbase/tailwindcss-catalog/styles.css?inline';
 import vditorCss from 'vditor/dist/index.css?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { ComponentProps, ComponentType } from 'react';
@@ -197,6 +198,7 @@ function PublicModulesBlock({ props }: { props: FixtureBlockProps }) {
     <Surface
       aria-label={`public-modules-${props.label}`}
       data-testid={`public-modules-${props.label}`}
+      className="grid gap-4 p-4"
     >
       <h3>
         <UserOutlined /> {props.label}
@@ -236,6 +238,12 @@ const publicModuleAssets = [
     `${vditorCss}\n${richTextCss}`
   )
 ];
+
+const tailwindModuleAsset = fixtureModuleStyle(
+  'tailwindcss',
+  'e',
+  tailwindCss
+);
 
 function NativeReactTrialFixture() {
   const [sourceRevision, setSourceRevision] = useState(1);
@@ -330,7 +338,7 @@ function NativeReactTrialFixture() {
         1,
         false,
         'l2',
-        publicModuleAssets
+        [...publicModuleAssets, tailwindModuleAsset]
       ),
       preparation(
         'public-b',
@@ -441,6 +449,9 @@ function NativeReactTrialFixture() {
             demand {priority}
           </button>
         ))}
+      </div>
+      <div data-testid="tailwind-host-fixture-probe" className="grid gap-4 p-4">
+        Host Tailwind isolation probe
       </div>
       {pageMounted ? (
         <InstrumentedPageCanvas

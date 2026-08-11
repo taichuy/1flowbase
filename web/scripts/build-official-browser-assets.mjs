@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import tailwindcss from '@tailwindcss/vite';
 import { build } from 'vite';
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,7 +16,8 @@ const MODULE_DIRECTORIES = [
   'ant-design-icons-catalog',
   'native-components',
   'charts',
-  'rich-text'
+  'rich-text',
+  'tailwindcss-catalog'
 ];
 
 export async function buildOfficialBrowserAssets(
@@ -37,6 +39,7 @@ export async function buildOfficialBrowserAssets(
         configFile: false,
         logLevel: 'silent',
         root: packageDirectory,
+        plugins: [tailwindcss()],
         resolve: {
           alias: {
             '@ant-design/icons': join(

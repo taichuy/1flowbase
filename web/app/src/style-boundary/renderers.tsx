@@ -25,6 +25,10 @@ import {
 } from './scene-fixtures';
 import { SettingsMcpManagementStyleBoundaryScene } from './SettingsMcpManagementStyleBoundaryScene';
 import { SettingsSystemRuntimeStyleBoundaryScene } from './SettingsSystemRuntimeStyleBoundaryScene';
+import {
+  MainRepositoryTailwindModuleBoundaryScene,
+  NativeTailwindStyleBoundaryScene
+} from './TailwindStyleBoundaryScenes';
 import { useAuthStore } from '../state/auth-store';
 import type { StyleBoundaryRuntimeScene } from './types';
 
@@ -115,6 +119,12 @@ function renderVariableGroupsScene(
 }
 
 export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
+  'component.native-tailwind-boundary': () => (
+    <NativeTailwindStyleBoundaryScene />
+  ),
+  'component.main-tailwind-module-boundary': () => (
+    <MainRepositoryTailwindModuleBoundaryScene />
+  ),
   'component.variable-groups.regular': () =>
     renderVariableGroupsScene(420, 'regular'),
   'component.variable-groups.compact': () =>

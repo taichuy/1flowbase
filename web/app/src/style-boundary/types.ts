@@ -13,6 +13,13 @@ export interface StyleBoundaryTargetNode {
   propertyAssertions: StyleBoundaryPropertyAssertion[];
 }
 
+export interface StyleBoundaryComparisonAssertion {
+  id: string;
+  subjectSelector: string;
+  referenceSelector: string;
+  properties: string[];
+}
+
 export type StyleBoundaryRelationshipAssertion =
   | {
       id: string;
@@ -58,6 +65,7 @@ export interface StyleBoundaryManifestScene {
     height: number;
   };
   relationshipAssertions?: StyleBoundaryRelationshipAssertion[];
+  comparisonAssertions?: StyleBoundaryComparisonAssertion[];
 }
 
 export interface StyleBoundaryRuntimeScene extends StyleBoundaryManifestScene {

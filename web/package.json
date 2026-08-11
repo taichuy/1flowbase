@@ -17,6 +17,7 @@
     "verify:full": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/test-frontend.js full",
     "runtime-gate": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/cli/runtime-gate.js",
     "style-boundary:all-pages": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/check-style-boundary/cli.js all-pages",
+    "style-boundary:all": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/check-style-boundary/cli.js all",
     "format": "prettier --check .",
     "format:write": "prettier --write ."
   },
@@ -27,6 +28,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
+    "@tailwindcss/vite": "4.3.3",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9.24.0",
     "eslint-plugin-jest-dom": "^5.5.0",
@@ -39,6 +41,7 @@
     "prettier": "^3.5.3",
     "turbo": "^2.9.14",
     "typescript": "^5.8.3",
+    "tailwindcss": "4.3.3",
     "typescript-eslint": "^8.29.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.0"

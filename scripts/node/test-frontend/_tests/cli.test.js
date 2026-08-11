@@ -38,10 +38,16 @@ test('frontend coverage reuses the stable full-test exclusion inventory', () => 
   assert.equal(coverageArgs, stableArgs);
 });
 
-test('buildCommands maps full layer to lint, test, build and style-boundary', () => {
+test('buildCommands maps full layer to Tailwind, lint, test, build and all style boundaries', () => {
   const repoRoot = '/repo-root';
 
   assert.deepEqual(buildCommands({ layer: 'full', repoRoot }), [
+    {
+      label: 'frontend-tailwind-boundary',
+      command: process.execPath,
+      args: [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'tailwind-boundary'],
+      cwd: repoRoot,
+    },
     {
       label: 'frontend-lint',
       command: 'pnpm',
@@ -63,7 +69,7 @@ test('buildCommands maps full layer to lint, test, build and style-boundary', ()
     {
       label: 'frontend-style-boundary',
       command: process.execPath,
-      args: [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'check-style-boundary', 'all-pages'],
+      args: [path.join(repoRoot, 'scripts', 'node', 'tooling.js'), 'check-style-boundary', 'all'],
       cwd: repoRoot,
     },
   ]);

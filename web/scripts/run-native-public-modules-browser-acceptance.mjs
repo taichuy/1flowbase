@@ -106,6 +106,36 @@ async function verifyFixture(browserInstance, fixture) {
               'style[data-module-source="@1flowbase/native-components"]'
             ).length ?? 0
         ),
+        tailwindStyles: publicHosts.map(
+          (host) =>
+            host.shadowRoot?.querySelectorAll(
+              'style[data-module-source="tailwindcss"]'
+            ).length ?? 0
+        ),
+        publicLayout: publicHosts.map((host) => {
+          const element = host.shadowRoot?.querySelector(
+            '[data-testid^=public-modules-]'
+          );
+          if (!element) return null;
+          const style = getComputedStyle(element);
+          return {
+            display: style.display,
+            gap: style.gap,
+            padding: style.padding
+          };
+        }),
+        hostLayout: (() => {
+          const element = document.querySelector(
+            '[data-testid=tailwind-host-fixture-probe]'
+          );
+          if (!element) return null;
+          const style = getComputedStyle(element);
+          return {
+            display: style.display,
+            gap: style.gap,
+            padding: style.padding
+          };
+        })(),
         leakedModuleStyles: document.head.querySelectorAll(
           'style[data-module-source]'
         ).length,
@@ -224,6 +254,17 @@ function assertNativeEvidence(name, evidence) {
     evidence.canvases.some((count) => count < 1) ||
     evidence.richStyles.some((count) => count !== 1) ||
     evidence.nativeStyles.some((count) => count !== 1) ||
+    evidence.tailwindStyles[0] !== 1 ||
+    evidence.tailwindStyles[1] !== 0 ||
+    evidence.publicLayout[0]?.display !== 'grid' ||
+    evidence.publicLayout[0]?.gap !== '16px' ||
+    evidence.publicLayout[0]?.padding !== '16px' ||
+    evidence.publicLayout[1]?.display !== 'block' ||
+    evidence.publicLayout[1]?.gap !== 'normal' ||
+    evidence.publicLayout[1]?.padding !== '0px' ||
+    evidence.hostLayout?.display !== 'block' ||
+    evidence.hostLayout?.gap !== 'normal' ||
+    evidence.hostLayout?.padding !== '0px' ||
     evidence.leakedModuleStyles !== 0
   ) {
     throw new Error(

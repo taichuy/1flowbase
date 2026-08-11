@@ -1,0 +1,8 @@
+{
+  "module_source": "tailwindcss",
+  "module_version": "4.3.3",
+  "entry": "src/index.ts",
+  "exports": ["default"],
+  "type_declarations": "src/catalog-module.d.ts",
+  "support_assets": ["src/styles.css"]
+}

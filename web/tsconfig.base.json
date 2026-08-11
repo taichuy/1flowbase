@@ -23,6 +23,12 @@
       ],
       "@1flowbase/charts": ["packages/charts/src/index.tsx"],
       "@1flowbase/rich-text": ["packages/rich-text/src/index.tsx"],
+      "@1flowbase/tailwindcss-catalog": [
+        "packages/tailwindcss-catalog/src/index.ts"
+      ],
+      "@1flowbase/tailwindcss-catalog/*": [
+        "packages/tailwindcss-catalog/src/*"
+      ],
       "@1flowbase/flow-schema": ["packages/flow-schema/src/index.ts"],
       "@1flowbase/block-renderer": ["packages/block-renderer/src/index.tsx"],
       "@1flowbase/block-sdk": ["packages/block-sdk/src/index.ts"],

@@ -217,6 +217,12 @@ function buildFrontendCommands({ layer, repoRoot, env = process.env }) {
 
   return [
     {
+      label: 'frontend-tailwind-boundary',
+      command: nodeBinary,
+      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'tailwind-boundary'],
+      cwd: repoRoot,
+    },
+    {
       label: 'frontend-lint',
       command: 'pnpm',
       args: ['--dir', 'web', 'lint'],
@@ -237,7 +243,7 @@ function buildFrontendCommands({ layer, repoRoot, env = process.env }) {
     {
       label: 'frontend-style-boundary',
       command: nodeBinary,
-      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'check-style-boundary', 'all-pages'],
+      args: [resolveScriptsNodeCliEntry(repoRoot, 'tooling'), 'check-style-boundary', 'all'],
       cwd: repoRoot,
     },
   ];

@@ -31,22 +31,26 @@ block_contributions:
     entry: index.js
     code_template: |
       import { useState } from 'react';
+      import { Button, Typography } from 'antd';
+      import 'tailwindcss';
       import type { BlockComponentProps } from '@1flowbase/block-sdk';
       import { Surface } from '@1flowbase/native-components';
 
       export default function ExampleBlock({ ctx }: BlockComponentProps) {
         const [count, setCount] = useState(0);
         return (
-          <Surface className="example-block" style={{ padding: 16 }}>
-            <h2>代码示例区块</h2>
-            <p>Workspace: {ctx.workspace.name ?? ctx.workspace.id}</p>
-            <button type="button" onClick={() => setCount((value) => value + 1)}>
+          <Surface className="grid gap-4 p-4">
+            <Typography.Title level={3}>代码示例区块</Typography.Title>
+            <Typography.Text>
+              Workspace: {ctx.workspace.name ?? ctx.workspace.id}
+            </Typography.Text>
+            <Button type="primary" onClick={() => setCount((value) => value + 1)}>
               Clicked {count} times
-            </button>
+            </Button>
           </Surface>
         );
       }
-    code_template_version: 5.0.0
+    code_template_version: 6.0.0
     code_template_language: tsx
     code_modules:
       - source: "react"
@@ -104,6 +108,24 @@ block_contributions:
             export const Typography: AntComponent; export const Upload: AntComponent; export const Watermark: AntComponent;
             export const message: Record<string, unknown>; export const notification: Record<string, unknown>;
             export const theme: Record<string, unknown>; export const version: string;
+          }
+      - source: "tailwindcss"
+        version: "4.3.3"
+        exports: [default]
+        binding: fetched
+        assets:
+          - path: "browser-assets/tailwindcss-catalog.css"
+            role: shadow_style
+            media_type: "text/css; charset=utf-8"
+            sha256: "14b8d5ee303508395223aa26fff3de63c24dbc01a0d0a425cb822e91dd517c9c"
+          - path: "browser-assets/tailwindcss-catalog.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "0255492fd53bec8f526038f4a44b254191e7a94bb415189d000c217b7aa683e5"
+        type_declarations: |
+          declare module 'tailwindcss' {
+            const tailwindcss: Readonly<{ name: 'tailwindcss'; version: '4.3.3' }>;
+            export default tailwindcss;
           }
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
@@ -238,7 +260,7 @@ block_contributions:
           - path: "browser-assets/ant-design-icons-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "908c87d3f5ba137167f568487ece77fd0d5463c8e08396c927bec0df12745800"
+            sha256: "1571f71386d3e5f310128922d8c9a599143c0bfe4e2f412bb560781c44ebb4fb"
         type_declarations: |
           declare module '@ant-design/icons' {
             import type { ComponentType, CSSProperties } from 'react';

@@ -14,6 +14,7 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompilerWorkerFactory
 } from './native-react-compiler-browser';
+import { diagnoseUnsupportedTailwindUtilities } from './tailwind-utility-diagnostics';
 
 export type NativeReactSourcePreparationDiagnostic =
   | NativeReactCompileDiagnostic
@@ -51,6 +52,16 @@ export async function prepareNativeReactSource({
   registryFactory: NativeReactModuleRegistryFactory;
   evaluationBindings?: NativeReactArtifactEvaluationBindings;
 }): Promise<NativeReactSourcePreparationResult> {
+  const tailwindDiagnostics = diagnoseUnsupportedTailwindUtilities(frozenSource);
+  if (tailwindDiagnostics.length > 0) {
+    return {
+      ok: false,
+      diagnostics: tailwindDiagnostics.map((diagnostic) => ({
+        phase: 'compile' as const,
+        ...diagnostic
+      }))
+    };
+  }
   const compiled = await compiler({
     source: frozenSource,
     requestId,

@@ -8,7 +8,7 @@ const {
   resolvePnpmBinaryFromPath
 } = require('../testing/node-runtime.js');
 
-const MODES = new Set(['component', 'page', 'file', 'all-pages']);
+const MODES = new Set(['component', 'page', 'file', 'all-pages', 'all']);
 const USER_FRONTEND_PORT = 3100;
 const DEFAULT_STYLE_BOUNDARY_BASE_URL = `http://127.0.0.1:${USER_FRONTEND_PORT}`;
 const DEFAULT_TEMPORARY_FRONTEND_PORT = 3101;
@@ -54,7 +54,7 @@ function parseCliArgs(argv) {
     throw new Error(`Unknown mode: ${mode}`);
   }
 
-  if (mode !== 'all-pages' && !target) {
+  if (!['all-pages', 'all'].includes(mode) && !target) {
     throw new Error(`Mode ${mode} requires a target`);
   }
 
@@ -66,13 +66,14 @@ function parseCliArgs(argv) {
 }
 
 function usage() {
-  process.stdout.write(`用法：node scripts/node/check-style-boundary/cli.js <component|page|file|all-pages> [target]
+  process.stdout.write(`用法：node scripts/node/check-style-boundary/cli.js <component|page|file|all-pages|all> [target]
 
 示例：
   node scripts/node/check-style-boundary/cli.js component component.account-popup
   node scripts/node/check-style-boundary/cli.js page page.home
   node scripts/node/check-style-boundary/cli.js file web/app/src/styles/global.css
   node scripts/node/check-style-boundary/cli.js all-pages
+  node scripts/node/check-style-boundary/cli.js all
 `);
 }
 
@@ -96,6 +97,8 @@ function resolveSceneIds(manifest, options) {
       return [options.target];
     case 'all-pages':
       return manifest.filter((scene) => scene.kind === 'page').map((scene) => scene.id);
+    case 'all':
+      return manifest.map((scene) => scene.id);
     case 'file': {
       const matched = manifest
         .filter((scene) => scene.impactFiles.includes(options.target))
@@ -457,16 +460,59 @@ async function collectNodeResult(page, cdp, styleSheets, node) {
     element.setAttribute('data-style-boundary-probe', 'active');
   });
 
-  const actual = await locator.evaluate((element, propertyAssertions) => {
+  const evaluated = await locator.evaluate((element, propertyAssertions) => {
     const styles = window.getComputedStyle(element);
+    const root = element.getRootNode();
+    const matchedRules = [];
+    if (root instanceof ShadowRoot) {
+      const collectRules = (rules, sourceUrl) => {
+        for (const rule of rules) {
+          if ('selectorText' in rule && typeof rule.selectorText === 'string') {
+            try {
+              if (element.matches(rule.selectorText)) {
+                matchedRules.push({ selector: rule.selectorText, origin: 'author', sourceUrl });
+              }
+            } catch (_error) {
+              // Ignore unsupported selectors while preserving computed-style evidence.
+            }
+          }
+          if ('cssRules' in rule && rule.cssRules) {
+            collectRules(rule.cssRules, sourceUrl);
+          }
+        }
+      };
+      for (const style of root.querySelectorAll('style')) {
+        const sourceUrl = style.dataset.moduleSource || 'inline-shadow';
+        try {
+          collectRules(style.sheet?.cssRules || [], sourceUrl);
+        } catch (_error) {
+          // Inaccessible sheets cannot occur for injected inline styles; keep the probe resilient.
+        }
+      }
+    }
 
-    return Object.fromEntries(
-      propertyAssertions.map((assertion) => [
-        assertion.property,
-        styles.getPropertyValue(assertion.property)
-      ])
-    );
+    return {
+      actual: Object.fromEntries(
+        propertyAssertions.map((assertion) => [
+          assertion.property,
+          styles.getPropertyValue(assertion.property)
+        ])
+      ),
+      isShadowNode: root instanceof ShadowRoot,
+      matchedRules
+    };
   }, node.propertyAssertions);
+
+  if (evaluated.isShadowNode) {
+    await locator.evaluate((element) => {
+      element.removeAttribute('data-style-boundary-probe');
+    });
+    return {
+      node,
+      actual: evaluated.actual,
+      matchedRules: evaluated.matchedRules
+    };
+  }
 
   const { root } = await cdp.send('DOM.getDocument', {});
   const nodeId = await cdp.send('DOM.querySelector', {
@@ -481,13 +527,57 @@ async function collectNodeResult(page, cdp, styleSheets, node) {
 
   return {
     node,
-    actual,
+    actual: evaluated.actual,
     matchedRules: (matched.matchedCSSRules || []).map((ruleMatch) => ({
       selector: ruleMatch.rule.selectorList.text,
       origin: ruleMatch.rule.origin,
       sourceUrl: styleSheets.get(ruleMatch.rule.style.styleSheetId) || 'inline'
     }))
   };
+}
+
+async function collectComparisonViolations(page, assertions = []) {
+  const violations = [];
+  for (const assertion of assertions) {
+    const subject = page.locator(assertion.subjectSelector).first();
+    const reference = page.locator(assertion.referenceSelector).first();
+    await Promise.all([subject.waitFor(), reference.waitFor()]);
+    const [subjectStyles, referenceStyles] = await Promise.all([
+      subject.evaluate((element, properties) => {
+        const styles = window.getComputedStyle(element);
+        return Object.fromEntries(
+          properties.map((property) => [property, styles.getPropertyValue(property)])
+        );
+      }, assertion.properties),
+      reference.evaluate((element, properties) => {
+        const styles = window.getComputedStyle(element);
+        return Object.fromEntries(
+          properties.map((property) => [property, styles.getPropertyValue(property)])
+        );
+      }, assertion.properties)
+    ]);
+    for (const property of assertion.properties) {
+      if (subjectStyles[property] === referenceStyles[property]) continue;
+      violations.push({
+        assertionId: assertion.id,
+        subjectSelector: assertion.subjectSelector,
+        referenceSelector: assertion.referenceSelector,
+        property,
+        expected: referenceStyles[property],
+        actual: subjectStyles[property]
+      });
+    }
+  }
+  return violations;
+}
+
+function formatComparisonFailure(sceneId, violations) {
+  return `样式比较失败：${sceneId} ${violations
+    .map(
+      (violation) =>
+        `${violation.assertionId}.${violation.property} expected=${violation.expected} actual=${violation.actual} subject=${violation.subjectSelector} reference=${violation.referenceSelector}`
+    )
+    .join(', ')}`;
 }
 
 function collectViolations(results) {
@@ -982,6 +1072,10 @@ async function runScene(browser, baseUrl, scene) {
     page,
     scene.relationshipAssertions || []
   );
+  const comparisonViolations = await collectComparisonViolations(
+    page,
+    scene.comparisonAssertions || []
+  );
 
   return {
     page,
@@ -990,7 +1084,8 @@ async function runScene(browser, baseUrl, scene) {
     relationshipViolations: collectRelationshipViolations(
       scene.relationshipAssertions || [],
       relationshipMeasurements
-    )
+    ),
+    comparisonViolations
   };
 }
 
@@ -1042,7 +1137,8 @@ async function main(argv) {
 
       if (
         result.violations.length > 0 ||
-        result.relationshipViolations.length > 0
+        result.relationshipViolations.length > 0 ||
+        result.comparisonViolations.length > 0
       ) {
         const screenshotPath = path.join(uploadsDir, `${scene.id}.png`);
         await result.page.screenshot({ path: screenshotPath, fullPage: true });
@@ -1055,6 +1151,12 @@ async function main(argv) {
         if (result.relationshipViolations.length > 0) {
           failureMessages.push(
             formatRelationshipFailure(scene.id, result.relationshipViolations)
+          );
+        }
+
+        if (result.comparisonViolations.length > 0) {
+          failureMessages.push(
+            formatComparisonFailure(scene.id, result.comparisonViolations)
           );
         }
 
@@ -1073,10 +1175,12 @@ async function main(argv) {
 module.exports = {
   buildTemporaryFrontendCommand,
   collectRelationshipViolations,
+  collectComparisonViolations,
   createScenePage,
   createProbeUrl,
   formatBoundaryFailure,
   formatRelationshipFailure,
+  formatComparisonFailure,
   installStyleBoundaryNetworkMocks,
   isStyleBoundaryFrontendReady,
   main,

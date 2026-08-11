@@ -24,7 +24,7 @@
         "ScrollableSurface",
         "Surface"
       ],
-      "type_declarations": "declare module '@1flowbase/native-components' {\n  import type {\n    ComponentType,\n    ElementType,\n    HTMLAttributes,\n    ReactNode\n  } from 'react';\n\n  export interface SurfaceProps extends HTMLAttributes<HTMLElement> {\n    readonly as?: ElementType;\n    readonly children?: ReactNode;\n  }\n  export interface ScrollableSurfaceProps extends SurfaceProps {}\n  export const Surface: ComponentType<SurfaceProps>;\n  export const ScrollableSurface: ComponentType<ScrollableSurfaceProps>;\n}\n",
+      "type_declarations": "declare module '@1flowbase/native-components' {\n  import type {\n    ComponentType,\n    ElementType,\n    HTMLAttributes,\n    ReactNode\n  } from 'react';\n\n  export interface SurfaceProps extends HTMLAttributes<HTMLElement> {\n    readonly as?: ElementType;\n    readonly children?: ReactNode;\n  }\n  export type ScrollableSurfaceProps = SurfaceProps;\n  export const Surface: ComponentType<SurfaceProps>;\n  export const ScrollableSurface: ComponentType<ScrollableSurfaceProps>;\n}\n",
       "assets": [
         {
           "path": "native-components.css",
@@ -114,7 +114,29 @@
           "path": "ant-design-icons-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "908c87d3f5ba137167f568487ece77fd0d5463c8e08396c927bec0df12745800"
+          "sha256": "1571f71386d3e5f310128922d8c9a599143c0bfe4e2f412bb560781c44ebb4fb"
+        }
+      ]
+    },
+    {
+      "module_source": "tailwindcss",
+      "module_version": "4.3.3",
+      "exports": [
+        "default"
+      ],
+      "type_declarations": "declare module 'tailwindcss' {\n  const tailwindcss: Readonly<{ name: 'tailwindcss'; version: '4.3.3' }>;\n  export default tailwindcss;\n}\n",
+      "assets": [
+        {
+          "path": "tailwindcss-catalog.css",
+          "role": "shadow_style",
+          "media_type": "text/css; charset=utf-8",
+          "sha256": "14b8d5ee303508395223aa26fff3de63c24dbc01a0d0a425cb822e91dd517c9c"
+        },
+        {
+          "path": "tailwindcss-catalog.js",
+          "role": "browser_module",
+          "media_type": "text/javascript; charset=utf-8",
+          "sha256": "0255492fd53bec8f526038f4a44b254191e7a94bb415189d000c217b7aa683e5"
         }
       ]
     }

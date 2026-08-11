@@ -4,10 +4,12 @@ const path = require('node:path');
 
 const {
   buildTemporaryFrontendCommand,
+  collectComparisonViolations,
   collectRelationshipViolations,
   createScenePage,
   createProbeUrl,
   formatBoundaryFailure,
+  formatComparisonFailure,
   formatRelationshipFailure,
   installStyleBoundaryNetworkMocks,
   isStyleBoundaryFrontendReady,
@@ -19,7 +21,7 @@ const {
   resolveSceneViewport
 } = require('../core.js');
 
-test('parseCliArgs supports component, page, file, and all-pages modes', () => {
+test('parseCliArgs supports component, page, file, all-pages, and all modes', () => {
   assert.deepEqual(parseCliArgs(['component', 'component.account-popup']), {
     mode: 'component',
     target: 'component.account-popup',
@@ -40,6 +42,23 @@ test('parseCliArgs supports component, page, file, and all-pages modes', () => {
     target: null,
     help: false
   });
+  assert.deepEqual(parseCliArgs(['all']), {
+    mode: 'all',
+    target: null,
+    help: false
+  });
+});
+
+test('resolveSceneIds all mode includes page and component scenes', () => {
+  const manifest = [
+    { id: 'component.account-popup', kind: 'component', impactFiles: [] },
+    { id: 'page.home', kind: 'page', impactFiles: [] }
+  ];
+
+  assert.deepEqual(
+    resolveSceneIds(manifest, { mode: 'all', target: null }),
+    ['component.account-popup', 'page.home']
+  );
 });
 
 test('resolveSceneIds expands explicit file mappings and errors on missing coverage', () => {
@@ -372,6 +391,49 @@ test('formatBoundaryFailure labels style boundary regressions explicitly', () =>
     ]),
     '样式边界失败：page.home shell-header.display expected=flex actual=block source=http://127.0.0.1:3100/src/styles/global.css::.app-shell-header'
   );
+});
+
+test('AC-005 comparison assertions detect Tailwind-to-Ant computed style drift', async () => {
+  const values = {
+    '.tailwind .ant-btn': { 'font-size': '14px', 'border-radius': '0px' },
+    '.baseline .ant-btn': { 'font-size': '14px', 'border-radius': '6px' }
+  };
+  const page = {
+    locator(selector) {
+      return {
+        first() {
+          return this;
+        },
+        async waitFor() {},
+        async evaluate(_callback, properties) {
+          return Object.fromEntries(
+            properties.map((property) => [property, values[selector][property]])
+          );
+        }
+      };
+    }
+  };
+
+  const violations = await collectComparisonViolations(page, [
+    {
+      id: 'antd-button-baseline',
+      subjectSelector: '.tailwind .ant-btn',
+      referenceSelector: '.baseline .ant-btn',
+      properties: ['font-size', 'border-radius']
+    }
+  ]);
+
+  assert.deepEqual(violations, [
+    {
+      assertionId: 'antd-button-baseline',
+      subjectSelector: '.tailwind .ant-btn',
+      referenceSelector: '.baseline .ant-btn',
+      property: 'border-radius',
+      expected: '6px',
+      actual: '0px'
+    }
+  ]);
+  assert.match(formatComparisonFailure('component.tailwind', violations), /border-radius/u);
 });
 
 test('collectRelationshipViolations detects no_overlap, within_container, min_gap, fully_visible, and fills_container_bottom regressions', () => {
