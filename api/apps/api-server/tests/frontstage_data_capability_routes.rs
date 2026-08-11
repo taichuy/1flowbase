@@ -202,6 +202,7 @@ async fn fixture() -> Fixture {
     let process_started_at = OffsetDateTime::now_utc();
     let state = Arc::new(ApiState {
         store: store.clone(),
+        system_maintenance: Arc::new(control_plane::system_recovery::SystemMaintenance::default()),
         authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
         settings_feature_registry,
         console_operation_registry,

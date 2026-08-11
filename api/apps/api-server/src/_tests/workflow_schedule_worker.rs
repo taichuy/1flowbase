@@ -1,6 +1,7 @@
 use control_plane::application_public_api::workflow_schedule::WORKFLOW_SCHEDULE_RUN_QUEUE;
+use domain::RecoveryJobId;
 use serde_json::json;
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 
 use crate::{
     _tests::support::test_api_state_with_database_url,
@@ -41,4 +42,41 @@ async fn workflow_schedule_worker_acks_invalid_tasks_without_retrying() {
         entries.iter().all(|entry| entry.key != task_id),
         "invalid schedule task should be acknowledged instead of retried"
     );
+}
+
+#[tokio::test]
+async fn workflow_schedule_worker_does_not_claim_tasks_during_maintenance() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let task_queue = state.infrastructure.task_queue();
+    let task_id = task_queue
+        .enqueue(
+            WORKFLOW_SCHEDULE_RUN_QUEUE,
+            json!({
+                "application_id": uuid::Uuid::now_v7(),
+                "flow_run_id": uuid::Uuid::now_v7()
+            }),
+            None,
+        )
+        .await
+        .unwrap();
+    let _lease = state
+        .system_maintenance
+        .begin(RecoveryJobId::new(), OffsetDateTime::now_utc())
+        .unwrap();
+
+    let outcome = consume_one_workflow_schedule_run(
+        state.clone(),
+        "schedule-worker-test",
+        Duration::seconds(30),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome, WorkflowScheduleWorkerOutcome::PausedForMaintenance);
+    assert!(task_queue
+        .list_ephemeral_entries()
+        .await
+        .unwrap()
+        .iter()
+        .any(|entry| entry.key == task_id));
 }

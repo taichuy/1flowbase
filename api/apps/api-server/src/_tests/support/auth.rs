@@ -241,6 +241,9 @@ async fn test_state_with_runtime_profile_state(
                 ],
             ))),
             store: store.clone(),
+            system_maintenance: Arc::new(
+                control_plane::system_recovery::SystemMaintenance::default(),
+            ),
             authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
             settings_feature_registry,
             console_operation_registry,

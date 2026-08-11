@@ -105,6 +105,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
     let state = Arc::new(ApiState {
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
+        system_maintenance: base_state.system_maintenance.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),

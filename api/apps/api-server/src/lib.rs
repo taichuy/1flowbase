@@ -227,6 +227,10 @@ fn console_router_with_assembly(
             state.clone(),
             middleware::require_settings_feature_permission::require_settings_feature_permission,
         ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::system_maintenance::fence_mutating_requests,
+        ))
         .with_state(state)
 }
 
@@ -501,6 +505,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         #[cfg(test)]
         test_resources: None,
         store,
+        system_maintenance: Arc::new(control_plane::system_recovery::SystemMaintenance::default()),
         authenticator_registry,
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),

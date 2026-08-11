@@ -44,6 +44,7 @@ mod settings_feature_explicit_namespace_routes;
 mod settings_feature_members_routes;
 mod settings_feature_roles_routes;
 pub(crate) mod support;
+mod system_maintenance;
 mod ui_management_routes;
 
 pub(crate) use application::{

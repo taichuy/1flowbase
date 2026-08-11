@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use control_plane::ports::{
     ClaimedTask, ProviderRequestLogTask, TaskQueue, PROVIDER_REQUEST_LOG_QUEUE,
 };
+use control_plane::system_recovery::SystemWriteOwner;
 use time::Duration;
 use tracing::{error, warn};
 
@@ -21,6 +22,7 @@ const SHUTDOWN_DRAIN_TIMEOUT: StdDuration = StdDuration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProviderRequestLogWorkerOutcome {
+    PausedForMaintenance,
     QueueUnavailable,
     NoTask,
     Processed {
@@ -35,6 +37,13 @@ pub async fn consume_provider_request_log_batch(
     worker_id: &str,
     visibility_timeout: Duration,
 ) -> Result<ProviderRequestLogWorkerOutcome> {
+    let _write_permit = match state
+        .system_maintenance
+        .try_enter_write(SystemWriteOwner::ProviderRequestLogPersistence)
+    {
+        Ok(permit) => permit,
+        Err(_) => return Ok(ProviderRequestLogWorkerOutcome::PausedForMaintenance),
+    };
     let Some(task_queue) = state.infrastructure.registered_task_queue() else {
         return Ok(ProviderRequestLogWorkerOutcome::QueueUnavailable);
     };
@@ -173,6 +182,11 @@ async fn run_provider_request_log_worker(state: Arc<ApiState>) {
             }
             outcome = consume_provider_request_log_batch(state.clone(), WORKER_ID, VISIBILITY_TIMEOUT) => {
                 match outcome {
+                    Ok(ProviderRequestLogWorkerOutcome::PausedForMaintenance) => {
+                        // Return to the select promptly so shutdown can still win
+                        // while recovery keeps the worker paused.
+                        tokio::time::sleep(IDLE_SLEEP).await;
+                    }
                     Ok(ProviderRequestLogWorkerOutcome::NoTask | ProviderRequestLogWorkerOutcome::QueueUnavailable) => {
                         tokio::time::sleep(IDLE_SLEEP).await;
                     }
@@ -193,7 +207,8 @@ async fn drain_provider_request_logs(state: Arc<ApiState>) {
         match consume_provider_request_log_batch(state.clone(), WORKER_ID, VISIBILITY_TIMEOUT).await
         {
             Ok(
-                ProviderRequestLogWorkerOutcome::NoTask
+                ProviderRequestLogWorkerOutcome::PausedForMaintenance
+                | ProviderRequestLogWorkerOutcome::NoTask
                 | ProviderRequestLogWorkerOutcome::QueueUnavailable,
             ) => return,
             Ok(_) => {}
