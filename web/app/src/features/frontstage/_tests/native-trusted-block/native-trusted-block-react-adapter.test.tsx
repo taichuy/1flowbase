@@ -148,15 +148,14 @@ describe('frontstage native trusted block declarative portal host', () => {
       await shadowQueries(secondRoot).findByTestId('second')
     ).toHaveTextContent('second');
     expect(firstRoot.shadowRoot).not.toBe(secondRoot.shadowRoot);
-    const shadowThemeHashes = providerRecords.configs.map(
-      (config) =>
-        (config.theme as { hashed?: unknown } | undefined)?.hashed
+    const shadowStylePrefixes = providerRecords.configs.map(
+      (config) => config.prefixCls
     );
-    expect(shadowThemeHashes).toHaveLength(2);
-    expect(shadowThemeHashes.every((hash) => typeof hash === 'string')).toBe(
+    expect(shadowStylePrefixes).toHaveLength(2);
+    expect(shadowStylePrefixes.every((prefix) => typeof prefix === 'string')).toBe(
       true
     );
-    expect(new Set(shadowThemeHashes).size).toBe(2);
+    expect(new Set(shadowStylePrefixes).size).toBe(2);
 
     const source = readFileSync(
       join(

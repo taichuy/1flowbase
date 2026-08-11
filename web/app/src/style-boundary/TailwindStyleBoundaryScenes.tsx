@@ -70,7 +70,7 @@ const BoundaryBlock: FrontstageNativeTrustedBlockReactComponent = () => (
       footer={null}
       mask={false}
       modalRender={(modal) =>
-        cloneElement(modal as ReactElement, {
+        cloneElement(modal as ReactElement<Record<string, unknown>>, {
           'data-testid': 'tailwind-ant-modal'
         })
       }
