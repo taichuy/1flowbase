@@ -85,7 +85,8 @@ pub use frontend_block_catalog::{
     FrontendModuleBinding,
 };
 pub use frontstage::{
-    FrontstageBlockNodeRecord, FrontstageBlockNodeSummary, FrontstageBlockPresentation,
+    FrontstageBlockDescendantProjection, FrontstageBlockNodeRecord, FrontstageBlockNodeSummary,
+    FrontstageBlockPresentation, FrontstageBlockSearchResult, FrontstageBlockSubtreeImpact,
     FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode,
 };
 pub use host_extension::{

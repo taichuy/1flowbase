@@ -103,7 +103,7 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
-        limit: i64,
+        limit: u32,
     ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeSummary>>;
 
     async fn list_frontstage_block_children(
@@ -111,7 +111,7 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         workspace_id: Uuid,
         page_id: Uuid,
         parent_block_id: &str,
-        limit: i64,
+        limit: u32,
     ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeSummary>>;
 
     async fn list_frontstage_block_ancestors(
@@ -126,17 +126,24 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         workspace_id: Uuid,
         page_id: Uuid,
         block_id: &str,
-        max_depth: i32,
-        limit: i64,
-    ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeSummary>>;
+        max_depth: u32,
+        limit: u32,
+    ) -> anyhow::Result<Vec<domain::FrontstageBlockDescendantProjection>>;
 
     async fn search_frontstage_blocks(
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
         query: &str,
-        limit: i64,
-    ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeSummary>>;
+        limit: u32,
+    ) -> anyhow::Result<Vec<domain::FrontstageBlockSearchResult>>;
+
+    async fn get_frontstage_block_subtree_impact(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        block_id: &str,
+    ) -> anyhow::Result<domain::FrontstageBlockSubtreeImpact>;
 
     async fn update_frontstage_block_node(
         &self,

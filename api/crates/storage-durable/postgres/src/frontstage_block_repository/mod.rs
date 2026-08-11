@@ -1,4 +1,6 @@
-use anyhow::Result;
+use std::collections::{HashMap, HashSet};
+
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
@@ -16,9 +18,11 @@ use runtime_core::{
         Exposure, Plane, ResourceDescriptor, ResourceKind, TenantScope, TrustLevel,
     },
     runtime_record_repository::{
-        OrderedTreeCommandError, OrderedTreeCreateInput, OrderedTreeCreatePosition,
+        OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeCommandError,
+        OrderedTreeCreateInput, OrderedTreeCreatePosition, OrderedTreeDescendantsInput,
         OrderedTreeLeafDeleteInput, OrderedTreeMoveInput, OrderedTreeMovePosition,
-        OrderedTreeSubtreeDeleteInput,
+        OrderedTreeNodeInput, OrderedTreeQueryError, OrderedTreeQueryRepository,
+        OrderedTreeSearchInput, OrderedTreeSubtreeDeleteInput, OrderedTreeSubtreeImpactInput,
     },
 };
 use serde_json::{json, Map, Value};
@@ -35,7 +39,7 @@ use crate::{
 
 const FRONTSTAGE_BLOCK_MODEL_ID: Uuid = Uuid::from_u128(0xe6aa0cc5_dfc0_8d8d_b6c8_b9bd0113a61a);
 const FRONTSTAGE_BLOCK_TABLE: &str = "frontstage_block_nodes";
-const SUMMARY_COLUMNS: &str = r#"
+const DETAIL_COLUMNS: &str = r#"
     node.block_id,
     node.scope_id,
     node.tree_partition_id,
@@ -119,6 +123,41 @@ fn frontstage_block_metadata(workspace_id: Uuid) -> ModelMetadata {
             TrustLevel::Core,
         ),
     }
+}
+
+fn summary_field(
+    code: &str,
+    kind: domain::ModelFieldKind,
+    required: bool,
+    is_system: bool,
+    sort_order: i32,
+) -> domain::ModelFieldRecord {
+    let mut field = field(code, kind, required, sort_order);
+    field.is_system = is_system;
+    field.is_writable = false;
+    field
+}
+
+fn frontstage_block_summary_metadata(workspace_id: Uuid) -> ModelMetadata {
+    use domain::ModelFieldKind::{Datetime, ManyToOne, Number, String, Text};
+
+    let mut metadata = frontstage_block_metadata(workspace_id);
+    metadata.fields = vec![
+        summary_field("id", String, true, true, 10),
+        summary_field("scope_id", ManyToOne, true, true, 20),
+        summary_field("tree_partition_id", ManyToOne, true, true, 30),
+        summary_field("parent_id", ManyToOne, false, true, 40),
+        summary_field("sibling_rank", String, true, true, 50),
+        summary_field("block_id", String, true, false, 60),
+        summary_field("tab_id", ManyToOne, true, true, 70),
+        summary_field("presentation", String, true, true, 80),
+        summary_field("title", Text, false, false, 90),
+        summary_field("schema_version", Number, true, true, 100),
+        summary_field("created_at", Datetime, true, true, 110),
+        summary_field("updated_at", Datetime, true, true, 120),
+    ];
+    metadata.record_capabilities = domain::DataModelRecordCapabilities::read_only();
+    metadata
 }
 
 fn validate_audit(workspace_id: Uuid, audit: &domain::AuditLogRecord) -> Result<()> {
@@ -299,7 +338,6 @@ fn map_summary(row: &PgRow) -> Result<domain::FrontstageBlockNodeSummary> {
             ControlPlaneError::InvalidInput("frontstage_block_presentation"),
         )?,
         title: row.get("title"),
-        code_ref: row.get("code_ref"),
         schema_version: schema_version
             .try_into()
             .map_err(|_| ControlPlaneError::InvalidInput("frontstage_block_schema_version"))?,
@@ -321,7 +359,7 @@ fn map_record(row: &PgRow) -> Result<domain::FrontstageBlockNodeRecord> {
         rank: summary.rank,
         presentation: summary.presentation,
         title: summary.title,
-        code_ref: summary.code_ref,
+        code_ref: row.get("code_ref"),
         schema_version: summary.schema_version,
         input_mapping: serde_json::from_value(input_mapping)?,
         output_mapping: serde_json::from_value(output_mapping)?,
@@ -339,7 +377,7 @@ async fn get_record_in_transaction(
 ) -> Result<Option<domain::FrontstageBlockNodeRecord>> {
     let row = sqlx::query(&format!(
         r#"
-        select {SUMMARY_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
+        select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
         from frontstage_block_nodes node
         left join frontstage_block_nodes parent
           on parent.scope_id = node.scope_id
@@ -356,8 +394,194 @@ async fn get_record_in_transaction(
     row.as_ref().map(map_record).transpose()
 }
 
-fn bounded_limit(limit: i64) -> i64 {
-    limit.clamp(1, 1000)
+#[derive(Debug, Clone)]
+struct InternalBlockSummary {
+    internal_id: Uuid,
+    parent_internal_id: Option<Uuid>,
+    block_id: String,
+    workspace_id: Uuid,
+    page_id: Uuid,
+    tab_id: Uuid,
+    rank: String,
+    presentation: domain::FrontstageBlockPresentation,
+    title: Option<String>,
+    schema_version: u32,
+    created_at: time::OffsetDateTime,
+    updated_at: time::OffsetDateTime,
+}
+
+impl InternalBlockSummary {
+    fn into_node(
+        self,
+        public_ids: &HashMap<Uuid, String>,
+    ) -> Result<domain::FrontstageBlockNodeSummary> {
+        let block_id = required_public_id(public_ids, self.internal_id)?.clone();
+        if block_id != self.block_id {
+            return Err(anyhow!(
+                "frontstage block summary public id does not match its internal id mapping"
+            ));
+        }
+        let parent_block_id = self
+            .parent_internal_id
+            .map(|parent_id| required_public_id(public_ids, parent_id).cloned())
+            .transpose()?;
+        Ok(domain::FrontstageBlockNodeSummary {
+            block_id,
+            workspace_id: self.workspace_id,
+            page_id: self.page_id,
+            tab_id: self.tab_id,
+            parent_block_id,
+            rank: self.rank,
+            presentation: self.presentation,
+            title: self.title,
+            schema_version: self.schema_version,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
+}
+
+fn record_object(record: &Value) -> Result<&Map<String, Value>> {
+    record
+        .as_object()
+        .ok_or_else(|| anyhow!("frontstage block summary projection must be an object"))
+}
+
+fn required_string<'a>(object: &'a Map<String, Value>, field: &str) -> Result<&'a str> {
+    object
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("frontstage block summary field `{field}` must be a string"))
+}
+
+fn required_uuid(object: &Map<String, Value>, field: &str) -> Result<Uuid> {
+    Ok(Uuid::parse_str(required_string(object, field)?)?)
+}
+
+fn optional_uuid(object: &Map<String, Value>, field: &str) -> Result<Option<Uuid>> {
+    match object.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => Ok(Some(Uuid::parse_str(value.as_str().ok_or_else(|| {
+            anyhow!("frontstage block summary field `{field}` must be a UUID or null")
+        })?)?)),
+    }
+}
+
+fn required_datetime(object: &Map<String, Value>, field: &str) -> Result<time::OffsetDateTime> {
+    Ok(time::OffsetDateTime::parse(
+        required_string(object, field)?,
+        &time::format_description::well_known::Rfc3339,
+    )?)
+}
+
+fn decode_summary(record: &Value) -> Result<InternalBlockSummary> {
+    let object = record_object(record)?;
+    let presentation = required_string(object, "presentation")?;
+    let schema_version = object
+        .get("schema_version")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            anyhow!("frontstage block summary field `schema_version` must be an integer")
+        })?
+        .try_into()?;
+    Ok(InternalBlockSummary {
+        internal_id: required_uuid(object, "id")?,
+        parent_internal_id: optional_uuid(object, "parent_id")?,
+        block_id: required_string(object, "block_id")?.to_owned(),
+        workspace_id: required_uuid(object, "scope_id")?,
+        page_id: required_uuid(object, "tree_partition_id")?,
+        tab_id: required_uuid(object, "tab_id")?,
+        rank: required_string(object, "sibling_rank")?.to_owned(),
+        presentation: domain::FrontstageBlockPresentation::from_db(presentation).ok_or(
+            ControlPlaneError::InvalidInput("frontstage_block_presentation"),
+        )?,
+        title: object
+            .get("title")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        schema_version,
+        created_at: required_datetime(object, "created_at")?,
+        updated_at: required_datetime(object, "updated_at")?,
+    })
+}
+
+fn required_public_id(public_ids: &HashMap<Uuid, String>, internal_id: Uuid) -> Result<&String> {
+    public_ids.get(&internal_id).ok_or_else(|| {
+        anyhow!("frontstage block summary references unmapped internal id `{internal_id}`")
+    })
+}
+
+async fn map_public_ids(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    page_id: Uuid,
+    internal_ids: HashSet<Uuid>,
+) -> Result<HashMap<Uuid, String>> {
+    if internal_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let rows = sqlx::query_as::<_, (Uuid, String)>(
+        r#"
+        select id, block_id
+        from frontstage_block_nodes
+        where scope_id = $1 and tree_partition_id = $2 and id = any($3)
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(internal_ids.iter().copied().collect::<Vec<_>>())
+    .fetch_all(store.pool())
+    .await?;
+    let public_ids = rows.into_iter().collect::<HashMap<_, _>>();
+    for internal_id in internal_ids {
+        required_public_id(&public_ids, internal_id)?;
+    }
+    Ok(public_ids)
+}
+
+async fn map_node_records(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    page_id: Uuid,
+    records: impl IntoIterator<Item = Value>,
+) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
+    let summaries = records
+        .into_iter()
+        .map(|record| decode_summary(&record))
+        .collect::<Result<Vec<_>>>()?;
+    let public_ids = map_public_ids(
+        store,
+        workspace_id,
+        page_id,
+        summaries
+            .iter()
+            .flat_map(|summary| [Some(summary.internal_id), summary.parent_internal_id])
+            .flatten()
+            .collect(),
+    )
+    .await?;
+    summaries
+        .into_iter()
+        .map(|summary| summary.into_node(&public_ids))
+        .collect()
+}
+
+async fn resolve_query_node_id(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    page_id: Uuid,
+    block_id: &str,
+    missing: OrderedTreeQueryError,
+) -> Result<Uuid> {
+    sqlx::query_scalar(
+        "select id from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2 and block_id = $3",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(block_id)
+    .fetch_optional(store.pool())
+    .await?
+    .ok_or_else(|| anyhow::Error::new(missing))
 }
 
 #[async_trait]
@@ -452,7 +676,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
     ) -> Result<Option<domain::FrontstageBlockNodeRecord>> {
         let row = sqlx::query(&format!(
             r#"
-            select {SUMMARY_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
+            select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
             from frontstage_block_nodes node
             left join frontstage_block_nodes parent
               on parent.scope_id = node.scope_id
@@ -473,21 +697,26 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
-        limit: i64,
+        limit: u32,
     ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        let rows = sqlx::query(&format!(
-            r#"select {SUMMARY_COLUMNS}
-               from frontstage_block_nodes node
-               left join frontstage_block_nodes parent on false
-               where node.scope_id = $1 and node.tree_partition_id = $2 and node.parent_id is null
-               order by node.sibling_rank collate "C", node.id limit $3"#,
-        ))
-        .bind(workspace_id)
-        .bind(page_id)
-        .bind(bounded_limit(limit))
-        .fetch_all(self.pool())
+        let metadata = frontstage_block_summary_metadata(workspace_id);
+        let projections = OrderedTreeQueryRepository::list_ordered_tree_roots(
+            self,
+            &metadata,
+            OrderedTreeBoundedListInput {
+                scope_id: workspace_id,
+                tree_partition_id: page_id,
+                result_limit: limit,
+            },
+        )
         .await?;
-        rows.iter().map(map_summary).collect()
+        map_node_records(
+            self,
+            workspace_id,
+            page_id,
+            projections.into_iter().map(|projection| projection.record),
+        )
+        .await
     }
 
     async fn list_frontstage_block_children(
@@ -495,24 +724,35 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         page_id: Uuid,
         parent_block_id: &str,
-        limit: i64,
+        limit: u32,
     ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        let rows = sqlx::query(&format!(
-            r#"select {SUMMARY_COLUMNS}
-               from frontstage_block_nodes node
-               join frontstage_block_nodes parent
-                 on parent.scope_id = node.scope_id and parent.tree_partition_id = node.tree_partition_id
-                and parent.id = node.parent_id
-               where node.scope_id = $1 and node.tree_partition_id = $2 and parent.block_id = $3
-               order by node.sibling_rank collate "C", node.id limit $4"#,
-        ))
-        .bind(workspace_id)
-        .bind(page_id)
-        .bind(parent_block_id)
-        .bind(bounded_limit(limit))
-        .fetch_all(self.pool())
+        let parent_id = resolve_query_node_id(
+            self,
+            workspace_id,
+            page_id,
+            parent_block_id,
+            OrderedTreeQueryError::ParentNotFound,
+        )
         .await?;
-        rows.iter().map(map_summary).collect()
+        let metadata = frontstage_block_summary_metadata(workspace_id);
+        let projections = OrderedTreeQueryRepository::list_ordered_tree_children(
+            self,
+            &metadata,
+            OrderedTreeChildrenInput {
+                scope_id: workspace_id,
+                tree_partition_id: page_id,
+                parent_id,
+                result_limit: limit,
+            },
+        )
+        .await?;
+        map_node_records(
+            self,
+            workspace_id,
+            page_id,
+            projections.into_iter().map(|projection| projection.record),
+        )
+        .await
     }
 
     async fn list_frontstage_block_ancestors(
@@ -521,35 +761,32 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         page_id: Uuid,
         block_id: &str,
     ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        let rows = sqlx::query(&format!(
-            r#"
-            with recursive ancestors(id, depth, path) as (
-                select node.parent_id, 1, array[node.id]
-                from frontstage_block_nodes node
-                where node.scope_id = $1 and node.tree_partition_id = $2 and node.block_id = $3
-                union all
-                select parent.parent_id, ancestors.depth + 1, ancestors.path || parent.id
-                from ancestors
-                join frontstage_block_nodes parent
-                  on parent.scope_id = $1 and parent.tree_partition_id = $2 and parent.id = ancestors.id
-                where ancestors.id is not null and not parent.id = any(ancestors.path) and ancestors.depth < 256
-            )
-            select {SUMMARY_COLUMNS}
-            from ancestors
-            join frontstage_block_nodes node
-              on node.scope_id = $1 and node.tree_partition_id = $2 and node.id = ancestors.id
-            left join frontstage_block_nodes parent
-              on parent.scope_id = node.scope_id and parent.tree_partition_id = node.tree_partition_id
-             and parent.id = node.parent_id
-            order by ancestors.depth desc
-            "#,
-        ))
-        .bind(workspace_id)
-        .bind(page_id)
-        .bind(block_id)
-        .fetch_all(self.pool())
+        let node_id = resolve_query_node_id(
+            self,
+            workspace_id,
+            page_id,
+            block_id,
+            OrderedTreeQueryError::NodeNotFound,
+        )
         .await?;
-        rows.iter().map(map_summary).collect()
+        let metadata = frontstage_block_summary_metadata(workspace_id);
+        let projections = OrderedTreeQueryRepository::list_ordered_tree_ancestors(
+            self,
+            &metadata,
+            OrderedTreeNodeInput {
+                scope_id: workspace_id,
+                tree_partition_id: page_id,
+                node_id,
+            },
+        )
+        .await?;
+        map_node_records(
+            self,
+            workspace_id,
+            page_id,
+            projections.into_iter().map(|projection| projection.record),
+        )
+        .await
     }
 
     async fn list_frontstage_block_descendants(
@@ -557,43 +794,69 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         page_id: Uuid,
         block_id: &str,
-        max_depth: i32,
-        limit: i64,
-    ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        let rows = sqlx::query(&format!(
-            r#"
-            with recursive descendants(id, depth, path) as (
-                select node.id, 0, array[node.id]
-                from frontstage_block_nodes node
-                where node.scope_id = $1 and node.tree_partition_id = $2 and node.block_id = $3
-                union all
-                select child.id, descendants.depth + 1, descendants.path || child.id
-                from descendants
-                join frontstage_block_nodes child
-                  on child.scope_id = $1 and child.tree_partition_id = $2
-                 and child.parent_id = descendants.id
-                where descendants.depth < $4 and not child.id = any(descendants.path)
-            )
-            select {SUMMARY_COLUMNS}
-            from descendants
-            join frontstage_block_nodes node
-              on node.scope_id = $1 and node.tree_partition_id = $2 and node.id = descendants.id
-            left join frontstage_block_nodes parent
-              on parent.scope_id = node.scope_id and parent.tree_partition_id = node.tree_partition_id
-             and parent.id = node.parent_id
-            where descendants.depth > 0
-            order by descendants.depth, node.sibling_rank collate "C", node.id
-            limit $5
-            "#,
-        ))
-        .bind(workspace_id)
-        .bind(page_id)
-        .bind(block_id)
-        .bind(max_depth.clamp(1, 256))
-        .bind(bounded_limit(limit))
-        .fetch_all(self.pool())
+        max_depth: u32,
+        limit: u32,
+    ) -> Result<Vec<domain::FrontstageBlockDescendantProjection>> {
+        let node_id = resolve_query_node_id(
+            self,
+            workspace_id,
+            page_id,
+            block_id,
+            OrderedTreeQueryError::NodeNotFound,
+        )
         .await?;
-        rows.iter().map(map_summary).collect()
+        let metadata = frontstage_block_summary_metadata(workspace_id);
+        let projections = OrderedTreeQueryRepository::list_ordered_tree_descendants(
+            self,
+            &metadata,
+            OrderedTreeDescendantsInput {
+                scope_id: workspace_id,
+                tree_partition_id: page_id,
+                node_id,
+                max_depth,
+                result_limit: limit,
+                include_path: true,
+            },
+        )
+        .await?;
+        let summaries = projections
+            .iter()
+            .map(|projection| decode_summary(&projection.record))
+            .collect::<Result<Vec<_>>>()?;
+        let public_ids = map_public_ids(
+            self,
+            workspace_id,
+            page_id,
+            summaries
+                .iter()
+                .flat_map(|summary| [Some(summary.internal_id), summary.parent_internal_id])
+                .flatten()
+                .chain(
+                    projections
+                        .iter()
+                        .flat_map(|projection| projection.path.iter().flatten().copied()),
+                )
+                .collect(),
+        )
+        .await?;
+        projections
+            .into_iter()
+            .zip(summaries)
+            .map(|(projection, summary)| {
+                let path = projection
+                    .path
+                    .ok_or_else(|| anyhow!("ordered-tree descendant path was not projected"))?
+                    .into_iter()
+                    .map(|internal_id| required_public_id(&public_ids, internal_id).cloned())
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(domain::FrontstageBlockDescendantProjection {
+                    node: summary.into_node(&public_ids)?,
+                    depth: projection.depth,
+                    has_children: projection.has_children,
+                    path,
+                })
+            })
+            .collect()
     }
 
     async fn search_frontstage_blocks(
@@ -601,25 +864,99 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         page_id: Uuid,
         query: &str,
-        limit: i64,
-    ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        let rows = sqlx::query(&format!(
-            r#"select {SUMMARY_COLUMNS}
-               from frontstage_block_nodes node
-               left join frontstage_block_nodes parent
-                 on parent.scope_id = node.scope_id and parent.tree_partition_id = node.tree_partition_id
-                and parent.id = node.parent_id
-               where node.scope_id = $1 and node.tree_partition_id = $2
-                 and (node.block_id ilike $3 || '%' or coalesce(node.title, '') ilike '%' || $3 || '%')
-               order by node.sibling_rank collate "C", node.id limit $4"#,
-        ))
-        .bind(workspace_id)
-        .bind(page_id)
-        .bind(query)
-        .bind(bounded_limit(limit).min(100))
-        .fetch_all(self.pool())
+        limit: u32,
+    ) -> Result<Vec<domain::FrontstageBlockSearchResult>> {
+        let metadata = frontstage_block_summary_metadata(workspace_id);
+        let projections = OrderedTreeQueryRepository::search_ordered_tree_prefix(
+            self,
+            &metadata,
+            OrderedTreeSearchInput {
+                scope_id: workspace_id,
+                tree_partition_id: page_id,
+                prefix: query.to_owned(),
+                match_limit: limit,
+            },
+        )
         .await?;
-        rows.iter().map(map_summary).collect()
+        let summaries = projections
+            .iter()
+            .map(|projection| decode_summary(&projection.record))
+            .collect::<Result<Vec<_>>>()?;
+        let public_ids = map_public_ids(
+            self,
+            workspace_id,
+            page_id,
+            summaries
+                .iter()
+                .flat_map(|summary| [Some(summary.internal_id), summary.parent_internal_id])
+                .flatten()
+                .collect(),
+        )
+        .await?;
+        let by_internal_id = summaries
+            .iter()
+            .cloned()
+            .map(|summary| (summary.internal_id, summary))
+            .collect::<HashMap<_, _>>();
+        projections
+            .into_iter()
+            .zip(summaries)
+            .filter(|(projection, _)| projection.is_match)
+            .map(|(_, summary)| {
+                let mut ancestors = Vec::new();
+                let mut current = summary.parent_internal_id;
+                let mut visited = HashSet::new();
+                while let Some(internal_id) = current {
+                    if !visited.insert(internal_id) {
+                        return Err(anyhow!(
+                            "frontstage block search ancestor context contains a cycle"
+                        ));
+                    }
+                    let ancestor = by_internal_id.get(&internal_id).ok_or_else(|| {
+                        anyhow!(
+                            "frontstage block search is missing projected ancestor `{internal_id}`"
+                        )
+                    })?;
+                    current = ancestor.parent_internal_id;
+                    ancestors.push(ancestor.clone().into_node(&public_ids)?);
+                }
+                ancestors.reverse();
+                Ok(domain::FrontstageBlockSearchResult {
+                    node: summary.into_node(&public_ids)?,
+                    ancestors,
+                })
+            })
+            .collect()
+    }
+
+    async fn get_frontstage_block_subtree_impact(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        block_id: &str,
+    ) -> Result<domain::FrontstageBlockSubtreeImpact> {
+        let node_id = resolve_query_node_id(
+            self,
+            workspace_id,
+            page_id,
+            block_id,
+            OrderedTreeQueryError::NodeNotFound,
+        )
+        .await?;
+        let metadata = frontstage_block_summary_metadata(workspace_id);
+        let result = OrderedTreeQueryRepository::get_ordered_tree_subtree_impact(
+            self,
+            &metadata,
+            OrderedTreeSubtreeImpactInput {
+                scope_id: workspace_id,
+                tree_partition_id: page_id,
+                node_id,
+            },
+        )
+        .await?;
+        Ok(domain::FrontstageBlockSubtreeImpact {
+            affected_count: result.affected_count,
+        })
     }
 
     async fn update_frontstage_block_node(

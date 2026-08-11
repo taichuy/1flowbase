@@ -9,6 +9,7 @@ use control_plane::{
     },
 };
 use domain::FrontstageBlockPresentation;
+use runtime_core::runtime_record_repository::OrderedTreeQueryError;
 
 use super::*;
 use crate::PgControlPlaneStore;
@@ -393,4 +394,218 @@ async fn block_node_repository_is_atomic_scoped_and_cleans_subtree_codes() {
     .await
     .unwrap();
     assert_eq!(remaining, (0, 0));
+}
+
+// AC-003/008: frontstage structural reads preserve generic ordered-tree semantics while exposing
+// stable public identities and the intentionally narrow tree-summary contract.
+#[tokio::test]
+async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
+    let (_pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "tree-reads").await;
+    let (other_page_id, other_tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "tree-isolation").await;
+
+    let mut root_a = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        tab_id,
+        "root-a",
+        "root-a-code",
+        FrontstageBlockPosition::default(),
+        Uuid::now_v7(),
+    );
+    root_a.title = Some("Root A".to_owned());
+    store.create_frontstage_block_node(&root_a).await.unwrap();
+
+    let mut root_b = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        tab_id,
+        "root-b",
+        "root-b-code",
+        FrontstageBlockPosition {
+            after_block_id: Some("root-a".to_owned()),
+            ..Default::default()
+        },
+        Uuid::now_v7(),
+    );
+    root_b.title = Some("Root B".to_owned());
+    store.create_frontstage_block_node(&root_b).await.unwrap();
+
+    let mut match_a = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        tab_id,
+        "match-a",
+        "match-a-code",
+        FrontstageBlockPosition {
+            parent_block_id: Some("root-a".to_owned()),
+            ..Default::default()
+        },
+        Uuid::now_v7(),
+    );
+    match_a.title = Some("Match Alpha".to_owned());
+    store.create_frontstage_block_node(&match_a).await.unwrap();
+
+    let mut match_b = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        tab_id,
+        "match-b",
+        "match-b-code",
+        FrontstageBlockPosition {
+            parent_block_id: Some("root-a".to_owned()),
+            after_block_id: Some("match-a".to_owned()),
+            ..Default::default()
+        },
+        Uuid::now_v7(),
+    );
+    match_b.title = Some("Match Beta".to_owned());
+    store.create_frontstage_block_node(&match_b).await.unwrap();
+
+    let mut leaf = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        tab_id,
+        "leaf",
+        "leaf-code",
+        FrontstageBlockPosition {
+            parent_block_id: Some("match-a".to_owned()),
+            ..Default::default()
+        },
+        Uuid::now_v7(),
+    );
+    leaf.title = Some("Leaf".to_owned());
+    store.create_frontstage_block_node(&leaf).await.unwrap();
+
+    let mut isolated = create_input(
+        workspace_id,
+        actor_user_id,
+        other_page_id,
+        other_tab_id,
+        "match-isolated",
+        "match-isolated-code",
+        FrontstageBlockPosition::default(),
+        Uuid::now_v7(),
+    );
+    isolated.title = Some("Match Isolated".to_owned());
+    store.create_frontstage_block_node(&isolated).await.unwrap();
+
+    let roots = store
+        .list_frontstage_block_roots(workspace_id, page_id, 10)
+        .await
+        .unwrap();
+    assert_eq!(
+        roots
+            .iter()
+            .map(|node| node.block_id.as_str())
+            .collect::<Vec<_>>(),
+        ["root-a", "root-b"]
+    );
+    assert!(roots.iter().all(|node| {
+        node.workspace_id == workspace_id
+            && node.page_id == page_id
+            && node.parent_block_id.is_none()
+            && node.schema_version == 1
+    }));
+
+    let children = store
+        .list_frontstage_block_children(workspace_id, page_id, "root-a", 10)
+        .await
+        .unwrap();
+    assert_eq!(
+        children
+            .iter()
+            .map(|node| node.block_id.as_str())
+            .collect::<Vec<_>>(),
+        ["match-a", "match-b"]
+    );
+    assert!(children
+        .iter()
+        .all(|node| node.parent_block_id.as_deref() == Some("root-a")));
+
+    let ancestors = store
+        .list_frontstage_block_ancestors(workspace_id, page_id, "leaf")
+        .await
+        .unwrap();
+    assert_eq!(
+        ancestors
+            .iter()
+            .map(|node| node.block_id.as_str())
+            .collect::<Vec<_>>(),
+        ["root-a", "match-a"]
+    );
+
+    let descendants = store
+        .list_frontstage_block_descendants(workspace_id, page_id, "root-a", 8, 10)
+        .await
+        .unwrap();
+    let descendants = descendants
+        .into_iter()
+        .map(|projection| (projection.node.block_id.clone(), projection))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(descendants.len(), 3);
+    assert_eq!(descendants["match-a"].depth, 1);
+    assert!(descendants["match-a"].has_children);
+    assert_eq!(descendants["match-a"].path, ["root-a", "match-a"]);
+    assert_eq!(descendants["match-b"].depth, 1);
+    assert!(!descendants["match-b"].has_children);
+    assert_eq!(descendants["leaf"].depth, 2);
+    assert_eq!(descendants["leaf"].path, ["root-a", "match-a", "leaf"]);
+
+    let matches = store
+        .search_frontstage_blocks(workspace_id, page_id, "match", 10)
+        .await
+        .unwrap();
+    assert_eq!(
+        matches
+            .iter()
+            .map(|result| result.node.block_id.as_str())
+            .collect::<Vec<_>>(),
+        ["match-a", "match-b"]
+    );
+    assert!(matches.iter().all(|result| {
+        result
+            .ancestors
+            .iter()
+            .map(|node| node.block_id.as_str())
+            .eq(["root-a"])
+    }));
+
+    let impact = store
+        .get_frontstage_block_subtree_impact(workspace_id, page_id, "root-a")
+        .await
+        .unwrap();
+    assert_eq!(impact.affected_count, 4);
+
+    let parent_error = store
+        .list_frontstage_block_children(workspace_id, other_page_id, "root-a", 10)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        parent_error.downcast_ref::<OrderedTreeQueryError>(),
+        Some(&OrderedTreeQueryError::ParentNotFound)
+    );
+    let node_error = store
+        .list_frontstage_block_ancestors(workspace_id, other_page_id, "root-a")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        node_error.downcast_ref::<OrderedTreeQueryError>(),
+        Some(&OrderedTreeQueryError::NodeNotFound)
+    );
+    let limit_error = store
+        .list_frontstage_block_roots(workspace_id, page_id, 0)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        limit_error.downcast_ref::<OrderedTreeQueryError>(),
+        Some(&OrderedTreeQueryError::InvalidResultLimit { max: 1_000 })
+    );
 }

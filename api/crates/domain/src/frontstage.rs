@@ -242,10 +242,28 @@ pub struct FrontstageBlockNodeSummary {
     pub rank: String,
     pub presentation: FrontstageBlockPresentation,
     pub title: Option<String>,
-    pub code_ref: String,
     pub schema_version: u32,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageBlockDescendantProjection {
+    pub node: FrontstageBlockNodeSummary,
+    pub depth: u32,
+    pub has_children: bool,
+    pub path: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageBlockSearchResult {
+    pub node: FrontstageBlockNodeSummary,
+    pub ancestors: Vec<FrontstageBlockNodeSummary>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontstageBlockSubtreeImpact {
+    pub affected_count: u64,
 }
 
 #[cfg(test)]
