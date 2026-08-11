@@ -133,6 +133,9 @@ export function JsxStudioChildContainersPanel({
 }: JsxStudioChildContainersPanelProps) {
   const [draft, setDraft] = useState(() => cloneTree(childContainers));
   const [selectedId, setSelectedId] = useState<string>();
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(() =>
+    childContainers.map(({ id }) => id)
+  );
   const [newPresentation, setNewPresentation] =
     useState<ChildContainerPresentation>('drawer');
   const [targetContainerIds, setTargetContainerIds] = useState(
@@ -146,11 +149,15 @@ export function JsxStudioChildContainersPanel({
 
   useEffect(() => {
     const nextDraft = cloneTree(childContainers);
+    const nextIds = new Set(nextDraft.map(({ id }) => id));
     setDraft(nextDraft);
     setSelectedId((current) =>
       current && childContainers.some(({ id }) => id === current)
         ? current
         : undefined
+    );
+    setExpandedKeys((current) =>
+      current.filter((containerId) => nextIds.has(containerId))
     );
     setDirty(false);
     setFeedback(null);
@@ -227,8 +234,16 @@ export function JsxStudioChildContainersPanel({
       });
       return;
     }
+    const createdPath = resolveChildContainerPath(next, createdId);
+    if (!createdPath) {
+      throw new Error(`Created child container "${createdId}" is missing.`);
+    }
     applyDraft(next);
     setSelectedId(createdId);
+    const ancestorIds = createdPath
+      .filter(({ id }) => id !== createdId)
+      .map(({ id }) => id);
+    setExpandedKeys((current) => [...new Set([...current, ...ancestorIds])]);
   };
   const addRoot = () => {
     try {
@@ -329,9 +344,10 @@ export function JsxStudioChildContainersPanel({
         ) : (
           <Tree
             blockNode
-            defaultExpandAll
+            expandedKeys={expandedKeys}
             selectedKeys={selectedId ? [selectedId] : []}
             treeData={createTreeData(draft)}
+            onExpand={(keys) => setExpandedKeys(keys.map(String))}
             onSelect={(keys) =>
               setSelectedId(keys[0] ? String(keys[0]) : undefined)
             }
