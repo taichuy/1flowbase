@@ -90,12 +90,19 @@ describe('JSX Studio child containers panel', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '新增子级' }));
     expect(screen.getByText('新建弹窗容器')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('新建弹窗容器'));
+    expect(screen.getByRole('textbox', { name: '标题' })).toHaveValue(
+      '新建弹窗容器'
+    );
+    expect(
+      within(
+        screen.getByRole('radiogroup', { name: '容器展示方式' })
+      ).getByRole('radio', { name: '弹窗' })
+    ).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Launcher' })).toBeDisabled();
 
     fireEvent.change(screen.getByRole('textbox', { name: '标题' }), {
       target: { value: 'Material editor' }
     });
-    expect(screen.getByRole('checkbox', { name: 'Launcher' })).toBeDisabled();
     expect(
       screen.getByRole('checkbox', { name: 'Assigned block' })
     ).toBeDisabled();

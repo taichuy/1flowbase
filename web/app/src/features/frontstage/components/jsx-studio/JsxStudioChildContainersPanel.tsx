@@ -214,9 +214,25 @@ export function JsxStudioChildContainersPanel({
       blockIds: []
     };
   };
+  const applyCreatedDraft = (next: ChildContainerNode[]) => {
+    const currentIds = new Set(draft.map(({ id }) => id));
+    const createdIds = next
+      .filter(({ id }) => !currentIds.has(id))
+      .map(({ id }) => id);
+    const [createdId] = createdIds;
+    if (createdIds.length !== 1 || createdId === undefined) {
+      setFeedback({
+        type: 'error',
+        message: i18nText('frontstage', 'auto.child_container_change_failed')
+      });
+      return;
+    }
+    applyDraft(next);
+    setSelectedId(createdId);
+  };
   const addRoot = () => {
     try {
-      applyDraft(addChildContainer(draft, null, createDraft()));
+      applyCreatedDraft(addChildContainer(draft, null, createDraft()));
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -224,7 +240,7 @@ export function JsxStudioChildContainersPanel({
   const addChild = () => {
     if (!selected) return;
     try {
-      applyDraft(addChildContainer(draft, selected.id, createDraft()));
+      applyCreatedDraft(addChildContainer(draft, selected.id, createDraft()));
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
@@ -232,7 +248,9 @@ export function JsxStudioChildContainersPanel({
   const addSibling = () => {
     if (!selected) return;
     try {
-      applyDraft(addSiblingChildContainer(draft, selected.id, createDraft()));
+      applyCreatedDraft(
+        addSiblingChildContainer(draft, selected.id, createDraft())
+      );
     } catch (error) {
       setFeedback({ type: 'error', message: errorMessage(error) });
     }
