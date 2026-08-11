@@ -1462,6 +1462,74 @@
     ]
   },
   {
+    "id": "page.settings-ui-components",
+    "kind": "page",
+    "title": "Settings UI Components Page",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx",
+      "web/app/src/features/settings/components/ui-management/i18n/zh_Hans.json",
+      "web/app/src/features/settings/components/ui-management/i18n/en_US.json",
+      "web/app/src/features/settings/api/ui-management.ts"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "ui-management-tabs",
+        "selector": ".ui-management-panel",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "ui-management-surface",
+        "selector": ".ui-management-panel .settings-section-surface",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "flex"
+          }
+        ]
+      },
+      {
+        "id": "ui-management-filters",
+        "selector": ".ui-management-panel .data-table-filter-form",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "ui-management-scroll",
+        "selector": ".ui-management-panel .data-table__scroll-area",
+        "propertyAssertions": [
+          {
+            "property": "overflow-x",
+            "expected": "auto"
+          },
+          {
+            "property": "overflow-y",
+            "expected": "auto"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "ui-management-pagination-visible",
+        "type": "fully_visible",
+        "subjectSelector": ".ui-management-panel .data-table__pagination"
+      }
+    ]
+  },
+  {
     "id": "page.settings-mcp-management",
     "kind": "page",
     "title": "Settings MCP Management Page",

@@ -136,6 +136,14 @@ describe('style boundary registry', () => {
       ])
     ).toEqual(['page.settings-applications']);
     expect(
+      getSceneIdsForFiles([
+        'web/app/src/features/settings/components/ui-management/UiManagementPanel.tsx'
+      ])
+    ).toEqual([
+      'page.settings-extension-center-agent-flow',
+      'page.settings-ui-components'
+    ]);
+    expect(
       getSceneIdsForFiles(['web/app/src/features/me/pages/me-page.css'])
     ).toEqual(['page.me']);
   });
@@ -340,6 +348,22 @@ describe('style boundary registry', () => {
     expect(
       screen.getByRole('columnheader', { name: '名称' })
     ).toBeInTheDocument();
+  }, 30_000);
+
+  test('renders the settings UI components scene with its shared data table', async () => {
+    const scene = getRuntimeScene('page.settings-ui-components');
+
+    render(
+      <AppProviders>
+        <StyleBoundaryHarness scene={scene} />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByText('DataTable', undefined, { timeout: 10_000 })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('form', { name: '筛选' })).toBeInTheDocument();
+    expect(screen.getByLabelText('字段配置')).toBeInTheDocument();
   }, 30_000);
 
   test('renders the settings mcp management scene', async () => {

@@ -167,6 +167,12 @@ function getStyleBoundaryCommonResponse(
             path: '/settings/docs',
             surface_kind: 'system'
           },
+          {
+            route_id: 'settings.ui-management',
+            surface_key: 'ui-management',
+            path: '/settings/ui-management/code-templates',
+            surface_kind: 'system'
+          },
           ...settingsI18nCatalogTestNavigation.route_definitions
         ],
         navigation_items: [
@@ -217,6 +223,14 @@ function getStyleBoundaryCommonResponse(
             label_key: 'auto.api_documentation',
             navigation_slot: 'settings',
             order: 3
+          },
+          {
+            item_id: 'ui-management',
+            route_id: 'settings.ui-management',
+            parent_item_id: 'settings',
+            label_key: 'auto.ui_management',
+            navigation_slot: 'settings',
+            order: 4
           },
           ...settingsI18nCatalogTestNavigation.navigation_items
         ],
@@ -562,6 +576,31 @@ export function seedStyleBoundarySettingsFetch() {
             }
           ]
         },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname ===
+        '/api/console/settings/ui-management/components'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: [
+          {
+            provider_code: 'official-ui',
+            contribution_code: 'native-components',
+            module_source: '@1flowbase/native-components',
+            export_name: 'DataTable',
+            module_version: '1.0.0',
+            state: 'published',
+            official_contract: {},
+            latest_contract: {},
+            published_contract: {},
+            latest_revision: 2,
+            published_revision: 2
+          }
+        ],
         meta: null
       });
     }
