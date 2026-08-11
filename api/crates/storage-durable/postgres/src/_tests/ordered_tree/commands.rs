@@ -104,12 +104,23 @@ async fn create_node(
     scope_id: Uuid,
     position: OrderedTreeCreatePosition,
 ) -> Uuid {
+    create_node_in_partition(store, metadata, scope_id, scope_id, position).await
+}
+
+async fn create_node_in_partition(
+    store: &PgControlPlaneStore,
+    metadata: &ModelMetadata,
+    scope_id: Uuid,
+    tree_partition_id: Uuid,
+    position: OrderedTreeCreatePosition,
+) -> Uuid {
     store
         .create_ordered_tree_node(
             metadata,
             OrderedTreeCreateInput {
                 actor_user_id: Uuid::nil(),
                 scope_id,
+                tree_partition_id,
                 payload: json!({}),
                 position,
             },
@@ -137,6 +148,15 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
     let other_scope_id = create_workspace(&store).await;
     let model = create_model(&store, scope_id, "matrix").await;
     let metadata = metadata(&model);
+    let other_partition_id = Uuid::now_v7();
+    let partition_parent = create_node_in_partition(
+        &store,
+        &metadata,
+        scope_id,
+        other_partition_id,
+        position(None, None, None),
+    )
+    .await;
 
     let first = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
     let third = create_node(
@@ -153,8 +173,77 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         position(None, Some(third), None),
     )
     .await;
+    // AC-002: repository validation and the composite FK both reject parents
+    // from another structural partition inside the same authorized scope.
+    let error = store
+        .create_ordered_tree_node(
+            &metadata,
+            OrderedTreeCreateInput {
+                actor_user_id: Uuid::nil(),
+                scope_id,
+                tree_partition_id: scope_id,
+                payload: json!({}),
+                position: position(Some(partition_parent), None, None),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(typed_error(error), OrderedTreeCommandError::ParentNotFound);
+    assert!(!store
+        .delete_ordered_tree_leaf(
+            &metadata,
+            OrderedTreeLeafDeleteInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                node_id: partition_parent,
+            },
+        )
+        .await
+        .unwrap());
+    let error = store
+        .delete_ordered_tree_subtree(
+            &metadata,
+            OrderedTreeSubtreeDeleteInput {
+                scope_id,
+                tree_partition_id: scope_id,
+                node_id: partition_parent,
+                expected_affected_count: 1,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(typed_error(error), OrderedTreeCommandError::NodeNotFound);
+    let database_error = sqlx::query(&format!(
+        "insert into \"{}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank) values ($1, $2, $2, $3, 'z')",
+        model.physical_table_name
+    ))
+    .bind(Uuid::now_v7())
+    .bind(scope_id)
+    .bind(partition_parent)
+    .execute(store.pool())
+    .await
+    .unwrap_err();
+    let database_error_code = database_error
+        .as_database_error()
+        .and_then(|error| error.code())
+        .map(|code| code.into_owned());
+    assert_eq!(database_error_code.as_deref(), Some("23503"));
+    let error = store
+        .move_ordered_tree_node(
+            &metadata,
+            OrderedTreeMoveInput {
+                actor_user_id: Uuid::nil(),
+                scope_id,
+                tree_partition_id: scope_id,
+                node_id: second,
+                position: move_position(Some(partition_parent), None, None),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(typed_error(error), OrderedTreeCommandError::ParentNotFound);
     let ordered_ids: Vec<Uuid> = sqlx::query_scalar(&format!(
-        "select id from \"{}\" where scope_id = $1 and parent_id is null order by sibling_rank collate \"C\", id",
+        "select id from \"{}\" where scope_id = $1 and tree_partition_id = scope_id and parent_id is null order by sibling_rank collate \"C\", id",
         model.physical_table_name
     ))
     .bind(scope_id)
@@ -176,6 +265,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             OrderedTreeCreateInput {
                 actor_user_id: Uuid::nil(),
                 scope_id,
+                tree_partition_id: scope_id,
                 payload: json!({}),
                 position: position(None, Some(first), Some(second)),
             },
@@ -200,6 +290,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
                 OrderedTreeMoveInput {
                     actor_user_id: Uuid::nil(),
                     scope_id,
+                    tree_partition_id: scope_id,
                     node_id: first,
                     position: move_position(invalid_parent, None, None),
                 },
@@ -210,7 +301,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
     }
 
     let cross_scope_parent = sqlx::query(&format!(
-        "insert into \"{}\" (id, scope_id, sibling_rank) values ($1, $2, 'U')",
+        "insert into \"{}\" (id, scope_id, tree_partition_id, sibling_rank) values ($1, $2, $2, 'U')",
         model.physical_table_name
     ))
     .bind(Uuid::now_v7())
@@ -233,6 +324,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             OrderedTreeMoveInput {
                 actor_user_id: Uuid::nil(),
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: second,
                 position: move_position(Some(cross_scope_parent_id), None, None),
             },
@@ -242,7 +334,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
     assert_eq!(typed_error(error), OrderedTreeCommandError::ParentNotFound);
 
     let before_move: Vec<(Uuid, Option<Uuid>, String)> = sqlx::query_as(&format!(
-        "select id, parent_id, sibling_rank from \"{}\" where scope_id = $1 order by id",
+        "select id, parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = scope_id order by id",
         model.physical_table_name
     ))
     .bind(scope_id)
@@ -255,6 +347,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             OrderedTreeMoveInput {
                 actor_user_id: Uuid::nil(),
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: third,
                 position: move_position(Some(first), None, None),
             },
@@ -262,7 +355,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         .await
         .unwrap();
     let after_move: Vec<(Uuid, Option<Uuid>, String)> = sqlx::query_as(&format!(
-        "select id, parent_id, sibling_rank from \"{}\" where scope_id = $1 order by id",
+        "select id, parent_id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = scope_id order by id",
         model.physical_table_name
     ))
     .bind(scope_id)
@@ -300,6 +393,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             &metadata,
             OrderedTreeLeafDeleteInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: first,
             },
         )
@@ -308,7 +402,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
     assert_eq!(typed_error(error).code(), "tree_node_has_children");
 
     let count_before: i64 = sqlx::query_scalar(&format!(
-        "select count(*)::bigint from \"{}\" where scope_id = $1",
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = scope_id",
         model.physical_table_name
     ))
     .bind(scope_id)
@@ -320,6 +414,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             &metadata,
             OrderedTreeSubtreeDeleteInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: first,
                 expected_affected_count: 2,
             },
@@ -331,7 +426,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
         OrderedTreeCommandError::ExpectedAffectedCountMismatch { .. }
     ));
     let count_after: i64 = sqlx::query_scalar(&format!(
-        "select count(*)::bigint from \"{}\" where scope_id = $1",
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = scope_id",
         model.physical_table_name
     ))
     .bind(scope_id)
@@ -345,6 +440,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             &metadata,
             OrderedTreeSubtreeDeleteInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: first,
                 expected_affected_count: 4,
             },
@@ -357,6 +453,7 @@ async fn ordered_tree_structure_command_acceptance_matrix() {
             &metadata,
             OrderedTreeLeafDeleteInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: second,
             },
         )
@@ -390,6 +487,7 @@ async fn concurrent_opposite_moves_return_one_cycle_conflict() {
                     OrderedTreeMoveInput {
                         actor_user_id: Uuid::nil(),
                         scope_id,
+                        tree_partition_id: scope_id,
                         node_id: left,
                         position: move_position(Some(right), None, None),
                     },
@@ -409,6 +507,7 @@ async fn concurrent_opposite_moves_return_one_cycle_conflict() {
                     OrderedTreeMoveInput {
                         actor_user_id: Uuid::nil(),
                         scope_id,
+                        tree_partition_id: scope_id,
                         node_id: right,
                         position: move_position(Some(left), None, None),
                     },
@@ -435,7 +534,7 @@ async fn create_rebalances_dense_target_siblings_before_retry() {
     let left = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
     let right = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
     sqlx::query(&format!(
-        "update \"{}\" set sibling_rank = case id when $1 then $3 else $4 end where scope_id = $2 and id = any($5)",
+        "update \"{}\" set sibling_rank = case id when $1 then $3 else $4 end where scope_id = $2 and tree_partition_id = scope_id and id = any($5)",
         model.physical_table_name
     ))
     .bind(left)
@@ -455,7 +554,7 @@ async fn create_rebalances_dense_target_siblings_before_retry() {
     )
     .await;
     let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
-        "select id, sibling_rank from \"{}\" where scope_id = $1 order by sibling_rank collate \"C\", id",
+        "select id, sibling_rank from \"{}\" where scope_id = $1 and tree_partition_id = scope_id order by sibling_rank collate \"C\", id",
         model.physical_table_name
     ))
     .bind(scope_id)
@@ -483,8 +582,9 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
     let anchor = create_node(&store, &metadata, scope_id, position(None, None, None)).await;
 
     let mut lock_tx = store.pool().begin().await.unwrap();
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))")
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))")
         .bind(model.id)
+        .bind(scope_id)
         .bind(scope_id)
         .execute(&mut *lock_tx)
         .await
@@ -499,6 +599,7 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
                     OrderedTreeCreateInput {
                         actor_user_id: Uuid::nil(),
                         scope_id,
+                        tree_partition_id: scope_id,
                         payload: json!({}),
                         position: position(None, Some(anchor), None),
                     },
@@ -508,7 +609,7 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
     };
     tokio::task::yield_now().await;
     sqlx::query(&format!(
-        "update \"{}\" set parent_id = $1 where scope_id = $2 and id = $3",
+        "update \"{}\" set parent_id = $1 where scope_id = $2 and tree_partition_id = scope_id and id = $3",
         model.physical_table_name
     ))
     .bind(parent)
@@ -525,8 +626,9 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
     );
 
     let mut count_lock_tx = store.pool().begin().await.unwrap();
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))")
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))")
         .bind(model.id)
+        .bind(scope_id)
         .bind(scope_id)
         .execute(&mut *count_lock_tx)
         .await
@@ -540,6 +642,7 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
                     &metadata,
                     OrderedTreeSubtreeDeleteInput {
                         scope_id,
+                        tree_partition_id: scope_id,
                         node_id: parent,
                         expected_affected_count: 2,
                     },
@@ -550,7 +653,7 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
     tokio::task::yield_now().await;
     let raced_child = Uuid::now_v7();
     sqlx::query(&format!(
-        "insert into \"{}\" (id, scope_id, parent_id, sibling_rank) values ($1, $2, $3, 'k')",
+        "insert into \"{}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank) values ($1, $2, $2, $3, 'k')",
         model.physical_table_name
     ))
     .bind(raced_child)
@@ -569,7 +672,7 @@ async fn waiting_commands_revalidate_anchor_and_expected_subtree_count() {
         }
     );
     let still_present: i64 = sqlx::query_scalar(&format!(
-        "select count(*)::bigint from \"{}\" where scope_id = $1 and id = any($2)",
+        "select count(*)::bigint from \"{}\" where scope_id = $1 and tree_partition_id = scope_id and id = any($2)",
         model.physical_table_name
     ))
     .bind(scope_id)

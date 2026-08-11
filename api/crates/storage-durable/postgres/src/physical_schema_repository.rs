@@ -301,7 +301,7 @@ async fn maybe_create_ordered_tree_prefix_index(
     let column_name = quote_identifier(&field.physical_column_name)?;
     let index_name = quote_identifier(&full_uuid_name("idx_ot_prefix", field.id))?;
     sqlx::query(&format!(
-        "create index {index_name} on {table_name} (scope_id, (lower({column_name}) collate \"C\") text_pattern_ops)"
+        "create index {index_name} on {table_name} (scope_id, tree_partition_id, (lower({column_name}) collate \"C\") text_pattern_ops)"
     ))
     .execute(&mut **tx)
     .await?;

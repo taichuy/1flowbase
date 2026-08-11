@@ -69,10 +69,30 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         ensure_position_shape(&position)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(&mut tx, metadata.model_id, input.scope_id).await?;
-        ensure_parent(&mut tx, &table_name, input.scope_id, position.parent_id).await?;
-        let sibling_rank =
-            allocate_position(&mut tx, &table_name, input.scope_id, &position, None).await?;
+        lock_structure(
+            &mut tx,
+            metadata.model_id,
+            input.scope_id,
+            input.tree_partition_id,
+        )
+        .await?;
+        ensure_parent(
+            &mut tx,
+            &table_name,
+            input.scope_id,
+            input.tree_partition_id,
+            position.parent_id,
+        )
+        .await?;
+        let sibling_rank = allocate_position(
+            &mut tx,
+            &table_name,
+            input.scope_id,
+            input.tree_partition_id,
+            &position,
+            None,
+        )
+        .await?;
         let node_id = Uuid::now_v7();
         insert_node(
             &mut tx,
@@ -81,6 +101,7 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
             node_id,
             input.actor_user_id,
             input.scope_id,
+            input.tree_partition_id,
             position.parent_id,
             &sibling_rank,
             input.payload,
@@ -100,13 +121,34 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         ensure_position_shape(&position)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(&mut tx, metadata.model_id, input.scope_id).await?;
-        ensure_node(&mut tx, &table_name, input.scope_id, input.node_id).await?;
-        ensure_parent(&mut tx, &table_name, input.scope_id, position.parent_id).await?;
+        lock_structure(
+            &mut tx,
+            metadata.model_id,
+            input.scope_id,
+            input.tree_partition_id,
+        )
+        .await?;
+        ensure_node(
+            &mut tx,
+            &table_name,
+            input.scope_id,
+            input.tree_partition_id,
+            input.node_id,
+        )
+        .await?;
+        ensure_parent(
+            &mut tx,
+            &table_name,
+            input.scope_id,
+            input.tree_partition_id,
+            position.parent_id,
+        )
+        .await?;
         ensure_acyclic_move(
             &mut tx,
             &table_name,
             input.scope_id,
+            input.tree_partition_id,
             input.node_id,
             position.parent_id,
         )
@@ -118,18 +160,20 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
             &mut tx,
             &table_name,
             input.scope_id,
+            input.tree_partition_id,
             &position,
             Some(input.node_id),
         )
         .await?;
 
         let result = sqlx::query(&format!(
-            "update {table_name} set parent_id = $1, sibling_rank = $2, updated_by = $3, updated_at = now() where scope_id = $4 and id = $5"
+            "update {table_name} set parent_id = $1, sibling_rank = $2, updated_by = $3, updated_at = now() where scope_id = $4 and tree_partition_id = $5 and id = $6"
         ))
         .bind(position.parent_id)
         .bind(sibling_rank.as_str())
         .bind(nullable_actor(input.actor_user_id))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(input.node_id)
         .execute(&mut *tx)
         .await
@@ -149,15 +193,30 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         ensure_ordered_tree(metadata)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(&mut tx, metadata.model_id, input.scope_id).await?;
-        if !node_exists(&mut tx, &table_name, input.scope_id, input.node_id).await? {
+        lock_structure(
+            &mut tx,
+            metadata.model_id,
+            input.scope_id,
+            input.tree_partition_id,
+        )
+        .await?;
+        if !node_exists(
+            &mut tx,
+            &table_name,
+            input.scope_id,
+            input.tree_partition_id,
+            input.node_id,
+        )
+        .await?
+        {
             tx.commit().await?;
             return Ok(false);
         }
         let has_children: bool = sqlx::query_scalar(&format!(
-            "select exists(select 1 from {table_name} where scope_id = $1 and parent_id = $2)"
+            "select exists(select 1 from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id = $3)"
         ))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(input.node_id)
         .fetch_one(&mut *tx)
         .await?;
@@ -165,9 +224,10 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
             return Err(OrderedTreeCommandError::TreeNodeHasChildren.into());
         }
         let result = sqlx::query(&format!(
-            "delete from {table_name} where scope_id = $1 and id = $2"
+            "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
         ))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(input.node_id)
         .execute(&mut *tx)
         .await
@@ -184,23 +244,31 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         ensure_ordered_tree(metadata)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
         let mut tx = self.pool().begin().await?;
-        lock_structure(&mut tx, metadata.model_id, input.scope_id).await?;
+        lock_structure(
+            &mut tx,
+            metadata.model_id,
+            input.scope_id,
+            input.tree_partition_id,
+        )
+        .await?;
         let nodes: Vec<(Uuid, i32)> = sqlx::query_as(&format!(
             r#"
             with recursive subtree(id, depth, path) as (
                 select id, 0, array[id]
                 from {table_name}
-                where scope_id = $1 and id = $2
+                where scope_id = $1 and tree_partition_id = $2 and id = $3
                 union all
                 select child.id, subtree.depth + 1, subtree.path || child.id
                 from {table_name} child
                 join subtree on child.parent_id = subtree.id
-                where child.scope_id = $1 and not child.id = any(subtree.path)
+                where child.scope_id = $1 and child.tree_partition_id = $2
+                  and not child.id = any(subtree.path)
             )
             select id, depth from subtree order by depth desc, id
             "#
         ))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(input.node_id)
         .fetch_all(&mut *tx)
         .await?;
@@ -219,9 +287,10 @@ impl OrderedTreeStructureRepository for PgControlPlaneStore {
         let mut deleted_count = 0_u64;
         for (node_id, _) in nodes {
             let result = sqlx::query(&format!(
-                "delete from {table_name} where scope_id = $1 and id = $2"
+                "delete from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3"
             ))
             .bind(input.scope_id)
+            .bind(input.tree_partition_id)
             .bind(node_id)
             .execute(&mut *tx)
             .await?;
@@ -262,10 +331,12 @@ async fn lock_structure(
     tx: &mut Transaction<'_, Postgres>,
     model_id: Uuid,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
 ) -> Result<()> {
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))")
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))")
         .bind(model_id)
         .bind(scope_id)
+        .bind(tree_partition_id)
         .execute(&mut **tx)
         .await?;
     Ok(())
@@ -275,9 +346,10 @@ async fn ensure_node(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<()> {
-    if node_exists(tx, table_name, scope_id, node_id).await? {
+    if node_exists(tx, table_name, scope_id, tree_partition_id, node_id).await? {
         Ok(())
     } else {
         Err(OrderedTreeCommandError::NodeNotFound.into())
@@ -288,12 +360,14 @@ async fn node_exists(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<bool> {
     let row: Option<Uuid> = sqlx::query_scalar(&format!(
-        "select id from {table_name} where scope_id = $1 and id = $2 for update"
+        "select id from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3 for update"
     ))
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(node_id)
     .fetch_optional(&mut **tx)
     .await?;
@@ -304,12 +378,13 @@ async fn ensure_parent(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     parent_id: Option<Uuid>,
 ) -> Result<()> {
     let Some(parent_id) = parent_id else {
         return Ok(());
     };
-    if node_exists(tx, table_name, scope_id, parent_id).await? {
+    if node_exists(tx, table_name, scope_id, tree_partition_id, parent_id).await? {
         Ok(())
     } else {
         Err(OrderedTreeCommandError::ParentNotFound.into())
@@ -320,6 +395,7 @@ async fn ensure_acyclic_move(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     node_id: Uuid,
     new_parent_id: Option<Uuid>,
 ) -> Result<()> {
@@ -331,17 +407,19 @@ async fn ensure_acyclic_move(
         with recursive ancestors(id, parent_id, path) as (
             select id, parent_id, array[id]
             from {table_name}
-            where scope_id = $1 and id = $2
+            where scope_id = $1 and tree_partition_id = $2 and id = $3
             union all
             select parent.id, parent.parent_id, ancestors.path || parent.id
             from {table_name} parent
             join ancestors on parent.id = ancestors.parent_id
-            where parent.scope_id = $1 and not parent.id = any(ancestors.path)
+            where parent.scope_id = $1 and parent.tree_partition_id = $2
+              and not parent.id = any(ancestors.path)
         )
-        select exists(select 1 from ancestors where id = $3)
+        select exists(select 1 from ancestors where id = $4)
         "#
     ))
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(new_parent_id)
     .bind(node_id)
     .fetch_one(&mut **tx)
@@ -357,25 +435,28 @@ async fn allocate_position(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     position: &StructurePosition,
     excluded_node_id: Option<Uuid>,
 ) -> Result<FractionalRank> {
-    ensure_anchor_group(tx, table_name, scope_id, position).await?;
+    ensure_anchor_group(tx, table_name, scope_id, tree_partition_id, position).await?;
     let mut siblings = load_siblings(
         tx,
         table_name,
         scope_id,
+        tree_partition_id,
         position.parent_id,
         excluded_node_id,
     )
     .await?;
     let mut allocation = allocate_from_siblings(&siblings, position)?;
     if allocation.rebalance_recommended {
-        rebalance_siblings(tx, table_name, scope_id, &mut siblings).await?;
+        rebalance_siblings(tx, table_name, scope_id, tree_partition_id, &mut siblings).await?;
         siblings = load_siblings(
             tx,
             table_name,
             scope_id,
+            tree_partition_id,
             position.parent_id,
             excluded_node_id,
         )
@@ -389,15 +470,17 @@ async fn ensure_anchor_group(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     position: &StructurePosition,
 ) -> Result<()> {
     let Some(anchor_id) = position.before_id.or(position.after_id) else {
         return Ok(());
     };
     let anchor_parent: Option<Option<Uuid>> = sqlx::query_scalar(&format!(
-        "select parent_id from {table_name} where scope_id = $1 and id = $2 for update"
+        "select parent_id from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3 for update"
     ))
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(anchor_id)
     .fetch_optional(&mut **tx)
     .await?;
@@ -440,13 +523,15 @@ async fn load_siblings(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     parent_id: Option<Uuid>,
     excluded_node_id: Option<Uuid>,
 ) -> Result<Vec<Sibling>> {
     let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
-        "select id, sibling_rank from {table_name} where scope_id = $1 and parent_id is not distinct from $2 and ($3::uuid is null or id <> $3) order by sibling_rank collate \"C\", id for update"
+        "select id, sibling_rank from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id is not distinct from $3 and ($4::uuid is null or id <> $4) order by sibling_rank collate \"C\", id for update"
     ))
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(parent_id)
     .bind(excluded_node_id)
     .fetch_all(&mut **tx)
@@ -465,25 +550,28 @@ async fn rebalance_siblings(
     tx: &mut Transaction<'_, Postgres>,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     siblings: &mut [Sibling],
 ) -> Result<()> {
     let replacements = rebalance(siblings.len())?;
     for sibling in siblings.iter() {
         sqlx::query(&format!(
-            "update {table_name} set sibling_rank = $1 where scope_id = $2 and id = $3"
+            "update {table_name} set sibling_rank = $1 where scope_id = $2 and tree_partition_id = $3 and id = $4"
         ))
         .bind(format!("~{}", sibling.id.simple()))
         .bind(scope_id)
+        .bind(tree_partition_id)
         .bind(sibling.id)
         .execute(&mut **tx)
         .await?;
     }
     for (sibling, replacement) in siblings.iter_mut().zip(replacements) {
         sqlx::query(&format!(
-            "update {table_name} set sibling_rank = $1 where scope_id = $2 and id = $3"
+            "update {table_name} set sibling_rank = $1 where scope_id = $2 and tree_partition_id = $3 and id = $4"
         ))
         .bind(replacement.as_str())
         .bind(scope_id)
+        .bind(tree_partition_id)
         .bind(sibling.id)
         .execute(&mut **tx)
         .await?;
@@ -500,6 +588,7 @@ async fn insert_node(
     node_id: Uuid,
     actor_user_id: Uuid,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     parent_id: Option<Uuid>,
     sibling_rank: &FractionalRank,
     payload: Value,
@@ -510,6 +599,7 @@ async fn insert_node(
     let mut columns = HashSet::from([
         "id".to_owned(),
         "scope_id".to_owned(),
+        "tree_partition_id".to_owned(),
         "created_by".to_owned(),
         "updated_by".to_owned(),
         "parent_id".to_owned(),
@@ -533,7 +623,7 @@ async fn insert_node(
     }
 
     let mut builder = QueryBuilder::<Postgres>::new(format!(
-        "insert into {table_name} (id, scope_id, created_by, updated_by, parent_id, sibling_rank"
+        "insert into {table_name} (id, scope_id, tree_partition_id, created_by, updated_by, parent_id, sibling_rank"
     ));
     for (field, _) in &fields {
         builder.push(", ");
@@ -543,6 +633,8 @@ async fn insert_node(
     builder.push_bind(node_id);
     builder.push(", ");
     builder.push_bind(scope_id);
+    builder.push(", ");
+    builder.push_bind(tree_partition_id);
     builder.push(", ");
     builder.push_bind(nullable_actor(actor_user_id));
     builder.push(", ");

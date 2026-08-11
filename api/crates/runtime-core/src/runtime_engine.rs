@@ -632,6 +632,9 @@ impl RuntimeEngine {
         let scope_id = access_scope
             .scope_id
             .unwrap_or(input.actor.current_workspace_id);
+        // Generic runtime routes retain one tree per scope. Domain-specific callers can
+        // use the repository contract directly with a distinct structural partition.
+        let tree_partition_id = scope_id;
         match handler {
             Handler::ListRecords | Handler::GetRecord => {
                 Err(RuntimeModelError::InvalidOperationInput("ordered_tree_crud_adapter").into())
@@ -664,6 +667,7 @@ impl RuntimeEngine {
                         OrderedTreeCreateInput {
                             actor_user_id: input.actor.user_id,
                             scope_id,
+                            tree_partition_id,
                             payload,
                             position: OrderedTreeCreatePosition {
                                 parent_id,
@@ -700,6 +704,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeLeafDeleteInput {
                             scope_id,
+                            tree_partition_id,
                             node_id: operation_uuid(&input.path, "id")?,
                         },
                     )
@@ -718,6 +723,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeBoundedListInput {
                             scope_id,
+                            tree_partition_id,
                             result_limit: operation_u32(&input.query, "limit", 100)?,
                         },
                     )
@@ -732,6 +738,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeChildrenInput {
                             scope_id,
+                            tree_partition_id,
                             parent_id: operation_uuid(&input.path, "id")?,
                             result_limit: operation_u32(&input.query, "limit", 100)?,
                         },
@@ -747,6 +754,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeNodeInput {
                             scope_id,
+                            tree_partition_id,
                             node_id: operation_uuid(&input.path, "id")?,
                         },
                     )
@@ -762,6 +770,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeDescendantsInput {
                             scope_id,
+                            tree_partition_id,
                             node_id: operation_uuid(&input.path, "id")?,
                             max_depth: operation_u32(&input.query, "max_depth", 32)?,
                             result_limit: operation_u32(&input.query, "limit", 100)?,
@@ -790,6 +799,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeSearchInput {
                             scope_id,
+                            tree_partition_id,
                             prefix,
                             match_limit: operation_u32(&input.query, "limit", 20)?,
                         },
@@ -818,6 +828,7 @@ impl RuntimeEngine {
                         OrderedTreeMoveInput {
                             actor_user_id: input.actor.user_id,
                             scope_id,
+                            tree_partition_id,
                             node_id: operation_uuid(&input.path, "id")?,
                             position: OrderedTreeMovePosition {
                                 new_parent_id,
@@ -837,6 +848,7 @@ impl RuntimeEngine {
                         &metadata,
                         OrderedTreeSubtreeDeleteInput {
                             scope_id,
+                            tree_partition_id,
                             node_id: operation_uuid(&input.path, "id")?,
                             expected_affected_count,
                         },

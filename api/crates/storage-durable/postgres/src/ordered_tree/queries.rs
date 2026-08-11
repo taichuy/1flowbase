@@ -38,10 +38,11 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         ensure_limit(input.result_limit, MAX_RESULT_LIMIT)?;
         let table_name = quote_identifier(&metadata.physical_table_name)?;
         let records: Vec<Value> = sqlx::query_scalar(&format!(
-            "select row_to_json(node) from (select {} from {table_name} where scope_id = $1 and parent_id is null order by sibling_rank collate \"C\", id limit $2) node",
+            "select row_to_json(node) from (select {} from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id is null order by sibling_rank collate \"C\", id limit $3) node",
             projected_select_list(metadata)?
         ))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(i64::from(input.result_limit))
         .fetch_all(self.pool())
         .await?;
@@ -60,15 +61,17 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             self.pool(),
             &table_name,
             input.scope_id,
+            input.tree_partition_id,
             input.parent_id,
             OrderedTreeQueryError::ParentNotFound,
         )
         .await?;
         let records: Vec<Value> = sqlx::query_scalar(&format!(
-            "select row_to_json(node) from (select {} from {table_name} where scope_id = $1 and parent_id = $2 order by sibling_rank collate \"C\", id limit $3) node",
+            "select row_to_json(node) from (select {} from {table_name} where scope_id = $1 and tree_partition_id = $2 and parent_id = $3 order by sibling_rank collate \"C\", id limit $4) node",
             projected_select_list(metadata)?
         ))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(input.parent_id)
         .bind(i64::from(input.result_limit))
         .fetch_all(self.pool())
@@ -87,6 +90,7 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             self.pool(),
             &table_name,
             input.scope_id,
+            input.tree_partition_id,
             input.node_id,
             OrderedTreeQueryError::NodeNotFound,
         )
@@ -96,6 +100,7 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             metadata,
             &table_name,
             input.scope_id,
+            input.tree_partition_id,
             input.node_id,
         )
         .await
@@ -120,6 +125,7 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             self.pool(),
             &table_name,
             input.scope_id,
+            input.tree_partition_id,
             input.node_id,
             OrderedTreeQueryError::NodeNotFound,
         )
@@ -127,29 +133,32 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         let rows: Vec<(Value, i32, bool, Vec<Uuid>)> = sqlx::query_as(&format!(
             r#"
             with recursive descendants(id, depth, id_path, rank_path) as (
-                select child.id, 1, array[$2, child.id], array[child.sibling_rank]
+                select child.id, 1, array[$3, child.id], array[child.sibling_rank]
                 from {table_name} child
-                where child.scope_id = $1 and child.parent_id = $2
+                where child.scope_id = $1 and child.tree_partition_id = $2
+                  and child.parent_id = $3
                 union all
                 select child.id, descendants.depth + 1,
                        descendants.id_path || child.id,
                        descendants.rank_path || child.sibling_rank
                 from {table_name} child
                 join descendants on child.parent_id = descendants.id
-                where child.scope_id = $1 and descendants.depth < $3
+                where child.scope_id = $1 and child.tree_partition_id = $2
+                  and descendants.depth < $4
                   and not child.id = any(descendants.id_path)
             )
             select row_to_json(node), descendants.depth,
-                   exists(select 1 from {table_name} child where child.scope_id = $1 and child.parent_id = descendants.id),
+                   exists(select 1 from {table_name} child where child.scope_id = $1 and child.tree_partition_id = $2 and child.parent_id = descendants.id),
                    descendants.id_path
             from descendants
-            join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.id = descendants.id) node on true
+            join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = descendants.id) node on true
             order by descendants.rank_path collate "C", descendants.id_path
-            limit $4
+            limit $5
             "#,
             projection = qualified_projection(metadata, "source")?,
         ))
         .bind(input.scope_id)
+        .bind(input.tree_partition_id)
         .bind(input.node_id)
         .bind(i32::try_from(input.max_depth)?)
         .bind(i64::from(input.result_limit))
@@ -202,6 +211,8 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
             projected_select_list(metadata)?
         ));
         builder.push_bind(input.scope_id);
+        builder.push(" and tree_partition_id = ");
+        builder.push_bind(input.tree_partition_id);
         builder.push(" and (");
         let pattern = format!("{}%", escape_like_prefix(prefix));
         for (index, field) in searchable_fields.iter().enumerate() {
@@ -222,9 +233,15 @@ impl OrderedTreeQueryRepository for PgControlPlaneStore {
         let mut output = Vec::<OrderedTreeSearchProjection>::new();
         let mut indexes = HashMap::<Uuid, usize>::new();
         for (match_id, record) in matches {
-            let ancestors =
-                ancestor_records(self.pool(), metadata, &table_name, input.scope_id, match_id)
-                    .await?;
+            let ancestors = ancestor_records(
+                self.pool(),
+                metadata,
+                &table_name,
+                input.scope_id,
+                input.tree_partition_id,
+                match_id,
+            )
+            .await?;
             for ancestor in ancestors {
                 let ancestor = normalize_record(metadata, ancestor);
                 let ancestor_id = record_id(&ancestor)?;
@@ -277,13 +294,15 @@ async fn ensure_node_exists(
     pool: &PgPool,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     node_id: Uuid,
     error: OrderedTreeQueryError,
 ) -> Result<()> {
     let exists: bool = sqlx::query_scalar(&format!(
-        "select exists(select 1 from {table_name} where scope_id = $1 and id = $2)"
+        "select exists(select 1 from {table_name} where scope_id = $1 and tree_partition_id = $2 and id = $3)"
     ))
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(node_id)
     .fetch_one(pool)
     .await?;
@@ -299,6 +318,7 @@ async fn ancestor_records(
     metadata: &ModelMetadata,
     table_name: &str,
     scope_id: Uuid,
+    tree_partition_id: Uuid,
     node_id: Uuid,
 ) -> Result<Vec<Value>> {
     let records: Vec<Value> = sqlx::query_scalar(&format!(
@@ -306,24 +326,28 @@ async fn ancestor_records(
         with recursive ancestors(id, parent_id, depth, path) as (
             select parent.id, parent.parent_id, 0, array[parent.id]
             from {table_name} node
-            join {table_name} parent on parent.scope_id = node.scope_id and parent.id = node.parent_id
-            where node.scope_id = $1 and node.id = $2
+            join {table_name} parent on parent.scope_id = node.scope_id
+                and parent.tree_partition_id = node.tree_partition_id
+                and parent.id = node.parent_id
+            where node.scope_id = $1 and node.tree_partition_id = $2 and node.id = $3
             union all
             select parent.id, parent.parent_id, ancestors.depth + 1, ancestors.path || parent.id
             from {table_name} parent
             join ancestors on parent.id = ancestors.parent_id
-            where parent.scope_id = $1 and not parent.id = any(ancestors.path)
-              and cardinality(ancestors.path) <= $3
+            where parent.scope_id = $1 and parent.tree_partition_id = $2
+              and not parent.id = any(ancestors.path)
+              and cardinality(ancestors.path) <= $4
         )
         select row_to_json(node)
         from ancestors
-        join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.id = ancestors.id) node on true
+        join lateral (select {projection} from {table_name} source where source.scope_id = $1 and source.tree_partition_id = $2 and source.id = ancestors.id) node on true
         order by ancestors.depth desc
-        limit ($3 + 1)
+        limit ($4 + 1)
         "#,
         projection = qualified_projection(metadata, "source")?,
     ))
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(node_id)
     .bind(i32::try_from(MAX_DESCENDANT_DEPTH)?)
     .fetch_all(pool)

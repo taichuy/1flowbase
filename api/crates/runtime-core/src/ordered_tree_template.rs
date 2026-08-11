@@ -97,6 +97,12 @@ pub(crate) fn ordered_tree_template_descriptor() -> DataModelTemplateDescriptor 
                 DataModelSystemFieldWritePolicy::RuntimeManaged,
             ),
             system_field(
+                "tree_partition_id",
+                json!({ "type": "string", "format": "uuid" }),
+                true,
+                DataModelSystemFieldWritePolicy::RuntimeManaged,
+            ),
+            system_field(
                 "created_by",
                 nullable_uuid_schema(),
                 false,

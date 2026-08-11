@@ -131,12 +131,24 @@ async fn insert_node(
     scope_id: Uuid,
     node: TestNode<'_>,
 ) {
+    insert_node_in_partition(store, model, field, scope_id, scope_id, node).await;
+}
+
+async fn insert_node_in_partition(
+    store: &PgControlPlaneStore,
+    model: &domain::ModelDefinitionRecord,
+    field: &domain::ModelFieldRecord,
+    scope_id: Uuid,
+    tree_partition_id: Uuid,
+    node: TestNode<'_>,
+) {
     sqlx::query(&format!(
-        "insert into \"{}\" (id, scope_id, parent_id, sibling_rank, \"{}\") values ($1, $2, $3, $4, $5)",
+        "insert into \"{}\" (id, scope_id, tree_partition_id, parent_id, sibling_rank, \"{}\") values ($1, $2, $3, $4, $5, $6)",
         model.physical_table_name, field.physical_column_name
     ))
     .bind(node.id)
     .bind(scope_id)
+    .bind(tree_partition_id)
     .bind(node.parent_id)
     .bind(node.sibling_rank)
     .bind(node.title)
@@ -167,6 +179,32 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
     let model = create_model(&store, scope_id, "bounds").await;
     let (model, field) = add_search_field(&store, &model).await;
     let metadata = metadata(&model);
+    let other_partition_id = Uuid::now_v7();
+    let partition_root = Uuid::now_v7();
+    let partition_child = Uuid::now_v7();
+    insert_node_in_partition(
+        &store,
+        &model,
+        &field,
+        scope_id,
+        other_partition_id,
+        TestNode::new(partition_root, None, "U", "Partition root"),
+    )
+    .await;
+    insert_node_in_partition(
+        &store,
+        &model,
+        &field,
+        scope_id,
+        other_partition_id,
+        TestNode::new(
+            partition_child,
+            Some(partition_root),
+            "U",
+            "Partition child",
+        ),
+    )
+    .await;
 
     let root_a = Uuid::now_v7();
     let root_b = Uuid::now_v7();
@@ -237,6 +275,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeBoundedListInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 result_limit: 10,
             },
         )
@@ -249,11 +288,15 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             .collect::<Vec<_>>(),
         vec![root_a, root_b]
     );
+    assert!(roots
+        .iter()
+        .all(|node| record_id(&node.record) != partition_root));
     let children = store
         .list_ordered_tree_children(
             &metadata,
             OrderedTreeChildrenInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 parent_id: root_a,
                 result_limit: 10,
             },
@@ -267,6 +310,9 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             .collect::<Vec<_>>(),
         vec![child_a, child_b]
     );
+    assert!(children
+        .iter()
+        .all(|node| record_id(&node.record) != partition_child));
     let mut wide_ids = Vec::new();
     for index in 0..20 {
         let node_id = Uuid::now_v7();
@@ -285,6 +331,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeChildrenInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 parent_id: root_b,
                 result_limit: 7,
             },
@@ -304,6 +351,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeNodeInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: great_grandchild,
             },
         )
@@ -316,12 +364,17 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             .collect::<Vec<_>>(),
         vec![root_a, child_a, grandchild]
     );
+    assert!(ancestors.iter().all(|node| {
+        let id = record_id(&node.record);
+        id != partition_root && id != partition_child
+    }));
 
     let descendants = store
         .list_ordered_tree_descendants(
             &metadata,
             OrderedTreeDescendantsInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: root_a,
                 max_depth: 2,
                 result_limit: 10,
@@ -337,6 +390,10 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             .collect::<Vec<_>>(),
         vec![(child_a, 1), (grandchild, 2), (child_b, 1)]
     );
+    assert!(descendants.iter().all(|node| {
+        let id = record_id(&node.record);
+        id != partition_root && id != partition_child
+    }));
     assert_eq!(
         descendants[1].path.as_deref(),
         Some([root_a, child_a, grandchild].as_slice())
@@ -347,6 +404,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeDescendantsInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: root_a,
                 max_depth: 1,
                 result_limit: 1,
@@ -363,6 +421,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeDescendantsInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 node_id: root_a,
                 max_depth: 0,
                 result_limit: 10,
@@ -380,6 +439,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeBoundedListInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 result_limit: 1_001,
             },
         )
@@ -394,6 +454,7 @@ async fn bounded_tree_queries_cover_order_depth_path_scope_and_not_found() {
             &metadata,
             OrderedTreeChildrenInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 parent_id: foreign_node,
                 result_limit: 10,
             },
@@ -414,6 +475,16 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
     let model = create_model(&store, scope_id, "search").await;
     let (model, field) = add_search_field(&store, &model).await;
     let metadata = metadata(&model);
+    let partition_match = Uuid::now_v7();
+    insert_node_in_partition(
+        &store,
+        &model,
+        &field,
+        scope_id,
+        Uuid::now_v7(),
+        TestNode::new(partition_match, None, "U", "Alpha in another partition"),
+    )
+    .await;
     let root = Uuid::now_v7();
     let match_parent = Uuid::now_v7();
     let match_child = Uuid::now_v7();
@@ -461,6 +532,7 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
             &metadata,
             OrderedTreeSearchInput {
                 scope_id,
+                tree_partition_id: scope_id,
                 prefix: "aLpHa".to_owned(),
                 match_limit: 10,
             },
@@ -477,6 +549,9 @@ async fn prefix_search_returns_match_markers_and_ancestor_context_only() {
     assert!(!output
         .iter()
         .any(|node| record_id(&node.record) == nonmatch_descendant));
+    assert!(!output
+        .iter()
+        .any(|node| record_id(&node.record) == partition_match));
 }
 
 // AC-010/AC-014: real catalog and analyzed scale prove the matching expression index is used.
@@ -503,12 +578,13 @@ async fn prefix_expression_index_matches_query_shape_and_avoids_seq_scan() {
             field.physical_column_name
         )) && definition.contains("text_pattern_ops")
             && definition.contains("scope_id")
+            && definition.contains("tree_partition_id")
     }));
 
     sqlx::query(&format!(
         r#"
-        insert into "{}" (id, scope_id, sibling_rank, "{}")
-        select gen_random_uuid(), $1, lpad(series::text, 8, '0') || 'U',
+        insert into "{}" (id, scope_id, tree_partition_id, sibling_rank, "{}")
+        select gen_random_uuid(), $1, $1, lpad(series::text, 8, '0') || 'U',
                case when series = 4242 then 'Needle-4242' else 'row-' || series::text end
         from generate_series(1, 5000) series
         "#,
@@ -523,7 +599,7 @@ async fn prefix_expression_index_matches_query_shape_and_avoids_seq_scan() {
         .await
         .unwrap();
     let plan: Vec<String> = sqlx::query_scalar(&format!(
-        "explain (analyze, costs off, format text) select id from \"{}\" where scope_id = $1 and (lower(\"{}\") collate \"C\") like lower($2) escape E'\\\\'",
+        "explain (analyze, costs off, format text) select id from \"{}\" where scope_id = $1 and tree_partition_id = $1 and (lower(\"{}\") collate \"C\") like lower($2) escape E'\\\\'",
         model.physical_table_name, field.physical_column_name
     ))
     .bind(scope_id)
