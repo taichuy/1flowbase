@@ -32,6 +32,7 @@ pub mod runtime_data_model_docs;
 pub mod runtime_profile_client;
 pub mod runtime_registry_sync;
 pub mod system_backup;
+pub mod system_recovery;
 pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};

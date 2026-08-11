@@ -99,6 +99,7 @@ dependencies = [
  "storage-durable",
  "storage-ephemeral",
  "storage-object",
+ "sysinfo",
  "tar",
  "thiserror 2.0.18",
  "time",
