@@ -456,6 +456,7 @@ export function JsxStudioChildContainersPanel({
                     block.id
                   );
                   const disabled =
+                    block.id === selected.ownerBlockId ||
                     forbiddenOwnerBlockIds.has(block.id) ||
                     (assignedContainerId !== undefined &&
                       assignedContainerId !== selected.id);
