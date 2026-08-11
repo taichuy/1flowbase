@@ -4,6 +4,11 @@ import type {
   SaveFrontstageTabDocumentInput
 } from '../api/page-content';
 import type { FrontstageBlockPorts } from './page-signals/types';
+import {
+  normalizeChildContainerTree,
+  serializeChildContainerTree,
+  type ChildContainerNode
+} from './child-container-tree';
 
 export type FrontstagePageDocumentDiagnosticSeverity = 'warning' | 'error';
 
@@ -66,8 +71,13 @@ export interface FrontstagePageDocument {
   rootUid: string;
   layoutMode: FrontstagePageLayoutMode;
   blocks: FrontstageBlockInstance[];
+  childContainers?: ChildContainerNode[];
   isEmpty: boolean;
   diagnostics: FrontstagePageDocumentDiagnostic[];
+}
+
+export interface NormalizedFrontstagePageDocument extends FrontstagePageDocument {
+  childContainers: ChildContainerNode[];
 }
 
 function resolvePageLayoutMode(
@@ -535,7 +545,7 @@ function normalizeBlock(
 
 export function createFrontstagePageDocument(
   content: FrontstagePageContent
-): FrontstagePageDocument {
+): NormalizedFrontstagePageDocument {
   const diagnostics: FrontstagePageDocumentDiagnostic[] = [];
   const { blocks: rawBlocks, source } = selectBlockPayloads(
     content,
@@ -545,6 +555,10 @@ export function createFrontstagePageDocument(
   const usedCodeRefs = new Set<string>();
   const runtimeDiagnostics: FrontstagePageDocumentDiagnostic[] = [];
   const blocks: FrontstageBlockInstance[] = [];
+  const payload = getPayloadRecord(content.document.payload, 'document', []);
+  const childContainerNormalization = normalizeChildContainerTree(
+    payload?.child_containers
+  );
 
   rawBlocks.forEach((rawBlock, index) => {
     if (!isRecord(rawBlock)) {
@@ -570,12 +584,14 @@ export function createFrontstagePageDocument(
   });
 
   diagnostics.push(...runtimeDiagnostics);
+  diagnostics.push(...childContainerNormalization.diagnostics);
 
   return {
     page: content.page,
     rootUid: resolveRootUid(content),
     layoutMode: resolvePageLayoutMode(content),
     blocks,
+    childContainers: childContainerNormalization.containers,
     isEmpty: blocks.length === 0,
     diagnostics
   };
@@ -620,12 +636,18 @@ function createBlockPayload(
 function createPayloadWithBlocks(
   payload: unknown,
   blocks: FrontstageBlockPayload[],
-  layoutMode: FrontstagePageLayoutMode
+  layoutMode: FrontstagePageLayoutMode,
+  childContainers: ChildContainerNode[]
 ): Record<string, unknown> {
+  const payloadRecord = createPayloadRecord(payload);
   return {
-    ...createPayloadRecord(payload),
+    ...payloadRecord,
     'x-layout-mode': layoutMode,
-    blocks
+    blocks,
+    ...(childContainers.length > 0 ||
+    Object.hasOwn(payloadRecord, 'child_containers')
+      ? { child_containers: serializeChildContainerTree(childContainers) }
+      : {})
   };
 }
 
@@ -637,7 +659,8 @@ export function createFrontstagePageDocumentSaveInput(
     payload: createPayloadWithBlocks(
       content.document.payload,
       document.blocks.map(createBlockPayload),
-      document.layoutMode
+      document.layoutMode,
+      document.childContainers ?? []
     )
   };
 }

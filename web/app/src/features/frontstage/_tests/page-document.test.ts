@@ -29,6 +29,60 @@ describe('frontstage page document', () => {
     expect(document.diagnostics).toEqual([]);
   });
 
+  test('AC-007 keeps child containers optional and round-trips their serialized contract', () => {
+    const historical = createPageContent();
+    expect(createFrontstagePageDocument(historical).childContainers).toEqual(
+      []
+    );
+
+    const content = createPageContent({
+      document: {
+        payload: {
+          blocks: [],
+          child_containers: [
+            {
+              container_id: 'editor-drawer',
+              owner_block_id: 'materials-table',
+              parent_container_id: null,
+              rank: '001000',
+              presentation: 'drawer',
+              title: 'Edit material',
+              block_ids: ['material-form', 'save-actions']
+            }
+          ]
+        }
+      }
+    });
+    const document = createFrontstagePageDocument(content);
+
+    expect(document.childContainers).toEqual([
+      {
+        id: 'editor-drawer',
+        ownerBlockId: 'materials-table',
+        parentId: null,
+        rank: '001000',
+        presentation: 'drawer',
+        title: 'Edit material',
+        blockIds: ['material-form', 'save-actions']
+      }
+    ]);
+    expect(
+      createFrontstagePageDocumentSaveInput(content, document).payload
+    ).toMatchObject({
+      child_containers: [
+        {
+          container_id: 'editor-drawer',
+          owner_block_id: 'materials-table',
+          parent_container_id: null,
+          rank: '001000',
+          presentation: 'drawer',
+          title: 'Edit material',
+          block_ids: ['material-form', 'save-actions']
+        }
+      ]
+    });
+  });
+
   test('AC-009 preserves an explicit free layout mode in the tab document payload', () => {
     const content = createPageContent({
       root: {
