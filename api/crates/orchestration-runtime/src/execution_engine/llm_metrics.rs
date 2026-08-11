@@ -2,23 +2,27 @@ use super::*;
 
 const LLM_ROUTING_COUNTER_TTL: time::Duration = time::Duration::hours(1);
 
-pub(super) async fn llm_request_runtimes(
+pub(super) async fn llm_request_runtimes<I>(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
     runtime_context: &ExecutionRuntimeContext,
-) -> Result<Vec<CompiledLlmRuntime>> {
+    invoker: &I,
+) -> Result<Vec<CompiledLlmRuntime>>
+where
+    I: ProviderInvoker + ?Sized,
+{
     let request_count = llm_request_count(node);
-    let candidates = llm_route_candidate_runtimes(runtime);
     let mut request_runtimes = Vec::with_capacity(request_count);
     for attempt_index in 0..request_count {
-        let target_index = llm_target_index(
-            runtime.routing.as_ref(),
-            candidates.len(),
-            attempt_index,
+        let resolved = resolve_llm_request_runtime(
+            runtime,
             runtime_context,
+            invoker,
+            &BTreeSet::new(),
+            attempt_index,
         )
         .await?;
-        request_runtimes.push(candidates[target_index].clone());
+        request_runtimes.push(resolved.runtime);
     }
     Ok(request_runtimes)
 }
@@ -38,6 +42,38 @@ pub(super) async fn resolve_llm_request_runtime<I>(
 where
     I: ProviderInvoker + ?Sized,
 {
+    if let Some(main_routing) = invoker.resolve_main_llm_routing(runtime).await? {
+        let mut compatible = Vec::with_capacity(main_routing.candidates.len());
+        let mut missing = BTreeSet::new();
+        for candidate in main_routing.candidates {
+            let candidate_missing = missing_routing_capabilities(
+                &candidate.route.runtime_capabilities,
+                required_capabilities,
+            );
+            if candidate_missing.is_empty() {
+                compatible.push(candidate);
+            } else {
+                missing.extend(candidate_missing);
+            }
+        }
+        if compatible.is_empty() {
+            return Err(semantic_route_error("main_instance", &missing));
+        }
+        let target_index = llm_target_index(
+            main_routing.distribution_rule,
+            main_routing.distribution_key.as_deref(),
+            compatible.len(),
+            attempt_index,
+            runtime_context,
+        )
+        .await?;
+        let selected = compatible.swap_remove(target_index);
+        return Ok(ResolvedLlmRequestRuntime {
+            runtime: selected.runtime,
+            route: Ok(selected.route),
+        });
+    }
+
     let candidates = llm_route_candidate_runtimes(runtime);
     let mut compatible = Vec::with_capacity(candidates.len());
     let mut missing = BTreeSet::new();
@@ -70,7 +106,15 @@ where
     }
 
     let target_index = llm_target_index(
-        runtime.routing.as_ref(),
+        runtime
+            .routing
+            .as_ref()
+            .map(|routing| routing.distribution_rule)
+            .unwrap_or_default(),
+        runtime
+            .routing
+            .as_ref()
+            .and_then(|routing| routing.distribution_key.as_deref()),
         compatible.len(),
         attempt_index,
         runtime_context,
@@ -100,7 +144,10 @@ fn llm_route_candidate_runtimes(runtime: &CompiledLlmRuntime) -> Vec<CompiledLlm
     let Some(routing) = runtime.routing.as_ref() else {
         return vec![runtime.clone()];
     };
-    if routing.routing_mode != LlmRoutingMode::FailoverQueue || routing.queue_targets.is_empty() {
+    if routing.routing_mode != LlmRoutingMode::FailoverQueue
+        || routing.queue_template_id.is_none()
+        || routing.queue_targets.is_empty()
+    {
         return vec![runtime.clone()];
     }
 
@@ -121,18 +168,15 @@ fn llm_route_candidate_runtimes(runtime: &CompiledLlmRuntime) -> Vec<CompiledLlm
 }
 
 async fn llm_target_index(
-    routing: Option<&crate::compiled_plan::CompiledLlmRouting>,
+    distribution_rule: crate::compiled_plan::LlmDistributionRule,
+    distribution_key: Option<&str>,
     target_count: usize,
     attempt_index: usize,
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<usize> {
-    let distribution_rule = routing
-        .map(|routing| routing.distribution_rule)
-        .unwrap_or_default();
     Ok(match distribution_rule {
         crate::compiled_plan::LlmDistributionRule::RoundRobin if target_count > 1 => {
-            let distribution_key = routing
-                .and_then(|routing| routing.distribution_key.as_deref())
+            let distribution_key = distribution_key
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("round_robin llm routing is missing distribution_key"))?;
             let counter = runtime_context
@@ -294,6 +338,7 @@ pub(super) fn build_llm_route_payload(runtime: &CompiledLlmRuntime) -> Value {
             "routing_mode": routing.routing_mode,
             "fixed_model_target": routing.fixed_model_target,
             "queue_template_id": routing.queue_template_id,
+            "distribution_rule": routing.distribution_rule,
             "provider_instance_id": runtime.provider_instance_id,
             "provider_code": runtime.provider_code,
             "upstream_model_id": runtime.model,
@@ -369,6 +414,44 @@ mod tests {
 
     struct MutableCapabilityResolver {
         capabilities: Arc<Mutex<BTreeSet<String>>>,
+    }
+
+    struct DynamicMainResolver;
+
+    #[async_trait]
+    impl ProviderInvoker for DynamicMainResolver {
+        async fn resolve_main_llm_routing(
+            &self,
+            runtime: &CompiledLlmRuntime,
+        ) -> Result<Option<ResolvedMainLlmRouting>> {
+            let candidates = ["provider-current-a", "provider-current-b"]
+                .into_iter()
+                .map(|provider_instance_id| ResolvedMainLlmRouteCandidate {
+                    runtime: CompiledLlmRuntime {
+                        provider_instance_id: provider_instance_id.to_string(),
+                        provider_instance_display_name: String::new(),
+                        provider_code: runtime.provider_code.clone(),
+                        protocol: "openai_compatible".to_string(),
+                        model: runtime.model.clone(),
+                        routing: None,
+                    },
+                    route: ResolvedProviderRoute::new(BTreeSet::new(), ()),
+                })
+                .collect();
+            Ok(Some(ResolvedMainLlmRouting {
+                candidates,
+                distribution_rule: crate::compiled_plan::LlmDistributionRule::RetryRoundRobin,
+                distribution_key: None,
+            }))
+        }
+
+        async fn invoke_llm(
+            &self,
+            _runtime: &CompiledLlmRuntime,
+            _input: ProviderInvocationInput,
+        ) -> Result<ProviderInvocationOutput> {
+            unreachable!("route resolution tests do not invoke a Provider")
+        }
     }
 
     #[async_trait]
@@ -451,6 +534,67 @@ mod tests {
             model: "provider-incompatible-model".to_string(),
             routing: Some(routing),
         }
+    }
+
+    #[tokio::test]
+    async fn main_instance_distribution_is_resolved_live_for_each_attempt() {
+        let runtime = CompiledLlmRuntime {
+            provider_instance_id: String::new(),
+            provider_instance_display_name: String::new(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: String::new(),
+            model: "gpt-5.4-mini".to_string(),
+            routing: None,
+        };
+
+        let selected = resolve_llm_request_runtime(
+            &runtime,
+            &ExecutionRuntimeContext::default(),
+            &DynamicMainResolver,
+            &BTreeSet::new(),
+            1,
+        )
+        .await
+        .expect("the current main distribution should select the retry target");
+
+        assert_eq!(selected.runtime.provider_instance_id, "provider-current-b");
+    }
+
+    #[tokio::test]
+    async fn count_tokens_and_compact_runtime_selection_uses_current_main_instance() {
+        let runtime = CompiledLlmRuntime {
+            provider_instance_id: String::new(),
+            provider_instance_display_name: String::new(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: String::new(),
+            model: "gpt-5.4-mini".to_string(),
+            routing: None,
+        };
+        let node = CompiledNode {
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            alias: "llm".to_string(),
+            container_id: None,
+            dependency_node_ids: Vec::new(),
+            downstream_node_ids: Vec::new(),
+            bindings: BTreeMap::new(),
+            outputs: Vec::new(),
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: Some(runtime.clone()),
+            code_runtime: None,
+        };
+
+        let selected = llm_request_runtimes(
+            &node,
+            &runtime,
+            &ExecutionRuntimeContext::default(),
+            &DynamicMainResolver,
+        )
+        .await
+        .expect("native LLM operations should resolve the current main instance");
+
+        assert_eq!(selected[0].provider_instance_id, "provider-current-a");
     }
 
     #[tokio::test]

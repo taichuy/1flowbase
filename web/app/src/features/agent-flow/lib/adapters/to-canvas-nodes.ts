@@ -13,9 +13,7 @@ import {
   getLlmVisibleInternalToolsEnabled
 } from '../llm-node-config';
 import { getNodeFlowRole } from '../node-definitions';
-
-const CANVAS_NODE_WIDTH = 196;
-const CANVAS_NODE_HEIGHT = 96;
+import { CANVAS_NODE_WIDTH } from '../canvas/node-dimensions';
 
 function nodeTypeLabel(nodeType: AgentFlowCanvasNodeData['nodeType']) {
   if (nodeType === 'llm') {
@@ -86,11 +84,6 @@ export function toCanvasNodes(
         selected: node.id === selectedNodeId,
         position: node.position,
         width: CANVAS_NODE_WIDTH,
-        height: CANVAS_NODE_HEIGHT,
-        measured: {
-          width: CANVAS_NODE_WIDTH,
-          height: CANVAS_NODE_HEIGHT
-        },
         data: {
           nodeId: node.id,
           nodeType: node.type,

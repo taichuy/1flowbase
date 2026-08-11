@@ -618,7 +618,7 @@ fn compile_uses_selected_instance_models_instead_of_provider_family_aggregate() 
 }
 
 #[test]
-fn root_1534_compile_fixed_route_does_not_freeze_provider_capabilities() {
+fn compile_main_provider_target_does_not_freeze_distribution_or_registered_instances() {
     let flow_id = Uuid::now_v7();
     let plan = FlowCompiler::compile(
         flow_id,
@@ -628,15 +628,15 @@ fn root_1534_compile_fixed_route_does_not_freeze_provider_capabilities() {
     )
     .unwrap();
     let plan_json = serde_json::to_value(&plan).unwrap();
-    let fixed_target =
-        &plan_json["nodes"]["node-llm"]["llm_runtime"]["routing"]["fixed_model_target"];
+    let runtime = &plan_json["nodes"]["node-llm"]["llm_runtime"];
 
     assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
-    assert_eq!(fixed_target["provider_instance_id"], "provider-selected");
-    assert!(
-        fixed_target.get("runtime_capabilities").is_none(),
-        "Provider capabilities must be resolved from the live installation"
-    );
+    assert_eq!(runtime["provider_code"], "fixture_provider");
+    assert_eq!(runtime["model"], "gpt-5.4-mini");
+    assert!(runtime.get("provider_instance_id").is_none());
+    assert!(runtime.get("provider_instance_display_name").is_none());
+    assert!(runtime.get("protocol").is_none());
+    assert!(runtime.get("routing").is_none());
 }
 
 #[test]
@@ -760,7 +760,7 @@ fn compile_collects_missing_provider_issue() {
 }
 
 #[test]
-fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
+fn compile_duplicate_main_instances_keeps_only_the_logical_provider_target() {
     let flow_id = Uuid::now_v7();
     let mut context = compile_context();
     context.provider_instances.insert(
@@ -780,28 +780,16 @@ fn compile_routes_duplicate_stable_provider_model_binding_as_ordered_targets() {
     let plan =
         FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
     let plan_json = serde_json::to_value(&plan).unwrap();
-    let routing = &plan_json["nodes"]["node-llm"]["llm_runtime"]["routing"];
+    let runtime = &plan_json["nodes"]["node-llm"]["llm_runtime"];
 
     assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
-    assert_eq!(routing["routing_mode"], json!("failover_queue"));
-    assert_eq!(routing["queue_template_id"], Value::Null);
-    assert_eq!(
-        routing["queue_targets"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|target| target["provider_instance_id"].as_str().unwrap())
-            .collect::<Vec<_>>(),
-        vec!["provider-recreated", "provider-selected"]
-    );
-    assert_eq!(
-        routing["queue_targets"][0]["upstream_model_id"],
-        json!("gpt-5.4-mini")
-    );
+    assert_eq!(runtime["provider_code"], json!("fixture_provider"));
+    assert_eq!(runtime["model"], json!("gpt-5.4-mini"));
+    assert!(runtime.get("routing").is_none());
 }
 
 #[test]
-fn ac_004_compile_routes_main_model_targets_in_configured_order() {
+fn ac_004_compile_validates_main_model_policy_without_freezing_its_order() {
     let flow_id = Uuid::now_v7();
     let mut context = compile_context();
     context.provider_instances.insert(
@@ -832,24 +820,15 @@ fn ac_004_compile_routes_main_model_targets_in_configured_order() {
 
     let plan =
         FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
-    let routing = plan.nodes["node-llm"]
+    assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
+    assert!(plan.nodes["node-llm"]
         .llm_runtime
         .as_ref()
-        .and_then(|runtime| runtime.routing.as_ref())
-        .expect("configured main-model routing should compile");
-
-    assert_eq!(
-        routing
-            .queue_targets
-            .iter()
-            .map(|target| target.provider_instance_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["provider-selected", "provider-recreated"]
-    );
+        .is_some_and(|runtime| runtime.routing.is_none()));
 }
 
 #[test]
-fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
+fn ac_004_compile_validates_exclusions_without_freezing_remaining_targets() {
     let flow_id = Uuid::now_v7();
     let mut context = compile_context();
     context.provider_instances.insert(
@@ -895,20 +874,11 @@ fn ac_004_compile_excludes_disabled_target_without_losing_configured_order() {
 
     let plan =
         FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
-    let routing = plan.nodes["node-llm"]
+    assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
+    assert!(plan.nodes["node-llm"]
         .llm_runtime
         .as_ref()
-        .and_then(|runtime| runtime.routing.as_ref())
-        .expect("enabled routing target should compile");
-
-    assert_eq!(
-        routing
-            .queue_targets
-            .iter()
-            .map(|target| target.provider_instance_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["provider-recreated", "provider-third"]
-    );
+        .is_some_and(|runtime| runtime.routing.is_none()));
 }
 
 #[test]
@@ -933,8 +903,7 @@ fn compile_reports_model_unavailable_when_every_group_target_is_disabled() {
 }
 
 #[test]
-fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
-    // AC-003/AC-004: the compiled contract keeps request-local retry routing explicit.
+fn compile_does_not_copy_retry_round_robin_into_the_plan() {
     let flow_id = Uuid::now_v7();
     let mut context = compile_context();
     context.provider_instances.insert(
@@ -963,12 +932,10 @@ fn compile_preserves_retry_round_robin_without_shared_distribution_key() {
     let plan =
         FlowCompiler::compile(flow_id, "draft-1", &sample_document(flow_id), &context).unwrap();
     let plan_json = serde_json::to_value(&plan).unwrap();
-    let routing = &plan_json["nodes"]["node-llm"]["llm_runtime"]["routing"];
+    let runtime = &plan_json["nodes"]["node-llm"]["llm_runtime"];
 
     assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
-    assert_eq!(routing["distribution_rule"], json!("retry_round_robin"));
-    assert_eq!(routing["distribution_key"], Value::Null);
-    assert_eq!(routing["queue_targets"].as_array().unwrap().len(), 2);
+    assert!(runtime.get("routing").is_none());
 }
 
 #[test]

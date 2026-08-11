@@ -31,20 +31,23 @@ import { BlockStudioWindowHeader } from './BlockStudioWindowHeader';
 
 import './block-source-studio.css';
 
-export interface BlockSourceStudioProps {
+export interface BlockSourceStudioProps<
+  Section extends BlockStudioSection = BlockStudioSection
+> {
   contextComment: string;
   dirty: boolean;
   editorDiagnostics?: readonly BlockSourceEditorDiagnostic[];
   editorNotice?: ReactNode;
   errorMessage?: string | null;
   extraLibs?: readonly BlockSourceExtraLib[];
-  initialSection: BlockStudioSection;
+  initialSection: Section;
   loading: boolean;
   open: boolean;
   owner: string;
   path: string;
   readOnly: boolean;
   saving: boolean;
+  sections: readonly Section[];
   source: string;
   testId: string;
   windowId: string;
@@ -55,7 +58,7 @@ export interface BlockSourceStudioProps {
   onReset: () => void;
   onRun: (source: string) => void;
   onSave: () => void;
-  renderResource: (section: Exclude<BlockStudioSection, 'code'>) => ReactNode;
+  renderResource: (section: Exclude<Section, 'code'>) => ReactNode;
 }
 
 const INITIAL_WINDOW_RECT: WindowWorkspaceRect = {
@@ -65,7 +68,9 @@ const INITIAL_WINDOW_RECT: WindowWorkspaceRect = {
   height: 680
 };
 
-export function BlockSourceStudio(props: BlockSourceStudioProps) {
+export function BlockSourceStudio<Section extends BlockStudioSection>(
+  props: BlockSourceStudioProps<Section>
+) {
   const sharedWindowWorkspace = useOptionalWindowWorkspace();
   if (sharedWindowWorkspace) return <BlockSourceStudioWindow {...props} />;
   return (
@@ -75,7 +80,7 @@ export function BlockSourceStudio(props: BlockSourceStudioProps) {
   );
 }
 
-function BlockSourceStudioWindow({
+function BlockSourceStudioWindow<Section extends BlockStudioSection>({
   contextComment,
   dirty,
   editorDiagnostics = [],
@@ -97,10 +102,11 @@ function BlockSourceStudioWindow({
   readOnly,
   renderResource,
   saving,
+  sections,
   source,
   testId,
   windowId
-}: BlockSourceStudioProps) {
+}: BlockSourceStudioProps<Section>) {
   const {
     activate,
     close,
@@ -244,7 +250,10 @@ function BlockSourceStudioWindow({
       <BlockStudioWorkspace
         activeSection={activeSection}
         onSectionChange={setActiveSection}
-        renderResource={renderResource}
+        renderResource={(section) =>
+          renderResource(section as Exclude<Section, 'code'>)
+        }
+        sections={sections}
         windowWidth={windowEntry.rect.width}
         editor={
           <main className="frontstage-jsx-studio__editor-panel">

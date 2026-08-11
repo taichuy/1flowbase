@@ -272,6 +272,70 @@ describe('Canvas left-to-right arrangement', () => {
     ).toEqual(arranged.graph.nodes.map((node) => [node.id, node.position]));
   });
 
+  test('uses dynamic branch-node height when separating a dense sibling layer', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const branchNode = createNodeDocument('if_else', 'node-branches', 380, 100);
+
+    branchNode.bindings.branches = {
+      kind: 'if_else_branches',
+      value: {
+        branches: [
+          {
+            id: 'if',
+            kind: 'if',
+            title: 'If',
+            sourceHandle: 'if',
+            condition: { operator: 'and', conditions: [] }
+          },
+          ...[1, 2, 3].map((index) => ({
+            id: `else-if-${index}`,
+            kind: 'else_if' as const,
+            title: `Else If ${index}`,
+            sourceHandle: `else-if-${index}`,
+            condition: { operator: 'and' as const, conditions: [] }
+          })),
+          {
+            id: 'else',
+            kind: 'else',
+            title: 'Else',
+            sourceHandle: 'else'
+          }
+        ]
+      }
+    };
+    document.graph.nodes.push(branchNode);
+    document.graph.edges.push(
+      createEdgeDocument({
+        id: 'edge-start-branches',
+        source: 'node-start',
+        target: branchNode.id
+      })
+    );
+
+    const arranged = arrangeCanvasLeftToRight(document, null);
+    const llmNode = arranged.graph.nodes.find((node) => node.id === 'node-llm');
+    const arrangedBranchNode = arranged.graph.nodes.find(
+      (node) => node.id === branchNode.id
+    );
+
+    if (!llmNode || !arrangedBranchNode) {
+      throw new Error('expected dense branch sibling layer nodes to exist');
+    }
+
+    const upperNode =
+      llmNode.position.y < arrangedBranchNode.position.y
+        ? { node: llmNode, height: 96 }
+        : { node: arrangedBranchNode, height: 192 };
+    const lowerNode =
+      llmNode.position.y < arrangedBranchNode.position.y
+        ? arrangedBranchNode
+        : llmNode;
+
+    expect(lowerNode.position.y - upperNode.node.position.y).toBeGreaterThanOrEqual(
+      upperNode.height + 40
+    );
+  });
+
   test('keeps LLM tool-mounted nodes in a vertical mount lane without flattening the main flow', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const toolHandleA = createLlmToolSourceHandleId('search_tool');

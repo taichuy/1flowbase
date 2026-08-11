@@ -1,5 +1,4 @@
 import type { OnMount } from '@monaco-editor/react';
-import { Button, Modal, Select, Space, Typography } from 'antd';
 import {
   createJsBlockDiagnostics,
   diagnoseLegacyBlockModuleSource,
@@ -12,7 +11,6 @@ import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStud
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { useFrontstageBlockCode } from '../../hooks/use-frontstage-block-code';
-import { useFrontstageUiTemplates } from '../../hooks/use-frontstage-ui-templates';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -27,6 +25,7 @@ import {
   JsxStudioResourcePanel,
   type FrontstageJsxStudioSection
 } from './JsxStudioResourcePanel';
+import { JsxStudioTemplatesPanel } from './JsxStudioTemplatesPanel';
 
 const EMPTY_CHILD_CONTAINERS: readonly ChildContainerNode[] = [];
 
@@ -67,7 +66,6 @@ export function FrontstageJsxStudioDrawer({
 }: FrontstageJsxStudioDrawerProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [runRevision, setRunRevision] = useState<number | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>();
   const {
     draft,
     dirty,
@@ -87,38 +85,6 @@ export function FrontstageJsxStudioDrawer({
     () => createFrontstageJsxEditorProjection({ catalogEntry }),
     [catalogEntry]
   );
-  const templatesQuery = useFrontstageUiTemplates(workspaceId, open);
-  const templates = useMemo(
-    () =>
-      (templatesQuery.data ?? []).filter(
-        (template) =>
-          template.provider_code === catalogEntry?.providerCode &&
-          template.contribution_code === catalogEntry?.contributionCode
-      ),
-    [
-      catalogEntry?.contributionCode,
-      catalogEntry?.providerCode,
-      templatesQuery.data
-    ]
-  );
-  const replaceWithTemplate = () => {
-    const template = templates.find(
-      (value) =>
-        `${value.template_id ?? 'official'}:${value.version}` ===
-        selectedTemplateId
-    );
-    if (!template) return;
-    Modal.confirm({
-      title: i18nText('frontstage', 'auto.replace_code_with_template'),
-      content: i18nText(
-        'frontstage',
-        'auto.replace_code_with_template_confirm'
-      ),
-      okText: i18nText('frontstage', 'auto.replace'),
-      cancelText: i18nText('frontstage', 'auto.cancel'),
-      onOk: () => setDraft(template.source)
-    });
-  };
   useEffect(() => {
     if (open) setRunRevision(null);
   }, [block.id, open]);
@@ -207,37 +173,19 @@ export function FrontstageJsxStudioDrawer({
       path={`file:///frontstage/${pageId}/${tabId ?? 'tab'}/${block.id}.tsx`}
       readOnly={permissionDenied}
       saving={saving}
+      sections={[
+        'code',
+        'templates',
+        'interfaces',
+        'variables',
+        'components',
+        'configuration',
+        'run'
+      ]}
       source={draft}
       testId={`frontstage-jsx-studio-${block.codeRef}`}
       windowId={`frontstage-jsx-studio:${block.codeRef}`}
-      editorNotice={
-        permissionDenied ? (
-          <PermissionDeniedState />
-        ) : (
-          <Space wrap>
-            <Typography.Text>
-              {i18nText('frontstage', 'auto.code_template')}
-            </Typography.Text>
-            <Select
-              loading={templatesQuery.isLoading}
-              placeholder={i18nText('frontstage', 'auto.select_code_template')}
-              value={selectedTemplateId}
-              style={{ minWidth: 240 }}
-              options={templates.map((template) => ({
-                value: `${template.template_id ?? 'official'}:${template.version}`,
-                label: `${template.name}${template.is_default ? ` · ${i18nText('frontstage', 'auto.default')}` : ''}`
-              }))}
-              onChange={setSelectedTemplateId}
-            />
-            <Button
-              disabled={!selectedTemplateId}
-              onClick={replaceWithTemplate}
-            >
-              {i18nText('frontstage', 'auto.apply_template')}
-            </Button>
-          </Space>
-        )
-      }
+      editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
       editorDiagnostics={compileDiagnostics}
       onChange={setDraft}
       onClose={onClose}
@@ -254,21 +202,30 @@ export function FrontstageJsxStudioDrawer({
       onSave={() => {
         if (!hasLegacySource) void save().catch(() => undefined);
       }}
-      renderResource={(section) => (
-        <JsxStudioResourcePanel
-          block={block}
-          childContainers={childContainers}
-          codeSource={draft}
-          pageBlocks={pageBlocks}
-          workspaceId={workspaceId}
-          onInsertCode={insertCode}
-          onSaveBlock={onSaveBlock}
-          onSaveChildContainers={onSaveChildContainers}
-          projection={projection}
-          runPanel={resolvedRunPanel}
-          section={section}
-        />
-      )}
+      renderResource={(section) =>
+        section === 'templates' ? (
+          <JsxStudioTemplatesPanel
+            catalogEntry={catalogEntry}
+            readOnly={permissionDenied}
+            workspaceId={workspaceId}
+            onReplaceCode={setDraft}
+          />
+        ) : (
+          <JsxStudioResourcePanel
+            block={block}
+            childContainers={childContainers}
+            codeSource={draft}
+            pageBlocks={pageBlocks}
+            workspaceId={workspaceId}
+            onInsertCode={insertCode}
+            onSaveBlock={onSaveBlock}
+            onSaveChildContainers={onSaveChildContainers}
+            projection={projection}
+            runPanel={resolvedRunPanel}
+            section={section}
+          />
+        )
+      }
     />
   );
 }

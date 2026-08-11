@@ -403,6 +403,94 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(onSaveBlock).not.toHaveBeenCalled();
   });
 
+  test('AC-001/002/003 keeps templates in their own resource section and replaces the whole draft', async () => {
+    const setDraft = vi.fn();
+    const save = vi.fn().mockResolvedValue(undefined);
+    const templateSource = `export default function TemplateBlock() {
+  return <section>Template</section>;
+}`;
+    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
+      code: 'export default function CurrentBlock() { return null; }',
+      draft: 'export default function CurrentBlock() { return null; }',
+      dirty: false,
+      loading: false,
+      saving: false,
+      error: null,
+      permissionDenied: false,
+      setDraft,
+      reset: vi.fn(),
+      save
+    });
+    uiTemplatesHook.useFrontstageUiTemplates.mockReturnValue({
+      data: [
+        {
+          template_id: 'dashboard-template',
+          provider_code: '1flowbase',
+          contribution_code: 'frontstage.js-ui-block',
+          name: 'Dashboard',
+          source: templateSource,
+          language: 'tsx',
+          version: '2.1.0',
+          is_official: false,
+          is_default: true
+        },
+        {
+          template_id: 'other-template',
+          provider_code: 'other-provider',
+          contribution_code: 'other-block',
+          name: 'Other template',
+          source: 'export default {}',
+          language: 'tsx',
+          version: '1.0.0',
+          is_official: false,
+          is_default: false
+        }
+      ],
+      isLoading: false
+    });
+
+    const view = render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    const editorPanel = view.container.querySelector(
+      '.frontstage-jsx-studio__editor-panel'
+    );
+    expect(
+      within(editorPanel as HTMLElement).queryByText('代码模板')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '代码模板' }));
+    expect(
+      screen.getByRole('heading', { name: '代码模板' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Dashboard · 2.1.0 · 默认')).toBeInTheDocument();
+    expect(screen.queryByText('Other template')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Dashboard · 2.1.0 · 默认'));
+    fireEvent.click(screen.getByRole('button', { name: '替换当前代码' }));
+    expect(await screen.findAllByText('替换当前代码？')).not.toHaveLength(0);
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: '替换当前代码？' })).getByRole(
+        'button',
+        { name: /^替\s*换$/ }
+      )
+    );
+
+    await waitFor(() => expect(setDraft).toHaveBeenCalledWith(templateSource));
+    expect(save).not.toHaveBeenCalled();
+  });
+
   test('resizes the resource panel horizontally without resizing the Studio window', () => {
     render(
       <FrontstageJsxStudioDrawer

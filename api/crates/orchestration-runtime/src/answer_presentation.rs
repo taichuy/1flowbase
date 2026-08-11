@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::compiled_plan::{
     CompileIssue, CompileIssueCode, CompiledBinding, CompiledNode, CompiledPlan,
@@ -9,6 +9,13 @@ pub struct AnswerPresentationPlan {
     pub answer_node_id: String,
     pub answer_output_key: String,
     pub segments: Vec<AnswerPresentationSegment>,
+    pub stream_sources: BTreeMap<usize, Vec<AnswerPresentationStreamSource>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnswerPresentationStreamSource {
+    pub node_id: String,
+    pub output_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,11 +37,11 @@ impl AnswerPresentationPlan {
             .iter()
             .filter_map(|node_id| plan.nodes.get(node_id))
             .filter(|node| node.node_type == "answer")
-            .filter_map(Self::from_answer_node)
+            .filter_map(|answer_node| Self::from_answer_node(plan, answer_node))
             .collect()
     }
 
-    fn from_answer_node(answer_node: &CompiledNode) -> Option<Self> {
+    fn from_answer_node(plan: &CompiledPlan, answer_node: &CompiledNode) -> Option<Self> {
         let answer_output_key = first_output_key(answer_node);
         let binding = answer_node
             .bindings
@@ -42,10 +49,21 @@ impl AnswerPresentationPlan {
             .or_else(|| answer_node.bindings.values().next())?;
         let segments = segments_from_binding(binding);
 
-        (!segments.is_empty()).then(|| Self {
-            answer_node_id: answer_node.node_id.clone(),
-            answer_output_key,
-            segments,
+        (!segments.is_empty()).then(|| {
+            let stream_sources = segments
+                .iter()
+                .enumerate()
+                .filter_map(|(index, segment)| {
+                    variable_aggregator_stream_sources(plan, segment)
+                        .map(|sources| (index, sources))
+                })
+                .collect();
+            Self {
+                answer_node_id: answer_node.node_id.clone(),
+                answer_output_key,
+                segments,
+                stream_sources,
+            }
         })
     }
 
@@ -62,6 +80,127 @@ impl AnswerPresentationPlan {
             })
             .collect()
     }
+}
+
+fn variable_aggregator_stream_sources(
+    plan: &CompiledPlan,
+    segment: &AnswerPresentationSegment,
+) -> Option<Vec<AnswerPresentationStreamSource>> {
+    let AnswerPresentationSegment::NodeOutput {
+        node_id,
+        output_path,
+    } = segment
+    else {
+        return None;
+    };
+    let [group_key] = output_path.as_slice() else {
+        return None;
+    };
+    let aggregator = plan.nodes.get(node_id)?;
+    if aggregator.node_type != "variable_aggregator" {
+        return None;
+    }
+    let binding = aggregator.bindings.get("groups")?;
+    let groups =
+        crate::compiler::variable_aggregator_contract::variable_aggregator_groups(binding).ok()?;
+    let group = groups.iter().find(|group| group.key == group_key)?;
+    if group.value_type != "string" {
+        return None;
+    }
+    let sources = group
+        .candidates
+        .iter()
+        .map(|candidate| {
+            let [node_id, output_key] = candidate.as_slice() else {
+                return None;
+            };
+            (plan.nodes.get(node_id)?.node_type == "llm" && output_key == "text").then(|| {
+                AnswerPresentationStreamSource {
+                    node_id: node_id.clone(),
+                    output_key: output_key.clone(),
+                }
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if sources.is_empty() {
+        return None;
+    }
+    if sources.len() == 1 || sources_are_mutually_exclusive(plan, &sources) {
+        return Some(sources);
+    }
+    None
+}
+
+fn sources_are_mutually_exclusive(
+    plan: &CompiledPlan,
+    sources: &[AnswerPresentationStreamSource],
+) -> bool {
+    let memberships = sources
+        .iter()
+        .map(|source| branch_memberships(plan, &source.node_id))
+        .collect::<Vec<_>>();
+    let Some(first) = memberships.first() else {
+        return false;
+    };
+
+    first.iter().any(|(branch_node_id, handles)| {
+        if handles.len() != 1 {
+            return false;
+        }
+        let selected_handles = memberships
+            .iter()
+            .filter_map(|membership| membership.get(branch_node_id))
+            .filter(|handles| handles.len() == 1)
+            .filter_map(|handles| handles.first())
+            .collect::<BTreeSet<_>>();
+        selected_handles.len() == sources.len()
+    })
+}
+
+fn branch_memberships(
+    plan: &CompiledPlan,
+    target_node_id: &str,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut memberships = BTreeMap::<String, BTreeSet<String>>::new();
+    for edge in &plan.edges {
+        let Some(source_handle) = edge.source_handle.as_ref() else {
+            continue;
+        };
+        if plan
+            .nodes
+            .get(&edge.source)
+            .map(|node| node.node_type.as_str())
+            != Some("if_else")
+            || !is_reachable(plan, &edge.target, target_node_id)
+        {
+            continue;
+        }
+        memberships
+            .entry(edge.source.clone())
+            .or_default()
+            .insert(source_handle.clone());
+    }
+    memberships
+}
+
+fn is_reachable(plan: &CompiledPlan, start_node_id: &str, target_node_id: &str) -> bool {
+    let mut stack = vec![start_node_id];
+    let mut visited = BTreeSet::new();
+    while let Some(current) = stack.pop() {
+        if current == target_node_id {
+            return true;
+        }
+        if !visited.insert(current) {
+            continue;
+        }
+        stack.extend(
+            plan.edges
+                .iter()
+                .filter(|edge| edge.source == current)
+                .map(|edge| edge.target.as_str()),
+        );
+    }
+    false
 }
 
 pub fn validate_answer_presentation(plan: &CompiledPlan) -> Vec<CompileIssue> {

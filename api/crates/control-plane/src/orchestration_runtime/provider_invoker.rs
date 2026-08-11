@@ -11,7 +11,10 @@ use super::canonical_stream::{
 };
 use crate::installed_provider_package::load_installed_provider_package;
 
+mod failover_queue;
+mod main_instance_routing;
 mod protocol_context;
+pub(super) use failover_queue::freeze_failover_queue_routes;
 
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
@@ -97,64 +100,23 @@ where
         self.open_protocol_context_locator_value(locator).await
     }
 
+    async fn resolve_main_llm_routing(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+    ) -> Result<Option<orchestration_runtime::execution_engine::ResolvedMainLlmRouting>> {
+        if !runtime.targets_main_instance() {
+            return Ok(None);
+        }
+        self.resolve_current_main_llm_routing(runtime)
+            .await
+            .map(Some)
+    }
+
     async fn resolve_llm_route(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
     ) -> Result<orchestration_runtime::execution_engine::ResolvedProviderRoute> {
-        let provider_resolve_started = std::time::Instant::now();
-        let instance = self.resolve_llm_instance(runtime).await?;
-        tracing::debug!(
-            provider_resolve_ms = provider_resolve_started.elapsed().as_millis() as u64,
-            "provider resolve finished"
-        );
-
-        let installation_reconcile_started = std::time::Instant::now();
-        let installation = self.ready_installation(instance.installation_id).await?;
-        tracing::debug!(
-            installation_reconcile_ms = installation_reconcile_started.elapsed().as_millis() as u64,
-            "installation reconcile finished"
-        );
-        let assigned = self
-            .repository
-            .list_assignments(self.workspace_id)
-            .await?
-            .into_iter()
-            .any(|assignment| assignment.installation_id == installation.id);
-        if !assigned
-            || matches!(
-                installation.desired_state,
-                domain::PluginDesiredState::Disabled
-            )
-        {
-            return Err(ControlPlaneError::InvalidInput("provider_code").into());
-        }
-        if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-            return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
-        }
-
-        let package_load_started = std::time::Instant::now();
-        let package = load_installed_provider_package(&installation)?;
-        tracing::debug!(
-            package_load_ms = package_load_started.elapsed().as_millis() as u64,
-            "package load finished"
-        );
-        let runtime_capabilities = package
-            .manifest
-            .runtime
-            .capabilities
-            .iter()
-            .cloned()
-            .collect();
-        Ok(
-            orchestration_runtime::execution_engine::ResolvedProviderRoute::new(
-                runtime_capabilities,
-                RuntimeProviderInvocationPin {
-                    instance,
-                    installation,
-                    package,
-                },
-            ),
-        )
+        self.resolve_registered_llm_route(runtime).await
     }
 
     async fn invoke_llm(
@@ -1456,95 +1418,6 @@ mod media;
 use media::adapt_or_ensure_model_supports_content_blocks;
 #[cfg(test)]
 pub(super) use media::textualize_media_content_blocks_for_text_model;
-
-pub(super) async fn freeze_failover_queue_routes<R>(
-    repository: &R,
-    _workspace_id: Uuid,
-    compiled_plan: &mut orchestration_runtime::compiled_plan::CompiledPlan,
-) -> Result<()>
-where
-    R: ModelProviderRepository + PluginRepository,
-{
-    for node in compiled_plan.nodes.values_mut() {
-        let Some(runtime) = node.llm_runtime.as_mut() else {
-            continue;
-        };
-        let Some(routing) = runtime.routing.as_mut() else {
-            continue;
-        };
-        if routing.routing_mode
-            != orchestration_runtime::compiled_plan::LlmRoutingMode::FailoverQueue
-            || !routing.queue_targets.is_empty()
-        {
-            continue;
-        }
-
-        let queue_template_id = routing
-            .queue_template_id
-            .as_deref()
-            .and_then(|value| Uuid::parse_str(value).ok())
-            .ok_or(ControlPlaneError::InvalidInput("queue_template_id"))?;
-        let queue = repository
-            .get_failover_queue_template(queue_template_id)
-            .await?
-            .ok_or(ControlPlaneError::InvalidInput("queue_template_id"))?;
-        if queue.status != "active" {
-            return Err(ControlPlaneError::InvalidInput("queue_template_id").into());
-        }
-        let items = repository
-            .list_failover_queue_items(queue_template_id)
-            .await?;
-        let snapshot_items = items
-            .iter()
-            .cloned()
-            .map(FailoverQueueSnapshotItem::from)
-            .collect::<Vec<_>>();
-        let snapshot = repository
-            .create_failover_queue_snapshot(&crate::ports::CreateModelFailoverQueueSnapshotInput {
-                snapshot_id: Uuid::now_v7(),
-                queue_template_id,
-                version: queue.version,
-                items: freeze_queue_items(&snapshot_items),
-            })
-            .await?;
-        routing.queue_snapshot_id = Some(snapshot.id.to_string());
-        let provider_display_names = routing
-            .queue_targets
-            .iter()
-            .map(|target| {
-                (
-                    target.provider_instance_id.clone(),
-                    target.provider_instance_display_name.clone(),
-                )
-            })
-            .collect::<std::collections::HashMap<_, _>>();
-        routing.queue_targets = snapshot_items
-            .into_iter()
-            .filter(|item| item.enabled)
-            .map(
-                |item| orchestration_runtime::compiled_plan::CompiledLlmRouteTarget {
-                    provider_instance_id: item.provider_instance_id.to_string(),
-                    provider_instance_display_name: provider_display_names
-                        .get(&item.provider_instance_id.to_string())
-                        .cloned()
-                        .unwrap_or_default(),
-                    provider_code: item.provider_code,
-                    protocol: item.protocol,
-                    upstream_model_id: item.upstream_model_id,
-                },
-            )
-            .collect();
-        let Some(first_target) = routing.queue_targets.first() else {
-            return Err(ControlPlaneError::InvalidInput("queue_template_id").into());
-        };
-        runtime.provider_instance_id = first_target.provider_instance_id.clone();
-        runtime.provider_code = first_target.provider_code.clone();
-        runtime.protocol = first_target.protocol.clone();
-        runtime.model = first_target.upstream_model_id.clone();
-    }
-
-    Ok(())
-}
 
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/provider_invoker/canonical_writer_tests.rs"]

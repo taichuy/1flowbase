@@ -210,6 +210,14 @@ export function AuthenticatorUiBlockStudio({
       path={`file:///auth-center/${authenticatorId}/public-ui-block.tsx`}
       readOnly={readOnly}
       saving={saving}
+      sections={[
+        'code',
+        'interfaces',
+        'variables',
+        'components',
+        'configuration',
+        'run'
+      ]}
       source={draft}
       testId={`auth-center-jsx-studio-${authenticatorId}`}
       windowId={`auth-center-jsx-studio:${authenticatorId}`}

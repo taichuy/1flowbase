@@ -1,11 +1,12 @@
 {
   "auto": {
     "code_template": "Code template",
-    "select_code_template": "Select a published template",
+    "code_template_description": "Choose a complete published code template. Replacing overwrites the current draft.",
+    "no_available_code_templates": "No code templates are available for this block",
     "replace_code_with_template": "Replace current code?",
     "replace_code_with_template_confirm": "This replaces the current draft without saving it. You can still undo in the editor or reset after closing.",
     "replace": "Replace",
-    "apply_template": "Apply template",
+    "replace_current_code": "Replace current code",
     "default": "Default",
     "actions": "Actions",
     "add_block_button": "+ Create block",

@@ -20,6 +20,7 @@ import { NodePickerPopover } from '../node-picker/NodePickerPopover';
 import type { AgentFlowCanvasNode } from '../canvas/node-types';
 import { agentFlowRendererRegistry } from '../../schema/agent-flow-renderer-registry';
 import { MAIN_SOURCE_HANDLE_ID } from '../../lib/canvas/handle-ids';
+import { getCanvasNodeMinimumHeight } from '../../lib/canvas/node-dimensions';
 import { getNodeDefinitionMeta } from '../../lib/node-definitions';
 import { getCommonErrorBranchSourceHandle } from '../../lib/policy/node-error-policy';
 import { getNodePickerOptionKey } from '../../lib/plugin-node-definitions';
@@ -215,6 +216,7 @@ export function AgentFlowNodeCard({
       ? [commonErrorBranchSourceHandle]
       : [])
   ];
+  const minimumNodeHeight = getCanvasNodeMinimumHeight(sourceHandles.length);
 
   useEffect(() => {
     updateNodeInternals(data.nodeId);
@@ -417,6 +419,7 @@ export function AgentFlowNodeCard({
       ) : null}
       <div
         className={`agent-flow-node-card agent-flow-node-card--theme-unified agent-flow-node-card--type-${data.nodeType}${selected ? ' agent-flow-node-card--selected' : ''}`}
+        style={{ minHeight: minimumNodeHeight }}
         role="button"
         tabIndex={0}
         onClick={() => data.onSelectNode(data.nodeId)}

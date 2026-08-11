@@ -859,6 +859,99 @@ describe('AgentFlowNodeCard', () => {
     expect(updateNodeInternalsMock).toHaveBeenCalledWith('node-if-else');
   });
 
+  test('expands the common node shell to keep dense branch handles separated', () => {
+    const { container, rerender } = render(
+      <AppProviders>
+        <AgentFlowNodeCard
+          {...({
+            data: {
+              nodeId: 'node-if-else',
+              nodeType: 'if_else',
+              nodeSchema: resolveAgentFlowNodeSchema('if_else'),
+              typeLabel: 'If / Else',
+              alias: 'If / Else',
+              description: '按条件分支继续执行工作流。',
+              config: {},
+              issueCount: 0,
+              canEnterContainer: false,
+              pickerOpen: false,
+              pickerSourceHandleId: null,
+              showTargetHandle: true,
+              showSourceHandle: true,
+              branchSourceHandles: [
+                { id: 'if', title: 'If' },
+                { id: 'else', title: 'Else' }
+              ],
+              toolSourceHandles: [],
+              isContainer: false,
+              nodePickerOptions: [],
+              onOpenPicker: vi.fn(),
+              onClosePicker: vi.fn(),
+              onOpenContainer: vi.fn(),
+              onSelectNode: vi.fn(),
+              onInsertNode: vi.fn(),
+              onReplaceNode: vi.fn(),
+              onDeleteNode: vi.fn()
+            },
+            id: 'node-if-else',
+            selected: false
+          } as unknown as Parameters<typeof AgentFlowNodeCard>[0])}
+        />
+      </AppProviders>
+    );
+
+    expect(container.querySelector('.agent-flow-node-card')).toHaveStyle({
+      minHeight: '96px'
+    });
+
+    rerender(
+      <AppProviders>
+        <AgentFlowNodeCard
+          {...({
+            data: {
+              nodeId: 'node-if-else',
+              nodeType: 'if_else',
+              nodeSchema: resolveAgentFlowNodeSchema('if_else'),
+              typeLabel: 'If / Else',
+              alias: 'If / Else',
+              description: '按条件分支继续执行工作流。',
+              config: {},
+              issueCount: 0,
+              canEnterContainer: false,
+              pickerOpen: false,
+              pickerSourceHandleId: null,
+              showTargetHandle: true,
+              showSourceHandle: true,
+              branchSourceHandles: [
+                { id: 'if', title: 'If' },
+                { id: 'else-if-1', title: 'Else If 1' },
+                { id: 'else-if-2', title: 'Else If 2' },
+                { id: 'else-if-3', title: 'Else If 3' },
+                { id: 'else', title: 'Else' }
+              ],
+              toolSourceHandles: [],
+              isContainer: false,
+              nodePickerOptions: [],
+              onOpenPicker: vi.fn(),
+              onClosePicker: vi.fn(),
+              onOpenContainer: vi.fn(),
+              onSelectNode: vi.fn(),
+              onInsertNode: vi.fn(),
+              onReplaceNode: vi.fn(),
+              onDeleteNode: vi.fn()
+            },
+            id: 'node-if-else',
+            selected: false
+          } as unknown as Parameters<typeof AgentFlowNodeCard>[0])}
+        />
+      </AppProviders>
+    );
+
+    expect(container.querySelector('.agent-flow-node-card')).toHaveStyle({
+      minHeight: '192px'
+    });
+  });
+
   test('shows hover quick actions for running, replacing and deleting a node', async () => {
     const onRunNode = vi.fn();
     const onReplaceNode = vi.fn();

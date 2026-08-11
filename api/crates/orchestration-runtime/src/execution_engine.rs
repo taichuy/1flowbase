@@ -113,6 +113,17 @@ pub struct ResolvedProviderRoute {
     invocation_pin: Arc<dyn Any + Send + Sync>,
 }
 
+pub struct ResolvedMainLlmRouteCandidate {
+    pub runtime: CompiledLlmRuntime,
+    pub route: ResolvedProviderRoute,
+}
+
+pub struct ResolvedMainLlmRouting {
+    pub candidates: Vec<ResolvedMainLlmRouteCandidate>,
+    pub distribution_rule: crate::compiled_plan::LlmDistributionRule,
+    pub distribution_key: Option<String>,
+}
+
 impl ResolvedProviderRoute {
     pub fn new<T>(runtime_capabilities: BTreeSet<String>, invocation_pin: T) -> Self
     where
@@ -134,6 +145,13 @@ impl ResolvedProviderRoute {
 
 #[async_trait]
 pub trait ProviderInvoker: Send + Sync {
+    async fn resolve_main_llm_routing(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+    ) -> Result<Option<ResolvedMainLlmRouting>> {
+        Ok(None)
+    }
+
     async fn resolve_llm_route(
         &self,
         _runtime: &CompiledLlmRuntime,
