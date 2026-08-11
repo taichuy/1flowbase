@@ -3,13 +3,21 @@ use std::{path::PathBuf, sync::Arc};
 use control_plane::{
     file_management::BusinessObjectBackupExporter,
     plugin_management::load_backup_artifact_sources,
-    ports::BackupSetCatalogEntry,
+    ports::{BackupRepository, BackupSetCatalogEntry},
     system_backup::{
         BackupComponentSource, CreateSystemBackupCommand, SystemBackupService,
         SystemBackupServiceError,
     },
+    system_recovery::{
+        ConfirmedRecoveryIntent, OfflineRecoveryHandoffReady, PrepareRecoveryCommand,
+        RecoveryCoordinator, RecoveryCoordinatorError, RecoveryPlan, RecoveryPreflightService,
+        SystemMaintenance, SystemMaintenanceSnapshot,
+    },
 };
-use domain::{ApplicationBuild, BackupSetId, KeyFingerprint, SealedBackupManifest};
+use domain::{
+    ApplicationBuild, BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint,
+    RecoveryJobId, SealedBackupManifest,
+};
 use sha2::{Digest, Sha256};
 use storage_durable::{MainDurableStore, PostgreSqlToolchain};
 use thiserror::Error;
@@ -19,6 +27,7 @@ use uuid::Uuid;
 use crate::{
     config::ApiConfig,
     system_backup::{EnvironmentBackupKeyProvider, LocalBackupRepository},
+    system_recovery::ApiRecoveryTargetProbe,
 };
 
 /// Host-owned assembly for the system-backup contract.
@@ -34,6 +43,10 @@ pub struct SystemBackupRuntime {
     application_build: ApplicationBuild,
     master_key_fingerprint: KeyFingerprint,
     postgres_toolchain: PostgreSqlToolchain,
+    preflight: Arc<RecoveryPreflightService>,
+    recovery: Arc<RecoveryCoordinator>,
+    maintenance: Arc<SystemMaintenance>,
+    repository: Arc<LocalBackupRepository>,
 }
 
 #[derive(Debug, Error)]
@@ -50,15 +63,24 @@ pub enum SystemBackupRuntimeError {
     SourceInventory,
     #[error("system backup operation failed")]
     Service(#[from] SystemBackupServiceError),
+    #[error("system recovery preparation failed")]
+    Recovery(#[from] RecoveryCoordinatorError),
 }
 
 impl SystemBackupRuntime {
     pub async fn open(
         store: MainDurableStore,
         file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+        maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
     ) -> Result<Self, SystemBackupRuntimeError> {
         let protected_roots = protected_data_roots(config);
+        let target_roots_separated = protected_roots.iter().enumerate().all(|(index, root)| {
+            protected_roots
+                .iter()
+                .skip(index + 1)
+                .all(|other| !paths_overlap(root, other))
+        });
         for root in &protected_roots {
             tokio::fs::create_dir_all(root)
                 .await
@@ -88,8 +110,28 @@ impl SystemBackupRuntime {
         ))
         .map_err(|_| SystemBackupRuntimeError::Configuration)?;
 
+        let service = Arc::new(SystemBackupService::new(repository.clone(), key_provider));
+        let target_probe = Arc::new(
+            ApiRecoveryTargetProbe::new(
+                store.pool().clone(),
+                application_build.clone(),
+                &config.provider_secret_master_key,
+                &config.system_backup_repository_root,
+                target_roots_separated,
+                maintenance.clone(),
+            )
+            .map_err(|_| SystemBackupRuntimeError::Configuration)?,
+        );
+        let preflight = Arc::new(RecoveryPreflightService::new(service.clone(), target_probe));
+        let recovery = Arc::new(RecoveryCoordinator::new(
+            preflight.clone(),
+            service.clone(),
+            repository.clone(),
+            maintenance.clone(),
+        ));
+
         Ok(Self {
-            service: Arc::new(SystemBackupService::new(repository, key_provider)),
+            service,
             store,
             file_storage_registry,
             database_url: config.database_url.clone(),
@@ -97,6 +139,10 @@ impl SystemBackupRuntime {
             application_build,
             master_key_fingerprint,
             postgres_toolchain,
+            preflight,
+            recovery,
+            maintenance,
+            repository,
         })
     }
 
@@ -104,44 +150,10 @@ impl SystemBackupRuntime {
         &self,
         actor_user_id: Uuid,
     ) -> Result<SealedBackupManifest, SystemBackupRuntimeError> {
-        self.postgres_toolchain
-            .verify_server_compatibility(self.store.pool())
-            .await
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let migration_head = storage_durable::migration_head(self.store.pool())
-            .await
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-
-        let mut sources: Vec<Arc<dyn BackupComponentSource>> =
-            vec![Arc::new(storage_durable::PostgreSqlLogicalBackup::new(
-                self.database_url.clone(),
-                self.postgres_toolchain.clone(),
-            ))];
-        sources.extend(
-            BusinessObjectBackupExporter::new(
-                self.store.clone(),
-                self.file_storage_registry.clone(),
-            )
-            .sources()
-            .await
-            .map_err(|_| SystemBackupRuntimeError::SourceInventory)?,
-        );
-        sources.extend(
-            load_backup_artifact_sources(&self.store, &self.api_node_id)
-                .await
-                .map_err(|_| SystemBackupRuntimeError::SourceInventory)?,
-        );
+        let (command, sources) = self.backup_inputs(actor_user_id).await?;
 
         self.service
-            .create(
-                CreateSystemBackupCommand {
-                    actor_user_id,
-                    application_build: self.application_build.clone(),
-                    migration_head,
-                    master_key_fingerprint: self.master_key_fingerprint.clone(),
-                },
-                sources,
-            )
+            .create(command, sources)
             .await
             .map_err(Into::into)
     }
@@ -188,6 +200,93 @@ impl SystemBackupRuntime {
     {
         self.service.import(source).await.map_err(Into::into)
     }
+
+    pub async fn preflight(&self, backup_set_id: BackupSetId) -> RecoveryPlan {
+        self.preflight.plan(backup_set_id).await
+    }
+
+    pub async fn prepare_recovery(
+        &self,
+        intent: ConfirmedRecoveryIntent,
+    ) -> Result<OfflineRecoveryHandoffReady, SystemBackupRuntimeError> {
+        let actor_user_id = intent.actor_user_id();
+        let (safety_backup_command, safety_backup_sources) =
+            self.backup_inputs(actor_user_id).await?;
+        self.recovery
+            .prepare_offline_handoff(PrepareRecoveryCommand {
+                intent,
+                safety_backup_command,
+                safety_backup_sources,
+                drain_timeout: std::time::Duration::from_secs(30),
+            })
+            .await
+            .map_err(Into::into)
+    }
+
+    pub fn active_recovery(&self) -> Option<OfflineRecoveryHandoffReady> {
+        self.recovery.active_handoff()
+    }
+
+    pub fn maintenance_status(&self) -> SystemMaintenanceSnapshot {
+        self.maintenance.snapshot()
+    }
+
+    pub async fn recovery_journal(
+        &self,
+        recovery_job_id: RecoveryJobId,
+    ) -> Result<Vec<BackupJournalEvent>, SystemBackupRuntimeError> {
+        self.repository
+            .read_journal(BackupJournalSubject::Recovery(recovery_job_id))
+            .await
+            .map_err(|_| SystemBackupRuntimeError::Repository)
+    }
+
+    async fn backup_inputs(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<
+        (
+            CreateSystemBackupCommand,
+            Vec<Arc<dyn BackupComponentSource>>,
+        ),
+        SystemBackupRuntimeError,
+    > {
+        self.postgres_toolchain
+            .verify_server_compatibility(self.store.pool())
+            .await
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        let migration_head = storage_durable::migration_head(self.store.pool())
+            .await
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        let mut sources: Vec<Arc<dyn BackupComponentSource>> =
+            vec![Arc::new(storage_durable::PostgreSqlLogicalBackup::new(
+                self.database_url.clone(),
+                self.postgres_toolchain.clone(),
+            ))];
+        sources.extend(
+            BusinessObjectBackupExporter::new(
+                self.store.clone(),
+                self.file_storage_registry.clone(),
+            )
+            .sources()
+            .await
+            .map_err(|_| SystemBackupRuntimeError::SourceInventory)?,
+        );
+        sources.extend(
+            load_backup_artifact_sources(&self.store, &self.api_node_id)
+                .await
+                .map_err(|_| SystemBackupRuntimeError::SourceInventory)?,
+        );
+        Ok((
+            CreateSystemBackupCommand {
+                actor_user_id,
+                application_build: self.application_build.clone(),
+                migration_head,
+                master_key_fingerprint: self.master_key_fingerprint.clone(),
+            },
+            sources,
+        ))
+    }
 }
 
 fn protected_data_roots(config: &ApiConfig) -> Vec<PathBuf> {
@@ -200,4 +299,8 @@ fn protected_data_roots(config: &ApiConfig) -> Vec<PathBuf> {
     .into_iter()
     .map(PathBuf::from)
     .collect()
+}
+
+fn paths_overlap(left: &std::path::Path, right: &std::path::Path) -> bool {
+    left.starts_with(right) || right.starts_with(left)
 }

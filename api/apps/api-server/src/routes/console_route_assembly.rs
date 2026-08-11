@@ -242,6 +242,7 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
         .merge(super::plugins::route_assembly())
         .merge(super::auth_center::route_assembly())
         .merge(super::system::route_assembly())
+        .merge(super::system_backups::route_assembly())
         .merge(super::ui_management::route_assembly())
         .merge(super::workspaces::route_assembly())
 }

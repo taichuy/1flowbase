@@ -233,10 +233,12 @@ async fn test_state_with_runtime_profile_state(
     let console_operation_registry =
         crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
             .expect("core console operation registry should compile");
+    let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = Arc::new(
         crate::system_backup::SystemBackupRuntime::open(
             store.clone(),
             file_storage_registry.clone(),
+            system_maintenance.clone(),
             &config,
         )
         .await
@@ -256,9 +258,7 @@ async fn test_state_with_runtime_profile_state(
             ))),
             store: store.clone(),
             system_backup,
-            system_maintenance: Arc::new(
-                control_plane::system_recovery::SystemMaintenance::default(),
-            ),
+            system_maintenance,
             authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
             settings_feature_registry,
             console_operation_registry,

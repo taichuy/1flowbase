@@ -35,6 +35,7 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("auto.system_runtime", "System runtime"),
     settings_feature!("auto.application_management", "Application management"),
     settings_feature!("auto.auth_center", "Authentication center"),
+    settings_feature!("auto.backups", "Backup and recovery"),
     settings_feature!("auto.data_source", "Data source"),
     settings_feature!("auto.file_management", "File management"),
     settings_feature!("auto.infrastructure", "Infrastructure"),
@@ -67,6 +68,10 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!(
         "console.policy_groups.settings.system.auth-center.description",
         "Authentication center operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.backups.description",
+        "System backup and controlled recovery operations"
     ),
     settings_feature!(
         "console.policy_groups.settings.system.data-models.description",

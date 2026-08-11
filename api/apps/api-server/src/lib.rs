@@ -25,6 +25,7 @@ pub mod openapi;
 pub mod openapi_docs;
 pub mod openapi_interface;
 pub mod provider_runtime;
+pub mod recovery_authorization;
 pub mod response;
 pub mod routes;
 pub mod runtime_activity;
@@ -501,10 +502,12 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await?;
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
+    let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = Arc::new(
         system_backup::SystemBackupRuntime::open(
             store.clone(),
             file_storage_registry.clone(),
+            system_maintenance.clone(),
             config,
         )
         .await?,
@@ -515,7 +518,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         test_resources: None,
         store,
         system_backup,
-        system_maintenance: Arc::new(control_plane::system_recovery::SystemMaintenance::default()),
+        system_maintenance,
         authenticator_registry,
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),

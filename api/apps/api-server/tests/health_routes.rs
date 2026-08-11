@@ -190,13 +190,25 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         api_server::app_state::compile_core_console_operation_registry(&settings_feature_registry)
             .expect("core console operation registry should compile");
     let process_started_at = OffsetDateTime::now_utc();
+    let system_maintenance =
+        std::sync::Arc::new(control_plane::system_recovery::SystemMaintenance::default());
+    let file_storage_registry = std::sync::Arc::new(storage_object::builtin_driver_registry());
+    let system_backup = std::sync::Arc::new(
+        api_server::system_backup::SystemBackupRuntime::open(
+            store.clone(),
+            file_storage_registry.clone(),
+            system_maintenance.clone(),
+            &config,
+        )
+        .await
+        .expect("health test system backup runtime should assemble"),
+    );
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
             store: store.clone(),
-            system_maintenance: std::sync::Arc::new(
-                control_plane::system_recovery::SystemMaintenance::default(),
-            ),
+            system_backup,
+            system_maintenance,
             authenticator_registry: std::sync::Arc::new(
                 control_plane::auth::AuthenticatorRegistry::new(),
             ),
@@ -206,7 +218,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             console_surface_registry: std::sync::Arc::new(
                 api_server::console_surface_registry::ConsoleSurfaceRegistry::default(),
             ),
-            file_storage_registry: std::sync::Arc::new(storage_object::builtin_driver_registry()),
+            file_storage_registry,
             runtime_engine,
             provider_runtime,
             process_started_at,
