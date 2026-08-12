@@ -99,6 +99,13 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         block_id: &str,
     ) -> anyhow::Result<Option<domain::FrontstageBlockNodeRecord>>;
 
+    async fn get_frontstage_block_runtime_assembly(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        block_id: &str,
+    ) -> anyhow::Result<Vec<domain::frontstage::FrontstageBlockRuntimeLayer>>;
+
     async fn list_frontstage_block_roots(
         &self,
         workspace_id: Uuid,

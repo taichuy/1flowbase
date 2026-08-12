@@ -342,6 +342,13 @@ fn map_record(row: &PgRow) -> Result<domain::FrontstageBlockNodeRecord> {
     })
 }
 
+fn map_runtime_layer(row: &PgRow) -> Result<domain::frontstage::FrontstageBlockRuntimeLayer> {
+    Ok(domain::frontstage::FrontstageBlockRuntimeLayer {
+        node: map_record(row)?,
+        code: row.get("code"),
+    })
+}
+
 async fn get_record_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
     workspace_id: Uuid,
@@ -664,6 +671,63 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         row.as_ref().map(map_record).transpose()
+    }
+
+    async fn get_frontstage_block_runtime_assembly(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        block_id: &str,
+    ) -> Result<Vec<domain::frontstage::FrontstageBlockRuntimeLayer>> {
+        // A single bounded recursive read owns ancestor ordering and source resolution so
+        // runtime callers never fan out into one descriptor/code query per tree layer.
+        let rows = sqlx::query(&format!(
+            r#"
+            with recursive ancestry as (
+                select target.id, target.parent_id, 0::integer as depth, array[target.id] as path
+                from frontstage_block_nodes target
+                where target.scope_id = $1
+                  and target.tree_partition_id = $2
+                  and target.block_id = $3
+
+                union all
+
+                select parent_node.id,
+                       parent_node.parent_id,
+                       ancestry.depth + 1,
+                       ancestry.path || parent_node.id
+                from ancestry
+                join frontstage_block_nodes parent_node
+                  on parent_node.scope_id = $1
+                 and parent_node.tree_partition_id = $2
+                 and parent_node.id = ancestry.parent_id
+                where ancestry.depth < 63
+                  and not parent_node.id = any(ancestry.path)
+            )
+            select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping,
+                   node.runtime_descriptor, source.code
+            from ancestry
+            join frontstage_block_nodes node
+              on node.scope_id = $1
+             and node.tree_partition_id = $2
+             and node.id = ancestry.id
+            left join frontstage_block_nodes parent
+              on parent.scope_id = node.scope_id
+             and parent.tree_partition_id = node.tree_partition_id
+             and parent.id = node.parent_id
+            join frontstage_block_codes source
+              on source.workspace_id = node.scope_id
+             and source.page_id = node.tree_partition_id
+             and source.code_ref = node.code_ref
+            order by ancestry.depth desc
+            "#,
+        ))
+        .bind(workspace_id)
+        .bind(page_id)
+        .bind(block_id)
+        .fetch_all(self.pool())
+        .await?;
+        rows.iter().map(map_runtime_layer).collect()
     }
 
     async fn list_frontstage_block_roots(

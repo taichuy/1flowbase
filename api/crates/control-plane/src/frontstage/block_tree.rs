@@ -150,6 +150,60 @@ where
         Ok(node)
     }
 
+    pub async fn get_block_runtime_assembly(
+        &self,
+        command: FrontstageBlockScopeCommand,
+    ) -> Result<Vec<domain::frontstage::FrontstageBlockRuntimeLayer>> {
+        let actor = self
+            .load_actor_context(command.actor_user_id, command.workspace_id)
+            .await?;
+        let layers = self
+            .repository
+            .get_frontstage_block_runtime_assembly(
+                command.workspace_id,
+                command.page_id,
+                &command.block_id,
+            )
+            .await?;
+        let target = layers
+            .last()
+            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+        if target.node.block_id != command.block_id
+            || layers
+                .first()
+                .is_some_and(|layer| layer.node.parent_block_id.is_some())
+            || layers.iter().any(|layer| {
+                layer.node.workspace_id != command.workspace_id
+                    || layer.node.page_id != command.page_id
+                    || layer.node.tab_id != target.node.tab_id
+            })
+            || layers.windows(2).any(|pair| {
+                pair[1].node.parent_block_id.as_deref() != Some(pair[0].node.block_id.as_str())
+            })
+        {
+            return Err(ControlPlaneError::NotFound("block_node_not_found").into());
+        }
+        if let Err(error) = self
+            .ensure_page_tab_visible(
+                &actor,
+                command.actor_user_id,
+                command.workspace_id,
+                command.page_id,
+                target.node.tab_id,
+            )
+            .await
+        {
+            if matches!(
+                error.downcast_ref::<ControlPlaneError>(),
+                Some(ControlPlaneError::NotFound(_))
+            ) {
+                return Err(ControlPlaneError::NotFound("block_node_not_found").into());
+            }
+            return Err(error);
+        }
+        Ok(layers)
+    }
+
     pub async fn open_block(
         &self,
         command: FrontstageBlockScopeCommand,

@@ -170,6 +170,27 @@ pub struct FrontstageBlockNodeCodeResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageBlockRuntimeLayerResponse {
+    pub block_id: String,
+    pub tab_id: String,
+    pub parent_block_id: Option<String>,
+    pub title: Option<String>,
+    pub presentation: FrontstageBlockPresentationDto,
+    pub schema_version: u32,
+    pub input_mapping: BTreeMap<String, String>,
+    pub output_mapping: BTreeMap<String, String>,
+    #[schema(value_type = Object)]
+    pub runtime_descriptor: Value,
+    pub code: String,
+    pub source_sha256: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageBlockRuntimeAssemblyResponse {
+    pub layers: Vec<FrontstageBlockRuntimeLayerResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FrontstageBlockOpenResponse {
     pub canonical_url: String,
 }
@@ -225,6 +246,10 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             console_get(get_frontstage_block_node_code, Authenticated)
                 .put(save_frontstage_block_node_code, Authenticated),
+        )
+        .route(
+            "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/runtime-assembly",
+            console_get(get_frontstage_block_runtime_assembly, Authenticated),
         )
 }
 
@@ -537,6 +562,33 @@ pub async fn get_frontstage_block_node_code(
     ))))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/runtime-assembly",
+    summary = "Get a Frontstage block runtime assembly",
+    description = "Returns one visible Block and its canonical ancestor chain as an ordered root-to-target runtime snapshot with independently resolved source code.",
+    responses(
+        (status = 200, body = FrontstageBlockRuntimeAssemblyResponse),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_frontstage_block_runtime_assembly(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, block_id)): Path<(String, String, String)>,
+) -> Result<Json<ApiSuccess<FrontstageBlockRuntimeAssemblyResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let layers = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .get_block_runtime_assembly(block_scope(&context, workspace_id, page_id, block_id)?)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        FrontstageBlockRuntimeAssemblyResponse {
+            layers: layers.into_iter().map(to_runtime_layer_response).collect(),
+        },
+    )))
+}
+
 #[utoipa::path(put, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code", request_body = SaveFrontstageBlockNodeCodeBody, responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
 pub async fn save_frontstage_block_node_code(
     State(state): State<Arc<ApiState>>,
@@ -663,6 +715,25 @@ fn to_code_response(
         block_id,
         page_id: code.page_id.to_string(),
         code: code.code,
+        source_sha256,
+    }
+}
+
+fn to_runtime_layer_response(
+    layer: domain::frontstage::FrontstageBlockRuntimeLayer,
+) -> FrontstageBlockRuntimeLayerResponse {
+    let source_sha256 = format!("{:x}", Sha256::digest(layer.code.as_bytes()));
+    FrontstageBlockRuntimeLayerResponse {
+        block_id: layer.node.block_id,
+        tab_id: layer.node.tab_id.to_string(),
+        parent_block_id: layer.node.parent_block_id,
+        title: layer.node.title,
+        presentation: to_presentation_response(layer.node.presentation),
+        schema_version: layer.node.schema_version,
+        input_mapping: layer.node.input_mapping,
+        output_mapping: layer.node.output_mapping,
+        runtime_descriptor: layer.node.runtime_descriptor,
+        code: layer.code,
         source_sha256,
     }
 }

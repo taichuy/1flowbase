@@ -110,6 +110,10 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
                 "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             ),
             (
+                "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/runtime-assembly",
+            ),
+            (
                 "PUT",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             ),
@@ -404,3 +408,4 @@ mod content;
 mod listing;
 mod placement;
 mod presentation;
+mod runtime_assembly;

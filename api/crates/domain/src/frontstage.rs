@@ -232,6 +232,12 @@ pub struct FrontstageBlockNodeRecord {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrontstageBlockRuntimeLayer {
+    pub node: FrontstageBlockNodeRecord,
+    pub code: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontstageBlockNodeSummary {
     pub block_id: String,
