@@ -20,6 +20,7 @@ function summary(
     rank: '001000',
     presentation: 'page',
     title: block_id,
+    description: null,
     schema_version: 1,
     created_at: '2026-08-12T00:00:00Z',
     updated_at: '2026-08-12T00:00:00Z'

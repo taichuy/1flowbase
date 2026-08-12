@@ -4,6 +4,7 @@ import {
   Alert,
   App,
   Button,
+  ConfigProvider,
   Empty,
   Form,
   Input,
@@ -46,6 +47,12 @@ import './block-schema-tree.css';
 
 const INITIAL_BLOCK_SOURCE =
   'export default function Block() { return null; }\n';
+
+const BLOCK_SCHEMA_TREE_THEME = {
+  components: {
+    Tree: { indentSize: 12 }
+  }
+};
 
 interface BlockFormValues {
   title: string;
@@ -157,7 +164,11 @@ export function BlockSchemaTreePanel({
   useEffect(() => {
     if (!ancestorsQuery.data || !currentBlockQuery.data) return;
     const path = ancestorsQuery.data;
-    setExpandedKeys(path.map((node) => node.block_id));
+    setExpandedKeys((current) => {
+      const next = new Set(current);
+      path.forEach((node) => next.add(node.block_id));
+      return next.size === current.length ? current : [...next];
+    });
     void Promise.all(path.map((node) => loadChildren(node))).catch(
       () => undefined
     );
@@ -404,26 +415,28 @@ export function BlockSchemaTreePanel({
               />
             ) : null}
             {treeData.length > 0 ? (
-            <Tree<BlockSchemaTreeNode>
-              blockNode
-              draggable={operationPending ? false : { icon: false }}
-              expandedKeys={expandedKeys}
-              selectedKeys={[currentBlockId]}
-              treeData={treeData}
-              loadData={(node) => loadChildren(node.summary)}
-              onDrop={(info) => void moveNode(info)}
-              onExpand={(keys) => setExpandedKeys(keys.map(String))}
-              titleRender={(node) => (
-                <BlockTreeNodeTitle
-                  node={node.summary}
-                  pending={operationPending}
-                  onCreate={openCreateForm}
-                  onDelete={(target) => void deleteNode(target)}
-                  onEdit={openEditForm}
-                  onOpen={onOpenBlock}
+              <ConfigProvider theme={BLOCK_SCHEMA_TREE_THEME}>
+                <Tree<BlockSchemaTreeNode>
+                  blockNode
+                  draggable={operationPending ? false : { icon: false }}
+                  expandedKeys={expandedKeys}
+                  selectedKeys={[currentBlockId]}
+                  treeData={treeData}
+                  loadData={(node) => loadChildren(node.summary)}
+                  onDrop={(info) => void moveNode(info)}
+                  onExpand={(keys) => setExpandedKeys(keys.map(String))}
+                  titleRender={(node) => (
+                    <BlockTreeNodeTitle
+                      node={node.summary}
+                      pending={operationPending}
+                      onCreate={openCreateForm}
+                      onDelete={(target) => void deleteNode(target)}
+                      onEdit={openEditForm}
+                      onOpen={onOpenBlock}
+                    />
+                  )}
                 />
-              )}
-            />
+              </ConfigProvider>
             ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}

@@ -53,6 +53,7 @@ function summary(
     rank: '001000',
     presentation,
     title,
+    description: null,
     schema_version: 1,
     created_at: '2026-08-12T00:00:00Z',
     updated_at: '2026-08-12T00:00:00Z'
@@ -154,6 +155,53 @@ describe('BlockSchemaTreePanel', () => {
 
     fireEvent.click(screen.getByText('Child page'));
     expect(onOpenBlock).toHaveBeenCalledWith('child-page');
+  });
+
+  test('AC-005 keeps expanded branches when the current block moves to an ancestor and uses compact indentation', async () => {
+    api.fetchFrontstageBlockAncestors.mockImplementation(
+      async (_workspaceId: string, _pageId: string, blockId: string) =>
+        blockId === 'child-page' ? [root] : []
+    );
+    api.fetchFrontstageBlockNode.mockImplementation(
+      async (_workspaceId: string, _pageId: string, blockId: string) =>
+        detail(blockId === 'child-page' ? child : root)
+    );
+    const view = render(
+      <BlockSchemaTreePanel
+        workspaceId="workspace-1"
+        pageId="page-1"
+        currentBlockId="child-page"
+        onOpenBlock={vi.fn()}
+      />,
+      { wrapper: Wrapper }
+    );
+
+    expect(await screen.findByText('Child page')).toBeInTheDocument();
+    const childIndent = screen
+      .getByText('Child page')
+      .closest('[role="treeitem"]')
+      ?.querySelector('.ant-tree-indent-unit');
+    expect(childIndent).not.toBeNull();
+    expect(getComputedStyle(childIndent as Element).width).toBe(
+      'var(--ant-tree-indent-size)'
+    );
+    expect(document.head.textContent).toContain('--ant-tree-indent-size:12px');
+
+    view.rerender(
+      <BlockSchemaTreePanel
+        workspaceId="workspace-1"
+        pageId="page-1"
+        currentBlockId="root-page"
+        onOpenBlock={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Root page').closest('[role="treeitem"]')
+      ).toHaveAttribute('aria-expanded', 'true');
+    });
+    expect(screen.getByText('Child page')).toBeInTheDocument();
   });
 
   test('AC-004 searches through the backend and preserves ancestor context', async () => {

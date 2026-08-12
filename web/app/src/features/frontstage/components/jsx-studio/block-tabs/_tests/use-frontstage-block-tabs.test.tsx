@@ -34,6 +34,7 @@ function detail(blockId: string): FrontstageBlockNode {
     rank: '001000',
     presentation: 'page',
     title: `Title ${blockId}`,
+    description: null,
     schema_version: 1,
     input_mapping: {},
     output_mapping: {},
