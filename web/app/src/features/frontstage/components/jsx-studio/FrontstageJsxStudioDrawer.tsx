@@ -103,7 +103,7 @@ export function FrontstageJsxStudioDrawer({
     });
     return validation.ok
       ? createJsBlockDiagnostics(
-          { pageId, tabId, blockId: block.id },
+          { pageId, tabId: activeTabId, blockId: activeBlockId },
           diagnoseUnsupportedTailwindUtilities(draft)
         )
       : createJsBlockDiagnostics(

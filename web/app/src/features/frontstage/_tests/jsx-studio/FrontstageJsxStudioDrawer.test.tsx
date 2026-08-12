@@ -59,8 +59,25 @@ const monacoEditor = vi.hoisted(() => ({
   getSelection: vi.fn(),
   pushUndoStop: vi.fn()
 }));
+const pageRuntimeMocks = vi.hoisted(() => ({
+  createJsBlockDiagnostics: vi.fn()
+}));
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
+vi.mock('@1flowbase/page-runtime', async () => {
+  const actual = await vi.importActual<typeof import('@1flowbase/page-runtime')>(
+    '@1flowbase/page-runtime'
+  );
+  return {
+    ...actual,
+    createJsBlockDiagnostics: (
+      ...args: Parameters<typeof actual.createJsBlockDiagnostics>
+    ) => {
+      pageRuntimeMocks.createJsBlockDiagnostics(...args);
+      return actual.createJsBlockDiagnostics(...args);
+    }
+  };
+});
 vi.mock(
   '../../components/jsx-studio/block-tabs/use-frontstage-block-tabs',
   () => blockTabsHook
@@ -367,6 +384,76 @@ describe('FrontstageJsxStudioDrawer', () => {
         loading: false,
         error: null
       }
+    );
+  });
+
+  test('attributes Tailwind diagnostics to the active code tab and block', () => {
+    const activeSource =
+      'import \'tailwindcss\'; export default function ActiveBlock() { return <div className="unknown-layout" />; }';
+    const tailwindCatalogEntry: NormalizedFrontstageBlockCatalogEntry = {
+      ...catalogEntry,
+      codeModules: [
+        ...(catalogEntry.codeModules ?? []),
+        {
+          source: 'tailwindcss',
+          version: '4.3.3',
+          binding: 'fetched',
+          assets: [],
+          exports: ['default'],
+          type_declarations:
+            'declare module "tailwindcss" { const value: unknown; export default value; }'
+        }
+      ]
+    };
+    const activeTab = {
+      block_id: 'active-block',
+      detail: {
+        block_id: 'active-block',
+        tab_id: 'active-tab',
+        title: 'Active block'
+      },
+      base_source: activeSource,
+      draft: activeSource,
+      source_sha256: 'active-sha256',
+      loading: false,
+      saving: false,
+      error: null
+    };
+    blockTabsHook.useFrontstageBlockTabs.mockReturnValue({
+      tabs: [activeTab],
+      activeBlockId: activeTab.block_id,
+      activeTab,
+      anyDirty: false,
+      openBlock: vi.fn(),
+      activateBlock: vi.fn(),
+      closeBlock: vi.fn(),
+      setActiveDraft: vi.fn(),
+      resetActive: vi.fn(),
+      saveActive: vi.fn().mockResolvedValue(undefined),
+      handleDeletedBlock: vi.fn().mockResolvedValue('converged')
+    });
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="initial-tab"
+        block={block}
+        catalogEntry={tailwindCatalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    expect(pageRuntimeMocks.createJsBlockDiagnostics).toHaveBeenCalledWith(
+      {
+        pageId: 'page-1',
+        tabId: 'active-tab',
+        blockId: 'active-block'
+      },
+      [expect.objectContaining({ code: 'transform_failed' })]
     );
   });
 
