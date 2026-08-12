@@ -28,8 +28,8 @@ use uuid::Uuid;
 use crate::{
     config::ApiConfig,
     system_backup::{
-        local_repository::BackupVerificationReceipt, EnvironmentBackupKeyProvider,
-        LocalBackupRepository,
+        discover_postgres_toolchain, local_repository::BackupVerificationReceipt,
+        EnvironmentBackupKeyProvider, LocalBackupRepository,
     },
     system_recovery::ApiRecoveryTargetProbe,
 };
@@ -92,7 +92,7 @@ impl SystemBackupRuntime {
         maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
     ) -> Result<Self, SystemBackupRuntimeError> {
-        let postgres_toolchain = PostgreSqlToolchain::discover_from_path()
+        let postgres_toolchain = discover_postgres_toolchain()
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlToolchainUnavailable)?;
         Self::open_with_postgres_toolchain(
