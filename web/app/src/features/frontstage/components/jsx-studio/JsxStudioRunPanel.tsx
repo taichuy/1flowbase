@@ -27,6 +27,10 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../lib/native-trusted-block-react-adapter';
+import {
+  describeExternalNpmImportFailure,
+  type ExternalNpmPackState
+} from '../../api/external-npm';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
@@ -39,6 +43,9 @@ type StudioRunDiagnostic =
   | NativeReactSourcePreparationDiagnostic
   | NativeReactRuntimeDiagnostic;
 const EMPTY_NATIVE_REACT_DEPENDENCY_LOCK: NativeReactCatalogDependencyLock = [];
+const AVAILABLE_EXTERNAL_NPM_PACK: ExternalNpmPackState = {
+  status: 'available'
+};
 
 interface StudioRunPendingSnapshot {
   status: 'compiling' | 'failed';
@@ -89,6 +96,7 @@ export interface JsxStudioRunPanelProps {
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
   nativeDependencyLockError?: string | null;
+  externalNpm?: ExternalNpmPackState;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
   createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContext;
 }
@@ -101,6 +109,7 @@ export function JsxStudioRunPanel({
   nativeCompilerWorkerFactory,
   nativeDependencyLock = EMPTY_NATIVE_REACT_DEPENDENCY_LOCK,
   nativeDependencyLockError = null,
+  externalNpm = AVAILABLE_EXTERNAL_NPM_PACK,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
   createBlockContext,
   onPrepareDraftRun,
@@ -243,7 +252,13 @@ export function JsxStudioRunPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          diagnostics: prepared.diagnostics
+          diagnostics: prepared.diagnostics.map((diagnostic) => ({
+            ...diagnostic,
+            message: describeExternalNpmImportFailure(
+              diagnostic.message,
+              externalNpm
+            )
+          }))
         });
         return;
       }
@@ -277,6 +292,7 @@ export function JsxStudioRunPanel({
       consoleStore,
       nativeDependencyLock,
       nativeDependencyLockError,
+      externalNpm,
       nativeModuleRegistryFactory,
       observeApiCall
     ]

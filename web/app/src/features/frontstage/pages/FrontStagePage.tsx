@@ -406,11 +406,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       actorWorkspaceId: actor?.current_workspace_id,
       readPlan: pageCanvasCodeReadPlan,
       dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
+      externalNpm: blockCatalog.externalNpm,
       demandsByBlockId: runtimeDemandsByBlockId
     });
   const assemblyPreparations = useFrontstageRuntimeAssembly({
     assembly: blockRuntimeAssembly,
-    dependencyLocksByBlockId: nativeDependencyLocksByBlockId
+    dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
+    externalNpm: blockCatalog.externalNpm
   });
   const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
     () => ({
@@ -1273,6 +1275,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   nativeDependencyLockError={
                     nativeDependencyLockResolution.error
                   }
+                  externalNpm={blockCatalog.externalNpm}
                   revision={`run:${runRevision}`}
                 />
               );

@@ -636,39 +636,103 @@ describe('frontstage block catalog feature api', () => {
           ui_capabilities: ['resizable', 'configure']
         }
       ]);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('', { status: 404 }));
 
     try {
-      await expect(fetchFrontstageBlockCatalog()).resolves.toEqual([
-        {
-          installation_id: 'installation-1',
-          provider_code: 'official',
-          plugin_id: 'official.blocks',
-          plugin_version: '1.0.0',
-          contribution_code: 'official.hero',
-          title: 'Hero',
-          runtime: 'native_react',
-          entry: 'blocks/hero.html',
-          code_modules: [],
-          context_contract: {
-            primitives: ['record'],
-            input_schema: {
-              type: 'object',
-              properties: {
-                title: { type: 'string' }
+      await expect(fetchFrontstageBlockCatalog()).resolves.toEqual({
+        entries: [
+          {
+            installation_id: 'installation-1',
+            provider_code: 'official',
+            plugin_id: 'official.blocks',
+            plugin_version: '1.0.0',
+            contribution_code: 'official.hero',
+            title: 'Hero',
+            runtime: 'native_react',
+            entry: 'blocks/hero.html',
+            code_modules: [],
+            context_contract: {
+              primitives: ['record'],
+              input_schema: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string' }
+                }
               }
-            }
-          },
-          permissions: {
-            network: 'deny',
-            storage: 'read',
-            secrets: 'deny'
-          },
-          ui_capabilities: ['resizable', 'configure']
-        }
-      ]);
+            },
+            permissions: {
+              network: 'deny',
+              storage: 'read',
+              secrets: 'deny'
+            },
+            ui_capabilities: ['resizable', 'configure']
+          }
+        ],
+        externalNpm: { status: 'absent' }
+      });
       expect(listSpy).toHaveBeenCalledWith(expect.any(String));
     } finally {
       listSpy.mockRestore();
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test('AC-001 keeps the backend block catalog when the optional External npm Pack is unavailable', async () => {
+    const entry = {
+      installation_id: 'installation-1',
+      provider_code: 'official',
+      plugin_id: 'official.blocks',
+      plugin_version: '1.0.0',
+      contribution_code: 'official.hero',
+      title: 'Hero',
+      runtime: 'native_react',
+      entry: 'blocks/hero.html',
+      code_modules: [],
+      context_contract: {
+        primitives: ['record'],
+        input_schema: { type: 'object' }
+      },
+      permissions: {
+        network: 'deny',
+        storage: 'read',
+        secrets: 'deny'
+      },
+      ui_capabilities: ['resizable']
+    };
+    const listSpy = vi
+      .spyOn(apiClient, 'listConsoleFrontendBlocks')
+      .mockResolvedValue([entry]);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:4174'));
+
+    try {
+      await expect(fetchFrontstageBlockCatalog()).resolves.toEqual({
+        entries: [entry],
+        externalNpm: { status: 'unavailable' }
+      });
+    } finally {
+      listSpy.mockRestore();
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test('AC-004 still rejects the catalog read when the backend catalog fails', async () => {
+    const backendError = new Error('backend catalog unavailable');
+    const listSpy = vi
+      .spyOn(apiClient, 'listConsoleFrontendBlocks')
+      .mockRejectedValue(backendError);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('', { status: 404 }));
+
+    try {
+      await expect(fetchFrontstageBlockCatalog()).rejects.toBe(backendError);
+    } finally {
+      listSpy.mockRestore();
+      fetchSpy.mockRestore();
     }
   });
 });

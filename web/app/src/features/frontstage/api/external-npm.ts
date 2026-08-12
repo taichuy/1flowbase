@@ -16,19 +16,42 @@ export interface ExternalNpmModule {
   type_declarations: string;
 }
 
-export async function fetchExternalNpmModules(
+export type ExternalNpmPackState = Readonly<{
+  status: 'pending' | 'available' | 'absent' | 'unavailable' | 'invalid';
+}>;
+
+export interface ExternalNpmPackSnapshot {
+  modules: ExternalNpmModule[];
+  state: ExternalNpmPackState;
+}
+
+export async function fetchExternalNpmPack(
   fetchAsset: typeof fetch = globalThis.fetch
-): Promise<ExternalNpmModule[]> {
-  const response = await fetchAsset('/external-npm/manifest.json', {
-    credentials: 'same-origin',
-    cache: 'no-cache',
-    headers: { Accept: 'application/json' }
-  });
-  if (response.status === 404) return [];
-  if (!response.ok) {
-    throw new Error('External npm manifest request failed.');
+): Promise<ExternalNpmPackSnapshot> {
+  let response: Response;
+  try {
+    response = await fetchAsset('/external-npm/manifest.json', {
+      credentials: 'same-origin',
+      cache: 'no-cache',
+      headers: { Accept: 'application/json' }
+    });
+  } catch {
+    return { modules: [], state: { status: 'unavailable' } };
   }
-  return normalizeExternalNpmManifest(await response.json());
+  if (response.status === 404) {
+    return { modules: [], state: { status: 'absent' } };
+  }
+  if (!response.ok) {
+    return { modules: [], state: { status: 'unavailable' } };
+  }
+  try {
+    return {
+      modules: normalizeExternalNpmManifest(await response.json()),
+      state: { status: 'available' }
+    };
+  } catch {
+    return { modules: [], state: { status: 'invalid' } };
+  }
 }
 
 export function normalizeExternalNpmManifest(
@@ -89,19 +112,34 @@ export function mergeExternalNpmModules(
     const existingSources = new Set(
       entry.code_modules.map((module) => module.source)
     );
-    const conflict = modules.find((module) =>
-      existingSources.has(module.source)
-    );
-    if (conflict) {
-      throw new Error(
-        `External npm module conflicts with the block catalog: ${conflict.source}.`
-      );
-    }
     return {
       ...entry,
-      code_modules: [...entry.code_modules, ...modules]
+      code_modules: [
+        ...entry.code_modules,
+        ...modules.filter((module) => !existingSources.has(module.source))
+      ]
     };
   });
+}
+
+export function describeExternalNpmImportFailure(
+  message: string,
+  state: ExternalNpmPackState
+): string {
+  if (
+    state.status === 'pending' ||
+    state.status === 'available' ||
+    !/^Import source '.+' is not allowed\.$/u.test(message)
+  ) {
+    return message;
+  }
+  const explanation =
+    state.status === 'absent'
+      ? 'Optional External npm Pack is not installed.'
+      : state.status === 'invalid'
+        ? 'Optional External npm Pack manifest is invalid.'
+        : 'Optional External npm Pack is unavailable.';
+  return `${message} ${explanation}`;
 }
 
 function normalizeAsset(value: unknown): ExternalNpmModuleAsset | null {

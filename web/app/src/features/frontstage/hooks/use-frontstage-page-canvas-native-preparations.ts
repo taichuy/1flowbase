@@ -32,6 +32,10 @@ import {
 } from '../lib/page-canvas/runtime-source';
 import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
+import {
+  describeExternalNpmImportFailure,
+  type ExternalNpmPackState
+} from '../api/external-npm';
 
 interface NativePreparationSource {
   code: string;
@@ -45,6 +49,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
   dependencyLocksByBlockId: Readonly<
     Record<string, NativeReactCatalogDependencyLock>
   >;
+  externalNpm: ExternalNpmPackState;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
   maxConcurrent?: number;
   artifactCache?: Pick<FrontstageNativeReactArtifactCache, 'get' | 'put'>;
@@ -74,6 +79,7 @@ export function useFrontstagePageCanvasNativePreparations({
   actorWorkspaceId,
   readPlan,
   dependencyLocksByBlockId,
+  externalNpm,
   demandsByBlockId,
   maxConcurrent = 2,
   artifactCache = frontstageNativeReactArtifactCache,
@@ -124,7 +130,8 @@ export function useFrontstagePageCanvasNativePreparations({
           readPlan.workspaceId,
           request.codeRef,
           currentRuntimeFingerprint,
-          dependencyLockIdentity
+          dependencyLockIdentity,
+          externalNpm.status
         ].join('/'),
         observationContext: {
           actorId,
@@ -186,8 +193,11 @@ export function useFrontstagePageCanvasNativePreparations({
             throwIfAborted(signal);
             if (!compiled.ok) {
               throw new Error(
-                compiled.diagnostics[0]?.message ??
-                  'Native React component compilation failed.'
+                describeExternalNpmImportFailure(
+                  compiled.diagnostics[0]?.message ??
+                    'Native React component compilation failed.',
+                  externalNpm
+                )
               );
             }
             artifact = compiled.artifact;
@@ -251,6 +261,7 @@ export function useFrontstagePageCanvasNativePreparations({
     compile,
     componentFactoryFlights,
     dependencyLocksByBlockId,
+    externalNpm,
     fetchSource,
     moduleRegistryFactory,
     moduleRegistryCache,
