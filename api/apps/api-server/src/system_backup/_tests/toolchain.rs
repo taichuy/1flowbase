@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
-use super::super::{
+use super::super::toolchain::{
     resolve_postgres_toolchain_source, PostgreSqlToolchainDiscoveryError, PostgreSqlToolchainSource,
 };
 

@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
-use storage_durable::{PostgreSqlBackupError, PostgreSqlToolchain};
+use storage_durable::PostgreSqlToolchain;
 use thiserror::Error;
 
 pub const PG_DUMP_PATH_ENV: &str = "API_POSTGRES_PG_DUMP_PATH";
@@ -20,7 +20,7 @@ pub enum PostgreSqlToolchainDiscoveryError {
     #[error("API_POSTGRES_PG_DUMP_PATH and API_POSTGRES_PG_RESTORE_PATH must be configured together and must not be empty")]
     IncompleteExplicitConfiguration,
     #[error("PostgreSQL backup tool discovery failed")]
-    Discovery(#[from] PostgreSqlBackupError),
+    Discovery,
 }
 
 pub(crate) fn resolve_postgres_toolchain_source(
@@ -50,9 +50,9 @@ pub async fn discover_postgres_toolchain(
             pg_restore,
         } => PostgreSqlToolchain::discover(pg_dump, pg_restore)
             .await
-            .map_err(Into::into),
+            .map_err(|_| PostgreSqlToolchainDiscoveryError::Discovery),
         PostgreSqlToolchainSource::Path => PostgreSqlToolchain::discover_from_path()
             .await
-            .map_err(Into::into),
+            .map_err(|_| PostgreSqlToolchainDiscoveryError::Discovery),
     }
 }
