@@ -35,6 +35,27 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
         assert.match(asset.sha256, /^[a-f0-9]{64}$/);
     }
 
+    const richText = left.modules.find(
+      (module) => module.module_source === '@1flowbase/rich-text'
+    );
+    assert.ok(richText, 'AC-REG-002 publishes the official rich-text module');
+    const richTextBrowserAsset = richText.assets.find(
+      (asset) => asset.role === 'browser_module'
+    );
+    assert.ok(
+      richTextBrowserAsset,
+      'AC-REG-002 publishes rich-text as a browser module'
+    );
+    const richTextSource = await readFile(
+      join(first, richTextBrowserAsset.path),
+      'utf8'
+    );
+    assert.doesNotMatch(
+      richTextSource,
+      /typeof require|require\.apply|typeof define/u,
+      'AC-REG-002 keeps bare CommonJS and AMD probes out of the ESM catalog asset'
+    );
+
     const tailwind = left.modules.find(
       (module) => module.module_source === 'tailwindcss'
     );
@@ -48,10 +69,7 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
     assert.match(css, /\.gap-4\{/u);
     assert.match(css, /\.p-4\{/u);
     assert.doesNotMatch(css, /@layer base/u);
-    assert.doesNotMatch(
-      css,
-      /(?:^|\})\s*(?:\*|button|input|h[1-6])(?:,|\{)/u
-    );
+    assert.doesNotMatch(css, /(?:^|\})\s*(?:\*|button|input|h[1-6])(?:,|\{)/u);
     assert.doesNotMatch(css, /\.ant-/u);
     const inventorySource = await readFile(
       new URL(
@@ -63,10 +81,15 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
     const inventoryMatch = inventorySource.match(
       /const INVENTORY_SOURCE = `([\s\S]*?)`;/u
     );
-    assert.ok(inventoryMatch, 'AC-004 has a readable official utility inventory');
+    assert.ok(
+      inventoryMatch,
+      'AC-004 has a readable official utility inventory'
+    );
     const inventory = inventoryMatch[1].trim().split(/\s+/u);
     for (const className of inventory) {
-      const escapedClassName = className.replaceAll(':', '\\:').replaceAll('/', '\\/');
+      const escapedClassName = className
+        .replaceAll(':', '\\:')
+        .replaceAll('/', '\\/');
       assert.ok(
         css.includes(`.${escapedClassName}`),
         `AC-004 publishes inventory utility ${className}`

@@ -50,7 +50,12 @@ export async function buildOfficialBrowserAssets(
             vditor: join(WEB_ROOT, 'app/node_modules/vditor')
           }
         },
-        define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+        define: {
+          'process.env.NODE_ENV': JSON.stringify('production'),
+          ...(directoryName === 'rich-text'
+            ? { define: 'undefined', require: 'undefined' }
+            : {})
+        },
         build: {
           cssCodeSplit: false,
           emptyOutDir: true,

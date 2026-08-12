@@ -18,6 +18,7 @@ export type NativeReactModuleRegistryErrorCode =
   | 'module_digest_mismatch'
   | 'module_media_type_mismatch'
   | 'module_invalid'
+  | 'module_dependency_invalid'
   | 'module_dependency_denied'
   | 'module_dependency_cycle'
   | 'module_export_missing';
@@ -254,17 +255,14 @@ async function fetchAndPrepare(
     crypto
   );
 
+  let source: string;
+  let code: string;
   try {
-    const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    const code = transform(source, {
+    source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    code = transform(source, {
       transforms: ['imports'],
       filePath: `${registration.module_source}.js`
     }).code;
-    return {
-      registration,
-      code,
-      dependencies: collectTransformedDependencies(code)
-    };
   } catch {
     throw registryError(
       'module_invalid',
@@ -272,6 +270,17 @@ async function fetchAndPrepare(
       `Catalog module asset is not a valid ESM module: ${registration.module_source}.`
     );
   }
+  let dependencies: string[];
+  try {
+    dependencies = collectTransformedDependencies(code);
+  } catch {
+    throw registryError(
+      'module_dependency_invalid',
+      `modules.${registration.module_source}.imports`,
+      `Catalog module dependency syntax is invalid: ${registration.module_source}.`
+    );
+  }
+  return { registration, code, dependencies };
 }
 
 async function evaluateRegisteredModule(
@@ -402,11 +411,18 @@ function collectTransformedDependencies(source: string): string[] {
       throw new Error('Dynamic import is not allowed.');
     }
     if (token.value !== 'require') continue;
+    if (isMemberProperty(source, token.start)) continue;
     const dependency = readGeneratedRequire(source, token.end);
     if (!dependency) throw new Error('Transformed require is invalid.');
     dependencies.add(dependency);
   }
   return [...dependencies];
+}
+
+function isMemberProperty(source: string, start: number): boolean {
+  let index = start - 1;
+  while (/\s/.test(source[index] ?? '')) index -= 1;
+  return source[index] === '.';
 }
 
 function readGeneratedRequire(source: string, start: number): string | null {
