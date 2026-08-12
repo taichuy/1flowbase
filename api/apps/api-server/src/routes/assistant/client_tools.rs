@@ -92,11 +92,18 @@ impl AssistantClientToolBridge {
             registration_id: format!("assistant_client|{}", tool_id.as_str()),
             provider_name: tool_id.as_str().to_string(),
             provider_tool: json!({
-                "name": tool_id.as_str(),
-                "description": description,
-                "inputSchema": input_schema,
+                "type": "function",
+                "function": {
+                    "name": tool_id.as_str(),
+                    "description": description,
+                    "parameters": input_schema,
+                }
             }),
-            owner: json!({"kind":"assistant_client","tool_id":tool_id.as_str()}),
+            owner: json!({
+                "kind": "assistant_client",
+                "tool_id": tool_id.as_str(),
+                "source": {"kind": "run", "key": tool_id.as_str()}
+            }),
         }
     }
 
@@ -175,6 +182,24 @@ impl RuntimeInternalToolInvoker for AssistantClientToolBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ac_001_client_tools_register_as_canonical_run_scoped_functions() {
+        let registration =
+            AssistantClientToolBridge::registration(AssistantClientToolId::GetClientContext);
+
+        assert_eq!(registration.provider_tool["type"], json!("function"));
+        assert_eq!(
+            registration.provider_tool["function"]["name"],
+            json!("get_client_context")
+        );
+        assert_eq!(
+            registration.provider_tool["function"]["parameters"],
+            json!({"type":"object","properties":{},"additionalProperties":false})
+        );
+        assert_eq!(registration.owner["kind"], json!("assistant_client"));
+        assert_eq!(registration.owner["source"]["kind"], json!("run"));
+    }
 
     #[tokio::test]
     async fn ac_002_client_tool_call_and_result_are_correlated_by_call_id() {

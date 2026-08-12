@@ -49,16 +49,7 @@ impl ExecutionRuntimeContext {
     ) -> Result<Self> {
         let frozen_runtime_internal_tools =
             frozen_runtime_internal_tool_registrations(plan, variable_pool);
-        let mut tools = run_level_provider_tools(plan, variable_pool);
-        let frozen_provider_names = frozen_runtime_internal_tools
-            .values()
-            .map(|registration| registration.provider_name.as_str())
-            .collect::<BTreeSet<_>>();
-        tools.retain(|tool| {
-            runtime_provider_tool_name(tool)
-                .as_deref()
-                .is_none_or(|name| !frozen_provider_names.contains(name))
-        });
+        let tools = run_level_provider_tools(plan, variable_pool);
         Ok(Self {
             operation: ai_native_operation_from_variable_pool(plan, variable_pool)?,
             tools,
@@ -159,6 +150,21 @@ impl ExecutionRuntimeContext {
             occupied.insert(qualified);
         }
         registrations
+    }
+
+    pub(super) fn is_frozen_runtime_internal_tool(&self, registration_id: &str) -> bool {
+        self.frozen_runtime_internal_tools
+            .contains_key(registration_id)
+    }
+
+    pub(super) fn refresh_frozen_run_tools(
+        &mut self,
+        plan: &CompiledPlan,
+        variable_pool: &Map<String, Value>,
+    ) {
+        self.tools = run_level_provider_tools(plan, variable_pool);
+        self.frozen_runtime_internal_tools =
+            frozen_runtime_internal_tool_registrations(plan, variable_pool);
     }
 
     pub fn with_protocol_context(mut self, protocol_context: ProtocolContextEnvelope) -> Self {

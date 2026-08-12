@@ -888,6 +888,22 @@ struct StubRuntimeInternalToolInvoker {
     calls: Mutex<Vec<Value>>,
 }
 
+#[derive(Default)]
+struct RecordingExecutionLifecycle {
+    inputs: Mutex<BTreeMap<String, Value>>,
+}
+
+#[async_trait]
+impl ExecutionLifecycle for RecordingExecutionLifecycle {
+    async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()> {
+        self.inputs
+            .lock()
+            .unwrap()
+            .insert(node.node_id.clone(), input_payload.clone());
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl RuntimeInternalToolInvoker for StubRuntimeInternalToolInvoker {
     fn registrations_for_node(&self, _node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
@@ -975,6 +991,7 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
         start_trace.input_payload["tools"][0]["function"]["name"],
         json!("catalog_mcp_call")
     );
+    assert_eq!(start_trace.input_payload["tools"], json!(inputs[0].tools));
     assert_eq!(
         start_trace.input_payload["tool_registrations"][0]["execution_kind"],
         json!("host_internal")
@@ -1016,6 +1033,33 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
     assert_eq!(
         llm_trace.debug_payload["runtime_internal_tool_events"][0]["owner"]["instance_id"],
         json!("catalog")
+    );
+}
+
+#[tokio::test]
+async fn runtime_internal_tool_lifecycle_persists_the_frozen_llm_catalog() {
+    let plan = llm_answer_plan();
+    let (provider, captured_inputs) = sequential_tool_invoker(vec![final_llm_response("done")]);
+    let internal = Arc::new(StubRuntimeInternalToolInvoker::default());
+    let lifecycle = RecordingExecutionLifecycle::default();
+    let input = json!({"node-start": {"query": "lookup"}});
+    let variable_pool = input.as_object().unwrap().clone();
+    let context = ExecutionRuntimeContext::from_plan_input(&plan, &variable_pool)
+        .unwrap()
+        .with_runtime_internal_tool_invoker(internal);
+
+    start_flow_debug_run_with_runtime_context_and_lifecycle(
+        &plan, &input, context, &provider, &lifecycle,
+    )
+    .await
+    .unwrap();
+
+    let provider_tools = captured_inputs.lock().unwrap()[0].tools.clone();
+    let lifecycle_inputs = lifecycle.inputs.lock().unwrap();
+    assert_eq!(lifecycle_inputs["node-llm"]["tools"], json!(provider_tools));
+    assert_eq!(
+        lifecycle_inputs["node-llm"]["tool_registrations"][0]["provider_name"],
+        json!("catalog_mcp_call")
     );
 }
 
@@ -1085,6 +1129,7 @@ async fn runtime_internal_tool_snapshot_preserves_wire_name_without_duplicate_re
             .count(),
         1
     );
+    assert_eq!(json!(inputs[0].tools), input["node-start"]["tools"]);
     let llm_trace = outcome
         .node_traces
         .iter()

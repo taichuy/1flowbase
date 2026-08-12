@@ -27,7 +27,8 @@ use crate::{
     },
     execution_engine::{
         resume_flow_debug_run, start_flow_debug_run, start_flow_debug_run_with_runtime_context,
-        CapabilityInvocationOutput, CapabilityInvoker, CodeInvocationOutput, CodeInvoker,
+        start_flow_debug_run_with_runtime_context_and_lifecycle, CapabilityInvocationOutput,
+        CapabilityInvoker, CodeInvocationOutput, CodeInvoker, ExecutionLifecycle,
         ExecutionRuntimeContext, LlmRoutingCounterStore, NativeSqlInvocationOutput,
         ProviderInvocationOutput, ProviderInvoker, ResolvedProviderRoute,
         RuntimeInternalToolInvoker, RuntimeInternalToolOutput, RuntimeInternalToolRegistration,
