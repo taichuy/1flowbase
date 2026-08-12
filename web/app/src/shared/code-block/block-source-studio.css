@@ -342,6 +342,10 @@ body.frontstage-js-block-preview-console--resizing {
   background: #fff;
 }
 
+.frontstage-jsx-studio__editor-header {
+  min-width: 0;
+}
+
 .frontstage-jsx-studio__editor-notice {
   min-width: 0;
 }

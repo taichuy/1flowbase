@@ -28,6 +28,7 @@
     "@lexical/react": "^0.43.0",
     "@lexical/rich-text": "^0.43.0",
     "@lexical/utils": "^0.43.0",
+    "@monaco-editor/loader": "^1.7.0",
     "@monaco-editor/react": "^4.7.0",
     "@scalar/api-reference-react": "^0.9.34",
     "@tanstack/react-query": "^5.73.3",

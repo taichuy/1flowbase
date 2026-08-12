@@ -259,7 +259,9 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
         windowWidth={windowEntry.rect.width}
         editor={
           <main className="frontstage-jsx-studio__editor-panel">
-            {editorHeader}
+            <div className="frontstage-jsx-studio__editor-header">
+              {editorHeader}
+            </div>
             <div className="frontstage-jsx-studio__editor-notice">
               {editorNotice}
               {errorMessage ? (
