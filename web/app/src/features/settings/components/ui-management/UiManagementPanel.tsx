@@ -12,7 +12,6 @@ import {
   Input,
   Select,
   Space,
-  Table,
   Tabs,
   Tag,
   Typography
@@ -32,25 +31,15 @@ import {
 } from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
 import {
-  archiveSettingsUiTemplate,
-  createSettingsUiTemplate,
   fetchSettingsUiComponents,
-  fetchSettingsUiTemplates,
-  publishSettingsUiTemplate,
-  resetSettingsUiTemplateDefault,
-  setSettingsUiTemplateDefault,
   settingsUiComponentsQueryKey,
-  settingsUiTemplatesQueryKey,
   updateSettingsUiComponentContract,
   updateSettingsUiComponentState,
-  updateSettingsUiTemplate,
-  type SettingsUiComponentCandidate,
-  type SettingsUiManagedTemplate,
-  type SettingsUiTemplateInput
+  type SettingsUiComponentCandidate
 } from '../../api/ui-management';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
+import { CodeTemplatesTab } from './CodeTemplatesTab';
 
-type TemplateForm = SettingsUiTemplateInput;
 type ComponentFilter = {
   keyword: string;
   state?: SettingsUiComponentCandidate['state'];
@@ -61,283 +50,6 @@ const COMPONENT_PAGE_SIZE = 20;
 function requireToken(token: string | null): string {
   if (!token) throw new Error('missing csrf token');
   return token;
-}
-
-function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
-  const { t } = useTranslation('settingsUiManagement');
-  const { message } = App.useApp();
-  const csrfToken = useAuthStore((state) => state.csrfToken);
-  const queryClient = useQueryClient();
-  const [form] = Form.useForm<TemplateForm>();
-  const [editing, setEditing] = useState<SettingsUiManagedTemplate | null>(
-    null
-  );
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const query = useQuery({
-    queryKey: [...settingsUiTemplatesQueryKey, includeArchived],
-    queryFn: () => fetchSettingsUiTemplates(includeArchived)
-  });
-  const save = useMutation({
-    mutationFn: async (value: TemplateForm) =>
-      editing
-        ? updateSettingsUiTemplate(
-            editing.id,
-            {
-              name: value.name,
-              source: value.source,
-              language: value.language
-            },
-            requireToken(csrfToken)
-          )
-        : createSettingsUiTemplate(value, requireToken(csrfToken)),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: settingsUiTemplatesQueryKey
-      });
-      setDrawerOpen(false);
-      message.success(t('saved'));
-    }
-  });
-  const action = useMutation({
-    mutationFn: async (run: () => Promise<unknown>) => run(),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: settingsUiTemplatesQueryKey })
-  });
-  const openCreate = () => {
-    setEditing(null);
-    form.resetFields();
-    form.setFieldsValue({ language: 'tsx' });
-    setDrawerOpen(true);
-  };
-  const openEdit = (row: SettingsUiManagedTemplate) => {
-    setEditing(row);
-    form.setFieldsValue({
-      provider_code: row.provider_code,
-      contribution_code: row.contribution_code,
-      name: row.name,
-      source: row.latest_revision.source,
-      language: row.latest_revision.language
-    });
-    setDrawerOpen(true);
-  };
-  const rows = useMemo(
-    () => [
-      ...(query.data?.official.map((row) => ({
-        key: `official:${row.provider_code}:${row.contribution_code}`,
-        kind: 'official' as const,
-        ...row,
-        name: row.title,
-        revision: row.version,
-        status: 'published',
-        is_archived: false
-      })) ?? []),
-      ...(query.data?.managed.map((row) => ({
-        key: row.id,
-        kind: 'managed' as const,
-        ...row,
-        revision: `r${row.latest_revision.revision}`,
-        status: row.published_revision ? 'published' : 'draft'
-      })) ?? [])
-    ],
-    [query.data]
-  );
-  return (
-    <SettingsSectionSurface
-      toolbar={
-        <Space wrap>
-          <Button type="primary" disabled={!canManage} onClick={openCreate}>
-            {t('new_template')}
-          </Button>
-          <Button onClick={() => setIncludeArchived((v) => !v)}>
-            {includeArchived ? t('hide_archived') : t('show_archived')}
-          </Button>
-        </Space>
-      }
-    >
-      <Table
-        loading={query.isLoading}
-        rowKey="key"
-        scroll={{ x: 900 }}
-        dataSource={rows}
-        columns={[
-          { title: t('name'), dataIndex: 'name' },
-          {
-            title: t('contribution'),
-            render: (_, r) => (
-              <Typography.Text code>
-                {r.provider_code}/{r.contribution_code}
-              </Typography.Text>
-            )
-          },
-          {
-            title: t('source'),
-            render: (_, r) => (
-              <Tag>{r.kind === 'official' ? t('official') : t('managed')}</Tag>
-            )
-          },
-          { title: t('revision'), dataIndex: 'revision' },
-          {
-            title: t('status'),
-            render: (_, r) => (
-              <Space>
-                <Tag color={r.status === 'published' ? 'green' : 'default'}>
-                  {t(r.status)}
-                </Tag>
-                {r.is_default ? <Tag color="blue">{t('default')}</Tag> : null}
-                {r.is_archived ? <Tag>{t('archived')}</Tag> : null}
-              </Space>
-            )
-          },
-          {
-            title: t('actions'),
-            fixed: 'right',
-            render: (_, row) => (
-              <Space wrap>
-                {row.kind === 'managed' ? (
-                  <>
-                    <Button
-                      size="small"
-                      disabled={!canManage}
-                      onClick={() => openEdit(row)}
-                    >
-                      {t('edit')}
-                    </Button>
-                    <Button
-                      size="small"
-                      disabled={
-                        !canManage ||
-                        row.latest_revision.is_published ||
-                        row.is_archived
-                      }
-                      onClick={() =>
-                        action.mutate(() =>
-                          publishSettingsUiTemplate(
-                            row.id,
-                            row.latest_revision.revision,
-                            requireToken(csrfToken)
-                          )
-                        )
-                      }
-                    >
-                      {t('publish')}
-                    </Button>
-                    <Button
-                      size="small"
-                      disabled={
-                        !canManage || !row.published_revision || row.is_archived
-                      }
-                      onClick={() =>
-                        action.mutate(() =>
-                          setSettingsUiTemplateDefault(
-                            row.id,
-                            requireToken(csrfToken)
-                          )
-                        )
-                      }
-                    >
-                      {t('set_default')}
-                    </Button>
-                    <Button
-                      size="small"
-                      danger={!row.is_archived}
-                      disabled={!canManage}
-                      onClick={() =>
-                        action.mutate(() =>
-                          archiveSettingsUiTemplate(
-                            row.id,
-                            !row.is_archived,
-                            requireToken(csrfToken)
-                          )
-                        )
-                      }
-                    >
-                      {row.is_archived ? t('restore') : t('archive')}
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="small"
-                    disabled={!canManage || row.is_default}
-                    onClick={() =>
-                      action.mutate(() =>
-                        resetSettingsUiTemplateDefault(
-                          {
-                            provider_code: row.provider_code,
-                            contribution_code: row.contribution_code
-                          },
-                          requireToken(csrfToken)
-                        )
-                      )
-                    }
-                  >
-                    {t('restore_official_default')}
-                  </Button>
-                )}
-              </Space>
-            )
-          }
-        ]}
-      />
-      <Drawer
-        open={drawerOpen}
-        width={720}
-        title={editing ? t('edit_template') : t('new_template')}
-        onClose={() => setDrawerOpen(false)}
-        extra={
-          <Button
-            type="primary"
-            loading={save.isPending}
-            onClick={() => form.submit()}
-          >
-            {t('save_revision')}
-          </Button>
-        }
-      >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <Form.Item
-            name="provider_code"
-            label={t('provider_code')}
-            rules={[{ required: true }]}
-          >
-            <Input disabled={!!editing} />
-          </Form.Item>
-          <Form.Item
-            name="contribution_code"
-            label={t('contribution_code')}
-            rules={[{ required: true }]}
-          >
-            <Input disabled={!!editing} />
-          </Form.Item>
-          <Form.Item name="name" label={t('name')} rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="language"
-            label={t('language')}
-            rules={[{ required: true }]}
-          >
-            <Select
-              options={[
-                { value: 'tsx', label: 'TSX' },
-                { value: 'jsx', label: 'JSX' }
-              ]}
-            />
-          </Form.Item>
-          <Form.Item
-            name="source"
-            label={t('initial_code')}
-            rules={[{ required: true }]}
-          >
-            <Input.TextArea
-              autoSize={{ minRows: 18, maxRows: 32 }}
-              className="ui-management-code-editor"
-            />
-          </Form.Item>
-        </Form>
-      </Drawer>
-    </SettingsSectionSurface>
-  );
 }
 
 function ComponentsTab({ canManage }: { canManage: boolean }) {
@@ -414,9 +126,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
     },
     [form]
   );
-  const columns = useMemo<
-    Array<DataTableColumn<SettingsUiComponentCandidate>>
-  >(
+  const columns = useMemo<Array<DataTableColumn<SettingsUiComponentCandidate>>>(
     () => [
       {
         key: 'component',
