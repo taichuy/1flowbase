@@ -44,14 +44,10 @@ export function createAssistantClientTools({
     async execute(call): Promise<ConsoleAssistantClientToolExecution> {
       if (call.name === 'get_client_context') {
         const current = snapshot();
-        const url = new URL(current.href);
-        for (const key of new Set(url.searchParams.keys())) {
-          url.searchParams.set(key, '[REDACTED]');
-        }
         return {
           is_error: false,
           result: {
-            url: `${url.pathname}${url.search}`,
+            url: current.href,
             route_id: current.route_id,
             page_title: current.page_title,
             locale: current.locale,

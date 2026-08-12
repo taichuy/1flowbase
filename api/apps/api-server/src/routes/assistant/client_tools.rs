@@ -72,7 +72,7 @@ impl AssistantClientToolBridge {
     fn registration(tool_id: AssistantClientToolId) -> RuntimeInternalToolRegistration {
         let (description, input_schema) = match tool_id {
             AssistantClientToolId::GetClientContext => (
-                "Read the current browser tab's safe console context at call time. URL query values are redacted.",
+                "Read the current browser tab's console context at call time, including the complete address-bar URL without rewriting.",
                 json!({"type":"object","properties":{},"additionalProperties":false}),
             ),
             AssistantClientToolId::RefreshClientView => (

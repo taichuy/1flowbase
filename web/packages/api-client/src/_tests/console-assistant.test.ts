@@ -361,7 +361,9 @@ describe('console assistant client', () => {
         clientTools: {
           toolIds: ['get_client_context', 'refresh_client_view'],
           execute: vi.fn().mockResolvedValue({
-            result: { url: '/settings?token=%5BREDACTED%5D' },
+            result: {
+              url: 'https://console.example/settings?token=secret#details'
+            },
             is_error: false
           })
         }
@@ -375,7 +377,9 @@ describe('console assistant client', () => {
     expect(sent[1]).toMatchObject({
       type: 'client_tool.result',
       call_id: '018f0000-0000-7000-8000-000000000001',
-      result: { url: '/settings?token=%5BREDACTED%5D' },
+      result: {
+        url: 'https://console.example/settings?token=secret#details'
+      },
       is_error: false
     });
     vi.unstubAllGlobals();

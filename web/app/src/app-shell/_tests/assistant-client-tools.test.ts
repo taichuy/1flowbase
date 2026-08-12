@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { createAssistantClientTools } from '../AssistantClientTools';
 
 describe('assistant client tools', () => {
-  test('AC-003 returns call-time browser context with every query value redacted', async () => {
+  test('AC-003 returns the honest complete URL from the browser address bar', async () => {
     const tools = createAssistantClientTools({
       queryClient: new QueryClient(),
       refreshTargets: new Map(),
@@ -27,7 +27,7 @@ describe('assistant client tools', () => {
     ).resolves.toEqual({
       is_error: false,
       result: {
-        url: '/settings?token=%5BREDACTED%5D&tab=%5BREDACTED%5D',
+        url: 'https://console.example/settings?token=secret&tab=models#ignored',
         route_id: 'settings',
         page_title: 'Settings',
         locale: 'zh-Hans',
