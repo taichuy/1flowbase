@@ -17,6 +17,12 @@ const {
 } = require('./process.js');
 const { runServicePrestartCommands } = require('./postgres-reset.js');
 const {
+  EXPLICIT_DUMP_ENV,
+  EXPLICIT_RESTORE_ENV,
+  resolvePostgresToolchain,
+  shouldResolveForAction,
+} = require('../postgres-toolchain/resolver.js');
+const {
   CARGO_COLD_STARTUP_TIMEOUT_MS,
   DEFAULT_STARTUP_TIMEOUT_MS,
   ensureRuntimeDirs,
@@ -58,7 +64,8 @@ async function main(argv = process.argv.slice(2)) {
   ensureRuntimeDirs(runtimePaths);
 
   const serviceDefinitions = getServiceDefinitions(repoRoot);
-  const services = selectServiceKeys(options.scope).map((key) => serviceDefinitions[key]);
+  const serviceKeys = selectServiceKeys(options.scope);
+  const services = serviceKeys.map((key) => serviceDefinitions[key]);
 
   if (shouldManageDocker(options)) {
     await manageDocker(repoRoot, options.action);
@@ -68,6 +75,22 @@ async function main(argv = process.argv.slice(2)) {
 
   if (shouldShowDevDatabaseMaintenanceHint(options)) {
     writeDevDatabaseMaintenanceHint();
+  }
+
+  if (shouldResolveForAction(options.action, serviceKeys)) {
+    const apiService = serviceDefinitions['api-server'];
+    const resolved = await resolvePostgresToolchain({
+      repoRoot,
+      sourceEnv: buildServiceEnv(apiService),
+      logImpl: log,
+    });
+    if (resolved) {
+      apiService.envOverrides[EXPLICIT_DUMP_ENV] = resolved.pgDumpPath;
+      apiService.envOverrides[EXPLICIT_RESTORE_ENV] = resolved.pgRestorePath;
+      log(
+        `PostgreSQL ${resolved.source} backup toolchain ready${resolved.target ? ` for ${resolved.target}` : ''}`
+      );
+    }
   }
 
   await manageServices(options.action, services);
@@ -91,10 +114,12 @@ module.exports = {
   parseWindowsNetstatPortOccupants,
   parseCliArgs,
   resolveComposeCommand,
+  resolvePostgresToolchain,
   resolveCommandPath,
   runServicePrestartCommands,
   selectServiceKeys,
   shouldManageDocker,
+  shouldResolveForAction,
   shouldShowDevDatabaseMaintenanceHint,
   startService,
   stopService,
