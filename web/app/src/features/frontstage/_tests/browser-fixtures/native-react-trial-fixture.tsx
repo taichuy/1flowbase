@@ -7,6 +7,7 @@ import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import tailwindCss from '@1flowbase/tailwindcss-catalog/styles.css?inline';
 import vditorCss from 'vditor/dist/index.css?raw';
+import richTextBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/rich-text.js?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { ComponentProps, ComponentType } from 'react';
 import {
@@ -30,6 +31,7 @@ import {
   subscribeFrontstageRuntimeObservations,
   type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
+import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 
 type FixtureBlockProps = {
   label: string;
@@ -239,11 +241,95 @@ const publicModuleAssets = [
   )
 ];
 
-const tailwindModuleAsset = fixtureModuleStyle(
-  'tailwindcss',
-  'e',
-  tailwindCss
-);
+const tailwindModuleAsset = fixtureModuleStyle('tailwindcss', 'e', tailwindCss);
+
+const RICH_TEXT_BROWSER_ASSET_SHA256 =
+  '2b38c019e575e6e580b7955eaf37053bc7ac789fe6de71d492036e22f8993d56';
+
+function CatalogRichTextProbe() {
+  const [Preview, setPreview] = useState<ComponentType<{
+    value: string;
+    'aria-label': string;
+  }> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    const registry = createFrontstageNativeReactModuleRegistry(
+      [
+        {
+          module_source: 'react',
+          module_version: '19.2.5',
+          binding: 'host',
+          assets: [],
+          exports: ['default', 'useEffect', 'useRef']
+        },
+        {
+          module_source: '@1flowbase/rich-text',
+          module_version: '1.0.0',
+          binding: 'fetched',
+          exports: ['MarkdownEditor', 'MarkdownPreview'],
+          assets: [
+            {
+              role: 'browser_module',
+              media_type: 'text/javascript; charset=utf-8',
+              sha256: RICH_TEXT_BROWSER_ASSET_SHA256,
+              url: `/api/console/frontstage/fixture-workspace/component-module-assets/${RICH_TEXT_BROWSER_ASSET_SHA256}`
+            }
+          ]
+        }
+      ],
+      {
+        fetchAsset: async () =>
+          new Response(richTextBrowserModule, {
+            status: 200,
+            headers: { 'content-type': 'text/javascript; charset=utf-8' }
+          })
+      }
+    );
+
+    void registry.load('@1flowbase/rich-text').then(
+      (module) => {
+        if (disposed) return;
+        if (typeof module.MarkdownPreview !== 'function') {
+          setError('MarkdownPreview export is unavailable');
+          return;
+        }
+        setPreview(
+          () =>
+            module.MarkdownPreview as ComponentType<{
+              value: string;
+              'aria-label': string;
+            }>
+        );
+      },
+      (reason) => {
+        if (!disposed)
+          setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    );
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div data-testid="catalog-rich-text-probe" data-status="failed">
+        {error}
+      </div>
+    );
+  }
+  if (!Preview) {
+    return <div data-testid="catalog-rich-text-probe" data-status="loading" />;
+  }
+  return (
+    <div data-testid="catalog-rich-text-probe" data-status="ready">
+      <Preview aria-label="catalog-rich-text-preview" value="# Catalog ready" />
+    </div>
+  );
+}
 
 function NativeReactTrialFixture() {
   const [sourceRevision, setSourceRevision] = useState(1);
@@ -330,16 +416,10 @@ function NativeReactTrialFixture() {
         false,
         'miss'
       ),
-      preparation(
-        'public-a',
-        2,
-        components.publicA,
-        1,
-        1,
-        false,
-        'l2',
-        [...publicModuleAssets, tailwindModuleAsset]
-      ),
+      preparation('public-a', 2, components.publicA, 1, 1, false, 'l2', [
+        ...publicModuleAssets,
+        tailwindModuleAsset
+      ]),
       preparation(
         'public-b',
         3,
@@ -454,25 +534,28 @@ function NativeReactTrialFixture() {
         Host Tailwind isolation probe
       </div>
       {pageMounted ? (
-        <InstrumentedPageCanvas
-          content={content}
-          runtimePreparations={hidden ? [] : preparations}
-          runtimeContext={{
-            currentUser: { id: 'fixture-user', displayName: 'Fixture User' },
-            workspace: { id: 'fixture-workspace' },
-            application: null,
-            theme: { mode: 'light', tokens: {} },
-            ui: {}
-          }}
-          onRuntimeDemandChange={(blockId, priority) =>
-            setDemands((current) =>
-              current[blockId] === priority
-                ? current
-                : { ...current, [blockId]: priority }
-            )
-          }
-          onRuntimeRetry={retryPreparation}
-        />
+        <>
+          <CatalogRichTextProbe />
+          <InstrumentedPageCanvas
+            content={content}
+            runtimePreparations={hidden ? [] : preparations}
+            runtimeContext={{
+              currentUser: { id: 'fixture-user', displayName: 'Fixture User' },
+              workspace: { id: 'fixture-workspace' },
+              application: null,
+              theme: { mode: 'light', tokens: {} },
+              ui: {}
+            }}
+            onRuntimeDemandChange={(blockId, priority) =>
+              setDemands((current) =>
+                current[blockId] === priority
+                  ? current
+                  : { ...current, [blockId]: priority }
+              )
+            }
+            onRuntimeRetry={retryPreparation}
+          />
+        </>
       ) : null}
     </main>
   );

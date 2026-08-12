@@ -150,6 +150,42 @@ export const importedReact = React;
     ).rejects.toMatchObject({ code: expectedCode });
   });
 
+  test('reports non-ESM dependency syntax separately from source transformation failures', async () => {
+    const source = 'const forwarded = require; export const value = 1;';
+    const registration = await fetchedLock(source, ['value']);
+    const registry = createNativeReactModuleRegistry({
+      dependencyLock: [registration],
+      hostModules,
+      fetchAsset: async () => response(source)
+    });
+
+    await expect(
+      registry.load(registration.module_source)
+    ).rejects.toMatchObject({
+      code: 'module_dependency_invalid',
+      path: `modules.${registration.module_source}.imports`,
+      message: `Catalog module dependency syntax is invalid: ${registration.module_source}.`
+    });
+  });
+
+  test('does not mistake an object require property for a module dependency', async () => {
+    const source = `
+const runtime = {};
+runtime.require = () => 7;
+export const value = runtime.require();
+`;
+    const registration = await fetchedLock(source, ['value']);
+    const registry = createNativeReactModuleRegistry({
+      dependencyLock: [registration],
+      hostModules,
+      fetchAsset: async () => response(source)
+    });
+
+    await expect(
+      registry.load(registration.module_source)
+    ).resolves.toMatchObject({ value: 7 });
+  });
+
   test('rejects invalid Host/fetched bindings and cross-origin assets', async () => {
     const registration = await fetchedLock('export const Surface = 1;', [
       'Surface'

@@ -79,6 +79,13 @@ async function verifyFixture(browserInstance, fixture) {
     await page.locator('[data-testid=public-modules-b]').waitFor();
     await page.locator('[aria-label=editor-a] .vditor-content').waitFor();
     await page.locator('[aria-label=editor-b] .vditor-content').waitFor();
+    await page
+      .locator('[data-testid=catalog-rich-text-probe][data-status=ready]')
+      .waitFor();
+    await page
+      .locator('[aria-label=catalog-rich-text-preview] h1')
+      .filter({ hasText: 'Catalog ready' })
+      .waitFor();
     const nativeEvidence = await page.evaluate(() => {
       const hosts = [
         ...document.querySelectorAll(
@@ -327,8 +334,9 @@ function assertNetworkAndConsole(
   if (consoleErrors.length > 0) {
     throw new Error(
       `${name} console errors: ${consoleErrors
-        .map(({ text, location }) =>
-          `${text} @ ${location.url || '<unknown>'}:${location.lineNumber}:${location.columnNumber}`
+        .map(
+          ({ text, location }) =>
+            `${text} @ ${location.url || '<unknown>'}:${location.lineNumber}:${location.columnNumber}`
         )
         .join(' | ')}`
     );
