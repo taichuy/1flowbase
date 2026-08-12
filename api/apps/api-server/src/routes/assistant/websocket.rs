@@ -525,6 +525,13 @@ async fn execute_command(
                 &execution.enabled_client_tools,
                 &client_tool_ids,
             );
+            tracing::debug!(
+                application_id = %authorization.application_id,
+                declared_client_tools = ?client_tool_ids,
+                preferred_client_tools = ?execution.enabled_client_tools,
+                enabled_client_tools = ?enabled_client_tools,
+                "Assistant WebSocket client tool selection"
+            );
             let client_tool_bridge = Arc::new(client_tool_bridge.for_tools(enabled_client_tools));
             let run_id =
                 launch_assistant_execution(state.clone(), execution, Some(client_tool_bridge))

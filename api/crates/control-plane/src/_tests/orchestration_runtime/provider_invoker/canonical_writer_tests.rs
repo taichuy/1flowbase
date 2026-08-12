@@ -10,6 +10,31 @@ fn provider_timing_classifies_events_without_recording_their_content() {
     assert_eq!(provider_stream_event_kind(&event), "text_delta");
 }
 
+#[test]
+fn provider_tool_structure_receipt_keeps_only_wire_shape_metadata() {
+    let tools = vec![
+        json!({
+            "type": "function",
+            "function": {
+                "name": "lookup_order",
+                "description": "sensitive description",
+                "parameters": {"type": "object", "properties": {"secret": {"type": "string"}}}
+            }
+        }),
+        json!({"function": {"name": "missing_type"}}),
+        json!({"type": "function", "name": "flat_tool"}),
+    ];
+
+    assert_eq!(
+        provider_tool_structure_receipt(&tools),
+        json!([
+            {"index": 0, "type": "function", "name": "lookup_order", "has_parameters": true},
+            {"index": 1, "type": null, "name": "missing_type", "has_parameters": false},
+            {"index": 2, "type": "function", "name": "flat_tool", "has_parameters": false}
+        ])
+    );
+}
+
 #[tokio::test]
 async fn canonical_provider_deltas_append_before_the_terminal_event() {
     let stream = Arc::new(crate::_tests::RecordingRuntimeEventStream::default());

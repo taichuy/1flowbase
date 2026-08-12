@@ -710,16 +710,27 @@ pub(super) fn provider_tools(
         runtime_context,
     );
     let frozen_internal_names = frozen_runtime_internal_provider_names(plan, variable_pool);
+    let registrations = runtime_context.runtime_internal_tool_registrations(node);
+    let active_frozen_names = registrations
+        .iter()
+        .filter(|registration| {
+            runtime_context.is_frozen_runtime_internal_tool(&registration.registration_id)
+        })
+        .map(|registration| registration.provider_name.as_str())
+        .collect::<HashSet<_>>();
     tools.retain(|tool| {
-        provider_tool_name(tool)
-            .as_deref()
-            .is_none_or(|name| !frozen_internal_names.contains(name))
+        provider_tool_name(tool).as_deref().is_none_or(|name| {
+            !frozen_internal_names.contains(name) || active_frozen_names.contains(name)
+        })
     });
     let mut occupied = tools
         .iter()
         .filter_map(provider_tool_name)
         .collect::<HashSet<_>>();
-    for registration in runtime_context.runtime_internal_tool_registrations(node) {
+    for registration in registrations {
+        if runtime_context.is_frozen_runtime_internal_tool(&registration.registration_id) {
+            continue;
+        }
         if occupied.insert(registration.provider_name) {
             tools.push(registration.provider_tool);
         }
@@ -851,6 +862,9 @@ fn external_provider_tools(
 }
 
 fn merge_external_provider_tools(mut configured: Vec<Value>, mounted: &[Value]) -> Vec<Value> {
+    if configured == mounted {
+        return configured;
+    }
     let mut names = HashSet::new();
     for (index, tool) in configured.iter_mut().enumerate() {
         let Some(name) = provider_tool_name(tool) else {
@@ -1090,6 +1104,19 @@ mod tests {
         assert_eq!(
             provider_tool_name(&merged[3]).as_deref(),
             Some("mcp_catalog")
+        );
+    }
+
+    #[test]
+    fn runtime_internal_tool_frozen_run_catalog_is_not_merged_with_itself() {
+        let frozen = vec![json!({
+            "type": "function",
+            "function": {"name": "get_client_context", "parameters": {"type": "object"}}
+        })];
+
+        assert_eq!(
+            merge_external_provider_tools(frozen.clone(), &frozen),
+            frozen
         );
     }
 }

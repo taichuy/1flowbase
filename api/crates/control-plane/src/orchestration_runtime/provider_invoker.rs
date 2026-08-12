@@ -20,6 +20,31 @@ const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
 
+fn provider_tool_structure_receipt(tools: &[Value]) -> Value {
+    Value::Array(
+        tools
+            .iter()
+            .enumerate()
+            .map(|(index, tool)| {
+                let function = tool.get("function");
+                json!({
+                    "index": index,
+                    "type": tool.get("type").and_then(Value::as_str),
+                    "name": function
+                        .and_then(|value| value.get("name"))
+                        .or_else(|| tool.get("name"))
+                        .and_then(Value::as_str),
+                    "has_parameters": function
+                        .and_then(|value| value.get("parameters"))
+                        .or_else(|| tool.get("input_schema"))
+                        .or_else(|| tool.get("inputSchema"))
+                        .is_some(),
+                })
+            })
+            .collect(),
+    )
+}
+
 #[derive(Clone)]
 struct RuntimeProviderInvocationPin {
     instance: domain::ModelProviderInstanceRecord,
@@ -166,6 +191,17 @@ where
         );
 
         let canonical_tool_registry = input.tools.clone();
+        let tool_structure = provider_tool_structure_receipt(&input.tools);
+        tracing::debug!(
+            flow_run_id = ?self.flow_run_id,
+            provider_instance_id = %instance.id,
+            provider_code = %input.provider_code,
+            protocol = %input.protocol,
+            model = %input.model,
+            tool_count = input.tools.len(),
+            tool_structure = %tool_structure,
+            "AI Gateway provider tool structure"
+        );
         let effective_context_window = input
             .model_parameters
             .get("requested_context_window")

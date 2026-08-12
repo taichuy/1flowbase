@@ -627,6 +627,8 @@ where
 {
     normalize_plan_variable_pool(plan, &mut variable_pool);
     synchronize_runtime_global_variables(plan, &mut variable_pool, runtime_context);
+    let mut runtime_context = runtime_context.clone();
+    runtime_context.refresh_frozen_run_tools(plan, &variable_pool);
     let mut node_traces = Vec::new();
     let mut pending_failure: Option<NodeExecutionFailure> = None;
     let mut active_node_ids = active_node_ids.unwrap_or_else(|| initial_active_node_ids(plan));
@@ -693,8 +695,20 @@ where
                 }
             };
         let rendered_templates = render_templated_bindings(node, &resolved_inputs);
+        let llm_input_payload = (node.node_type == "llm").then(|| {
+            llm_node_input_payload(
+                plan,
+                node,
+                &resolved_inputs,
+                &rendered_templates,
+                &variable_pool,
+                &runtime_context,
+            )
+        });
         let node_input_payload = if matches!(node.node_type.as_str(), "start" | "workflow_start") {
             start_node_execution_input(&variable_pool, &node.node_id)
+        } else if let Some(input_payload) = &llm_input_payload {
+            Value::Object(input_payload.clone())
         } else {
             Value::Object(resolved_inputs.clone())
         };
@@ -748,21 +762,15 @@ where
                 });
             }
             "llm" => {
-                let input_payload = llm_node_input_payload(
-                    plan,
-                    node,
-                    &resolved_inputs,
-                    &rendered_templates,
-                    &variable_pool,
-                    runtime_context,
-                );
+                let input_payload = llm_input_payload
+                    .expect("LLM nodes must materialize their effective input before execution");
                 let execution = execute_llm_node(
                     plan,
                     node,
                     &resolved_inputs,
                     &rendered_templates,
                     &mut variable_pool,
-                    runtime_context,
+                    &runtime_context,
                     invoker,
                 )
                 .await?;
