@@ -119,7 +119,9 @@ describe('DebugAssistantMessage', () => {
     expect(workflowToggle).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(screen.getByText('LLM'));
 
-    expect(screen.queryByRole('button', { name: '输入' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '输入' })
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('输出')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('数据处理 JSON')).not.toBeInTheDocument();
   });
@@ -155,7 +157,9 @@ describe('DebugAssistantMessage', () => {
 
     fireEvent.click(screen.getByText('Tool'));
 
-    expect(screen.queryByRole('button', { name: '输入' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '输入' })
+    ).not.toBeInTheDocument();
     expect(screen.queryByText('输出')).not.toBeInTheDocument();
     expect(screen.queryByText('数据处理')).not.toBeInTheDocument();
 
@@ -453,6 +457,100 @@ describe('DebugAssistantMessage', () => {
     );
 
     expect(container).toHaveTextContent('abcdef');
+  });
+
+  test('AC-001 shows one latest-tool row and a frontend-counted badge only while generating', () => {
+    const message: AgentFlowDebugMessage = {
+      id: 'assistant-live-tools',
+      role: 'assistant',
+      status: 'running',
+      runId: 'run-live-tools',
+      content: '<think>正在读取上下文</think>',
+      rawOutput: null,
+      traceSummary: [
+        {
+          nodeId: 'node-llm',
+          nodeRunId: 'node-run-llm',
+          nodeAlias: 'LLM',
+          nodeType: 'llm',
+          status: 'running',
+          startedAt: '2026-08-12T10:00:00Z',
+          finishedAt: null,
+          durationMs: null,
+          inputPayload: {},
+          outputPayload: {},
+          errorPayload: null,
+          metricsPayload: {},
+          debugPayload: {
+            llm_rounds: [
+              {
+                round_index: 0,
+                assistant: {
+                  tool_calls: [
+                    { id: 'call-context', name: 'get_client_context' }
+                  ]
+                },
+                tool_results: [
+                  {
+                    tool_call_id: 'call-context',
+                    content: { url: '/applications' },
+                    is_error: false
+                  }
+                ]
+              },
+              {
+                round_index: 1,
+                assistant: {
+                  tool_calls: [{ id: 'call-page', name: 'get_page_detail' }]
+                },
+                tool_results: []
+              },
+              {
+                round_index: 2,
+                assistant: {
+                  tool_calls: [{ id: 'call-page', name: 'get_page_detail' }]
+                },
+                tool_results: []
+              }
+            ]
+          }
+        }
+      ]
+    };
+
+    const { rerender } = render(<DebugAssistantMessage message={message} />);
+
+    expect(screen.getAllByRole('region', { name: 'LLM 工具' })).toHaveLength(1);
+    expect(screen.getByTestId('live-tool-count')).toHaveTextContent('2');
+    expect(
+      screen.getByRole('button', { name: /get_page_detail/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /get_client_context/ })
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <DebugAssistantMessage
+        message={{
+          ...message,
+          status: 'completed',
+          content: '完成',
+          traceSummary: message.traceSummary.map((item) => ({
+            ...item,
+            status: 'succeeded',
+            finishedAt: '2026-08-12T10:00:02Z'
+          }))
+        }}
+      />
+    );
+
+    expect(screen.queryByTestId('live-tool-count')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /get_client_context/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /get_page_detail/ })
+    ).toBeInTheDocument();
   });
 
   test('keeps raw think tags out of the answer when no trace node can own the reasoning', () => {

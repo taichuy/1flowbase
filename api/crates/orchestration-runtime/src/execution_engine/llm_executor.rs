@@ -9,6 +9,7 @@ pub async fn execute_llm_node<I>(
     variable_pool: &mut Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
+    lifecycle: &dyn ExecutionLifecycle,
 ) -> Result<LlmNodeExecution>
 where
     I: ProviderInvoker + CapabilityInvoker + CodeInvoker + ?Sized,
@@ -105,11 +106,12 @@ where
             };
             let started_at = OffsetDateTime::now_utc();
             let timer = std::time::Instant::now();
+            lifecycle.runtime_internal_tool_started(node, call).await?;
             let mut output = internal_invoker
                 .invoke_runtime_internal_tool(node, registration, arguments)
                 .await?;
             let finished_at = OffsetDateTime::now_utc();
-            let duration_ms = i64::try_from(timer.elapsed().as_millis()).unwrap_or(i64::MAX);
+            let duration_ms = u64::try_from(timer.elapsed().as_millis()).unwrap_or(u64::MAX);
             let is_error = output.is_error;
             enrich_runtime_internal_tool_event(
                 &mut output.event,
@@ -121,7 +123,7 @@ where
                 duration_ms,
             );
             internal_events.push(output.event);
-            results.push(json!({
+            let tool_result = json!({
                 "tool_call_id": call_id,
                 "name": registration.provider_name,
                 "content": output.content,
@@ -134,7 +136,11 @@ where
                 "started_at": started_at,
                 "finished_at": finished_at,
                 "duration_ms": duration_ms,
-            }));
+            });
+            lifecycle
+                .runtime_internal_tool_finished(node, call, &tool_result, duration_ms)
+                .await?;
+            results.push(tool_result);
         }
         apply_mixed_llm_tool_callback_results(
             &mut llm_variable_pool,
@@ -183,7 +189,7 @@ fn enrich_runtime_internal_tool_event(
     is_error: bool,
     started_at: OffsetDateTime,
     finished_at: OffsetDateTime,
-    duration_ms: i64,
+    duration_ms: u64,
 ) {
     let Some(event) = event.as_object_mut() else {
         return;

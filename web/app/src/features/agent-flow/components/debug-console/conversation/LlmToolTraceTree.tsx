@@ -1,5 +1,5 @@
 import { DownOutlined, RightOutlined, ToolOutlined } from '@ant-design/icons';
-import { Tag, Tooltip, Typography } from 'antd';
+import { Badge, Tag, Tooltip, Typography } from 'antd';
 import {
   ReactNode,
   useEffect,
@@ -219,6 +219,7 @@ export function DebugWorkflowNodeDetailContent({
   item,
   beforePayloadContent,
   defaultToolsExpanded = false,
+  toolPresentation = 'complete',
   payloadDisclosure = 'immediate',
   onLoadArtifact,
   onLoadArtifacts,
@@ -227,6 +228,7 @@ export function DebugWorkflowNodeDetailContent({
   item: AgentFlowTraceItem;
   beforePayloadContent?: ReactNode;
   defaultToolsExpanded?: boolean;
+  toolPresentation?: 'complete' | 'hidden';
   payloadDisclosure?: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
@@ -236,14 +238,16 @@ export function DebugWorkflowNodeDetailContent({
 
   return (
     <>
-      <LlmToolTraceTree
-        debugPayload={item.debugPayload}
-        defaultToolsExpanded={defaultToolsExpanded}
-        payloadDisclosure={payloadDisclosure}
-        onLoadArtifact={onLoadArtifact}
-        onLoadArtifacts={onLoadArtifacts}
-        onLoadToolCallbackDetail={onLoadToolCallbackDetail}
-      />
+      {toolPresentation === 'hidden' ? null : (
+        <LlmToolTraceTree
+          debugPayload={item.debugPayload}
+          defaultToolsExpanded={defaultToolsExpanded}
+          payloadDisclosure={payloadDisclosure}
+          onLoadArtifact={onLoadArtifact}
+          onLoadArtifacts={onLoadArtifacts}
+          onLoadToolCallbackDetail={onLoadToolCallbackDetail}
+        />
+      )}
       {item.answerSnapshot ? (
         <AnswerSnapshotTrace
           snapshot={item.answerSnapshot}
@@ -712,6 +716,7 @@ export function LlmToolTraceTree(props: {
   debugPayload: unknown;
   debugPayloads?: unknown[];
   defaultToolsExpanded?: boolean;
+  presentation?: 'complete' | 'live-latest';
   payloadDisclosure?: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
@@ -724,6 +729,7 @@ function LlmToolTraceTreeContent({
   defaultToolsExpanded = false,
   debugPayload,
   debugPayloads,
+  presentation = 'complete',
   payloadDisclosure = 'immediate',
   onLoadArtifact,
   onLoadArtifacts,
@@ -732,6 +738,7 @@ function LlmToolTraceTreeContent({
   defaultToolsExpanded?: boolean;
   debugPayload: unknown;
   debugPayloads?: unknown[];
+  presentation?: 'complete' | 'live-latest';
   payloadDisclosure?: 'immediate' | 'after-finished';
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
@@ -858,6 +865,10 @@ function LlmToolTraceTreeContent({
           value1: effectiveToolCallbacks.length
         })
       : i18nText('agentFlow', 'auto.need_to_load');
+  const displayedToolCallbacks =
+    presentation === 'live-latest'
+      ? effectiveToolCallbacks.slice(-1)
+      : effectiveToolCallbacks;
 
   return (
     <section
@@ -876,7 +887,16 @@ function LlmToolTraceTreeContent({
           <Typography.Text strong>
             {i18nText('agentFlow', 'auto.tools')}
           </Typography.Text>
-          <Typography.Text type="secondary">{summaryText}</Typography.Text>
+          {presentation === 'live-latest' ? (
+            <Badge
+              color="blue"
+              count={effectiveToolCallbacks.length}
+              data-testid="live-tool-count"
+              overflowCount={999}
+            />
+          ) : (
+            <Typography.Text type="secondary">{summaryText}</Typography.Text>
+          )}
         </span>
         {traceTreeState.toolsExpanded ? (
           <DownOutlined className="agent-flow-editor__debug-workflow-collapse" />
@@ -892,7 +912,7 @@ function LlmToolTraceTreeContent({
                 aria-label={i18nText('agentFlow', 'auto.tool_callback_list')}
                 className="agent-flow-editor__debug-llm-tool-list"
               >
-                {effectiveToolCallbacks.map((callback) => {
+                {displayedToolCallbacks.map((callback) => {
                   const expanded =
                     traceTreeState.expandedToolKey === callback.key;
 
