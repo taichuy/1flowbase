@@ -1,7 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
-  fetchExternalNpmModules,
+  describeExternalNpmImportFailure,
+  fetchExternalNpmPack,
   mergeExternalNpmModules,
   normalizeExternalNpmManifest
 } from '../api/external-npm';
@@ -63,16 +64,63 @@ describe('external npm manifest', () => {
     ).toEqual(manifest.modules);
   });
 
-  test('treats a missing optional pack as empty but rejects malformed published content', async () => {
+  test('AC-001 treats missing, unavailable, and invalid optional packs as isolated states', async () => {
     await expect(
-      fetchExternalNpmModules(
-        vi.fn(async () => new Response('', { status: 404 }))
+      fetchExternalNpmPack(vi.fn(async () => new Response('', { status: 404 })))
+    ).resolves.toEqual({ modules: [], state: { status: 'absent' } });
+    await expect(
+      fetchExternalNpmPack(
+        vi.fn(async () => {
+          throw new Error('connect ECONNREFUSED 127.0.0.1:4174');
+        })
       )
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ modules: [], state: { status: 'unavailable' } });
     await expect(
-      fetchExternalNpmModules(
+      fetchExternalNpmPack(
         vi.fn(async () => Response.json({ schema_version: 2, modules: [] }))
       )
-    ).rejects.toThrow(/external npm manifest/iu);
+    ).resolves.toEqual({ modules: [], state: { status: 'invalid' } });
+  });
+
+  test('AC-003 exposes valid optional modules as an available snapshot', async () => {
+    await expect(
+      fetchExternalNpmPack(vi.fn(async () => Response.json(manifest)))
+    ).resolves.toEqual({
+      modules: manifest.modules,
+      state: { status: 'available' }
+    });
+  });
+
+  test('keeps backend catalog modules authoritative when the optional pack repeats a source', () => {
+    const backendModule = {
+      ...manifest.modules[0],
+      version: 'backend-version'
+    };
+    const entry = {
+      code_modules: [backendModule],
+      runtime: 'native_react'
+    } as unknown as FrontstageBlockCatalogEntry;
+
+    expect(
+      mergeExternalNpmModules([entry], manifest.modules)[0]?.code_modules
+    ).toEqual([backendModule]);
+  });
+
+  test('AC-002 and AC-005 preserve import denial while explaining optional-pack state', () => {
+    const denied = "Import source 'dayjs' is not allowed.";
+
+    expect(
+      describeExternalNpmImportFailure(denied, { status: 'unavailable' })
+    ).toBe(
+      "Import source 'dayjs' is not allowed. Optional External npm Pack is unavailable."
+    );
+    expect(
+      describeExternalNpmImportFailure(denied, { status: 'available' })
+    ).toBe(denied);
+    expect(
+      describeExternalNpmImportFailure('Native React compilation failed.', {
+        status: 'unavailable'
+      })
+    ).toBe('Native React compilation failed.');
   });
 });

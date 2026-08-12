@@ -93,7 +93,10 @@ describe('useFrontstageBlockCatalog', () => {
     vi.clearAllMocks();
     resetAuthStore();
     authenticate();
-    frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValue([]);
+    frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValue({
+      entries: [],
+      externalNpm: { status: 'absent' }
+    });
     blockCatalogLib.normalizeFrontstageBlockCatalog.mockReturnValue({
       items: [],
       diagnostics: []
@@ -251,7 +254,10 @@ describe('useFrontstageBlockCatalog', () => {
       }
     ] satisfies FrontstageBlockCatalogDiagnostic[];
 
-    frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValue(rawEntries);
+    frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValue({
+      entries: rawEntries,
+      externalNpm: { status: 'available' }
+    });
     blockCatalogLib.normalizeFrontstageBlockCatalog.mockReturnValue({
       items,
       diagnostics
@@ -268,6 +274,7 @@ describe('useFrontstageBlockCatalog', () => {
       blockCatalogLib.normalizeFrontstageBlockCatalog
     ).toHaveBeenCalledWith(rawEntries);
     expect(result.current.diagnostics).toBe(diagnostics);
+    expect(result.current.externalNpm).toEqual({ status: 'available' });
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.status).toBe('success');
@@ -308,7 +315,10 @@ describe('useFrontstageBlockCatalog', () => {
     expect(result.current.diagnostics).toEqual([]);
     expect(result.current.isError).toBe(true);
 
-    frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValueOnce([]);
+    frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValueOnce({
+      entries: [],
+      externalNpm: { status: 'absent' }
+    });
 
     await act(async () => {
       await result.current.refetch();

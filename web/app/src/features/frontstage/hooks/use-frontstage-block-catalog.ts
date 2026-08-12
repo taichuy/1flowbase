@@ -5,8 +5,10 @@ import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchFrontstageBlockCatalog,
   frontstageBlockCatalogQueryKey,
-  frontstageBlockCatalogQueryKeyPrefix
+  frontstageBlockCatalogQueryKeyPrefix,
+  type FrontstageBlockCatalogSnapshot
 } from '../api/block-catalog';
+import type { ExternalNpmPackState } from '../api/external-npm';
 import {
   normalizeFrontstageBlockCatalog,
   type FrontstageBlockCatalogDiagnostic,
@@ -15,13 +17,24 @@ import {
 
 const emptyCatalog = {
   items: [] as NormalizedFrontstageBlockCatalogEntry[],
-  diagnostics: [] as FrontstageBlockCatalogDiagnostic[]
+  diagnostics: [] as FrontstageBlockCatalogDiagnostic[],
+  externalNpm: { status: 'pending' } as ExternalNpmPackState
 };
 
 function toError(error: unknown): Error {
   return error instanceof Error
     ? error
     : new Error('frontstage block catalog request failed');
+}
+
+function selectFrontstageBlockCatalog({
+  entries,
+  externalNpm
+}: FrontstageBlockCatalogSnapshot) {
+  return {
+    ...normalizeFrontstageBlockCatalog(entries),
+    externalNpm
+  };
 }
 
 export function useFrontstageBlockCatalog({
@@ -40,11 +53,11 @@ export function useFrontstageBlockCatalog({
     : null;
   const hasCatalogReadContext = Boolean(
     sessionStatus === 'authenticated' &&
-      workspaceId &&
-      actor &&
-      me &&
-      permissionFingerprint &&
-      actor.current_workspace_id === workspaceId
+    workspaceId &&
+    actor &&
+    me &&
+    permissionFingerprint &&
+    actor.current_workspace_id === workspaceId
   );
 
   useEffect(() => {
@@ -64,7 +77,7 @@ export function useFrontstageBlockCatalog({
       permissionFingerprint: permissionFingerprint ?? 'missing-permissions'
     }),
     queryFn: fetchFrontstageBlockCatalog,
-    select: normalizeFrontstageBlockCatalog,
+    select: selectFrontstageBlockCatalog,
     enabled: hasCatalogReadContext
   });
 
@@ -75,6 +88,7 @@ export function useFrontstageBlockCatalog({
   return {
     items: catalog.items,
     diagnostics: catalog.diagnostics,
+    externalNpm: catalog.externalNpm,
     loading: blockCatalogQuery.isLoading,
     error: blockCatalogQuery.error ? toError(blockCatalogQuery.error) : null,
     refetch: blockCatalogQuery.refetch,

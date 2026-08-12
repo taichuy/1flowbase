@@ -10,15 +10,21 @@ import { prepareNativeReactSource } from '../../../shared/code-block/native-reac
 import type { FrontstageBlockRuntimeAssembly } from '../api/block-tree';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
+import {
+  describeExternalNpmImportFailure,
+  type ExternalNpmPackState
+} from '../api/external-npm';
 
 export function useFrontstageRuntimeAssembly({
   assembly,
-  dependencyLocksByBlockId
+  dependencyLocksByBlockId,
+  externalNpm
 }: {
   assembly: FrontstageBlockRuntimeAssembly | undefined;
   dependencyLocksByBlockId: Readonly<
     Record<string, NativeReactCatalogDependencyLock>
   >;
+  externalNpm: ExternalNpmPackState;
 }): FrontstageNativePreparationSnapshot[] {
   const key = useMemo(
     () =>
@@ -68,8 +74,11 @@ export function useFrontstageRuntimeAssembly({
         });
         if (!prepared.ok) {
           throw new Error(
-            prepared.diagnostics[0]?.message ??
-              `Block runtime preparation failed for ${layer.block_id}.`
+            describeExternalNpmImportFailure(
+              prepared.diagnostics[0]?.message ??
+                `Block runtime preparation failed for ${layer.block_id}.`,
+              externalNpm
+            )
           );
         }
         return {
@@ -125,7 +134,7 @@ export function useFrontstageRuntimeAssembly({
     return () => {
       active = false;
     };
-  }, [assembly, dependencyLocksByBlockId, key]);
+  }, [assembly, dependencyLocksByBlockId, externalNpm, key]);
 
   return state.key === key ? state.snapshots : [];
 }

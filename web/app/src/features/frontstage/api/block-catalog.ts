@@ -6,8 +6,9 @@ import {
 } from '@1flowbase/api-client';
 
 import {
-  fetchExternalNpmModules,
-  mergeExternalNpmModules
+  fetchExternalNpmPack,
+  mergeExternalNpmModules,
+  type ExternalNpmPackState
 } from './external-npm';
 
 export type FrontstageBlockCatalogEntry = Omit<
@@ -24,6 +25,11 @@ export type FrontstageBlockCatalogEntry = Omit<
     }
   >;
 };
+
+export interface FrontstageBlockCatalogSnapshot {
+  entries: FrontstageBlockCatalogEntry[];
+  externalNpm: ExternalNpmPackState;
+}
 
 export const frontstageBlockCatalogQueryKeyPrefix = [
   'frontstage',
@@ -57,12 +63,13 @@ export function getFrontstageBlockCatalogApiBaseUrl(
   );
 }
 
-export async function fetchFrontstageBlockCatalog(): Promise<
-  FrontstageBlockCatalogEntry[]
-> {
-  const [entries, externalModules] = await Promise.all([
+export async function fetchFrontstageBlockCatalog(): Promise<FrontstageBlockCatalogSnapshot> {
+  const [entries, externalNpm] = await Promise.all([
     listConsoleFrontendBlocks(getFrontstageBlockCatalogApiBaseUrl()),
-    fetchExternalNpmModules()
+    fetchExternalNpmPack()
   ]);
-  return mergeExternalNpmModules(entries, externalModules);
+  return {
+    entries: mergeExternalNpmModules(entries, externalNpm.modules),
+    externalNpm: externalNpm.state
+  };
 }

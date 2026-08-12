@@ -17,6 +17,7 @@ import {
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
 import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
+import type { ExternalNpmPackState } from '../../api/external-npm';
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block-react-adapter';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
@@ -59,6 +60,7 @@ function renderPanel({
   nativeCompiler = createCompiler(),
   nativeDependencyLock,
   nativeDependencyLockError,
+  externalNpm,
   currentBlock = block
 }: {
   code: string;
@@ -66,6 +68,7 @@ function renderPanel({
   nativeCompiler?: ReturnType<typeof createCompiler>;
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
   nativeDependencyLockError?: string | null;
+  externalNpm?: ExternalNpmPackState;
   currentBlock?: FrontstageBlockInstance;
 }) {
   return render(
@@ -76,6 +79,7 @@ function renderPanel({
       nativeCompiler={nativeCompiler}
       nativeDependencyLock={nativeDependencyLock}
       nativeDependencyLockError={nativeDependencyLockError}
+      externalNpm={externalNpm}
     />
   );
 }
@@ -264,6 +268,35 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(revokeDraftRun).toHaveBeenCalledTimes(1);
     view.unmount();
     expect(revokeDraftRun).toHaveBeenCalledTimes(2);
+  });
+
+  test('AC-002 explains an unavailable optional pack without allowing the import', async () => {
+    const compiler = vi.fn().mockResolvedValue({
+      ok: false,
+      diagnostics: [
+        {
+          phase: 'compile',
+          code: 'import_denied',
+          path: 'source.imports[0]',
+          message: "Import source 'dayjs' is not allowed."
+        }
+      ]
+    });
+
+    renderPanel({
+      code: "import dayjs from 'dayjs'; export default () => <div />;",
+      revision: 'run:external-npm-unavailable',
+      nativeCompiler: compiler,
+      externalNpm: { status: 'unavailable' }
+    });
+
+    expect(await screen.findByText('运行失败')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Import source 'dayjs' is not allowed\. Optional External npm Pack is unavailable\./u
+      )
+    ).toBeInTheDocument();
+    expect(compiler).toHaveBeenCalledTimes(1);
   });
 
   test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {
