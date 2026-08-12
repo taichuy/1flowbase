@@ -307,6 +307,9 @@ describe('FrontstageJsxStudioDrawer', () => {
           openBlock: vi.fn(),
           activateBlock: vi.fn(),
           closeBlock: vi.fn(),
+          setDraft: vi.fn((_blockId: string, draft: string) =>
+            legacy.setDraft(draft)
+          ),
           setActiveDraft: legacy.setDraft,
           resetActive: legacy.reset,
           saveActive: legacy.save,
@@ -525,6 +528,65 @@ describe('FrontstageJsxStudioDrawer', () => {
       expect(antdAppMocks.success).toHaveBeenCalledWith('接口代码已插入')
     );
     expect(onSaveBlock).not.toHaveBeenCalled();
+  });
+
+  test('AC-001 attributes a Monaco change to the block identified by its model path', () => {
+    const setDraft = vi.fn();
+    const rootTab = {
+      block_id: 'root',
+      detail: { block_id: 'root', tab_id: 'tab-1', title: 'Root' },
+      base_source: 'root source',
+      draft: 'root source',
+      source_sha256: 'root-sha256',
+      loading: false,
+      saving: false,
+      error: null
+    };
+    const childTab = {
+      ...rootTab,
+      block_id: 'child',
+      detail: { block_id: 'child', tab_id: 'tab-1', title: 'Child' },
+      base_source: '',
+      draft: ''
+    };
+    blockTabsHook.useFrontstageBlockTabs.mockReturnValue({
+      tabs: [rootTab, childTab],
+      activeBlockId: 'child',
+      activeTab: childTab,
+      anyDirty: false,
+      openBlock: vi.fn(),
+      activateBlock: vi.fn(),
+      closeBlock: vi.fn(),
+      setDraft,
+      setActiveDraft: vi.fn(),
+      resetActive: vi.fn(),
+      saveActive: vi.fn().mockResolvedValue(undefined),
+      handleDeletedBlock: vi.fn().mockResolvedValue('converged')
+    });
+    monacoEditor.getModel.mockReturnValue({
+      uri: {
+        toString: () => 'file:///frontstage/page-1/blocks/child.tsx'
+      }
+    });
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'JSX source' }), {
+      target: { value: 'child draft' }
+    });
+
+    expect(setDraft).toHaveBeenCalledWith('child', 'child draft');
   });
 
   test('AC-001/002/003 keeps templates in their own resource section and replaces the whole draft', async () => {

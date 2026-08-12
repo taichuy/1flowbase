@@ -52,7 +52,7 @@ export interface BlockSourceStudioProps<
   source: string;
   testId: string;
   windowId: string;
-  onChange: (source: string) => void;
+  onChange: (source: string, modelPath?: string) => void;
   onClose: () => void;
   onEditorMount?: OnMount;
   onInjectContext: (source: string, contextComment: string) => string;

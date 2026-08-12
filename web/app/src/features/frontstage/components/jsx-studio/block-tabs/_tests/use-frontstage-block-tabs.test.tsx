@@ -131,6 +131,21 @@ describe('useFrontstageBlockTabs', () => {
     );
   });
 
+  test('AC-001 updates the draft owned by an identified editor document', async () => {
+    const view = setup();
+    await waitFor(() => expect(view.result.current.activeTab?.loading).toBe(false));
+    act(() => view.result.current.openBlock('child'));
+    await waitFor(() => expect(view.result.current.activeTab?.loading).toBe(false));
+    act(() => view.result.current.activateBlock('root'));
+
+    act(() => view.result.current.setDraft('child', ''));
+
+    expect(view.result.current.activeTab?.draft).toBe('source:root');
+    expect(
+      view.result.current.tabs.find((tab) => tab.block_id === 'child')?.draft
+    ).toBe('');
+  });
+
   test('AC-005 saves and resets only the active public block tab', async () => {
     const view = setup();
     await waitFor(() => expect(view.result.current.activeTab?.loading).toBe(false));

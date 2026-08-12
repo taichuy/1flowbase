@@ -159,12 +159,19 @@ export function useFrontstageBlockTabs({
   const activeTab =
     tabs.find((tab) => tab.block_id === activeBlockId) ?? tabs[0];
 
+  const setDraft = useCallback(
+    (blockId: string, draft: string) => {
+      updateTab(blockId, (tab) => ({ ...tab, draft }));
+    },
+    [updateTab]
+  );
+
   const setActiveDraft = useCallback(
     (draft: string) => {
       if (!activeTab) return;
-      updateTab(activeTab.block_id, (tab) => ({ ...tab, draft }));
+      setDraft(activeTab.block_id, draft);
     },
-    [activeTab, updateTab]
+    [activeTab, setDraft]
   );
 
   const resetActive = useCallback(() => {
@@ -273,6 +280,7 @@ export function useFrontstageBlockTabs({
     openBlock,
     activateBlock: setActiveBlockId,
     closeBlock,
+    setDraft,
     setActiveDraft,
     resetActive,
     saveActive,

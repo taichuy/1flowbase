@@ -5,6 +5,7 @@ import { BlockSourceEditor } from '../BlockSourceEditor';
 
 interface EditorHarnessProps {
   beforeMount?: (monaco: unknown) => void;
+  onChange?: (value?: string) => void;
   onMount?: (editor: unknown, monaco: unknown) => void;
 }
 
@@ -70,6 +71,49 @@ test('registers Monaco declarations that arrive after the editor mounts', async 
       "declare module '@1flowbase/block-sdk' {}",
       'file:///node_modules/@1flowbase/block-sdk/index.d.ts'
     )
+  );
+});
+
+test('AC-001 attributes source changes to the current Monaco document path', () => {
+  const onChange = vi.fn();
+  const model = {
+    uri: {
+      toString: () => 'file:///frontstage/page-1/blocks/child.tsx'
+    }
+  };
+  const editor = { getModel: () => model };
+  const monaco = {
+    MarkerSeverity: { Error: 8 },
+    editor: { setModelMarkers: vi.fn() },
+    languages: {
+      typescript: {
+        JsxEmit: { Preserve: 'preserve' },
+        ModuleResolutionKind: { NodeJs: 'node-js' },
+        ScriptTarget: { ES2022: 'es2022' },
+        typescriptDefaults: {
+          addExtraLib: vi.fn(() => ({ dispose: vi.fn() })),
+          setCompilerOptions: vi.fn()
+        }
+      }
+    }
+  };
+
+  render(
+    <BlockSourceEditor
+      ariaLabel="TSX source"
+      path="file:///frontstage/page-1/blocks/root.tsx"
+      value="root source"
+      onChange={onChange}
+    />
+  );
+  act(() => {
+    editorHarness.props?.onMount?.(editor, monaco);
+    editorHarness.props?.onChange?.('');
+  });
+
+  expect(onChange).toHaveBeenCalledWith(
+    '',
+    'file:///frontstage/page-1/blocks/child.tsx'
   );
 });
 

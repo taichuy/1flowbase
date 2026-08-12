@@ -50,6 +50,20 @@ export interface FrontstageJsxStudioDrawerProps {
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
 }
 
+function blockIdFromEditorModelPath(
+  modelPath: string,
+  pageId: string
+): string | null {
+  const prefix = `file:///frontstage/${pageId}/blocks/`;
+  if (!modelPath.startsWith(prefix) || !modelPath.endsWith('.tsx')) return null;
+  const encodedBlockId = modelPath.slice(prefix.length, -'.tsx'.length);
+  try {
+    return decodeURIComponent(encodedBlockId);
+  } catch {
+    return null;
+  }
+}
+
 export function FrontstageJsxStudioDrawer({
   block,
   catalogEntry,
@@ -218,7 +232,14 @@ export function FrontstageJsxStudioDrawer({
       windowId={`frontstage-jsx-studio:${block.id}`}
       editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
       editorDiagnostics={compileDiagnostics}
-      onChange={blockTabs.setActiveDraft}
+      onChange={(nextDraft, modelPath) => {
+        if (!modelPath) {
+          blockTabs.setActiveDraft(nextDraft);
+          return;
+        }
+        const changedBlockId = blockIdFromEditorModelPath(modelPath, pageId);
+        if (changedBlockId) blockTabs.setDraft(changedBlockId, nextDraft);
+      }}
       onClose={onClose}
       onEditorMount={(editor) => {
         editorRef.current = editor;

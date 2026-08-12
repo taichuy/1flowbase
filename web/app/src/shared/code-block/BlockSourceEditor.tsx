@@ -15,7 +15,7 @@ export interface BlockSourceEditorProps {
   path: string;
   readOnly?: boolean;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, modelPath: string) => void;
   onMount?: OnMount;
 }
 
@@ -169,7 +169,10 @@ export function BlockSourceEditor({
           registerDiagnostics(editor, monaco);
           onMount?.(editor, monaco);
         }}
-        onChange={(nextValue) => onChange(nextValue ?? '')}
+        onChange={(nextValue) => {
+          const modelPath = editorRef.current?.getModel()?.uri.toString();
+          if (modelPath) onChange(nextValue ?? '', modelPath);
+        }}
         options={{
           ariaLabel,
           automaticLayout: true,
