@@ -97,6 +97,45 @@ async fn visible_internal_llm_tool_outputs_visible_text_and_recalls_main_llm() {
 }
 
 #[tokio::test]
+async fn visible_internal_llm_tool_continues_after_eight_rounds() {
+    let mut responses = Vec::new();
+    for index in 0..9 {
+        responses.push(ProviderInvocationResult {
+            tool_calls: vec![ProviderToolCall {
+                id: format!("call_visible_{index}"),
+                name: "inspect_visible_context".to_string(),
+                arguments: json!({"query": format!("step {index}")}),
+                provider_metadata: json!({}),
+            }],
+            finish_reason: Some(ProviderFinishReason::ToolCall),
+            ..ProviderInvocationResult::default()
+        });
+        responses.push(final_llm_response(&format!("mounted-{index} ")));
+    }
+    responses.push(final_llm_response("main-after"));
+    let (invoker, captured_inputs) = sequential_tool_invoker(responses);
+    let plan = visible_internal_llm_tool_plan();
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({"node-start": {"query": "complete a long mounted tool task", "history": []}}),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    assert_eq!(captured_inputs.lock().unwrap().len(), 19);
+    assert!(outcome.variable_pool["node-answer"]["answer"]
+        .as_str()
+        .expect("answer should be text")
+        .ends_with("main-after"));
+}
+
+#[tokio::test]
 async fn visible_internal_llm_tool_executes_composed_connector_branch() {
     let (invoker, captured_inputs) = sequential_tool_invoker(vec![
         ProviderInvocationResult {

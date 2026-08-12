@@ -34,7 +34,7 @@ where
     let mut llm_variable_pool = variable_pool.clone();
     let mut internal_events = Vec::new();
 
-    for _ in 0..8 {
+    loop {
         let mut execution = execute_llm_node_with_visible_internal_tools(
             plan,
             node,
@@ -158,11 +158,6 @@ where
             return Ok(execution);
         }
     }
-
-    bail!(
-        "runtime internal tool round limit exceeded for {}",
-        node.node_id
-    )
 }
 
 fn attach_runtime_internal_tool_events(execution: &mut LlmNodeExecution, events: &[Value]) {

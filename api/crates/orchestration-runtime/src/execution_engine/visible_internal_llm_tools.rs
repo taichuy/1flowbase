@@ -46,7 +46,6 @@ const VISIBLE_INTERNAL_LLM_TOOL_TYPE: &str = "visible_internal_llm_tool";
 const VISIBLE_INTERNAL_LLM_TOOL_VARIABLE: &str = "visible_internal_llm_tool";
 const VISIBLE_INTERNAL_LLM_TOOL_SOURCE_HANDLE_PREFIX: &str = "visible_internal_llm_tool:";
 const VISIBLE_INTERNAL_LLM_TOOL_CALLBACK_STATE_KEY: &str = "__visible_internal_llm_tool_callback";
-const MAX_VISIBLE_INTERNAL_LLM_TOOL_ROUNDS: usize = 8;
 const TOOL_RESULT_NODE_TYPE: &str = "tool_result";
 const TOOL_MODE_AGENT: &str = "agent";
 const TOOL_MODE_FUSION: &str = "fusion";
@@ -118,7 +117,7 @@ where
     let mut route_events = pending_llm_tool_callback_visible_internal_events(node, variable_pool);
     let mut provider_events = Vec::new();
 
-    for round_index in 0..MAX_VISIBLE_INTERNAL_LLM_TOOL_ROUNDS {
+    loop {
         let mut execution = execute_llm_node_provider_round(
             plan,
             node,
@@ -439,29 +438,7 @@ where
             &node.node_id,
             route_events.clone(),
         )?;
-
-        if round_index + 1 == MAX_VISIBLE_INTERNAL_LLM_TOOL_ROUNDS {
-            return visible_internal_llm_tool_failure(
-                node,
-                provider_events,
-                json!({
-                    "error_code": "visible_internal_llm_tool_round_limit",
-                    "message": "visible internal LLM tool execution exceeded the maximum callback rounds",
-                }),
-                route_events,
-            );
-        }
     }
-
-    visible_internal_llm_tool_failure(
-        node,
-        provider_events,
-        json!({
-            "error_code": "visible_internal_llm_tool_round_limit",
-            "message": "visible internal LLM tool execution exceeded the maximum callback rounds",
-        }),
-        route_events,
-    )
 }
 async fn execute_remaining_visible_internal_llm_tool_calls<I>(
     context: VisibleInternalLlmToolRemainingContext<'_, I>,

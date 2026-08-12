@@ -1090,6 +1090,44 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
 }
 
 #[tokio::test]
+async fn runtime_internal_tool_continues_after_eight_rounds() {
+    let plan = llm_answer_plan();
+    let mut responses = (0..9)
+        .map(|index| {
+            tool_call_response(vec![ProviderToolCall {
+                id: format!("call_mcp_{index}"),
+                name: "catalog_mcp_call".to_string(),
+                arguments: json!({"tool_id": "lookup", "arguments": {"index": index}}),
+                provider_metadata: json!({}),
+            }])
+        })
+        .collect::<Vec<_>>();
+    responses.push(final_llm_response("done after nine tool rounds"));
+    let (provider, captured_inputs) = sequential_tool_invoker(responses);
+    let internal = Arc::new(StubRuntimeInternalToolInvoker::default());
+    let input = json!({"node-start": {"query": "complete a long tool task"}});
+    let variable_pool = input.as_object().unwrap().clone();
+    let context = ExecutionRuntimeContext::from_plan_input(&plan, &variable_pool)
+        .unwrap()
+        .with_runtime_internal_tool_invoker(internal.clone());
+
+    let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &provider)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    assert_eq!(internal.calls.lock().unwrap().len(), 9);
+    assert_eq!(captured_inputs.lock().unwrap().len(), 10);
+    assert_eq!(
+        outcome.variable_pool["node-answer"]["answer"],
+        json!("done after nine tool rounds")
+    );
+}
+
+#[tokio::test]
 async fn runtime_internal_tool_lifecycle_persists_the_frozen_llm_catalog() {
     let plan = llm_answer_plan();
     let (provider, captured_inputs) = sequential_tool_invoker(vec![final_llm_response("done")]);
