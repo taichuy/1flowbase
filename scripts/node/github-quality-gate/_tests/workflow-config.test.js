@@ -115,7 +115,6 @@ test("verify workflow runs on beta, main and latest but only publishes quality r
   assert.match(workflow, /INPUT_PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/u);
   assert.doesNotMatch(workflow, /INPUT_PUBLISH_ISSUE: .+refs\/heads\/main/u);
 });
-
 test("verify workflow runs lightweight merge gates before one aggregate report", () => {
   const workflow = readVerifyWorkflow();
 
@@ -278,6 +277,19 @@ test("Rust workflow caches are dependency-keyed and bounded across branches", ()
     containerWorkflow,
     /system_recovery --help[\s\S]*?pg_dump --version[\s\S]*?pg_restore --version/u,
   );
+  const apiServerDockerfile = readApiServerDockerfile();
+  assert.match(apiServerDockerfile, /postgresql-client-18/u);
+  assert.match(
+    apiServerDockerfile,
+    /API_POSTGRES_PG_DUMP_PATH=\/usr\/lib\/postgresql\/18\/bin\/pg_dump/u,
+  );
+  assert.match(
+    apiServerDockerfile,
+    /API_POSTGRES_PG_RESTORE_PATH=\/usr\/lib\/postgresql\/18\/bin\/pg_restore/u,
+  );
+  assert.match(containerWorkflow, /postgres:18[.]4-alpine/u);
+  assert.match(containerWorkflow, /pg_restore --list \/tmp\/fixture[.]dump/u);
+  assert.match(containerWorkflow, /select count[(][*][)] from backup_fixture/u);
   assert.match(containerWorkflow, /- arch: amd64[\s\S]*?- arch: arm64/u);
   assert.match(containerWorkflow, /Enforce CRITICAL Trivy release gate/u);
 });

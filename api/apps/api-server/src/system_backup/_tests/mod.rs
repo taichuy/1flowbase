@@ -22,6 +22,8 @@ use uuid::Uuid;
 
 use super::{ApiRecoveryEphemeralState, LocalBackupRepository};
 
+mod toolchain;
+
 fn temporary_root(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("1flowbase-{label}-{}", Uuid::now_v7()))
 }

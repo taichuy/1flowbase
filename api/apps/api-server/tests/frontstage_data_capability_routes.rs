@@ -202,7 +202,7 @@ async fn fixture() -> Fixture {
     let process_started_at = OffsetDateTime::now_utc();
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
-    let system_backup = Arc::new(
+    let system_backup = Some(Arc::new(
         api_server::system_backup::SystemBackupRuntime::open(
             store.clone(),
             file_storage_registry.clone(),
@@ -211,7 +211,7 @@ async fn fixture() -> Fixture {
         )
         .await
         .expect("frontstage test system backup runtime should assemble"),
-    );
+    ));
     let state = Arc::new(ApiState {
         store: store.clone(),
         system_backup,

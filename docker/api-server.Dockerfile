@@ -42,10 +42,23 @@ ARG APP_GID=1000
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+  && install -d -m 0755 /usr/share/postgresql-common/pgdg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-18 \
+  && /usr/lib/postgresql/18/bin/pg_dump --version | grep -Eq 'PostgreSQL\) 18[.]' \
+  && /usr/lib/postgresql/18/bin/pg_restore --version | grep -Eq 'PostgreSQL\) 18[.]' \
+  && apt-get purge -y --auto-remove curl gnupg \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid "${APP_GID}" flowbase \
   && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin flowbase
+
+ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
+    API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore
 
 COPY api/plugins /app/api/plugins
 COPY --from=default-extension /default-extensions /app/api/plugins/bootstrap

@@ -574,10 +574,36 @@ jobs:
         run: |
           set -euo pipefail
           docker pull --platform linux/amd64 "${{ steps.image_refs.outputs.scan_image_ref }}"
+          fixture_network="1flowbase-postgres-client-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fixture_database="1flowbase-postgres-fixture-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker rm -f "$fixture_database" >/dev/null 2>&1 || true
+            docker network rm "$fixture_network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create "$fixture_network" >/dev/null
+          docker run -d --rm --platform linux/amd64 \
+            --name "$fixture_database" \
+            --network "$fixture_network" \
+            -e POSTGRES_PASSWORD=fixture-password \
+            postgres:18.4-alpine >/dev/null
           docker run --rm --platform linux/amd64 \
+            --network "$fixture_network" \
             --entrypoint /bin/sh \
+            -e PGPASSWORD=fixture-password \
             "${{ steps.image_refs.outputs.scan_image_ref }}" \
-            -c 'system_recovery --help >/dev/null && pg_dump --version && pg_restore --version'
+            -ec '
+              system_recovery --help >/dev/null
+              pg_dump --version | grep -Eq "PostgreSQL\) 18([.]|$)"
+              pg_restore --version | grep -Eq "PostgreSQL\) 18([.]|$)"
+              until pg_isready -h "'"$fixture_database"'" -U postgres >/dev/null 2>&1; do sleep 1; done
+              psql -h "'"$fixture_database"'" -U postgres -d postgres -v ON_ERROR_STOP=1 -c "create table backup_fixture(id integer primary key); insert into backup_fixture values (1);" >/dev/null
+              pg_dump -h "'"$fixture_database"'" -U postgres -d postgres --format=custom --file=/tmp/fixture.dump
+              pg_restore --list /tmp/fixture.dump | grep -q "TABLE DATA public backup_fixture"
+              createdb -h "'"$fixture_database"'" -U postgres restored_fixture
+              pg_restore -h "'"$fixture_database"'" -U postgres -d restored_fixture --no-owner /tmp/fixture.dump
+              test "$(psql -h "'"$fixture_database"'" -U postgres -d restored_fixture -Atqc "select count(*) from backup_fixture")" = 1
+            '
 
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance

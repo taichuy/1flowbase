@@ -582,6 +582,8 @@ fn resolve_system_backup_startup(
         Ok(runtime) => Ok(Some(runtime)),
         Err(system_backup::SystemBackupRuntimeError::PostgreSqlToolchainUnavailable) => {
             tracing::warn!(
+                capability = "system_backup",
+                error_code = "system_backup_unavailable",
                 "PostgreSQL backup toolchain is unavailable; system backup APIs are disabled"
             );
             Ok(None)

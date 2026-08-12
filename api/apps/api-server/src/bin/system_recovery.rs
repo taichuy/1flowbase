@@ -10,9 +10,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use api_server::{
     config::ApiConfig,
     system_backup::{
-        EnvironmentBackupKeyProvider, LocalBackupRepository, PostgreSqlPostRestoreHealthVerifier,
-        PostgreSqlPostRestoreReconciler, PostgreSqlRecoveryAuditProjector,
-        StoppedServerRecoveryEphemeralState,
+        discover_postgres_toolchain, EnvironmentBackupKeyProvider, LocalBackupRepository,
+        PostgreSqlPostRestoreHealthVerifier, PostgreSqlPostRestoreReconciler,
+        PostgreSqlRecoveryAuditProjector, StoppedServerRecoveryEphemeralState,
     },
 };
 use async_trait::async_trait;
@@ -38,7 +38,7 @@ use domain::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, Row};
-use storage_durable::{PostgreSqlRecoveryTarget, PostgreSqlToolchain};
+use storage_durable::PostgreSqlRecoveryTarget;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,24 +442,6 @@ fn lease_disposition(state: &AtomicU8) -> Result<&'static str> {
         LEASE_RELEASED => Ok("released"),
         LEASE_RETAINED => Ok("retained"),
         _ => bail!("post-restore service did not settle the maintenance fence"),
-    }
-}
-
-async fn discover_postgres_toolchain() -> Result<PostgreSqlToolchain> {
-    let pg_dump = std::env::var_os("API_POSTGRES_PG_DUMP_PATH");
-    let pg_restore = std::env::var_os("API_POSTGRES_PG_RESTORE_PATH");
-    match (pg_dump, pg_restore) {
-        (Some(pg_dump), Some(pg_restore)) if !pg_dump.is_empty() && !pg_restore.is_empty() => {
-            PostgreSqlToolchain::discover(PathBuf::from(pg_dump), PathBuf::from(pg_restore))
-                .await
-                .map_err(Into::into)
-        }
-        (None, None) => PostgreSqlToolchain::discover_from_path()
-            .await
-            .map_err(Into::into),
-        _ => bail!(
-            "API_POSTGRES_PG_DUMP_PATH and API_POSTGRES_PG_RESTORE_PATH must be configured together"
-        ),
     }
 }
 

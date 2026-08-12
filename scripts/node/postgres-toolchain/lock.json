@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "postgresVersion": "18.4.0",
+  "expectedMajor": 18,
+  "source": "https://github.com/theseus-rs/postgresql-binaries/releases/tag/18.4.0",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-apple-darwin.tar.gz",
+      "sha256": "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2"
+    },
+    "x86_64-apple-darwin": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-apple-darwin.tar.gz",
+      "sha256": "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d"
+    },
+    "aarch64-unknown-linux-gnu": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-unknown-linux-gnu.tar.gz",
+      "sha256": "569984d426365c6ca3c197d2b3a999b73161ff1f3abc963824a8c3624620e5dd"
+    },
+    "aarch64-unknown-linux-musl": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "10c149f8be1b109f337d35513caf27844ecf2f25929067c1876bde0d7f15bc2e"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "65c06cf318b9a57525d842d658d6d18cd461d12b3a89b57d6d8ed7cccbe2db53"
+    },
+    "x86_64-unknown-linux-musl": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "5e816e0525079f0e68e97a6f5ea9639df369bd33c24e5791dc2ac123436ce1ba"
+    },
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-pc-windows-msvc.tar.gz",
+      "sha256": "4099dcf71c74bed82736e17928d07591df0efee8f802449533b9557d99ae7988"
+    }
+  }
+}
