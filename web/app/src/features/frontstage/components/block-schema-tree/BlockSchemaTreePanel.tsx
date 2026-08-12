@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
+import { useWindowWorkspaceOverlayZIndex } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import {
   fetchFrontstageBlockAncestors,
   fetchFrontstageBlockChildren,
@@ -80,6 +81,7 @@ export function BlockSchemaTreePanel({
   onDeletedBlock
 }: BlockSchemaTreePanelProps) {
   const { message, modal } = App.useApp();
+  const formOverlayZIndex = useWindowWorkspaceOverlayZIndex();
   const [form] = Form.useForm<BlockFormValues>();
   const queryClient = useQueryClient();
   const mutations = useFrontstageBlockTreeMutations(workspaceId, pageId);
@@ -441,6 +443,7 @@ export function BlockSchemaTreePanel({
       <Modal
         destroyOnHidden
         open={formTarget !== null}
+        zIndex={formOverlayZIndex}
         title={
           formTarget?.mode === 'create'
             ? i18nText('frontstage', 'auto.block_tree_create_child')
@@ -481,7 +484,18 @@ export function BlockSchemaTreePanel({
             label={i18nText('frontstage', 'auto.block_tree_presentation')}
             rules={[{ required: true }]}
           >
-            <Select options={presentationOptions()} />
+            <Select
+              options={presentationOptions()}
+              styles={
+                formOverlayZIndex === undefined
+                  ? undefined
+                  : {
+                      popup: {
+                        root: { zIndex: formOverlayZIndex + 1 }
+                      }
+                    }
+              }
+            />
           </Form.Item>
         </Form>
       </Modal>

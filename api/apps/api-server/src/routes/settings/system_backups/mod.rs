@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
-    error_response::ApiError,
+    error_response::{ApiError, ApiServiceUnavailable},
     middleware::{require_csrf::require_csrf, require_session::require_session},
     recovery_authorization::{
         consume_reauth_challenge, issue_reauth_challenge, recovery_intent_ttl,
@@ -45,6 +45,15 @@ const RECOVERY_PREFLIGHT: &str = "system_backups.recovery.preflight";
 const RECOVERY_REAUTH: &str = "system_backups.recovery.reauth";
 const RECOVERY_STATUS: &str = "system_backups.recovery.status";
 const VERIFY: &str = "system_backups.verify";
+
+fn require_system_backup(
+    state: &ApiState,
+) -> Result<Arc<crate::system_backup::SystemBackupRuntime>, ApiError> {
+    state
+        .system_backup
+        .clone()
+        .ok_or_else(|| ApiServiceUnavailable("system_backup_unavailable").into())
+}
 
 fn owned(operation: &str) -> access_control::ConsoleRouteOwnership {
     access_control::ConsoleRouteOwnership::ConsoleOperation(operation.to_owned())
@@ -261,8 +270,7 @@ pub async fn list_backups(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<BackupSetListResponse>>, ApiError> {
     require_session(&state, &headers).await?;
-    let items = state
-        .system_backup
+    let items = require_system_backup(&state)?
         .list()
         .await?
         .into_iter()
@@ -285,7 +293,9 @@ pub async fn create_backup(
 ) -> Result<Json<ApiSuccess<BackupMutationResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let sealed = state.system_backup.create(context.actor.user_id).await?;
+    let sealed = require_system_backup(&state)?
+        .create(context.actor.user_id)
+        .await?;
     Ok(Json(ApiSuccess::new(mutation_response(
         sealed.manifest().backup_set_id(),
     ))))
@@ -299,7 +309,7 @@ pub async fn get_backup(
 ) -> Result<Json<ApiSuccess<BackupSetDetailResponse>>, ApiError> {
     require_session(&state, &headers).await?;
     let id = BackupSetId::from_uuid(backup_set_id);
-    let detail = state.system_backup.detail(id).await?;
+    let detail = require_system_backup(&state)?.detail(id).await?;
     Ok(Json(ApiSuccess::new(detail_response(id, detail))))
 }
 
@@ -311,8 +321,7 @@ pub async fn delete_backup(
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    state
-        .system_backup
+    require_system_backup(&state)?
         .delete(BackupSetId::from_uuid(backup_set_id))
         .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -327,7 +336,7 @@ pub async fn verify_backup(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let id = BackupSetId::from_uuid(backup_set_id);
-    state.system_backup.verify(id).await?;
+    require_system_backup(&state)?.verify(id).await?;
     Ok(Json(ApiSuccess::new(BackupVerificationResponse {
         backup_set_id: id,
         verified: true,
@@ -342,6 +351,7 @@ pub async fn import_backup(
 ) -> Result<Json<ApiSuccess<BackupMutationResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let runtime = require_system_backup(&state)?;
     if headers
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -360,7 +370,7 @@ pub async fn import_backup(
         }
         let _ = writer.shutdown().await;
     });
-    let sealed = state.system_backup.import(&mut reader).await?;
+    let sealed = runtime.import(&mut reader).await?;
     Ok(Json(ApiSuccess::new(mutation_response(
         sealed.manifest().backup_set_id(),
     ))))
@@ -374,9 +384,9 @@ pub async fn download_backup(
 ) -> Result<Response<Body>, ApiError> {
     require_session(&state, &headers).await?;
     let id = BackupSetId::from_uuid(backup_set_id);
-    state.system_backup.get(id).await?;
+    let runtime = require_system_backup(&state)?;
+    runtime.get(id).await?;
     let (reader, writer) = tokio::io::duplex(256 * 1024);
-    let runtime = state.system_backup.clone();
     tokio::spawn(async move {
         if let Err(error) = runtime.download(id, writer).await {
             tracing::warn!(backup_set_id = %id.as_uuid(), error = %error, "backup download stream failed");
@@ -418,8 +428,7 @@ pub async fn preflight_recovery(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     require_root_cookie(&context)?;
-    let plan = state
-        .system_backup
+    let plan = require_system_backup(&state)?
         .preflight(BackupSetId::from_uuid(backup_set_id))
         .await;
     Ok(Json(ApiSuccess::new(preflight_response(&plan)?)))
@@ -435,7 +444,9 @@ pub async fn reauthenticate_recovery(
     require_csrf(&headers, &context)?;
     let session = require_root_cookie(&context)?;
     validate_exact_name(body.backup_set_id, &body.exact_backup_name)?;
-    let plan = state.system_backup.preflight(body.backup_set_id).await;
+    let plan = require_system_backup(&state)?
+        .preflight(body.backup_set_id)
+        .await;
     require_compatible_digest(&plan, &body.plan_digest)?;
     let parsed = PasswordHash::new(&context.user.password_hash)
         .map_err(|_| ControlPlaneError::PermissionDenied("recovery_reauth_failed"))?;
@@ -469,7 +480,8 @@ pub async fn create_recovery_intent(
     let session = require_root_cookie(&context)?;
     let backup_set_id = BackupSetId::from_uuid(backup_set_id);
     validate_exact_name(backup_set_id, &body.exact_backup_name)?;
-    let plan = state.system_backup.preflight(backup_set_id).await;
+    let runtime = require_system_backup(&state)?;
+    let plan = runtime.preflight(backup_set_id).await;
     let plan_digest = require_compatible_digest(&plan, &body.plan_digest)?;
     consume_reauth_challenge(
         body.challenge_token,
@@ -495,7 +507,6 @@ pub async fn create_recovery_intent(
         expires_at,
     )
     .map_err(|_| ControlPlaneError::InvalidInput("recovery_intent"))?;
-    let runtime = state.system_backup.clone();
     tokio::spawn(async move {
         if let Err(error) = runtime.prepare_recovery(confirmed).await {
             tracing::error!(intent_id = %intent_id, recovery_job_id = %recovery_job_id.as_uuid(), error = %error, "recovery handoff preparation failed");
@@ -521,19 +532,15 @@ pub async fn get_recovery_status(
 ) -> Result<Json<ApiSuccess<RecoveryStatusResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_root_cookie(&context)?;
-    let maintenance = state.system_backup.maintenance_status();
-    let active = state.system_backup.active_recovery();
+    let runtime = require_system_backup(&state)?;
+    let maintenance = runtime.maintenance_status();
+    let active = runtime.active_recovery();
     let requested_job_id = query
         .recovery_job_id
         .map(RecoveryJobId::from_uuid)
         .or(maintenance.recovery_job_id);
     let journal = match requested_job_id {
-        Some(recovery_job_id) => {
-            state
-                .system_backup
-                .recovery_journal(recovery_job_id)
-                .await?
-        }
+        Some(recovery_job_id) => runtime.recovery_journal(recovery_job_id).await?,
         None => Vec::new(),
     };
     let journal_state = journal.iter().rev().find_map(|event| match &event.event {

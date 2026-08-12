@@ -8,6 +8,7 @@ import type {
   FrontstageBlockNode,
   FrontstageBlockNodeSummary
 } from '../../../api/block-tree';
+import { WindowWorkspaceWindow } from '../../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
 import { BlockSchemaTreePanel } from '../BlockSchemaTreePanel';
 
 const api = vi.hoisted(() => ({
@@ -200,6 +201,58 @@ describe('BlockSchemaTreePanel', () => {
         runtime_descriptor: null
       });
       expect(onOpenBlock).toHaveBeenCalledWith('child-page');
+    });
+  });
+
+  test('AC-001 keeps the create and edit form layers above their editor window', async () => {
+    render(
+      <WindowWorkspaceWindow
+        active
+        dragHandleSelector="[data-window-drag-handle='true']"
+        initialRect={() => ({ left: 40, top: 40, width: 900, height: 700 })}
+        resizeLabel={() => 'Resize editor'}
+        testId="editor-window"
+        title="TSX editor"
+        zIndex={1123}
+        onActivate={vi.fn()}
+      >
+        <BlockSchemaTreePanel
+          workspaceId="workspace-1"
+          pageId="page-1"
+          currentBlockId="root-page"
+          onOpenBlock={vi.fn()}
+        />
+      </WindowWorkspaceWindow>,
+      { wrapper: Wrapper }
+    );
+
+    await screen.findByText('Root page');
+    fireEvent.click(
+      screen.getByRole('button', { name: /新增子区块|Create child block/u })
+    );
+
+    const createDialog = await screen.findByRole('dialog', {
+      name: /新增子区块|Create child block/u
+    });
+    expect(createDialog.closest('.ant-modal-wrap')).toHaveStyle({
+      zIndex: '1124'
+    });
+
+    fireEvent.mouseDown(screen.getByLabelText(/展示方式|Presentation/u));
+    expect(
+      (await screen.findByRole('listbox')).closest('.ant-select-dropdown')
+    ).toHaveStyle({ zIndex: '1125' });
+
+    fireEvent.click(
+      within(createDialog).getByRole('button', { name: /取\s*消|Cancel/u })
+    );
+    fireEvent.click(screen.getByRole('button', { name: /编辑|Edit/u }));
+
+    const editDialog = await screen.findByRole('dialog', {
+      name: /编辑区块|Edit block/u
+    });
+    expect(editDialog.closest('.ant-modal-wrap')).toHaveStyle({
+      zIndex: '1124'
     });
   });
 

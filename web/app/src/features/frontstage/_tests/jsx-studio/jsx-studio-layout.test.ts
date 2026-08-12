@@ -20,7 +20,7 @@ function cssBlock(selector: string): string {
 }
 
 describe('TSX Studio layout', () => {
-  test('places the editor first and mirrors the resource workspace to the right', () => {
+  test('AC-001 keeps the editor header and notice above a Monaco row that fills the remaining height', () => {
     const workspace = cssBlock('\\.frontstage-jsx-studio__workspace');
     expect(workspace).toContain('minmax(0, 1fr) 8px');
     expect(workspace).toContain(
@@ -34,7 +34,7 @@ describe('TSX Studio layout', () => {
       'grid-row: 1;'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__editor-panel')).toContain(
-      'grid-template-rows: auto minmax(0, 1fr);'
+      'grid-template-rows: auto auto minmax(0, 1fr);'
     );
     expect(cssBlock('\\.frontstage-jsx-studio__resource-panel')).toContain(
       'grid-column: 3;'

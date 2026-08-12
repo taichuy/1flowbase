@@ -272,7 +272,7 @@ async fn test_state_with_runtime_profile_state(
         crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
             .expect("core console operation registry should compile");
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
-    let system_backup = Arc::new(
+    let system_backup = Some(Arc::new(
         crate::system_backup::SystemBackupRuntime::open_with_postgres_toolchain(
             store.clone(),
             file_storage_registry.clone(),
@@ -282,7 +282,7 @@ async fn test_state_with_runtime_profile_state(
         )
         .await
         .expect("test system backup runtime should assemble"),
-    );
+    ));
 
     (
         Arc::new(ApiState {

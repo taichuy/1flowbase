@@ -96,6 +96,32 @@ async fn issue_challenge(
     .unwrap()
 }
 
+#[tokio::test]
+async fn system_backup_routes_return_unavailable_when_postgresql_tools_are_missing() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let mut unavailable_state = (*state).clone();
+    unavailable_state.system_backup = None;
+    let app =
+        crate::app_with_state_and_config(std::sync::Arc::new(unavailable_state), &test_config());
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/system-backups")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let payload = response_json(response).await;
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{payload}");
+    assert_eq!(payload["code"], "system_backup_unavailable");
+}
+
 async fn replace_backup_policy(
     app: &axum::Router,
     root_cookie: &str,
@@ -292,7 +318,11 @@ async fn system_backups_route_enforces_cookie_csrf_detail_projection_and_chunked
         backup_set_id.to_string()
     );
 
-    let before = state.system_backup.list().await.unwrap().len();
+    let system_backup = state
+        .system_backup
+        .as_ref()
+        .expect("test system backup runtime should be available");
+    let before = system_backup.list().await.unwrap().len();
     let truncated_import = app
         .clone()
         .oneshot(
@@ -308,15 +338,15 @@ async fn system_backups_route_enforces_cookie_csrf_detail_projection_and_chunked
         .await
         .unwrap();
     assert_eq!(truncated_import.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(state.system_backup.list().await.unwrap().len(), before);
+    assert_eq!(system_backup.list().await.unwrap().len(), before);
 
     let missing_backup = Uuid::now_v7();
     let preflight = preflight(&app, &cookie, &csrf, missing_backup).await;
     assert_eq!(preflight["compatible"], false);
     assert!(!preflight["failures"].as_array().unwrap().is_empty());
-    assert_eq!(state.system_backup.list().await.unwrap().len(), before);
+    assert_eq!(system_backup.list().await.unwrap().len(), before);
     assert_eq!(
-        state.system_backup.maintenance_status().phase,
+        system_backup.maintenance_status().phase,
         control_plane::system_recovery::SystemMaintenancePhase::Online
     );
 }

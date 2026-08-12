@@ -69,6 +69,8 @@ pub enum SystemBackupRuntimeError {
     Repository,
     #[error("system backup key provider is unavailable")]
     Key,
+    #[error("PostgreSQL backup toolchain is unavailable")]
+    PostgreSqlToolchainUnavailable,
     #[error("PostgreSQL backup preflight failed")]
     PostgreSqlPreflight,
     #[error("system backup source inventory is unavailable")]
@@ -92,7 +94,7 @@ impl SystemBackupRuntime {
     ) -> Result<Self, SystemBackupRuntimeError> {
         let postgres_toolchain = PostgreSqlToolchain::discover_from_path()
             .await
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlToolchainUnavailable)?;
         Self::open_with_postgres_toolchain(
             store,
             file_storage_registry,

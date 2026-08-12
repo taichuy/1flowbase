@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -18,6 +20,14 @@ import {
 import type { WindowWorkspaceRect } from './window-workspace-state';
 
 import './window-workspace.css';
+
+const WindowWorkspaceOverlayZIndexContext = createContext<number | undefined>(
+  undefined
+);
+
+export function useWindowWorkspaceOverlayZIndex(): number | undefined {
+  return useContext(WindowWorkspaceOverlayZIndexContext);
+}
 
 export type WindowWorkspaceResizeEdge = 'left' | 'right' | 'top' | 'bottom';
 
@@ -174,12 +184,13 @@ export function WindowWorkspaceWindow({
       }
     );
 
+  const windowZIndex = zIndex ?? (active ? 1051 : 1050);
   const style: CSSProperties = {
     left: currentRect.left,
     top: currentRect.top,
     width: currentRect.width,
     height: currentRect.height,
-    zIndex: zIndex ?? (active ? 1051 : 1050)
+    zIndex: windowZIndex
   };
   return (
     <div
@@ -198,7 +209,11 @@ export function WindowWorkspaceWindow({
           .filter(Boolean)
           .join(' ')}
       >
-        {children}
+        <WindowWorkspaceOverlayZIndexContext.Provider
+          value={windowZIndex + 1}
+        >
+          {children}
+        </WindowWorkspaceOverlayZIndexContext.Provider>
       </div>
       {resizeEdges.map((edge) => (
         <div

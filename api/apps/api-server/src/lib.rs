@@ -511,15 +511,16 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
-    let system_backup = Arc::new(
+    let system_backup = resolve_system_backup_startup(
         system_backup::SystemBackupRuntime::open(
             store.clone(),
             file_storage_registry.clone(),
             system_maintenance.clone(),
             config,
         )
-        .await?,
-    );
+        .await
+        .map(Arc::new),
+    )?;
 
     let state = Arc::new(ApiState {
         #[cfg(test)]
@@ -568,6 +569,25 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         config,
         compiled_console_plan.route_assembly,
     ))
+}
+
+fn resolve_system_backup_startup(
+    result: Result<
+        Arc<system_backup::SystemBackupRuntime>,
+        system_backup::SystemBackupRuntimeError,
+    >,
+) -> Result<Option<Arc<system_backup::SystemBackupRuntime>>, system_backup::SystemBackupRuntimeError>
+{
+    match result {
+        Ok(runtime) => Ok(Some(runtime)),
+        Err(system_backup::SystemBackupRuntimeError::PostgreSqlToolchainUnavailable) => {
+            tracing::warn!(
+                "PostgreSQL backup toolchain is unavailable; system backup APIs are disabled"
+            );
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn api_workspace_root() -> Result<PathBuf> {
@@ -636,7 +656,7 @@ pub fn init_tracing() {
 mod tests {
     use super::{
         api_workspace_root, builtin_jsx_block_package_root, parse_bind_addr,
-        DEFAULT_API_SERVER_ADDR,
+        resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
     };
 
     #[test]
@@ -665,6 +685,28 @@ mod tests {
         let package_root = builtin_jsx_block_package_root().unwrap();
 
         assert!(package_root.join("manifest.yaml").is_file());
+    }
+
+    #[test]
+    fn unavailable_postgresql_toolchain_does_not_block_api_startup() {
+        let resolved = resolve_system_backup_startup(Err(
+            crate::system_backup::SystemBackupRuntimeError::PostgreSqlToolchainUnavailable,
+        ))
+        .expect("PostgreSQL backup toolchain failure should degrade the optional capability");
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn postgresql_compatibility_failure_still_blocks_api_startup() {
+        let result = resolve_system_backup_startup(Err(
+            crate::system_backup::SystemBackupRuntimeError::PostgreSqlPreflight,
+        ));
+
+        assert!(matches!(
+            result,
+            Err(crate::system_backup::SystemBackupRuntimeError::PostgreSqlPreflight)
+        ));
     }
 }
 
