@@ -38,7 +38,7 @@ use domain::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, Row};
-use storage_durable::{PostgreSqlRecoveryTarget, PostgreSqlToolchain};
+use storage_durable::PostgreSqlRecoveryTarget;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

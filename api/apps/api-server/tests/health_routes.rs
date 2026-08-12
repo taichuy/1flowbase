@@ -193,7 +193,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let system_maintenance =
         std::sync::Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let file_storage_registry = std::sync::Arc::new(storage_object::builtin_driver_registry());
-    let system_backup = std::sync::Arc::new(
+    let system_backup = Some(std::sync::Arc::new(
         api_server::system_backup::SystemBackupRuntime::open(
             store.clone(),
             file_storage_registry.clone(),
@@ -202,7 +202,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         )
         .await
         .expect("health test system backup runtime should assemble"),
-    );
+    ));
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
