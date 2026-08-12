@@ -8,6 +8,7 @@ import {
   getConsoleFrontstageBlockDeleteImpact,
   getConsoleFrontstageBlockNode,
   getConsoleFrontstageBlockNodeCode,
+  getConsoleFrontstageBlockRuntimeAssembly,
   listConsoleFrontstageBlockAncestors,
   listConsoleFrontstageBlockChildren,
   listConsoleFrontstageBlockDescendants,
@@ -17,7 +18,8 @@ import {
   saveConsoleFrontstageBlockNodeCode,
   searchConsoleFrontstageBlocks,
   updateConsoleFrontstageBlockNode,
-  type ConsoleFrontstageBlockNodeSummary
+  type ConsoleFrontstageBlockNodeSummary,
+  type ConsoleFrontstageBlockRuntimeAssembly
 } from '../index';
 
 describe('frontstage block tree client contract', () => {
@@ -88,6 +90,16 @@ describe('frontstage block tree client contract', () => {
       getConsoleFrontstageBlockNodeCode('workspace 1', 'page/1', 'block/root')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/code',
+      method: 'GET'
+    });
+    await expect(
+      getConsoleFrontstageBlockRuntimeAssembly(
+        'workspace 1',
+        'page/1',
+        'block/root'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/runtime-assembly',
       method: 'GET'
     });
     await expect(
@@ -222,5 +234,43 @@ describe('frontstage block tree client contract', () => {
       'updated_at',
       'workspace_id'
     ]);
+  });
+
+  test('exposes the runtime assembly as public root-to-target layers with frozen source', () => {
+    const assembly = {
+      layers: [
+        {
+          block_id: 'root',
+          tab_id: 'tab-1',
+          parent_block_id: null,
+          title: 'Root',
+          presentation: 'page',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: { rendererVersion: 'v1' },
+          code: 'export default function Root() {}',
+          source_sha256: 'root-digest'
+        }
+      ]
+    } satisfies ConsoleFrontstageBlockRuntimeAssembly;
+
+    expect(Object.keys(assembly.layers[0]).sort()).toEqual([
+      'block_id',
+      'code',
+      'input_mapping',
+      'output_mapping',
+      'parent_block_id',
+      'presentation',
+      'runtime_descriptor',
+      'schema_version',
+      'source_sha256',
+      'tab_id',
+      'title'
+    ]);
+    expect(assembly.layers[0]).not.toHaveProperty('id');
+    expect(assembly.layers[0]).not.toHaveProperty('code_ref');
+    expect(assembly.layers[0]).not.toHaveProperty('workspace_id');
+    expect(assembly.layers[0]).not.toHaveProperty('page_id');
   });
 });

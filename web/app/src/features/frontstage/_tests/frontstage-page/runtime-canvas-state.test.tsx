@@ -35,10 +35,17 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+  useFrontstagePageCanvasNativePreparations: vi.fn((_input?: unknown) => ({
     preparations: [],
     retryBlock: vi.fn()
   }))
+}));
+const runtimeAssemblyHook = vi.hoisted(() => ({
+  useFrontstageRuntimeAssembly: vi.fn(
+    (_input?: {
+      assembly?: { layers: Array<{ block_id: string }> };
+    }): unknown[] => []
+  )
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -71,6 +78,10 @@ vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
+);
+vi.mock(
+  '../../hooks/use-frontstage-runtime-assembly',
+  () => runtimeAssemblyHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 vi.mock('../../api/block-tree', () => blockTreeApi);
@@ -206,7 +217,7 @@ function FrontStagePageHarness({
   pageContent,
   isPageContentLoading,
   hasPageContentLoadError,
-  blockRuntime
+  blockRuntimeAssembly
 }: {
   workspaceId?: string;
   pageId?: string;
@@ -215,7 +226,9 @@ function FrontStagePageHarness({
   pageContent?: FrontstagePageContent;
   isPageContentLoading?: boolean;
   hasPageContentLoadError?: boolean;
-  blockRuntime?: React.ComponentProps<typeof FrontStagePage>['blockRuntime'];
+  blockRuntimeAssembly?: React.ComponentProps<
+    typeof FrontStagePage
+  >['blockRuntimeAssembly'];
 }) {
   const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
     initialPageTree ?? []
@@ -230,7 +243,8 @@ function FrontStagePageHarness({
       pageContent={pageContent}
       isPageContentLoading={isPageContentLoading}
       hasPageContentLoadError={hasPageContentLoadError}
-      blockRuntime={blockRuntime}
+      blockRuntimeAssembly={blockRuntimeAssembly}
+      isBlockRuntimeRoute={Boolean(blockRuntimeAssembly)}
       onCreateGroupNode={(input) => {
         const groupNode = {
           id: createTestNodeId(),
@@ -431,6 +445,33 @@ describe('FrontStagePage - runtime canvas state', () => {
     runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mockImplementation(
       () => ({ preparations: [], retryBlock: vi.fn() })
     );
+    runtimeAssemblyHook.useFrontstageRuntimeAssembly.mockImplementation(
+      ({
+        assembly
+      }: { assembly?: { layers: Array<{ block_id: string }> } } = {}) =>
+        (assembly?.layers ?? []).map((layer, slotIndex) => {
+          const identityInput = {
+            sourceSha256: `digest:${layer.block_id}`,
+            runtimeFingerprint: 'test-runtime',
+            dependencyLockIdentity: '[]'
+          };
+          return {
+            blockId: layer.block_id,
+            slotIndex,
+            priority: 0,
+            generation: 1,
+            status: 'ready' as const,
+            prepared: {
+              artifact: {},
+              component: () => <h1>{`source:${layer.block_id}`}</h1>,
+              artifactCacheTier: 'miss' as const,
+              moduleAssets: [],
+              identityInput
+            },
+            mountIntent: { blockId: layer.block_id, slotIndex, identityInput }
+          };
+        })
+    );
     blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',
@@ -438,37 +479,37 @@ describe('FrontStagePage - runtime canvas state', () => {
     });
   });
 
-  test('assembles a canonical Block into the empty page canvas and reads code by public block_id', async () => {
+  test('renders every embedded runtime assembly layer without detail or code reads', async () => {
     authenticate(['frontstage.page.design']);
     useFrontstageDesignModeStore.getState().setDesignMode(true);
-    const blockId = 'canonical-root';
-    const current = {
+    vi.stubGlobal('IntersectionObserver', undefined);
+    const layer = (
+      blockId: string,
+      presentation: 'page' | 'drawer' | 'modal' | 'inline',
+      parentBlockId: string | null
+    ) => ({
       block_id: blockId,
-      workspace_id: 'workspace-1',
-      page_id: 'page-1',
       tab_id: 'tab-1',
-      parent_block_id: null,
-      rank: '000001',
-      presentation: 'page' as const,
-      title: 'Canonical root',
+      parent_block_id: parentBlockId,
+      title: `${blockId} shell`,
+      presentation,
       schema_version: 1,
-      created_at: '2026-08-12T00:00:00Z',
-      updated_at: '2026-08-12T00:00:00Z',
       input_mapping: {},
       output_mapping: {},
       runtime_descriptor: {
-        id: blockId,
-        rendererVersion: 'v1',
-        codeRef: `frontstage.block.${blockId}`,
-        acceptanceSeed: 'architecture-material-editor'
-      }
-    };
-    blockTreeApi.fetchFrontstageBlockNodeCode.mockResolvedValue({
-      block_id: blockId,
-      page_id: 'page-1',
-      code: 'export default function Root() { return <div>Seeded root</div>; }',
-      source_sha256: 'digest'
+        renderer_version: 'v1',
+        runtime: { kind: 'native_react', entry: 'index.js' }
+      },
+      code: `export default function Block() { return <h1>source:${blockId}</h1>; }`,
+      source_sha256: `digest:${blockId}`
     });
+    const assembly = {
+      layers: [
+        layer('assembly-root', 'page', null),
+        layer('assembly-chapter', 'drawer', 'assembly-root'),
+        layer('assembly-content', 'inline', 'assembly-chapter')
+      ]
+    };
 
     render(
       <AppProviders>
@@ -476,280 +517,36 @@ describe('FrontStagePage - runtime canvas state', () => {
           pageId="page-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
-          blockRuntime={{ current, ancestors: [] }}
+          blockRuntimeAssembly={assembly}
         />
       </AppProviders>
     );
 
-    const slot = await screen.findByTestId(`block-slot-${blockId}`);
-    expect(slot).toBeInTheDocument();
-    const preparationInput = (
-      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mock
-        .calls as unknown as Array<
-        [
-          {
-            readPlan: { requests: Array<{ blockId: string }> };
-            fetchSource: (
-              request: { blockId: string },
-              signal: AbortSignal
-            ) => Promise<unknown>;
-          }
-        ]
-      >
-    ).at(-1)?.[0];
-    expect(preparationInput).toBeDefined();
-    if (!preparationInput) throw new Error('missing Native preparation input');
-    const request = preparationInput.readPlan.requests[0];
-    await preparationInput.fetchSource(request, new AbortController().signal);
-    expect(blockTreeApi.fetchFrontstageBlockNodeCode).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      blockId
-    );
-
-    fireEvent.click(slot);
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
-    expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
-      `studio:${blockId}`
-    );
-  });
-
-  test('settles distinct canonical sources across a three-level presentation chain and navigation', async () => {
-    authenticate([]);
-    vi.stubGlobal('IntersectionObserver', undefined);
-    const createNode = (
-      blockId: string,
-      title: string,
-      presentation: 'page' | 'drawer' | 'modal' | 'inline',
-      parentBlockId: string | null
-    ) => ({
-      block_id: blockId,
-      workspace_id: 'workspace-1',
-      page_id: 'page-1',
-      tab_id: 'tab-1',
-      parent_block_id: parentBlockId,
-      rank: blockId,
-      presentation,
-      title,
-      schema_version: 1,
-      created_at: '2026-08-12T00:00:00Z',
-      updated_at: '2026-08-12T00:00:00Z',
-      input_mapping: {},
-      output_mapping: {},
-      runtime_descriptor: {
-        id: blockId,
-        rendererVersion: 'v1',
-        codeRef: `frontstage.block.${blockId}`
-      }
-    });
-    const root = createNode('canonical-root', 'Root shell', 'page', null);
-    const chapter = createNode(
-      'canonical-chapter',
-      'Chapter shell',
-      'drawer',
-      root.block_id
-    );
-    const content = createNode(
-      'canonical-content',
-      'Content shell',
-      'inline',
-      chapter.block_id
-    );
-    const nodes = new Map(
-      [root, chapter, content].map((node) => [node.block_id, node])
-    );
-    blockTreeApi.fetchFrontstageBlockNode.mockImplementation(
-      (_workspaceId: string, _pageId: string, blockId: string) =>
-        Promise.resolve(nodes.get(blockId))
-    );
-    blockTreeApi.fetchFrontstageBlockNodeCode.mockImplementation(
-      (_workspaceId: string, pageId: string, blockId: string) =>
-        Promise.resolve({
-          block_id: blockId,
-          page_id: pageId,
-          code: `export default function Block() { return <h1>source:${blockId}</h1>; }`,
-          source_sha256: `digest:${blockId}`
-        })
-    );
-    const components = new Map(
-      [root, chapter, content].map((node) => [
-        node.block_id,
-        () => <h1>{`source:${node.block_id}`}</h1>
-      ])
-    );
-    runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mockImplementation(
-      (input: {
-        readPlan?: {
-          requests: Array<{
-            blockId: string;
-            slotIndex: number;
-            codeRef: string;
-          }>;
-        } | null;
-        demandsByBlockId?: Record<string, number>;
-      }) => ({
-        preparations: (input.readPlan?.requests ?? []).flatMap((request) => {
-          const priority =
-            input.demandsByBlockId?.[request.blockId] ??
-            (request.slotIndex === 0 ? 1 : 3);
-          if (priority > 1) return [];
-          const identityInput = {
-            sourceSha256: `digest:${request.blockId}`,
-            runtimeFingerprint: 'test-runtime',
-            dependencyLockIdentity: '[]'
-          };
-          return [
-            {
-              blockId: request.blockId,
-              slotIndex: request.slotIndex,
-              priority,
-              generation: 0,
-              status: 'ready' as const,
-              prepared: {
-                artifact: {},
-                component: components.get(request.blockId),
-                artifactCacheTier: 'miss' as const,
-                moduleAssets: [],
-                identityInput
-              },
-              mountIntent: {
-                blockId: request.blockId,
-                slotIndex: request.slotIndex,
-                identityInput
-              }
-            }
-          ];
-        }),
-        retryBlock: vi.fn()
-      })
-    );
-    const summary = ({
-      input_mapping: _inputMapping,
-      output_mapping: _outputMapping,
-      runtime_descriptor: _runtimeDescriptor,
-      ...node
-    }: typeof root) => node;
-    const view = render(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent()}
-          blockRuntime={{ current: chapter, ancestors: [summary(root)] }}
-        />
-      </AppProviders>
-    );
-    const expectRenderedSource = async (blockId: string) => {
+    for (const current of assembly.layers) {
       const host = await screen.findByTestId(
-        `frontstage-native-block-root-${blockId}`
+        `frontstage-native-block-root-${current.block_id}`
       );
       await vi.waitFor(() => {
-        expect(host.shadowRoot?.textContent).toContain(`source:${blockId}`);
+        expect(host.shadowRoot?.textContent).toContain(
+          `source:${current.block_id}`
+        );
       });
-    };
-
-    await vi.waitFor(() => {
-      const demandInput = (
-        runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mock
-          .calls as unknown as Array<
-          [{ demandsByBlockId: Record<string, number> }]
-        >
-      ).at(-1)?.[0];
-      expect(demandInput?.demandsByBlockId).toEqual({
-        'canonical-root': 1,
-        'canonical-chapter': 1
-      });
-    });
-    await expectRenderedSource(chapter.block_id);
+    }
+    expect(screen.getByText('assembly-chapter shell')).toBeInTheDocument();
+    expect(screen.getByText('assembly-content shell')).toBeInTheDocument();
+    expect(blockTreeApi.fetchFrontstageBlockNode).not.toHaveBeenCalled();
+    expect(blockTreeApi.fetchFrontstageBlockNodeCode).not.toHaveBeenCalled();
     expect(
-      screen.getByTestId('frontstage-native-block-root-canonical-chapter')
-        .shadowRoot?.textContent
-    ).not.toContain('source:canonical-root');
+      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations
+    ).toHaveBeenCalledWith(expect.objectContaining({ readPlan: null }));
     expect(
-      screen.queryByTestId('frontstage-native-block-root-canonical-content')
-    ).not.toBeInTheDocument();
-
-    view.rerender(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent()}
-          blockRuntime={{
-            current: content,
-            ancestors: [summary(root), summary(chapter)]
-          }}
-        />
-      </AppProviders>
+      runtimeAssemblyHook.useFrontstageRuntimeAssembly
+    ).toHaveBeenCalledWith(expect.objectContaining({ assembly }));
+    fireEvent.click(screen.getByTestId('block-slot-assembly-content'));
+    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
+    expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
+      'studio:assembly-content'
     );
-
-    await expectRenderedSource(content.block_id);
-    expect(screen.getByText('Chapter shell')).toBeInTheDocument();
-    await vi.waitFor(() => {
-      const input = (
-        runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mock
-          .calls as unknown as Array<
-          [
-            {
-              readPlan: {
-                requests: Array<{ blockId: string; requestId: string }>;
-              };
-            }
-          ]
-        >
-      ).at(-1)?.[0];
-      expect(
-        input?.readPlan.requests.map((request) => request.blockId)
-      ).toEqual([root.block_id, chapter.block_id, content.block_id]);
-      expect(
-        new Set(input?.readPlan.requests.map((request) => request.requestId))
-          .size
-      ).toBe(3);
-    });
-    const input = (
-      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mock
-        .calls as unknown as Array<
-        [
-          {
-            readPlan: { requests: Array<{ blockId: string }> };
-            fetchSource: (
-              request: { blockId: string },
-              signal: AbortSignal
-            ) => Promise<unknown>;
-          }
-        ]
-      >
-    ).at(-1)?.[0];
-    if (!input) throw new Error('missing canonical chain preparation input');
-    await Promise.all(
-      input.readPlan.requests.map((request) =>
-        input.fetchSource(request, new AbortController().signal)
-      )
-    );
-    expect(blockTreeApi.fetchFrontstageBlockNodeCode.mock.calls).toEqual(
-      expect.arrayContaining(
-        [root, chapter, content].map((node) => [
-          'workspace-1',
-          'page-1',
-          node.block_id
-        ])
-      )
-    );
-
-    view.rerender(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent()}
-          blockRuntime={{ current: chapter, ancestors: [summary(root)] }}
-        />
-      </AppProviders>
-    );
-    await expectRenderedSource(chapter.block_id);
-    expect(
-      screen.queryByText('source:canonical-content')
-    ).not.toBeInTheDocument();
   });
 
   test('shows manager shell and canvas placeholders', () => {

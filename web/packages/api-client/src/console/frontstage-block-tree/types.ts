@@ -51,6 +51,24 @@ export interface ConsoleFrontstageBlockNodeCode {
   source_sha256: string;
 }
 
+export interface ConsoleFrontstageBlockRuntimeLayer {
+  block_id: string;
+  tab_id: string;
+  parent_block_id: string | null;
+  title: string | null;
+  presentation: ConsoleFrontstageBlockPresentation;
+  schema_version: number;
+  input_mapping: Record<string, string>;
+  output_mapping: Record<string, string>;
+  runtime_descriptor: unknown;
+  code: string;
+  source_sha256: string;
+}
+
+export interface ConsoleFrontstageBlockRuntimeAssembly {
+  layers: ConsoleFrontstageBlockRuntimeLayer[];
+}
+
 export interface ConsoleFrontstageBlockOpenTarget {
   canonical_url: string;
 }

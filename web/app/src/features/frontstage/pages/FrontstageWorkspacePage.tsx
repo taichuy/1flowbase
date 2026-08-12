@@ -1,9 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
-import type {
-  ConsoleFrontstageBlockNode,
-  ConsoleFrontstageBlockNodeSummary
-} from '@1flowbase/api-client';
 import { Result } from 'antd';
 import { Suspense } from 'react';
 
@@ -35,8 +31,7 @@ import {
   isNotFoundResponseError
 } from '../lib/api-errors';
 import {
-  fetchFrontstageBlockAncestors,
-  fetchFrontstageBlockNode,
+  fetchFrontstageBlockRuntimeAssembly,
   frontstageBlockTreeQueryKeys
 } from '../api/block-tree';
 import {
@@ -88,10 +83,10 @@ export function FrontstageWorkspacePage({
               pageTree: pageTreeFromApi
             }).selectedPageId
         : null;
-  const blockQuery = useQuery({
+  const blockRuntimeAssemblyQuery = useQuery({
     queryKey:
       selectedPageId && blockId
-        ? frontstageBlockTreeQueryKeys.block(
+        ? frontstageBlockTreeQueryKeys.runtimeAssembly(
             workspaceId,
             selectedPageId,
             blockId
@@ -102,40 +97,15 @@ export function FrontstageWorkspacePage({
             'pages',
             'unselected',
             'blocks',
-            'detail'
-          ],
-    queryFn: () => {
-      if (!selectedPageId || !blockId) {
-        throw new Error('Frontstage block query requires page and block ids');
-      }
-      return fetchFrontstageBlockNode(workspaceId, selectedPageId, blockId);
-    },
-    enabled: Boolean(selectedPageId && blockId),
-    retry: false
-  });
-  const blockAncestorsQuery = useQuery({
-    queryKey:
-      selectedPageId && blockId
-        ? frontstageBlockTreeQueryKeys.ancestors(
-            workspaceId,
-            selectedPageId,
-            blockId
-          )
-        : [
-            'frontstage',
-            workspaceId,
-            'pages',
-            'unselected',
-            'blocks',
-            'ancestors'
+            'runtime-assembly'
           ],
     queryFn: () => {
       if (!selectedPageId || !blockId) {
         throw new Error(
-          'Frontstage block ancestor query requires page and block ids'
+          'Frontstage runtime assembly query requires page and block ids'
         );
       }
-      return fetchFrontstageBlockAncestors(
+      return fetchFrontstageBlockRuntimeAssembly(
         workspaceId,
         selectedPageId,
         blockId
@@ -160,9 +130,10 @@ export function FrontstageWorkspacePage({
   });
   const defaultTabs = pageTabsQuery.data?.filter((tab) => tab.is_default) ?? [];
   const defaultTab = defaultTabs.length === 1 ? defaultTabs[0] : undefined;
-  const tabReference = blockQuery.data?.tab_id ?? tabRef ?? defaultTab?.id;
+  const runtimeTarget = blockRuntimeAssemblyQuery.data?.layers.at(-1);
+  const tabReference = runtimeTarget?.tab_id ?? tabRef ?? defaultTab?.id;
   const shouldLoadPageContent = Boolean(
-    effectivePageId && selectedPageId && tabReference
+    effectivePageId && selectedPageId && tabReference && !blockId
   );
   const pageContentQuery = useQuery({
     queryKey:
@@ -264,38 +235,32 @@ export function FrontstageWorkspacePage({
     }
   }
 
-  if (
-    blockId &&
-    (isNotFoundResponseError(blockQuery.error) ||
-      isNotFoundResponseError(blockAncestorsQuery.error))
-  ) {
+  if (blockId && isNotFoundResponseError(blockRuntimeAssemblyQuery.error)) {
     return (
       <Result status="404" title={i18nText('app', 'auto.page_not_found')} />
     );
   }
-
-  const blockRuntime =
-    blockId && blockQuery.data && blockAncestorsQuery.data
-      ? {
-          current: blockQuery.data as ConsoleFrontstageBlockNode,
-          ancestors:
-            blockAncestorsQuery.data as ConsoleFrontstageBlockNodeSummary[]
-        }
-      : undefined;
 
   return (
     <Suspense fallback={<LoadingState fullscreen />}>
       <FrontStagePage
         workspaceId={workspaceId}
         pageId={effectivePageId}
-        tabId={resolvedTab?.id}
-        blockRuntime={blockRuntime}
+        tabId={resolvedTab?.id ?? runtimeTarget?.tab_id}
+        blockRuntimeAssembly={blockRuntimeAssemblyQuery.data}
+        isBlockRuntimeRoute={Boolean(blockId)}
         isBlockRuntimeLoading={Boolean(
-          blockId && (blockQuery.isLoading || blockAncestorsQuery.isLoading)
+          blockId && blockRuntimeAssemblyQuery.isLoading
         )}
         hasBlockRuntimeLoadError={Boolean(
-          blockId && (blockQuery.isError || blockAncestorsQuery.isError)
+          blockId && blockRuntimeAssemblyQuery.isError
         )}
+        isBlockRuntimePermissionDenied={Boolean(
+          blockId && isForbiddenResponseError(blockRuntimeAssemblyQuery.error)
+        )}
+        onRetryLoadBlockRuntime={() => {
+          void blockRuntimeAssemblyQuery.refetch();
+        }}
         onNavigateBlock={(nextBlockId, replace = false) => {
           if (!rootNode?.slug || !selectedPageId) return;
           void navigate(

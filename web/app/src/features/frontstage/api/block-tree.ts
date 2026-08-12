@@ -5,6 +5,7 @@ import {
   getConsoleFrontstageBlockDeleteImpact,
   getConsoleFrontstageBlockNode,
   getConsoleFrontstageBlockNodeCode,
+  getConsoleFrontstageBlockRuntimeAssembly,
   listConsoleFrontstageBlockAncestors,
   listConsoleFrontstageBlockChildren,
   listConsoleFrontstageBlockDescendants,
@@ -75,6 +76,13 @@ export const frontstageBlockTreeQueryKeys = {
     ] as const,
   code: (workspaceId: string, pageId: string, blockId: string) =>
     [...pageKey(workspaceId, pageId), 'blocks', blockId, 'code'] as const,
+  runtimeAssembly: (workspaceId: string, pageId: string, blockId: string) =>
+    [
+      ...pageKey(workspaceId, pageId),
+      'blocks',
+      blockId,
+      'runtime-assembly'
+    ] as const,
   searches: (workspaceId: string, pageId: string) =>
     [...pageKey(workspaceId, pageId), 'search'] as const,
   search: (
@@ -286,6 +294,19 @@ export function fetchFrontstageBlockNodeCode(
   );
 }
 
+export function fetchFrontstageBlockRuntimeAssembly(
+  workspaceId: string,
+  pageId: string,
+  blockId: string
+) {
+  return getConsoleFrontstageBlockRuntimeAssembly(
+    workspaceId,
+    pageId,
+    blockId,
+    getFrontstageApiBaseUrl()
+  );
+}
+
 export function saveFrontstageBlockNodeCode(
   workspaceId: string,
   pageId: string,
@@ -310,6 +331,8 @@ export type {
   ConsoleFrontstageBlockListQuery as FrontstageBlockListQuery,
   ConsoleFrontstageBlockNode as FrontstageBlockNode,
   ConsoleFrontstageBlockNodeCode as FrontstageBlockNodeCode,
+  ConsoleFrontstageBlockRuntimeAssembly as FrontstageBlockRuntimeAssembly,
+  ConsoleFrontstageBlockRuntimeLayer as FrontstageBlockRuntimeLayer,
   ConsoleFrontstageBlockNodeSummary as FrontstageBlockNodeSummary,
   ConsoleFrontstageBlockPresentation as FrontstageBlockPresentation,
   ConsoleFrontstageBlockSearchQuery as FrontstageBlockSearchQuery,

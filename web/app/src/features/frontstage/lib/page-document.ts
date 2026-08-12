@@ -72,11 +72,6 @@ export interface FrontstagePageDocument {
 
 export type NormalizedFrontstagePageDocument = FrontstagePageDocument;
 
-export interface FrontstageRuntimeBlockProjection {
-  block: FrontstageBlockInstance | null;
-  diagnostics: FrontstagePageDocumentDiagnostic[];
-}
-
 function resolvePageLayoutMode(
   content: FrontstagePageContent
 ): FrontstagePageLayoutMode {
@@ -538,59 +533,6 @@ function normalizeBlock(
     order: layout.order,
     runtime
   };
-}
-
-export function createFrontstageRuntimeBlockProjection({
-  blockId,
-  descriptor,
-  order
-}: {
-  blockId: string;
-  descriptor: unknown;
-  order: number;
-}): FrontstageRuntimeBlockProjection {
-  const diagnostics: FrontstagePageDocumentDiagnostic[] = [];
-  if (!isRecord(descriptor)) {
-    return {
-      block: null,
-      diagnostics: [
-        {
-          severity: 'error',
-          code: 'invalid_runtime_descriptor',
-          path: `blocks.${blockId}.runtime_descriptor`,
-          message: 'Canonical Block runtime_descriptor must be an object.'
-        }
-      ]
-    };
-  }
-
-  const rawLayout = isRecord(descriptor['x-layout'])
-    ? descriptor['x-layout']
-    : isRecord(descriptor.layout)
-      ? descriptor.layout
-      : {};
-  const canonicalDescriptor = {
-    ...descriptor,
-    id: blockId,
-    renderer_version: descriptor.renderer_version ?? descriptor.rendererVersion,
-    runtime: descriptor.runtime ?? {
-      kind: 'native_react',
-      entry: 'index.js',
-      hint: 'native_react'
-    },
-    'x-layout': { ...rawLayout, order }
-  };
-  const runtimeDiagnostics: FrontstagePageDocumentDiagnostic[] = [];
-  const block = normalizeBlock(
-    canonicalDescriptor,
-    order,
-    new Set<string>(),
-    new Set<string>(),
-    runtimeDiagnostics,
-    diagnostics
-  );
-  diagnostics.push(...runtimeDiagnostics);
-  return { block, diagnostics };
 }
 
 export function createFrontstagePageDocument(

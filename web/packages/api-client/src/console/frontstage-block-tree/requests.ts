@@ -7,6 +7,7 @@ import type {
   ConsoleFrontstageBlockListQuery,
   ConsoleFrontstageBlockNode,
   ConsoleFrontstageBlockNodeCode,
+  ConsoleFrontstageBlockRuntimeAssembly,
   ConsoleFrontstageBlockOpenTarget,
   ConsoleFrontstageBlockNodeSummary,
   ConsoleFrontstageBlockSearchQuery,
@@ -228,6 +229,19 @@ export function getConsoleFrontstageBlockNodeCode(
 ): Promise<ConsoleFrontstageBlockNodeCode> {
   return apiFetch({
     path: `${blockPath(workspaceId, pageId, blockId)}/code`,
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function getConsoleFrontstageBlockRuntimeAssembly(
+  workspaceId: string,
+  pageId: string,
+  blockId: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageBlockRuntimeAssembly> {
+  return apiFetch({
+    path: `${blockPath(workspaceId, pageId, blockId)}/runtime-assembly`,
     method: 'GET',
     baseUrl
   });

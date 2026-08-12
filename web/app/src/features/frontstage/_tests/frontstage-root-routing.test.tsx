@@ -28,23 +28,15 @@ const pageContentApi = vi.hoisted(() => ({
 
 const blockApi = vi.hoisted(() => ({
   frontstageBlockTreeQueryKeys: {
-    block: (workspaceId: string, pageId: string, blockId: string) => [
+    runtimeAssembly: (workspaceId: string, pageId: string, blockId: string) => [
       'frontstage',
       workspaceId,
       pageId,
       blockId,
-      'detail'
-    ],
-    ancestors: (workspaceId: string, pageId: string, blockId: string) => [
-      'frontstage',
-      workspaceId,
-      pageId,
-      blockId,
-      'ancestors'
+      'runtime-assembly'
     ]
   },
-  fetchFrontstageBlockNode: vi.fn(),
-  fetchFrontstageBlockAncestors: vi.fn()
+  fetchFrontstageBlockRuntimeAssembly: vi.fn()
 }));
 
 const pageTreeMutations = vi.hoisted(() => {
@@ -66,10 +58,12 @@ const pageTreeMutations = vi.hoisted(() => {
 
 const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
-    blockRuntime?: {
-      current: { block_id: string };
-      ancestors: Array<{ block_id: string }>;
-    };
+    blockRuntimeAssembly?: { layers: Array<{ block_id: string }> };
+    isBlockRuntimeRoute?: boolean;
+    isBlockRuntimeLoading?: boolean;
+    hasBlockRuntimeLoadError?: boolean;
+    isBlockRuntimePermissionDenied?: boolean;
+    onRetryLoadBlockRuntime?: () => void;
     onNavigateBlock?: (blockId: string | null, replace?: boolean) => void;
     onMovePageNode?: (
       nodeId: string,
@@ -319,39 +313,38 @@ describe('frontstage topbar root routing', () => {
     });
   });
 
-  test('AC-006 restores a canonical block deep link and browser history from backend ancestry', async () => {
+  test('AC-006 restores a canonical block deep link and browser history from one assembly query', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
-    blockApi.fetchFrontstageBlockNode.mockResolvedValue({
-      block_id: 'block-child',
-      workspace_id: 'workspace-1',
-      page_id: 'page-top-level',
-      tab_id: 'tab-overview',
-      parent_block_id: 'block-parent',
-      rank: '002000',
-      presentation: 'drawer',
-      title: 'Child',
-      schema_version: 1,
-      input_mapping: {},
-      output_mapping: {},
-      runtime_descriptor: {},
-      created_at: '2026-08-12T00:00:00Z',
-      updated_at: '2026-08-12T00:00:00Z'
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockResolvedValue({
+      layers: [
+        {
+          block_id: 'block-parent',
+          tab_id: 'tab-overview',
+          parent_block_id: null,
+          presentation: 'page',
+          title: 'Parent',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {},
+          code: 'export default function Parent() { return null; }',
+          source_sha256: 'parent-digest'
+        },
+        {
+          block_id: 'block-child',
+          tab_id: 'tab-overview',
+          parent_block_id: 'block-parent',
+          presentation: 'drawer',
+          title: 'Child',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {},
+          code: 'export default function Child() { return null; }',
+          source_sha256: 'child-digest'
+        }
+      ]
     });
-    blockApi.fetchFrontstageBlockAncestors.mockResolvedValue([
-      {
-        block_id: 'block-parent',
-        workspace_id: 'workspace-1',
-        page_id: 'page-top-level',
-        tab_id: 'tab-overview',
-        parent_block_id: null,
-        rank: '001000',
-        presentation: 'page',
-        title: 'Parent',
-        schema_version: 1,
-        created_at: '2026-08-12T00:00:00Z',
-        updated_at: '2026-08-12T00:00:00Z'
-      }
-    ]);
     pageContentApi.fetchFrontstagePageContent.mockResolvedValue({
       page: {
         id: 'page-top-level',
@@ -385,24 +378,30 @@ describe('frontstage topbar root routing', () => {
     );
 
     await waitFor(() => {
-      expect(frontStagePageView.props?.blockRuntime?.current.block_id).toBe(
-        'block-child'
-      );
+      expect(
+        frontStagePageView.props?.blockRuntimeAssembly?.layers.at(-1)?.block_id
+      ).toBe('block-child');
     });
-    expect(frontStagePageView.props?.blockRuntime?.ancestors).toEqual([
-      expect.objectContaining({ block_id: 'block-parent' })
-    ]);
-    expect(pageTabsApi.fetchFrontstagePageTabs).not.toHaveBeenCalled();
-    expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+    expect(frontStagePageView.props?.isBlockRuntimeRoute).toBe(true);
+    expect(blockApi.fetchFrontstageBlockRuntimeAssembly).toHaveBeenCalledWith(
       'workspace-1',
       'page-top-level',
-      'tab-overview'
+      'block-child'
     );
+    expect(pageTabsApi.fetchFrontstagePageTabs).not.toHaveBeenCalled();
+    expect(pageContentApi.fetchFrontstagePageContent).not.toHaveBeenCalled();
 
     act(() => frontStagePageView.props?.onNavigateBlock?.('block-parent'));
     await waitFor(() => {
       expect(window.location.pathname).toBe(
         '/sales/pages/page-top-level/blocks/block-parent'
+      );
+    });
+    await waitFor(() => {
+      expect(blockApi.fetchFrontstageBlockRuntimeAssembly).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-top-level',
+        'block-parent'
       );
     });
     act(() => window.history.back());
@@ -411,14 +410,58 @@ describe('frontstage topbar root routing', () => {
         '/sales/pages/page-top-level/blocks/block-child'
       );
     });
+    await waitFor(() => {
+      expect(
+        frontStagePageView.props?.blockRuntimeAssembly?.layers.at(-1)?.block_id
+      ).toBe('block-child');
+    });
+  });
+
+  test('passes assembly loading and forbidden errors through one query state', async () => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    let rejectAssembly:
+      | ((error: Error & { status: number }) => void)
+      | undefined;
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectAssembly = reject;
+        })
+    );
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level/blocks/forbidden-block'
+    );
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.isBlockRuntimeLoading).toBe(true);
+    });
+    act(() => {
+      rejectAssembly?.(Object.assign(new Error('forbidden'), { status: 403 }));
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.hasBlockRuntimeLoadError).toBe(true);
+      expect(frontStagePageView.props?.isBlockRuntimeLoading).toBe(false);
+      expect(frontStagePageView.props?.isBlockRuntimePermissionDenied).toBe(
+        true
+      );
+      expect(frontStagePageView.props?.onRetryLoadBlockRuntime).toEqual(
+        expect.any(Function)
+      );
+    });
+    expect(pageContentApi.fetchFrontstagePageContent).not.toHaveBeenCalled();
   });
 
   test('AC-008 renders controlled NotFound for a missing block deep link', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
-    blockApi.fetchFrontstageBlockNode.mockRejectedValue(
-      Object.assign(new Error('block_node_not_found'), { status: 404 })
-    );
-    blockApi.fetchFrontstageBlockAncestors.mockRejectedValue(
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockRejectedValue(
       Object.assign(new Error('block_node_not_found'), { status: 404 })
     );
     window.history.pushState(
