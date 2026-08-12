@@ -13,7 +13,7 @@ use crate::{
             execute_variable_aggregator_node, variable_aggregator_input_payload,
         },
         CapabilityInvoker, CodeInvoker, ExecutionRuntimeContext, HttpResponseFilePersister,
-        LlmRoutingCounterStore, ProviderInvoker,
+        LlmRoutingCounterStore, NoopExecutionLifecycle, ProviderInvoker,
     },
     node_errors::build_node_type_not_implemented_error_payload,
 };
@@ -215,6 +215,7 @@ where
             &mut variable_pool,
             &runtime_context,
             invoker,
+            &NoopExecutionLifecycle,
         )
         .await?;
         (

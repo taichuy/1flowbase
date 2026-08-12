@@ -891,6 +891,7 @@ struct StubRuntimeInternalToolInvoker {
 #[derive(Default)]
 struct RecordingExecutionLifecycle {
     inputs: Mutex<BTreeMap<String, Value>>,
+    tool_events: Mutex<Vec<Value>>,
 }
 
 #[async_trait]
@@ -900,6 +901,37 @@ impl ExecutionLifecycle for RecordingExecutionLifecycle {
             .lock()
             .unwrap()
             .insert(node.node_id.clone(), input_payload.clone());
+        Ok(())
+    }
+
+    async fn runtime_internal_tool_started(
+        &self,
+        node: &CompiledNode,
+        tool_call: &Value,
+    ) -> Result<()> {
+        self.tool_events.lock().unwrap().push(json!({
+            "phase": "started",
+            "node_id": node.node_id,
+            "tool_call_id": tool_call["id"],
+            "name": tool_call["name"],
+        }));
+        Ok(())
+    }
+
+    async fn runtime_internal_tool_finished(
+        &self,
+        node: &CompiledNode,
+        tool_call: &Value,
+        tool_result: &Value,
+        _duration_ms: u64,
+    ) -> Result<()> {
+        self.tool_events.lock().unwrap().push(json!({
+            "phase": "finished",
+            "node_id": node.node_id,
+            "tool_call_id": tool_call["id"],
+            "name": tool_call["name"],
+            "is_error": tool_result["is_error"],
+        }));
         Ok(())
     }
 }
@@ -959,15 +991,18 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
         final_llm_response("done"),
     ]);
     let internal = Arc::new(StubRuntimeInternalToolInvoker::default());
+    let lifecycle = RecordingExecutionLifecycle::default();
     let input = json!({"node-start": {"query": "lookup"}});
     let variable_pool = input.as_object().unwrap().clone();
     let context = ExecutionRuntimeContext::from_plan_input(&plan, &variable_pool)
         .unwrap()
         .with_runtime_internal_tool_invoker(internal.clone());
 
-    let outcome = start_flow_debug_run_with_runtime_context(&plan, &input, context, &provider)
-        .await
-        .unwrap();
+    let outcome = start_flow_debug_run_with_runtime_context_and_lifecycle(
+        &plan, &input, context, &provider, &lifecycle,
+    )
+    .await
+    .unwrap();
 
     assert!(matches!(
         outcome.stop_reason,
@@ -1033,6 +1068,24 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
     assert_eq!(
         llm_trace.debug_payload["runtime_internal_tool_events"][0]["owner"]["instance_id"],
         json!("catalog")
+    );
+    assert_eq!(
+        *lifecycle.tool_events.lock().unwrap(),
+        vec![
+            json!({
+                "phase": "started",
+                "node_id": "node-llm",
+                "tool_call_id": "call_mcp",
+                "name": "catalog_mcp_call"
+            }),
+            json!({
+                "phase": "finished",
+                "node_id": "node-llm",
+                "tool_call_id": "call_mcp",
+                "name": "catalog_mcp_call",
+                "is_error": false
+            })
+        ]
     );
 }
 

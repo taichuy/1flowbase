@@ -118,6 +118,72 @@ where
         Ok(())
     }
 
+    async fn runtime_internal_tool_started(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+        tool_call: &Value,
+    ) -> Result<()> {
+        let node_run_id = self
+            .prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .get(&node.node_id)
+            .map(|node_run| node_run.id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "runtime internal tool started before node {} was prepared",
+                    node.node_id
+                )
+            })?;
+        append_runtime_event(
+            self.service,
+            self.flow_run_id,
+            debug_stream_events::assistant_tool_call_started(
+                self.flow_run_id,
+                node_run_id,
+                &node.node_id,
+                tool_call.clone(),
+            ),
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn runtime_internal_tool_finished(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+        tool_call: &Value,
+        tool_result: &Value,
+        duration_ms: u64,
+    ) -> Result<()> {
+        let node_run_id = self
+            .prepared_node_runs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("prepared node run lock is poisoned"))?
+            .get(&node.node_id)
+            .map(|node_run| node_run.id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "runtime internal tool finished before node {} was prepared",
+                    node.node_id
+                )
+            })?;
+        append_runtime_event(
+            self.service,
+            self.flow_run_id,
+            debug_stream_events::assistant_tool_call_finished(
+                self.flow_run_id,
+                node_run_id,
+                &node.node_id,
+                tool_call.clone(),
+                tool_result.clone(),
+                duration_ms,
+            ),
+        )
+        .await;
+        Ok(())
+    }
+
     async fn complete_node(
         &self,
         trace: &orchestration_runtime::execution_state::NodeExecutionTrace,

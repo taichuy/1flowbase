@@ -1,5 +1,142 @@
 use super::*;
 
+#[derive(Default)]
+struct ImmediateRuntimeInternalToolInvoker;
+
+#[async_trait::async_trait]
+impl orchestration_runtime::execution_engine::RuntimeInternalToolInvoker
+    for ImmediateRuntimeInternalToolInvoker
+{
+    fn registrations_for_node(
+        &self,
+        _node: &orchestration_runtime::compiled_plan::CompiledNode,
+    ) -> Vec<orchestration_runtime::execution_engine::RuntimeInternalToolRegistration> {
+        vec![
+            orchestration_runtime::execution_engine::RuntimeInternalToolRegistration {
+                registration_id: "assistant_client|get_client_context".to_string(),
+                provider_name: "get_client_context".to_string(),
+                provider_tool: json!({
+                    "type": "function",
+                    "function": {
+                        "name": "get_client_context",
+                        "description": "read client context",
+                        "parameters": {"type": "object"}
+                    }
+                }),
+                owner: json!({
+                    "kind": "assistant_client",
+                    "tool_id": "get_client_context"
+                }),
+            },
+        ]
+    }
+
+    async fn invoke_runtime_internal_tool(
+        &self,
+        node: &orchestration_runtime::compiled_plan::CompiledNode,
+        registration: &orchestration_runtime::execution_engine::RuntimeInternalToolRegistration,
+        _arguments: Value,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::RuntimeInternalToolOutput> {
+        Ok(
+            orchestration_runtime::execution_engine::RuntimeInternalToolOutput {
+                content: json!({"url": "/applications"}),
+                is_error: false,
+                event: json!({
+                    "event_type": "assistant_client_tool_call_completed",
+                    "node_id": node.node_id,
+                    "provider_name": registration.provider_name
+                }),
+            },
+        )
+    }
+}
+
+#[tokio::test]
+async fn ac_002_runtime_internal_tool_lifecycle_is_durable_and_live_before_node_completion() {
+    use plugin_framework::provider_contract::{
+        ProviderFinishReason, ProviderInvocationResult, ProviderToolCall,
+    };
+
+    let service = OrchestrationRuntimeService::for_tests_with_provider_results(vec![
+        ProviderInvocationResult {
+            tool_calls: vec![ProviderToolCall {
+                id: "call-context".to_string(),
+                name: "get_client_context".to_string(),
+                arguments: json!({}),
+                provider_metadata: json!({}),
+            }],
+            finish_reason: Some(ProviderFinishReason::ToolCall),
+            ..ProviderInvocationResult::default()
+        },
+        ProviderInvocationResult {
+            final_content: Some("context loaded".to_string()),
+            finish_reason: Some(ProviderFinishReason::Stop),
+            ..ProviderInvocationResult::default()
+        },
+    ])
+    .with_runtime_internal_tool_invoker(std::sync::Arc::new(ImmediateRuntimeInternalToolInvoker));
+    let seeded = service
+        .seed_application_with_flow("Live internal tools")
+        .await;
+    let stream =
+        std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service = service.with_runtime_event_stream(stream.clone());
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({"node-start": {"query": "read context"}}),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    let completed = service
+        .continue_flow_debug_run(ContinueFlowDebugRunCommand {
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+            workspace_id: Uuid::nil(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(completed.flow_run.status, domain::FlowRunStatus::Succeeded);
+    let live_events = stream.events();
+    let started_index = live_events
+        .iter()
+        .position(|event| event.event_type == "assistant_tool_call_started")
+        .expect("tool start should be streamed");
+    let finished_index = live_events
+        .iter()
+        .position(|event| event.event_type == "assistant_tool_call_finished")
+        .expect("tool finish should be streamed");
+    let node_finished_index = live_events
+        .iter()
+        .position(|event| {
+            event.event_type == "node_finished" && event.payload["node_id"] == "node-llm"
+        })
+        .expect("LLM node finish should be streamed");
+    assert!(started_index < finished_index);
+    assert!(finished_index < node_finished_index);
+    assert_eq!(
+        live_events[started_index].payload["tool_call"]["id"],
+        "call-context"
+    );
+    assert_eq!(
+        live_events[finished_index].payload["tool_result"]["tool_call_id"],
+        "call-context"
+    );
+
+    let durable_events = service.list_runtime_events(started.flow_run.id, 0).await;
+    assert!(durable_events
+        .iter()
+        .any(|event| event.event_type == "assistant_tool_call_started"));
+    assert!(durable_events
+        .iter()
+        .any(|event| event.event_type == "assistant_tool_call_finished"));
+}
+
 #[test]
 fn waiting_callback_event_references_large_request_without_copying_it() {
     let flow_run_id = Uuid::now_v7();

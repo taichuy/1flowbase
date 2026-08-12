@@ -277,12 +277,30 @@ pub(crate) fn resolved_native_sql(resolved_inputs: &Map<String, Value>) -> Resul
 pub trait ExecutionLifecycle: Send + Sync {
     async fn begin_node(&self, node: &CompiledNode, input_payload: &Value) -> Result<()>;
 
+    async fn runtime_internal_tool_started(
+        &self,
+        _node: &CompiledNode,
+        _tool_call: &Value,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn runtime_internal_tool_finished(
+        &self,
+        _node: &CompiledNode,
+        _tool_call: &Value,
+        _tool_result: &Value,
+        _duration_ms: u64,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     async fn complete_node(&self, _trace: &NodeExecutionTrace) -> Result<()> {
         Ok(())
     }
 }
 
-struct NoopExecutionLifecycle;
+pub(crate) struct NoopExecutionLifecycle;
 
 #[async_trait]
 impl ExecutionLifecycle for NoopExecutionLifecycle {
@@ -772,6 +790,7 @@ where
                     &mut variable_pool,
                     &runtime_context,
                     invoker,
+                    lifecycle,
                 )
                 .await?;
                 let trace = NodeExecutionTrace {

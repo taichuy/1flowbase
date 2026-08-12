@@ -7,7 +7,10 @@ import { Typography } from 'antd';
 import type { AgentFlowTraceItem } from '../../../api/runtime';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
 import { DebugWorkflowNodeRow, StatusIcon } from './DebugWorkflowNodeRow';
-import { DebugWorkflowNodeDetailContent } from './LlmToolTraceTree';
+import {
+  DebugWorkflowNodeDetailContent,
+  LlmToolTraceTree
+} from './LlmToolTraceTree';
 import { groupTraceItemsForDisplay } from './debug-workflow-trace-utils';
 import { collectLlmToolCallbacks } from './llm-tool-callbacks';
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -71,6 +74,10 @@ export function DebugWorkflowProcess({
   );
   const automaticallyExpandedNodeKeysRef = useRef(new Set<string>());
   const traceGroups = useMemo(() => groupTraceItemsForDisplay(items), [items]);
+  const liveToolDebugPayloads = useMemo(
+    () => traceGroups.map((group) => group.item.debugPayload),
+    [traceGroups]
+  );
   const toolCallbackCounts = useMemo(
     () =>
       new Map(
@@ -156,12 +163,26 @@ export function DebugWorkflowProcess({
               </Think>
             ) : null}
             <DebugWorkflowNodeDetailContent
-              defaultToolsExpanded={(toolCallbackCounts.get(group.key) ?? 0) > 0}
+              defaultToolsExpanded={
+                (toolCallbackCounts.get(group.key) ?? 0) > 0
+              }
               item={item}
               payloadDisclosure="after-finished"
+              toolPresentation={reasoningStreaming ? 'hidden' : 'complete'}
               onLoadArtifact={onLoadArtifact}
               onLoadArtifacts={onLoadArtifacts}
             />
+            {reasoningStreaming && index === lastLlmIndex ? (
+              <LlmToolTraceTree
+                debugPayload={item.debugPayload}
+                debugPayloads={liveToolDebugPayloads}
+                defaultToolsExpanded
+                payloadDisclosure="after-finished"
+                presentation="live-latest"
+                onLoadArtifact={onLoadArtifact}
+                onLoadArtifacts={onLoadArtifacts}
+              />
+            ) : null}
           </div>
         )
       };
@@ -171,6 +192,7 @@ export function DebugWorkflowProcess({
     onLoadArtifacts,
     reasoning,
     reasoningStreaming,
+    liveToolDebugPayloads,
     toolCallbackCounts,
     traceGroups
   ]);
