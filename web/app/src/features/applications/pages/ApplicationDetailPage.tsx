@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from '@tanstack/react-router';
 import { Result } from 'antd';
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ApiClientError } from '@1flowbase/api-client';
@@ -18,6 +18,7 @@ import {
   type ApplicationSectionKey
 } from '../lib/application-sections';
 import './workflow-application-page.css';
+import { useAssistantRefreshTarget } from '../../../app-shell/AssistantClientTools';
 
 const AgentFlowEditorPage = lazy(() =>
   import('../../agent-flow/pages/AgentFlowEditorPage').then((module) => ({
@@ -73,6 +74,19 @@ export function ApplicationDetailPage({
   requestedSectionKey: ApplicationSectionKey;
 }) {
   const { t } = useTranslation('applications');
+  const queryClient = useQueryClient();
+  const refreshCurrentSection = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey.includes(applicationId),
+        refetchType: 'active'
+      }),
+    [applicationId, queryClient]
+  );
+  useAssistantRefreshTarget(
+    'application.current_section',
+    refreshCurrentSection
+  );
   const detailQuery = useQuery({
     queryKey: applicationDetailQueryKey(applicationId),
     queryFn: () => fetchApplicationDetail(applicationId)
@@ -162,11 +176,7 @@ export function ApplicationDetailPage({
   return (
     <SectionPageLayout
       pageTitle={application.name}
-      navItems={getApplicationSections(
-        applicationId,
-        t,
-        application
-      )}
+      navItems={getApplicationSections(applicationId, t, application)}
       activeKey={requestedSectionKey}
       contentWidth={requestedSectionKey === 'orchestration' ? 'full' : 'wide'}
       heightMode={

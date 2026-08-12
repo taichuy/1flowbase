@@ -26,7 +26,8 @@ describe('console assistant client', () => {
       updateConsoleAssistantSettings(
         {
           application_id: 'application-1',
-          mcp_instance_ids: ['catalog']
+          mcp_instance_ids: ['catalog'],
+          enabled_client_tools: ['get_client_context', 'refresh_client_view']
         },
         'csrf-token'
       )
@@ -294,6 +295,89 @@ describe('console assistant client', () => {
         .filter((event) => event.type === 'text_delta')
         .map((event) => event.text)
     ).toEqual(['Hel', 'lo']);
+    vi.unstubAllGlobals();
+  });
+
+  test('AC-002 registers browser tools and returns client_tool.result on the same socket', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce({
+      ticket: 'ticket-client-tools',
+      protocol: '1flowbase.assistant.v1',
+      expires_in_seconds: 60
+    } as never);
+
+    class ClientToolWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = ClientToolWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      send(value: string) {
+        const frame = JSON.parse(value) as Record<string, unknown>;
+        sent.push(frame);
+        if (frame.type === 'run.create') {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'client_tool.call',
+              call_id: '018f0000-0000-7000-8000-000000000001',
+              name: 'get_client_context',
+              arguments: {}
+            })
+          } as MessageEvent);
+        }
+        if (frame.type === 'client_tool.result') {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'flow_finished',
+              event_type: 'flow_finished',
+              event_id: 'run-1:2',
+              run_id: 'run-1',
+              sequence: 2,
+              created_at: '2026-08-12T00:00:00Z',
+              payload: { status: 'succeeded', output: { answer: 'done' } }
+            })
+          } as MessageEvent);
+        }
+      }
+
+      close() {
+        this.onclose?.();
+      }
+    }
+
+    vi.stubGlobal('WebSocket', ClientToolWebSocket);
+    await startConsoleAssistantRunWebSocket(
+      { application_id: 'application-1', query: 'where am I?', history: [] },
+      'csrf-token',
+      { onEvent: vi.fn() },
+      {
+        baseUrl: 'http://127.0.0.1:3100',
+        clientTools: {
+          toolIds: ['get_client_context', 'refresh_client_view'],
+          execute: vi.fn().mockResolvedValue({
+            result: { url: '/settings?token=%5BREDACTED%5D' },
+            is_error: false
+          })
+        }
+      }
+    );
+
+    expect(sent[0]).toMatchObject({
+      type: 'run.create',
+      client_tool_ids: ['get_client_context', 'refresh_client_view']
+    });
+    expect(sent[1]).toMatchObject({
+      type: 'client_tool.result',
+      call_id: '018f0000-0000-7000-8000-000000000001',
+      result: { url: '/settings?token=%5BREDACTED%5D' },
+      is_error: false
+    });
     vi.unstubAllGlobals();
   });
 

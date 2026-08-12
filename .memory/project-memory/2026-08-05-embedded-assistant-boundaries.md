@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置 Agent Flow 聊天助手的已确认运行边界
-summary: 顶栏 UI 旁的 AI 入口已实现为内置 Agent Flow Preview 聊天助手；运行使用当前登录用户的 session / role，不使用用户 API key。偏好按 user + workspace 保存，只能选择已发布 Flow 与启用 MCP；第三方 MCP 以实例接入、启用和挂载为调用资格。
+summary: 顶栏 UI 旁的 AI 入口已实现为内置 Agent Flow Preview 聊天助手；运行使用当前登录用户的 session / role，不使用用户 API key。偏好按 user + workspace 保存；助手 WebSocket 还可按“用户偏好与当前标签页声明能力的交集”注入受控客户端上下文与语义刷新工具。
 keywords:
   - embedded assistant
   - agent flow
@@ -13,8 +13,8 @@ match_when:
   - 设计已发布 Agent Flow 的 session-backed 调用
   - 处理第三方 MCP 实例挂载与用户 API key 边界
 created_at: 2026-08-05 09
-updated_at: 2026-08-06 08
-last_verified_at: 2026-08-06 08
+updated_at: 2026-08-12 15
+last_verified_at: 2026-08-12 15
 decision_policy: verify_before_decision
 status: implemented
 scope:
@@ -22,6 +22,7 @@ scope:
   - web/app/src/features/agent-flow
   - api/apps/api-server/src/routes/mcp_protocol.rs
   - api/crates/control-plane/src/orchestration_runtime
+  - api/apps/api-server/src/routes/assistant
 ---
 
 # Embedded Agent Flow Assistant Boundaries
@@ -43,6 +44,9 @@ scope:
 - 1flowbase 本地后端接口仍沿用其自身角色与数据权限校验。
 - 聊天 UI 必须复用 Agent Flow Preview / Debug Console，不保留手写 Drawer；两个入口均使用文本 `AI`，不用设置 icon。
 - MCP callback 期间 Assistant SSE 保持开启直到 Flow terminal，避免 Preview 在自动工具调用后断流。
+- 客户端工具不伪装为 MCP；最终注册集合固定为用户在当前 workspace 的开启偏好与当前 WebSocket 标签页声明能力的交集。
+- 第一版内建 `get_client_context` 与 `refresh_client_view`：前者只在调用时读取同源相对 URL 等受控字段并脱敏查询值；后者只接受 `page / section + target_id` 语义目标，不接受 CSS selector、任意 query key、脚本、导航或跨标签页动作。
+- 前端 app shell 拥有客户端工具注册中心，各 feature 只注册自己可控制的刷新目标；后端拥有偏好、工具 schema、调用关联、超时与运行 trace。断开 WebSocket 必须释放待处理调用，不能让 Flow 无限等待。
 - 公共 `/api/agent/v1/runs` 保持 Application API key-only；内置助手的 session principal 使用同一 Native Run 输入语义，不把 Cookie session 伪装成 API key。未来 Agent Flow Run 权限在 session principal 上深化。
 - 模型与推理强度覆盖按 `user + workspace` 保存；模型只在已发布 mapping 声明 `model_target` 时开放，推理强度只在已发布 LLM 节点声明外部推理 opt-in 时开放。Flow 切换或重置默认会清空覆盖。
 - Preview 复用 `WindowWorkspaceWindow`，支持标题区拖拽、左右和底部缩放；移动端最大化为安全全屏布局。

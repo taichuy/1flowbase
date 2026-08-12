@@ -6,6 +6,10 @@ import { Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { AccountMenu } from './AccountMenu';
+import {
+  AssistantClientToolProvider,
+  useAssistantClientTools
+} from './AssistantClientTools';
 import { FrontstageDesignModeAction } from './FrontstageDesignModeAction';
 import { HelpChromeMenu } from './HelpChromeMenu';
 import { LanguageChromeMenu } from './LanguageChromeMenu';
@@ -44,13 +48,14 @@ function renderActionLink(
   );
 }
 
-export function AppShellFrame({
+function AppShellFrameContent({
   children,
   pathname = '/',
   useRouterLinks = false
 }: PropsWithChildren<{ pathname?: string; useRouterLinks?: boolean }>) {
   const { t } = useTranslation('appShell');
   const secondaryActions = getSecondaryChromeRoutes();
+  const assistantClientTools = useAssistantClientTools();
 
   return (
     <AppShell
@@ -63,7 +68,7 @@ export function AppShellFrame({
           <span className="app-shell-secondary-actions">
             <span className="app-shell-mode-actions">
               <FrontstageDesignModeAction />
-              <EmbeddedAgentAssistant />
+              <EmbeddedAgentAssistant clientTools={assistantClientTools} />
             </span>
             {secondaryActions.map((route) => (
               <span key={route.id}>
@@ -91,5 +96,18 @@ export function AppShellFrame({
     >
       {children}
     </AppShell>
+  );
+}
+
+export function AppShellFrame(
+  props: PropsWithChildren<{
+    pathname?: string;
+    useRouterLinks?: boolean;
+  }>
+) {
+  return (
+    <AssistantClientToolProvider>
+      <AppShellFrameContent {...props} />
+    </AssistantClientToolProvider>
   );
 }

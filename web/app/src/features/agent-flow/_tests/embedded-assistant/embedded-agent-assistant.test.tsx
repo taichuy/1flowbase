@@ -102,7 +102,8 @@ describe('EmbeddedAgentAssistant', () => {
     getConsoleAssistantSettings.mockResolvedValue({
       preference: {
         application_id: 'flow-1',
-        mcp_instance_ids: []
+        mcp_instance_ids: [],
+        enabled_client_tools: ['get_client_context', 'refresh_client_view']
       },
       published_agent_flows: [
         { application_id: 'flow-1', name: 'Support Flow' }
@@ -226,6 +227,16 @@ describe('EmbeddedAgentAssistant', () => {
     expect(Number(settingsModalLayer.style.zIndex)).toBeGreaterThan(
       Number(assistantWindow.style.zIndex)
     );
+    expect(
+      screen.getByRole('checkbox', {
+        name: i18nText('appShell', 'auto.assistant_client_context_tool')
+      })
+    ).toBeChecked();
+    expect(
+      screen.getByRole('checkbox', {
+        name: i18nText('appShell', 'auto.assistant_client_refresh_tool')
+      })
+    ).toBeChecked();
   });
 
   test('AC-005 opens Conversations history, restores a selection, and creates a new conversation', async () => {

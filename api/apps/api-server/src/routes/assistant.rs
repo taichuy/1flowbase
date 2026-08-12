@@ -34,7 +34,10 @@ use tokio::sync::mpsc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+mod client_tools;
 pub(crate) mod websocket;
+
+use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
@@ -56,7 +59,30 @@ use crate::{
 
 const ASSISTANT_META_KEY: &str = "embedded_assistant";
 
-#[derive(Debug, Default, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AssistantClientToolId {
+    GetClientContext,
+    RefreshClientView,
+}
+
+impl AssistantClientToolId {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GetClientContext => "get_client_context",
+            Self::RefreshClientView => "refresh_client_view",
+        }
+    }
+}
+
+fn default_enabled_client_tools() -> Vec<AssistantClientToolId> {
+    vec![
+        AssistantClientToolId::GetClientContext,
+        AssistantClientToolId::RefreshClientView,
+    ]
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct AssistantPreferenceBody {
     pub application_id: Option<Uuid>,
     #[serde(default)]
@@ -65,6 +91,20 @@ pub struct AssistantPreferenceBody {
     pub model: Option<String>,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    #[serde(default = "default_enabled_client_tools")]
+    pub enabled_client_tools: Vec<AssistantClientToolId>,
+}
+
+impl Default for AssistantPreferenceBody {
+    fn default() -> Self {
+        Self {
+            application_id: None,
+            mcp_instance_ids: Vec::new(),
+            model: None,
+            reasoning_effort: None,
+            enabled_client_tools: default_enabled_client_tools(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -186,6 +226,7 @@ struct PreparedAssistantExecution {
     actor: domain::ActorContext,
     flow_run_id: Uuid,
     mcp_instance_ids: Vec<String>,
+    enabled_client_tools: Vec<AssistantClientToolId>,
     request_headers: HeaderMap,
 }
 
@@ -600,7 +641,7 @@ pub async fn start_run_stream(
     context.cookie_session()?;
     require_csrf(&headers, &context)?;
     let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
-    let run_id = launch_assistant_execution(state.clone(), execution).await?;
+    let run_id = launch_assistant_execution(state.clone(), execution, None).await?;
     let (sender, receiver) = mpsc::channel(32);
     tokio::spawn(debug_run_stream::send_runtime_event_stream(
         state.runtime_event_stream.clone(),
@@ -617,6 +658,7 @@ pub async fn start_run_stream(
 async fn launch_assistant_execution(
     state: Arc<ApiState>,
     execution: PreparedAssistantExecution,
+    client_tool_bridge: Option<Arc<AssistantClientToolBridge>>,
 ) -> Result<Uuid, ApiError> {
     let run_id = execution.flow_run_id;
     let application_id = execution.application_id;
@@ -638,7 +680,9 @@ async fn launch_assistant_execution(
         .append(run_id, debug_stream_events::heartbeat())
         .await?;
 
-    let mcp_runtime_invoker = Arc::new(
+    let mcp_runtime_invoker: Arc<
+        dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
+    > = Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new(
             state.clone(),
             execution.request_headers.clone(),
@@ -647,6 +691,10 @@ async fn launch_assistant_execution(
         )
         .await?,
     );
+    let assistant_runtime_tool_invoker = Arc::new(AssistantRuntimeToolInvoker::new(
+        mcp_runtime_invoker,
+        client_tool_bridge,
+    ));
     let background_state = state;
     tokio::spawn(async move {
         let runtime = OrchestrationRuntimeService::new(
@@ -660,7 +708,7 @@ async fn launch_assistant_execution(
             background_state.provider_install_root.clone(),
         )
         .with_file_storage_registry(background_state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
+        .with_runtime_internal_tool_invoker(assistant_runtime_tool_invoker)
         .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
         .with_provider_request_log_queue(background_state.infrastructure.task_queue())
         .with_runtime_event_stream(background_state.runtime_event_stream.clone());
@@ -813,6 +861,7 @@ async fn prepare_assistant_execution(
         actor: context.actor.clone(),
         flow_run_id: flow_run.id,
         mcp_instance_ids: preference.mcp_instance_ids,
+        enabled_client_tools: preference.enabled_client_tools,
         request_headers: headers.clone(),
     })
 }
@@ -1051,6 +1100,37 @@ mod tests {
         assert_eq!(
             read_preference(&meta, current).mcp_instance_ids,
             vec!["alpha"]
+        );
+        assert_eq!(
+            read_preference(&meta, current).enabled_client_tools,
+            vec![
+                AssistantClientToolId::GetClientContext,
+                AssistantClientToolId::RefreshClientView,
+            ]
+        );
+    }
+
+    #[test]
+    fn ac_001_assistant_client_tools_default_enabled_and_preserve_explicit_disable() {
+        let workspace_id = Uuid::from_u128(20);
+        assert_eq!(
+            read_preference(&json!({}), workspace_id).enabled_client_tools,
+            vec![
+                AssistantClientToolId::GetClientContext,
+                AssistantClientToolId::RefreshClientView,
+            ]
+        );
+
+        let meta = json!({ ASSISTANT_META_KEY: { "workspaces": {
+            workspace_id.to_string(): {
+                "application_id": null,
+                "mcp_instance_ids": [],
+                "enabled_client_tools": ["get_client_context"]
+            }
+        }}});
+        assert_eq!(
+            read_preference(&meta, workspace_id).enabled_client_tools,
+            vec![AssistantClientToolId::GetClientContext]
         );
     }
 

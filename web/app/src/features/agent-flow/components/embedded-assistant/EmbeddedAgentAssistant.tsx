@@ -1,10 +1,15 @@
 import { Menu, Tooltip } from 'antd';
 import { useState } from 'react';
+import type { ConsoleAssistantClientTools } from '@1flowbase/api-client';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { EmbeddedAgentAssistantPreview } from './EmbeddedAgentAssistantPreview';
 
-export function EmbeddedAgentAssistant() {
+export function EmbeddedAgentAssistant({
+  clientTools
+}: {
+  clientTools?: ConsoleAssistantClientTools;
+}) {
   const [open, setOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
   const label = i18nText('appShell', 'auto.assistant');
@@ -50,6 +55,7 @@ export function EmbeddedAgentAssistant() {
       </Tooltip>
       {previewMounted ? (
         <EmbeddedAgentAssistantPreview
+          clientTools={clientTools}
           open={open}
           onClose={() => setOpen(false)}
         />
