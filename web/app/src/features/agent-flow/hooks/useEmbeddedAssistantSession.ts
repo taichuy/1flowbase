@@ -6,6 +6,7 @@ import {
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
   type ConsoleAssistantConversationMessage,
+  type ConsoleAssistantClientTools,
   type ConsoleAssistantWebSocketControl,
   type ConsoleContextSnapshot,
   type ConsoleFlowDebugStreamEvent,
@@ -126,7 +127,10 @@ function restoredMessages(
   }));
 }
 
-export function useEmbeddedAssistantSession(applicationId: string | null) {
+export function useEmbeddedAssistantSession(
+  applicationId: string | null,
+  clientTools?: ConsoleAssistantClientTools
+) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [status, setStatus] = useState<AgentFlowDebugSessionStatus>('idle');
   const [stopping, setStopping] = useState(false);
@@ -533,6 +537,7 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
             csrfToken,
             handlers,
             {
+              clientTools,
               onControl: (control) => {
                 websocketControlRef.current = control;
               }
@@ -603,7 +608,8 @@ export function useEmbeddedAssistantSession(applicationId: string | null) {
       reconcileRunSnapshot,
       setCurrentConversation,
       setCurrentLegacySnapshot,
-      status
+      status,
+      clientTools
     ]
   );
 

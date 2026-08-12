@@ -23,7 +23,8 @@ use uuid::Uuid;
 
 use super::{
     api_provider_runtime, assistant_preference_for_target, launch_assistant_execution,
-    prepare_assistant_execution, ApiError, ApiState, RequestContext, StartAssistantRunBody,
+    prepare_assistant_execution, ApiError, ApiState, AssistantClientToolBridge,
+    AssistantClientToolId, RequestContext, StartAssistantRunBody,
 };
 use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
@@ -265,6 +266,8 @@ enum AssistantWebSocketCommand {
     #[serde(rename = "run.create")]
     Create {
         request_id: String,
+        #[serde(default)]
+        client_tool_ids: Vec<AssistantClientToolId>,
         request: StartAssistantRunBody,
     },
     #[serde(rename = "run.cancel")]
@@ -276,6 +279,14 @@ enum AssistantWebSocketCommand {
         #[serde(default)]
         after_event_id: Option<String>,
     },
+    #[serde(rename = "client_tool.result")]
+    ClientToolResult {
+        request_id: String,
+        call_id: Uuid,
+        result: Value,
+        #[serde(default)]
+        is_error: bool,
+    },
 }
 
 impl AssistantWebSocketCommand {
@@ -283,9 +294,21 @@ impl AssistantWebSocketCommand {
         match self {
             Self::Create { request_id, .. }
             | Self::Cancel { request_id, .. }
-            | Self::Attach { request_id, .. } => request_id,
+            | Self::Attach { request_id, .. }
+            | Self::ClientToolResult { request_id, .. } => request_id,
         }
     }
+}
+
+fn enabled_client_tools_for_connection(
+    preference: &[AssistantClientToolId],
+    declared: &[AssistantClientToolId],
+) -> Vec<AssistantClientToolId> {
+    preference
+        .iter()
+        .copied()
+        .filter(|tool_id| declared.contains(tool_id))
+        .collect()
 }
 
 type ActiveTurn = (JoinHandle<Result<(), ApiError>>, mpsc::Receiver<String>);
@@ -296,6 +319,7 @@ async fn run_connection(
     authorization: Arc<AssistantWebSocketAuthorization>,
 ) {
     let (mut sender, mut receiver) = socket.split();
+    let (client_tool_bridge, mut client_tool_frames) = AssistantClientToolBridge::new();
     if sender
         .send(Message::Text(
             json!({
@@ -315,6 +339,13 @@ async fn run_connection(
             tokio::select! {
                 biased;
                 Some(frame) = frames.recv() => {
+                    if sender.send(Message::Text(frame)).await.is_err() {
+                        task.abort();
+                        break;
+                    }
+                    active = Some((task, frames));
+                }
+                Some(frame) = client_tool_frames.recv() => {
                     if sender.send(Message::Text(frame)).await.is_err() {
                         task.abort();
                         break;
@@ -352,6 +383,14 @@ async fn run_connection(
                             break;
                         }
                         Message::Text(text) => match serde_json::from_str::<AssistantWebSocketCommand>(text.as_str()) {
+                            Ok(AssistantWebSocketCommand::ClientToolResult { request_id, call_id, result, is_error }) => {
+                                if client_tool_bridge.complete(call_id, result, is_error).await {
+                                    let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string())).await;
+                                } else {
+                                    let _ = sender.send(command_error(Some(&request_id), "unknown_client_tool_call", "client tool call is not pending")).await;
+                                }
+                                active = Some((task, frames));
+                            }
                             Ok(AssistantWebSocketCommand::Cancel { request_id, run_id }) => {
                                 match cancel_run(&state, &authorization, run_id).await {
                                     Ok(()) => { let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"run.cancel","run_id":run_id}).to_string())).await; }
@@ -412,13 +451,30 @@ async fn run_connection(
                             ))
                             .await;
                     }
+                    Ok(AssistantWebSocketCommand::ClientToolResult { request_id, .. }) => {
+                        let _ = sender
+                            .send(command_error(
+                                Some(&request_id),
+                                "unknown_client_tool_call",
+                                "client tool call is not pending",
+                            ))
+                            .await;
+                    }
                     Ok(command) => {
                         let state = state.clone();
                         let authorization = authorization.clone();
+                        let command_client_tool_bridge = client_tool_bridge.clone();
                         let (frame_sender, frame_receiver) = mpsc::channel(32);
                         active = Some((
                             tokio::spawn(async move {
-                                execute_command(state, authorization, command, frame_sender).await
+                                execute_command(
+                                    state,
+                                    authorization,
+                                    command,
+                                    frame_sender,
+                                    command_client_tool_bridge,
+                                )
+                                .await
                             }),
                             frame_receiver,
                         ));
@@ -436,6 +492,7 @@ async fn run_connection(
             }
         }
     }
+    client_tool_bridge.close().await;
 }
 
 async fn execute_command(
@@ -443,11 +500,13 @@ async fn execute_command(
     authorization: Arc<AssistantWebSocketAuthorization>,
     command: AssistantWebSocketCommand,
     frames: mpsc::Sender<String>,
+    client_tool_bridge: AssistantClientToolBridge,
 ) -> Result<(), ApiError> {
     let (request_id, run_id, from_sequence) = match command {
         AssistantWebSocketCommand::Create {
             request_id,
             request,
+            client_tool_ids,
         } => {
             if request.application_id != authorization.application_id {
                 return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
@@ -462,7 +521,14 @@ async fn execute_command(
                 request,
             )
             .await?;
-            let run_id = launch_assistant_execution(state.clone(), execution).await?;
+            let enabled_client_tools = enabled_client_tools_for_connection(
+                &execution.enabled_client_tools,
+                &client_tool_ids,
+            );
+            let client_tool_bridge = Arc::new(client_tool_bridge.for_tools(enabled_client_tools));
+            let run_id =
+                launch_assistant_execution(state.clone(), execution, Some(client_tool_bridge))
+                    .await?;
             (request_id, run_id, None)
         }
         AssistantWebSocketCommand::Attach {
@@ -488,6 +554,11 @@ async fn execute_command(
             (request_id, run_id, from_sequence)
         }
         AssistantWebSocketCommand::Cancel { .. } => {
+            return Err(
+                control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
+            )
+        }
+        AssistantWebSocketCommand::ClientToolResult { .. } => {
             return Err(
                 control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
             )
@@ -567,6 +638,54 @@ fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String
 mod tests {
     use super::*;
     use storage_ephemeral::MokaCacheStore;
+
+    #[test]
+    fn ac_002_run_create_declares_only_supported_client_tool_ids() {
+        let command: AssistantWebSocketCommand = serde_json::from_value(json!({
+            "type": "run.create",
+            "request_id": "create-1",
+            "client_tool_ids": ["get_client_context", "refresh_client_view"],
+            "request": {
+                "application_id": Uuid::from_u128(1),
+                "query": "refresh the page",
+                "history": []
+            }
+        }))
+        .unwrap();
+
+        let AssistantWebSocketCommand::Create {
+            client_tool_ids, ..
+        } = command
+        else {
+            panic!("expected run.create");
+        };
+        assert_eq!(
+            client_tool_ids,
+            vec![
+                AssistantClientToolId::GetClientContext,
+                AssistantClientToolId::RefreshClientView,
+            ]
+        );
+    }
+
+    #[test]
+    fn ac_001_disabled_client_tools_are_not_registered_for_the_connection() {
+        assert_eq!(
+            enabled_client_tools_for_connection(
+                &[AssistantClientToolId::GetClientContext],
+                &[
+                    AssistantClientToolId::GetClientContext,
+                    AssistantClientToolId::RefreshClientView,
+                ],
+            ),
+            vec![AssistantClientToolId::GetClientContext]
+        );
+        assert!(enabled_client_tools_for_connection(
+            &[AssistantClientToolId::RefreshClientView],
+            &[AssistantClientToolId::GetClientContext],
+        )
+        .is_empty());
+    }
 
     #[test]
     fn issue_1601_ticket_protocol_is_not_a_url_parameter() {

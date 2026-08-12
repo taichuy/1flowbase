@@ -12,6 +12,29 @@ export interface ConsoleAssistantPreference {
   mcp_instance_ids: string[];
   model?: string | null;
   reasoning_effort?: string | null;
+  enabled_client_tools: ConsoleAssistantClientToolId[];
+}
+
+export type ConsoleAssistantClientToolId =
+  | 'get_client_context'
+  | 'refresh_client_view';
+
+export interface ConsoleAssistantClientToolCall {
+  call_id: string;
+  name: ConsoleAssistantClientToolId;
+  arguments: Record<string, unknown>;
+}
+
+export interface ConsoleAssistantClientToolExecution {
+  result: unknown;
+  is_error: boolean;
+}
+
+export interface ConsoleAssistantClientTools {
+  toolIds: ConsoleAssistantClientToolId[];
+  execute(
+    call: ConsoleAssistantClientToolCall
+  ): Promise<ConsoleAssistantClientToolExecution>;
 }
 
 export interface ConsoleAssistantRunCapabilities {
@@ -212,6 +235,7 @@ export async function startConsoleAssistantRunWebSocket(
     handshakeTimeoutMs?: number;
     onControl?: (control: ConsoleAssistantWebSocketControl) => void;
     maxReconnects?: number;
+    clientTools?: ConsoleAssistantClientTools;
   }
 ) {
   const baseUrl = options?.baseUrl ?? getDefaultApiBaseUrl();
@@ -229,6 +253,7 @@ export async function startConsoleAssistantRunWebSocket(
     let settled = false;
     let requestSequence = 1;
     let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+    const clientToolResults = new Map<string, string>();
 
     const clearHandshakeDeadline = () => {
       if (handshakeTimer !== null) {
@@ -319,6 +344,7 @@ export async function startConsoleAssistantRunWebSocket(
             JSON.stringify({
               type: 'run.create',
               request_id: `create-${requestSequence++}`,
+              client_tool_ids: options?.clientTools?.toolIds ?? [],
               request: body
             })
           );
@@ -329,6 +355,66 @@ export async function startConsoleAssistantRunWebSocket(
             raw = JSON.parse(String(message.data));
           } catch {
             finish(new Error('Invalid Assistant WebSocket event'));
+            return;
+          }
+          if (
+            raw &&
+            typeof raw === 'object' &&
+            !Array.isArray(raw) &&
+            (raw as { type?: unknown }).type === 'client_tool.call'
+          ) {
+            const call = raw as {
+              call_id?: unknown;
+              name?: unknown;
+              arguments?: unknown;
+            };
+            const clientTools = options?.clientTools;
+            if (
+              !clientTools ||
+              typeof call.call_id !== 'string' ||
+              (call.name !== 'get_client_context' &&
+                call.name !== 'refresh_client_view') ||
+              !call.arguments ||
+              typeof call.arguments !== 'object' ||
+              Array.isArray(call.arguments)
+            ) {
+              return;
+            }
+            const cached = clientToolResults.get(call.call_id);
+            if (cached) {
+              current.send(cached);
+              return;
+            }
+            void clientTools
+              .execute({
+                call_id: call.call_id,
+                name: call.name,
+                arguments: call.arguments as Record<string, unknown>
+              })
+              .then(
+                (execution) => execution,
+                () => ({
+                  result: {
+                    status: 'failed',
+                    code: 'client_tool_execution_failed'
+                  },
+                  is_error: true
+                })
+              )
+              .then((execution) => {
+                if (current.readyState !== WebSocket.OPEN) {
+                  return;
+                }
+                const result = JSON.stringify({
+                  type: 'client_tool.result',
+                  request_id: `client-tool-${requestSequence++}`,
+                  call_id: call.call_id,
+                  result: execution.result,
+                  is_error: execution.is_error
+                });
+                clientToolResults.set(call.call_id as string, result);
+                current.send(result);
+              });
             return;
           }
           if (

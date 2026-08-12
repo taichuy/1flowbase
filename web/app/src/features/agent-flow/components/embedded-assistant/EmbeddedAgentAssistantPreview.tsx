@@ -16,6 +16,7 @@ import {
 import { Conversations, Sender } from '@ant-design/x';
 import {
   Button,
+  Checkbox,
   Dropdown,
   Form,
   Modal,
@@ -58,7 +59,9 @@ function hasChangedPreference(
   }
   return (
     current.mcp_instance_ids.join('\u0000') !==
-    next.mcp_instance_ids.join('\u0000')
+      next.mcp_instance_ids.join('\u0000') ||
+    current.enabled_client_tools.join('\u0000') !==
+      next.enabled_client_tools.join('\u0000')
   );
 }
 
@@ -102,10 +105,12 @@ function initialAssistantWindowRect(): WindowWorkspaceRect {
 
 export function EmbeddedAgentAssistantPreview({
   open,
-  onClose
+  onClose,
+  clientTools
 }: {
   open: boolean;
   onClose: () => void;
+  clientTools?: import('@1flowbase/api-client').ConsoleAssistantClientTools;
 }) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workspaceId = useAuthStore(
@@ -143,7 +148,8 @@ export function EmbeddedAgentAssistantPreview({
     toggleMaximized
   } = useWindowWorkspace();
   const session = useEmbeddedAssistantSession(
-    settings?.preference.application_id ?? null
+    settings?.preference.application_id ?? null,
+    clientTools
   );
 
   useEffect(() => {
@@ -193,7 +199,14 @@ export function EmbeddedAgentAssistantPreview({
       .catch(() => {
         if (!disposed) {
           setSettings({
-            preference: { application_id: null, mcp_instance_ids: [] },
+            preference: {
+              application_id: null,
+              mcp_instance_ids: [],
+              enabled_client_tools: [
+                'get_client_context',
+                'refresh_client_view'
+              ]
+            },
             published_agent_flows: [],
             enabled_mcp_instances: [],
             run_capabilities: {
@@ -968,6 +981,29 @@ export function EmbeddedAgentAssistantPreview({
                   label: instance.name
                 })) ?? []
               }
+            />
+          </Form.Item>
+          <Form.Item
+            label={i18nText('appShell', 'auto.assistant_client_tools')}
+            name="enabled_client_tools"
+          >
+            <Checkbox.Group
+              options={[
+                {
+                  value: 'get_client_context',
+                  label: i18nText(
+                    'appShell',
+                    'auto.assistant_client_context_tool'
+                  )
+                },
+                {
+                  value: 'refresh_client_view',
+                  label: i18nText(
+                    'appShell',
+                    'auto.assistant_client_refresh_tool'
+                  )
+                }
+              ]}
             />
           </Form.Item>
           <Button
