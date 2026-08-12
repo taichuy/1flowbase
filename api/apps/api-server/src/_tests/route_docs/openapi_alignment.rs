@@ -614,6 +614,61 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
 }
 
 #[tokio::test]
+async fn openapi_contains_canonical_frontstage_block_tree_routes() {
+    let paths = openapi_paths().await;
+    let base = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks";
+    let expected_methods = [
+        (base.to_owned(), &["get", "post"][..]),
+        (format!("{base}/search"), &["get"][..]),
+        (
+            format!("{base}/{{block_id}}"),
+            &["get", "patch", "delete"][..],
+        ),
+        (format!("{base}/{{block_id}}/children"), &["get"][..]),
+        (format!("{base}/{{block_id}}/ancestors"), &["get"][..]),
+        (format!("{base}/{{block_id}}/descendants"), &["get"][..]),
+        (format!("{base}/{{block_id}}/delete-impact"), &["get"][..]),
+        (format!("{base}/{{block_id}}/move"), &["post"][..]),
+        (format!("{base}/{{block_id}}/delete-subtree"), &["post"][..]),
+        (format!("{base}/{{block_id}}/open"), &["get"][..]),
+        (format!("{base}/{{block_id}}/code"), &["get", "put"][..]),
+        (
+            format!("{base}/{{block_id}}/runtime-assembly"),
+            &["get"][..],
+        ),
+    ];
+
+    for (path, methods) in expected_methods {
+        let item = paths
+            .get(&path)
+            .unwrap_or_else(|| panic!("missing canonical block path {path}"));
+        for method in methods {
+            assert!(item.get(method).is_some(), "missing {method} {path}");
+        }
+    }
+
+    let search = paths
+        .get(&format!("{base}/search"))
+        .expect("static search path must own its OpenAPI operation");
+    assert_eq!(
+        search["get"]["operationId"],
+        json!("search_frontstage_blocks")
+    );
+    assert_eq!(
+        paths[&format!("{base}/{{block_id}}/open")]["get"]["operationId"],
+        json!("open_frontstage_block")
+    );
+    assert_eq!(
+        paths[&format!("{base}/{{block_id}}/runtime-assembly")]["get"]["operationId"],
+        json!("get_frontstage_block_runtime_assembly")
+    );
+    assert_eq!(
+        paths[base]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        json!("#/components/schemas/CreateFrontstageBlockNodeBody")
+    );
+}
+
+#[tokio::test]
 async fn openapi_contains_application_console_routes() {
     let paths = openapi_paths().await;
 

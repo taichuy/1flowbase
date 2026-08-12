@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const pageTreeApi = vi.hoisted(() => ({
@@ -26,6 +26,19 @@ const pageContentApi = vi.hoisted(() => ({
   fetchFrontstagePageContent: vi.fn()
 }));
 
+const blockApi = vi.hoisted(() => ({
+  frontstageBlockTreeQueryKeys: {
+    runtimeAssembly: (workspaceId: string, pageId: string, blockId: string) => [
+      'frontstage',
+      workspaceId,
+      pageId,
+      blockId,
+      'runtime-assembly'
+    ]
+  },
+  fetchFrontstageBlockRuntimeAssembly: vi.fn()
+}));
+
 const pageTreeMutations = vi.hoisted(() => {
   const moveNode = vi.fn();
   return {
@@ -45,11 +58,13 @@ const pageTreeMutations = vi.hoisted(() => {
 
 const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
-    containerId?: string;
-    onContainerIdChange?: (
-      containerId: string | null,
-      mode: 'push' | 'replace'
-    ) => void;
+    blockRuntimeAssembly?: { layers: Array<{ block_id: string }> };
+    isBlockRuntimeRoute?: boolean;
+    isBlockRuntimeLoading?: boolean;
+    hasBlockRuntimeLoadError?: boolean;
+    isBlockRuntimePermissionDenied?: boolean;
+    onRetryLoadBlockRuntime?: () => void;
+    onNavigateBlock?: (blockId: string | null, replace?: boolean) => void;
     onMovePageNode?: (
       nodeId: string,
       input: { parentId: string | null; rank: string }
@@ -80,6 +95,7 @@ const consoleNavigationApi = vi.hoisted(() => ({
 vi.mock('../api/page-tree', () => pageTreeApi);
 vi.mock('../api/page-tabs', () => pageTabsApi);
 vi.mock('../api/page-content', () => pageContentApi);
+vi.mock('../api/block-tree', () => blockApi);
 vi.mock('../hooks/use-frontstage-page-tree-mutations', () => pageTreeMutations);
 vi.mock('../../settings/api/console-navigation', () => consoleNavigationApi);
 vi.mock('../pages/FrontStagePage', () => ({
@@ -297,26 +313,62 @@ describe('frontstage topbar root routing', () => {
     });
   });
 
-  test('AC-005 restores child container history while preserving unrelated URL state', async () => {
+  test('AC-006 restores a canonical block deep link and browser history from one assembly query', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
-    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
-      {
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockResolvedValue({
+      layers: [
+        {
+          block_id: 'block-parent',
+          tab_id: 'tab-overview',
+          parent_block_id: null,
+          presentation: 'page',
+          title: 'Parent',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {},
+          code: 'export default function Parent() { return null; }',
+          source_sha256: 'parent-digest'
+        },
+        {
+          block_id: 'block-child',
+          tab_id: 'tab-overview',
+          parent_block_id: 'block-parent',
+          presentation: 'drawer',
+          title: 'Child',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {},
+          code: 'export default function Child() { return null; }',
+          source_sha256: 'child-digest'
+        }
+      ]
+    });
+    pageContentApi.fetchFrontstagePageContent.mockResolvedValue({
+      page: {
+        id: 'page-top-level',
+        title: 'Top-level page',
+        kind: 'page',
+        parentId: 'group-sales',
+        rank: '001000',
+        contentPresentation: 'single'
+      },
+      tab: {
         id: 'tab-overview',
-        page_id: 'page-top-level',
+        pageId: 'page-top-level',
         title: 'Overview',
         rank: '001000',
-        is_default: true,
-        route_segment: null,
-        document_root_uid: 'root-overview'
-      }
-    ]);
-    pageContentApi.fetchFrontstagePageContent.mockReturnValue(
-      new Promise(() => undefined)
-    );
+        isDefault: true,
+        routeSegment: null,
+        documentRootUid: 'root-overview'
+      },
+      document: { rootUid: 'root-overview', payload: { blocks: [] } }
+    });
     window.history.pushState(
       {},
       '',
-      '/sales/pages/page-top-level?view=table#section'
+      '/sales/pages/page-top-level/blocks/block-child'
     );
 
     render(
@@ -326,60 +378,60 @@ describe('frontstage topbar root routing', () => {
     );
 
     await waitFor(() => {
-      expect(frontStagePageView.props?.onContainerIdChange).toEqual(
-        expect.any(Function)
+      expect(
+        frontStagePageView.props?.blockRuntimeAssembly?.layers.at(-1)?.block_id
+      ).toBe('block-child');
+    });
+    expect(frontStagePageView.props?.isBlockRuntimeRoute).toBe(true);
+    expect(blockApi.fetchFrontstageBlockRuntimeAssembly).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-top-level',
+      'block-child'
+    );
+    expect(pageTabsApi.fetchFrontstagePageTabs).not.toHaveBeenCalled();
+    expect(pageContentApi.fetchFrontstagePageContent).not.toHaveBeenCalled();
+
+    act(() => frontStagePageView.props?.onNavigateBlock?.('block-parent'));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(
+        '/sales/pages/page-top-level/blocks/block-parent'
       );
     });
-
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.('root-drawer', 'push');
-    });
     await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
+      expect(blockApi.fetchFrontstageBlockRuntimeAssembly).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-top-level',
+        'block-parent'
+      );
     });
-
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.('child-modal', 'push');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('child-modal');
-    });
-
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.('root-drawer', 'replace');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
-    });
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.(null, 'replace');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
-    });
-    expect(window.location.search).toBe('?view=table');
-    expect(window.location.hash).toBe('#section');
-
     act(() => window.history.back());
     await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
+      expect(window.location.pathname).toBe(
+        '/sales/pages/page-top-level/blocks/block-child'
+      );
     });
-    act(() => window.history.forward());
     await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
+      expect(
+        frontStagePageView.props?.blockRuntimeAssembly?.layers.at(-1)?.block_id
+      ).toBe('block-child');
     });
   });
 
-  test('AC-005/008 keeps a cold direct URL through auth hydration', async () => {
-    resetAuthStore();
+  test('passes assembly loading and forbidden errors through one query state', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
-    pageTabsApi.fetchFrontstagePageTabs.mockReturnValue(
-      new Promise(() => undefined)
+    let rejectAssembly:
+      | ((error: Error & { status: number }) => void)
+      | undefined;
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectAssembly = reject;
+        })
     );
     window.history.pushState(
       {},
       '',
-      '/sales/pages/page-top-level?view=table&container_id=root-drawer#section'
+      '/sales/pages/page-top-level/blocks/forbidden-block'
     );
 
     render(
@@ -388,38 +440,45 @@ describe('frontstage topbar root routing', () => {
       </AppProviders>
     );
 
-    await act(async () => {
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(frontStagePageView.props?.isBlockRuntimeLoading).toBe(true);
     });
-    expect(window.location.href).toContain(
-      '/sales/pages/page-top-level?view=table&container_id=root-drawer#section'
+    act(() => {
+      rejectAssembly?.(Object.assign(new Error('forbidden'), { status: 403 }));
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.hasBlockRuntimeLoadError).toBe(true);
+      expect(frontStagePageView.props?.isBlockRuntimeLoading).toBe(false);
+      expect(frontStagePageView.props?.isBlockRuntimePermissionDenied).toBe(
+        true
+      );
+      expect(frontStagePageView.props?.onRetryLoadBlockRuntime).toEqual(
+        expect.any(Function)
+      );
+    });
+    expect(pageContentApi.fetchFrontstagePageContent).not.toHaveBeenCalled();
+  });
+
+  test('AC-008 renders controlled NotFound for a missing block deep link', async () => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockRejectedValue(
+      Object.assign(new Error('block_node_not_found'), { status: 404 })
     );
-    act(() => {
-      useAuthStore.getState().setAuthenticated({
-        csrfToken: 'csrf-hydrated',
-        actor: {
-          id: 'actor-1',
-          account: 'root',
-          effective_display_role: 'root',
-          current_workspace_id: 'workspace-1'
-        },
-        me: null
-      });
-    });
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level/blocks/missing-block'
+    );
 
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBe('root-drawer');
-    });
-    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
-    expect(window.location.search).toContain('view=table');
-    expect(window.location.hash).toBe('#section');
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
 
-    act(() => {
-      frontStagePageView.props?.onContainerIdChange?.(null, 'replace');
-    });
-    await waitFor(() => {
-      expect(frontStagePageView.props?.containerId).toBeUndefined();
-    });
-    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
+    expect(await screen.findByText('页面不存在')).toBeInTheDocument();
+    expect(window.location.pathname).toBe(
+      '/sales/pages/page-top-level/blocks/missing-block'
+    );
   });
 });

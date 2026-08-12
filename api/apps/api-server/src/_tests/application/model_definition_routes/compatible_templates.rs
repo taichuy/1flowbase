@@ -31,7 +31,7 @@ async fn compatible_template_catalog_projects_descriptor_system_fields() {
         .unwrap();
 
     assert_eq!(general["system_fields"].as_array().unwrap().len(), 6);
-    assert_eq!(ordered_tree["system_fields"].as_array().unwrap().len(), 8);
+    assert_eq!(ordered_tree["system_fields"].as_array().unwrap().len(), 9);
     assert_eq!(
         general["system_fields"][0],
         json!({

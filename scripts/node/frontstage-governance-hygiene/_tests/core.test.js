@@ -7,6 +7,7 @@ const path = require('node:path');
 const {
   collectFrontstageGovernanceInventory,
   evaluateFrontstageGovernanceHygiene,
+  hasVisibilityGate,
   main,
 } = require('../core.js');
 
@@ -218,6 +219,38 @@ test('evaluateFrontstageGovernanceHygiene accepts stable fixture with only stati
   assert.equal(report.summary.errors, 0);
   assert.equal(report.summary.warnings, 1);
   assert.equal(report.findings[0].rule, 'frontstage-page-tree-cycle-static-proof');
+});
+
+test('visibility gate accepts a tab gate that checks page ancestry and tab visibility', () => {
+  const source = `impl<R> FrontstagePageService<R> {
+  pub async fn get_page_detail(&self) -> Result<Detail> {
+    self.ensure_page_tab_visible(&actor, actor_user_id, workspace_id, page_id, tab_id).await?;
+    Ok(detail)
+  }
+  async fn ensure_page_tab_visible(&self) -> Result<()> {
+    let pages = self.repository.list_frontstage_pages(workspace_id).await?;
+    let context = FrontstagePageVisibilityContext::new(&pages, &rules);
+    if context.is_tab_visible(page_id, tab_id) { return Ok(()); }
+    Err(error)
+  }
+}`;
+
+  assert.equal(hasVisibilityGate(source, 'get_page_detail'), true);
+});
+
+test('visibility gate rejects a tab helper that skips ancestor visibility', () => {
+  const source = `impl<R> FrontstagePageService<R> {
+  pub async fn get_page_detail(&self) -> Result<Detail> {
+    self.ensure_page_tab_visible(&actor, actor_user_id, workspace_id, page_id, tab_id).await?;
+    Ok(detail)
+  }
+  async fn ensure_page_tab_visible(&self) -> Result<()> {
+    self.repository.get_frontstage_page_tab(page_id, tab_id).await?;
+    Ok(())
+  }
+}`;
+
+  assert.equal(hasVisibilityGate(source, 'get_page_detail'), false);
 });
 
 test('frontstage governance main writes json and markdown reports under tmp/test-governance', async () => {

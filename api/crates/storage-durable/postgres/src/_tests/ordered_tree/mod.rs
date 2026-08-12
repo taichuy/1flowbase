@@ -7,6 +7,7 @@ use crate::ordered_tree::rank::{between, rebalance, FractionalRank};
 use crate::{run_migrations, PgControlPlaneStore};
 
 mod commands;
+mod prefix_indexes;
 mod queries;
 
 fn runtime_metadata(model: &domain::ModelDefinitionRecord) -> ModelMetadata {
@@ -171,7 +172,10 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
     .fetch_all(store.pool())
     .await
     .unwrap();
-    assert_eq!(columns.len(), 8);
+    assert_eq!(columns.len(), 9);
+    assert!(columns.iter().any(|column| {
+        column.0 == "tree_partition_id" && column.1 == "uuid" && column.2 == "NO"
+    }));
     assert!(columns
         .iter()
         .any(|column| { column.0 == "parent_id" && column.1 == "uuid" && column.2 == "YES" }));
@@ -207,7 +211,7 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
             (
                 format!("fk_ot_parent_{model_uuid}"),
                 format!(
-                    "FOREIGN KEY (scope_id, parent_id) REFERENCES {}(scope_id, id) ON DELETE RESTRICT",
+                    "FOREIGN KEY (scope_id, tree_partition_id, parent_id) REFERENCES {}(scope_id, tree_partition_id, id) ON DELETE RESTRICT",
                     model.physical_table_name
                 ),
             ),
@@ -217,7 +221,7 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
             ),
             (
                 format!("uq_ot_scope_id_{model_uuid}"),
-                "UNIQUE (scope_id, id)".to_owned(),
+                "UNIQUE (scope_id, tree_partition_id, id)".to_owned(),
             ),
         ]
     );
@@ -261,17 +265,21 @@ async fn ordered_tree_template_creates_catalog_constraints_indexes_and_system_fi
     assert!(index_definition(&format!("pk_ot_{model_uuid}")).contains("UNIQUE INDEX"));
     assert!(index_definition(&format!("pk_ot_{model_uuid}")).contains("(id)"));
     assert!(index_definition(&format!("uq_ot_scope_id_{model_uuid}")).contains("UNIQUE INDEX"));
-    assert!(index_definition(&format!("uq_ot_scope_id_{model_uuid}")).contains("(scope_id, id)"));
+    assert!(index_definition(&format!("uq_ot_scope_id_{model_uuid}"))
+        .contains("(scope_id, tree_partition_id, id)"));
     assert!(index_definition(&format!("idx_ot_siblings_{model_uuid}"))
-        .contains("(scope_id, parent_id, sibling_rank, id)"));
+        .contains("(scope_id, tree_partition_id, parent_id, sibling_rank, id)"));
     assert!(index_definition(&format!("uq_ot_sibling_{model_uuid}")).contains("UNIQUE INDEX"));
-    assert!(index_definition(&format!("uq_ot_sibling_{model_uuid}"))
-        .contains("(scope_id, parent_id, sibling_rank) WHERE (parent_id IS NOT NULL)"));
+    assert!(
+        index_definition(&format!("uq_ot_sibling_{model_uuid}")).contains(
+            "(scope_id, tree_partition_id, parent_id, sibling_rank) WHERE (parent_id IS NOT NULL)"
+        )
+    );
     assert!(index_definition(&format!("uq_ot_root_rank_{model_uuid}")).contains("UNIQUE INDEX"));
     assert!(index_definition(&format!("uq_ot_root_rank_{model_uuid}"))
-        .contains("(scope_id, sibling_rank) WHERE (parent_id IS NULL)"));
+        .contains("(scope_id, tree_partition_id, sibling_rank) WHERE (parent_id IS NULL)"));
 
-    for code in ["parent_id", "sibling_rank"] {
+    for code in ["tree_partition_id", "parent_id", "sibling_rank"] {
         let field = model
             .fields
             .iter()

@@ -26,6 +26,9 @@ const render = (ui: ReactElement) => testingRender(ui, { wrapper: App });
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
+const blockTabsHook = vi.hoisted(() => ({
+  useFrontstageBlockTabs: vi.fn()
+}));
 const interfaceCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageInterfaceCapabilities: vi.fn(),
   useFrontstageInterfaceCapabilityDetails: vi.fn()
@@ -58,6 +61,10 @@ const monacoEditor = vi.hoisted(() => ({
 }));
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
+vi.mock(
+  '../../components/jsx-studio/block-tabs/use-frontstage-block-tabs',
+  () => blockTabsHook
+);
 vi.mock(
   '../../hooks/use-frontstage-interface-capabilities',
   () => interfaceCapabilitiesHook
@@ -258,6 +265,38 @@ describe('FrontstageJsxStudioDrawer', () => {
       reset: vi.fn(),
       save: vi.fn().mockResolvedValue(undefined)
     });
+    blockTabsHook.useFrontstageBlockTabs.mockImplementation(
+      ({ initialBlockId }: { initialBlockId: string }) => {
+        const legacy = blockCodeHook.useFrontstageBlockCode();
+        const tab = {
+          block_id: initialBlockId,
+          detail: {
+            block_id: initialBlockId,
+            tab_id: 'tab-1',
+            title: 'Orders'
+          },
+          base_source: legacy.code,
+          draft: legacy.draft,
+          source_sha256: 'sha256',
+          loading: legacy.loading,
+          saving: legacy.saving,
+          error: legacy.error
+        };
+        return {
+          tabs: [tab],
+          activeBlockId: initialBlockId,
+          activeTab: tab,
+          anyDirty: legacy.dirty,
+          openBlock: vi.fn(),
+          activateBlock: vi.fn(),
+          closeBlock: vi.fn(),
+          setActiveDraft: legacy.setDraft,
+          resetActive: legacy.reset,
+          saveActive: legacy.save,
+          handleDeletedBlock: vi.fn().mockResolvedValue('converged')
+        };
+      }
+    );
     uiTemplatesHook.useFrontstageUiTemplates.mockReturnValue({
       data: [],
       isLoading: false
@@ -331,7 +370,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
   });
 
-  test('AC-001 exposes the child-container rail and fails visibly without a save callback', () => {
+  test('AC-004/009 exposes block tree without the legacy child-container write rail', () => {
     render(
       <FrontstageJsxStudioDrawer
         open
@@ -341,18 +380,16 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId="tab-1"
         block={block}
         pageBlocks={[block]}
-        childContainers={[]}
         catalogEntry={catalogEntry}
         onClose={vi.fn()}
         onSaveBlock={vi.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '子容器' }));
-
-    expect(screen.getByRole('heading', { name: '子容器' })).toBeInTheDocument();
-    expect(screen.getByText('子容器编辑不可用')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '新增根容器' })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: '子容器' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '区块树' })).toBeInTheDocument();
   });
 
   test('keeps Monaco visible while configuration and interface resources share one Studio', async () => {

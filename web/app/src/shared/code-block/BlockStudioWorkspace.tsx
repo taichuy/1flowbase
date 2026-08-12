@@ -1,10 +1,10 @@
 import {
   ApiOutlined,
   AppstoreOutlined,
+  ApartmentOutlined,
   CodeOutlined,
   DatabaseOutlined,
   FileTextOutlined,
-  PartitionOutlined,
   PlayCircleOutlined,
   SettingOutlined
 } from '@ant-design/icons';
@@ -19,7 +19,7 @@ export type BlockStudioSection =
   | 'templates'
   | 'interfaces'
   | 'variables'
-  | 'child-containers'
+  | 'block-tree'
   | 'components'
   | 'configuration'
   | 'run';
@@ -50,9 +50,9 @@ const STUDIO_SECTION_DEFINITIONS: Array<{
     icon: <DatabaseOutlined />
   },
   {
-    key: 'child-containers',
-    label: i18nText('frontstage', 'auto.child_containers'),
-    icon: <PartitionOutlined />
+    key: 'block-tree',
+    label: i18nText('frontstage', 'auto.block_tree'),
+    icon: <ApartmentOutlined />
   },
   {
     key: 'components',

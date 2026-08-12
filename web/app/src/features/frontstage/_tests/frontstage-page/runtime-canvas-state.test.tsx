@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { expect, vi } from 'vitest';
+import { afterEach, expect, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
@@ -35,10 +35,17 @@ const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
 const runtimeSessionsHook = vi.hoisted(() => ({
-  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+  useFrontstagePageCanvasNativePreparations: vi.fn((_input?: unknown) => ({
     preparations: [],
     retryBlock: vi.fn()
   }))
+}));
+const runtimeAssemblyHook = vi.hoisted(() => ({
+  useFrontstageRuntimeAssembly: vi.fn(
+    (_input?: {
+      assembly?: { layers: Array<{ block_id: string }> };
+    }): unknown[] => []
+  )
 }));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(
@@ -58,22 +65,10 @@ const blockCodeApi = vi.hoisted(() => ({
   ),
   saveFrontstageBlockCode: vi.fn()
 }));
-const jsxStudioDrawerView = vi.hoisted(() => ({
-  onSaveChildContainers: null as
-    | null
-    | ((
-        containers: Array<{
-          id: string;
-          ownerBlockId: string;
-          parentId: string | null;
-          rank: string;
-          presentation: 'drawer' | 'modal' | 'inline';
-          title: string;
-          blockIds: string[];
-        }>
-      ) => Promise<boolean>)
+const blockTreeApi = vi.hoisted(() => ({
+  fetchFrontstageBlockNode: vi.fn(),
+  fetchFrontstageBlockNodeCode: vi.fn()
 }));
-
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
   () => pageContentSaveHook
@@ -84,21 +79,28 @@ vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
+vi.mock(
+  '../../hooks/use-frontstage-runtime-assembly',
+  () => runtimeAssemblyHook
+);
 vi.mock('../../api/block-code', () => blockCodeApi);
+vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
-  FrontstageJsxStudioDrawer: (props: {
-    onSaveChildContainers: NonNullable<
-      typeof jsxStudioDrawerView.onSaveChildContainers
-    >;
-  }) => {
-    jsxStudioDrawerView.onSaveChildContainers = props.onSaveChildContainers;
-    return <div data-testid="jsx-studio-drawer" />;
-  }
+  FrontstageJsxStudioDrawer: ({
+    block,
+    open
+  }: {
+    block: { id: string };
+    open: boolean;
+  }) =>
+    open ? <div data-testid="jsx-studio-drawer">studio:{block.id}</div> : null
 }));
 
 const SLOW_FRONTSTAGE_TEST_TIMEOUT = 20_000;
 
 vi.setConfig({ testTimeout: SLOW_FRONTSTAGE_TEST_TIMEOUT });
+
+afterEach(() => vi.unstubAllGlobals());
 
 type TestFrontStageTreeNode = {
   id: string;
@@ -214,7 +216,8 @@ function FrontStagePageHarness({
   initialPageTree,
   pageContent,
   isPageContentLoading,
-  hasPageContentLoadError
+  hasPageContentLoadError,
+  blockRuntimeAssembly
 }: {
   workspaceId?: string;
   pageId?: string;
@@ -223,6 +226,9 @@ function FrontStagePageHarness({
   pageContent?: FrontstagePageContent;
   isPageContentLoading?: boolean;
   hasPageContentLoadError?: boolean;
+  blockRuntimeAssembly?: React.ComponentProps<
+    typeof FrontStagePage
+  >['blockRuntimeAssembly'];
 }) {
   const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
     initialPageTree ?? []
@@ -237,6 +243,8 @@ function FrontStagePageHarness({
       pageContent={pageContent}
       isPageContentLoading={isPageContentLoading}
       hasPageContentLoadError={hasPageContentLoadError}
+      blockRuntimeAssembly={blockRuntimeAssembly}
+      isBlockRuntimeRoute={Boolean(blockRuntimeAssembly)}
       onCreateGroupNode={(input) => {
         const groupNode = {
           id: createTestNodeId(),
@@ -431,15 +439,114 @@ describe('FrontStagePage - runtime canvas state', () => {
     resetAuthStore();
     resetFrontstageDesignModeStore();
     vi.clearAllMocks();
-    jsxStudioDrawerView.onSaveChildContainers = null;
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
+    runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mockImplementation(
+      () => ({ preparations: [], retryBlock: vi.fn() })
+    );
+    runtimeAssemblyHook.useFrontstageRuntimeAssembly.mockImplementation(
+      ({
+        assembly
+      }: { assembly?: { layers: Array<{ block_id: string }> } } = {}) =>
+        (assembly?.layers ?? []).map((layer, slotIndex) => {
+          const identityInput = {
+            sourceSha256: `digest:${layer.block_id}`,
+            runtimeFingerprint: 'test-runtime',
+            dependencyLockIdentity: '[]'
+          };
+          return {
+            blockId: layer.block_id,
+            slotIndex,
+            priority: 0,
+            generation: 1,
+            status: 'ready' as const,
+            prepared: {
+              artifact: {},
+              component: () => <h1>{`source:${layer.block_id}`}</h1>,
+              artifactCacheTier: 'miss' as const,
+              moduleAssets: [],
+              identityInput
+            },
+            mountIntent: { blockId: layer.block_id, slotIndex, identityInput }
+          };
+        })
+    );
     blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',
       code: 'saved template'
     });
+  });
+
+  test('renders every embedded runtime assembly layer without detail or code reads', async () => {
+    authenticate(['frontstage.page.design']);
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+    vi.stubGlobal('IntersectionObserver', undefined);
+    const layer = (
+      blockId: string,
+      presentation: 'page' | 'drawer' | 'modal' | 'inline',
+      parentBlockId: string | null
+    ) => ({
+      block_id: blockId,
+      tab_id: 'tab-1',
+      parent_block_id: parentBlockId,
+      title: `${blockId} shell`,
+      presentation,
+      schema_version: 1,
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: {
+        renderer_version: 'v1',
+        runtime: { kind: 'native_react', entry: 'index.js' }
+      },
+      code: `export default function Block() { return <h1>source:${blockId}</h1>; }`,
+      source_sha256: `digest:${blockId}`
+    });
+    const assembly = {
+      layers: [
+        layer('assembly-root', 'page', null),
+        layer('assembly-chapter', 'drawer', 'assembly-root'),
+        layer('assembly-content', 'inline', 'assembly-chapter')
+      ]
+    };
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+          blockRuntimeAssembly={assembly}
+        />
+      </AppProviders>
+    );
+
+    for (const current of assembly.layers) {
+      const host = await screen.findByTestId(
+        `frontstage-native-block-root-${current.block_id}`
+      );
+      await vi.waitFor(() => {
+        expect(host.shadowRoot?.textContent).toContain(
+          `source:${current.block_id}`
+        );
+      });
+    }
+    expect(screen.getByText('assembly-chapter shell')).toBeInTheDocument();
+    expect(screen.getByText('assembly-content shell')).toBeInTheDocument();
+    expect(blockTreeApi.fetchFrontstageBlockNode).not.toHaveBeenCalled();
+    expect(blockTreeApi.fetchFrontstageBlockNodeCode).not.toHaveBeenCalled();
+    expect(
+      runtimeSessionsHook.useFrontstagePageCanvasNativePreparations
+    ).toHaveBeenCalledWith(expect.objectContaining({ readPlan: null }));
+    expect(
+      runtimeAssemblyHook.useFrontstageRuntimeAssembly
+    ).toHaveBeenCalledWith(expect.objectContaining({ assembly }));
+    fireEvent.click(screen.getByTestId('block-slot-assembly-content'));
+    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
+    expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
+      'studio:assembly-content'
+    );
   });
 
   test('shows manager shell and canvas placeholders', () => {
@@ -501,66 +608,6 @@ describe('FrontStagePage - runtime canvas state', () => {
         }),
         dependencyLocksByBlockId: expect.objectContaining({
           'frontstage-js-block-1': []
-        })
-      })
-    );
-  });
-
-  test('AC-003 saves Studio child containers through the page document write path', async () => {
-    authenticate(['frontstage.page.design']);
-    useFrontstageDesignModeStore.getState().setDesignMode(true);
-    const pageContentSaveState = mockPageContentSaveState();
-    mockFrontstageBlockCatalog([createCatalogEntry()]);
-
-    render(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent({
-            root: {
-              uid: 'root-1',
-              payload: {
-                blocks: [createCatalogMatchedBlockPayload()]
-              }
-            }
-          })}
-        />
-      </AppProviders>
-    );
-
-    fireEvent.click(
-      await screen.findByTestId('block-slot-frontstage-js-block-1')
-    );
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
-    expect(jsxStudioDrawerView.onSaveChildContainers).toEqual(
-      expect.any(Function)
-    );
-
-    await act(async () => {
-      await jsxStudioDrawerView.onSaveChildContainers?.([
-        {
-          id: 'details-drawer',
-          ownerBlockId: 'frontstage-js-block-1',
-          parentId: null,
-          rank: '001000',
-          presentation: 'drawer',
-          title: 'Details',
-          blockIds: ['details-content']
-        }
-      ]);
-    });
-
-    expect(pageContentSaveState.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: expect.objectContaining({
-          child_containers: [
-            expect.objectContaining({
-              container_id: 'details-drawer',
-              owner_block_id: 'frontstage-js-block-1',
-              block_ids: ['details-content']
-            })
-          ]
         })
       })
     );

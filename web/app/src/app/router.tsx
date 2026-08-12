@@ -26,6 +26,7 @@ import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
 import { SessionGuard } from '../routes/session-guard';
 import {
+  FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
   FRONTSTAGE_SLUG_PAGE_PATH,
   FRONTSTAGE_SLUG_PAGE_TAB_PATH,
   FRONTSTAGE_SLUG_PATH
@@ -266,11 +267,13 @@ function renderMeRoute(requestedSectionKey?: MeSectionKey) {
 function FrontStageSlugRoute({
   slug,
   pageId,
-  tabRef
+  tabRef,
+  blockId
 }: {
   slug: string;
   pageId?: string;
   tabRef?: string;
+  blockId?: string;
 }) {
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
@@ -302,21 +305,11 @@ function FrontStageSlugRoute({
         workspaceId={workspaceId}
         pageId={pageId}
         tabRef={tabRef}
+        blockId={blockId}
         rootNode={rootNode}
       />
     </SessionGuard>
   );
-}
-
-function validateFrontstageSearch(search: Record<string, unknown>) {
-  return {
-    ...search,
-    container_id:
-      typeof search.container_id === 'string' &&
-      search.container_id.trim().length > 0
-        ? search.container_id
-        : undefined
-  };
 }
 
 const settingsIndexRoute = createRoute({
@@ -599,7 +592,6 @@ const meSecurityRoute = createRoute({
 const frontstageSlugRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PATH,
-  validateSearch: validateFrontstageSearch,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug } = frontstageSlugRoute.useParams();
@@ -610,7 +602,6 @@ const frontstageSlugRoute = createRoute({
 const frontstageSlugPageRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PAGE_PATH,
-  validateSearch: validateFrontstageSearch,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug, pageId } = frontstageSlugPageRoute.useParams();
@@ -618,10 +609,21 @@ const frontstageSlugPageRoute = createRoute({
   }
 });
 
+const frontstageSlugPageBlockRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
+  notFoundComponent: NotFoundPage,
+  component: () => {
+    const { slug, pageId, blockId } = frontstageSlugPageBlockRoute.useParams();
+    return (
+      <FrontStageSlugRoute slug={slug} pageId={pageId} blockId={blockId} />
+    );
+  }
+});
+
 const frontstageSlugPageTabRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
-  validateSearch: validateFrontstageSearch,
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug, pageId, tabRef } = frontstageSlugPageTabRoute.useParams();
@@ -694,6 +696,7 @@ const routeTree = rootRoute.addChildren([
     meSecurityRoute,
     frontstageSlugRoute,
     frontstageSlugPageRoute,
+    frontstageSlugPageBlockRoute,
     frontstageSlugPageTabRoute
   ]),
   signInRoute

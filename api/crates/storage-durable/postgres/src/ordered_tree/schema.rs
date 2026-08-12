@@ -19,6 +19,7 @@ pub(crate) fn system_field_records(
     }
 
     [
+        ("tree_partition_id", domain::ModelFieldKind::ManyToOne, true),
         ("parent_id", domain::ModelFieldKind::ManyToOne, false),
         ("sibling_rank", domain::ModelFieldKind::String, true),
     ]
@@ -73,29 +74,30 @@ pub(crate) async fn create_table(
           created_by uuid,
           updated_by uuid,
           scope_id uuid not null,
+          tree_partition_id uuid not null,
           parent_id uuid,
           sibling_rank text collate "C" not null,
-          constraint {scope_id_unique} unique (scope_id, id),
+          constraint {scope_id_unique} unique (scope_id, tree_partition_id, id),
           constraint {parent_not_self} check (parent_id is null or parent_id <> id),
-          constraint {parent_foreign_key} foreign key (scope_id, parent_id)
-            references {table_name} (scope_id, id) on delete restrict
+          constraint {parent_foreign_key} foreign key (scope_id, tree_partition_id, parent_id)
+            references {table_name} (scope_id, tree_partition_id, id) on delete restrict
         )
         "#
     );
     sqlx::query(&statement).execute(&mut **tx).await?;
 
     sqlx::query(&format!(
-        "create index {sibling_index} on {table_name} (scope_id, parent_id, sibling_rank, id)"
+        "create index {sibling_index} on {table_name} (scope_id, tree_partition_id, parent_id, sibling_rank, id)"
     ))
     .execute(&mut **tx)
     .await?;
     sqlx::query(&format!(
-        "create unique index {sibling_unique} on {table_name} (scope_id, parent_id, sibling_rank) where parent_id is not null"
+        "create unique index {sibling_unique} on {table_name} (scope_id, tree_partition_id, parent_id, sibling_rank) where parent_id is not null"
     ))
     .execute(&mut **tx)
     .await?;
     sqlx::query(&format!(
-        "create unique index {root_unique} on {table_name} (scope_id, sibling_rank) where parent_id is null"
+        "create unique index {root_unique} on {table_name} (scope_id, tree_partition_id, sibling_rank) where parent_id is null"
     ))
     .execute(&mut **tx)
     .await?;

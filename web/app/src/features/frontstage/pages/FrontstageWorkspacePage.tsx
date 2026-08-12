@@ -1,14 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  Navigate,
-  useNavigate,
-  useRouter,
-  useRouterState
-} from '@tanstack/react-router';
+import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
 import { Suspense } from 'react';
 
 import {
+  FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
   FRONTSTAGE_SLUG_PAGE_PATH,
   FRONTSTAGE_SLUG_PAGE_TAB_PATH,
   FRONTSTAGE_SLUG_PATH
@@ -30,8 +26,14 @@ import {
   type FrontstagePageTreeNode
 } from '../api/page-tree';
 import { useFrontstagePageTreeMutations } from '../hooks/use-frontstage-page-tree-mutations';
-import { isForbiddenResponseError } from '../lib/api-errors';
-import { createChildContainerUrl } from '../lib/child-container-runtime';
+import {
+  isForbiddenResponseError,
+  isNotFoundResponseError
+} from '../lib/api-errors';
+import {
+  fetchFrontstageBlockRuntimeAssembly,
+  frontstageBlockTreeQueryKeys
+} from '../api/block-tree';
 import {
   getFirstTopLevelPageId,
   resolveSelectedPageId
@@ -42,65 +44,18 @@ export interface FrontstageWorkspacePageProps {
   workspaceId: string;
   pageId?: string;
   tabRef?: string;
+  blockId?: string;
   rootNode?: FrontstagePageTreeNode;
-}
-
-const CHILD_CONTAINER_HISTORY_STATE_KEY = '__frontstage_child_container';
-
-interface ChildContainerHistoryMarker {
-  currentContainerId: string;
-  previousContainerId: string | null;
-  backDistance: number;
-}
-
-function readChildContainerHistoryMarker(
-  state: unknown
-): ChildContainerHistoryMarker | null {
-  if (typeof state !== 'object' || state === null) return null;
-  const marker = (state as Record<string, unknown>)[
-    CHILD_CONTAINER_HISTORY_STATE_KEY
-  ];
-  if (typeof marker !== 'object' || marker === null) return null;
-  const currentContainerId = (marker as Record<string, unknown>)
-    .currentContainerId;
-  const previousContainerId = (marker as Record<string, unknown>)
-    .previousContainerId;
-  const backDistance = (marker as Record<string, unknown>).backDistance;
-  if (
-    typeof currentContainerId !== 'string' ||
-    (previousContainerId !== null && typeof previousContainerId !== 'string') ||
-    typeof backDistance !== 'number' ||
-    !Number.isInteger(backDistance) ||
-    backDistance < 1
-  ) {
-    return null;
-  }
-  return { currentContainerId, previousContainerId, backDistance };
-}
-
-function clearChildContainerHistoryMarker(state: unknown) {
-  if (typeof state !== 'object' || state === null) return {};
-  const next = { ...(state as Record<string, unknown>) };
-  delete next[CHILD_CONTAINER_HISTORY_STATE_KEY];
-  return next;
 }
 
 export function FrontstageWorkspacePage({
   workspaceId,
   pageId,
   tabRef,
+  blockId,
   rootNode
 }: FrontstageWorkspacePageProps) {
   const navigate = useNavigate();
-  const router = useRouter();
-  const locationSearch = useRouterState({
-    select: (state) => state.location.search as Record<string, unknown>
-  });
-  const containerId =
-    typeof locationSearch.container_id === 'string' &&
-    locationSearch.container_id.trim().length > 0
-      ? locationSearch.container_id
-      : undefined;
   const pageTreeQuery = useQuery({
     queryKey: frontstagePageTreeQueryKey(workspaceId),
     queryFn: () => fetchFrontstagePageTree(workspaceId),
@@ -128,6 +83,37 @@ export function FrontstageWorkspacePage({
               pageTree: pageTreeFromApi
             }).selectedPageId
         : null;
+  const blockRuntimeAssemblyQuery = useQuery({
+    queryKey:
+      selectedPageId && blockId
+        ? frontstageBlockTreeQueryKeys.runtimeAssembly(
+            workspaceId,
+            selectedPageId,
+            blockId
+          )
+        : [
+            'frontstage',
+            workspaceId,
+            'pages',
+            'unselected',
+            'blocks',
+            'runtime-assembly'
+          ],
+    queryFn: () => {
+      if (!selectedPageId || !blockId) {
+        throw new Error(
+          'Frontstage runtime assembly query requires page and block ids'
+        );
+      }
+      return fetchFrontstageBlockRuntimeAssembly(
+        workspaceId,
+        selectedPageId,
+        blockId
+      );
+    },
+    enabled: Boolean(selectedPageId && blockId),
+    retry: false
+  });
   const pageTabsQuery = useQuery({
     queryKey: selectedPageId
       ? frontstagePageTabsQueryKey(workspaceId, selectedPageId)
@@ -139,14 +125,15 @@ export function FrontstageWorkspacePage({
 
       return fetchFrontstagePageTabs(workspaceId, selectedPageId);
     },
-    enabled: Boolean(selectedPageId),
+    enabled: Boolean(selectedPageId && !blockId),
     retry: false
   });
   const defaultTabs = pageTabsQuery.data?.filter((tab) => tab.is_default) ?? [];
   const defaultTab = defaultTabs.length === 1 ? defaultTabs[0] : undefined;
-  const tabReference = tabRef ?? defaultTab?.id;
+  const runtimeTarget = blockRuntimeAssemblyQuery.data?.layers.at(-1);
+  const tabReference = runtimeTarget?.tab_id ?? tabRef ?? defaultTab?.id;
   const shouldLoadPageContent = Boolean(
-    effectivePageId && selectedPageId && tabReference
+    effectivePageId && selectedPageId && tabReference && !blockId
   );
   const pageContentQuery = useQuery({
     queryKey:
@@ -176,15 +163,11 @@ export function FrontstageWorkspacePage({
     retry: false
   });
 
-  if (rootNode?.kind === 'page' && !pageId && rootNode.slug) {
+  if (rootNode?.kind === 'page' && !pageId && rootNode.slug && !blockId) {
     return (
       <Navigate
         to={FRONTSTAGE_SLUG_PAGE_PATH}
         params={{ slug: rootNode.slug, pageId: rootNode.id }}
-        search={(current) => ({
-          ...current,
-          container_id: current.container_id
-        })}
         replace
       />
     );
@@ -194,16 +177,13 @@ export function FrontstageWorkspacePage({
     rootNode?.kind === 'group' &&
     !pageId &&
     selectedPageId &&
-    rootNode.slug
+    rootNode.slug &&
+    !blockId
   ) {
     return (
       <Navigate
         to={FRONTSTAGE_SLUG_PAGE_PATH}
         params={{ slug: rootNode.slug, pageId: selectedPageId }}
-        search={(current) => ({
-          ...current,
-          container_id: current.container_id
-        })}
         replace
       />
     );
@@ -212,6 +192,7 @@ export function FrontstageWorkspacePage({
   if (
     selectedPageId &&
     !tabRef &&
+    !blockId &&
     pageTabsQuery.data &&
     defaultTabs.length !== 1
   ) {
@@ -228,16 +209,12 @@ export function FrontstageWorkspacePage({
   }
 
   const resolvedTab = pageContentQuery.data?.tab;
-  if (selectedPageId && tabRef && resolvedTab && rootNode?.slug) {
+  if (selectedPageId && tabRef && resolvedTab && rootNode?.slug && !blockId) {
     if (resolvedTab.isDefault) {
       return (
         <Navigate
           to={FRONTSTAGE_SLUG_PAGE_PATH}
           params={{ slug: rootNode.slug, pageId: selectedPageId }}
-          search={(current) => ({
-            ...current,
-            container_id: current.container_id
-          })}
           replace
         />
       );
@@ -252,14 +229,16 @@ export function FrontstageWorkspacePage({
             pageId: selectedPageId,
             tabRef: resolvedTab.routeSegment
           }}
-          search={(current) => ({
-            ...current,
-            container_id: current.container_id
-          })}
           replace
         />
       );
     }
+  }
+
+  if (blockId && isNotFoundResponseError(blockRuntimeAssemblyQuery.error)) {
+    return (
+      <Result status="404" title={i18nText('app', 'auto.page_not_found')} />
+    );
   }
 
   return (
@@ -267,74 +246,39 @@ export function FrontstageWorkspacePage({
       <FrontStagePage
         workspaceId={workspaceId}
         pageId={effectivePageId}
-        tabId={resolvedTab?.id}
-        containerId={containerId}
-        onContainerIdChange={(nextContainerId, mode) => {
-          const href = createChildContainerUrl(
-            router.state.location.href,
-            nextContainerId
-          );
-          if (mode === 'push' && nextContainerId) {
-            router.history.push(href, {
-              ...router.history.location.state,
-              [CHILD_CONTAINER_HISTORY_STATE_KEY]: {
-                currentContainerId: nextContainerId,
-                previousContainerId: containerId ?? null,
-                backDistance: 1
-              } satisfies ChildContainerHistoryMarker
-            });
-            return;
-          }
-
-          const marker = readChildContainerHistoryMarker(
-            router.history.location.state
-          );
-          if (
-            marker !== null &&
-            marker.currentContainerId === containerId &&
-            marker.previousContainerId === nextContainerId &&
-            router.history.canGoBack()
-          ) {
-            router.history.flush();
-            let completed = false;
-            let unsubscribe: () => void = () => undefined;
-            unsubscribe = router.history.subscribe(({ action, location }) => {
-              if (
-                completed ||
-                action.type === 'PUSH' ||
-                action.type === 'REPLACE'
-              ) {
-                return;
-              }
-              completed = true;
-              unsubscribe();
-              const destinationMarker = readChildContainerHistoryMarker(
-                location.state
-              );
-              const destinationState = clearChildContainerHistoryMarker(
-                location.state
-              );
-              router.history.push(
-                createChildContainerUrl(location.href, nextContainerId),
-                nextContainerId &&
-                  destinationMarker?.currentContainerId === nextContainerId
-                  ? {
-                      ...destinationState,
-                      [CHILD_CONTAINER_HISTORY_STATE_KEY]: {
-                        ...destinationMarker,
-                        backDistance: destinationMarker.backDistance + 1
-                      } satisfies ChildContainerHistoryMarker
-                    }
-                  : destinationState
-              );
-            });
-            router.history.go(-marker.backDistance);
-            return;
-          }
-
-          router.history.replace(
-            href,
-            clearChildContainerHistoryMarker(router.history.location.state)
+        tabId={resolvedTab?.id ?? runtimeTarget?.tab_id}
+        blockRuntimeAssembly={blockRuntimeAssemblyQuery.data}
+        isBlockRuntimeRoute={Boolean(blockId)}
+        isBlockRuntimeLoading={Boolean(
+          blockId && blockRuntimeAssemblyQuery.isLoading
+        )}
+        hasBlockRuntimeLoadError={Boolean(
+          blockId && blockRuntimeAssemblyQuery.isError
+        )}
+        isBlockRuntimePermissionDenied={Boolean(
+          blockId && isForbiddenResponseError(blockRuntimeAssemblyQuery.error)
+        )}
+        onRetryLoadBlockRuntime={() => {
+          void blockRuntimeAssemblyQuery.refetch();
+        }}
+        onNavigateBlock={(nextBlockId, replace = false) => {
+          if (!rootNode?.slug || !selectedPageId) return;
+          void navigate(
+            nextBlockId
+              ? {
+                  to: FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
+                  params: {
+                    slug: rootNode.slug,
+                    pageId: selectedPageId,
+                    blockId: nextBlockId
+                  },
+                  replace
+                }
+              : {
+                  to: FRONTSTAGE_SLUG_PAGE_PATH,
+                  params: { slug: rootNode.slug, pageId: selectedPageId },
+                  replace
+                }
           );
         }}
         showSidebar={rootNode?.kind !== 'page'}
@@ -383,19 +327,11 @@ export function FrontstageWorkspacePage({
             nextPageId
               ? {
                   to: FRONTSTAGE_SLUG_PAGE_PATH,
-                  params: { slug: rootNode.slug, pageId: nextPageId },
-                  search: (current) => ({
-                    ...current,
-                    container_id: undefined
-                  })
+                  params: { slug: rootNode.slug, pageId: nextPageId }
                 }
               : {
                   to: FRONTSTAGE_SLUG_PATH,
-                  params: { slug: rootNode.slug },
-                  search: (current) => ({
-                    ...current,
-                    container_id: undefined
-                  })
+                  params: { slug: rootNode.slug }
                 }
           );
         }}
@@ -405,11 +341,7 @@ export function FrontstageWorkspacePage({
           if (nextTab.is_default) {
             void navigate({
               to: FRONTSTAGE_SLUG_PAGE_PATH,
-              params: { slug: rootNode.slug, pageId: selectedPageId },
-              search: (current) => ({
-                ...current,
-                container_id: undefined
-              })
+              params: { slug: rootNode.slug, pageId: selectedPageId }
             });
             return;
           }
@@ -420,11 +352,7 @@ export function FrontstageWorkspacePage({
               slug: rootNode.slug,
               pageId: selectedPageId,
               tabRef: nextTab.route_segment
-            },
-            search: (current) => ({
-              ...current,
-              container_id: undefined
-            })
+            }
           });
         }}
       />

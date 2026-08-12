@@ -48,6 +48,7 @@ pub struct OrderedTreeMovePosition {
 pub struct OrderedTreeCreateInput {
     pub actor_user_id: Uuid,
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub payload: Value,
     pub position: OrderedTreeCreatePosition,
 }
@@ -61,6 +62,7 @@ pub struct OrderedTreeCreateResult {
 pub struct OrderedTreeMoveInput {
     pub actor_user_id: Uuid,
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub node_id: Uuid,
     pub position: OrderedTreeMovePosition,
 }
@@ -68,12 +70,14 @@ pub struct OrderedTreeMoveInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeLeafDeleteInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub node_id: Uuid,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeSubtreeDeleteInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub node_id: Uuid,
     pub expected_affected_count: u64,
 }
@@ -86,12 +90,14 @@ pub struct OrderedTreeSubtreeDeleteResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeBoundedListInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub result_limit: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeChildrenInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub parent_id: Uuid,
     pub result_limit: u32,
 }
@@ -99,12 +105,26 @@ pub struct OrderedTreeChildrenInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeNodeInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub node_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSubtreeImpactInput {
+    pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
+    pub node_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderedTreeSubtreeImpactResult {
+    pub affected_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeDescendantsInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub node_id: Uuid,
     pub max_depth: u32,
     pub result_limit: u32,
@@ -114,6 +134,7 @@ pub struct OrderedTreeDescendantsInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderedTreeSearchInput {
     pub scope_id: Uuid,
+    pub tree_partition_id: Uuid,
     pub prefix: String,
     pub match_limit: u32,
 }
@@ -230,6 +251,12 @@ pub trait OrderedTreeStructureRepository: Send + Sync {
 
 #[async_trait]
 pub trait OrderedTreeQueryRepository: Send + Sync {
+    async fn get_ordered_tree_subtree_impact(
+        &self,
+        metadata: &ModelMetadata,
+        input: OrderedTreeSubtreeImpactInput,
+    ) -> Result<OrderedTreeSubtreeImpactResult>;
+
     async fn list_ordered_tree_roots(
         &self,
         metadata: &ModelMetadata,

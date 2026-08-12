@@ -396,7 +396,7 @@ async fn create_page(
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
-    let page_id = Uuid::parse_str(payload["data"]["id"].as_str().unwrap()).unwrap();
+    let page_id = Uuid::parse_str(payload["data"]["page"]["id"].as_str().unwrap()).unwrap();
     let tab_id = Uuid::parse_str(payload["data"]["default_tab"]["id"].as_str().unwrap()).unwrap();
     let document_root_uid = payload["data"]["default_tab"]["document_root_uid"]
         .as_str()

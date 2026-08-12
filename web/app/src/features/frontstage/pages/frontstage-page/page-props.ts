@@ -1,4 +1,5 @@
 import type { FrontstagePageContent } from '../../api/page-content';
+import type { ConsoleFrontstageBlockRuntimeAssembly } from '@1flowbase/api-client';
 import type { FrontstagePageTab } from '../../api/page-tabs';
 import type { FrontStageTreeNode } from '../../lib/page-tree';
 import type {
@@ -13,6 +14,13 @@ export type FrontStagePageProps = {
   workspaceId: string;
   pageId?: string;
   tabId?: string;
+  blockRuntimeAssembly?: ConsoleFrontstageBlockRuntimeAssembly;
+  isBlockRuntimeRoute?: boolean;
+  isBlockRuntimeLoading?: boolean;
+  hasBlockRuntimeLoadError?: boolean;
+  isBlockRuntimePermissionDenied?: boolean;
+  onRetryLoadBlockRuntime?: () => void;
+  onNavigateBlock?: (blockId: string | null, replace?: boolean) => void;
   showSidebar?: boolean;
   autoSelectFirstPage?: boolean;
   onNavigatePage?: (pageId?: string) => void;

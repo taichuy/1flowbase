@@ -37,6 +37,7 @@ export interface BlockSourceStudioProps<
   contextComment: string;
   dirty: boolean;
   editorDiagnostics?: readonly BlockSourceEditorDiagnostic[];
+  editorHeader?: ReactNode;
   editorNotice?: ReactNode;
   errorMessage?: string | null;
   extraLibs?: readonly BlockSourceExtraLib[];
@@ -84,6 +85,7 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
   contextComment,
   dirty,
   editorDiagnostics = [],
+  editorHeader,
   editorNotice,
   errorMessage,
   extraLibs = [],
@@ -257,6 +259,7 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
         windowWidth={windowEntry.rect.width}
         editor={
           <main className="frontstage-jsx-studio__editor-panel">
+            {editorHeader}
             <div className="frontstage-jsx-studio__editor-notice">
               {editorNotice}
               {errorMessage ? (

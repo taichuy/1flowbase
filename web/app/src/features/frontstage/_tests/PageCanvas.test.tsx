@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { PageCanvas } from '../components/PageCanvas';
+import type { FrontstageBlockInstance } from '../lib/page-document';
 import {
   createFrontstagePageContentFixture,
   type FrontstagePageContentFixtureOverrides
@@ -15,6 +16,42 @@ function createPageContent(
 }
 
 describe('PageCanvas', () => {
+  test('renders canonical runtime blocks when the embedded page document is empty', () => {
+    const canonicalBlock: FrontstageBlockInstance = {
+      id: 'canonical-root',
+      rendererVersion: 'v1',
+      sourceId: 'canonical-root',
+      codeRef: 'frontstage.block.canonical-root',
+      sourceCodeRef: 'frontstage.block.canonical-root',
+      catalog: { providerCode: null, installationId: null },
+      contribution: {
+        pluginId: null,
+        pluginVersion: null,
+        code: 'official.canonical-root'
+      },
+      props: {},
+      ports: { inputs: [], outputs: [] },
+      presentation: { heightMode: 'auto', height: null },
+      layout: { order: 0 },
+      order: 0,
+      runtime: {
+        kind: 'native_react',
+        entry: 'blocks/canonical-root.tsx',
+        hint: 'native_react'
+      }
+    };
+
+    render(
+      <PageCanvas
+        content={createPageContent()}
+        runtimeBlocks={[canonicalBlock]}
+        renderBlockIds={['canonical-root']}
+      />
+    );
+
+    expect(screen.getByTestId('block-slot-canonical-root')).toBeInTheDocument();
+  });
+
   test('renders a compact loading state before content is available', () => {
     render(<PageCanvas isLoading />);
 

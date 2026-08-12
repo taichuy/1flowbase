@@ -293,14 +293,20 @@ export function createFrontstageBlockRenderPlanItem(
   };
 }
 
-export function createFrontstagePageRenderPlan(
-  document: FrontstagePageDocument
-): FrontstagePageRenderPlan {
-  const items = document.blocks
+export function createFrontstageBlockRenderPlanItems(
+  blocks: readonly FrontstageBlockInstance[]
+): FrontstageBlockRenderPlanItem[] {
+  return blocks
     .map((block, sourceIndex) =>
       createFrontstageBlockRenderPlanItem(block, sourceIndex)
     )
     .sort(compareRenderPlanItems);
+}
+
+export function createFrontstagePageRenderPlan(
+  document: FrontstagePageDocument
+): FrontstagePageRenderPlan {
+  const items = createFrontstageBlockRenderPlanItems(document.blocks);
 
   return {
     pageId: document.page.id,

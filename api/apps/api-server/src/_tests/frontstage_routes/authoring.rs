@@ -22,7 +22,9 @@ async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
     )
     .await;
     assert_eq!(page_status, StatusCode::CREATED);
-    assert_eq!(page_payload["data"]["kind"], json!("page"));
+    assert_eq!(page_payload["data"]["page"]["kind"], json!("page"));
+    assert!(page_payload["data"].get("id").is_none());
+    assert!(page_payload["data"]["default_tab"]["id"].is_string());
 
     let response = app
         .oneshot(
@@ -43,6 +45,11 @@ async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
 
     let openapi = serde_json::to_value(crate::openapi::ApiDoc::openapi())
         .expect("global OpenAPI should serialize");
+    let page_creation_schema =
+        &openapi["components"]["schemas"]["FrontstagePageCreationResponse"]["properties"];
+    assert!(page_creation_schema["page"].is_object());
+    assert!(page_creation_schema["default_tab"].is_object());
+    assert!(page_creation_schema.get("id").is_none());
     let operation = crate::openapi_docs::DocsCatalogOperation {
         id: "list_frontstage_pages".into(),
         method: "GET".into(),
@@ -118,7 +125,7 @@ async fn workspace_member_without_design_permission_cannot_write() {
         "a",
     )
     .await;
-    let page_id = page_payload["data"]["id"].as_str().unwrap();
+    let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
 
     let (cookie, csrf) = login_and_capture_cookie(&app, "frontstage-viewer", "temp-pass").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -154,7 +161,7 @@ async fn rename_allows_empty_title() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
-    let page_id = payload["data"]["id"].as_str().unwrap();
+    let page_id = payload["data"]["page"]["id"].as_str().unwrap();
 
     let (rename_status, rename_payload) = send_json(
         &app,
@@ -186,7 +193,7 @@ async fn patch_page_metadata_persists_tooltip_and_hidden_state() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
-    let page_id = payload["data"]["id"].as_str().unwrap();
+    let page_id = payload["data"]["page"]["id"].as_str().unwrap();
 
     let (patch_status, patch_payload) = send_json(
         &app,

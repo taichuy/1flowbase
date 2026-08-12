@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -179,6 +181,95 @@ pub struct FrontstageBlockCodeRecord {
     pub code: String,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontstageBlockPresentation {
+    Page,
+    Drawer,
+    Modal,
+    Inline,
+}
+
+impl FrontstageBlockPresentation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::Drawer => "drawer",
+            Self::Modal => "modal",
+            Self::Inline => "inline",
+        }
+    }
+
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "page" => Some(Self::Page),
+            "drawer" => Some(Self::Drawer),
+            "modal" => Some(Self::Modal),
+            "inline" => Some(Self::Inline),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrontstageBlockNodeRecord {
+    pub block_id: String,
+    pub workspace_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
+    pub parent_block_id: Option<String>,
+    pub rank: String,
+    pub presentation: FrontstageBlockPresentation,
+    pub title: Option<String>,
+    pub code_ref: String,
+    pub schema_version: u32,
+    pub input_mapping: BTreeMap<String, String>,
+    pub output_mapping: BTreeMap<String, String>,
+    pub runtime_descriptor: serde_json::Value,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrontstageBlockRuntimeLayer {
+    pub node: FrontstageBlockNodeRecord,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageBlockNodeSummary {
+    pub block_id: String,
+    pub workspace_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
+    pub parent_block_id: Option<String>,
+    pub rank: String,
+    pub presentation: FrontstageBlockPresentation,
+    pub title: Option<String>,
+    pub schema_version: u32,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageBlockDescendantProjection {
+    pub node: FrontstageBlockNodeSummary,
+    pub depth: u32,
+    pub has_children: bool,
+    pub path: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageBlockSearchResult {
+    pub node: FrontstageBlockNodeSummary,
+    pub ancestors: Vec<FrontstageBlockNodeSummary>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontstageBlockSubtreeImpact {
+    pub affected_count: u64,
 }
 
 #[cfg(test)]

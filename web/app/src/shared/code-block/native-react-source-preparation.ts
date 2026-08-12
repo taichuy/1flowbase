@@ -2,6 +2,7 @@ import {
   evaluateNativeReactComponentArtifactWithRegistry,
   NativeReactModuleRegistryError,
   type NativeReactCatalogDependencyLock,
+  type NativeReactComponentArtifact,
   type NativeReactArtifactEvaluationBindings,
   type NativeReactCompileDiagnostic,
   type NativeReactModuleRegistry,
@@ -23,6 +24,7 @@ export type NativeReactSourcePreparationDiagnostic =
 export type NativeReactSourcePreparationResult =
   | {
       ok: true;
+      artifact: NativeReactComponentArtifact;
       component: NativeTrustedBlockComponent;
       moduleAssets: NativeReactResolvedModuleAsset[];
     }
@@ -90,6 +92,7 @@ export async function prepareNativeReactSource({
     );
     return {
       ok: true,
+      artifact: evaluated.artifact,
       component: evaluated.component,
       moduleAssets
     };

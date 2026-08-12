@@ -25,8 +25,8 @@ import { generateFrontstageInterfaceSource } from '../../lib/jsx-studio/openapi-
 import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import type { FrontstageBlockHeightMode } from '../../lib/page-document';
-import type { ChildContainerNode } from '../../lib/child-container-tree';
-import { JsxStudioChildContainersPanel } from './JsxStudioChildContainersPanel';
+import { BlockSchemaTreePanel } from '../block-schema-tree/BlockSchemaTreePanel';
+import type { FrontstageBlockDeletedEvent } from './block-tabs/types';
 import { JsxStudioComponentsPanel } from './JsxStudioComponentsPanel';
 import { JsxStudioConfigurationPanel } from './JsxStudioConfigurationPanel';
 
@@ -42,39 +42,39 @@ export interface JsxStudioContextVariable {
 const INTERFACE_FILTER_POPUP_STYLES = {
   popup: { root: { zIndex: 1400 } }
 };
-const EMPTY_CHILD_CONTAINERS: readonly ChildContainerNode[] = [];
-
 export function JsxStudioResourcePanel({
   block,
   codeSource,
+  currentBlockId,
   pageBlocks,
+  pageId,
   workspaceId,
   onInsertCode,
+  onDeletedBlock,
+  onOpenBlock,
   onSaveBlock,
   projection,
   runPanel,
   configurationPanel,
   contextVariables,
   interfacePathPrefixes,
-  childContainers = EMPTY_CHILD_CONTAINERS,
-  onSaveChildContainers,
   section
 }: {
   block: FrontstageBlockInstance;
   codeSource: string;
+  currentBlockId?: string;
   pageBlocks: readonly FrontstageBlockInstance[];
+  pageId?: string;
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
+  onDeletedBlock?: (event: FrontstageBlockDeletedEvent) => void;
+  onOpenBlock?: (blockId: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
   configurationPanel?: ReactNode;
   contextVariables?: readonly JsxStudioContextVariable[] | null;
   interfacePathPrefixes?: readonly string[];
-  childContainers?: readonly ChildContainerNode[];
-  onSaveChildContainers?: (
-    containers: ChildContainerNode[]
-  ) => Promise<boolean | void>;
   section: Exclude<FrontstageJsxStudioSection, 'code' | 'templates'>;
 }) {
   if (section === 'interfaces') {
@@ -100,15 +100,14 @@ export function JsxStudioResourcePanel({
     );
   }
 
-  if (section === 'child-containers') {
+  if (section === 'block-tree' && onOpenBlock && pageId) {
     return (
-      <JsxStudioChildContainersPanel
-        childContainers={childContainers}
-        ownerBlock={block}
-        pageBlocks={pageBlocks}
-        onInsertCode={onInsertCode}
-        onSaveBlock={onSaveBlock}
-        onSaveChildContainers={onSaveChildContainers}
+      <BlockSchemaTreePanel
+        currentBlockId={currentBlockId ?? block.id}
+        pageId={pageId}
+        workspaceId={workspaceId}
+        onDeletedBlock={onDeletedBlock}
+        onOpenBlock={onOpenBlock}
       />
     );
   }
