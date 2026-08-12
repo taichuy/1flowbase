@@ -39,9 +39,13 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
     readOnly: boolean;
     source: string;
     testId: string;
+    renderResource: (section: 'configuration') => React.ReactNode;
   }) => (
     <section data-testid={props.testId}>
-      {props.editorHeader}
+      <div data-testid="studio-editor-header">{props.editorHeader}</div>
+      <aside data-testid="studio-resource-panel">
+        {props.renderResource('configuration')}
+      </aside>
       <span>{props.readOnly ? 'studio-readonly' : 'studio-editable'}</span>
       <pre>{props.source}</pre>
       <button
@@ -209,15 +213,17 @@ describe('UiManagementPanel code templates', () => {
     fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
 
     expect(screen.getByTestId('ui-code-template-studio')).toBeInTheDocument();
+    expect(screen.getByTestId('studio-editor-header')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('studio-resource-panel')).toContainElement(
+      screen.getByLabelText('所属区块')
+    );
     expect(screen.getByLabelText('所属区块')).toBeInTheDocument();
     expect(screen.queryByLabelText('提供方代码')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('贡献代码')).not.toBeInTheDocument();
 
     fireEvent.mouseDown(screen.getByLabelText('所属区块'));
     fireEvent.click(
-      await screen.findByText(
-        '官方区块 · 1flowbase/frontstage.js-ui-block'
-      )
+      await screen.findByText('官方区块 · 1flowbase/frontstage.js-ui-block')
     );
     fireEvent.change(screen.getByLabelText('名称'), {
       target: { value: '新模板' }

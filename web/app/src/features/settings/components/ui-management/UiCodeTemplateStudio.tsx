@@ -4,7 +4,7 @@ import {
   diagnoseLegacyBlockModuleSource,
   validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
-import { App, Empty, Flex, Form, Input, Select } from 'antd';
+import { App, Empty, Form, Input, Select } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -162,79 +162,80 @@ export function UiCodeTemplateStudio({
     onSave({ ...draft, name: draft.name.trim() });
   };
 
+  const identityForm = (
+    <div className="frontstage-jsx-studio__resource-scroll">
+      <section className="frontstage-jsx-studio__resource-section">
+        <Form layout="vertical">
+          <Form.Item label={t('template_contribution')} required>
+            <Select
+              aria-label={t('template_contribution')}
+              disabled={mode !== 'create'}
+              value={contributionIdentity || undefined}
+              options={officialTemplates.map((template) => ({
+                value: templateIdentity(
+                  template.provider_code,
+                  template.contribution_code
+                ),
+                label: `${template.title} · ${template.provider_code}/${template.contribution_code}`
+              }))}
+              onChange={(identity) => {
+                const template = officialTemplates.find(
+                  (candidate) =>
+                    templateIdentity(
+                      candidate.provider_code,
+                      candidate.contribution_code
+                    ) === identity
+                );
+                if (!template) return;
+                setDraft((current) => ({
+                  ...current,
+                  provider_code: template.provider_code,
+                  contribution_code: template.contribution_code,
+                  source: template.source,
+                  language: template.language
+                }));
+              }}
+            />
+          </Form.Item>
+          <Form.Item label={t('name')} required>
+            <Input
+              aria-label={t('name')}
+              disabled={readOnly}
+              value={draft.name}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  name: event.target.value
+                }))
+              }
+            />
+          </Form.Item>
+          <Form.Item label={t('language')} required>
+            <Select
+              aria-label={t('language')}
+              disabled={readOnly}
+              value={draft.language}
+              options={[
+                { value: 'tsx', label: 'TSX' },
+                { value: 'jsx', label: 'JSX' }
+              ]}
+              onChange={(language) =>
+                setDraft((current) => ({ ...current, language }))
+              }
+            />
+          </Form.Item>
+        </Form>
+      </section>
+    </div>
+  );
+
   return (
     <BlockSourceStudio
       contextComment={projection.contextComment}
       dirty={dirty}
       editorDiagnostics={diagnostics}
-      editorHeader={
-        <Form component={false} layout="vertical">
-          <Flex gap={12} wrap className="ui-code-template-studio__identity">
-            <Form.Item label={t('template_contribution')} required>
-              <Select
-                aria-label={t('template_contribution')}
-                disabled={mode !== 'create'}
-                style={{ minWidth: 280 }}
-                value={contributionIdentity || undefined}
-                options={officialTemplates.map((template) => ({
-                  value: templateIdentity(
-                    template.provider_code,
-                    template.contribution_code
-                  ),
-                  label: `${template.title} · ${template.provider_code}/${template.contribution_code}`
-                }))}
-                onChange={(identity) => {
-                  const template = officialTemplates.find(
-                    (candidate) =>
-                      templateIdentity(
-                        candidate.provider_code,
-                        candidate.contribution_code
-                      ) === identity
-                  );
-                  if (!template) return;
-                  setDraft((current) => ({
-                    ...current,
-                    provider_code: template.provider_code,
-                    contribution_code: template.contribution_code,
-                    source: template.source,
-                    language: template.language
-                  }));
-                }}
-              />
-            </Form.Item>
-            <Form.Item label={t('name')} required>
-              <Input
-                aria-label={t('name')}
-                disabled={readOnly}
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    name: event.target.value
-                  }))
-                }
-              />
-            </Form.Item>
-            <Form.Item label={t('language')} required>
-              <Select
-                aria-label={t('language')}
-                disabled={readOnly}
-                style={{ minWidth: 100 }}
-                value={draft.language}
-                options={[
-                  { value: 'tsx', label: 'TSX' },
-                  { value: 'jsx', label: 'JSX' }
-                ]}
-                onChange={(language) =>
-                  setDraft((current) => ({ ...current, language }))
-                }
-              />
-            </Form.Item>
-          </Flex>
-        </Form>
-      }
       extraLibs={projection.monacoExtraLibs}
-      initialSection="code"
+      initialSection="configuration"
       loading={false}
       open={open}
       owner="settings:ui-management:code-templates"
@@ -243,8 +244,8 @@ export function UiCodeTemplateStudio({
       saving={saving}
       sections={
         workspaceId
-          ? ['code', 'interfaces', 'components', 'run']
-          : ['code', 'run']
+          ? ['code', 'interfaces', 'components', 'configuration', 'run']
+          : ['code', 'configuration', 'run']
       }
       source={draft.source}
       testId="ui-code-template-studio"
@@ -259,7 +260,9 @@ export function UiCodeTemplateStudio({
       onRun={() => undefined}
       onSave={submit}
       renderResource={(section) =>
-        section === 'run' || !workspaceId ? (
+        section === 'configuration' ? (
+          identityForm
+        ) : section === 'run' || !workspaceId ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={t('template_preview_unavailable')}
