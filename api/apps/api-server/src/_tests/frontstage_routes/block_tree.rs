@@ -21,6 +21,7 @@ async fn create_block(
         json!({
             "tab_id": tab_id,
             "title": title,
+            "description": format!("Description for {title}"),
             "presentation": "inline",
             "parent_block_id": parent_block_id,
             "code": code,
@@ -102,6 +103,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     assert_eq!(root["input_mapping"], json!({}));
     assert_eq!(root["output_mapping"], json!({}));
     assert_eq!(root["schema_version"], json!(1));
+    assert_eq!(root["description"], json!("Description for Root block"));
     assert_eq!(root["runtime_descriptor"]["id"], json!(root_id));
     assert_eq!(
         root["runtime_descriptor"]["codeRef"],
@@ -277,8 +279,37 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         json!("export default 'changed';")
     );
     assert_ne!(save_code_payload["data"]["source_sha256"], initial_hash);
+    let (update_status, update_payload) = send_json(
+        &app,
+        "PATCH",
+        &format!("{blocks_path}/{child_id}"),
+        &cookie,
+        &csrf,
+        json!({ "description": "Updated child description" }),
+    )
+    .await;
+    assert_eq!(update_status, StatusCode::OK, "{update_payload}");
+    assert_eq!(
+        update_payload["data"]["description"],
+        json!("Updated child description")
+    );
     let (_, child_detail) = get_json(&app, &format!("{blocks_path}/{child_id}"), &cookie).await;
     assert_eq!(child_detail["data"]["title"], json!("Searchable child"));
+    assert_eq!(
+        child_detail["data"]["description"],
+        json!("Updated child description")
+    );
+    let (clear_status, clear_payload) = send_json(
+        &app,
+        "PATCH",
+        &format!("{blocks_path}/{child_id}"),
+        &cookie,
+        &csrf,
+        json!({ "description": "   " }),
+    )
+    .await;
+    assert_eq!(clear_status, StatusCode::OK, "{clear_payload}");
+    assert_eq!(clear_payload["data"]["description"], Value::Null);
 
     let (delete_status, delete_payload) = send_json(
         &app,

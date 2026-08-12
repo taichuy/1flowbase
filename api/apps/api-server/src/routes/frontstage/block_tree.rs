@@ -44,6 +44,7 @@ pub enum FrontstageBlockPresentationDto {
 pub struct CreateFrontstageBlockNodeBody {
     pub tab_id: String,
     pub title: String,
+    pub description: Option<String>,
     pub presentation: FrontstageBlockPresentationDto,
     pub parent_block_id: Option<String>,
     pub before_block_id: Option<String>,
@@ -59,6 +60,7 @@ pub struct CreateFrontstageBlockNodeBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateFrontstageBlockNodeBody {
     pub title: Option<String>,
+    pub description: Option<String>,
     pub presentation: Option<FrontstageBlockPresentationDto>,
     pub input_mapping: Option<BTreeMap<String, String>>,
     pub output_mapping: Option<BTreeMap<String, String>>,
@@ -113,6 +115,7 @@ pub struct FrontstageBlockNodeSummaryResponse {
     pub rank: String,
     pub presentation: FrontstageBlockPresentationDto,
     pub title: Option<String>,
+    pub description: Option<String>,
     pub schema_version: u32,
     pub created_at: String,
     pub updated_at: String,
@@ -128,6 +131,7 @@ pub struct FrontstageBlockNodeResponse {
     pub rank: String,
     pub presentation: FrontstageBlockPresentationDto,
     pub title: Option<String>,
+    pub description: Option<String>,
     pub schema_version: u32,
     pub input_mapping: BTreeMap<String, String>,
     pub output_mapping: BTreeMap<String, String>,
@@ -324,6 +328,7 @@ pub async fn create_frontstage_block_node(
             page_id: parse_uuid(&page_id, "page_id")?,
             tab_id: parse_uuid(&body.tab_id, "tab_id")?,
             title: body.title,
+            description: body.description,
             presentation: to_domain_presentation(body.presentation),
             position: FrontstageBlockPosition {
                 parent_block_id: body.parent_block_id,
@@ -400,6 +405,7 @@ pub async fn update_frontstage_block_node(
         .update_block_node(UpdateFrontstageBlockNodeCommand {
             scope: block_scope(&context, workspace_id, page_id, block_id)?,
             title: body.title,
+            description: body.description,
             presentation: body.presentation.map(to_domain_presentation),
             input_mapping: body.input_mapping,
             output_mapping: body.output_mapping,
@@ -681,6 +687,7 @@ fn to_summary_response(
         rank: node.rank,
         presentation: to_presentation_response(node.presentation),
         title: node.title,
+        description: node.description,
         schema_version: node.schema_version,
         created_at: format_time(node.created_at),
         updated_at: format_time(node.updated_at),
@@ -697,6 +704,7 @@ fn to_node_response(node: domain::FrontstageBlockNodeRecord) -> FrontstageBlockN
         rank: node.rank,
         presentation: to_presentation_response(node.presentation),
         title: node.title,
+        description: node.description,
         schema_version: node.schema_version,
         input_mapping: node.input_mapping,
         output_mapping: node.output_mapping,

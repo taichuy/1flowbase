@@ -114,6 +114,7 @@ describe('frontstage block tree client contract', () => {
     const createInput = {
       tab_id: 'tab-1',
       title: 'Sales',
+      description: 'Sales block',
       presentation: 'drawer' as const,
       parent_block_id: null,
       before_block_id: null,
@@ -141,12 +142,20 @@ describe('frontstage block tree client contract', () => {
         'workspace-1',
         'page-1',
         'sales',
-        { title: 'Sales details', presentation: 'page' },
+        {
+          title: 'Sales details',
+          description: 'Sales details block',
+          presentation: 'page'
+        },
         'csrf'
       )
     ).resolves.toMatchObject({
       method: 'PATCH',
-      body: { title: 'Sales details', presentation: 'page' }
+      body: {
+        title: 'Sales details',
+        description: 'Sales details block',
+        presentation: 'page'
+      }
     });
     await expect(
       moveConsoleFrontstageBlockNode(
@@ -215,6 +224,7 @@ describe('frontstage block tree client contract', () => {
       rank: '001000',
       presentation: 'page',
       title: 'Sales',
+      description: 'Sales block',
       schema_version: 1,
       created_at: '2026-08-12T00:00:00Z',
       updated_at: '2026-08-12T00:00:00Z'
@@ -224,6 +234,7 @@ describe('frontstage block tree client contract', () => {
     expect(Object.keys(summary).sort()).toEqual([
       'block_id',
       'created_at',
+      'description',
       'page_id',
       'parent_block_id',
       'presentation',

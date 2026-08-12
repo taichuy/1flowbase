@@ -38,6 +38,7 @@
     "block_tree_create_child": "新增子区块",
     "block_tree_title_required": "请输入区块标题",
     "block_tree_presentation": "展示方式",
+    "block_tree_description": "区块描述",
     "block_tree_drawer": "抽屉",
     "block_tree_modal": "弹窗",
     "block_tree_inline": "行内",

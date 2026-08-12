@@ -1,12 +1,4 @@
-import {
-  BorderlessTableOutlined,
-  BorderOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  FileOutlined,
-  LayoutOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -24,7 +16,6 @@ import {
   Tree,
   Typography
 } from 'antd';
-import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
@@ -58,6 +49,7 @@ const INITIAL_BLOCK_SOURCE =
 
 interface BlockFormValues {
   title: string;
+  description?: string;
   presentation: FrontstageBlockPresentation;
 }
 
@@ -205,13 +197,14 @@ export function BlockSchemaTreePanel({
 
   const openCreateForm = (parent: FrontstageBlockNodeSummary) => {
     setFormTarget({ mode: 'create', parent });
-    form.setFieldsValue({ title: '', presentation: 'page' });
+    form.setFieldsValue({ title: '', description: '', presentation: 'page' });
   };
 
   const openEditForm = (node: FrontstageBlockNodeSummary) => {
     setFormTarget({ mode: 'edit', node });
     form.setFieldsValue({
-      title: node.title ?? '',
+      title: node.title ?? node.block_id,
+      description: node.description ?? '',
       presentation: node.presentation
     });
   };
@@ -224,6 +217,7 @@ export function BlockSchemaTreePanel({
         const created = await mutations.create.mutateAsync({
           tab_id: formTarget.parent.tab_id,
           title: values.title,
+          description: values.description ?? '',
           presentation: values.presentation,
           parent_block_id: formTarget.parent.block_id,
           before_block_id: null,
@@ -246,6 +240,7 @@ export function BlockSchemaTreePanel({
           block_id: formTarget.node.block_id,
           input: {
             title: values.title,
+            description: values.description ?? '',
             presentation: values.presentation
           }
         });
@@ -414,7 +409,6 @@ export function BlockSchemaTreePanel({
               draggable={operationPending ? false : { icon: false }}
               expandedKeys={expandedKeys}
               selectedKeys={[currentBlockId]}
-              showIcon
               treeData={treeData}
               loadData={(node) => loadChildren(node.summary)}
               onDrop={(info) => void moveNode(info)}
@@ -497,6 +491,12 @@ export function BlockSchemaTreePanel({
               }
             />
           </Form.Item>
+          <Form.Item
+            name="description"
+            label={i18nText('frontstage', 'auto.block_tree_description')}
+          >
+            <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} />
+          </Form.Item>
         </Form>
       </Modal>
     </div>
@@ -512,7 +512,6 @@ function toTreeNode(
     key: node.block_id,
     title: node.title ?? node.block_id,
     summary: node,
-    icon: presentationIcon(node.presentation),
     isLeaf: children !== undefined && children.length === 0,
     children: children?.map((child) => toTreeNode(child, childrenByParent))
   };
@@ -528,15 +527,6 @@ function findSummary(
     if (child) return child;
   }
   return null;
-}
-
-function presentationIcon(
-  presentation: FrontstageBlockPresentation
-): ReactNode {
-  if (presentation === 'drawer') return <LayoutOutlined />;
-  if (presentation === 'modal') return <BorderOutlined />;
-  if (presentation === 'inline') return <BorderlessTableOutlined />;
-  return <FileOutlined />;
 }
 
 function presentationOptions() {

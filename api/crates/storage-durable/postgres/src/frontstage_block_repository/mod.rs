@@ -49,6 +49,7 @@ const DETAIL_COLUMNS: &str = r#"
     node.sibling_rank,
     node.presentation,
     node.title,
+    node.description,
     node.code_ref,
     node.schema_version,
     node.created_at,
@@ -108,11 +109,12 @@ fn frontstage_block_metadata(workspace_id: Uuid) -> ModelMetadata {
             field("tab_id", ManyToOne, true, 20),
             field("presentation", String, true, 30),
             field("title", Text, false, 40),
-            field("code_ref", String, true, 50),
-            field("schema_version", Number, true, 60),
-            field("input_mapping", Json, true, 70),
-            field("output_mapping", Json, true, 80),
-            field("runtime_descriptor", Json, true, 90),
+            field("description", Text, false, 50),
+            field("code_ref", String, true, 60),
+            field("schema_version", Number, true, 70),
+            field("input_mapping", Json, true, 80),
+            field("output_mapping", Json, true, 90),
+            field("runtime_descriptor", Json, true, 100),
         ],
         record_capabilities: domain::DataModelRecordCapabilities::read_write(),
         resource: ResourceDescriptor::new(
@@ -153,9 +155,10 @@ fn frontstage_block_summary_metadata(workspace_id: Uuid) -> ModelMetadata {
         summary_field("tab_id", ManyToOne, true, true, 70),
         summary_field("presentation", String, true, true, 80),
         summary_field("title", Text, false, false, 90),
-        summary_field("schema_version", Number, true, true, 100),
-        summary_field("created_at", Datetime, true, true, 110),
-        summary_field("updated_at", Datetime, true, true, 120),
+        summary_field("description", Text, false, false, 100),
+        summary_field("schema_version", Number, true, true, 110),
+        summary_field("created_at", Datetime, true, true, 120),
+        summary_field("updated_at", Datetime, true, true, 130),
     ];
     metadata.record_capabilities = domain::DataModelRecordCapabilities::read_only();
     metadata
@@ -311,6 +314,7 @@ fn map_summary(row: &PgRow) -> Result<domain::FrontstageBlockNodeSummary> {
             ControlPlaneError::InvalidInput("frontstage_block_presentation"),
         )?,
         title: row.get("title"),
+        description: row.get("description"),
         schema_version: schema_version
             .try_into()
             .map_err(|_| ControlPlaneError::InvalidInput("frontstage_block_schema_version"))?,
@@ -332,6 +336,7 @@ fn map_record(row: &PgRow) -> Result<domain::FrontstageBlockNodeRecord> {
         rank: summary.rank,
         presentation: summary.presentation,
         title: summary.title,
+        description: summary.description,
         code_ref: row.get("code_ref"),
         schema_version: summary.schema_version,
         input_mapping: serde_json::from_value(input_mapping)?,
@@ -385,6 +390,7 @@ struct InternalBlockSummary {
     rank: String,
     presentation: domain::FrontstageBlockPresentation,
     title: Option<String>,
+    description: Option<String>,
     schema_version: u32,
     created_at: time::OffsetDateTime,
     updated_at: time::OffsetDateTime,
@@ -414,6 +420,7 @@ impl InternalBlockSummary {
             rank: self.rank,
             presentation: self.presentation,
             title: self.title,
+            description: self.description,
             schema_version: self.schema_version,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -477,6 +484,10 @@ fn decode_summary(record: &Value) -> Result<InternalBlockSummary> {
         )?,
         title: object
             .get("title")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        description: object
+            .get("description")
             .and_then(Value::as_str)
             .map(str::to_owned),
         schema_version,
@@ -626,6 +637,9 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         ]);
         if let Some(title) = &input.title {
             payload.insert("title".to_owned(), json!(title));
+        }
+        if let Some(description) = &input.description {
+            payload.insert("description".to_owned(), json!(description));
         }
         create_ordered_tree_node_in_transaction(
             &mut tx,
@@ -1016,10 +1030,11 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             update frontstage_block_nodes
             set presentation = case when $4 then $5 else presentation end,
                 title = case when $6 then $7 else title end,
-                input_mapping = case when $8 then $9 else input_mapping end,
-                output_mapping = case when $10 then $11 else output_mapping end,
-                runtime_descriptor = case when $12 then $13 else runtime_descriptor end,
-                updated_by = $14,
+                description = case when $8 then $9 else description end,
+                input_mapping = case when $10 then $11 else input_mapping end,
+                output_mapping = case when $12 then $13 else output_mapping end,
+                runtime_descriptor = case when $14 then $15 else runtime_descriptor end,
+                updated_by = $16,
                 updated_at = now()
             where scope_id = $1 and tree_partition_id = $2 and block_id = $3
             returning id
@@ -1032,6 +1047,8 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .bind(input.presentation.map(|value| value.as_str()))
         .bind(input.title.is_some())
         .bind(input.title.clone().flatten())
+        .bind(input.description.is_some())
+        .bind(input.description.clone().flatten())
         .bind(input.input_mapping.is_some())
         .bind(
             input

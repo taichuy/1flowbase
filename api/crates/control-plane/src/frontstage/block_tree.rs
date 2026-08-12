@@ -61,6 +61,7 @@ pub struct CreateFrontstageBlockNodeCommand {
     pub page_id: Uuid,
     pub tab_id: Uuid,
     pub title: String,
+    pub description: Option<String>,
     pub presentation: domain::FrontstageBlockPresentation,
     pub position: FrontstageBlockPosition,
     pub code: String,
@@ -72,6 +73,7 @@ pub struct CreateFrontstageBlockNodeCommand {
 pub struct UpdateFrontstageBlockNodeCommand {
     pub scope: FrontstageBlockScopeCommand,
     pub title: Option<String>,
+    pub description: Option<String>,
     pub presentation: Option<domain::FrontstageBlockPresentation>,
     pub input_mapping: Option<BTreeMap<String, String>>,
     pub output_mapping: Option<BTreeMap<String, String>>,
@@ -333,6 +335,7 @@ where
             )
             .await?;
         let title = required_block_title(command.title)?;
+        let description = optional_block_description(command.description);
         let block_id = Uuid::now_v7().to_string();
         let code_ref = format!("frontstage.block.{block_id}");
         let runtime_descriptor =
@@ -353,6 +356,7 @@ where
                 position: command.position,
                 presentation: command.presentation,
                 title: Some(title),
+                description,
                 code_ref,
                 schema_version: 1,
                 input_mapping: command.input_mapping,
@@ -379,6 +383,9 @@ where
             .await?;
         let existing = self.load_block_node(&command.scope).await?;
         let title = command.title.map(required_block_title).transpose()?;
+        let description = command
+            .description
+            .map(|value| optional_block_description(Some(value)));
         let runtime_descriptor = command
             .runtime_descriptor
             .map(|descriptor| {
@@ -403,6 +410,7 @@ where
                 block_id: command.scope.block_id,
                 presentation: command.presentation,
                 title: title.map(Some),
+                description,
                 input_mapping: command.input_mapping,
                 output_mapping: command.output_mapping,
                 runtime_descriptor,
@@ -620,6 +628,10 @@ fn required_block_title(title: String) -> Result<String> {
         return Err(ControlPlaneError::InvalidInput("frontstage_block_title").into());
     }
     Ok(title)
+}
+
+fn optional_block_description(description: Option<String>) -> Option<String> {
+    description.filter(|value| !value.trim().is_empty())
 }
 
 fn canonical_runtime_descriptor(

@@ -81,6 +81,7 @@ fn create_input(
         position,
         presentation: FrontstageBlockPresentation::Page,
         title: None,
+        description: None,
         code_ref: code_ref.to_owned(),
         schema_version: 1,
         input_mapping: BTreeMap::new(),

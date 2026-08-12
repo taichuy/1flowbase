@@ -13,6 +13,7 @@ export interface ConsoleFrontstageBlockNodeSummary {
   rank: string;
   presentation: ConsoleFrontstageBlockPresentation;
   title: string | null;
+  description: string | null;
   schema_version: number;
   created_at: string;
   updated_at: string;
@@ -76,6 +77,7 @@ export interface ConsoleFrontstageBlockOpenTarget {
 export interface CreateConsoleFrontstageBlockNodeInput {
   tab_id: string;
   title: string;
+  description?: string;
   presentation: ConsoleFrontstageBlockPresentation;
   parent_block_id: string | null;
   before_block_id: string | null;
@@ -88,6 +90,7 @@ export interface CreateConsoleFrontstageBlockNodeInput {
 
 export interface UpdateConsoleFrontstageBlockNodeInput {
   title?: string;
+  description?: string;
   presentation?: ConsoleFrontstageBlockPresentation;
   input_mapping?: Record<string, string>;
   output_mapping?: Record<string, string>;

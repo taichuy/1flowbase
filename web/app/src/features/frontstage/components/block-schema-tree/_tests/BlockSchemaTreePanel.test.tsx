@@ -131,6 +131,10 @@ describe('BlockSchemaTreePanel', () => {
     expect(
       screen.getByText('Root page').closest('[role="treeitem"]')
     ).toHaveAttribute('aria-selected', 'true');
+    expect(
+      screen.getByText('Root page').closest('[role="treeitem"]')
+        ?.querySelector('.ant-tree-iconEle')
+    ).toBeNull();
     expect(screen.queryByText(/根容器|Root container/u)).not.toBeInTheDocument();
 
     const rootTreeItem = screen
@@ -180,6 +184,9 @@ describe('BlockSchemaTreePanel', () => {
     fireEvent.change(screen.getByLabelText(/标题|Title/u), {
       target: { value: 'Nested page' }
     });
+    fireEvent.change(screen.getByLabelText(/描述|Description/u), {
+      target: { value: 'Nested page description' }
+    });
     fireEvent.mouseDown(screen.getByLabelText(/展示方式|Presentation/u));
     fireEvent.click(await screen.findByText(/页面|Page/u, { selector: '.ant-select-item-option-content' }));
     const createDialog = await screen.findByRole('dialog');
@@ -193,6 +200,7 @@ describe('BlockSchemaTreePanel', () => {
       expect(mutations.create.mutateAsync).toHaveBeenCalledWith({
         tab_id: 'tab-1',
         title: 'Nested page',
+        description: 'Nested page description',
         presentation: 'page',
         parent_block_id: 'root-page',
         before_block_id: null,
@@ -201,6 +209,38 @@ describe('BlockSchemaTreePanel', () => {
         runtime_descriptor: null
       });
       expect(onOpenBlock).toHaveBeenCalledWith('child-page');
+    });
+  });
+
+  test('AC-002/003 edits a legacy untitled root with its block id and optional description', async () => {
+    const legacyRoot = { ...root, title: null, description: null };
+    api.fetchFrontstageBlockRoots.mockResolvedValue([legacyRoot]);
+    api.fetchFrontstageBlockNode.mockResolvedValue(detail(legacyRoot));
+    renderPanel();
+
+    await screen.findByText('root-page');
+    fireEvent.click(screen.getByRole('button', { name: /编辑|Edit/u }));
+
+    expect(screen.getByLabelText(/标题|Title/u)).toHaveValue('root-page');
+    expect(screen.getByLabelText(/描述|Description/u)).toHaveValue('');
+    fireEvent.change(screen.getByLabelText(/描述|Description/u), {
+      target: { value: 'Root block description' }
+    });
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: /更\s*新|Update/u
+      })
+    );
+
+    await waitFor(() => {
+      expect(mutations.update.mutateAsync).toHaveBeenCalledWith({
+        block_id: 'root-page',
+        input: {
+          title: 'root-page',
+          description: 'Root block description',
+          presentation: 'page'
+        }
+      });
     });
   });
 
@@ -278,7 +318,7 @@ describe('BlockSchemaTreePanel', () => {
     await waitFor(() => {
       expect(mutations.update.mutateAsync).toHaveBeenCalledWith({
         block_id: 'root-page',
-        input: { title: 'Edited root', presentation: 'drawer' }
+        input: { title: 'Edited root', description: '', presentation: 'drawer' }
       });
     });
 
