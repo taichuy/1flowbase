@@ -189,6 +189,9 @@ function buildBackendCargoCommand({
         env: {
           ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
           CARGO_PROFILE_TEST_DEBUG: '0',
+          ...(normalizedShard.key.startsWith('api-server-')
+            ? { RUST_MIN_STACK: String(8 * 1024 * 1024) }
+            : {}),
         },
       };
     }

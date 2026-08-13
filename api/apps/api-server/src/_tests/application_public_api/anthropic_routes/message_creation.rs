@@ -4,7 +4,11 @@ use super::*;
 async fn anthropic_messages_accepts_x_api_key_and_preserves_model() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Compatible Route App").await;
-    assert_published_anthropic_plan_has_provider_route(state.as_ref()).await;
+    assert_published_anthropic_plan_has_provider_route(
+        state.as_ref(),
+        "Anthropic Compatible Route App",
+    )
+    .await;
 
     let response = post_json(&app, "/v1/messages", ("x-api-key", token), anthropic_body()).await;
 
@@ -19,7 +23,11 @@ async fn anthropic_messages_accepts_x_api_key_and_preserves_model() {
 async fn anthropic_messages_accepts_last_user_multimodal_content() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "Anthropic Multimodal Compatible Route App").await;
-    assert_published_anthropic_plan_has_provider_route(state.as_ref()).await;
+    assert_published_anthropic_plan_has_provider_route(
+        state.as_ref(),
+        "Anthropic Multimodal Compatible Route App",
+    )
+    .await;
 
     let response = post_json(
         &app,

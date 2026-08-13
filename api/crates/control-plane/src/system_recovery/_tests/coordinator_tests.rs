@@ -36,16 +36,18 @@ use crate::{
     },
 };
 
+type CapturedComponents = Arc<Mutex<BTreeMap<(BackupSetId, BackupComponentId), Vec<u8>>>>;
+
 #[derive(Default)]
 struct MemoryBackupRepository {
-    components: Arc<Mutex<BTreeMap<(BackupSetId, BackupComponentId), Vec<u8>>>>,
+    components: CapturedComponents,
     manifests: Mutex<BTreeMap<BackupSetId, domain::SealedBackupManifest>>,
     journals: Mutex<BTreeMap<BackupJournalSubject, Vec<BackupJournalEvent>>>,
 }
 
 struct CapturingWriter {
     key: (BackupSetId, BackupComponentId),
-    components: Arc<Mutex<BTreeMap<(BackupSetId, BackupComponentId), Vec<u8>>>>,
+    components: CapturedComponents,
     bytes: Vec<u8>,
 }
 
@@ -197,7 +199,7 @@ impl BackupRepository for MemoryBackupRepository {
 struct FixedKeyProvider;
 
 fn fingerprint(character: char) -> KeyFingerprint {
-    KeyFingerprint::try_from(std::iter::repeat(character).take(64).collect::<String>()).unwrap()
+    KeyFingerprint::try_from(std::iter::repeat_n(character, 64).collect::<String>()).unwrap()
 }
 
 #[async_trait]

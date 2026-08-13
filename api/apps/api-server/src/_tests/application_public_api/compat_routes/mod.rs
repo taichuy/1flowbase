@@ -617,10 +617,17 @@ async fn flow_run_count(state: &ApiState) -> i64 {
         .unwrap()
 }
 
-async fn assert_published_compat_plan_has_provider_route(state: &ApiState) {
+async fn assert_published_compat_plan_has_provider_route(state: &ApiState, application_name: &str) {
     let plan: Value = sqlx::query_scalar(
-        "select plan from flow_compiled_plans order by created_at desc, id desc limit 1",
+        "select compiled_plans.plan
+         from application_publication_versions publication
+         join applications application on application.id = publication.application_id
+         join flow_compiled_plans compiled_plans on compiled_plans.id = publication.compiled_plan_id
+         where application.name = $1 and publication.active
+         order by publication.created_at desc, publication.id desc
+         limit 1",
     )
+    .bind(application_name)
     .fetch_one(state.store.pool())
     .await
     .unwrap();
@@ -637,8 +644,9 @@ async fn assert_published_compat_plan_has_provider_route(state: &ApiState) {
         json!(COMPAT_ROUTE_PROVIDER_MODEL),
         "{plan}"
     );
+    let model_provider = &plan["nodes"]["node-llm"]["config"]["model_provider"];
     assert!(
-        runtime["provider_instance_id"]
+        model_provider["source_instance_id"]
             .as_str()
             .is_some_and(|value| !value.is_empty()),
         "{plan}"
