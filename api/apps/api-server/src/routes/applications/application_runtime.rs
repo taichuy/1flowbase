@@ -1,4 +1,4 @@
-use std::{collections::HashSet, convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc};
 
 use access_control::{
     APPLICATIONS_LOGS_EXPORT_OPERATION_ID, APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
@@ -27,7 +27,7 @@ use control_plane::{
         ResumeFlowRunCommand, StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
     },
     ports::{
-        ApplicationRepository, ApplicationRunTraceChildrenCursor,
+        ApplicationRepository, ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput,
         ListApplicationRunTraceChildrenPageInput, OrchestrationRuntimeRepository,

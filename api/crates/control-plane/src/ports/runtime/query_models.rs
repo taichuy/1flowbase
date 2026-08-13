@@ -66,3 +66,20 @@ pub struct ApplicationRunConversationMessageItemsPage {
     pub before_cursor: Option<i64>,
     pub after_cursor: Option<i64>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunOverviewReadModel {
+    pub flow_run: domain::FlowRunRecord,
+    pub node_runs: Vec<domain::NodeRunRecord>,
+    /// Payloads contain only tool identity fields required by the overview counter.
+    pub statistics_callback_tasks: Vec<domain::CallbackTaskRecord>,
+    pub waiting_node_id: Option<String>,
+    pub waiting_node_run_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunResumeTimelineReadModel {
+    pub flow_run: domain::FlowRunRecord,
+    pub callback_tasks: Vec<domain::CallbackTaskRecord>,
+    pub events: Vec<domain::RunEventRecord>,
+}

@@ -244,6 +244,198 @@ pub(super) async fn list_callback_tasks_for_flow_run(
     rows.into_iter().map(map_callback_task_record).collect()
 }
 
+pub(super) async fn list_overview_callback_tasks_for_flow_run(
+    store: &PgControlPlaneStore,
+    flow_run_id: Uuid,
+) -> Result<Vec<domain::CallbackTaskRecord>> {
+    let rows = sqlx::query(
+        r#"
+        select
+            tasks.id,
+            tasks.flow_run_id,
+            tasks.node_run_id,
+            tasks.callback_kind,
+            tasks.status,
+            case
+                when tasks.callback_kind = 'llm_tool_calls' then jsonb_build_object(
+                    'tool_calls', coalesce(request_tools.items, '[]'::jsonb)
+                )
+                else '{}'::jsonb
+            end as request_payload,
+            case
+                when tasks.callback_kind <> 'llm_tool_calls' then null
+                when response_tools.items is not null then jsonb_build_object(
+                    'tool_results', response_tools.items
+                )
+                when tasks.response_payload is null then null
+                else jsonb_strip_nulls(jsonb_build_object(
+                    'id', coalesce(
+                        tasks.response_payload -> 'tool_call_id',
+                        tasks.response_payload -> 'id',
+                        tasks.response_payload -> 'call_id'
+                    )
+                ))
+            end as response_payload,
+            null::jsonb as external_ref_payload,
+            tasks.created_at,
+            tasks.completed_at
+        from flow_run_callback_tasks tasks
+        left join lateral (
+            select jsonb_agg(
+                jsonb_strip_nulls(jsonb_build_object(
+                    'id', coalesce(tool.value -> 'id', tool.value -> 'tool_call_id', tool.value -> 'call_id'),
+                    'name', tool.value -> 'name'
+                ))
+                order by tool.ordinality
+            ) as items
+            from jsonb_array_elements(coalesce(tasks.request_payload -> 'tool_calls', '[]'::jsonb))
+                with ordinality as tool(value, ordinality)
+        ) request_tools on true
+        left join lateral (
+            select jsonb_agg(
+                jsonb_strip_nulls(jsonb_build_object(
+                    'id', coalesce(tool.value -> 'tool_call_id', tool.value -> 'id', tool.value -> 'call_id'),
+                    'name', tool.value -> 'name'
+                ))
+                order by tool.ordinality
+            ) as items
+            from jsonb_array_elements(coalesce(tasks.response_payload -> 'tool_results', '[]'::jsonb))
+                with ordinality as tool(value, ordinality)
+        ) response_tools on true
+        where tasks.flow_run_id = $1
+        order by tasks.created_at asc, tasks.id asc
+        "#,
+    )
+    .bind(flow_run_id)
+    .fetch_all(store.pool())
+    .await?;
+
+    rows.into_iter().map(map_callback_task_record).collect()
+}
+
+pub(super) async fn latest_overview_waiting_node(
+    store: &PgControlPlaneStore,
+    flow_run_id: Uuid,
+) -> Result<(Option<String>, Option<Uuid>)> {
+    let checkpoint = sqlx::query(
+        r#"
+        select locator_payload ->> 'node_id' as node_id, node_run_id
+        from flow_run_checkpoints
+        where flow_run_id = $1
+          and status like 'waiting%'
+        order by created_at desc, id desc
+        limit 1
+        "#,
+    )
+    .bind(flow_run_id)
+    .fetch_optional(store.pool())
+    .await?;
+    if let Some(checkpoint) = checkpoint {
+        return Ok((checkpoint.get("node_id"), checkpoint.get("node_run_id")));
+    }
+
+    let callback = sqlx::query(
+        r#"
+        select node_runs.node_id, tasks.node_run_id
+        from flow_run_callback_tasks tasks
+        left join node_runs on node_runs.id = tasks.node_run_id
+        where tasks.flow_run_id = $1
+          and tasks.status = 'pending'
+        order by tasks.created_at desc, tasks.id desc
+        limit 1
+        "#,
+    )
+    .bind(flow_run_id)
+    .fetch_optional(store.pool())
+    .await?;
+
+    Ok(callback
+        .map(|row| (row.get("node_id"), row.get("node_run_id")))
+        .unwrap_or((None, None)))
+}
+
+pub(super) async fn list_resume_timeline_events_for_flow_run(
+    store: &PgControlPlaneStore,
+    flow_run_id: Uuid,
+) -> Result<Vec<domain::RunEventRecord>> {
+    let rows = sqlx::query(
+        r#"
+        select id, flow_run_id, node_run_id, sequence, event_type, payload, created_at
+        from flow_run_events
+        where flow_run_id = $1
+          and event_type in (
+              'public_run_resume_requested',
+              'public_run_resume_succeeded',
+              'public_run_resume_failed',
+              'public_run_resume_cancelled',
+              'flow_run_resumed'
+          )
+        order by sequence asc, id asc
+        "#,
+    )
+    .bind(flow_run_id)
+    .fetch_all(store.pool())
+    .await?;
+
+    Ok(rows.into_iter().map(map_run_event_record).collect())
+}
+
+pub(super) async fn list_trace_checkpoints_for_node_runs(
+    store: &PgControlPlaneStore,
+    application_id: Uuid,
+    flow_run_id: Uuid,
+    node_run_ids: Vec<Uuid>,
+) -> Result<Vec<domain::CheckpointRecord>> {
+    let rows = sqlx::query(
+        r#"
+        select checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
+               checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
+               checkpoints.variable_snapshot, checkpoints.external_ref_payload,
+               checkpoints.created_at
+        from flow_run_checkpoints checkpoints
+        join flow_runs runs on runs.id = checkpoints.flow_run_id
+        where runs.application_id = $1
+          and checkpoints.flow_run_id = $2
+          and checkpoints.node_run_id = any($3)
+        order by checkpoints.created_at asc, checkpoints.id asc
+        "#,
+    )
+    .bind(application_id)
+    .bind(flow_run_id)
+    .bind(node_run_ids)
+    .fetch_all(store.pool())
+    .await?;
+
+    Ok(rows.into_iter().map(map_checkpoint_record).collect())
+}
+
+pub(super) async fn list_trace_events_for_node_runs(
+    store: &PgControlPlaneStore,
+    application_id: Uuid,
+    flow_run_id: Uuid,
+    node_run_ids: Vec<Uuid>,
+) -> Result<Vec<domain::RunEventRecord>> {
+    let rows = sqlx::query(
+        r#"
+        select events.id, events.flow_run_id, events.node_run_id, events.sequence,
+               events.event_type, events.payload, events.created_at
+        from flow_run_events events
+        join flow_runs runs on runs.id = events.flow_run_id
+        where runs.application_id = $1
+          and events.flow_run_id = $2
+          and events.node_run_id = any($3)
+        order by events.sequence asc, events.id asc
+        "#,
+    )
+    .bind(application_id)
+    .bind(flow_run_id)
+    .bind(node_run_ids)
+    .fetch_all(store.pool())
+    .await?;
+
+    Ok(rows.into_iter().map(map_run_event_record).collect())
+}
+
 pub(super) async fn list_stitched_trace_source_runs_for_flow_run(
     store: &PgControlPlaneStore,
     current_run: &domain::FlowRunRecord,

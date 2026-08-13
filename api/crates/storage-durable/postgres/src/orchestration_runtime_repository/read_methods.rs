@@ -905,6 +905,65 @@ impl PgControlPlaneStore {
         }))
     }
 
+    async fn get_application_run_overview(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunOverviewReadModel>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+        let (waiting_node_id, waiting_node_run_id) =
+            latest_overview_waiting_node(self, flow_run.id).await?;
+
+        Ok(Some(ApplicationRunOverviewReadModel {
+            node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
+            statistics_callback_tasks: list_overview_callback_tasks_for_flow_run(self, flow_run.id)
+                .await?,
+            waiting_node_id,
+            waiting_node_run_id,
+            flow_run,
+        }))
+    }
+
+    async fn get_application_run_resume_timeline(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineReadModel>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(ApplicationRunResumeTimelineReadModel {
+            callback_tasks: list_callback_tasks_for_flow_run(self, flow_run.id).await?,
+            events: list_resume_timeline_events_for_flow_run(self, flow_run.id).await?,
+            flow_run,
+        }))
+    }
+
+    async fn list_application_run_trace_checkpoints(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::CheckpointRecord>> {
+        list_trace_checkpoints_for_node_runs(self, application_id, flow_run_id, node_run_ids).await
+    }
+
+    async fn list_application_run_trace_events(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::RunEventRecord>> {
+        list_trace_events_for_node_runs(self, application_id, flow_run_id, node_run_ids).await
+    }
+
     async fn get_application_run_trace_projection_source(
         &self,
         application_id: Uuid,

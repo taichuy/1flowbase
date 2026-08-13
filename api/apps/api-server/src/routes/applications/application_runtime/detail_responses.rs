@@ -173,10 +173,16 @@ fn is_legacy_waiting_answer_snapshot_node_run(run: &domain::NodeRunRecord) -> bo
 fn split_answer_snapshot_node_runs(
     detail: &domain::ApplicationRunDetail,
 ) -> (Option<domain::NodeRunRecord>, Vec<domain::NodeRunRecord>) {
+    split_answer_snapshot_node_run_records(&detail.node_runs)
+}
+
+fn split_answer_snapshot_node_run_records(
+    records: &[domain::NodeRunRecord],
+) -> (Option<domain::NodeRunRecord>, Vec<domain::NodeRunRecord>) {
     let mut answer_snapshot = None;
     let mut node_runs = Vec::new();
 
-    for node_run in detail.node_runs.iter().cloned() {
+    for node_run in records.iter().cloned() {
         if is_legacy_waiting_answer_snapshot_node_run(&node_run) {
             answer_snapshot = Some(node_run);
         } else {
@@ -253,9 +259,16 @@ fn to_answer_snapshot_response(
     run: &domain::NodeRunRecord,
     detail: &domain::ApplicationRunDetail,
 ) -> Option<AnswerSnapshotResponse> {
+    to_answer_snapshot_response_with_waiting_node(run, waiting_node_for_answer_snapshot(detail))
+}
+
+fn to_answer_snapshot_response_with_waiting_node(
+    run: &domain::NodeRunRecord,
+    waiting_node: (Option<String>, Option<String>),
+) -> Option<AnswerSnapshotResponse> {
     let text = answer_snapshot_text(&run.output_payload)?;
     let materialized_from = waiting_answer_snapshot_marker(run)?.to_string();
-    let (waiting_node_id, waiting_node_run_id) = waiting_node_for_answer_snapshot(detail);
+    let (waiting_node_id, waiting_node_run_id) = waiting_node;
 
     Some(AnswerSnapshotResponse {
         kind: "answer".to_string(),
@@ -273,13 +286,23 @@ fn to_answer_snapshot_response(
 fn to_flow_run_answer_snapshot_response(
     detail: &domain::ApplicationRunDetail,
 ) -> Option<AnswerSnapshotResponse> {
-    let text = answer_snapshot_text(&detail.flow_run.output_payload)?;
-    let (waiting_node_id, waiting_node_run_id) = waiting_node_for_answer_snapshot(detail);
+    to_flow_run_answer_snapshot_response_with_waiting_node(
+        &detail.flow_run,
+        waiting_node_for_answer_snapshot(detail),
+    )
+}
+
+fn to_flow_run_answer_snapshot_response_with_waiting_node(
+    flow_run: &domain::FlowRunRecord,
+    waiting_node: (Option<String>, Option<String>),
+) -> Option<AnswerSnapshotResponse> {
+    let text = answer_snapshot_text(&flow_run.output_payload)?;
+    let (waiting_node_id, waiting_node_run_id) = waiting_node;
 
     Some(AnswerSnapshotResponse {
         kind: "answer".to_string(),
         text,
-        output_payload: detail.flow_run.output_payload.clone(),
+        output_payload: flow_run.output_payload.clone(),
         complete: false,
         materialized_from: "flow_run_output".to_string(),
         answer_node_id: None,

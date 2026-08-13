@@ -287,10 +287,8 @@ async fn ensure_application_run_trace_projection_status(
         0,
     )
     .await?;
-    let source = enrich_application_run_detail_visible_internal_llm_route_traces(
-        source,
-        &runtime_events,
-    );
+    let source =
+        enrich_application_run_detail_visible_internal_llm_route_traces(source, &runtime_events);
     let projection = build_application_run_trace_projection(&source)?;
     <MainDurableStore as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
         &state.store,
@@ -379,45 +377,55 @@ fn projection_is_succeeded(status: &domain::ApplicationRunTraceProjectionStatusR
 }
 
 fn answer_snapshot_for_log_overview(
-    detail: &domain::ApplicationRunDetail,
+    overview: &ApplicationRunOverviewReadModel,
 ) -> Option<AnswerSnapshotResponse> {
-    let (answer_snapshot_node_run, _) = split_answer_snapshot_node_runs(detail);
+    let (answer_snapshot_node_run, _) = split_answer_snapshot_node_run_records(&overview.node_runs);
 
-    if !flow_run_can_expose_answer_snapshot(&detail.flow_run.status) {
+    if !flow_run_can_expose_answer_snapshot(&overview.flow_run.status) {
         return None;
     }
 
+    let waiting_node = (
+        overview.waiting_node_id.clone(),
+        overview.waiting_node_run_id.map(|value| value.to_string()),
+    );
+
     answer_snapshot_node_run
         .as_ref()
-        .and_then(|node_run| to_answer_snapshot_response(node_run, detail))
-        .or_else(|| to_flow_run_answer_snapshot_response(detail))
+        .and_then(|node_run| {
+            to_answer_snapshot_response_with_waiting_node(node_run, waiting_node.clone())
+        })
+        .or_else(|| {
+            to_flow_run_answer_snapshot_response_with_waiting_node(&overview.flow_run, waiting_node)
+        })
 }
 
 fn to_application_run_overview_response(
     application: &domain::ApplicationRecord,
-    detail: domain::ApplicationRunDetail,
+    overview: ApplicationRunOverviewReadModel,
 ) -> ApplicationRunOverviewResponse {
-    let (_, current_visible_node_runs) = split_answer_snapshot_node_runs(&detail);
-    let statistics = application_run_statistics(&domain::ApplicationRunDetail {
-        node_runs: current_visible_node_runs,
-        ..detail.clone()
-    });
+    let (_, current_visible_node_runs) =
+        split_answer_snapshot_node_run_records(&overview.node_runs);
+    let statistics = application_run_statistics_for_records(
+        &current_visible_node_runs,
+        &overview.statistics_callback_tasks,
+    );
 
     ApplicationRunOverviewResponse {
-        run: application_run_log_response_for_trace_tree(application, &detail.flow_run),
+        run: application_run_log_response_for_trace_tree(application, &overview.flow_run),
         statistics,
-        flow_run: to_flow_run_response(detail.flow_run.clone()),
-        answer_snapshot: answer_snapshot_for_log_overview(&detail),
+        flow_run: to_flow_run_response(overview.flow_run.clone()),
+        answer_snapshot: answer_snapshot_for_log_overview(&overview),
     }
 }
 
-async fn load_application_run_detail_for_log_overview(
+async fn load_application_run_overview(
     state: Arc<ApiState>,
     application_id: Uuid,
     flow_run_id: Uuid,
-) -> Result<domain::ApplicationRunDetail, ApiError> {
+) -> Result<ApplicationRunOverviewReadModel, ApiError> {
     Ok(
-        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_overview(
             &state.store,
             application_id,
             flow_run_id,
@@ -448,8 +456,8 @@ pub async fn get_application_run_overview(
 ) -> Result<Json<ApiSuccess<ApplicationRunOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let application = ensure_application_visible(&state, &context.actor, id).await?;
-    let detail = load_application_run_detail_for_log_overview(state, id, run_id).await?;
-    let response = to_application_run_overview_response(&application, detail);
+    let overview = load_application_run_overview(state, id, run_id).await?;
+    let response = to_application_run_overview_response(&application, overview);
 
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -638,23 +646,26 @@ pub async fn get_application_run_trace_node_content(
     let projection_status = to_trace_projection_status_response(&status);
     let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
     if !projection_is_succeeded(&status) {
-        return Ok(Json(ApiSuccess::new(ApplicationRunTraceNodeContentResponse {
-            trace_node_id,
-            node_kind: "trace_projection".to_string(),
-            projection_status,
-            content_kind: "trace_projection".to_string(),
-            source_refs: serde_json::Value::Array(Vec::new()),
-            detail_refs: serde_json::Value::Array(Vec::new()),
-            payload: serde_json::json!({}),
-        })));
+        return Ok(Json(ApiSuccess::new(
+            ApplicationRunTraceNodeContentResponse {
+                trace_node_id,
+                node_kind: "trace_projection".to_string(),
+                projection_status,
+                content_kind: "trace_projection".to_string(),
+                source_refs: serde_json::Value::Array(Vec::new()),
+                detail_refs: serde_json::Value::Array(Vec::new()),
+                payload: serde_json::json!({}),
+            },
+        )));
     }
-    let node = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-        &state.store,
-        run_id,
-        trace_node_uuid,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+    let node =
+        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+            &state.store,
+            run_id,
+            trace_node_uuid,
+        )
+        .await?
+        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
     let content =
         <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
             &state.store,
@@ -724,13 +735,14 @@ pub async fn get_application_run_trace_node_detail(
             },
         )));
     }
-    let node = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-        &state.store,
-        run_id,
-        trace_node_uuid,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+    let node =
+        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+            &state.store,
+            run_id,
+            trace_node_uuid,
+        )
+        .await?
+        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
     let content =
         <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
             &state.store,
@@ -777,54 +789,36 @@ pub async fn get_application_run_trace_node_detail(
             trace_node_run_detail_payload(node_run)
         }
         "checkpoints" => {
-            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?
-                .into_iter()
-                .collect::<HashSet<_>>();
+            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?;
             let detail_flow_run_id =
                 trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
-            let detail =
-                <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+            let checkpoints =
+                <MainDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_checkpoints(
                     &state.store,
                     id,
                     detail_flow_run_id,
+                    node_run_ids,
                 )
                 .await?
-                .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-            let checkpoints = detail
-                .checkpoints
                 .into_iter()
-                .filter(|checkpoint| {
-                    checkpoint
-                        .node_run_id
-                        .is_some_and(|node_run_id| node_run_ids.contains(&node_run_id))
-                })
                 .map(to_checkpoint_response)
                 .collect::<Vec<_>>();
 
             serde_json::json!({ "checkpoints": checkpoints })
         }
         "events" => {
-            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?
-                .into_iter()
-                .collect::<HashSet<_>>();
+            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?;
             let detail_flow_run_id =
                 trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
-            let detail =
-                <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+            let events =
+                <MainDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_events(
                     &state.store,
                     id,
                     detail_flow_run_id,
+                    node_run_ids,
                 )
                 .await?
-                .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-            let events = detail
-                .events
                 .into_iter()
-                .filter(|event| {
-                    event
-                        .node_run_id
-                        .is_some_and(|node_run_id| node_run_ids.contains(&node_run_id))
-                })
                 .map(to_run_event_response)
                 .collect::<Vec<_>>();
 
@@ -881,13 +875,14 @@ pub async fn get_application_run_trace_tool_callback_content(
             },
         )));
     }
-    let owner = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-        &state.store,
-        run_id,
-        trace_node_uuid,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("trace_node"))?;
+    let owner =
+        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+            &state.store,
+            run_id,
+            trace_node_uuid,
+        )
+        .await?
+        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
     let tool_node =
         find_trace_projection_tool_callback_node(&state, run_id, &owner, &tool_call_id).await?;
     let content =
@@ -929,29 +924,20 @@ pub async fn get_application_run_resume_timeline(
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     ensure_application_visible(&state, &context.actor, id).await?;
-    let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
-        &state.store,
-        id,
-        run_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let events = detail
+    let timeline =
+        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
+            &state.store,
+            id,
+            run_id,
+        )
+        .await?
+        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+    let events = timeline
         .events
         .into_iter()
-        .filter(|event| {
-            matches!(
-                event.event_type.as_str(),
-                "public_run_resume_requested"
-                    | "public_run_resume_succeeded"
-                    | "public_run_resume_failed"
-                    | "public_run_resume_cancelled"
-                    | "flow_run_resumed"
-            )
-        })
         .map(to_run_event_response)
         .collect();
-    let callback_tasks = detail
+    let callback_tasks = timeline
         .callback_tasks
         .into_iter()
         .map(to_callback_task_response)
@@ -959,7 +945,7 @@ pub async fn get_application_run_resume_timeline(
 
     Ok(Json(ApiSuccess::new(
         ApplicationRunResumeTimelineResponse {
-            flow_run: to_flow_run_response(detail.flow_run),
+            flow_run: to_flow_run_response(timeline.flow_run),
             callback_tasks,
             events,
         },

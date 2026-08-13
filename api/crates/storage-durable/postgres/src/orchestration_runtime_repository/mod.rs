@@ -21,6 +21,7 @@ use control_plane::{
         AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
         AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput,
         AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunCountTokensResult,
+        ApplicationRunOverviewReadModel, ApplicationRunResumeTimelineReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
         AttachCompiledPlanToFlowRunInput, CallbackResumeContext, CallbackResumeWaitingNode,
         ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
@@ -638,6 +639,53 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunDetail>> {
         PgControlPlaneStore::get_application_run_detail(self, application_id, flow_run_id).await
+    }
+
+    async fn get_application_run_overview(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunOverviewReadModel>> {
+        PgControlPlaneStore::get_application_run_overview(self, application_id, flow_run_id).await
+    }
+
+    async fn get_application_run_resume_timeline(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineReadModel>> {
+        PgControlPlaneStore::get_application_run_resume_timeline(self, application_id, flow_run_id)
+            .await
+    }
+
+    async fn list_application_run_trace_checkpoints(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::CheckpointRecord>> {
+        PgControlPlaneStore::list_application_run_trace_checkpoints(
+            self,
+            application_id,
+            flow_run_id,
+            node_run_ids,
+        )
+        .await
+    }
+
+    async fn list_application_run_trace_events(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::RunEventRecord>> {
+        PgControlPlaneStore::list_application_run_trace_events(
+            self,
+            application_id,
+            flow_run_id,
+            node_run_ids,
+        )
+        .await
     }
 
     async fn get_application_run_trace_projection_source(

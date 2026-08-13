@@ -422,6 +422,40 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Option<domain::ApplicationRunDetail>>;
+    async fn get_application_run_overview(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationRunOverviewReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_application_run_overview not implemented")
+    }
+    async fn get_application_run_resume_timeline(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationRunResumeTimelineReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_application_run_resume_timeline not implemented")
+    }
+    async fn list_application_run_trace_checkpoints(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> anyhow::Result<Vec<domain::CheckpointRecord>> {
+        let _ = (application_id, flow_run_id, node_run_ids);
+        anyhow::bail!("list_application_run_trace_checkpoints not implemented")
+    }
+    async fn list_application_run_trace_events(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> anyhow::Result<Vec<domain::RunEventRecord>> {
+        let _ = (application_id, flow_run_id, node_run_ids);
+        anyhow::bail!("list_application_run_trace_events not implemented")
+    }
     async fn get_application_run_trace_projection_source(
         &self,
         application_id: Uuid,

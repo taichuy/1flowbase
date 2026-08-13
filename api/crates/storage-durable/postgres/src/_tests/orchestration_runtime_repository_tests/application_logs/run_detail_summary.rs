@@ -1000,6 +1000,181 @@ async fn application_run_trace_projection_watermark_hides_failed_imported_stitch
     );
 }
 
+#[tokio::test]
+async fn application_run_lightweight_reads_preserve_contract_order_without_unrelated_payloads() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-08-13 08:00:00 UTC);
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let node = seed_node_run_for(
+        &store,
+        &run,
+        "node-tool",
+        "llm",
+        "Tool caller",
+        json!({}),
+        started_at,
+    )
+    .await;
+    let callback = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_callback_task(
+        &store,
+        &CreateCallbackTaskInput {
+            flow_run_id: run.id,
+            node_run_id: node.id,
+            callback_kind: "llm_tool_calls".to_string(),
+            request_payload: json!({
+                "tool_calls": [{
+                    "id": "call-1",
+                    "name": "lookup",
+                    "arguments": { "large_context": "must stay out of overview" }
+                }],
+                "fixed_context_copy": "must stay out of overview"
+            }),
+            external_ref_payload: Some(json!({ "large_external_context": true })),
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_callback_task(
+        &store,
+        &CompleteCallbackTaskInput {
+            callback_task_id: callback.id,
+            response_payload: json!({
+                "tool_results": [{
+                    "tool_call_id": "call-1",
+                    "name": "lookup",
+                    "content": "full callback result remains observable on the timeline"
+                }]
+            }),
+            completed_at: started_at + Duration::seconds(2),
+        },
+    )
+    .await
+    .unwrap();
+    let checkpoint = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_checkpoint(
+        &store,
+        &CreateCheckpointInput {
+            flow_run_id: run.id,
+            node_run_id: Some(node.id),
+            status: "waiting_callback".to_string(),
+            reason: "waiting".to_string(),
+            locator_payload: json!({ "node_id": "node-tool", "next_node_index": 1 }),
+            variable_snapshot: json!({ "large_snapshot": "detail-only" }),
+            external_ref_payload: Some(json!({ "detail": true })),
+        },
+    )
+    .await
+    .unwrap();
+    for event_type in [
+        "public_run_resume_requested",
+        "unrelated_runtime_fact",
+        "flow_run_resumed",
+    ] {
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_event(
+            &store,
+            &AppendRunEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node.id),
+                event_type: event_type.to_string(),
+                payload: json!({ "event_type": event_type }),
+                created_at: started_at + Duration::seconds(3),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    let overview =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_overview(
+            &store,
+            seeded.application_id,
+            run.id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(overview.waiting_node_id.as_deref(), Some("node-tool"));
+    assert_eq!(overview.waiting_node_run_id, Some(node.id));
+    assert_eq!(
+        overview.statistics_callback_tasks[0].request_payload,
+        json!({ "tool_calls": [{ "id": "call-1", "name": "lookup" }] })
+    );
+    assert_eq!(
+        overview.statistics_callback_tasks[0].response_payload,
+        Some(json!({ "tool_results": [{ "id": "call-1", "name": "lookup" }] }))
+    );
+    assert_eq!(
+        overview.statistics_callback_tasks[0].external_ref_payload,
+        None
+    );
+
+    let timeline = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
+        &store,
+        seeded.application_id,
+        run.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        timeline.callback_tasks[0].request_payload,
+        callback.request_payload
+    );
+    assert_eq!(
+        timeline.callback_tasks[0].response_payload,
+        Some(json!({
+            "tool_results": [{
+                "tool_call_id": "call-1",
+                "name": "lookup",
+                "content": "full callback result remains observable on the timeline"
+            }]
+        }))
+    );
+    assert_eq!(
+        timeline
+            .events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        vec!["public_run_resume_requested", "flow_run_resumed"]
+    );
+    assert!(timeline.events[0].sequence < timeline.events[1].sequence);
+
+    let checkpoints = <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_checkpoints(
+        &store,
+        seeded.application_id,
+        run.id,
+        vec![node.id],
+    )
+    .await
+    .unwrap();
+    assert_eq!(checkpoints, vec![checkpoint]);
+    let events =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_events(
+            &store,
+            seeded.application_id,
+            run.id,
+            vec![node.id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 3);
+    assert!(events
+        .windows(2)
+        .all(|pair| pair[0].sequence < pair[1].sequence));
+}
+
 async fn set_run_external_context(
     store: &PgControlPlaneStore,
     run_id: Uuid,
