@@ -6,14 +6,19 @@ import {
   type NativeReactCatalogDependencyLock,
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime';
+import {
+  getFrontstageBlockCode,
+  type ConsoleFrontstageBlockCode
+} from '@1flowbase/api-client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { fetchFrontstageBlockCode } from '../api/block-code';
+import { getFrontstageApiBaseUrl } from '../api/page-tree';
 import {
   compileNativeReactComponentInBrowser,
   getNativeReactRuntimeFingerprint,
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
+import { readLockedNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
@@ -26,10 +31,7 @@ import {
   type FrontstageNativePreparationSnapshot,
   type FrontstageNativePreparationTask
 } from '../lib/page-canvas/native-runtime-preparation';
-import {
-  frontstageRuntimeSourceMatchesDigest,
-  type FrontstagePageCanvasBlockCodeReadPlan
-} from '../lib/page-canvas/runtime-source';
+import type { FrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
 import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 import {
@@ -37,18 +39,12 @@ import {
   type ExternalNpmPackState
 } from '../api/external-npm';
 
-interface NativePreparationSource {
-  code: string;
-  source_sha256: string;
-}
+type NativePreparationSource = ConsoleFrontstageBlockCode;
 
 export interface UseFrontstagePageCanvasNativePreparationsInput {
   actorId: string | null | undefined;
   actorWorkspaceId: string | null | undefined;
   readPlan: FrontstagePageCanvasBlockCodeReadPlan | null | undefined;
-  dependencyLocksByBlockId: Readonly<
-    Record<string, NativeReactCatalogDependencyLock>
-  >;
   externalNpm: ExternalNpmPackState;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
   maxConcurrent?: number;
@@ -78,7 +74,6 @@ export function useFrontstagePageCanvasNativePreparations({
   actorId,
   actorWorkspaceId,
   readPlan,
-  dependencyLocksByBlockId,
   externalNpm,
   demandsByBlockId,
   maxConcurrent = 2,
@@ -117,11 +112,6 @@ export function useFrontstagePageCanvasNativePreparations({
       return [];
     }
     return readPlan.requests.map((request) => {
-      const dependencyLock = dependencyLocksByBlockId[request.blockId] ?? [];
-      const currentRuntimeFingerprint =
-        runtimeFingerprint ?? getNativeReactRuntimeFingerprint(dependencyLock);
-      const dependencyLockIdentity =
-        nativeReactCatalogDependencyLockIdentity(dependencyLock);
       return {
         blockId: request.blockId,
         slotIndex: request.slotIndex,
@@ -129,8 +119,6 @@ export function useFrontstagePageCanvasNativePreparations({
           actorId,
           readPlan.workspaceId,
           request.codeRef,
-          currentRuntimeFingerprint,
-          dependencyLockIdentity,
           externalNpm.status
         ].join('/'),
         observationContext: {
@@ -153,17 +141,19 @@ export function useFrontstagePageCanvasNativePreparations({
         prepare: async (signal, enterStage) => {
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
-          if (
-            !frontstageRuntimeSourceMatchesDigest(
-              source.code,
-              source.source_sha256
-            )
-          ) {
-            throw new Error(
-              `Block code digest does not match source_sha256 for ${request.codeRef}.`
+          const executable = readLockedNativeReactExecutableStyle(source);
+          const dependencyLock = executable.dependency_lock;
+          const currentRuntimeFingerprint =
+            runtimeFingerprint ??
+            getNativeReactRuntimeFingerprint(
+              dependencyLock,
+              executable.executable_style_identity
             );
-          }
-          const legacyDiagnostic = diagnoseLegacyBlockModuleSource(source.code);
+          const dependencyLockIdentity =
+            nativeReactCatalogDependencyLockIdentity(dependencyLock);
+          const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
+            executable.source_code
+          );
           if (legacyDiagnostic) {
             throw new NativeReactSourceContractError(legacyDiagnostic);
           }
@@ -171,7 +161,7 @@ export function useFrontstagePageCanvasNativePreparations({
           const identity = createFrontstageNativeReactArtifactCacheIdentity({
             actorId,
             workspaceId: readPlan.workspaceId,
-            source: source.code,
+            source: executable.source_code,
             dependencyLock,
             runtimeFingerprint: currentRuntimeFingerprint
           });
@@ -185,7 +175,7 @@ export function useFrontstagePageCanvasNativePreparations({
           } else {
             enterStage('compile', 'miss');
             const compiled = await compile({
-              source: source.code,
+              source: executable.source_code,
               requestId: `${request.requestId}:${identity.source_sha256}`,
               dependencyLock,
               runtimeFingerprint: currentRuntimeFingerprint
@@ -244,11 +234,13 @@ export function useFrontstagePageCanvasNativePreparations({
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
-            moduleAssets,
+            moduleAssets: [...moduleAssets, executable.shadow_style_asset],
+            generatedCssSha256: executable.generated_css_sha256,
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
               runtimeFingerprint: currentRuntimeFingerprint,
-              dependencyLockIdentity
+              dependencyLockIdentity,
+              executableStyleIdentity: executable.executable_style_identity
             }
           };
         }
@@ -260,7 +252,6 @@ export function useFrontstagePageCanvasNativePreparations({
     artifactCache,
     compile,
     componentFactoryFlights,
-    dependencyLocksByBlockId,
     externalNpm,
     fetchSource,
     moduleRegistryFactory,
@@ -297,16 +288,14 @@ async function defaultFetchSource(
   signal: AbortSignal
 ): Promise<NativePreparationSource> {
   throwIfAborted(signal);
-  const source = await fetchFrontstageBlockCode(
+  const source = await getFrontstageBlockCode(
     request.workspaceId,
     request.pageId,
-    request.codeRef
+    request.codeRef,
+    getFrontstageApiBaseUrl()
   );
   throwIfAborted(signal);
-  if (!source.code?.trim() || !source.source_sha256?.trim()) {
-    throw new Error(`Block code is empty for ${request.codeRef}.`);
-  }
-  return { code: source.code, source_sha256: source.source_sha256 };
+  return source;
 }
 
 function throwIfAborted(signal: AbortSignal): void {

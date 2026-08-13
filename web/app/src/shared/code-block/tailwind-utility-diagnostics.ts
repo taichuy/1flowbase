@@ -1,17 +1,11 @@
-import { findUnsupportedTailwindUtilityClasses } from '@1flowbase/tailwindcss-catalog/inventory';
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
+/**
+ * Tailwind validity belongs to the source-driven compiler. This compatibility
+ * entry point intentionally imposes no private utility inventory.
+ */
 export function diagnoseUnsupportedTailwindUtilities(
-  source: string
+  _source: string
 ): BlockProtocolError[] {
-  return findUnsupportedTailwindUtilityClasses(source).map(
-    ({ className, sourceLocation }, index) => ({
-      code: 'transform_failed',
-      path: `source.classNames[${index}]`,
-      message: className.startsWith('<dynamic')
-        ? 'Dynamic className expressions cannot be verified against the official low-code Tailwind inventory; use a static className literal.'
-        : `Tailwind utility '${className}' is not available in the official low-code inventory.`,
-      sourceLocation
-    })
-  );
+  return [];
 }

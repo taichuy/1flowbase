@@ -7,6 +7,7 @@ import {
   compileNativeReactComponentInBrowser,
   createNativeReactBrowserCompilerWorkerFactory,
   getNativeReactCompilerWorkerUrl,
+  getNativeReactRuntimeFingerprint,
   type NativeReactBrowserCompilerWorker
 } from '../native-react-compiler-browser';
 
@@ -32,6 +33,12 @@ class FakeBrowserWorker implements NativeReactBrowserCompilerWorker {
 }
 
 describe('Native React browser compiler adapter', () => {
+  test('AC-005/006 binds executable style identity into artifact/cache identity', () => {
+    expect(getNativeReactRuntimeFingerprint([], 'style-a')).not.toBe(
+      getNativeReactRuntimeFingerprint([], 'style-b')
+    );
+  });
+
   test('D1-AC-001 uses the real bundled Worker URL and module Worker contract', async () => {
     FakeBrowserWorker.instances = [];
     const workerFactory = createNativeReactBrowserCompilerWorkerFactory({

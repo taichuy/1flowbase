@@ -26,9 +26,7 @@ function compiledArtifact() {
 
 function compilerReturning(
   result: NativeReactBrowserCompileResult
-): typeof import(
-  '../native-react-compiler-browser'
-).compileNativeReactComponentInBrowser {
+): typeof import('../native-react-compiler-browser').compileNativeReactComponentInBrowser {
   return vi.fn(async () => result);
 }
 
@@ -44,34 +42,24 @@ function registry(
 }
 
 describe('Native React source preparation', () => {
-  test('AC-004 stops unsupported Tailwind utilities before browser compilation', async () => {
+  test('AC-001 compiles Tailwind candidates without an inventory admission gate', async () => {
     const compiler = compilerReturning({
       ok: true,
       artifact: compiledArtifact(),
       diagnostics: []
     });
-    const registryFactory = vi.fn();
+    const registryFactory = vi.fn(() => registry());
     const result = await prepareNativeReactSource({
       frozenSource:
-        "import 'tailwindcss'; export default () => <div className=\"grid unknown-layout\" />;",
+        'import \'tailwindcss\'; export default () => <div className="grid unknown-layout" />;',
       requestId: 'unsupported-tailwind',
       dependencyLock: [],
       compiler,
       registryFactory
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.diagnostics).toEqual([
-      expect.objectContaining({
-        phase: 'compile',
-        code: 'transform_failed',
-        path: 'source.classNames[0]',
-        message: expect.stringContaining("'unknown-layout'")
-      })
-    ]);
-    expect(compiler).not.toHaveBeenCalled();
-    expect(registryFactory).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(compiler).toHaveBeenCalledOnce();
   });
 
   test('R7-AC-001 passes Host evaluation bindings without changing the artifact', async () => {
@@ -190,7 +178,13 @@ describe('Native React source preparation', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.component).toBeTypeOf('function');
-    expect(result.moduleAssets).toEqual([moduleAsset]);
+    expect(result.moduleAssets).toEqual([
+      moduleAsset,
+      expect.objectContaining({
+        module_source: 'frontstage/executable-style',
+        role: 'shadow_style'
+      })
+    ]);
     expect(registryFactory).toHaveBeenCalledWith(artifact.dependencyLock);
     expect(moduleRegistry.resolveModuleAssets).toHaveBeenCalledWith(
       artifact.program.injectedModules.map(({ source }) => source)

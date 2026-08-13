@@ -381,37 +381,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     () => [...(displayedPageDocument?.blocks ?? []), ...assemblyBlocks],
     [assemblyBlocks, displayedPageDocument?.blocks]
   );
-  const nativeDependencyLocksByBlockId = useMemo(
-    () =>
-      Object.fromEntries(
-        runtimeBlocks.map((block) => {
-          const catalogEntry = findMatchingFrontstageBlockCatalogEntry(
-            block,
-            blockCatalog.items
-          );
-          return [
-            block.id,
-            resolveFrontstageNativeDependencyLock({
-              catalogEntry,
-              workspaceId
-            }).dependencyLock
-          ];
-        })
-      ),
-    [blockCatalog.items, runtimeBlocks, workspaceId]
-  );
   const pageCanvasNativePreparations =
     useFrontstagePageCanvasNativePreparations({
       actorId: actor?.id,
       actorWorkspaceId: actor?.current_workspace_id,
       readPlan: pageCanvasCodeReadPlan,
-      dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
       externalNpm: blockCatalog.externalNpm,
       demandsByBlockId: runtimeDemandsByBlockId
     });
   const assemblyPreparations = useFrontstageRuntimeAssembly({
     assembly: blockRuntimeAssembly,
-    dependencyLocksByBlockId: nativeDependencyLocksByBlockId,
     externalNpm: blockCatalog.externalNpm
   });
   const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(

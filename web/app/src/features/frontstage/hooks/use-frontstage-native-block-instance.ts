@@ -110,6 +110,7 @@ export function frontstageNativeInstanceRenderKey(
   return JSON.stringify({
     sourceSha256: identityInput.sourceSha256,
     runtimeFingerprint: identityInput.runtimeFingerprint,
-    dependencyLockIdentity: identityInput.dependencyLockIdentity
+    dependencyLockIdentity: identityInput.dependencyLockIdentity,
+    executableStyleIdentity: identityInput.executableStyleIdentity
   });
 }

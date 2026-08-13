@@ -38,6 +38,7 @@ export interface FrontstageNativeInstanceIdentityInput {
   sourceSha256: string;
   runtimeFingerprint: string;
   dependencyLockIdentity: string;
+  executableStyleIdentity?: string;
 }
 
 export interface FrontstageNativeInstanceMountIntent {
@@ -55,6 +56,7 @@ export interface FrontstageNativePreparedRuntime {
   identityInput: FrontstageNativeInstanceIdentityInput;
   artifactCacheTier: 'l2' | 'miss';
   moduleAssets: NativeReactResolvedModuleAsset[];
+  generatedCssSha256?: string;
 }
 
 interface FrontstageNativePreparationSnapshotBase {

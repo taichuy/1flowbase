@@ -7,7 +7,6 @@ import {
   frontstageNativeReactArtifactCache,
   type FrontstageNativeReactArtifactCache
 } from '../lib/runtime-cache';
-import { getNativeReactRuntimeFingerprint } from '../../../shared/code-block/native-react-compiler-browser';
 
 export interface FrontstageRuntimeCacheLifecycleOptions {
   nativeReactArtifactCache?: Pick<
@@ -30,8 +29,7 @@ export function useFrontstageRuntimeCacheLifecycle(
   const previousActorIdRef = useRef<string | null>(null);
   const nativeReactArtifactCache =
     options.nativeReactArtifactCache ?? frontstageNativeReactArtifactCache;
-  const nativeReactRuntimeFingerprint =
-    options.nativeReactRuntimeFingerprint ?? getNativeReactRuntimeFingerprint();
+  const nativeReactRuntimeFingerprint = options.nativeReactRuntimeFingerprint;
 
   useLayoutEffect(() => {
     if (previousIdentityRef.current === lifecycleIdentity) {
@@ -55,7 +53,9 @@ export function useFrontstageRuntimeCacheLifecycle(
         .pruneWorkspace({
           actorId: actor.id,
           workspaceId: actor.current_workspace_id,
-          runtimeFingerprint: nativeReactRuntimeFingerprint
+          ...(nativeReactRuntimeFingerprint
+            ? { runtimeFingerprint: nativeReactRuntimeFingerprint }
+            : {})
         })
         .catch(() => undefined);
     }

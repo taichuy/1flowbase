@@ -333,7 +333,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         nativePreparationsHook.useFrontstagePageCanvasNativePreparations
       ).toHaveBeenCalledWith(
         expect.objectContaining({
-          dependencyLocksByBlockId: expect.objectContaining({ hero: [] })
+          externalNpm: expect.any(Object)
         })
       );
     });

@@ -205,7 +205,7 @@ export class FrontstageNativeReactArtifactCache {
   }: {
     actorId: string;
     workspaceId: string;
-    runtimeFingerprint: string;
+    runtimeFingerprint?: string;
   }): Promise<FrontstageNativeReactArtifactCacheMaintenanceResult> {
     try {
       const values = await this.options.store.list();
@@ -230,7 +230,8 @@ export class FrontstageNativeReactArtifactCache {
           canonicalizeFrontstageNativeReactArtifactCacheRecord(value);
         if (
           !record ||
-          record.runtime_fingerprint !== runtimeFingerprint ||
+          (runtimeFingerprint !== undefined &&
+            record.runtime_fingerprint !== runtimeFingerprint) ||
           !recordMatchesIdentity(record, identity)
         ) {
           deleted.add(identity.key);

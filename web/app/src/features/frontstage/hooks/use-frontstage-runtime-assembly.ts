@@ -1,12 +1,9 @@
-import {
-  nativeReactCatalogDependencyLockIdentity,
-  sha256Text,
-  type NativeReactCatalogDependencyLock
-} from '@1flowbase/page-runtime';
+import { nativeReactCatalogDependencyLockIdentity } from '@1flowbase/page-runtime';
 import { useEffect, useMemo, useState } from 'react';
 
 import { getNativeReactRuntimeFingerprint } from '../../../shared/code-block/native-react-compiler-browser';
 import { prepareNativeReactSource } from '../../../shared/code-block/native-react-source-preparation';
+import { readLockedNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
 import type { FrontstageBlockRuntimeAssembly } from '../api/block-tree';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
@@ -17,19 +14,15 @@ import {
 
 export function useFrontstageRuntimeAssembly({
   assembly,
-  dependencyLocksByBlockId,
   externalNpm
 }: {
   assembly: FrontstageBlockRuntimeAssembly | undefined;
-  dependencyLocksByBlockId: Readonly<
-    Record<string, NativeReactCatalogDependencyLock>
-  >;
   externalNpm: ExternalNpmPackState;
 }): FrontstageNativePreparationSnapshot[] {
   const key = useMemo(
     () =>
       assembly?.layers
-        .map((layer) => `${layer.block_id}:${layer.source_sha256}`)
+        .map((layer) => `${layer.block_id}:${layer.generated_css_sha256}`)
         .join('/') ?? '',
     [assembly]
   );
@@ -56,20 +49,25 @@ export function useFrontstageRuntimeAssembly({
     });
     void Promise.all(
       assembly.layers.map(async (layer, slotIndex) => {
-        if (sha256Text(layer.code) !== layer.source_sha256.toLowerCase()) {
-          throw new Error(
-            `Block code digest does not match source_sha256 for ${layer.block_id}.`
-          );
-        }
-        const dependencyLock = dependencyLocksByBlockId[layer.block_id] ?? [];
-        const runtimeFingerprint =
-          getNativeReactRuntimeFingerprint(dependencyLock);
+        const executable = readLockedNativeReactExecutableStyle(layer);
+        const dependencyLock = executable.dependency_lock;
+        const runtimeFingerprint = getNativeReactRuntimeFingerprint(
+          dependencyLock,
+          executable.executable_style_identity
+        );
         const dependencyLockIdentity =
           nativeReactCatalogDependencyLockIdentity(dependencyLock);
         const prepared = await prepareNativeReactSource({
-          frozenSource: layer.code,
-          requestId: `runtime-assembly:${layer.block_id}:${layer.source_sha256}`,
+          frozenSource: executable.source_code,
+          requestId: `runtime-assembly:${layer.block_id}:${executable.source_sha256}`,
           dependencyLock,
+          runtimeFingerprint,
+          executableStyle: {
+            generated_css: executable.generated_css,
+            generated_css_sha256: executable.generated_css_sha256,
+            tailwind_toolchain_lock: executable.tailwind_toolchain_lock,
+            compiler_identity: executable.compiler_identity
+          },
           registryFactory: createFrontstageNativeReactModuleRegistry
         });
         if (!prepared.ok) {
@@ -92,19 +90,22 @@ export function useFrontstageRuntimeAssembly({
             component: prepared.component,
             artifactCacheTier: 'miss' as const,
             moduleAssets: prepared.moduleAssets,
+            generatedCssSha256: executable.generated_css_sha256,
             identityInput: {
-              sourceSha256: layer.source_sha256.toLowerCase(),
+              sourceSha256: executable.source_sha256,
               runtimeFingerprint,
-              dependencyLockIdentity
+              dependencyLockIdentity,
+              executableStyleIdentity: executable.executable_style_identity
             }
           },
           mountIntent: {
             blockId: layer.block_id,
             slotIndex,
             identityInput: {
-              sourceSha256: layer.source_sha256.toLowerCase(),
+              sourceSha256: executable.source_sha256,
               runtimeFingerprint,
-              dependencyLockIdentity
+              dependencyLockIdentity,
+              executableStyleIdentity: executable.executable_style_identity
             }
           }
         } satisfies FrontstageNativePreparationSnapshot;
@@ -134,7 +135,7 @@ export function useFrontstageRuntimeAssembly({
     return () => {
       active = false;
     };
-  }, [assembly, dependencyLocksByBlockId, externalNpm, key]);
+  }, [assembly, externalNpm, key]);
 
   return state.key === key ? state.snapshots : [];
 }

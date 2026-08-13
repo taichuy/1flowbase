@@ -227,6 +227,34 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
     ).resolves.toMatchObject({ status: 'completed', deleted: 1 });
   });
 
+  test('AC-006 workspace pruning preserves concurrently locked executable styles', async () => {
+    const { cache } = subject('native-locked-style-retention');
+    const styleA = identity(
+      'same-source',
+      createNativeReactRuntimeFingerprint('/worker.js', 'style-a')
+    );
+    const styleB = identity(
+      'same-source',
+      createNativeReactRuntimeFingerprint('/worker.js', 'style-b')
+    );
+    await cache.put(
+      styleA,
+      artifact('same-source', styleA.runtime_fingerprint)
+    );
+    await cache.put(
+      styleB,
+      artifact('same-source', styleB.runtime_fingerprint)
+    );
+
+    await cache.pruneWorkspace({
+      actorId: styleA.actorId,
+      workspaceId: styleA.workspaceId
+    });
+
+    await expect(cache.get(styleA)).resolves.toMatchObject({ status: 'hit' });
+    await expect(cache.get(styleB)).resolves.toMatchObject({ status: 'hit' });
+  });
+
   test('D2-AC-006 enforces byte LRU and retries once after quota eviction', async () => {
     const seeded = subject('native-lru-seed');
     await seeded.cache.put(identity('source-a'), artifact('source-a'));

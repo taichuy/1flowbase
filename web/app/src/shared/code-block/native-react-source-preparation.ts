@@ -15,7 +15,10 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompilerWorkerFactory
 } from './native-react-compiler-browser';
-import { diagnoseUnsupportedTailwindUtilities } from './tailwind-utility-diagnostics';
+import {
+  compileNativeReactExecutableStyle,
+  createNativeReactExecutableStyleAsset
+} from './native-react-executable-style';
 
 export type NativeReactSourcePreparationDiagnostic =
   | NativeReactCompileDiagnostic
@@ -27,6 +30,9 @@ export type NativeReactSourcePreparationResult =
       artifact: NativeReactComponentArtifact;
       component: NativeTrustedBlockComponent;
       moduleAssets: NativeReactResolvedModuleAsset[];
+      executableStyle: Awaited<
+        ReturnType<typeof compileNativeReactExecutableStyle>
+      >;
     }
   | {
       ok: false;
@@ -41,6 +47,8 @@ export async function prepareNativeReactSource({
   frozenSource,
   requestId,
   dependencyLock,
+  runtimeFingerprint,
+  executableStyle,
   compiler = compileNativeReactComponentInBrowser,
   workerFactory,
   registryFactory,
@@ -49,25 +57,43 @@ export async function prepareNativeReactSource({
   frozenSource: string;
   requestId: string;
   dependencyLock: NativeReactCatalogDependencyLock;
+  runtimeFingerprint?: string;
+  executableStyle?: Awaited<
+    ReturnType<typeof compileNativeReactExecutableStyle>
+  >;
   compiler?: typeof compileNativeReactComponentInBrowser;
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
   registryFactory: NativeReactModuleRegistryFactory;
   evaluationBindings?: NativeReactArtifactEvaluationBindings;
 }): Promise<NativeReactSourcePreparationResult> {
-  const tailwindDiagnostics = diagnoseUnsupportedTailwindUtilities(frozenSource);
-  if (tailwindDiagnostics.length > 0) {
+  let preparedExecutableStyle: Awaited<
+    ReturnType<typeof compileNativeReactExecutableStyle>
+  >;
+  try {
+    preparedExecutableStyle =
+      executableStyle ??
+      (await compileNativeReactExecutableStyle(frozenSource));
+  } catch (error) {
     return {
       ok: false,
-      diagnostics: tailwindDiagnostics.map((diagnostic) => ({
-        phase: 'compile' as const,
-        ...diagnostic
-      }))
+      diagnostics: [
+        {
+          phase: 'compile',
+          code: 'transform_failed',
+          path: 'tailwind',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Tailwind compilation failed.'
+        }
+      ]
     };
   }
   const compiled = await compiler({
     source: frozenSource,
     requestId,
     dependencyLock,
+    ...(runtimeFingerprint ? { runtimeFingerprint } : {}),
     ...(workerFactory ? { workerFactory } : {})
   });
   if (!compiled.ok) return compiled;
@@ -94,7 +120,14 @@ export async function prepareNativeReactSource({
       ok: true,
       artifact: evaluated.artifact,
       component: evaluated.component,
-      moduleAssets
+      moduleAssets: [
+        ...moduleAssets,
+        createNativeReactExecutableStyleAsset(
+          preparedExecutableStyle.generated_css,
+          preparedExecutableStyle.generated_css_sha256
+        )
+      ],
+      executableStyle: preparedExecutableStyle
     };
   } catch (error) {
     return registryFailure(error);
