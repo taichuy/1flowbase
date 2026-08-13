@@ -9,20 +9,17 @@ import {
   type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
 import {
-  compileTailwindUtilities,
-  extractStaticTailwindCandidates
-} from '@1flowbase/tailwindcss-catalog/compiler';
+  compileTailwindExecutableArtifact,
+  TAILWIND_4_3_3_COMPILER_IDENTITY,
+  TAILWIND_4_3_3_TOOLCHAIN_LOCK
+} from '@1flowbase/tailwindcss-catalog/executable-contract';
 
 export const NATIVE_REACT_TAILWIND_COMPILER_IDENTITY = Object.freeze({
-  name: '@1flowbase/tailwindcss-catalog',
-  contract: 'source-driven-utilities-v1',
-  tailwind_version: '4.3.3'
+  ...TAILWIND_4_3_3_COMPILER_IDENTITY
 });
 
 export const NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK = Object.freeze({
-  package: 'tailwindcss',
-  version: '4.3.3',
-  mode: 'theme-and-utilities'
+  ...TAILWIND_4_3_3_TOOLCHAIN_LOCK
 });
 
 type ExecutableDto =
@@ -152,24 +149,59 @@ function isNonEmptyStringRecord(
 }
 
 export async function compileNativeReactExecutableStyle(
-  sourceCode: string
+  sourceCode: string,
+  dependencyLock: NativeReactCatalogDependencyLock = []
 ): Promise<NativeReactExecutableStyleCompilation> {
-  const importsTailwind =
-    /(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"]tailwindcss['"]/u.test(
-      sourceCode
+  return compileLockedNativeReactExecutableStyle({
+    sourceCode,
+    dependencyLock,
+    tailwindToolchainLock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
+    compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+  });
+}
+
+export async function compileLockedNativeReactExecutableStyle({
+  sourceCode,
+  dependencyLock,
+  tailwindToolchainLock,
+  compilerIdentity
+}: {
+  sourceCode: string;
+  dependencyLock: NativeReactCatalogDependencyLock;
+  tailwindToolchainLock: Record<string, string>;
+  compilerIdentity: Record<string, string>;
+}): Promise<
+  NativeReactExecutableStyleCompilation & {
+    dependency_lock: NativeReactCatalogDependencyLock;
+  }
+> {
+  const result = await compileTailwindExecutableArtifact({
+    source_code: sourceCode,
+    dependency_lock: dependencyLock,
+    compiler_identity: compilerIdentity,
+    toolchain_lock: tailwindToolchainLock
+  });
+  if (!result.ok) throw new Error(result.error.message);
+  if (
+    result.source_sha256 !== sha256Text(sourceCode) ||
+    result.generated_css_sha256 !== sha256Text(result.generated_css) ||
+    JSON.stringify(canonicalValue(result.dependency_lock)) !==
+      JSON.stringify(canonicalValue(dependencyLock)) ||
+    JSON.stringify(canonicalValue(result.toolchain_lock)) !==
+      JSON.stringify(canonicalValue(tailwindToolchainLock)) ||
+    JSON.stringify(canonicalValue(result.compiler_identity)) !==
+      JSON.stringify(canonicalValue(compilerIdentity))
+  ) {
+    throw new Error(
+      'Executable compiler result does not match its locked input.'
     );
-  const generatedCss = importsTailwind
-    ? (
-        await compileTailwindUtilities(
-          extractStaticTailwindCandidates(sourceCode)
-        )
-      ).css
-    : '';
+  }
   return {
-    generated_css: generatedCss,
-    generated_css_sha256: sha256Text(generatedCss),
-    tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-    compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+    dependency_lock: result.dependency_lock,
+    generated_css: result.generated_css,
+    generated_css_sha256: result.generated_css_sha256,
+    tailwind_toolchain_lock: result.toolchain_lock,
+    compiler_identity: result.compiler_identity
   };
 }
 

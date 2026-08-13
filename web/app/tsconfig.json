@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
     "types": ["vite/client", "vitest/globals"]
   },
   "include": ["src", "vite.config.ts"]

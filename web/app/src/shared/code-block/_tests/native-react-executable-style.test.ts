@@ -1,17 +1,68 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  compileLockedNativeReactExecutableStyle,
   compileNativeReactExecutableStyle,
+  NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
+  NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
   readLockedNativeReactExecutableStyle
 } from '../native-react-executable-style';
+
+const tailwindDependencyLock = [
+  {
+    module_source: 'tailwindcss',
+    module_version: '4.3.3',
+    binding: 'fetched' as const,
+    assets: [
+      {
+        role: 'browser_module' as const,
+        media_type: 'text/javascript',
+        sha256: 'a'.repeat(64),
+        url: '/tailwindcss.js'
+      }
+    ],
+    exports: ['default']
+  }
+];
 
 describe('Native React executable style', () => {
   test('AC-001/002 compiles static Tailwind without a private inventory gate', async () => {
     const result = await compileNativeReactExecutableStyle(
-      'import \'tailwindcss\'; export default () => <div className="hero bg-[#00ab73] md:grid-cols-2" />;'
+      'import \'tailwindcss\'; export default () => <div className="hero bg-[#00ab73] md:grid-cols-2" />;',
+      tailwindDependencyLock
     );
     expect(result.generated_css).toContain('#00ab73');
     expect(result.generated_css).toContain('@media');
+  });
+
+  test('ordinary compilation uses the exact persisted dependency and compiler locks', async () => {
+    const result = await compileLockedNativeReactExecutableStyle({
+      sourceCode:
+        'import \'tailwindcss\'; export default () => <div className="p-4" />;',
+      dependencyLock: tailwindDependencyLock,
+      tailwindToolchainLock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
+      compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+    });
+    expect(result.dependency_lock).toEqual(tailwindDependencyLock);
+    expect(result.generated_css).toContain('.p-4');
+    expect(result.compiler_identity).toEqual(
+      NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+    );
+  });
+
+  test('unknown locked compiler target fails closed', async () => {
+    await expect(
+      compileLockedNativeReactExecutableStyle({
+        sourceCode: 'export default () => null;',
+        dependencyLock: [],
+        tailwindToolchainLock: {
+          package: 'tailwindcss',
+          version: '3.4.0',
+          mode: 'utilities'
+        },
+        compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+      })
+    ).rejects.toThrow(/no executable tailwind compiler/u);
   });
 
   test('AC-011 rejects legacy, incomplete, and digest-mismatched rows', () => {

@@ -72,7 +72,7 @@ export async function prepareNativeReactSource({
   try {
     preparedExecutableStyle =
       executableStyle ??
-      (await compileNativeReactExecutableStyle(frozenSource));
+      (await compileNativeReactExecutableStyle(frozenSource, dependencyLock));
   } catch (error) {
     return {
       ok: false,

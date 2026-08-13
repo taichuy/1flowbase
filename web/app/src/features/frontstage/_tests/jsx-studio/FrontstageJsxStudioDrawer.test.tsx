@@ -331,15 +331,7 @@ describe('FrontstageJsxStudioDrawer', () => {
           ),
           setActiveDraft: legacy.setDraft,
           resetActive: legacy.reset,
-          previewActive: vi.fn().mockImplementation(async () => ({
-            source_code: legacy.draft,
-            dependency_lock: [],
-            tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-            generated_css: '',
-            generated_css_sha256: sha256Text(''),
-            compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
-          })),
-          saveActive: legacy.save,
+          saveActiveDraft: legacy.save,
           handleDeletedBlock: vi.fn().mockResolvedValue('converged')
         };
       }
@@ -459,7 +451,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       closeBlock: vi.fn(),
       setActiveDraft: vi.fn(),
       resetActive: vi.fn(),
-      saveActive: vi.fn().mockResolvedValue(undefined),
+      saveActiveDraft: vi.fn().mockResolvedValue(undefined),
       handleDeletedBlock: vi.fn().mockResolvedValue('converged')
     });
 
@@ -587,7 +579,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       setDraft,
       setActiveDraft: vi.fn(),
       resetActive: vi.fn(),
-      saveActive: vi.fn().mockResolvedValue(undefined),
+      saveActiveDraft: vi.fn().mockResolvedValue(undefined),
       handleDeletedBlock: vi.fn().mockResolvedValue('converged')
     });
     monacoEditor.getModel.mockReturnValue({
@@ -1033,18 +1025,9 @@ describe('FrontstageJsxStudioDrawer', () => {
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   });
 
-  test('AC-009/010 requires legacy migration preview and confirmation before apply', async () => {
+  test('does not expose migration, upgrade, or dependency state UI for legacy rows', () => {
     const source = 'export default function Legacy() { return <div />; }';
-    const payload = {
-      source_code: source,
-      dependency_lock: [],
-      tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-      generated_css: '',
-      generated_css_sha256: sha256Text(''),
-      compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
-    };
-    const previewActive = vi.fn().mockResolvedValue(payload);
-    const saveActive = vi.fn().mockResolvedValue(undefined);
+    const saveActiveDraft = vi.fn().mockResolvedValue(undefined);
     const activeTab = {
       block_id: block.id,
       detail: { block_id: block.id, tab_id: 'tab-1', title: 'Orders' },
@@ -1078,8 +1061,7 @@ describe('FrontstageJsxStudioDrawer', () => {
       setDraft: vi.fn(),
       setActiveDraft: vi.fn(),
       resetActive: vi.fn(),
-      previewActive,
-      saveActive,
+      saveActiveDraft,
       handleDeletedBlock: vi.fn().mockResolvedValue('converged')
     });
 
@@ -1097,17 +1079,10 @@ describe('FrontstageJsxStudioDrawer', () => {
       />
     );
 
-    expect(saveActive).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '预览迁移' }));
-    await waitFor(() => expect(previewActive).toHaveBeenCalledTimes(1));
-    expect(saveActive).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole('button', { name: '应用迁移' }));
-    fireEvent.click(
-      within(
-        await screen.findByRole('dialog', { name: '应用旧版迁移？' })
-      ).getByRole('button', { name: /^确\s*定$/ })
-    );
-    await waitFor(() => expect(saveActive).toHaveBeenCalledWith(payload));
+    expect(screen.queryByText(/迁移|升级|可执行依赖/u)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    expect(saveActiveDraft).not.toHaveBeenCalled();
   });
 
   test('D4-AC-006 preserves controlled legacy source and blocks save/run with the stable diagnostic', () => {

@@ -1,12 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  canonicalizeNativeReactCatalogDependencyLock,
-  type NativeReactCatalogDependencyLock
-} from '@1flowbase/page-runtime';
+import type { NativeReactCatalogDependencyLock } from '@1flowbase/page-runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  compileNativeReactExecutableStyle,
+  compileLockedNativeReactExecutableStyle,
   readLockedNativeReactExecutableStyle
 } from '../../../../../shared/code-block/native-react-executable-style';
 import {
@@ -55,65 +52,26 @@ export interface FrontstageExecutableSavePayload {
   compiler_identity: Record<string, string>;
 }
 
-function sameStringRecord(
-  left: Record<string, string>,
-  right: Record<string, string>
-): boolean {
-  const leftEntries = Object.entries(left).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  const rightEntries = Object.entries(right).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
-}
-
-export async function previewFrontstageExecutableSave({
-  tab,
-  mode,
-  currentDependencyLock
-}: {
-  tab: FrontstageBlockCodeTabState;
-  mode: 'preserve' | 'upgrade';
-  currentDependencyLock?: NativeReactCatalogDependencyLock;
-}): Promise<FrontstageExecutableSavePayload> {
-  const compiled = await compileNativeReactExecutableStyle(tab.draft);
-  if (mode === 'upgrade') {
-    const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
-      currentDependencyLock
-    );
-    if (!dependencyLock) {
-      throw new Error('Current dependency_lock is invalid.');
-    }
-    return {
-      source_code: tab.draft,
-      dependency_lock: dependencyLock,
-      ...compiled
-    };
-  }
-
+export async function compileFrontstageExecutableSave(
+  tab: FrontstageBlockCodeTabState
+): Promise<FrontstageExecutableSavePayload> {
   if (!tab.executable) {
     throw new Error('Frontstage block executable state is missing.');
   }
   const locked = readLockedNativeReactExecutableStyle(tab.executable);
-  if (
-    !sameStringRecord(
-      locked.tailwind_toolchain_lock,
-      compiled.tailwind_toolchain_lock
-    ) ||
-    !sameStringRecord(locked.compiler_identity, compiled.compiler_identity)
-  ) {
-    throw new Error(
-      'The locked toolchain cannot compile this edit. Preview a dependency upgrade first.'
-    );
-  }
+  const compiled = await compileLockedNativeReactExecutableStyle({
+    sourceCode: tab.draft,
+    dependencyLock: locked.dependency_lock,
+    tailwindToolchainLock: locked.tailwind_toolchain_lock,
+    compilerIdentity: locked.compiler_identity
+  });
   return {
     source_code: tab.draft,
-    dependency_lock: locked.dependency_lock,
-    tailwind_toolchain_lock: locked.tailwind_toolchain_lock,
+    dependency_lock: compiled.dependency_lock,
+    tailwind_toolchain_lock: compiled.tailwind_toolchain_lock,
     generated_css: compiled.generated_css,
     generated_css_sha256: compiled.generated_css_sha256,
-    compiler_identity: locked.compiler_identity
+    compiler_identity: compiled.compiler_identity
   };
 }
 
@@ -264,61 +222,41 @@ export function useFrontstageBlockTabs({
     }));
   }, [activeTab, updateTab]);
 
-  const previewActive = useCallback(
-    async (
-      mode: 'preserve' | 'upgrade',
-      currentDependencyLock?: NativeReactCatalogDependencyLock
-    ) => {
-      if (!activeTab) throw new Error('No active block code tab.');
-      return previewFrontstageExecutableSave({
-        tab: activeTab,
-        mode,
-        currentDependencyLock
-      });
-    },
-    [activeTab]
-  );
-
-  const saveActive = useCallback(
-    async (payload: FrontstageExecutableSavePayload) => {
-      if (!activeTab) return;
-      if (payload.source_code !== activeTab.draft) {
-        throw new Error('The source changed after preview. Preview it again.');
-      }
-      const blockId = activeTab.block_id;
-      updateTab(blockId, (tab) => ({ ...tab, saving: true, error: null }));
-      try {
-        const code = await saveFrontstageBlockNodeCode(
-          workspaceId,
-          pageId,
-          blockId,
-          payload,
-          requireCsrfToken(csrfToken)
-        );
-        queryClient.setQueryData(
-          frontstageBlockTreeQueryKeys.code(workspaceId, pageId, blockId),
-          code
-        );
-        updateTab(blockId, (tab) => ({
-          ...tab,
-          base_source: code.source_code,
-          draft: code.source_code,
-          source_sha256: code.source_sha256,
-          executable: code,
-          saving: false,
-          error: null
-        }));
-      } catch (error) {
-        updateTab(blockId, (tab) => ({
-          ...tab,
-          saving: false,
-          error
-        }));
-        throw error;
-      }
-    },
-    [activeTab, csrfToken, pageId, queryClient, updateTab, workspaceId]
-  );
+  const saveActiveDraft = useCallback(async () => {
+    if (!activeTab) return;
+    const blockId = activeTab.block_id;
+    updateTab(blockId, (tab) => ({ ...tab, saving: true, error: null }));
+    try {
+      const payload = await compileFrontstageExecutableSave(activeTab);
+      const code = await saveFrontstageBlockNodeCode(
+        workspaceId,
+        pageId,
+        blockId,
+        payload,
+        requireCsrfToken(csrfToken)
+      );
+      queryClient.setQueryData(
+        frontstageBlockTreeQueryKeys.code(workspaceId, pageId, blockId),
+        code
+      );
+      updateTab(blockId, (tab) => ({
+        ...tab,
+        base_source: code.source_code,
+        draft: code.source_code,
+        source_sha256: code.source_sha256,
+        executable: code,
+        saving: false,
+        error: null
+      }));
+    } catch (error) {
+      updateTab(blockId, (tab) => ({
+        ...tab,
+        saving: false,
+        error
+      }));
+      throw error;
+    }
+  }, [activeTab, csrfToken, pageId, queryClient, updateTab, workspaceId]);
 
   const handleDeletedBlock = useCallback(
     async (event: FrontstageBlockDeletedEvent) => {
@@ -380,8 +318,7 @@ export function useFrontstageBlockTabs({
     setDraft,
     setActiveDraft,
     resetActive,
-    previewActive,
-    saveActive,
+    saveActiveDraft,
     handleDeletedBlock
   };
 }

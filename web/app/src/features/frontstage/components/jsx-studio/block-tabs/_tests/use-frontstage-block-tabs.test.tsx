@@ -181,10 +181,8 @@ describe('useFrontstageBlockTabs', () => {
     );
     act(() => view.result.current.setActiveDraft('saved root source'));
 
-    let payload: FrontstageExecutableSavePayload | undefined;
     await act(async () => {
-      payload = await view.result.current.previewActive('preserve');
-      await view.result.current.saveActive(payload!);
+      await view.result.current.saveActiveDraft();
     });
     expect(api.saveFrontstageBlockNodeCode).toHaveBeenCalledWith(
       'workspace-1',
@@ -280,9 +278,8 @@ describe('useFrontstageBlockTabs', () => {
     api.saveFrontstageBlockNodeCode.mockRejectedValueOnce(
       Object.assign(new Error('forbidden'), { status: 403 })
     );
-    const payload = await view.result.current.previewActive('preserve');
     await act(async () => {
-      await view.result.current.saveActive(payload).catch(() => undefined);
+      await view.result.current.saveActiveDraft().catch(() => undefined);
     });
     expect(
       (view.result.current.activeTab?.error as { status?: number })?.status
@@ -304,73 +301,89 @@ describe('useFrontstageBlockTabs', () => {
     expect(legacy.useFrontstageBlockCode).not.toHaveBeenCalled();
   });
 
-  test('AC-007/010 previews an explicit dependency upgrade before applying its full payload', async () => {
+  test('ordinary ready save preserves the persisted lock and sends the complete compiled payload', async () => {
+    const persistedDependencyLock = [
+      {
+        module_source: 'react',
+        module_version: '18.3.1',
+        binding: 'host' as const,
+        assets: [],
+        exports: ['default']
+      },
+      {
+        module_source: 'tailwindcss',
+        module_version: '4.3.3',
+        binding: 'fetched' as const,
+        assets: [
+          {
+            role: 'browser_module' as const,
+            media_type: 'text/javascript',
+            sha256: 'a'.repeat(64),
+            url: '/locked-tailwind-4.3.3.js'
+          }
+        ],
+        exports: ['default']
+      }
+    ];
+    api.fetchFrontstageBlockNodeCode.mockResolvedValueOnce({
+      ...executableCode('root'),
+      dependency_lock: persistedDependencyLock
+    });
     const view = setup();
     await waitFor(() =>
       expect(view.result.current.activeTab?.loading).toBe(false)
     );
-    act(() => view.result.current.setActiveDraft('upgraded source'));
-    const dependencyLock = [
-      {
-        module_source: 'react',
-        module_version: '19.0.0',
-        binding: 'host' as const,
-        assets: [],
-        exports: ['default']
-      }
-    ];
-
-    let payload: FrontstageExecutableSavePayload | undefined;
-    await act(async () => {
-      payload = await view.result.current.previewActive(
-        'upgrade',
-        dependencyLock
-      );
-    });
-    expect(api.saveFrontstageBlockNodeCode).not.toHaveBeenCalled();
-    expect(payload!.source_code).toBe('upgraded source');
-    expect(payload!.dependency_lock).toEqual(dependencyLock);
-    expect(payload!.tailwind_toolchain_lock).toEqual(
-      NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK
+    act(() =>
+      view.result.current.setActiveDraft(
+        'import \'tailwindcss\'; export default () => <div className="p-4" />;'
+      )
     );
-
-    await act(async () => view.result.current.saveActive(payload!));
+    await act(async () => {
+      await view.result.current.saveActiveDraft();
+    });
     expect(api.saveFrontstageBlockNodeCode).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
       'root',
-      payload!,
+      expect.objectContaining({
+        source_code:
+          'import \'tailwindcss\'; export default () => <div className="p-4" />;',
+        dependency_lock: persistedDependencyLock,
+        tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
+        compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
+        generated_css: expect.stringContaining('.p-4'),
+        generated_css_sha256: expect.any(String)
+      }),
       'csrf-123'
     );
   });
 
-  test('AC-009/011 preserves legacy TSX during preview and remains legacy when apply fails', async () => {
-    const legacySource = 'export default function Legacy() { return <div />; }';
+  test.each([
+    ['malformed dependency lock', { dependency_lock: [{ bad: true }] }],
+    [
+      'unknown locked toolchain',
+      {
+        tailwind_toolchain_lock: {
+          package: 'tailwindcss',
+          version: '3.4.0',
+          mode: 'utilities'
+        }
+      }
+    ]
+  ])('fails closed on %s without invoking save', async (_label, override) => {
     api.fetchFrontstageBlockNodeCode.mockResolvedValueOnce({
-      ...executableCode('root', legacySource),
-      source_sha256: null,
-      dependency_lock: null,
-      tailwind_toolchain_lock: null,
-      generated_css: null,
-      generated_css_sha256: null,
-      compiler_identity: null,
-      executable_state: 'legacy'
+      ...executableCode('root'),
+      ...override
     });
     const view = setup();
     await waitFor(() =>
       expect(view.result.current.activeTab?.loading).toBe(false)
     );
-    const payload = await view.result.current.previewActive('upgrade', []);
-    expect(payload.source_code).toBe(legacySource);
-    expect(api.saveFrontstageBlockNodeCode).not.toHaveBeenCalled();
-
-    api.saveFrontstageBlockNodeCode.mockRejectedValueOnce(new Error('failed'));
     await act(async () => {
-      await view.result.current.saveActive(payload).catch(() => undefined);
+      await view.result.current.saveActiveDraft().catch(() => undefined);
     });
-    expect(view.result.current.activeTab?.executable?.executable_state).toBe(
-      'legacy'
-    );
+    expect(api.saveFrontstageBlockNodeCode).not.toHaveBeenCalled();
+    expect(view.result.current.activeTab?.error).toBeInstanceOf(Error);
   });
 
   test('AC-007/011 fails closed on an invalid ready digest without invoking save', async () => {
@@ -383,7 +396,7 @@ describe('useFrontstageBlockTabs', () => {
       expect(view.result.current.activeTab?.loading).toBe(false)
     );
 
-    await expect(view.result.current.previewActive('preserve')).rejects.toThrow(
+    await expect(view.result.current.saveActiveDraft()).rejects.toThrow(
       'source_sha256 does not match source_code'
     );
     expect(api.saveFrontstageBlockNodeCode).not.toHaveBeenCalled();
