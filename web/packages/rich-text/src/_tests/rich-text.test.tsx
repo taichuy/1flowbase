@@ -13,7 +13,10 @@ const options: Array<Record<string, unknown>> = [];
 
 vi.mock('vditor/dist/js/lute/lute.min.js', () => ({}));
 vi.mock('vditor/dist/js/i18n/zh_CN.js', () => ({}));
-vi.mock('vditor/dist/js/icons/ant.js', () => ({}));
+vi.mock('vditor/dist/js/icons/ant.js?raw', () => ({
+  default:
+    "document.body.insertAdjacentHTML('afterbegin', `<svg xmlns=\"http://www.w3.org/2000/svg\"><defs><symbol id=\"vditor-icon-headings\" viewBox=\"0 0 32 32\"><path d=\"M0 0h1v1H0z\"></path></symbol></defs></svg>`)"
+}));
 vi.mock('vditor', () => ({
   default: class VditorFixture {
     static md2html = vi.fn(
@@ -113,13 +116,46 @@ describe('@1flowbase/rich-text unified Vditor contract', () => {
 
     expect(options).toHaveLength(2);
     expect(document.getElementById('vditorLuteScript')).not.toBeNull();
+    expect(document.getElementById('vditor-icon-headings')).not.toBeNull();
     unmountFirst();
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(document.getElementById('vditorLuteScript')).not.toBeNull();
+    expect(document.getElementById('vditor-icon-headings')).not.toBeNull();
     unmountSecond();
     expect(destroy).toHaveBeenCalledTimes(2);
     expect(document.getElementById('vditorLuteScript')).toBeNull();
     expect(document.getElementById('vditorIconScript')).toBeNull();
+    expect(document.getElementById('vditor-icon-headings')).toBeNull();
+  });
+
+  it('AC-SHADOW-001 provides one icon sprite per ShadowRoot until its last editor unmounts', async () => {
+    const host = document.createElement('div');
+    const shadowRoot = host.attachShadow({ mode: 'open' });
+    const firstContainer = document.createElement('div');
+    const secondContainer = document.createElement('div');
+    shadowRoot.append(firstContainer, secondContainer);
+    document.body.append(host);
+
+    const { unmount: unmountFirst } = render(
+      <VditorEditor value="first" onChange={vi.fn()} ariaLabel="first" />,
+      { container: firstContainer }
+    );
+    const { unmount: unmountSecond } = render(
+      <VditorEditor value="second" onChange={vi.fn()} ariaLabel="second" />,
+      { container: secondContainer }
+    );
+    await act(async () => undefined);
+
+    expect(
+      shadowRoot.querySelectorAll('[data-1flowbase-vditor-icons]')
+    ).toHaveLength(1);
+    expect(shadowRoot.getElementById('vditor-icon-headings')).not.toBeNull();
+
+    unmountFirst();
+    expect(shadowRoot.getElementById('vditor-icon-headings')).not.toBeNull();
+    unmountSecond();
+    expect(shadowRoot.getElementById('vditor-icon-headings')).toBeNull();
+    host.remove();
   });
 });
 // @vitest-environment jsdom

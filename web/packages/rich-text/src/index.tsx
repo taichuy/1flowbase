@@ -98,7 +98,9 @@ export function VditorEditor({
     let releaseRuntime: () => void = () => undefined;
     queueMicrotask(() => {
       if (disposed) return;
-      releaseRuntime = acquireBundledVditorRuntime();
+      releaseRuntime = acquireBundledVditorRuntime(
+        mount.getRootNode() as Document | ShadowRoot
+      );
       const toolbar: IOptions['toolbar'] = [
         'headings',
         'bold',
