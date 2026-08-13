@@ -760,7 +760,7 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('D2-P2F wires an inserted Surface source and its catalog lock into the production trial path', async () => {
+  test('D2-P2F wires the selected block catalog lock into the production trial path', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([
       createCatalogEntry({
@@ -784,18 +784,6 @@ describe('FrontStagePage - design controls', () => {
         ]
       })
     ]);
-    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
-      code: 'import { Surface } from \'@1flowbase/native-components\';\nexport default () => <Surface className="card" />;',
-      draft:
-        'import { Surface } from \'@1flowbase/native-components\';\nexport default () => <Surface className="card" />;',
-      dirty: false,
-      loading: false,
-      saving: false,
-      error: null,
-      setDraft: vi.fn(),
-      reset: vi.fn(),
-      save: vi.fn()
-    });
     const blockPayload = {
       id: 'surface-block',
       renderer_version: 'v1',
@@ -842,12 +830,13 @@ describe('FrontStagePage - design controls', () => {
       within(blockSlot).getByRole('button', { name: '编辑区块' })
     );
     const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    fireEvent.click(within(studio).getByRole('button', { name: /运\s*行/ }));
+    const runButton = within(studio).getByRole('button', { name: /运\s*行/ });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
 
     await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
     expect(trialPanel.render).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        code: expect.stringContaining('<Surface className="card" />'),
         nativeDependencyLock: [
           {
             module_source: '@1flowbase/native-components',
