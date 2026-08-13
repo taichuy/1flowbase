@@ -1,0 +1,4 @@
+.style-boundary-agent-flow-node-detail
+  > [data-testid='agent-flow-editor-assembly'] {
+  height: 100%;
+}

@@ -1058,7 +1058,7 @@ async function runScene(browser, baseUrl, scene) {
   });
 
   await page.goto(createProbeUrl(baseUrl, scene.id), {
-    waitUntil: 'domcontentloaded'
+    waitUntil: 'load'
   });
   await page.waitForFunction(() => window.__STYLE_BOUNDARY__?.ready === true);
   await prepareSceneForAssertions(page, scene);
