@@ -141,18 +141,20 @@ pub(super) async fn list_checkpoints_for_flow_run(
     let rows = sqlx::query(
         r#"
         select
-            id,
-            flow_run_id,
-            node_run_id,
-            status,
-            reason,
-            locator_payload,
-            variable_snapshot,
-            external_ref_payload,
-            created_at
-        from flow_run_checkpoints
-        where flow_run_id = $1
-        order by created_at asc, id asc
+            checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
+            checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
+            coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
+            checkpoints.external_ref_payload, checkpoints.created_at
+        from flow_run_checkpoints checkpoints
+        left join runtime_legacy_shadow_rows shadow_rows
+          on shadow_rows.source_table = 'flow_run_checkpoints'
+         and shadow_rows.source_column = 'variable_snapshot'
+         and shadow_rows.source_row_id = checkpoints.id
+        left join runtime_canonical_contents contents
+          on contents.id = shadow_rows.canonical_content_id
+         and contents.content = checkpoints.variable_snapshot
+        where checkpoints.flow_run_id = $1
+        order by checkpoints.created_at asc, checkpoints.id asc
         "#,
     )
     .bind(flow_run_id)
@@ -169,18 +171,20 @@ pub(super) async fn list_checkpoints_for_node_run(
     let rows = sqlx::query(
         r#"
         select
-            id,
-            flow_run_id,
-            node_run_id,
-            status,
-            reason,
-            locator_payload,
-            variable_snapshot,
-            external_ref_payload,
-            created_at
-        from flow_run_checkpoints
-        where node_run_id = $1
-        order by created_at asc, id asc
+            checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
+            checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
+            coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
+            checkpoints.external_ref_payload, checkpoints.created_at
+        from flow_run_checkpoints checkpoints
+        left join runtime_legacy_shadow_rows shadow_rows
+          on shadow_rows.source_table = 'flow_run_checkpoints'
+         and shadow_rows.source_column = 'variable_snapshot'
+         and shadow_rows.source_row_id = checkpoints.id
+        left join runtime_canonical_contents contents
+          on contents.id = shadow_rows.canonical_content_id
+         and contents.content = checkpoints.variable_snapshot
+        where checkpoints.node_run_id = $1
+        order by checkpoints.created_at asc, checkpoints.id asc
         "#,
     )
     .bind(node_run_id)
@@ -391,10 +395,18 @@ pub(super) async fn list_trace_checkpoints_for_node_runs(
         r#"
         select checkpoints.id, checkpoints.flow_run_id, checkpoints.node_run_id,
                checkpoints.status, checkpoints.reason, checkpoints.locator_payload,
-               checkpoints.variable_snapshot, checkpoints.external_ref_payload,
+               coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
+               checkpoints.external_ref_payload,
                checkpoints.created_at
         from flow_run_checkpoints checkpoints
         join flow_runs runs on runs.id = checkpoints.flow_run_id
+        left join runtime_legacy_shadow_rows shadow_rows
+          on shadow_rows.source_table = 'flow_run_checkpoints'
+         and shadow_rows.source_column = 'variable_snapshot'
+         and shadow_rows.source_row_id = checkpoints.id
+        left join runtime_canonical_contents contents
+          on contents.id = shadow_rows.canonical_content_id
+         and contents.content = checkpoints.variable_snapshot
         where runs.application_id = $1
           and checkpoints.flow_run_id = $2
           and checkpoints.node_run_id = any($3)

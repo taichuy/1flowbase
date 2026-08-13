@@ -45,19 +45,26 @@ impl PgControlPlaneStore {
         let checkpoint_row = sqlx::query(
             r#"
             select
-                id,
-                flow_run_id,
-                node_run_id,
-                status,
-                reason,
-                locator_payload,
-                variable_snapshot,
+                checkpoints.id,
+                checkpoints.flow_run_id,
+                checkpoints.node_run_id,
+                checkpoints.status,
+                checkpoints.reason,
+                checkpoints.locator_payload,
+                coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
                 null::jsonb as external_ref_payload,
-                created_at
-            from flow_run_checkpoints
-            where flow_run_id = $1
-              and node_run_id = $2
-            order by created_at desc, id desc
+                checkpoints.created_at
+            from flow_run_checkpoints checkpoints
+            left join runtime_legacy_shadow_rows shadow_rows
+              on shadow_rows.source_table = 'flow_run_checkpoints'
+             and shadow_rows.source_column = 'variable_snapshot'
+             and shadow_rows.source_row_id = checkpoints.id
+            left join runtime_canonical_contents contents
+              on contents.id = shadow_rows.canonical_content_id
+             and contents.content = checkpoints.variable_snapshot
+            where checkpoints.flow_run_id = $1
+              and checkpoints.node_run_id = $2
+            order by checkpoints.created_at desc, checkpoints.id desc
             limit 1
             "#,
         )
@@ -322,6 +329,10 @@ impl PgControlPlaneStore {
                 created_at
             from runtime_context_projections
             where flow_run_id = $1
+              and not exists (
+                  select 1 from runtime_legacy_shadow_rows shadow_rows
+                   where shadow_rows.context_version_id = runtime_context_projections.id
+              )
             order by created_at asc, id asc
             "#,
         )

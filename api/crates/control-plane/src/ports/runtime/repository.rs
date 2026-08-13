@@ -271,6 +271,20 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendRecoveryHistoryInput,
     ) -> anyhow::Result<domain::RecoveryHistoryRecord>;
+    async fn convert_legacy_runtime_shadow_batch(
+        &self,
+        input: &ConvertLegacyRuntimeShadowBatchInput,
+    ) -> anyhow::Result<ConvertLegacyRuntimeShadowBatchResult> {
+        let _ = input;
+        anyhow::bail!("convert_legacy_runtime_shadow_batch not implemented")
+    }
+    async fn rollback_legacy_runtime_shadow(
+        &self,
+        input: &RollbackLegacyRuntimeShadowInput,
+    ) -> anyhow::Result<RollbackLegacyRuntimeShadowResult> {
+        let _ = input;
+        anyhow::bail!("rollback_legacy_runtime_shadow not implemented")
+    }
     async fn load_runtime_context_content_lineage(
         &self,
         context_version_id: Uuid,

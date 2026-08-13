@@ -7,18 +7,20 @@ use control_plane::{
         ApplicationRepository, AttachCompiledPlanToFlowRunInput, BindInvocationContextInput,
         ClearModelProviderRequestLogsBatchInput, CommitFlowRunTerminalInput,
         CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
-        CompleteNodeRunInput, CreateApplicationInput, CreateCallbackTaskInput,
-        CreateCheckpointInput, CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
-        CreateRuntimeDebugArtifactInput, DeleteModelProviderRequestLogsInput,
-        FinishFlowRunCallbackResumeAttemptInput, FlowRepository,
-        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput, CreateApplicationInput,
+        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
+        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
+        DeleteModelProviderRequestLogsInput, FinishFlowRunCallbackResumeAttemptInput,
+        FlowRepository, GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        LegacyRuntimeShadowExecution, LegacyRuntimeShadowSourceKind,
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository, PersistWaitingKind,
         PersistWaitingStateInput, ProviderRequestLogTask, PutCanonicalRuntimeContentInput,
-        RecordFlowRunCallbackResumeAttemptInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
-        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
-        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
+        RecordFlowRunCallbackResumeAttemptInput, RollbackLegacyRuntimeShadowInput,
+        UpdateFlowRunInput, UpdateFlowRunPayloadsInput, UpdateNodeRunInput,
+        UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput, UpsertCompiledPlanInput,
+        UpsertDataModelSideEffectReceiptInput,
     },
 };
 use domain::{
@@ -375,6 +377,7 @@ mod application_trace_projection;
 mod callback_resume;
 mod debug_artifacts;
 mod flow_runs;
+mod legacy_shadow;
 mod public_runs;
 mod request_logs;
 mod runtime_events;

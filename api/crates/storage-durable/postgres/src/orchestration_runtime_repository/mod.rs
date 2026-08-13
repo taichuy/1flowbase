@@ -29,6 +29,7 @@ use control_plane::{
         ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
         CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
+        ConvertLegacyRuntimeShadowBatchInput, ConvertLegacyRuntimeShadowBatchResult,
         CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
         CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
         DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
@@ -45,7 +46,8 @@ use control_plane::{
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
         ReplaceApplicationRunTraceProjectionInput, ResumeClaimDisposition, ResumeClaimKind,
-        ResumeClaimRecord, ResumeClaimStatus, RuntimeContextContentVersion,
+        ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
+        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion,
         UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
         UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
         UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
@@ -79,6 +81,7 @@ include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
 include!("storage_foundation_methods.rs");
+include!("legacy_shadow_methods.rs");
 include!("waiting_state_methods.rs");
 include!("resume_claim_methods.rs");
 include!("ledger_methods.rs");
@@ -436,6 +439,20 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AppendRecoveryHistoryInput,
     ) -> Result<domain::RecoveryHistoryRecord> {
         PgControlPlaneStore::append_recovery_history(self, input).await
+    }
+
+    async fn convert_legacy_runtime_shadow_batch(
+        &self,
+        input: &ConvertLegacyRuntimeShadowBatchInput,
+    ) -> Result<ConvertLegacyRuntimeShadowBatchResult> {
+        PgControlPlaneStore::convert_legacy_runtime_shadow_batch(self, input).await
+    }
+
+    async fn rollback_legacy_runtime_shadow(
+        &self,
+        input: &RollbackLegacyRuntimeShadowInput,
+    ) -> Result<RollbackLegacyRuntimeShadowResult> {
+        PgControlPlaneStore::rollback_legacy_runtime_shadow(self, input).await
     }
 
     async fn load_runtime_context_content_lineage(

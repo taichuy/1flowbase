@@ -175,6 +175,106 @@ pub struct AppendRecoveryHistoryInput {
     pub idempotency_key: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegacyRuntimeShadowExecution {
+    Preview,
+    Apply,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegacyRuntimeShadowSourceKind {
+    CheckpointContext,
+    CallbackRequest,
+    CallbackResponse,
+    RunEventHistory,
+}
+
+impl LegacyRuntimeShadowSourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CheckpointContext => "checkpoint_context",
+            Self::CallbackRequest => "callback_request",
+            Self::CallbackResponse => "callback_response",
+            Self::RunEventHistory => "run_event_history",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LegacyRuntimeShadowCursor {
+    pub source_kind: LegacyRuntimeShadowSourceKind,
+    pub created_at: OffsetDateTime,
+    pub source_row_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConvertLegacyRuntimeShadowBatchInput {
+    pub application_id: Option<Uuid>,
+    pub flow_run_id: Option<Uuid>,
+    pub after: Option<LegacyRuntimeShadowCursor>,
+    pub limit: usize,
+    pub lock_budget_ms: u32,
+    pub execution: LegacyRuntimeShadowExecution,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegacyRuntimeRunClassification {
+    Pending,
+    Terminal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LegacyRuntimeShadowStatistics {
+    pub source_kind: LegacyRuntimeShadowSourceKind,
+    pub source_table: String,
+    pub source_column: String,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub run_classification: LegacyRuntimeRunClassification,
+    pub scanned_rows: u64,
+    pub shadowed_rows: u64,
+    pub already_shadowed_rows: u64,
+    pub difference_rows: u64,
+    pub source_bytes: u64,
+    pub canonical_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LegacyRuntimeShadowDifference {
+    pub source_kind: LegacyRuntimeShadowSourceKind,
+    pub source_table: String,
+    pub source_column: String,
+    pub source_row_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub reason: String,
+    pub source_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConvertLegacyRuntimeShadowBatchResult {
+    pub next: Option<LegacyRuntimeShadowCursor>,
+    pub has_more: bool,
+    pub statistics: Vec<LegacyRuntimeShadowStatistics>,
+    pub differences: Vec<LegacyRuntimeShadowDifference>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RollbackLegacyRuntimeShadowInput {
+    pub application_id: Uuid,
+    pub flow_run_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RollbackLegacyRuntimeShadowResult {
+    pub deleted_shadow_rows: u64,
+    pub deleted_context_versions: u64,
+    pub deleted_canonical_contents: u64,
+    pub retained_shared_canonical_contents: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimeContextContentVersion {
     pub context_version_id: Uuid,

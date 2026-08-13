@@ -1115,18 +1115,25 @@ impl PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             select
-                id,
-                flow_run_id,
-                node_run_id,
-                status,
-                reason,
-                locator_payload,
-                variable_snapshot,
-                external_ref_payload,
-                created_at
-            from flow_run_checkpoints
-            where flow_run_id = $1
-              and id = $2
+                checkpoints.id,
+                checkpoints.flow_run_id,
+                checkpoints.node_run_id,
+                checkpoints.status,
+                checkpoints.reason,
+                checkpoints.locator_payload,
+                coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
+                checkpoints.external_ref_payload,
+                checkpoints.created_at
+            from flow_run_checkpoints checkpoints
+            left join runtime_legacy_shadow_rows shadow_rows
+              on shadow_rows.source_table = 'flow_run_checkpoints'
+             and shadow_rows.source_column = 'variable_snapshot'
+             and shadow_rows.source_row_id = checkpoints.id
+            left join runtime_canonical_contents contents
+              on contents.id = shadow_rows.canonical_content_id
+             and contents.content = checkpoints.variable_snapshot
+            where checkpoints.flow_run_id = $1
+              and checkpoints.id = $2
             "#,
         )
         .bind(flow_run_id)
