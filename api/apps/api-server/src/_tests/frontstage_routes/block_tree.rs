@@ -12,21 +12,29 @@ async fn create_block(
     code: &str,
     runtime_descriptor: Option<Value>,
 ) -> (StatusCode, Value) {
+    let mut body = json!({
+        "tab_id": tab_id,
+        "title": title,
+        "description": format!("Description for {title}"),
+        "presentation": "inline",
+        "parent_block_id": parent_block_id,
+        "runtime_descriptor": runtime_descriptor,
+    });
+    body.as_object_mut()
+        .expect("block body must be an object")
+        .extend(
+            ready_executable_payload(code)
+                .as_object()
+                .expect("executable payload must be an object")
+                .clone(),
+        );
     send_json(
         app,
         "POST",
         &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"),
         cookie,
         csrf,
-        json!({
-            "tab_id": tab_id,
-            "title": title,
-            "description": format!("Description for {title}"),
-            "presentation": "inline",
-            "parent_block_id": parent_block_id,
-            "code": code,
-            "runtime_descriptor": runtime_descriptor,
-        }),
+        body,
     )
     .await
 }
@@ -258,7 +266,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     assert_eq!(initial_code_status, StatusCode::OK);
     assert_eq!(initial_code_payload["data"]["block_id"], json!(child_id));
     assert_eq!(
-        initial_code_payload["data"]["code"],
+        initial_code_payload["data"]["source_code"],
         json!("export default 'child';")
     );
     assert!(initial_code_payload["data"].get("code_ref").is_none());
@@ -270,12 +278,12 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         &code_path,
         &cookie,
         &csrf,
-        json!({ "code": "export default 'changed';" }),
+        ready_executable_payload("export default 'changed';"),
     )
     .await;
     assert_eq!(save_code_status, StatusCode::OK);
     assert_eq!(
-        save_code_payload["data"]["code"],
+        save_code_payload["data"]["source_code"],
         json!("export default 'changed';")
     );
     assert_ne!(save_code_payload["data"]["source_sha256"], initial_hash);

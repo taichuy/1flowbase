@@ -16,22 +16,30 @@ async fn create_runtime_block(
     parent_block_id: Option<&str>,
     code: &str,
 ) -> String {
+    let mut body = json!({
+        "tab_id": tab_id,
+        "title": title,
+        "presentation": presentation,
+        "parent_block_id": parent_block_id,
+        "input_mapping": { "input": format!("{title}.input") },
+        "output_mapping": { "output": format!("{title}.output") },
+        "runtime_descriptor": { "fixture": title },
+    });
+    body.as_object_mut()
+        .expect("runtime block body must be an object")
+        .extend(
+            ready_executable_payload(code)
+                .as_object()
+                .expect("executable payload must be an object")
+                .clone(),
+        );
     let (status, payload) = send_json(
         app,
         "POST",
         &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"),
         cookie,
         csrf,
-        json!({
-            "tab_id": tab_id,
-            "title": title,
-            "presentation": presentation,
-            "parent_block_id": parent_block_id,
-            "code": code,
-            "input_mapping": { "input": format!("{title}.input") },
-            "output_mapping": { "output": format!("{title}.output") },
-            "runtime_descriptor": { "fixture": title },
-        }),
+        body,
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{payload}");
@@ -155,9 +163,9 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     assert_eq!(layers[0]["presentation"], json!("page"));
     assert_eq!(layers[1]["presentation"], json!("drawer"));
     assert_eq!(layers[2]["presentation"], json!("modal"));
-    assert_eq!(layers[0]["code"], json!(root_source));
-    assert_eq!(layers[1]["code"], json!(child_source));
-    assert_eq!(layers[2]["code"], json!(target_source));
+    assert_eq!(layers[0]["source_code"], json!(root_source));
+    assert_eq!(layers[1]["source_code"], json!(child_source));
+    assert_eq!(layers[2]["source_code"], json!(target_source));
     assert_eq!(
         layers[0]["source_sha256"],
         json!(source_sha256(root_source))
@@ -174,6 +182,17 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     assert_eq!(layers[2]["runtime_descriptor"]["fixture"], json!("Modal"));
     assert_eq!(layers[2]["input_mapping"]["input"], json!("Modal.input"));
     assert_eq!(layers[2]["output_mapping"]["output"], json!("Modal.output"));
+    assert!(layers
+        .iter()
+        .all(|layer| layer["executable_state"] == json!("ready")));
+    assert_eq!(
+        layers[2]["tailwind_toolchain_lock"],
+        ready_executable_payload(target_source)["tailwind_toolchain_lock"]
+    );
+    assert_eq!(
+        layers[2]["compiler_identity"],
+        ready_executable_payload(target_source)["compiler_identity"]
+    );
 
     let expected_layer_fields = BTreeSet::from([
         "block_id",
@@ -185,8 +204,14 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
         "input_mapping",
         "output_mapping",
         "runtime_descriptor",
-        "code",
+        "source_code",
         "source_sha256",
+        "dependency_lock",
+        "tailwind_toolchain_lock",
+        "generated_css",
+        "generated_css_sha256",
+        "compiler_identity",
+        "executable_state",
     ]);
     for layer in layers {
         assert_eq!(

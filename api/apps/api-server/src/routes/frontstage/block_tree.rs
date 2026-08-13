@@ -88,7 +88,7 @@ pub struct SaveFrontstageBlockNodeCodeBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct FrontstageBlockExecutableBody {
     pub source_code: String,
-    #[schema(value_type = Object)]
+    #[schema(value_type = Vec<Object>)]
     pub dependency_lock: Value,
     #[schema(value_type = Object)]
     pub tailwind_toolchain_lock: Value,
@@ -185,7 +185,7 @@ pub struct FrontstageBlockNodeCodeResponse {
     pub page_id: String,
     pub source_code: String,
     pub source_sha256: Option<String>,
-    #[schema(value_type = Option<Object>)]
+    #[schema(value_type = Option<Vec<Object>>)]
     pub dependency_lock: Option<Value>,
     #[schema(value_type = Option<Object>)]
     pub tailwind_toolchain_lock: Option<Value>,
@@ -210,7 +210,7 @@ pub struct FrontstageBlockRuntimeLayerResponse {
     pub runtime_descriptor: Value,
     pub source_code: String,
     pub source_sha256: Option<String>,
-    #[schema(value_type = Option<Object>)]
+    #[schema(value_type = Option<Vec<Object>>)]
     pub dependency_lock: Option<Value>,
     #[schema(value_type = Option<Object>)]
     pub tailwind_toolchain_lock: Option<Value>,

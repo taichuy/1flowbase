@@ -136,7 +136,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         &code_path,
         &root_cookie,
         &root_csrf,
-        json!({ "code": "export default 1;" }),
+        ready_executable_payload("export default 1;"),
     )
     .await;
     assert_eq!(save_status, StatusCode::OK);
@@ -160,7 +160,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         &code_path,
         &viewer_cookie,
         &viewer_csrf,
-        json!({ "code": "export default 2;" }),
+        ready_executable_payload("export default 2;"),
     )
     .await;
     assert_eq!(write_status, StatusCode::OK);

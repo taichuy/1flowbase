@@ -46,12 +46,12 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
         &code_path,
         &cookie,
         &csrf,
-        json!({ "code": "export default function Hero() { return 'v1'; }" }),
+        ready_executable_payload("export default function Hero() { return 'v1'; }"),
     )
     .await;
     assert_eq!(save_status, StatusCode::OK);
     assert_eq!(
-        save_payload["data"]["code"],
+        save_payload["data"]["source_code"],
         json!("export default function Hero() { return 'v1'; }")
     );
     assert_eq!(
@@ -65,7 +65,7 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
         &code_path,
         &cookie,
         &csrf,
-        json!({ "code": "export default function Hero() { return 'v1'; }\n" }),
+        ready_executable_payload("export default function Hero() { return 'v1'; }\n"),
     )
     .await;
     assert_eq!(overwrite_status, StatusCode::OK);
@@ -82,7 +82,7 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
     assert_eq!(read_status, StatusCode::OK);
     assert_eq!(read_payload["data"]["code_ref"], json!("hero"));
     assert_eq!(
-        read_payload["data"]["code"],
+        read_payload["data"]["source_code"],
         json!("export default function Hero() { return 'v1'; }\n")
     );
     assert_eq!(
