@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use observability::RuntimeEventBus;
 use plugin_framework::provider_contract::ProviderStreamEvent;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -9,11 +9,12 @@ use uuid::Uuid;
 use crate::{
     capability_runtime::{host_tool_capability_id, mcp_tool_capability_id},
     ports::{
-        AppendCapabilityInvocationInput, AppendContextProjectionInput,
+        AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
         AppendModelFailoverAttemptLedgerInput, AppendRunEventInput, AppendUsageLedgerInput,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CreateCallbackTaskInput,
-        CreateCheckpointInput, CreateNodeRunInput, LinkUsageLedgerToModelFailoverAttemptInput,
-        OrchestrationRuntimeRepository, UpdateFlowRunInput, UpdateNodeRunInput,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CreateNodeRunInput,
+        LinkUsageLedgerToModelFailoverAttemptInput, OrchestrationRuntimeRepository,
+        PersistWaitingCallbackTaskInput, PersistWaitingKind, PersistWaitingStateInput,
+        PutCanonicalRuntimeContentInput, UpdateNodeRunInput,
     },
     runtime_observability::{
         append_host_event, append_host_span, append_provider_stream_events_raw,
@@ -46,8 +47,10 @@ use answer_presentation_persistence::answer_presentation_terminal_events;
 use answer_presentation_persistence::{
     canonical_terminal_output_payload, ready_waiting_answer_output_payload,
 };
+#[cfg(test)]
+use checkpoint_locator::checkpoint_snapshot_from_record;
 pub(in crate::orchestration_runtime) use checkpoint_locator::{
-    checkpoint_node_id, checkpoint_snapshot_from_record, CheckpointLocatorPayload,
+    checkpoint_node_id, checkpoint_snapshot_from_record_with_context, CheckpointLocatorPayload,
 };
 use node_traces::persist_flow_debug_node_traces;
 pub(super) use node_traces::PreparedNodeRuns;
@@ -83,6 +86,67 @@ pub(super) struct PersistedFlowDebugOutcome {
     pub(super) stream_events: Vec<crate::ports::RuntimeEventPayload>,
     pub(super) terminal_event: Option<crate::ports::RuntimeEventPayload>,
     pub(super) close_reason: Option<crate::ports::RuntimeEventCloseReason>,
+}
+
+struct PreparedRecoveryCheckpoint {
+    context_version: domain::ContextVersionRecord,
+    locator_payload: Value,
+    variable_snapshot: Value,
+}
+
+async fn prepare_recovery_checkpoint<R>(
+    repository: &R,
+    scope_id: Uuid,
+    application_id: Uuid,
+    flow_run_id: Uuid,
+    node_id: &str,
+    snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
+    transition_kind: domain::ContextTransitionKind,
+) -> Result<PreparedRecoveryCheckpoint>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    let initial = checkpoint_locator::compact_checkpoint_content(snapshot, None)?;
+    let compacted = match initial.parent_context_version_id {
+        Some(parent_context_version_id) => {
+            let lineage = repository
+                .load_runtime_context_content_lineage(parent_context_version_id)
+                .await?;
+            let previous = checkpoint_locator::materialize_checkpoint_content(&lineage)?;
+            checkpoint_locator::compact_checkpoint_content(snapshot, Some(&previous))?
+        }
+        None => initial,
+    };
+    let content = repository
+        .put_canonical_runtime_content(&PutCanonicalRuntimeContentInput {
+            scope_id,
+            application_id,
+            content: compacted.content,
+        })
+        .await?;
+    let context_version = repository
+        .append_context_version(&AppendContextVersionInput {
+            scope_id,
+            application_id,
+            flow_run_id,
+            parent_context_version_id: compacted.parent_context_version_id,
+            sequence: compacted.sequence,
+            transition_kind,
+            transition_actor: domain::ContextTransitionActor::Host,
+            declared_compaction_provenance: None,
+            actual_content_id: content.id,
+        })
+        .await?;
+    let mut variable_snapshot = compacted.variable_snapshot;
+    variable_snapshot[checkpoint_locator::RECOVERY_CONTEXT_MARKER]["context_version_id"] =
+        json!(context_version.id);
+    Ok(PreparedRecoveryCheckpoint {
+        locator_payload: CheckpointLocatorPayload::from_snapshot(node_id, snapshot)
+            .with_context_version(context_version.id)
+            .into_json(),
+        variable_snapshot,
+        context_version,
+    })
 }
 
 async fn commit_terminal_outcome<R>(
@@ -224,24 +288,53 @@ where
             let answer_output_payload =
                 ready_waiting_answer_output_payload(compiled_plan, outcome)?
                     .unwrap_or_else(|| json!({}));
+            ensure_flow_run_transition(
+                flow_run.status,
+                domain::FlowRunStatus::WaitingHuman,
+                "persist_flow_waiting_human",
+            )?;
+            let recovery = prepare_recovery_checkpoint(
+                repository,
+                scope_id,
+                application_id,
+                flow_run.id,
+                &wait.node_id,
+                snapshot,
+                domain::ContextTransitionKind::Append,
+            )
+            .await?;
+            let waiting_event =
+                debug_stream_events::waiting_human(flow_run.id, waiting_node_run.id, &wait.node_id);
+            let waiting_event_input = runtime_event_persister::build_runtime_event_input(
+                flow_run.id,
+                Some(waiting_node_run.id),
+                waiting_event.event_type.clone(),
+                waiting_event.source,
+                waiting_event.payload.clone(),
+            );
             let updated = repository
-                .update_flow_run_if_status(
-                    &UpdateFlowRunInput {
-                        flow_run_id: flow_run.id,
-                        status: {
-                            ensure_flow_run_transition(
-                                flow_run.status,
-                                domain::FlowRunStatus::WaitingHuman,
-                                "persist_flow_waiting_human",
-                            )?;
-                            domain::FlowRunStatus::WaitingHuman
-                        },
-                        output_payload: answer_output_payload,
-                        error_payload: None,
-                        finished_at: None,
-                    },
-                    flow_run.status,
-                )
+                .persist_waiting_state(&PersistWaitingStateInput {
+                    checkpoint_id: Uuid::now_v7(),
+                    scope_id,
+                    application_id,
+                    flow_run_id: flow_run.id,
+                    node_run_id: waiting_node_run.id,
+                    expected_status: flow_run.status,
+                    output_payload: answer_output_payload,
+                    checkpoint_status: "waiting_human".into(),
+                    checkpoint_reason: "等待人工输入".into(),
+                    locator_payload: recovery.locator_payload,
+                    variable_snapshot: recovery.variable_snapshot,
+                    checkpoint_external_ref_payload: Some(json!({ "prompt": wait.prompt })),
+                    context_version_id: recovery.context_version.id,
+                    recovery_content_id: Some(recovery.context_version.actual_content_id),
+                    recovery_idempotency_key: format!(
+                        "waiting_human:{}:{}",
+                        waiting_node_run.id, recovery.context_version.id
+                    ),
+                    waiting_event: waiting_event_input,
+                    kind: PersistWaitingKind::Human,
+                })
                 .await?;
             if updated.is_none() {
                 let persisted_flow_run = repository
@@ -255,30 +348,7 @@ where
                     close_reason: None,
                 });
             }
-            repository
-                .create_checkpoint(&CreateCheckpointInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: Some(waiting_node_run.id),
-                    status: "waiting_human".to_string(),
-                    reason: "等待人工输入".to_string(),
-                    locator_payload: CheckpointLocatorPayload::from_snapshot(
-                        &wait.node_id,
-                        snapshot,
-                    )
-                    .into_json(),
-                    variable_snapshot: Value::Object(snapshot.variable_pool.clone()),
-                    external_ref_payload: Some(json!({ "prompt": wait.prompt })),
-                })
-                .await?;
             stream_events.extend(presentation_events);
-            let waiting_event =
-                debug_stream_events::waiting_human(flow_run.id, waiting_node_run.id, &wait.node_id);
-            runtime_event_persister::persist_runtime_event_payload(
-                repository,
-                flow_run.id,
-                &waiting_event,
-            )
-            .await?;
             stream_events.push(waiting_event);
             close_reason = Some(crate::ports::RuntimeEventCloseReason::WaitingHuman);
         }
@@ -301,26 +371,79 @@ where
                 } else {
                     ("waiting_callback", "等待 callback 回填")
                 };
+            ensure_flow_run_transition(
+                flow_run.status,
+                domain::FlowRunStatus::WaitingCallback,
+                "persist_flow_waiting_callback",
+            )?;
+            let recovery = prepare_recovery_checkpoint(
+                repository,
+                scope_id,
+                application_id,
+                flow_run.id,
+                &wait.node_id,
+                snapshot,
+                domain::ContextTransitionKind::Callback,
+            )
+            .await?;
+            let external_ref_payload =
+                (wait.callback_kind != "llm_tool_calls").then(|| wait.request_payload.clone());
+            let callback_task_id = Uuid::now_v7();
+            let callback_task_for_event = domain::CallbackTaskRecord {
+                id: callback_task_id,
+                flow_run_id: flow_run.id,
+                node_run_id: waiting_node_run.id,
+                callback_kind: wait.callback_kind.clone(),
+                status: domain::CallbackTaskStatus::Pending,
+                request_payload: wait.request_payload.clone(),
+                response_payload: None,
+                external_ref_payload: external_ref_payload.clone(),
+                created_at: OffsetDateTime::now_utc(),
+                completed_at: None,
+            };
+            let waiting_event = debug_stream_events::waiting_callback_with_task(
+                flow_run.id,
+                waiting_node_run.id,
+                &wait.node_id,
+                &callback_task_for_event,
+            );
+            let waiting_event_input = runtime_event_persister::build_runtime_event_input(
+                flow_run.id,
+                Some(waiting_node_run.id),
+                waiting_event.event_type.clone(),
+                waiting_event.source,
+                waiting_event.payload.clone(),
+            );
             let updated = repository
-                .update_flow_run_if_status(
-                    &UpdateFlowRunInput {
-                        flow_run_id: flow_run.id,
-                        status: {
-                            ensure_flow_run_transition(
-                                flow_run.status,
-                                domain::FlowRunStatus::WaitingCallback,
-                                "persist_flow_waiting_callback",
-                            )?;
-                            domain::FlowRunStatus::WaitingCallback
-                        },
-                        output_payload: answer_output_payload,
-                        error_payload: None,
-                        finished_at: None,
-                    },
-                    flow_run.status,
-                )
+                .persist_waiting_state(&PersistWaitingStateInput {
+                    checkpoint_id: Uuid::now_v7(),
+                    scope_id,
+                    application_id,
+                    flow_run_id: flow_run.id,
+                    node_run_id: waiting_node_run.id,
+                    expected_status: flow_run.status,
+                    output_payload: answer_output_payload,
+                    checkpoint_status: checkpoint_status.into(),
+                    checkpoint_reason: checkpoint_reason.into(),
+                    locator_payload: recovery.locator_payload,
+                    variable_snapshot: recovery.variable_snapshot,
+                    checkpoint_external_ref_payload: external_ref_payload.clone(),
+                    context_version_id: recovery.context_version.id,
+                    recovery_content_id: Some(recovery.context_version.actual_content_id),
+                    recovery_idempotency_key: format!(
+                        "waiting_callback:{}:{}",
+                        waiting_node_run.id, recovery.context_version.id
+                    ),
+                    waiting_event: waiting_event_input,
+                    kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
+                        id: callback_task_id,
+                        callback_kind: wait.callback_kind.clone(),
+                        request_payload: wait.request_payload.clone(),
+                        external_ref_payload: external_ref_payload.clone(),
+                    }),
+                })
                 .await?;
-            if updated.is_none() {
+            let Some(persisted_waiting) = updated else {
                 let persisted_flow_run = repository
                     .get_flow_run(application_id, flow_run.id)
                     .await?
@@ -331,48 +454,13 @@ where
                     terminal_event: None,
                     close_reason: None,
                 });
-            }
-            let external_ref_payload =
-                (wait.callback_kind != "llm_tool_calls").then(|| wait.request_payload.clone());
-            repository
-                .create_checkpoint(&CreateCheckpointInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: Some(waiting_node_run.id),
-                    status: checkpoint_status.to_string(),
-                    reason: checkpoint_reason.to_string(),
-                    locator_payload: CheckpointLocatorPayload::from_snapshot(
-                        &wait.node_id,
-                        snapshot,
-                    )
-                    .into_json(),
-                    variable_snapshot: Value::Object(snapshot.variable_pool.clone()),
-                    external_ref_payload: external_ref_payload.clone(),
-                })
-                .await?;
-            let callback_task = repository
-                .create_callback_task(&CreateCallbackTaskInput {
-                    flow_run_id: flow_run.id,
-                    node_run_id: waiting_node_run.id,
-                    callback_kind: wait.callback_kind.clone(),
-                    request_payload: wait.request_payload.clone(),
-                    external_ref_payload,
-                })
-                .await?;
+            };
+            persisted_waiting
+                .callback_task
+                .ok_or_else(|| anyhow!("persisted waiting callback is missing callback task"))?;
             stream_events.extend(presentation_events);
             let assistant_execution = flow_run.run_mode == domain::FlowRunMode::AssistantExecution
                 && wait.callback_kind == "llm_tool_calls";
-            let waiting_event = debug_stream_events::waiting_callback_with_task(
-                flow_run.id,
-                waiting_node_run.id,
-                &wait.node_id,
-                &callback_task,
-            );
-            runtime_event_persister::persist_runtime_event_payload(
-                repository,
-                flow_run.id,
-                &waiting_event,
-            )
-            .await?;
             // Assistant LLM tool callbacks are completed by the server, so this
             // durable audit event is not a user-facing Preview terminal.
             if !assistant_execution {

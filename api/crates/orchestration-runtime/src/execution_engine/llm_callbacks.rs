@@ -34,7 +34,7 @@ pub(super) fn build_llm_tool_callback_wait(
     Ok(Some(LlmToolCallbackWait {
         node_id: node.node_id.clone(),
         node_alias: node.alias.clone(),
-        request_payload: build_llm_tool_callback_request_payload(output_payload, &history),
+        request_payload: build_llm_tool_callback_request_payload(output_payload),
         checkpoint_variable_pool: variable_pool_with_pending_llm_tool_callback(
             node,
             variable_pool,
@@ -46,10 +46,7 @@ pub(super) fn build_llm_tool_callback_wait(
     }))
 }
 
-pub(super) fn build_llm_tool_callback_request_payload(
-    output_payload: &Value,
-    history: &[Value],
-) -> Value {
+pub(super) fn build_llm_tool_callback_request_payload(output_payload: &Value) -> Value {
     let mut payload = Map::new();
 
     for key in [
@@ -70,8 +67,6 @@ pub(super) fn build_llm_tool_callback_request_payload(
         "callback_kind".to_string(),
         Value::String(LLM_TOOL_CALLBACK_KIND.to_string()),
     );
-    payload.insert("history".to_string(), Value::Array(history.to_vec()));
-
     Value::Object(payload)
 }
 

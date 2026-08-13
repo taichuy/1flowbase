@@ -6,6 +6,9 @@ use serde_json::{json, Map, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use super::checkpoint_locator::{
+    compact_checkpoint_content, materialize_checkpoint_content, RECOVERY_CONTEXT_MARKER,
+};
 use super::{
     answer_presentation_terminal_events, canonical_terminal_output_payload, checkpoint_node_id,
     checkpoint_snapshot_from_record, CheckpointLocatorPayload,
@@ -182,6 +185,93 @@ fn checkpoint_locator_payload_from_runtime_position_preserves_branch_state() {
         snapshot.active_node_ids,
         vec!["node-answer".to_string(), "node-cleanup".to_string()]
     );
+}
+
+#[test]
+fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context() {
+    let first_context_version_id = Uuid::now_v7();
+    let second_context_version_id = Uuid::now_v7();
+    let fixed_system = format!("fixed-prefix-{}", "x".repeat(8_000));
+    let first_pool = Map::from_iter([
+        ("start".to_string(), json!({ "query": "summarize" })),
+        (
+            "node-llm".to_string(),
+            json!({
+                "text": "waiting",
+                "stale_output": true,
+                "__llm_tool_callback": {
+                    "system": fixed_system,
+                    "history": [{ "role": "user", "content": "summarize" }],
+                    "pending_tool_calls": [{ "id": "call-1", "name": "lookup" }],
+                    "obsolete_state": true
+                }
+            }),
+        ),
+    ]);
+    let first_snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        next_node_index: 1,
+        variable_pool: first_pool.clone(),
+        active_node_ids: vec!["node-llm".to_string()],
+    };
+    let first = compact_checkpoint_content(&first_snapshot, None).unwrap();
+
+    assert_eq!(first.content["format"], "runtime_snapshot_v1");
+
+    let mut second_pool = first_pool.clone();
+    second_pool.insert(
+        RECOVERY_CONTEXT_MARKER.to_string(),
+        json!({ "context_version_id": first_context_version_id, "sequence": 0 }),
+    );
+    second_pool["node-llm"]["__llm_tool_callback"]["history"] = json!([
+        { "role": "user", "content": "summarize" },
+        { "role": "assistant", "tool_call_id": "call-1" },
+        { "role": "tool", "tool_call_id": "call-1", "content": "result" }
+    ]);
+    second_pool["node-llm"]["__llm_tool_callback"]["pending_tool_calls"] = json!([]);
+    second_pool["node-llm"]
+        .as_object_mut()
+        .unwrap()
+        .remove("stale_output");
+    second_pool["node-llm"]["__llm_tool_callback"]
+        .as_object_mut()
+        .unwrap()
+        .remove("obsolete_state");
+    let second_snapshot = orchestration_runtime::execution_state::CheckpointSnapshot {
+        next_node_index: 1,
+        variable_pool: second_pool.clone(),
+        active_node_ids: vec!["node-llm".to_string()],
+    };
+    let second = compact_checkpoint_content(&second_snapshot, Some(&first_pool)).unwrap();
+    let second_serialized = serde_json::to_string(&second.content).unwrap();
+
+    assert_eq!(second.content["format"], "runtime_delta_v1");
+    assert_eq!(
+        second.content["llm_callback_appends"][0]["history_append"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(!second_serialized.contains("fixed-prefix-"));
+    assert!(second_serialized.len() < 1_000);
+
+    let mut materialized = materialize_checkpoint_content(&[
+        crate::ports::RuntimeContextContentVersion {
+            context_version_id: first_context_version_id,
+            sequence: 0,
+            content: first.content,
+        },
+        crate::ports::RuntimeContextContentVersion {
+            context_version_id: second_context_version_id,
+            sequence: 1,
+            content: second.content,
+        },
+    ])
+    .unwrap();
+    materialized.remove(RECOVERY_CONTEXT_MARKER);
+    second_pool.remove(RECOVERY_CONTEXT_MARKER);
+
+    assert_eq!(materialized, second_pool);
 }
 
 #[test]

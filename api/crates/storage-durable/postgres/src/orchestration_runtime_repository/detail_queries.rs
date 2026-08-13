@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;

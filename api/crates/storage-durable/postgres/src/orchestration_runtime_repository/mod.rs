@@ -40,15 +40,18 @@ use control_plane::{
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
-        OrchestrationRuntimeRepository, PutCanonicalRuntimeContentInput,
+        OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
+        PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReplaceApplicationRunTraceProjectionInput, UpdateCallbackTaskPayloadsInput,
-        UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
-        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
-        UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
-        UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
+        ReplaceApplicationRunTraceProjectionInput, RuntimeContextContentVersion,
+        UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
+        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
+        UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
+        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
+        UpsertDebugVariableCacheEntryInput,
     },
 };
+use serde_json::Value;
 use sqlx::{Postgres, QueryBuilder, Row};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -74,6 +77,7 @@ include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
 include!("storage_foundation_methods.rs");
+include!("waiting_state_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
 include!("request_log_methods.rs");
@@ -422,6 +426,20 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AppendRecoveryHistoryInput,
     ) -> Result<domain::RecoveryHistoryRecord> {
         PgControlPlaneStore::append_recovery_history(self, input).await
+    }
+
+    async fn load_runtime_context_content_lineage(
+        &self,
+        context_version_id: Uuid,
+    ) -> Result<Vec<RuntimeContextContentVersion>> {
+        PgControlPlaneStore::load_runtime_context_content_lineage(self, context_version_id).await
+    }
+
+    async fn persist_waiting_state(
+        &self,
+        input: &PersistWaitingStateInput,
+    ) -> Result<Option<PersistedWaitingState>> {
+        PgControlPlaneStore::persist_waiting_state(self, input).await
     }
 
     async fn append_usage_ledger(

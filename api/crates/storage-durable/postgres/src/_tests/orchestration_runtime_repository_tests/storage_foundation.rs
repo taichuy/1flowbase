@@ -205,3 +205,78 @@ async fn recovery_history_is_append_only_and_coordinates_do_not_embed_content() 
             .await;
     assert!(update.is_err());
 }
+
+#[tokio::test]
+async fn persist_waiting_state_rolls_back_run_checkpoint_and_event_on_recovery_failure() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-08-13 13:00:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let node_run = seed_node_run(&store, &run, started_at).await;
+
+    let result = store
+        .persist_waiting_state(&PersistWaitingStateInput {
+            checkpoint_id: Uuid::now_v7(),
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            flow_run_id: run.id,
+            node_run_id: node_run.id,
+            expected_status: FlowRunStatus::Running,
+            output_payload: json!({ "status": "waiting" }),
+            checkpoint_status: "waiting_human".into(),
+            checkpoint_reason: "human_input".into(),
+            locator_payload: json!({
+                "node_id": "node-llm",
+                "next_node_index": 1,
+                "active_node_ids": ["node-llm"]
+            }),
+            variable_snapshot: json!({}),
+            checkpoint_external_ref_payload: None,
+            context_version_id: Uuid::now_v7(),
+            recovery_content_id: None,
+            recovery_idempotency_key: "rollback-invalid-context".into(),
+            waiting_event: AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node_run.id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "flow.waiting_human".into(),
+                layer: domain::RuntimeEventLayer::AgentTransition,
+                source: domain::RuntimeEventSource::Host,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({ "status": "waiting_human" }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            },
+            kind: PersistWaitingKind::Human,
+        })
+        .await;
+
+    assert!(result.is_err());
+    let status: String = sqlx::query_scalar("select status from flow_runs where id = $1")
+        .bind(run.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    let checkpoint_count: i64 =
+        sqlx::query_scalar("select count(*) from flow_run_checkpoints where flow_run_id = $1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    let event_count: i64 =
+        sqlx::query_scalar("select count(*) from runtime_events where flow_run_id = $1")
+            .bind(run.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+
+    assert_eq!(status, FlowRunStatus::Running.as_str());
+    assert_eq!(checkpoint_count, 0);
+    assert_eq!(event_count, 0);
+}

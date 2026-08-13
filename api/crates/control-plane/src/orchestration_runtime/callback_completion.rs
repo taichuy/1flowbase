@@ -113,7 +113,8 @@ where
                 )
                 .await;
         }
-        let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
+        let snapshot =
+            checkpoint_snapshot_from_record_with_context(&self.repository, &checkpoint).await?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
         let execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
@@ -266,7 +267,8 @@ where
             return Ok(failed_flow_run);
         }
 
-        let snapshot = checkpoint_snapshot_from_record(checkpoint)?;
+        let snapshot =
+            checkpoint_snapshot_from_record_with_context(&self.repository, checkpoint).await?;
         let resumed_execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
                 actor,

@@ -164,3 +164,54 @@ pub struct AppendRecoveryHistoryInput {
     pub recovery_content_id: Option<Uuid>,
     pub idempotency_key: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct RuntimeContextContentVersion {
+    pub context_version_id: Uuid,
+    pub sequence: i64,
+    pub content: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct PersistWaitingCallbackTaskInput {
+    pub id: Uuid,
+    pub callback_kind: String,
+    pub request_payload: serde_json::Value,
+    pub external_ref_payload: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PersistWaitingKind {
+    Human,
+    Callback(PersistWaitingCallbackTaskInput),
+}
+
+#[derive(Debug, Clone)]
+pub struct PersistWaitingStateInput {
+    pub checkpoint_id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub node_run_id: Uuid,
+    pub expected_status: domain::FlowRunStatus,
+    pub output_payload: serde_json::Value,
+    pub checkpoint_status: String,
+    pub checkpoint_reason: String,
+    pub locator_payload: serde_json::Value,
+    pub variable_snapshot: serde_json::Value,
+    pub checkpoint_external_ref_payload: Option<serde_json::Value>,
+    pub context_version_id: Uuid,
+    pub recovery_content_id: Option<Uuid>,
+    pub recovery_idempotency_key: String,
+    pub waiting_event: AppendRuntimeEventInput,
+    pub kind: PersistWaitingKind,
+}
+
+#[derive(Debug, Clone)]
+pub struct PersistedWaitingState {
+    pub flow_run: domain::FlowRunRecord,
+    pub checkpoint: domain::CheckpointRecord,
+    pub callback_task: Option<domain::CallbackTaskRecord>,
+    pub waiting_event: domain::RuntimeEventRecord,
+    pub recovery_history: domain::RecoveryHistoryRecord,
+}

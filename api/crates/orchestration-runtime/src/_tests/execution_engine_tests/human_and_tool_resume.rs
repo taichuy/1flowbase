@@ -235,14 +235,15 @@ async fn llm_tool_calls_pause_current_llm_and_skip_downstream_answer() {
                 json!("fixture_provider")
             );
             assert_eq!(pending.request_payload["usage"]["total_tokens"], json!(14));
-            assert_eq!(pending.request_payload["history"][0]["role"], json!("user"));
+            assert!(pending.request_payload.get("history").is_none());
+            let checkpoint = outcome
+                .checkpoint_snapshot
+                .as_ref()
+                .expect("waiting callback keeps checkpoint truth");
             assert_eq!(
-                pending.request_payload["history"][0]["content"],
+                checkpoint.variable_pool["node-llm"]["__llm_tool_callback"]["history"][0]
+                    ["content"],
                 json!("weather?")
-            );
-            assert_eq!(
-                pending.request_payload["history"][1]["tool_calls"][0]["id"],
-                json!("call_weather")
             );
         }
         other => panic!("expected llm tool callback wait, got {other:?}"),

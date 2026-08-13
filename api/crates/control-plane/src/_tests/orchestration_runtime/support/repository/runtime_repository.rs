@@ -407,6 +407,11 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         let Some(record) = inner.callback_tasks_by_id.get_mut(&input.callback_task_id) else {
             return Err(ControlPlaneError::NotFound("callback_task").into());
         };
+        if record.status == domain::CallbackTaskStatus::Completed
+            && record.response_payload.as_ref() == Some(&input.response_payload)
+        {
+            return Ok(record.clone());
+        }
         if record.status != domain::CallbackTaskStatus::Pending {
             return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
         }
@@ -823,6 +828,253 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .or_default()
             .push(record.clone());
         Ok(record)
+    }
+
+    async fn put_canonical_runtime_content(
+        &self,
+        input: &crate::ports::PutCanonicalRuntimeContentInput,
+    ) -> Result<domain::CanonicalRuntimeContentRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let serialized = serde_json::to_string(&input.content)?;
+        let key = (input.application_id, serialized.clone());
+        if let Some(id) = inner.canonical_runtime_content_ids_by_value.get(&key) {
+            return Ok(inner
+                .canonical_runtime_contents_by_id
+                .get(id)
+                .expect("canonical runtime content index must resolve")
+                .clone());
+        }
+        let record = domain::CanonicalRuntimeContentRecord {
+            id: Uuid::now_v7(),
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            content_hash: format!("sha256:{:064x}", serialized.len()),
+            content: input.content.clone(),
+            byte_size: i64::try_from(serialized.len())?,
+            created_at: OffsetDateTime::now_utc(),
+        };
+        inner
+            .canonical_runtime_content_ids_by_value
+            .insert(key, record.id);
+        inner
+            .canonical_runtime_contents_by_id
+            .insert(record.id, record.clone());
+        Ok(record)
+    }
+
+    async fn append_context_version(
+        &self,
+        input: &crate::ports::AppendContextVersionInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let record = domain::ContextVersionRecord {
+            id: Uuid::now_v7(),
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            flow_run_id: input.flow_run_id,
+            parent_context_version_id: input.parent_context_version_id,
+            sequence: input.sequence,
+            transition_kind: input.transition_kind,
+            transition_actor: input.transition_actor,
+            declared_compaction_provenance: input.declared_compaction_provenance.clone(),
+            actual_content_id: input.actual_content_id,
+            created_at: OffsetDateTime::now_utc(),
+        };
+        inner
+            .context_versions_by_id
+            .insert(record.id, record.clone());
+        Ok(record)
+    }
+
+    async fn bind_invocation_context(
+        &self,
+        input: &crate::ports::BindInvocationContextInput,
+    ) -> Result<domain::InvocationContextBindingRecord> {
+        Ok(domain::InvocationContextBindingRecord {
+            invocation_span_id: input.invocation_span_id,
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            flow_run_id: input.flow_run_id,
+            context_version_id: input.context_version_id,
+            created_at: OffsetDateTime::now_utc(),
+        })
+    }
+
+    async fn append_recovery_history(
+        &self,
+        input: &crate::ports::AppendRecoveryHistoryInput,
+    ) -> Result<domain::RecoveryHistoryRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let records = inner
+            .recovery_history_by_flow_run_id
+            .entry(input.flow_run_id)
+            .or_default();
+        if let Some(existing) = records
+            .iter()
+            .find(|record| record.idempotency_key == input.idempotency_key)
+        {
+            return Ok(existing.clone());
+        }
+        let record = domain::RecoveryHistoryRecord {
+            id: Uuid::now_v7(),
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            flow_run_id: input.flow_run_id,
+            node_run_id: input.node_run_id,
+            sequence: input.sequence,
+            state_code: input.state_code,
+            coordinate: input.coordinate,
+            context_version_id: input.context_version_id,
+            recovery_content_id: input.recovery_content_id,
+            idempotency_key: input.idempotency_key.clone(),
+            created_at: OffsetDateTime::now_utc(),
+        };
+        records.push(record.clone());
+        Ok(record)
+    }
+
+    async fn load_runtime_context_content_lineage(
+        &self,
+        context_version_id: Uuid,
+    ) -> Result<Vec<crate::ports::RuntimeContextContentVersion>> {
+        let inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let mut current = Some(context_version_id);
+        let mut lineage = Vec::new();
+        while let Some(id) = current {
+            let version = inner
+                .context_versions_by_id
+                .get(&id)
+                .ok_or_else(|| anyhow::anyhow!("context version not found"))?;
+            let content = inner
+                .canonical_runtime_contents_by_id
+                .get(&version.actual_content_id)
+                .ok_or_else(|| anyhow::anyhow!("canonical runtime content not found"))?;
+            lineage.push(crate::ports::RuntimeContextContentVersion {
+                context_version_id: version.id,
+                sequence: version.sequence,
+                content: content.content.clone(),
+            });
+            current = version.parent_context_version_id;
+        }
+        lineage.reverse();
+        Ok(lineage)
+    }
+
+    async fn persist_waiting_state(
+        &self,
+        input: &crate::ports::PersistWaitingStateInput,
+    ) -> Result<Option<crate::ports::PersistedWaitingState>> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let target_status = match input.kind {
+            crate::ports::PersistWaitingKind::Human => domain::FlowRunStatus::WaitingHuman,
+            crate::ports::PersistWaitingKind::Callback(_) => domain::FlowRunStatus::WaitingCallback,
+        };
+        let flow_run = inner
+            .flow_runs_by_id
+            .get_mut(&input.flow_run_id)
+            .ok_or_else(|| anyhow::anyhow!("flow run not found"))?;
+        if flow_run.status != input.expected_status {
+            return Ok(None);
+        }
+        flow_run.status = target_status;
+        flow_run.output_payload = input.output_payload.clone();
+        flow_run.updated_at = OffsetDateTime::now_utc();
+        let flow_run = flow_run.clone();
+        let checkpoint = domain::CheckpointRecord {
+            id: input.checkpoint_id,
+            flow_run_id: input.flow_run_id,
+            node_run_id: Some(input.node_run_id),
+            status: input.checkpoint_status.clone(),
+            reason: input.checkpoint_reason.clone(),
+            locator_payload: input.locator_payload.clone(),
+            variable_snapshot: input.variable_snapshot.clone(),
+            external_ref_payload: input.checkpoint_external_ref_payload.clone(),
+            created_at: OffsetDateTime::now_utc(),
+        };
+        inner
+            .checkpoints_by_id
+            .insert(checkpoint.id, checkpoint.clone());
+        let callback_task = match &input.kind {
+            crate::ports::PersistWaitingKind::Human => None,
+            crate::ports::PersistWaitingKind::Callback(callback) => {
+                let record = domain::CallbackTaskRecord {
+                    id: callback.id,
+                    flow_run_id: input.flow_run_id,
+                    node_run_id: input.node_run_id,
+                    callback_kind: callback.callback_kind.clone(),
+                    status: domain::CallbackTaskStatus::Pending,
+                    request_payload: callback.request_payload.clone(),
+                    response_payload: None,
+                    external_ref_payload: callback.external_ref_payload.clone(),
+                    created_at: OffsetDateTime::now_utc(),
+                    completed_at: None,
+                };
+                inner.callback_tasks_by_id.insert(record.id, record.clone());
+                Some(record)
+            }
+        };
+        let events = inner
+            .runtime_events_by_flow_run_id
+            .entry(input.flow_run_id)
+            .or_default();
+        let waiting_event = domain::RuntimeEventRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: input.flow_run_id,
+            node_run_id: input.waiting_event.node_run_id,
+            span_id: input.waiting_event.span_id,
+            parent_span_id: input.waiting_event.parent_span_id,
+            sequence: i64::try_from(events.len() + 1)?,
+            event_type: input.waiting_event.event_type.clone(),
+            layer: input.waiting_event.layer,
+            source: input.waiting_event.source,
+            trust_level: input.waiting_event.trust_level,
+            item_id: input.waiting_event.item_id,
+            ledger_ref: input.waiting_event.ledger_ref.clone(),
+            payload: input.waiting_event.payload.clone(),
+            visibility: input.waiting_event.visibility,
+            durability: input.waiting_event.durability,
+            created_at: OffsetDateTime::now_utc(),
+        };
+        events.push(waiting_event.clone());
+        let recovery_records = inner
+            .recovery_history_by_flow_run_id
+            .entry(input.flow_run_id)
+            .or_default();
+        let recovery_history = domain::RecoveryHistoryRecord {
+            id: Uuid::now_v7(),
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            flow_run_id: input.flow_run_id,
+            node_run_id: Some(input.node_run_id),
+            sequence: i64::try_from(recovery_records.len())?,
+            state_code: match target_status {
+                domain::FlowRunStatus::WaitingHuman => domain::RecoveryStateCode::WaitingHuman,
+                _ => domain::RecoveryStateCode::WaitingCallback,
+            },
+            coordinate: domain::RecoveryCoordinate {
+                node_sequence: input
+                    .locator_payload
+                    .get("next_node_index")
+                    .and_then(Value::as_i64)
+                    .unwrap_or_default(),
+                iteration_index: 0,
+                attempt_index: 0,
+                resume_sequence: i64::try_from(recovery_records.len())?,
+                event_sequence: waiting_event.sequence,
+            },
+            context_version_id: input.context_version_id,
+            recovery_content_id: input.recovery_content_id,
+            idempotency_key: input.recovery_idempotency_key.clone(),
+            created_at: OffsetDateTime::now_utc(),
+        };
+        recovery_records.push(recovery_history.clone());
+        Ok(Some(crate::ports::PersistedWaitingState {
+            flow_run,
+            checkpoint,
+            callback_task,
+            waiting_event,
+            recovery_history,
+        }))
     }
 
     async fn append_usage_ledger(

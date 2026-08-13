@@ -476,7 +476,7 @@ fn payload_with_stream_sequence(
     payload
 }
 
-fn build_runtime_event_input(
+pub(super) fn build_runtime_event_input(
     flow_run_id: Uuid,
     node_run_id: Option<Uuid>,
     event_type: String,

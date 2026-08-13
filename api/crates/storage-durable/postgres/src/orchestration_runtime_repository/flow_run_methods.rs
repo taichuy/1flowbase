@@ -300,10 +300,9 @@ impl PgControlPlaneStore {
                 .find_published_flow_run_by_idempotency_key(
                     input.application_id,
                     conflict_api_key,
-                    input
-                        .idempotency_key
-                        .as_deref()
-                        .ok_or_else(|| anyhow!("idempotency conflict without an idempotency key"))?,
+                    input.idempotency_key.as_deref().ok_or_else(|| {
+                        anyhow!("idempotency conflict without an idempotency key")
+                    })?,
                 )
                 .await?
                 .ok_or_else(|| anyhow!("idempotency conflict canonical flow run is unavailable"))?;
@@ -1312,15 +1311,39 @@ impl PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        let Some(row) = row else {
-            if self
-                .get_callback_task(input.callback_task_id)
-                .await?
-                .is_some()
-            {
-                return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
+        let row = match row {
+            Some(row) => row,
+            None => {
+                let replay = sqlx::query(
+                    r#"
+                    select id, flow_run_id, node_run_id, callback_kind, status,
+                           case when callback_kind = 'llm_tool_calls'
+                                then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
+                                else request_payload end as request_payload,
+                           response_payload,
+                           case when callback_kind = 'llm_tool_calls' then null
+                                else external_ref_payload end as external_ref_payload,
+                           created_at, completed_at
+                      from flow_run_callback_tasks
+                     where id = $1 and status = 'completed' and response_payload = $2
+                    "#,
+                )
+                .bind(input.callback_task_id)
+                .bind(&input.response_payload)
+                .fetch_optional(self.pool())
+                .await?;
+                if let Some(replay) = replay {
+                    replay
+                } else if self
+                    .get_callback_task(input.callback_task_id)
+                    .await?
+                    .is_some()
+                {
+                    return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
+                } else {
+                    return Err(ControlPlaneError::NotFound("callback_task").into());
+                }
             }
-            return Err(ControlPlaneError::NotFound("callback_task").into());
         };
 
         map_callback_task_record(row)

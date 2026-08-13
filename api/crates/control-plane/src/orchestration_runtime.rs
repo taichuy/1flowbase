@@ -92,7 +92,7 @@ use self::{
     json_payload::escape_json_nul_characters,
     payloads::persisted_node_output_payload,
     persistence::{
-        checkpoint_node_id, checkpoint_snapshot_from_record, next_node_started_at,
+        checkpoint_node_id, checkpoint_snapshot_from_record_with_context, next_node_started_at,
         persist_flow_debug_outcome, persist_preview_events, PersistFlowDebugOutcomeInput,
         PreparedNodeRuns, WaitingNodeResumeUpdate,
     },
@@ -1160,7 +1160,8 @@ where
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
             serde_json::from_value(compiled_record.plan.clone())?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
-        let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
+        let snapshot =
+            checkpoint_snapshot_from_record_with_context(&self.repository, &checkpoint).await?;
         let waiting_node_id = checkpoint_node_id(&checkpoint)?;
         let resume_patch = command
             .input_payload

@@ -267,6 +267,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendRecoveryHistoryInput,
     ) -> anyhow::Result<domain::RecoveryHistoryRecord>;
+    async fn load_runtime_context_content_lineage(
+        &self,
+        context_version_id: Uuid,
+    ) -> anyhow::Result<Vec<RuntimeContextContentVersion>>;
+    async fn persist_waiting_state(
+        &self,
+        input: &PersistWaitingStateInput,
+    ) -> anyhow::Result<Option<PersistedWaitingState>>;
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,
