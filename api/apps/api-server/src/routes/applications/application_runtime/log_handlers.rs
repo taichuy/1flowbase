@@ -408,7 +408,7 @@ fn to_application_run_overview_response(
         split_answer_snapshot_node_run_records(&overview.node_runs);
     let statistics = application_run_statistics_for_records(
         &current_visible_node_runs,
-        &overview.statistics_callback_tasks,
+        overview.tool_callback_count,
     );
 
     ApplicationRunOverviewResponse {
@@ -948,6 +948,63 @@ pub async fn get_application_run_resume_timeline(
             flow_run: to_flow_run_response(timeline.flow_run),
             callback_tasks,
             events,
+        },
+    )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{id}/logs/runs/{run_id}/resume-timeline-summary",
+    params(
+        ("id" = String, Path, description = "Application id"),
+        ("run_id" = String, Path, description = "Flow run id")
+    ),
+    responses(
+        (status = 200, body = ApplicationRunResumeTimelineSummaryResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_application_run_resume_timeline_summary(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((id, run_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineSummaryResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    ensure_application_visible(&state, &context.actor, id).await?;
+    let timeline = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline_summary(
+        &state.store,
+        id,
+        run_id,
+    )
+    .await?
+    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+
+    Ok(Json(ApiSuccess::new(
+        ApplicationRunResumeTimelineSummaryResponse {
+            flow_run_status: timeline.flow_run_status.as_str().to_string(),
+            callback_tasks: timeline
+                .callback_tasks
+                .into_iter()
+                .map(|task| ApplicationRunResumeCallbackSummaryResponse {
+                    id: task.id.to_string(),
+                    callback_kind: task.callback_kind,
+                    status: task.status.as_str().to_string(),
+                    created_at: format_time(task.created_at),
+                    completed_at: format_optional_time(task.completed_at),
+                })
+                .collect(),
+            events: timeline
+                .events
+                .into_iter()
+                .map(|event| ApplicationRunResumeEventSummaryResponse {
+                    id: event.id.to_string(),
+                    event_type: event.event_type,
+                    description: event.description,
+                    created_at: format_time(event.created_at),
+                })
+                .collect(),
         },
     )))
 }

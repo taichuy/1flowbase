@@ -12,6 +12,7 @@ import {
   getConsoleApplicationRuntimeActivity,
   getConsoleApplicationRunNodeLastRun,
   getConsoleApplicationRunResumeTimeline,
+  getConsoleApplicationRunResumeTimelineSummary,
   getConsoleApplicationRuns,
   getConsoleApplicationRunTraceNodeChildren,
   getConsoleApplicationRunTraceNodeContent,
@@ -788,6 +789,7 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"te
           }
         }
       },
+      { nodes: [] },
       { nodes: [] }
     ];
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
@@ -899,6 +901,13 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"te
         'http://127.0.0.1:7800'
       )
     ).resolves.toEqual({ nodes: [] });
+    await expect(
+      getConsoleApplicationRunResumeTimelineSummary(
+        'app-1',
+        'run-1',
+        'http://127.0.0.1:7800'
+      )
+    ).resolves.toEqual({ nodes: [] });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -943,6 +952,14 @@ data: {"event_id":"run-1:2","run_id":"run-1","node_run_id":null,"event_type":"te
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
       'http://127.0.0.1:7800/api/console/applications/app-1/logs/runs/run-1/resume-timeline',
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'include'
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      'http://127.0.0.1:7800/api/console/applications/app-1/logs/runs/run-1/resume-timeline-summary',
       expect.objectContaining({
         method: 'GET',
         credentials: 'include'

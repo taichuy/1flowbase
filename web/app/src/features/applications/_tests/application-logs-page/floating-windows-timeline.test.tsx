@@ -257,7 +257,7 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
       sampleTraceNodeContent()
     );
     runtimeApi.fetchApplicationRunResumeTimeline.mockResolvedValue({
-      flow_run: sampleRunDetail().flow_run,
+      flow_run_status: sampleRunDetail().flow_run.status,
       callback_tasks: sampleRunDetail().callback_tasks,
       events: sampleRunDetail().events
     });
@@ -417,17 +417,12 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
       .spyOn(window, 'innerHeight', 'get')
       .mockReturnValue(900);
     runtimeApi.fetchApplicationRunResumeTimeline.mockResolvedValue({
-      flow_run: sampleRunDetail().flow_run,
+      flow_run_status: sampleRunDetail().flow_run.status,
       callback_tasks: [
         {
           id: 'callback-1',
-          flow_run_id: 'run-1',
-          node_run_id: 'node-run-1',
           callback_kind: 'llm_tool_calls',
           status: 'completed',
-          request_payload: {},
-          response_payload: {},
-          external_ref_payload: null,
           created_at: '2026-04-17T09:00:01Z',
           completed_at: '2026-04-17T09:00:02Z'
         }
@@ -436,13 +431,8 @@ describe('ApplicationLogsPage - floating windows timeline', () => {
         ...sampleRunDetail().events,
         {
           id: 'event-resume-requested',
-          flow_run_id: 'run-1',
-          node_run_id: 'node-run-1',
-          sequence: 3,
           event_type: 'public_run_resume_requested',
-          payload: {
-            callback_task_id: 'callback-1'
-          },
+          description: 'callback-1',
           created_at: '2026-04-17T09:00:01Z'
         }
       ]

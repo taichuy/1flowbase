@@ -2,6 +2,8 @@ use anyhow::{anyhow, Result};
 use sqlx::Row;
 use uuid::Uuid;
 
+use control_plane::ports::{ApplicationRunResumeCallbackSummary, ApplicationRunResumeEventSummary};
+
 use crate::repositories::PgControlPlaneStore;
 
 use super::record_mappers::{
@@ -249,73 +251,23 @@ pub(super) async fn list_callback_tasks_for_flow_run(
     rows.into_iter().map(map_callback_task_record).collect()
 }
 
-pub(super) async fn list_overview_callback_tasks_for_flow_run(
+pub(super) async fn overview_tool_callback_count(
     store: &PgControlPlaneStore,
     flow_run_id: Uuid,
-) -> Result<Vec<domain::CallbackTaskRecord>> {
-    let rows = sqlx::query(
+) -> Result<i64> {
+    sqlx::query_scalar(
         r#"
-        select
-            tasks.id,
-            tasks.flow_run_id,
-            tasks.node_run_id,
-            tasks.callback_kind,
-            tasks.status,
-            case
-                when tasks.callback_kind = 'llm_tool_calls' then jsonb_build_object(
-                    'tool_calls', coalesce(request_tools.items, '[]'::jsonb)
-                )
-                else '{}'::jsonb
-            end as request_payload,
-            case
-                when tasks.callback_kind <> 'llm_tool_calls' then null
-                when response_tools.items is not null then jsonb_build_object(
-                    'tool_results', response_tools.items
-                )
-                when tasks.response_payload is null then null
-                else jsonb_strip_nulls(jsonb_build_object(
-                    'id', coalesce(
-                        tasks.response_payload -> 'tool_call_id',
-                        tasks.response_payload -> 'id',
-                        tasks.response_payload -> 'call_id'
-                    )
-                ))
-            end as response_payload,
-            null::jsonb as external_ref_payload,
-            tasks.created_at,
-            tasks.completed_at
-        from flow_run_callback_tasks tasks
-        left join lateral (
-            select jsonb_agg(
-                jsonb_strip_nulls(jsonb_build_object(
-                    'id', coalesce(tool.value -> 'id', tool.value -> 'tool_call_id', tool.value -> 'call_id'),
-                    'name', tool.value -> 'name'
-                ))
-                order by tool.ordinality
-            ) as items
-            from jsonb_array_elements(coalesce(tasks.request_payload -> 'tool_calls', '[]'::jsonb))
-                with ordinality as tool(value, ordinality)
-        ) request_tools on true
-        left join lateral (
-            select jsonb_agg(
-                jsonb_strip_nulls(jsonb_build_object(
-                    'id', coalesce(tool.value -> 'tool_call_id', tool.value -> 'id', tool.value -> 'call_id'),
-                    'name', tool.value -> 'name'
-                ))
-                order by tool.ordinality
-            ) as items
-            from jsonb_array_elements(coalesce(tasks.response_payload -> 'tool_results', '[]'::jsonb))
-                with ordinality as tool(value, ordinality)
-        ) response_tools on true
-        where tasks.flow_run_id = $1
-        order by tasks.created_at asc, tasks.id asc
+        select coalesce(summaries.tool_callback_count, 0)::bigint
+        from flow_runs runs
+        left join application_run_log_summaries summaries
+          on summaries.flow_run_id = runs.id
+        where runs.id = $1
         "#,
     )
     .bind(flow_run_id)
-    .fetch_all(store.pool())
-    .await?;
-
-    rows.into_iter().map(map_callback_task_record).collect()
+    .fetch_one(store.pool())
+    .await
+    .map_err(Into::into)
 }
 
 pub(super) async fn latest_overview_waiting_node(
@@ -383,6 +335,82 @@ pub(super) async fn list_resume_timeline_events_for_flow_run(
     .await?;
 
     Ok(rows.into_iter().map(map_run_event_record).collect())
+}
+
+pub(super) async fn list_resume_timeline_callback_summaries(
+    store: &PgControlPlaneStore,
+    flow_run_id: Uuid,
+) -> Result<Vec<ApplicationRunResumeCallbackSummary>> {
+    let rows = sqlx::query(
+        r#"
+        select id, callback_kind, status, created_at, completed_at
+        from flow_run_callback_tasks
+        where flow_run_id = $1
+        order by created_at asc, id asc
+        "#,
+    )
+    .bind(flow_run_id)
+    .fetch_all(store.pool())
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            Ok(ApplicationRunResumeCallbackSummary {
+                id: row.get("id"),
+                callback_kind: row.get("callback_kind"),
+                status: crate::mappers::orchestration_runtime_mapper::parse_callback_task_status(
+                    row.get::<String, _>("status").as_str(),
+                )?,
+                created_at: row.get("created_at"),
+                completed_at: row.get("completed_at"),
+            })
+        })
+        .collect()
+}
+
+pub(super) async fn list_resume_timeline_event_summaries(
+    store: &PgControlPlaneStore,
+    flow_run_id: Uuid,
+) -> Result<Vec<ApplicationRunResumeEventSummary>> {
+    let rows = sqlx::query(
+        r#"
+        select events.id, events.event_type,
+               callbacks.id::text as description,
+               events.created_at
+        from flow_run_events events
+        left join lateral (
+            select tasks.id
+            from flow_run_callback_tasks tasks
+            where tasks.flow_run_id = events.flow_run_id
+              and tasks.node_run_id is not distinct from events.node_run_id
+              and tasks.created_at <= events.created_at
+            order by tasks.created_at desc, tasks.id desc
+            limit 1
+        ) callbacks on true
+        where events.flow_run_id = $1
+          and events.event_type in (
+              'public_run_resume_requested',
+              'public_run_resume_succeeded',
+              'public_run_resume_failed',
+              'public_run_resume_cancelled',
+              'flow_run_resumed'
+          )
+        order by events.sequence asc, events.id asc
+        "#,
+    )
+    .bind(flow_run_id)
+    .fetch_all(store.pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ApplicationRunResumeEventSummary {
+            id: row.get("id"),
+            event_type: row.get("event_type"),
+            description: row.get("description"),
+            created_at: row.get("created_at"),
+        })
+        .collect())
 }
 
 pub(super) async fn list_trace_checkpoints_for_node_runs(

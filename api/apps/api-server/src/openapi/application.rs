@@ -78,6 +78,7 @@ use utoipa::OpenApi;
         crate::routes::application_runtime::get_application_run_trace_node_detail,
         crate::routes::application_runtime::get_application_run_trace_tool_callback_content,
         crate::routes::application_runtime::get_application_run_resume_timeline,
+        crate::routes::application_runtime::get_application_run_resume_timeline_summary,
         crate::routes::application_runtime::get_application_run_node_last_run,
         crate::routes::application_runtime::get_runtime_debug_stream,
         crate::routes::application_runtime::debug_variable_snapshot::get_debug_variable_snapshot,

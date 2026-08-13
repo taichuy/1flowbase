@@ -66,8 +66,8 @@ vi.mock('@1flowbase/api-client', () => ({
     filename: 'selected-runs.zip',
     contentType: 'application/zip'
   }),
-  getConsoleApplicationRunResumeTimeline: vi.fn().mockResolvedValue({
-    flow_run: { id: 'run-1' },
+  getConsoleApplicationRunResumeTimelineSummary: vi.fn().mockResolvedValue({
+    flow_run_status: 'waiting_callback',
     callback_tasks: [],
     events: []
   }),
@@ -260,7 +260,7 @@ import {
   createConsoleRunArchiveUploadSession,
   fetchConsoleRuntimeModelRecords,
   getConsoleApplicationRunMonitoringReport,
-  getConsoleApplicationRunResumeTimeline,
+  getConsoleApplicationRunResumeTimelineSummary,
   getConsoleApplicationRunTraceNodeChildren,
   getConsoleApplicationRunTraceNodeContent,
   getConsoleApplicationRunTraceNodeDetail,
@@ -500,7 +500,7 @@ describe('applications runtime api', () => {
         artifact_preview: 'auto'
       }
     );
-    expect(getConsoleApplicationRunResumeTimeline).toHaveBeenCalledWith(
+    expect(getConsoleApplicationRunResumeTimelineSummary).toHaveBeenCalledWith(
       'app-1',
       'run-1',
       'http://127.0.0.1:7800'

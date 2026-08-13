@@ -149,12 +149,15 @@ fn application_run_tool_callback_count_for_records(
 fn application_run_statistics(
     detail: &domain::ApplicationRunDetail,
 ) -> application_logs::ApplicationRunStatisticsResponse {
-    application_run_statistics_for_records(&detail.node_runs, &detail.callback_tasks)
+    application_run_statistics_for_records(
+        &detail.node_runs,
+        application_run_tool_callback_count(detail),
+    )
 }
 
 fn application_run_statistics_for_records(
     node_runs: &[domain::NodeRunRecord],
-    callback_tasks: &[domain::CallbackTaskRecord],
+    tool_callback_count: i64,
 ) -> application_logs::ApplicationRunStatisticsResponse {
     let mut unique_node_ids = HashSet::new();
     let mut total_tokens = None;
@@ -194,10 +197,7 @@ fn application_run_statistics_for_records(
             input_cache_hit_tokens,
         ),
         unique_node_count: unique_node_ids.len() as i64,
-        tool_callback_count: application_run_tool_callback_count_for_records(
-            node_runs,
-            callback_tasks,
-        ),
+        tool_callback_count,
     }
 }
 

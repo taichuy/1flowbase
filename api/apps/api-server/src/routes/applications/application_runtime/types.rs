@@ -624,6 +624,30 @@ pub struct ApplicationRunResumeTimelineResponse {
     pub events: Vec<RunEventResponse>,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunResumeTimelineSummaryResponse {
+    pub flow_run_status: String,
+    pub callback_tasks: Vec<ApplicationRunResumeCallbackSummaryResponse>,
+    pub events: Vec<ApplicationRunResumeEventSummaryResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunResumeCallbackSummaryResponse {
+    pub id: String,
+    pub callback_kind: String,
+    pub status: String,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunResumeEventSummaryResponse {
+    pub id: String,
+    pub event_type: String,
+    pub description: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RuntimeDebugStreamResponse {
     pub parts: Vec<RuntimeDebugStreamPartResponse>,

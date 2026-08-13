@@ -5,7 +5,7 @@ import {
   getConsoleApplicationRunConversationMessages,
   getConsoleApplicationRunMonitoringReport,
   getConsoleApplicationRuntimeActivity,
-  getConsoleApplicationRunResumeTimeline,
+  getConsoleApplicationRunResumeTimelineSummary,
   getConsoleApplicationRunOverview,
   getConsoleApplicationRunTraceNodeChildren,
   getConsoleApplicationRunTraceNodeContent,
@@ -36,7 +36,7 @@ import {
   type ConsoleApplicationRunMonitoringSourceBreakdown,
   resumeConsoleFlowRun,
   type ConsoleApplicationRunSummary,
-  type ConsoleApplicationRunResumeTimeline,
+  type ConsoleApplicationRunResumeTimelineSummary,
   type ConsoleApplicationRunTraceNodeChildren,
   type ConsoleApplicationRunTraceNodeContent,
   type ConsoleApplicationRunTraceNodeDetail,
@@ -95,7 +95,8 @@ export interface ApplicationRunsPage {
 }
 export type ApplicationRunTraceTree = ConsoleApplicationRunTraceTree;
 export type ApplicationRunOverview = ConsoleApplicationRunOverview;
-export type ApplicationRunResumeTimeline = ConsoleApplicationRunResumeTimeline;
+export type ApplicationRunResumeTimelineSummary =
+  ConsoleApplicationRunResumeTimelineSummary;
 export type ApplicationRunTraceNodeChildren =
   ConsoleApplicationRunTraceNodeChildren;
 export type ApplicationRunTraceNodeContent =
@@ -650,7 +651,7 @@ export function fetchApplicationRunResumeTimeline(
   applicationId: string,
   runId: string
 ) {
-  return getConsoleApplicationRunResumeTimeline(
+  return getConsoleApplicationRunResumeTimelineSummary(
     applicationId,
     runId,
     getApplicationsApiBaseUrl()

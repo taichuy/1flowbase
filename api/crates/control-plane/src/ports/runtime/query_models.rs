@@ -71,8 +71,7 @@ pub struct ApplicationRunConversationMessageItemsPage {
 pub struct ApplicationRunOverviewReadModel {
     pub flow_run: domain::FlowRunRecord,
     pub node_runs: Vec<domain::NodeRunRecord>,
-    /// Payloads contain only tool identity fields required by the overview counter.
-    pub statistics_callback_tasks: Vec<domain::CallbackTaskRecord>,
+    pub tool_callback_count: i64,
     pub waiting_node_id: Option<String>,
     pub waiting_node_run_id: Option<Uuid>,
 }
@@ -82,4 +81,28 @@ pub struct ApplicationRunResumeTimelineReadModel {
     pub flow_run: domain::FlowRunRecord,
     pub callback_tasks: Vec<domain::CallbackTaskRecord>,
     pub events: Vec<domain::RunEventRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunResumeTimelineSummaryReadModel {
+    pub flow_run_status: domain::FlowRunStatus,
+    pub callback_tasks: Vec<ApplicationRunResumeCallbackSummary>,
+    pub events: Vec<ApplicationRunResumeEventSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunResumeCallbackSummary {
+    pub id: Uuid,
+    pub callback_kind: String,
+    pub status: domain::CallbackTaskStatus,
+    pub created_at: OffsetDateTime,
+    pub completed_at: Option<OffsetDateTime>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRunResumeEventSummary {
+    pub id: Uuid,
+    pub event_type: String,
+    pub description: Option<String>,
+    pub created_at: OffsetDateTime,
 }

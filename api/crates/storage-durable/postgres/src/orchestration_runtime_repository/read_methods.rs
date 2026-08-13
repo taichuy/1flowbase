@@ -931,8 +931,7 @@ impl PgControlPlaneStore {
 
         Ok(Some(ApplicationRunOverviewReadModel {
             node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
-            statistics_callback_tasks: list_overview_callback_tasks_for_flow_run(self, flow_run.id)
-                .await?,
+            tool_callback_count: overview_tool_callback_count(self, flow_run.id).await?,
             waiting_node_id,
             waiting_node_run_id,
             flow_run,
@@ -954,6 +953,24 @@ impl PgControlPlaneStore {
             callback_tasks: list_callback_tasks_for_flow_run(self, flow_run.id).await?,
             events: list_resume_timeline_events_for_flow_run(self, flow_run.id).await?,
             flow_run,
+        }))
+    }
+
+    async fn get_application_run_resume_timeline_summary(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineSummaryReadModel>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(ApplicationRunResumeTimelineSummaryReadModel {
+            flow_run_status: flow_run.status,
+            callback_tasks: list_resume_timeline_callback_summaries(self, flow_run.id).await?,
+            events: list_resume_timeline_event_summaries(self, flow_run.id).await?,
         }))
     }
 

@@ -237,7 +237,7 @@ describe('ApplicationLogsPage - artifacts trace lazy tools', () => {
         traceNodeContentFromDetail(currentRunDetail, traceNodeId)
     );
     runtimeApi.fetchApplicationRunResumeTimeline.mockResolvedValue({
-      flow_run: sampleRunDetail().flow_run,
+      flow_run_status: sampleRunDetail().flow_run.status,
       callback_tasks: sampleRunDetail().callback_tasks,
       events: sampleRunDetail().events
     });

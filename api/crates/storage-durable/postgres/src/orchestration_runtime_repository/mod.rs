@@ -23,16 +23,16 @@ use control_plane::{
         AppendProviderInvocationContextInput, AppendRecoveryHistoryInput, AppendRunEventInput,
         AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
         AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
-        ApplicationRunResumeTimelineReadModel, ApplicationRunTraceChildrenCursor,
-        ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
-        BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
-        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
-        ConvertLegacyRuntimeShadowBatchInput, ConvertLegacyRuntimeShadowBatchResult,
-        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
-        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
-        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
+        ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
+        ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
+        AttachCompiledPlanToFlowRunInput, BindInvocationContextInput, CallbackResumeContext,
+        CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
+        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
+        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
+        CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
+        CreateRuntimeDebugArtifactInput, DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
         FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
@@ -745,6 +745,19 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     ) -> Result<Option<ApplicationRunResumeTimelineReadModel>> {
         PgControlPlaneStore::get_application_run_resume_timeline(self, application_id, flow_run_id)
             .await
+    }
+
+    async fn get_application_run_resume_timeline_summary(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineSummaryReadModel>> {
+        PgControlPlaneStore::get_application_run_resume_timeline_summary(
+            self,
+            application_id,
+            flow_run_id,
+        )
+        .await
     }
 
     async fn list_application_run_trace_checkpoints(

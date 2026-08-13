@@ -862,6 +862,27 @@ export interface ConsoleApplicationRunResumeTimeline {
   events: ConsoleRunEvent[];
 }
 
+export interface ConsoleApplicationRunResumeTimelineSummary {
+  flow_run_status: string;
+  callback_tasks: ConsoleApplicationRunResumeCallbackSummary[];
+  events: ConsoleApplicationRunResumeEventSummary[];
+}
+
+export interface ConsoleApplicationRunResumeCallbackSummary {
+  id: string;
+  callback_kind: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface ConsoleApplicationRunResumeEventSummary {
+  id: string;
+  event_type: string;
+  description: string | null;
+  created_at: string;
+}
+
 export interface ConsoleApplicationConversationMessage {
   run_id: string;
   detail_run_id?: string | null;

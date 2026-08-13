@@ -17,7 +17,6 @@ async fn application_run_log_list_uses_summary_projection_without_raw_payload() 
         None,
     )
     .await;
-
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
         &store,
         &UpdateFlowRunInput {
@@ -30,7 +29,6 @@ async fn application_run_log_list_uses_summary_projection_without_raw_payload() 
     )
     .await
     .unwrap();
-
     sqlx::query(
         r#"
         update application_run_log_summaries
@@ -1008,6 +1006,7 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
     let seeded = seed_runtime_base(&store).await;
     let compiled = seed_compiled_plan(&store, &seeded).await;
     let started_at = datetime!(2026-08-13 08:00:00 UTC);
+    let large_payload = "x".repeat(1_000_000);
     let run = seed_flow_run_with_mode(
         &store,
         &seeded,
@@ -1037,9 +1036,9 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
                 "tool_calls": [{
                     "id": "call-1",
                     "name": "lookup",
-                    "arguments": { "large_context": "must stay out of overview" }
+                    "arguments": { "large_context": large_payload.clone() }
                 }],
-                "fixed_context_copy": "must stay out of overview"
+                "fixed_context_copy": large_payload.clone()
             }),
             external_ref_payload: Some(json!({ "large_external_context": true })),
         },
@@ -1054,10 +1053,22 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
                 "tool_results": [{
                     "tool_call_id": "call-1",
                     "name": "lookup",
-                    "content": "full callback result remains observable on the timeline"
+                    "content": large_payload.clone()
                 }]
             }),
             completed_at: started_at + Duration::seconds(2),
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
+        &store,
+        &UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::WaitingCallback,
+            output_payload: json!({ "answer": "waiting" }),
+            error_payload: None,
+            finished_at: None,
         },
     )
     .await
@@ -1088,7 +1099,6 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
                 node_run_id: Some(node.id),
                 event_type: event_type.to_string(),
                 payload: json!({ "event_type": event_type }),
-                created_at: started_at + Duration::seconds(3),
             },
         )
         .await
@@ -1106,18 +1116,7 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
         .unwrap();
     assert_eq!(overview.waiting_node_id.as_deref(), Some("node-tool"));
     assert_eq!(overview.waiting_node_run_id, Some(node.id));
-    assert_eq!(
-        overview.statistics_callback_tasks[0].request_payload,
-        json!({ "tool_calls": [{ "id": "call-1", "name": "lookup" }] })
-    );
-    assert_eq!(
-        overview.statistics_callback_tasks[0].response_payload,
-        Some(json!({ "tool_results": [{ "id": "call-1", "name": "lookup" }] }))
-    );
-    assert_eq!(
-        overview.statistics_callback_tasks[0].external_ref_payload,
-        None
-    );
+    assert_eq!(overview.tool_callback_count, 1);
 
     let timeline = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
         &store,
@@ -1137,7 +1136,7 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
             "tool_results": [{
                 "tool_call_id": "call-1",
                 "name": "lookup",
-                "content": "full callback result remains observable on the timeline"
+                "content": large_payload
             }]
         }))
     );
@@ -1150,6 +1149,19 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
         vec!["public_run_resume_requested", "flow_run_resumed"]
     );
     assert!(timeline.events[0].sequence < timeline.events[1].sequence);
+
+    let summary = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline_summary(
+        &store,
+        seeded.application_id,
+        run.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(summary.callback_tasks.len(), 1);
+    assert_eq!(summary.callback_tasks[0].id, callback.id);
+    assert_eq!(summary.callback_tasks[0].callback_kind, "llm_tool_calls");
+    assert_eq!(summary.events.len(), 2);
 
     let checkpoints = <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_checkpoints(
         &store,
@@ -1173,6 +1185,50 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
     assert!(events
         .windows(2)
         .all(|pair| pair[0].sequence < pair[1].sequence));
+}
+
+#[test]
+fn lightweight_summary_queries_do_not_select_callback_or_checkpoint_payload_columns() {
+    let source = include_str!("../../../orchestration_runtime_repository/detail_queries.rs");
+    let overview = source
+        .split("pub(super) async fn overview_tool_callback_count")
+        .nth(1)
+        .unwrap()
+        .split("pub(super) async fn latest_overview_waiting_node")
+        .next()
+        .unwrap();
+    for payload_column in [
+        "request_payload",
+        "response_payload",
+        "external_ref_payload",
+    ] {
+        assert!(!overview.contains(payload_column));
+    }
+
+    let callbacks = source
+        .split("pub(super) async fn list_resume_timeline_callback_summaries")
+        .nth(1)
+        .unwrap()
+        .split("pub(super) async fn list_resume_timeline_event_summaries")
+        .next()
+        .unwrap();
+    for payload_column in [
+        "request_payload",
+        "response_payload",
+        "external_ref_payload",
+    ] {
+        assert!(!callbacks.contains(payload_column));
+    }
+
+    let events = source
+        .split("pub(super) async fn list_resume_timeline_event_summaries")
+        .nth(1)
+        .unwrap()
+        .split("pub(super) async fn list_trace_checkpoints_for_node_runs")
+        .next()
+        .unwrap();
+    assert!(!events.contains("events.payload"));
+    assert!(!events.contains("payload ->"));
 }
 
 async fn set_run_external_context(

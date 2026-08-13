@@ -1,4 +1,4 @@
-use std::{convert::Infallible, sync::Arc};
+use std::{collections::HashSet, convert::Infallible, sync::Arc};
 
 use access_control::{
     APPLICATIONS_LOGS_EXPORT_OPERATION_ID, APPLICATIONS_LOGS_IMPORT_OPERATION_ID,
@@ -332,6 +332,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/applications/:id/logs/runs/:run_id/resume-timeline",
             console_get(
                 get_application_run_resume_timeline,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/logs/runs/:run_id/resume-timeline-summary",
+            console_get(
+                get_application_run_resume_timeline_summary,
                 ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
             ),
         )

@@ -233,7 +233,7 @@ export function sampleTraceTree() {
       unique_node_count: 3,
       tool_callback_count: 20
     },
-    flow_run: sampleRunDetail().flow_run,
+    flow_run_status: sampleRunDetail().flow_run.status,
     answer_snapshot: null,
     nodes: [
       {

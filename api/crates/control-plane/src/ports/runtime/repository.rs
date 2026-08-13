@@ -488,6 +488,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (application_id, flow_run_id);
         anyhow::bail!("get_application_run_resume_timeline not implemented")
     }
+    async fn get_application_run_resume_timeline_summary(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationRunResumeTimelineSummaryReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_application_run_resume_timeline_summary not implemented")
+    }
     async fn list_application_run_trace_checkpoints(
         &self,
         application_id: Uuid,

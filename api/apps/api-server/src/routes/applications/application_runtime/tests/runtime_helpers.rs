@@ -329,6 +329,12 @@ fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_bo
     );
     assert!(resume_timeline.contains("get_application_run_resume_timeline"));
     assert!(!resume_timeline.contains("get_application_run_detail"));
+    let resume_timeline_summary = application_runtime_function_source(
+        log_handlers,
+        "pub async fn get_application_run_resume_timeline_summary",
+    );
+    assert!(resume_timeline_summary.contains("get_application_run_resume_timeline_summary"));
+    assert!(!resume_timeline_summary.contains("get_application_run_resume_timeline("));
 
     let trace_detail = application_runtime_function_source(
         log_handlers,
@@ -455,7 +461,7 @@ fn overview_contract_fixture_preserves_answer_snapshot_and_top_level_fields() {
             started_at: OffsetDateTime::UNIX_EPOCH,
             finished_at: Some(OffsetDateTime::UNIX_EPOCH),
         }],
-        statistics_callback_tasks: Vec::new(),
+        tool_callback_count: 0,
         waiting_node_id: Some("node-tool".to_string()),
         waiting_node_run_id: Some(waiting_node_run_id),
     };
