@@ -1017,6 +1017,12 @@ export function ConversationLogPanel({
     >
       <Tabs
         activeKey={activeTabKey}
+        classNames={{
+          body: 'agent-flow-editor__conversation-log-tabs-body',
+          content: 'agent-flow-editor__conversation-log-scroll-region',
+          header: 'agent-flow-editor__conversation-log-tabs-header',
+          item: 'agent-flow-editor__conversation-log-tabs-item'
+        }}
         className="agent-flow-editor__conversation-log-tabs"
         items={[
           {

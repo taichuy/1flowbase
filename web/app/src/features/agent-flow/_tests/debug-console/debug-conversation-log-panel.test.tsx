@@ -84,6 +84,30 @@ describe('debug conversation log panel', () => {
     await appI18n.changeLanguage('zh_Hans');
   });
 
+  test('owns the Ant Design 6 tab body and scroll region through semantic slots', () => {
+    const { container } = renderWithQueryClient(
+      <ConversationLogPanel
+        message={assistantMessage}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(
+      container.querySelector(
+        '.agent-flow-editor__conversation-log-tabs-body.ant-tabs-body'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('tabpanel', { name: '详情' })
+    ).toHaveClass('agent-flow-editor__conversation-log-scroll-region');
+
+    fireEvent.click(screen.getByRole('tab', { name: '追踪' }));
+
+    expect(
+      screen.getByRole('tabpanel', { name: '追踪' })
+    ).toHaveClass('agent-flow-editor__conversation-log-scroll-region');
+  });
+
   test('opens from an assistant message and keeps detail limited to input, output and metadata', () => {
     renderConsole();
 

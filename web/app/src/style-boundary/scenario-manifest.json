@@ -913,6 +913,8 @@
       "web/app/src/features/applications/components/logs/ApplicationRunDetailPanel.tsx",
       "web/app/src/features/applications/components/logs/application-run-detail-panel.css",
       "web/app/src/features/applications/components/logs/ApplicationLogsFloatingWindow.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/ConversationLogPanel.tsx",
+      "web/app/src/features/agent-flow/components/debug-console/conversation-log-panel.css",
       "web/app/src/shared/ui/window-workspace/WindowWorkspaceWindow.tsx",
       "web/app/src/shared/ui/window-workspace/window-workspace-geometry.ts",
       "web/app/src/shared/ui/window-workspace/window-workspace.css",

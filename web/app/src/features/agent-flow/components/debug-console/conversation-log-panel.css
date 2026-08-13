@@ -1,8 +1,7 @@
 .agent-flow-editor__conversation-log-body,
 .agent-flow-editor__conversation-log-tabs,
-.agent-flow-editor__conversation-log-tabs .ant-tabs-content-holder,
-.agent-flow-editor__conversation-log-tabs .ant-tabs-content,
-.agent-flow-editor__conversation-log-tabs .ant-tabs-tabpane-active {
+.agent-flow-editor__conversation-log-tabs-body,
+.agent-flow-editor__conversation-log-scroll-region {
   min-height: 0;
   height: 100%;
 }
@@ -18,7 +17,7 @@
   background: #f5f7fb;
 }
 
-.agent-flow-editor__conversation-log-tabs > .ant-tabs-nav {
+.agent-flow-editor__conversation-log-tabs-header {
   flex: 0 0 auto;
   margin: 0;
   padding: 0 16px;
@@ -26,42 +25,36 @@
   background: #ffffff;
 }
 
-.agent-flow-editor__conversation-log-tabs > .ant-tabs-nav .ant-tabs-tab {
+.agent-flow-editor__conversation-log-tabs-item {
   padding: 12px 0;
 }
 
-.agent-flow-editor__conversation-log-tabs
-  > .ant-tabs-nav
-  .ant-tabs-tab
-  + .ant-tabs-tab {
+.agent-flow-editor__conversation-log-tabs-item
+  + .agent-flow-editor__conversation-log-tabs-item {
   margin-left: 28px;
 }
 
-.agent-flow-editor__conversation-log-tabs .ant-tabs-tabpane {
-  min-height: 0;
+.agent-flow-editor__conversation-log-scroll-region {
   overflow: auto;
   scrollbar-gutter: stable;
   scrollbar-width: auto;
 }
 
-.agent-flow-editor__conversation-log-tabs .ant-tabs-tabpane::-webkit-scrollbar {
+.agent-flow-editor__conversation-log-scroll-region::-webkit-scrollbar {
   width: 14px;
 }
 
-.agent-flow-editor__conversation-log-tabs
-  .ant-tabs-tabpane::-webkit-scrollbar-track {
+.agent-flow-editor__conversation-log-scroll-region::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.agent-flow-editor__conversation-log-tabs
-  .ant-tabs-tabpane::-webkit-scrollbar-thumb {
+.agent-flow-editor__conversation-log-scroll-region::-webkit-scrollbar-thumb {
   border: 3px solid #f5f7fb;
   border-radius: 999px;
   background: #9aa8b6;
 }
 
-.agent-flow-editor__conversation-log-tabs
-  .ant-tabs-tabpane::-webkit-scrollbar-thumb:hover {
+.agent-flow-editor__conversation-log-scroll-region::-webkit-scrollbar-thumb:hover {
   background: #7c8b9a;
 }
 
