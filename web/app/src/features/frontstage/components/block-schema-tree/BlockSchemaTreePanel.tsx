@@ -8,7 +8,6 @@ import {
   Empty,
   Form,
   Input,
-  List,
   Modal,
   Select,
   Space,
@@ -663,11 +662,12 @@ function SearchResults({
   }
 
   return (
-    <List
-      className="frontstage-block-schema-tree__search-results"
-      dataSource={results}
-      renderItem={(result) => (
-        <List.Item>
+    <ul className="frontstage-block-schema-tree__search-results">
+      {results.map((result) => (
+        <li
+          key={result.node.block_id}
+          className="frontstage-block-schema-tree__search-result-item"
+        >
           <Button
             block
             type="text"
@@ -688,8 +688,8 @@ function SearchResults({
               </Typography.Text>
             </Space>
           </Button>
-        </List.Item>
-      )}
-    />
+        </li>
+      ))}
+    </ul>
   );
 }

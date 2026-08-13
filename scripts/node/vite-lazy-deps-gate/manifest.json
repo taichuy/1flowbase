@@ -146,6 +146,13 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../../components/system-backups/SystemBackupsPanel",
+      "smokePaths": [
+        "/settings/backups"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
       "specifier": "../i18n-catalog/I18nCatalogPage",
       "smokePaths": [
         "/settings/i18n"

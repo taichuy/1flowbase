@@ -22,11 +22,13 @@ struct ClientToolResult {
     is_error: bool,
 }
 
+type PendingClientToolCalls = BTreeMap<Uuid, oneshot::Sender<Result<ClientToolResult, String>>>;
+
 #[derive(Clone)]
 pub(super) struct AssistantClientToolBridge {
     enabled_tools: Vec<AssistantClientToolId>,
     outbound: mpsc::Sender<String>,
-    pending: Arc<Mutex<BTreeMap<Uuid, oneshot::Sender<Result<ClientToolResult, String>>>>>,
+    pending: Arc<Mutex<PendingClientToolCalls>>,
 }
 
 impl AssistantClientToolBridge {
@@ -179,6 +181,7 @@ impl RuntimeInternalToolInvoker for AssistantClientToolBridge {
     }
 }
 
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::*;

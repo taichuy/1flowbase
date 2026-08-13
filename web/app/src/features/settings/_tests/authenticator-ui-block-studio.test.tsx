@@ -78,6 +78,8 @@ vi.mock('@monaco-editor/react', () => ({
     value?: string;
   }) => {
     const monaco = {
+      MarkerSeverity: { Error: 8 },
+      editor: { setModelMarkers: vi.fn() },
       languages: {
         typescript: {
           JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
@@ -90,8 +92,13 @@ vi.mock('@monaco-editor/react', () => ({
         }
       }
     };
+    const editor = {
+      getModel: () => ({
+        uri: { toString: () => 'file:///auth-center/password-local.tsx' }
+      })
+    };
     beforeMount?.(monaco);
-    onMount?.({}, monaco);
+    onMount?.(editor, monaco);
     return (
       <textarea
         aria-label="TSX source"

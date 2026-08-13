@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 292,
-  "count": 584,
+  "projected_interface_count": 303,
+  "count": 606,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -171,6 +171,12 @@
       "DELETE",
       "/api/console/settings/roles/:id",
       "Delete roles"
+    ],
+    [
+      "system_backups.delete",
+      "DELETE",
+      "/api/console/settings/system-backups/:backup_set_id",
+      "Delete system backups"
     ],
     [
       "ui_management.templates.default.reset",
@@ -857,6 +863,30 @@
       "View roles permissions"
     ],
     [
+      "system_backups.list",
+      "GET",
+      "/api/console/settings/system-backups",
+      "List system backups"
+    ],
+    [
+      "system_backups.recovery.status",
+      "GET",
+      "/api/console/settings/system-backups/recovery/status",
+      "System backups recovery status"
+    ],
+    [
+      "system_backups.detail",
+      "GET",
+      "/api/console/settings/system-backups/:backup_set_id",
+      "System backups detail"
+    ],
+    [
+      "system_backups.download",
+      "GET",
+      "/api/console/settings/system-backups/:backup_set_id/download",
+      "System backups download"
+    ],
+    [
       "ui_management.components.list",
       "GET",
       "/api/console/settings/ui-management/components",
@@ -1539,6 +1569,42 @@
       "POST",
       "/api/console/settings/roles",
       "Create roles"
+    ],
+    [
+      "system_backups.create",
+      "POST",
+      "/api/console/settings/system-backups",
+      "Create system backups"
+    ],
+    [
+      "system_backups.import",
+      "POST",
+      "/api/console/settings/system-backups/import",
+      "Import system backups"
+    ],
+    [
+      "system_backups.recovery.reauth",
+      "POST",
+      "/api/console/settings/system-backups/recovery/reauth",
+      "System backups recovery reauth"
+    ],
+    [
+      "system_backups.recovery.intent",
+      "POST",
+      "/api/console/settings/system-backups/:backup_set_id/recovery/intents",
+      "System backups recovery intent"
+    ],
+    [
+      "system_backups.recovery.preflight",
+      "POST",
+      "/api/console/settings/system-backups/:backup_set_id/recovery/preflight",
+      "System backups recovery preflight"
+    ],
+    [
+      "system_backups.verify",
+      "POST",
+      "/api/console/settings/system-backups/:backup_set_id/verify",
+      "System backups verify"
     ],
     [
       "ui_management.templates.create",

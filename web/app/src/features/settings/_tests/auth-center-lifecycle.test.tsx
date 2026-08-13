@@ -31,18 +31,42 @@ vi.mock('../../frontstage/api/interface-capabilities', () => ({
 
 vi.mock('@monaco-editor/react', () => ({
   default: ({
+    onMount,
+    path,
     value,
     onChange
   }: {
+    onMount?: (editor: unknown, monaco: unknown) => void;
+    path?: string;
     value?: string;
     onChange?: (value: string) => void;
-  }) => (
-    <textarea
-      aria-label="区块源码"
-      value={value}
-      onChange={(event) => onChange?.(event.target.value)}
-    />
-  )
+  }) => {
+    onMount?.(
+      {
+        getModel: () => ({
+          uri: { toString: () => path ?? 'file:///auth-center/block.tsx' }
+        })
+      },
+      {
+        MarkerSeverity: { Error: 8 },
+        editor: { setModelMarkers: vi.fn() },
+        languages: {
+          typescript: {
+            typescriptDefaults: {
+              addExtraLib: vi.fn(() => ({ dispose: vi.fn() }))
+            }
+          }
+        }
+      }
+    );
+    return (
+      <textarea
+        aria-label="区块源码"
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    );
+  }
 }));
 
 import { AppProviders } from '../../../app/AppProviders';

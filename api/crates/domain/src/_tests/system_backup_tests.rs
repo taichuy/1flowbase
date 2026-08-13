@@ -13,7 +13,7 @@ use crate::{
 };
 
 fn fingerprint(value: char) -> String {
-    std::iter::repeat(value).take(64).collect()
+    std::iter::repeat_n(value, 64).collect()
 }
 
 fn postgres_component() -> BackupComponent {

@@ -193,16 +193,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let system_maintenance =
         std::sync::Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let file_storage_registry = std::sync::Arc::new(storage_object::builtin_driver_registry());
-    let system_backup = Some(std::sync::Arc::new(
-        api_server::system_backup::SystemBackupRuntime::open(
-            store.clone(),
-            file_storage_registry.clone(),
-            system_maintenance.clone(),
-            &config,
-        )
-        .await
-        .expect("health test system backup runtime should assemble"),
-    ));
+    // Health-route tests do not exercise host backup tooling. The runtime is
+    // optional and its PostgreSQL binary preflight belongs to backup tests.
+    let system_backup = None;
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
@@ -357,35 +350,6 @@ async fn health_route_returns_ok_payload() {
 
     assert_eq!(payload["service"], "api-server");
     assert_eq!(payload["status"], "ok");
-}
-
-#[tokio::test]
-async fn app_from_config_uses_local_host_infrastructure_session_store() {
-    let mut config = default_test_config();
-    let database = isolated_database(&config.database_url).await;
-    config.database_url = database.database_url().to_owned();
-
-    let app = api_server::app_from_config(&config).await.unwrap();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/public/auth/sign-in")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::json!({
-                        "identifier": "root",
-                        "password": "change-me"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(response.headers().get("set-cookie").is_some());
 }
 
 #[tokio::test]

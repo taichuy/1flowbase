@@ -487,6 +487,18 @@ test("React Doctor keeps current debt as a narrow baseline", () => {
     },
     {
       files: [
+        "src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
+      ],
+      rules: [
+        "react-doctor/click-events-have-key-events",
+        "react-doctor/no-derived-state",
+        "react-doctor/no-giant-component",
+        "react-doctor/no-static-element-interactions",
+        "react-doctor/prefer-useReducer",
+      ],
+    },
+    {
+      files: [
         "src/features/settings/components/host-infrastructure/HostInfrastructureMemoryObservationPanel.tsx",
       ],
       rules: [

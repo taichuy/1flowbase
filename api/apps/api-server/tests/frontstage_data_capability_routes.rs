@@ -202,16 +202,9 @@ async fn fixture() -> Fixture {
     let process_started_at = OffsetDateTime::now_utc();
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
-    let system_backup = Some(Arc::new(
-        api_server::system_backup::SystemBackupRuntime::open(
-            store.clone(),
-            file_storage_registry.clone(),
-            system_maintenance.clone(),
-            &config,
-        )
-        .await
-        .expect("frontstage test system backup runtime should assemble"),
-    ));
+    // This suite exercises frontstage data capabilities, not host backup tooling.
+    // Keeping the optional runtime absent avoids requiring pg_dump/pg_restore here.
+    let system_backup = None;
     let state = Arc::new(ApiState {
         store: store.clone(),
         system_backup,

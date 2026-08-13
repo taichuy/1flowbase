@@ -42,7 +42,7 @@ use time::{Duration, OffsetDateTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
 
-const DOCKER_IMAGE: &str = "postgres:16-alpine";
+const DOCKER_IMAGE: &str = "postgres:18-alpine";
 const POSTGRES_PASSWORD: &str = "stopped-server-fixture";
 const BACKUP_KEY_BASE64: &str = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=";
 const PROVIDER_SECRET: &str = "stopped-server-provider-secret";
@@ -187,7 +187,7 @@ impl DockerPostgresHarness {
         let root = TemporaryRoot::new("system-recovery-postgres-tools");
         let docker = std::env::var_os("SYSTEM_RECOVERY_TEST_DOCKER_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/xp/server/docker/docker"));
+            .unwrap_or_else(resolve_docker_from_path);
         assert!(
             docker.is_file(),
             "set SYSTEM_RECOVERY_TEST_DOCKER_PATH to an executable Docker client"
@@ -239,6 +239,18 @@ impl DockerPostgresHarness {
         );
         harness
     }
+}
+
+fn resolve_docker_from_path() -> PathBuf {
+    let output = Command::new("sh")
+        .args(["-c", "command -v docker"])
+        .output()
+        .expect("a POSIX shell is required to resolve the Docker client");
+    assert!(
+        output.status.success(),
+        "set SYSTEM_RECOVERY_TEST_DOCKER_PATH or provide docker on PATH"
+    );
+    PathBuf::from(String::from_utf8(output.stdout).unwrap().trim())
 }
 
 impl RecoveryScenario {

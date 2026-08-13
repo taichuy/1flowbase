@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 async fn create_runtime_block(
     app: &axum::Router,
     cookie: &str,
@@ -347,9 +348,9 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     assert_error(&deleted_payload, "block_node_not_found");
 
     let openapi = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
-    let openapi_path = format!(
-        "/api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/blocks/{{block_id}}/runtime-assembly"
-    );
+    let openapi_path =
+        "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/runtime-assembly"
+            .to_string();
     assert_eq!(
         openapi["paths"][&openapi_path]["get"]["operationId"],
         json!("get_frontstage_block_runtime_assembly")

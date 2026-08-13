@@ -1,6 +1,8 @@
 use super::visible_internal_llm_tools::payloads::{output_tool_calls, tool_call_id};
 use super::*;
 
+// The execution boundary keeps plan, node, variable, runtime, invoker, and lifecycle ownership explicit.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_llm_node<I>(
     plan: &CompiledPlan,
     node: &CompiledNode,

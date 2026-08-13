@@ -10,7 +10,10 @@ async fn page_tab_ownership_migration_backfills_presentation_routes_and_document
     let (workspace_id, page_id, default_tab_id, analytics_tab_id, _analytics_document) =
         insert_pre_page_tab_ownership_documents(&pool, false).await;
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    frontstage_page_tab_ownership_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     let presentation: String = sqlx::query_scalar(
         "select content_presentation from frontstage_pages where workspace_id = $1 and id = $2",
@@ -48,8 +51,7 @@ async fn page_tab_ownership_migration_backfills_presentation_routes_and_document
             "version": 1,
             "blocks": [{
                 "id": "chart",
-                "codeRef": "chart-code",
-                "renderer_version": "v1"
+                "codeRef": "chart-code"
             }]
         })
     );
@@ -65,7 +67,10 @@ async fn page_tab_ownership_migration_rejects_divergent_legacy_blocks_without_pa
         .unwrap();
     insert_pre_page_tab_ownership_documents(&pool, true).await;
 
-    let error = sqlx::migrate!("./migrations").run(&pool).await.unwrap_err();
+    let error = frontstage_page_tab_ownership_migrator()
+        .run(&pool)
+        .await
+        .unwrap_err();
     assert!(
         error.to_string().contains(
             "frontstage tab document migration rejected divergent schema and root blocks"
@@ -153,7 +158,10 @@ async fn frontstage_block_renderer_version_migration_backfills_document_and_comp
     .unwrap();
     transaction.commit().await.unwrap();
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    frontstage_block_renderer_version_migrator()
+        .run(&pool)
+        .await
+        .unwrap();
 
     let (schema_payload, root_payload, document_payload): (Value, Value, Value) = sqlx::query_as(
         "select schema_payload, root_payload, document_payload from frontstage_page_schemas where workspace_id = $1 and tab_id = $2",

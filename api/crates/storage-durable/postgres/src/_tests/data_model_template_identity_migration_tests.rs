@@ -387,7 +387,9 @@ async fn ac_001_historical_models_gain_only_core_general_v1_metadata() {
     // api_exposure_status column was intentionally removed before this migration.
     assert!(!has_legacy_api_exposure_column(&pool).await);
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    // This test freezes the behavior of this migration only. Later migrations are
+    // allowed to add unrelated schema and must not become part of this assertion.
+    sqlx::raw_sql(MIGRATION_SQL).execute(&pool).await.unwrap();
 
     assert_eq!(model_metadata_snapshot(&pool).await, metadata_before);
     assert_eq!(field_metadata_snapshot(&pool).await, fields_before);
