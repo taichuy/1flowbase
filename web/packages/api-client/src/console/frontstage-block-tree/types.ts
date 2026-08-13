@@ -48,8 +48,14 @@ export interface ConsoleFrontstageBlockSubtreeDeleteResult {
 export interface ConsoleFrontstageBlockNodeCode {
   block_id: string;
   page_id: string;
-  code: string;
-  source_sha256: string;
+  source_code: string;
+  source_sha256: string | null;
+  dependency_lock: unknown[] | null;
+  tailwind_toolchain_lock: Record<string, string> | null;
+  generated_css: string | null;
+  generated_css_sha256: string | null;
+  compiler_identity: Record<string, string> | null;
+  executable_state: 'legacy' | 'ready';
 }
 
 export interface ConsoleFrontstageBlockRuntimeLayer {
@@ -62,8 +68,14 @@ export interface ConsoleFrontstageBlockRuntimeLayer {
   input_mapping: Record<string, string>;
   output_mapping: Record<string, string>;
   runtime_descriptor: unknown;
-  code: string;
-  source_sha256: string;
+  source_code: string;
+  source_sha256: string | null;
+  dependency_lock: unknown[] | null;
+  tailwind_toolchain_lock: Record<string, string> | null;
+  generated_css: string | null;
+  generated_css_sha256: string | null;
+  compiler_identity: Record<string, string> | null;
+  executable_state: 'legacy' | 'ready';
 }
 
 export interface ConsoleFrontstageBlockRuntimeAssembly {
@@ -82,7 +94,12 @@ export interface CreateConsoleFrontstageBlockNodeInput {
   parent_block_id: string | null;
   before_block_id: string | null;
   after_block_id: string | null;
-  code: string;
+  source_code: string;
+  dependency_lock: unknown[];
+  tailwind_toolchain_lock: Record<string, string>;
+  generated_css: string;
+  generated_css_sha256: string;
+  compiler_identity: Record<string, string>;
   input_mapping?: Record<string, string>;
   output_mapping?: Record<string, string>;
   runtime_descriptor: unknown | null;
@@ -108,7 +125,12 @@ export interface DeleteConsoleFrontstageBlockSubtreeInput {
 }
 
 export interface SaveConsoleFrontstageBlockNodeCodeInput {
-  code: string;
+  source_code: string;
+  dependency_lock: unknown[];
+  tailwind_toolchain_lock: Record<string, string>;
+  generated_css: string;
+  generated_css_sha256: string;
+  compiler_identity: Record<string, string>;
 }
 
 export interface ConsoleFrontstageBlockListQuery {

@@ -17,13 +17,13 @@ use control_plane::frontstage::{
     MoveFrontstagePageCommand, SaveFrontstageBlockCodeCommand, SaveFrontstageTabDocumentCommand,
     UpdateFrontstagePageMetadataCommand, UpdateFrontstagePageTabCommand,
 };
+use control_plane::ports::FrontstageBlockExecutableInput;
 use control_plane::resource_action::{
     ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
     ResourceScopeKind,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -123,8 +123,17 @@ pub struct FrontstagePageDetailResponse {
 pub struct FrontstageBlockCodeResponse {
     pub page_id: String,
     pub code_ref: String,
-    pub code: String,
-    pub source_sha256: String,
+    pub source_code: String,
+    pub source_sha256: Option<String>,
+    #[schema(value_type = Option<Object>)]
+    pub dependency_lock: Option<Value>,
+    #[schema(value_type = Option<Object>)]
+    pub tailwind_toolchain_lock: Option<Value>,
+    pub generated_css: Option<String>,
+    pub generated_css_sha256: Option<String>,
+    #[schema(value_type = Option<Object>)]
+    pub compiler_identity: Option<Value>,
+    pub executable_state: domain::frontstage::FrontstageBlockExecutableState,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -208,14 +217,30 @@ pub struct SaveFrontstageTabDocumentBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveFrontstageBlockCodeBody {
-    pub code: String,
+    pub source_code: String,
+    #[schema(value_type = Object)]
+    pub dependency_lock: Value,
+    #[schema(value_type = Object)]
+    pub tailwind_toolchain_lock: Value,
+    pub generated_css: String,
+    pub generated_css_sha256: String,
+    #[schema(value_type = Object)]
+    pub compiler_identity: Value,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFrontstageBlockBody {
     pub payload: Value,
     pub code_ref: String,
-    pub code: String,
+    pub source_code: String,
+    #[schema(value_type = Object)]
+    pub dependency_lock: Value,
+    #[schema(value_type = Object)]
+    pub tailwind_toolchain_lock: Value,
+    pub generated_css: String,
+    pub generated_css_sha256: String,
+    #[schema(value_type = Object)]
+    pub compiler_identity: Value,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -983,7 +1008,14 @@ pub async fn create_frontstage_block(
             tab_id: parse_uuid(&tab_id, "tab_id")?,
             document_payload: body.payload,
             code_ref: body.code_ref,
-            code: body.code,
+            executable: FrontstageBlockExecutableInput {
+                source_code: body.source_code,
+                dependency_lock: body.dependency_lock,
+                tailwind_toolchain_lock: body.tailwind_toolchain_lock,
+                generated_css: body.generated_css,
+                generated_css_sha256: body.generated_css_sha256,
+                compiler_identity: body.compiler_identity,
+            },
         })
         .await?;
 
@@ -1109,7 +1141,14 @@ pub async fn save_frontstage_block_code(
             workspace_id,
             page_id,
             code_ref,
-            code: body.code,
+            executable: FrontstageBlockExecutableInput {
+                source_code: body.source_code,
+                dependency_lock: body.dependency_lock,
+                tailwind_toolchain_lock: body.tailwind_toolchain_lock,
+                generated_css: body.generated_css,
+                generated_css_sha256: body.generated_css_sha256,
+                compiler_identity: body.compiler_identity,
+            },
         })
         .await?;
 
@@ -1244,12 +1283,18 @@ fn to_page_detail_response(
 fn to_block_code_response(
     code: domain::frontstage::FrontstageBlockCodeRecord,
 ) -> FrontstageBlockCodeResponse {
-    let source_sha256 = format!("{:x}", Sha256::digest(code.code.as_bytes()));
+    let executable_state = code.executable_state();
     FrontstageBlockCodeResponse {
         page_id: code.page_id.to_string(),
         code_ref: code.code_ref,
-        code: code.code,
-        source_sha256,
+        source_code: code.source_code,
+        source_sha256: code.source_sha256,
+        dependency_lock: code.dependency_lock,
+        tailwind_toolchain_lock: code.tailwind_toolchain_lock,
+        generated_css: code.generated_css,
+        generated_css_sha256: code.generated_css_sha256,
+        compiler_identity: code.compiler_identity,
+        executable_state,
     }
 }
 

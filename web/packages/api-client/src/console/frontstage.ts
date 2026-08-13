@@ -59,8 +59,14 @@ export interface ConsoleFrontstagePageCreationResponse {
 export interface ConsoleFrontstageBlockCode {
   page_id: string;
   code_ref: string;
-  code: string;
-  source_sha256: string;
+  source_code: string;
+  source_sha256: string | null;
+  dependency_lock: unknown[] | null;
+  tailwind_toolchain_lock: Record<string, string> | null;
+  generated_css: string | null;
+  generated_css_sha256: string | null;
+  compiler_identity: Record<string, string> | null;
+  executable_state: 'legacy' | 'ready';
 }
 
 export interface CreateFrontstagePageNodeInput {
@@ -104,13 +110,23 @@ export interface SaveFrontstageTabDocumentInput {
 }
 
 export interface SaveFrontstageBlockCodeInput {
-  code: string;
+  source_code: string;
+  dependency_lock: unknown[];
+  tailwind_toolchain_lock: Record<string, string>;
+  generated_css: string;
+  generated_css_sha256: string;
+  compiler_identity: Record<string, string>;
 }
 
 export interface CreateFrontstageBlockInput {
   payload: unknown;
   code_ref: string;
-  code: string;
+  source_code: string;
+  dependency_lock: unknown[];
+  tailwind_toolchain_lock: Record<string, string>;
+  generated_css: string;
+  generated_css_sha256: string;
+  compiler_identity: Record<string, string>;
 }
 
 export interface DispatchFrontstageQueryInput {

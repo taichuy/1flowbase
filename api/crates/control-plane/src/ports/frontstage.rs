@@ -77,7 +77,7 @@ pub struct SaveFrontstageBlockCodeInput {
     pub workspace_id: Uuid,
     pub page_id: Uuid,
     pub code_ref: String,
-    pub code: String,
+    pub executable: super::FrontstageBlockExecutableInput,
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ pub struct CreateFrontstageBlockInput {
     pub tab_id: Uuid,
     pub document_payload: serde_json::Value,
     pub code_ref: String,
-    pub code: String,
+    pub executable: super::FrontstageBlockExecutableInput,
     pub audit_log: domain::AuditLogRecord,
 }
 

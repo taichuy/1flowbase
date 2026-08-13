@@ -10,6 +10,7 @@ use control_plane::{
     },
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -196,7 +197,13 @@ fn map_frontstage_block_code_row(
         workspace_id: row.get("workspace_id"),
         page_id: row.get("page_id"),
         code_ref: row.get("code_ref"),
-        code: row.get("code"),
+        source_code: row.get("source_code"),
+        source_sha256: row.get("source_sha256"),
+        dependency_lock: row.get("dependency_lock"),
+        tailwind_toolchain_lock: row.get("tailwind_toolchain_lock"),
+        generated_css: row.get("generated_css"),
+        generated_css_sha256: row.get("generated_css_sha256"),
+        compiler_identity: row.get("compiler_identity"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -1015,7 +1022,9 @@ impl FrontstagePageRepository for PgControlPlaneStore {
     ) -> Result<Option<domain::frontstage::FrontstageBlockCodeRecord>> {
         let row = sqlx::query(
             r#"
-            select workspace_id, page_id, code_ref, code, created_at, updated_at
+            select workspace_id, page_id, code_ref, code as source_code, source_sha256,
+                   dependency_lock, tailwind_toolchain_lock, generated_css,
+                   generated_css_sha256, compiler_identity, created_at, updated_at
             from frontstage_block_codes
             where workspace_id = $1 and page_id = $2 and code_ref = $3
             "#,
@@ -1060,9 +1069,15 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 page_id,
                 code_ref,
                 code,
+                source_sha256,
+                dependency_lock,
+                tailwind_toolchain_lock,
+                generated_css,
+                generated_css_sha256,
+                compiler_identity,
                 created_by,
                 updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $6)
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
             on conflict (workspace_id, page_id, code_ref) do nothing
             returning id
             "#,
@@ -1071,7 +1086,16 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&input.code_ref)
-        .bind(&input.code)
+        .bind(&input.executable.source_code)
+        .bind(format!(
+            "{:x}",
+            Sha256::digest(input.executable.source_code.as_bytes())
+        ))
+        .bind(&input.executable.dependency_lock)
+        .bind(&input.executable.tailwind_toolchain_lock)
+        .bind(&input.executable.generated_css)
+        .bind(&input.executable.generated_css_sha256)
+        .bind(&input.executable.compiler_identity)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
         .await?;
@@ -1211,20 +1235,38 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 workspace_id,
                 page_id,
                 code_ref,
-                code
-            ) values ($1, $2, $3, $4, $5)
+                code, source_sha256, dependency_lock, tailwind_toolchain_lock,
+                generated_css, generated_css_sha256, compiler_identity
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             on conflict (workspace_id, page_id, code_ref)
             do update set
                 code = excluded.code,
+                source_sha256 = excluded.source_sha256,
+                dependency_lock = excluded.dependency_lock,
+                tailwind_toolchain_lock = excluded.tailwind_toolchain_lock,
+                generated_css = excluded.generated_css,
+                generated_css_sha256 = excluded.generated_css_sha256,
+                compiler_identity = excluded.compiler_identity,
                 updated_at = now()
-            returning workspace_id, page_id, code_ref, code, created_at, updated_at
+            returning workspace_id, page_id, code_ref, code as source_code, source_sha256,
+                      dependency_lock, tailwind_toolchain_lock, generated_css,
+                      generated_css_sha256, compiler_identity, created_at, updated_at
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&input.code_ref)
-        .bind(&input.code)
+        .bind(&input.executable.source_code)
+        .bind(format!(
+            "{:x}",
+            sha2::Sha256::digest(input.executable.source_code.as_bytes())
+        ))
+        .bind(&input.executable.dependency_lock)
+        .bind(&input.executable.tailwind_toolchain_lock)
+        .bind(&input.executable.generated_css)
+        .bind(&input.executable.generated_css_sha256)
+        .bind(&input.executable.compiler_identity)
         .fetch_one(self.pool())
         .await?;
 

@@ -64,9 +64,14 @@ describe('console-frontstage client', () => {
     const blockCode = {
       page_id: 'page-1',
       code_ref: 'hero',
-      code: 'export default 1;',
-      source_sha256:
-        '56332e0a55734bc2b73df56a2df8635ed5c5b24b6d7a456b41de7cab9a2f3814'
+      source_code: 'export default 1;',
+      source_sha256: null,
+      dependency_lock: null,
+      tailwind_toolchain_lock: null,
+      generated_css: null,
+      generated_css_sha256: null,
+      compiler_identity: null,
+      executable_state: 'legacy'
     } satisfies ConsoleFrontstageBlockCode;
 
     expect(blockCode.source_sha256).toBe(
@@ -542,7 +547,12 @@ describe('console-frontstage client', () => {
           {
             payload: { version: 1, blocks: [{ id: 'hero-1' }] },
             code_ref: 'hero-1-code',
-            code: 'export default function Hero() {}'
+            source_code: 'export default function Hero() {}',
+            dependency_lock: [],
+            tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
+            generated_css: '',
+            generated_css_sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            compiler_identity: { name: 'tailwindcss', abi: 'v1' }
           },
           'csrf-123'
         ),
@@ -552,7 +562,7 @@ describe('console-frontstage client', () => {
         body: {
           payload: { version: 1, blocks: [{ id: 'hero-1' }] },
           code_ref: 'hero-1-code',
-          code: 'export default function Hero() {}'
+          source_code: 'export default function Hero() {}'
         },
         csrfToken: 'csrf-123'
       }
@@ -564,13 +574,20 @@ describe('console-frontstage client', () => {
           'workspace-1',
           'page-1',
           'hero',
-          { code: 'export default function Hero() {}' },
+          {
+            source_code: 'export default function Hero() {}',
+            dependency_lock: [],
+            tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
+            generated_css: '',
+            generated_css_sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            compiler_identity: { name: 'tailwindcss', abi: 'v1' }
+          },
           'csrf-123'
         ),
       expected: {
         path: '/api/console/frontstage/workspace-1/pages/page-1/block-codes/hero',
         method: 'PUT',
-        body: { code: 'export default function Hero() {}' },
+        body: expect.objectContaining({ source_code: 'export default function Hero() {}' }),
         csrfToken: 'csrf-123'
       }
     }

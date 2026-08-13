@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockPosition,
+        DeleteFrontstageBlockSubtreeInput, FrontstageBlockExecutableInput, FrontstageBlockPosition,
         FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
         FrontstagePageRepository, MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
         UpdateFrontstageBlockNodeInput,
@@ -64,7 +65,7 @@ pub struct CreateFrontstageBlockNodeCommand {
     pub description: Option<String>,
     pub presentation: domain::FrontstageBlockPresentation,
     pub position: FrontstageBlockPosition,
-    pub code: String,
+    pub executable: FrontstageBlockExecutableInput,
     pub input_mapping: BTreeMap<String, String>,
     pub output_mapping: BTreeMap<String, String>,
     pub runtime_descriptor: Option<Value>,
@@ -92,7 +93,7 @@ pub struct DeleteFrontstageBlockSubtreeCommand {
 
 pub struct SaveFrontstageBlockNodeCodeCommand {
     pub scope: FrontstageBlockScopeCommand,
-    pub code: String,
+    pub executable: FrontstageBlockExecutableInput,
 }
 
 pub struct FrontstageBlockOpenTarget {
@@ -362,7 +363,7 @@ where
                 input_mapping: command.input_mapping,
                 output_mapping: command.output_mapping,
                 runtime_descriptor,
-                code: command.code,
+                executable: validate_executable(command.executable)?,
                 audit_log,
             })
             .await
@@ -550,7 +551,7 @@ where
                 actor_user_id: command.scope.actor_user_id,
                 page_id: command.scope.page_id,
                 block_id: command.scope.block_id,
-                code: command.code,
+                executable: validate_executable(command.executable)?,
                 audit_log,
             })
             .await
@@ -620,6 +621,66 @@ where
         }
         Ok((actor, node))
     }
+}
+
+pub(super) fn validate_executable(
+    executable: FrontstageBlockExecutableInput,
+) -> Result<FrontstageBlockExecutableInput> {
+    if !is_dependency_lock(&executable.dependency_lock) {
+        return Err(ControlPlaneError::InvalidInput("dependency_lock").into());
+    }
+    if !is_identity_object(&executable.tailwind_toolchain_lock) {
+        return Err(ControlPlaneError::InvalidInput("tailwind_toolchain_lock").into());
+    }
+    if !is_identity_object(&executable.compiler_identity) {
+        return Err(ControlPlaneError::InvalidInput("compiler_identity").into());
+    }
+    let digest = format!("{:x}", Sha256::digest(executable.generated_css.as_bytes()));
+    if digest != executable.generated_css_sha256 {
+        return Err(ControlPlaneError::InvalidInput("generated_css_sha256").into());
+    }
+    let imports_tailwind = executable.source_code.contains("import 'tailwindcss'")
+        || executable.source_code.contains("import \"tailwindcss\"");
+    if imports_tailwind != !executable.generated_css.is_empty() {
+        return Err(ControlPlaneError::InvalidInput("tailwind_style_payload").into());
+    }
+    Ok(executable)
+}
+
+fn is_identity_object(value: &Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        !object.is_empty()
+            && object
+                .values()
+                .all(|value| value.as_str().is_some_and(|value| !value.trim().is_empty()))
+    })
+}
+
+fn is_dependency_lock(value: &Value) -> bool {
+    value.as_array().is_some_and(|entries| {
+        entries.iter().all(|entry| {
+            entry.as_object().is_some_and(|entry| {
+                ["module_source", "module_version", "binding"]
+                    .iter()
+                    .all(|field| {
+                        entry
+                            .get(*field)
+                            .and_then(Value::as_str)
+                            .is_some_and(|v| !v.is_empty())
+                    })
+                    && entry.get("assets").is_some_and(Value::is_array)
+                    && entry
+                        .get("exports")
+                        .and_then(Value::as_array)
+                        .is_some_and(|exports| {
+                            !exports.is_empty()
+                                && exports
+                                    .iter()
+                                    .all(|export| export.as_str().is_some_and(|v| !v.is_empty()))
+                        })
+            })
+        })
+    })
 }
 
 fn required_block_title(title: String) -> Result<String> {
@@ -728,4 +789,52 @@ fn map_block_repository_error(error: anyhow::Error) -> anyhow::Error {
         return mapped;
     }
     error
+}
+
+#[cfg(test)]
+mod executable_state_tests {
+    use super::*;
+
+    fn executable() -> FrontstageBlockExecutableInput {
+        FrontstageBlockExecutableInput {
+            source_code: "import 'tailwindcss'; export default () => null;".to_owned(),
+            dependency_lock: serde_json::json!([]),
+            tailwind_toolchain_lock: serde_json::json!({
+                "package": "tailwindcss",
+                "version": "4.3.3",
+                "theme_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }),
+            generated_css: "a{}".to_owned(),
+            generated_css_sha256:
+                "5f546eb4606b5c2b7d2a449a5cc2bbb477ed5a246c7051ce871b12f2dbfc8419".to_owned(),
+            compiler_identity: serde_json::json!({ "name": "tailwindcss", "abi": "v1" }),
+        }
+    }
+
+    #[test]
+    fn ac_005_006_preserves_a_deterministic_locked_executable_payload() {
+        let validated = validate_executable(executable()).expect("fixture must be valid");
+        assert_eq!(validated.generated_css, "a{}");
+        assert_eq!(validated.tailwind_toolchain_lock["version"], "4.3.3");
+    }
+
+    #[test]
+    fn ac_008_011_rejects_digest_mismatch_before_the_repository_write() {
+        let mut input = executable();
+        input.generated_css_sha256 = "0".repeat(64);
+        let error = validate_executable(input).expect_err("mismatch must fail closed");
+        assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::InvalidInput("generated_css_sha256"))
+        ));
+    }
+
+    #[test]
+    fn ac_011_rejects_tailwind_import_without_a_style_payload() {
+        let mut input = executable();
+        input.generated_css.clear();
+        input.generated_css_sha256 =
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned();
+        assert!(validate_executable(input).is_err());
+    }
 }

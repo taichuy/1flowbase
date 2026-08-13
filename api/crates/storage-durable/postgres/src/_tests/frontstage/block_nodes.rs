@@ -4,8 +4,8 @@ use control_plane::{
     audit::audit_log,
     ports::{
         CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockPosition, FrontstageBlockTreeRepository,
-        FrontstagePageRepository,
+        DeleteFrontstageBlockSubtreeInput, FrontstageBlockExecutableInput, FrontstageBlockPosition,
+        FrontstageBlockTreeRepository, FrontstagePageRepository,
     },
 };
 use domain::FrontstageBlockPresentation;
@@ -87,7 +87,15 @@ fn create_input(
         input_mapping: BTreeMap::new(),
         output_mapping: BTreeMap::new(),
         runtime_descriptor: json!({ "id": block_id, "codeRef": code_ref }),
-        code: format!("export default function {block_id}() {{ return null; }}"),
+        executable: FrontstageBlockExecutableInput {
+            source_code: format!("export default function {block_id}() {{ return null; }}"),
+            dependency_lock: json!([]),
+            tailwind_toolchain_lock: json!({ "package": "tailwindcss", "version": "4.3.3" }),
+            generated_css: String::new(),
+            generated_css_sha256:
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned(),
+            compiler_identity: json!({ "name": "tailwindcss", "abi": "v1" }),
+        },
         audit_log: audit,
     }
 }

@@ -119,7 +119,12 @@ describe('frontstage block tree client contract', () => {
       parent_block_id: null,
       before_block_id: null,
       after_block_id: 'summary',
-      code: 'export default function Sales() {}',
+      source_code: "import 'tailwindcss'; export default function Sales() {}",
+      dependency_lock: [],
+      tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
+      generated_css: 'a{}',
+      generated_css_sha256: '5f546eb4606b5c2b7d2a449a5cc2bbb477ed5a246c7051ce871b12f2dbfc8419',
+      compiler_identity: { name: 'tailwindcss', abi: 'v1' },
       input_mapping: { customer: 'page.customer' },
       output_mapping: { result: 'page.result' },
       runtime_descriptor: { kind: 'native_react' }
@@ -204,13 +209,20 @@ describe('frontstage block tree client contract', () => {
         'workspace-1',
         'page-1',
         'sales',
-        { code: 'export default Sales' },
+        {
+          source_code: "import 'tailwindcss'; export default Sales",
+          dependency_lock: [],
+          tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
+          generated_css: 'a{}',
+          generated_css_sha256: '5f546eb4606b5c2b7d2a449a5cc2bbb477ed5a246c7051ce871b12f2dbfc8419',
+          compiler_identity: { name: 'tailwindcss', abi: 'v1' }
+        },
         'csrf'
       )
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace-1/pages/page-1/blocks/sales/code',
       method: 'PUT',
-      body: { code: 'export default Sales' }
+      body: expect.objectContaining({ source_code: expect.stringContaining('export default Sales') })
     });
   });
 
@@ -260,23 +272,35 @@ describe('frontstage block tree client contract', () => {
           input_mapping: {},
           output_mapping: {},
           runtime_descriptor: { rendererVersion: 'v1' },
-          code: 'export default function Root() {}',
-          source_sha256: 'root-digest'
+          source_code: 'export default function Root() {}',
+          source_sha256: null,
+          dependency_lock: null,
+          tailwind_toolchain_lock: null,
+          generated_css: null,
+          generated_css_sha256: null,
+          compiler_identity: null,
+          executable_state: 'legacy'
         }
       ]
     } satisfies ConsoleFrontstageBlockRuntimeAssembly;
 
     expect(Object.keys(assembly.layers[0]).sort()).toEqual([
       'block_id',
-      'code',
+      'compiler_identity',
+      'dependency_lock',
+      'executable_state',
+      'generated_css',
+      'generated_css_sha256',
       'input_mapping',
       'output_mapping',
       'parent_block_id',
       'presentation',
       'runtime_descriptor',
       'schema_version',
+      'source_code',
       'source_sha256',
       'tab_id',
+      'tailwind_toolchain_lock',
       'title'
     ]);
     expect(assembly.layers[0]).not.toHaveProperty('id');
