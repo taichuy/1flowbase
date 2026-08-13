@@ -374,28 +374,48 @@ pub(super) async fn list_resume_timeline_event_summaries(
 ) -> Result<Vec<ApplicationRunResumeEventSummary>> {
     let rows = sqlx::query(
         r#"
-        select events.id, events.event_type,
-               callbacks.id::text as description,
-               events.created_at
-        from flow_run_events events
-        left join lateral (
-            select tasks.id
-            from flow_run_callback_tasks tasks
-            where tasks.flow_run_id = events.flow_run_id
-              and tasks.node_run_id is not distinct from events.node_run_id
-              and tasks.created_at <= events.created_at
-            order by tasks.created_at desc, tasks.id desc
-            limit 1
-        ) callbacks on true
-        where events.flow_run_id = $1
-          and events.event_type in (
-              'public_run_resume_requested',
-              'public_run_resume_succeeded',
-              'public_run_resume_failed',
-              'public_run_resume_cancelled',
-              'flow_run_resumed'
-          )
-        order by events.sequence asc, events.id asc
+        with projected_events as (
+            select events.id, events.event_type,
+                   events.resume_timeline_description as description,
+                   events.created_at, events.sequence
+            from flow_run_events events
+            where events.flow_run_id = $1
+              and events.resume_timeline_description_projected
+              and events.event_type in (
+                  'public_run_resume_requested',
+                  'public_run_resume_succeeded',
+                  'public_run_resume_failed',
+                  'public_run_resume_cancelled',
+                  'flow_run_resumed'
+              )
+        ),
+        legacy_events as (
+            select events.id, events.event_type,
+                   case
+                       when jsonb_typeof(events.payload -> 'resume_request_id') = 'string'
+                            and btrim(events.payload ->> 'resume_request_id') <> ''
+                           then events.payload ->> 'resume_request_id'
+                       when jsonb_typeof(events.payload -> 'callback_task_id') = 'string'
+                            and btrim(events.payload ->> 'callback_task_id') <> ''
+                           then events.payload ->> 'callback_task_id'
+                       else null
+                   end as description,
+                   events.created_at, events.sequence
+            from flow_run_events events
+            where events.flow_run_id = $1
+              and not events.resume_timeline_description_projected
+              and events.event_type in (
+                  'public_run_resume_requested',
+                  'public_run_resume_succeeded',
+                  'public_run_resume_failed',
+                  'public_run_resume_cancelled',
+                  'flow_run_resumed'
+              )
+        )
+        select * from projected_events
+        union all
+        select * from legacy_events
+        order by sequence asc, id asc
         "#,
     )
     .bind(flow_run_id)

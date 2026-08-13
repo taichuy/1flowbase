@@ -1227,8 +1227,162 @@ fn lightweight_summary_queries_do_not_select_callback_or_checkpoint_payload_colu
         .split("pub(super) async fn list_trace_checkpoints_for_node_runs")
         .next()
         .unwrap();
-    assert!(!events.contains("events.payload"));
-    assert!(!events.contains("payload ->"));
+    assert!(!events.contains("flow_run_callback_tasks"));
+    let projected_events = events
+        .split("projected_events as")
+        .nth(1)
+        .unwrap()
+        .split("legacy_events as")
+        .next()
+        .unwrap();
+    assert!(!projected_events.contains("payload"));
+    assert!(projected_events.contains("resume_timeline_description"));
+
+    let legacy_events = events
+        .split("legacy_events as")
+        .nth(1)
+        .unwrap()
+        .split("select * from projected_events")
+        .next()
+        .unwrap();
+    assert!(legacy_events.contains("events.payload"));
+    assert!(legacy_events.contains("not events.resume_timeline_description_projected"));
+}
+
+#[tokio::test]
+async fn resume_timeline_summary_uses_each_events_own_identifier_projection() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-08-13 18:00:00 UTC);
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let node = seed_node_run_for(
+        &store,
+        &run,
+        "node-resume",
+        "llm",
+        "Resume",
+        json!({}),
+        started_at,
+    )
+    .await;
+    let nearest_callback =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_callback_task(
+            &store,
+            &CreateCallbackTaskInput {
+                flow_run_id: run.id,
+                node_run_id: node.id,
+                callback_kind: "external_callback".to_string(),
+                request_payload: json!({}),
+                external_ref_payload: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let callback_identifier = Uuid::now_v7().to_string();
+    let resume_identifier = "  resume-exact-format  ".to_string();
+    for payload in [
+        json!({}),
+        json!({ "callback_task_id": callback_identifier }),
+        json!({
+            "resume_request_id": resume_identifier,
+            "callback_task_id": nearest_callback.id.to_string()
+        }),
+    ] {
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_event(
+            &store,
+            &AppendRunEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node.id),
+                event_type: "public_run_resume_requested".to_string(),
+                payload,
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let legacy_resume_identifier = Uuid::now_v7().to_string();
+    let legacy_event = <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_event(
+        &store,
+        &AppendRunEventInput {
+            flow_run_id: run.id,
+            node_run_id: Some(node.id),
+            event_type: "flow_run_resumed".to_string(),
+            payload: json!({
+                "resume_request_id": legacy_resume_identifier,
+                "callback_task_id": nearest_callback.id.to_string()
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        update flow_run_events
+        set resume_timeline_description = null,
+            resume_timeline_description_projected = false
+        where id = $1
+        "#,
+    )
+    .bind(legacy_event.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let summary = <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline_summary(
+        &store,
+        seeded.application_id,
+        run.id,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        summary
+            .events
+            .iter()
+            .map(|event| event.description.as_deref())
+            .collect::<Vec<_>>(),
+        vec![
+            None,
+            Some(callback_identifier.as_str()),
+            Some(resume_identifier.as_str()),
+            Some(legacy_resume_identifier.as_str()),
+        ]
+    );
+
+    let projected_rows = sqlx::query_as::<_, (Option<String>, bool)>(
+        r#"
+        select resume_timeline_description, resume_timeline_description_projected
+        from flow_run_events
+        where flow_run_id = $1 and id <> $2
+        order by sequence asc
+        "#,
+    )
+    .bind(run.id)
+    .bind(legacy_event.id)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        projected_rows,
+        vec![
+            (None, true),
+            (Some(callback_identifier), true),
+            (Some(resume_identifier), true),
+        ]
+    );
 }
 
 async fn set_run_external_context(

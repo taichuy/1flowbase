@@ -992,6 +992,8 @@ impl PgControlPlaneStore {
 
         let scope_id = flow_run_scope_id_for_update(&mut tx, flow_run.id).await?;
         let flow_event_sequence = next_event_sequence(&mut tx, flow_run.id).await?;
+        let resume_timeline_description =
+            resume_timeline_description(&input.flow_run_event_payload);
         sqlx::query(
             r#"
             insert into flow_run_events (
@@ -1001,8 +1003,10 @@ impl PgControlPlaneStore {
                 node_run_id,
                 sequence,
                 event_type,
-                payload
-            ) values ($1, $2, $3, null, $4, $5, $6)
+                payload,
+                resume_timeline_description,
+                resume_timeline_description_projected
+            ) values ($1, $2, $3, null, $4, $5, $6, $7, true)
             "#,
         )
         .bind(Uuid::now_v7())
@@ -1011,6 +1015,7 @@ impl PgControlPlaneStore {
         .bind(flow_event_sequence)
         .bind(input.result.flow_run_event_type())
         .bind(&input.flow_run_event_payload)
+        .bind(resume_timeline_description)
         .execute(&mut *tx)
         .await?;
 
