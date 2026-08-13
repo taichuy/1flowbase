@@ -9,7 +9,10 @@ import {
 describe('Native React Tailwind compiler contract', () => {
   const stylesheets = {
     themeCss: readFileSync(
-      new URL('../../../../node_modules/tailwindcss/theme.css', import.meta.url),
+      new URL(
+        '../../../../node_modules/tailwindcss/theme.css',
+        import.meta.url
+      ),
       'utf8'
     ),
     utilitiesCss: readFileSync(
@@ -50,6 +53,8 @@ describe('Native React Tailwind compiler contract', () => {
     expect(result.css).toContain('@media');
     expect(result.css).toContain('span');
     expect(result.css).not.toContain('button,input');
+    expect(result.css).not.toContain('@layer base');
+    expect(result.css).not.toMatch(/\.ant-/u);
   });
 
   test('AC-002 ignores authored CSS class names while compiling valid Tailwind candidates', async () => {
@@ -67,5 +72,43 @@ describe('Native React Tailwind compiler contract', () => {
     expect(result.acceptedCandidates).toContain('mt-3');
     expect(result.acceptedCandidates).not.toContain('hero');
     expect(result.css).toContain('margin-top');
+  });
+
+  test('AC-003 is deterministic and excludes computed dynamic classes from frozen-source output', async () => {
+    const source = [
+      "import 'tailwindcss';",
+      'export default ({ ctx }) => (',
+      '  <div className={`bg-${ctx.input.color}`} data-mixed="custom-class" />',
+      ');'
+    ].join('\n');
+    const candidates = extractStaticTailwindCandidates(source);
+    const first = await compileTailwindUtilities(candidates, stylesheets);
+    const second = await compileTailwindUtilities(
+      [...candidates].reverse(),
+      stylesheets
+    );
+
+    expect(first).toEqual(second);
+    expect(first.css).not.toContain('.bg-red-500');
+    expect(first.css).not.toContain('.custom-class');
+    expect(first.css).not.toMatch(
+      /(?:^|})\s*(?:\*|button|input|h[1-6])(?:,|{)/u
+    );
+  });
+
+  test('AC-005 compiles the 68-class false-positive boundary from source without an inventory', async () => {
+    const boundaryClasses = Array.from(
+      { length: 68 },
+      (_, index) => `mt-[${index + 1}px]`
+    );
+    const source = `import 'tailwindcss';\nexport default () => <div className="${boundaryClasses.join(' ')}" />;`;
+    const result = await compileTailwindUtilities(
+      extractStaticTailwindCandidates(source),
+      stylesheets
+    );
+
+    expect(result.acceptedCandidates).toHaveLength(68);
+    expect(result.css).toMatch(/margin-top:\s*1px/u);
+    expect(result.css).toMatch(/margin-top:\s*68px/u);
   });
 });

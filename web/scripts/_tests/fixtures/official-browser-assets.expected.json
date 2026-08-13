@@ -1,5 +1,5 @@
 {
-  "format": "1flowbase.official-browser-assets/v1",
+  "format": "1flowbase.official-browser-assets/v2",
   "module_sources": [
     "@1flowbase/charts",
     "@1flowbase/native-components",

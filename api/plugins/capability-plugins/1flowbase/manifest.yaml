@@ -114,17 +114,22 @@ block_contributions:
         exports: [default]
         binding: fetched
         assets:
-          - path: "browser-assets/tailwindcss-catalog.css"
-            role: shadow_style
-            media_type: "text/css; charset=utf-8"
-            sha256: "14b8d5ee303508395223aa26fff3de63c24dbc01a0d0a425cb822e91dd517c9c"
           - path: "browser-assets/tailwindcss-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "0255492fd53bec8f526038f4a44b254191e7a94bb415189d000c217b7aa683e5"
+            sha256: "ac69c37b87698bb0e15757fe86a62ed98a72283fc39b4d9b2bc8125bd21e0272"
         type_declarations: |
           declare module 'tailwindcss' {
-            const tailwindcss: Readonly<{ name: 'tailwindcss'; version: '4.3.3' }>;
+            const tailwindcss: Readonly<{
+              name: 'tailwindcss';
+              version: '4.3.3';
+              mode: 'theme-and-utilities';
+              compiler: Readonly<{
+                name: '@1flowbase/tailwindcss-catalog';
+                contract: 'source-driven-utilities-v1';
+                tailwind_version: '4.3.3';
+              }>;
+            }>;
             export default tailwindcss;
           }
       - source: "@1flowbase/block-sdk"

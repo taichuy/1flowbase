@@ -1,5 +1,5 @@
 {
-  "format": "1flowbase.official-browser-assets/v1",
+  "format": "1flowbase.official-browser-assets/v2",
   "modules": [
     {
       "module_source": "@1flowbase/charts",
@@ -13,9 +13,11 @@
           "path": "charts.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "4959dfbaf362b560d55fb65465b5758a960b304c53e197b4da577c8ccb6dfcaf"
+          "sha256": "4959dfbaf362b560d55fb65465b5758a960b304c53e197b4da577c8ccb6dfcaf",
+          "bytes": 779344
         }
-      ]
+      ],
+      "content_sha256": "52e371643b45f1231014ad8b35d29da2a54f8ca4c2e43d2d21e0d4b24941db32"
     },
     {
       "module_source": "@1flowbase/native-components",
@@ -30,15 +32,18 @@
           "path": "native-components.css",
           "role": "shadow_style",
           "media_type": "text/css; charset=utf-8",
-          "sha256": "e473a5769a89c4a209e1f7d056627b2ff827c6dc29b1602d3374a2078b80a93b"
+          "sha256": "e473a5769a89c4a209e1f7d056627b2ff827c6dc29b1602d3374a2078b80a93b",
+          "bytes": 177
         },
         {
           "path": "native-components.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445"
+          "sha256": "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445",
+          "bytes": 535
         }
-      ]
+      ],
+      "content_sha256": "675fdbc2767b41a47aad9da63fb24b03a8bec96ad262c6fb62cdd426979dbf5b"
     },
     {
       "module_source": "@1flowbase/rich-text",
@@ -52,15 +57,18 @@
           "path": "rich-text.css",
           "role": "shadow_style",
           "media_type": "text/css; charset=utf-8",
-          "sha256": "ae29c715f0a1ca777cd93c846948f054b37dd7cd7a2a708f0f8727d4237e2592"
+          "sha256": "ae29c715f0a1ca777cd93c846948f054b37dd7cd7a2a708f0f8727d4237e2592",
+          "bytes": 37501
         },
         {
           "path": "rich-text.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "5f6c2876766bb25fac07ea3bc01a203c2f041f46d85281b5e8379bdf28c0d98d"
+          "sha256": "5f6c2876766bb25fac07ea3bc01a203c2f041f46d85281b5e8379bdf28c0d98d",
+          "bytes": 5386974
         }
-      ]
+      ],
+      "content_sha256": "fdab0be970b380bba3de79b5adce65cebb5d84df34a1d60067abd08a6346002b"
     },
     {
       "module_source": "@ant-design/icons",
@@ -113,9 +121,11 @@
           "path": "ant-design-icons-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "c6a7f2d425adc8f21b2711d8698bd97dd88776abd4464d92b9727c8dc81f1ed7"
+          "sha256": "c6a7f2d425adc8f21b2711d8698bd97dd88776abd4464d92b9727c8dc81f1ed7",
+          "bytes": 104360
         }
-      ]
+      ],
+      "content_sha256": "a67f90d09f54ab4ab25868b8c6cd12661e19cdc1ee6750e2992bef7dc4c310a1"
     },
     {
       "module_source": "tailwindcss",
@@ -123,21 +133,37 @@
       "exports": [
         "default"
       ],
-      "type_declarations": "declare module 'tailwindcss' {\n  const tailwindcss: Readonly<{ name: 'tailwindcss'; version: '4.3.3' }>;\n  export default tailwindcss;\n}\n",
+      "type_declarations": "declare module 'tailwindcss' {\n  const tailwindcss: Readonly<{\n    name: 'tailwindcss';\n    version: '4.3.3';\n    mode: 'theme-and-utilities';\n    compiler: Readonly<{\n      name: '@1flowbase/tailwindcss-catalog';\n      contract: 'source-driven-utilities-v1';\n      tailwind_version: '4.3.3';\n    }>;\n  }>;\n  export default tailwindcss;\n}\n",
       "assets": [
-        {
-          "path": "tailwindcss-catalog.css",
-          "role": "shadow_style",
-          "media_type": "text/css; charset=utf-8",
-          "sha256": "14b8d5ee303508395223aa26fff3de63c24dbc01a0d0a425cb822e91dd517c9c"
-        },
         {
           "path": "tailwindcss-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "0255492fd53bec8f526038f4a44b254191e7a94bb415189d000c217b7aa683e5"
+          "sha256": "ac69c37b87698bb0e15757fe86a62ed98a72283fc39b4d9b2bc8125bd21e0272",
+          "bytes": 332
         }
-      ]
+      ],
+      "compiler_identity": {
+        "name": "@1flowbase/tailwindcss-catalog",
+        "contract": "source-driven-utilities-v1",
+        "tailwind_version": "4.3.3"
+      },
+      "toolchain_lock": {
+        "package": "tailwindcss",
+        "version": "4.3.3",
+        "mode": "theme-and-utilities"
+      },
+      "content_sha256": "1ed6fffbc4239156f9e1fe921e724a954848540295734493e6b74ad13fb9e120"
+    }
+  ],
+  "retained_legacy_assets": [
+    {
+      "identity": "tailwindcss-inventory-v1",
+      "path": "tailwindcss-inventory-v1.css",
+      "media_type": "text/css; charset=utf-8",
+      "sha256": "14b8d5ee303508395223aa26fff3de63c24dbc01a0d0a425cb822e91dd517c9c",
+      "bytes": 29614,
+      "use": "legacy-recognition-only"
     }
   ]
 }

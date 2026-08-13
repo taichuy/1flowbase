@@ -16,6 +16,15 @@ const DEFAULT_OUTPUT = join(
   REPOSITORY_ROOT,
   'api/plugins/capability-plugins/1flowbase/browser-assets'
 );
+const LEGACY_TAILWIND_ASSET_NAME = 'tailwindcss-inventory-v1.css';
+const LEGACY_TAILWIND_ASSET_PATH = join(
+  DEFAULT_OUTPUT,
+  LEGACY_TAILWIND_ASSET_NAME
+);
+const SUPERSEDED_TAILWIND_ASSET_PATH = join(
+  DEFAULT_OUTPUT,
+  'tailwindcss-catalog.css'
+);
 const MODULE_DIRECTORIES = [
   'ant-design-icons-catalog',
   'native-components',
@@ -27,6 +36,9 @@ const MODULE_DIRECTORIES = [
 export async function buildOfficialBrowserAssets(
   outputDirectory = DEFAULT_OUTPUT
 ) {
+  const legacyTailwindBytes = await readFile(LEGACY_TAILWIND_ASSET_PATH).catch(
+    () => readFile(SUPERSEDED_TAILWIND_ASSET_PATH)
+  );
   const stagingDirectory = join(WEB_ROOT, '.official-browser-assets-staging');
   await rm(stagingDirectory, { force: true, recursive: true });
   await mkdir(stagingDirectory, { recursive: true });
@@ -111,23 +123,55 @@ export async function buildOfficialBrowserAssets(
           media_type: outputName.endsWith('.css')
             ? 'text/css; charset=utf-8'
             : 'text/javascript; charset=utf-8',
-          sha256: createHash('sha256').update(bytes).digest('hex')
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          bytes: bytes.byteLength
         });
       }
-      digestModules.push({
+      const moduleDigestInput = {
         module_source: descriptor.module_source,
         module_version: moduleVersion,
         exports: [...descriptor.exports].sort(),
         type_declarations: typeDeclarations,
-        assets
+        assets,
+        ...(descriptor.compiler_identity
+          ? { compiler_identity: descriptor.compiler_identity }
+          : {}),
+        ...(descriptor.toolchain_lock
+          ? { toolchain_lock: descriptor.toolchain_lock }
+          : {})
+      };
+      digestModules.push({
+        ...moduleDigestInput,
+        content_sha256: sha256Bytes(
+          Buffer.from(JSON.stringify(moduleDigestInput))
+        )
       });
     }
 
+    await mkdir(outputDirectory, { recursive: true });
+    await writeFile(
+      join(outputDirectory, LEGACY_TAILWIND_ASSET_NAME),
+      legacyTailwindBytes
+    );
+    if (resolve(outputDirectory) === resolve(DEFAULT_OUTPUT)) {
+      await rm(SUPERSEDED_TAILWIND_ASSET_PATH, { force: true });
+    }
+    const legacyTailwindDigest = sha256Bytes(legacyTailwindBytes);
     const digestInput = {
-      format: '1flowbase.official-browser-assets/v1',
+      format: '1flowbase.official-browser-assets/v2',
       modules: digestModules.sort((left, right) =>
         left.module_source.localeCompare(right.module_source)
-      )
+      ),
+      retained_legacy_assets: [
+        {
+          identity: 'tailwindcss-inventory-v1',
+          path: LEGACY_TAILWIND_ASSET_NAME,
+          media_type: 'text/css; charset=utf-8',
+          sha256: legacyTailwindDigest,
+          bytes: legacyTailwindBytes.byteLength,
+          use: 'legacy-recognition-only'
+        }
+      ]
     };
     await writeFile(
       join(outputDirectory, 'official-browser-assets.digest-input.json'),
@@ -138,6 +182,10 @@ export async function buildOfficialBrowserAssets(
   } finally {
     await rm(stagingDirectory, { force: true, recursive: true });
   }
+}
+
+function sha256Bytes(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

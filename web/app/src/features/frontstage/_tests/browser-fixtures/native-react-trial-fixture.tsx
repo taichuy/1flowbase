@@ -5,7 +5,10 @@ import { Surface } from '@1flowbase/native-components';
 import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
-import tailwindCss from '@1flowbase/tailwindcss-catalog/styles.css?inline';
+import {
+  compileTailwindUtilities,
+  extractStaticTailwindCandidates
+} from '@1flowbase/tailwindcss-catalog/compiler';
 import vditorCss from 'vditor/dist/index.css?raw';
 import iconsBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/ant-design-icons-catalog.js?raw';
 import officialBrowserAssets from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/official-browser-assets.digest-input.json';
@@ -34,6 +37,17 @@ import {
   type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
+
+const FROZEN_TAILWIND_FIXTURE_SOURCE = `
+import 'tailwindcss';
+export default function PublicModulesBlock() {
+  return <div className="grid grid-cols-[180px_1fr] gap-4 p-4 md:grid-cols-2 hover:[&>h3]:opacity-80 bg-[#00ab73]" />;
+}`;
+const tailwindCss = (
+  await compileTailwindUtilities(
+    extractStaticTailwindCandidates(FROZEN_TAILWIND_FIXTURE_SOURCE)
+  )
+).css;
 
 type FixtureBlockProps = {
   label: string;
@@ -208,7 +222,7 @@ function PublicModulesBlock({
     <Surface
       aria-label={`public-modules-${props.label}`}
       data-testid={`public-modules-${props.label}`}
-      className="grid gap-4 p-4"
+      className="grid grid-cols-[180px_1fr] gap-4 p-4 md:grid-cols-2 hover:[&>h3]:opacity-80 bg-[#00ab73]"
     >
       <h3>
         <UserOutlined /> {props.label}
@@ -249,7 +263,11 @@ const publicModuleAssets = [
   )
 ];
 
-const tailwindModuleAsset = fixtureModuleStyle('tailwindcss', 'e', tailwindCss);
+const tailwindModuleAsset = fixtureModuleStyle(
+  'frontstage/executable-style',
+  'e',
+  tailwindCss
+);
 
 const richTextModule = officialBrowserAssets.modules.find(
   (module) => module.module_source === '@1flowbase/rich-text'

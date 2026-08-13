@@ -4,5 +4,14 @@
   "entry": "src/index.ts",
   "exports": ["default"],
   "type_declarations": "src/catalog-module.d.ts",
-  "support_assets": ["src/styles.css"]
+  "compiler_identity": {
+    "name": "@1flowbase/tailwindcss-catalog",
+    "contract": "source-driven-utilities-v1",
+    "tailwind_version": "4.3.3"
+  },
+  "toolchain_lock": {
+    "package": "tailwindcss",
+    "version": "4.3.3",
+    "mode": "theme-and-utilities"
+  }
 }

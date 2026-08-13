@@ -120,12 +120,29 @@ async function verifyFixture(browserInstance, fixture) {
               'style[data-module-source="@1flowbase/native-components"]'
             ).length ?? 0
         ),
-        tailwindStyles: publicHosts.map(
+        executableStyles: publicHosts.map(
           (host) =>
             host.shadowRoot?.querySelectorAll(
-              'style[data-module-source="tailwindcss"]'
+              'style[data-module-source="frontstage/executable-style"]'
             ).length ?? 0
         ),
+        executableStyleSafety: publicHosts.map((host) => {
+          const css = [
+            ...(host.shadowRoot?.querySelectorAll(
+              'style[data-module-source="frontstage/executable-style"]'
+            ) ?? [])
+          ]
+            .map((style) => style.textContent ?? '')
+            .join('\n');
+          return {
+            hasPreflight:
+              /@layer base|(?:^|})\s*(?:button|input|h[1-6])(?:,|{)/u.test(css),
+            hasAntSelector: /\.ant-/u.test(css),
+            hasArbitraryGrid: css.includes('180px 1fr'),
+            hasResponsiveVariant: css.includes('@media'),
+            hasHoverVariant: css.includes(':hover')
+          };
+        }),
         publicLayout: publicHosts.map((host) => {
           const element = host.shadowRoot?.querySelector(
             '[data-testid^=public-modules-]'
@@ -135,7 +152,8 @@ async function verifyFixture(browserInstance, fixture) {
           return {
             display: style.display,
             gap: style.gap,
-            padding: style.padding
+            padding: style.padding,
+            backgroundColor: style.backgroundColor
           };
         }),
         hostLayout: (() => {
@@ -157,18 +175,21 @@ async function verifyFixture(browserInstance, fixture) {
           '#vditorLuteScript, #vditorIconScript'
         ).length,
         richTextIcons: richTextRoots.map((root) => {
-          const toolbarIcons = [...root.querySelectorAll('.vditor-toolbar use')];
+          const toolbarIcons = [
+            ...root.querySelectorAll('.vditor-toolbar use')
+          ];
           return {
-            spriteCount: root.querySelectorAll(
-              '[data-1flowbase-vditor-icons]'
-            ).length,
-            symbolCount: root.querySelectorAll(
-              'symbol[id^="vditor-icon-"]'
-            ).length,
+            spriteCount: root.querySelectorAll('[data-1flowbase-vditor-icons]')
+              .length,
+            symbolCount: root.querySelectorAll('symbol[id^="vditor-icon-"]')
+              .length,
             toolbarIconCount: toolbarIcons.length,
             unresolvedToolbarIcons: toolbarIcons.filter((icon) => {
-              const href = icon.getAttribute('href') ?? icon.getAttribute('xlink:href');
-              return !href?.startsWith('#') || !root.getElementById(href.slice(1));
+              const href =
+                icon.getAttribute('href') ?? icon.getAttribute('xlink:href');
+              return (
+                !href?.startsWith('#') || !root.getElementById(href.slice(1))
+              );
             }).length,
             hiddenToolbarIcons: toolbarIcons.filter((icon) => {
               const rect = icon.closest('svg')?.getBoundingClientRect();
@@ -299,11 +320,17 @@ function assertNativeEvidence(name, evidence) {
     evidence.canvases.some((count) => count < 1) ||
     evidence.richStyles.some((count) => count !== 1) ||
     evidence.nativeStyles.some((count) => count !== 1) ||
-    evidence.tailwindStyles[0] !== 1 ||
-    evidence.tailwindStyles[1] !== 0 ||
+    evidence.executableStyles[0] !== 1 ||
+    evidence.executableStyles[1] !== 0 ||
+    evidence.executableStyleSafety[0]?.hasPreflight !== false ||
+    evidence.executableStyleSafety[0]?.hasAntSelector !== false ||
+    evidence.executableStyleSafety[0]?.hasArbitraryGrid !== true ||
+    evidence.executableStyleSafety[0]?.hasResponsiveVariant !== true ||
+    evidence.executableStyleSafety[0]?.hasHoverVariant !== true ||
     evidence.publicLayout[0]?.display !== 'grid' ||
     evidence.publicLayout[0]?.gap !== '16px' ||
     evidence.publicLayout[0]?.padding !== '16px' ||
+    evidence.publicLayout[0]?.backgroundColor !== 'rgb(0, 171, 115)' ||
     evidence.publicLayout[1]?.display !== 'block' ||
     evidence.publicLayout[1]?.gap !== 'normal' ||
     evidence.publicLayout[1]?.padding !== '0px' ||

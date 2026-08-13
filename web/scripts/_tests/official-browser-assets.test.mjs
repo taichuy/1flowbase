@@ -31,8 +31,11 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
     for (const module of left.modules) {
       assert.deepEqual(module.exports, expected.exports[module.module_source]);
       assert.match(module.type_declarations, /declare module/);
-      for (const asset of module.assets)
+      assert.match(module.content_sha256, /^[a-f0-9]{64}$/);
+      for (const asset of module.assets) {
         assert.match(asset.sha256, /^[a-f0-9]{64}$/);
+        assert.ok(asset.bytes > 0);
+      }
     }
 
     const richText = left.modules.find(
@@ -107,41 +110,38 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
       (module) => module.module_source === 'tailwindcss'
     );
     assert.ok(tailwind, 'AC-001 publishes the official tailwindcss module');
-    const styleAsset = tailwind.assets.find(
-      (asset) => asset.role === 'shadow_style'
+    assert.deepEqual(tailwind.compiler_identity, {
+      name: '@1flowbase/tailwindcss-catalog',
+      contract: 'source-driven-utilities-v1',
+      tailwind_version: '4.3.3'
+    });
+    assert.deepEqual(tailwind.toolchain_lock, {
+      package: 'tailwindcss',
+      version: '4.3.3',
+      mode: 'theme-and-utilities'
+    });
+    assert.deepEqual(
+      tailwind.assets.map((asset) => asset.role),
+      ['browser_module'],
+      'AC-003 keeps generated source CSS out of the current Catalog module'
     );
-    assert.ok(styleAsset, 'AC-003 publishes Tailwind as shadow_style');
-    const css = await readFile(join(first, styleAsset.path), 'utf8');
+    const [legacyTailwind] = left.retained_legacy_assets;
+    assert.deepEqual(legacyTailwind, {
+      identity: 'tailwindcss-inventory-v1',
+      path: 'tailwindcss-inventory-v1.css',
+      media_type: 'text/css; charset=utf-8',
+      sha256:
+        '14b8d5ee303508395223aa26fff3de63c24dbc01a0d0a425cb822e91dd517c9c',
+      bytes: 29614,
+      use: 'legacy-recognition-only'
+    });
+    const css = await readFile(join(first, legacyTailwind.path), 'utf8');
     assert.match(css, /\.grid\{/u);
     assert.match(css, /\.gap-4\{/u);
     assert.match(css, /\.p-4\{/u);
     assert.doesNotMatch(css, /@layer base/u);
     assert.doesNotMatch(css, /(?:^|\})\s*(?:\*|button|input|h[1-6])(?:,|\{)/u);
     assert.doesNotMatch(css, /\.ant-/u);
-    const inventorySource = await readFile(
-      new URL(
-        '../../packages/tailwindcss-catalog/src/inventory.ts',
-        import.meta.url
-      ),
-      'utf8'
-    );
-    const inventoryMatch = inventorySource.match(
-      /const INVENTORY_SOURCE = `([\s\S]*?)`;/u
-    );
-    assert.ok(
-      inventoryMatch,
-      'AC-004 has a readable official utility inventory'
-    );
-    const inventory = inventoryMatch[1].trim().split(/\s+/u);
-    for (const className of inventory) {
-      const escapedClassName = className
-        .replaceAll(':', '\\:')
-        .replaceAll('/', '\\/');
-      assert.ok(
-        css.includes(`.${escapedClassName}`),
-        `AC-004 publishes inventory utility ${className}`
-      );
-    }
   } finally {
     await Promise.all([
       rm(first, { force: true, recursive: true }),

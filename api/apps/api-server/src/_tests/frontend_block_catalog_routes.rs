@@ -474,8 +474,8 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .unwrap();
     assert_eq!(tailwind_module["version"], "4.3.3");
     assert_eq!(tailwind_module["exports"], json!(["default"]));
-    assert_eq!(tailwind_module["assets"][0]["role"], "shadow_style");
-    assert_eq!(tailwind_module["assets"][1]["role"], "browser_module");
+    assert_eq!(tailwind_module["assets"].as_array().unwrap().len(), 1);
+    assert_eq!(tailwind_module["assets"][0]["role"], "browser_module");
     let rich_text_module = jsx_block["code_modules"]
         .as_array()
         .unwrap()

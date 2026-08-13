@@ -1,4 +1,5 @@
-const INVENTORY_SOURCE = `
+/** Legacy #1671 recognition data. It is not an authoring allowlist. */
+const LEGACY_INVENTORY_SOURCE = `
 block inline-block inline flex inline-flex grid hidden contents
 relative absolute fixed sticky static
 inset-0 top-0 right-0 bottom-0 left-0 z-10 z-20 z-50
@@ -55,17 +56,18 @@ md:block md:flex md:grid md:hidden md:flex-row md:flex-col md:grid-cols-2 md:gri
 lg:block lg:flex lg:grid lg:hidden lg:flex-row lg:flex-col lg:grid-cols-2 lg:grid-cols-3 lg:grid-cols-4 lg:grid-cols-6 lg:gap-6 lg:gap-8 lg:p-8
 `;
 
-export const TAILWIND_UTILITY_CLASS_NAMES = Object.freeze(
-  INVENTORY_SOURCE.trim().split(/\s+/u)
+export const LEGACY_TAILWIND_UTILITY_CLASS_NAMES = Object.freeze(
+  LEGACY_INVENTORY_SOURCE.trim().split(/\s+/u)
 );
 
-const utilityClassNames = new Set(TAILWIND_UTILITY_CLASS_NAMES);
-const tailwindImportPattern = /(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"]tailwindcss['"]/u;
+const utilityClassNames = new Set(LEGACY_TAILWIND_UTILITY_CLASS_NAMES);
+const tailwindImportPattern =
+  /(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"]tailwindcss['"]/u;
 const staticClassNamePattern =
   /\bclassName\s*=\s*(?:\{\s*)?(['"`])([^'"`]*?)\1\s*\}?/gu;
 const classNameAssignmentPattern = /\bclassName\s*=/gu;
 
-export interface UnsupportedTailwindUtilityClass {
+export interface LegacyTailwindInventoryDifference {
   className: string;
   sourceLocation: {
     line: number;
@@ -75,12 +77,12 @@ export interface UnsupportedTailwindUtilityClass {
   };
 }
 
-export function findUnsupportedTailwindUtilityClasses(
+export function recognizeLegacyUnsupportedTailwindUtilityClasses(
   source: string
-): UnsupportedTailwindUtilityClass[] {
+): LegacyTailwindInventoryDifference[] {
   if (!tailwindImportPattern.test(source)) return [];
 
-  const unsupported: UnsupportedTailwindUtilityClass[] = [];
+  const unsupported: LegacyTailwindInventoryDifference[] = [];
   const staticMatches = [...source.matchAll(staticClassNamePattern)];
   const staticAssignmentOffsets = new Set(
     staticMatches.map((match) => match.index ?? 0)
