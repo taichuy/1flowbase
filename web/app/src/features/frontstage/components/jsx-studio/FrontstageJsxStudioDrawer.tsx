@@ -1,4 +1,5 @@
 import type { OnMount } from '@monaco-editor/react';
+import { Alert, Button, Modal, Space } from 'antd';
 import {
   createJsBlockDiagnostics,
   diagnoseLegacyBlockModuleSource,
@@ -11,7 +12,10 @@ import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStud
 import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-block/tailwind-utility-diagnostics';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import {
+  resolveFrontstageNativeDependencyLock,
+  type NormalizedFrontstageBlockCatalogEntry
+} from '../../lib/block-catalog';
 import { isForbiddenResponseError } from '../../lib/api-errors';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -23,7 +27,10 @@ import {
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { FrontstageBlockCodeTabs } from './block-tabs/FrontstageBlockCodeTabs';
 import type { FrontstageBlockDeletedEvent } from './block-tabs/types';
-import { useFrontstageBlockTabs } from './block-tabs/use-frontstage-block-tabs';
+import {
+  useFrontstageBlockTabs,
+  type FrontstageExecutableSavePayload
+} from './block-tabs/use-frontstage-block-tabs';
 import {
   JsxStudioResourcePanel,
   type FrontstageJsxStudioSection
@@ -79,6 +86,15 @@ export function FrontstageJsxStudioDrawer({
 }: FrontstageJsxStudioDrawerProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [runRevision, setRunRevision] = useState<number | null>(null);
+  const [executablePreview, setExecutablePreview] = useState<{
+    block_id: string;
+    source_code: string;
+    kind: 'migration' | 'upgrade';
+    payload: FrontstageExecutableSavePayload;
+  } | null>(null);
+  const [executableOperationError, setExecutableOperationError] = useState<
+    string | null
+  >(null);
   const blockTabs = useFrontstageBlockTabs({
     workspaceId,
     pageId,
@@ -100,8 +116,16 @@ export function FrontstageJsxStudioDrawer({
     [catalogEntry]
   );
   useEffect(() => {
-    if (open) setRunRevision(null);
+    if (open) {
+      setRunRevision(null);
+      setExecutablePreview(null);
+      setExecutableOperationError(null);
+    }
   }, [activeBlockId, open]);
+  useEffect(() => {
+    setExecutablePreview(null);
+    setExecutableOperationError(null);
+  }, [draft]);
   const compileDiagnostics = useMemo(() => {
     const activeTabId = activeTab?.detail?.tab_id;
     if (!activeTabId || draft.trim().length === 0) return [];
@@ -132,6 +156,102 @@ export function FrontstageJsxStudioDrawer({
     projection.allowedImportSources
   ]);
   const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
+  const dependencyLockResolution = useMemo(
+    () => resolveFrontstageNativeDependencyLock({ catalogEntry, workspaceId }),
+    [catalogEntry, workspaceId]
+  );
+  const executableState = activeTab?.executable?.executable_state;
+  const previewKind = executableState === 'legacy' ? 'migration' : 'upgrade';
+  const previewMatchesDraft =
+    executablePreview?.block_id === activeBlockId &&
+    executablePreview.source_code === draft &&
+    executablePreview.kind === previewKind;
+
+  const previewCurrentDependencies = async () => {
+    setExecutableOperationError(null);
+    if (compileDiagnostics.length > 0) {
+      setExecutableOperationError(
+        i18nText('frontstage', 'auto.executable_preview_validation_failed')
+      );
+      return;
+    }
+    if (dependencyLockResolution.error) {
+      setExecutableOperationError(dependencyLockResolution.error);
+      return;
+    }
+    try {
+      const payload = await blockTabs.previewActive(
+        'upgrade',
+        dependencyLockResolution.dependencyLock
+      );
+      setExecutablePreview({
+        block_id: activeBlockId,
+        source_code: draft,
+        kind: previewKind,
+        payload
+      });
+      setRunRevision((current) => (current ?? 0) + 1);
+    } catch (error) {
+      setExecutableOperationError(
+        error instanceof Error
+          ? error.message
+          : i18nText('frontstage', 'auto.executable_preview_failed')
+      );
+    }
+  };
+
+  const applyCurrentDependencies = () => {
+    if (!executablePreview || !previewMatchesDraft) return;
+    const kind = executablePreview.kind;
+    Modal.confirm({
+      title: i18nText(
+        'frontstage',
+        kind === 'migration'
+          ? 'auto.confirm_legacy_migration'
+          : 'auto.confirm_dependency_upgrade'
+      ),
+      content: i18nText(
+        'frontstage',
+        kind === 'migration'
+          ? 'auto.confirm_legacy_migration_description'
+          : 'auto.confirm_dependency_upgrade_description'
+      ),
+      onOk: async () => {
+        try {
+          await blockTabs.saveActive(executablePreview.payload);
+          setExecutablePreview(null);
+          setExecutableOperationError(null);
+        } catch (error) {
+          setExecutableOperationError(
+            error instanceof Error
+              ? error.message
+              : i18nText('frontstage', 'auto.executable_apply_failed')
+          );
+          throw error;
+        }
+      }
+    });
+  };
+
+  const saveReadyDraft = async () => {
+    setExecutableOperationError(null);
+    if (compileDiagnostics.length > 0) {
+      setExecutableOperationError(
+        i18nText('frontstage', 'auto.executable_preview_validation_failed')
+      );
+      return;
+    }
+    try {
+      const payload = await blockTabs.previewActive('preserve');
+      await blockTabs.saveActive(payload);
+    } catch (error) {
+      setExecutableOperationError(
+        error instanceof Error
+          ? error.message
+          : i18nText('frontstage', 'auto.executable_apply_failed')
+      );
+    }
+  };
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
@@ -230,7 +350,70 @@ export function FrontstageJsxStudioDrawer({
       source={draft}
       testId={`frontstage-jsx-studio-${block.id}`}
       windowId={`frontstage-jsx-studio:${block.id}`}
-      editorNotice={permissionDenied ? <PermissionDeniedState /> : null}
+      editorNotice={
+        permissionDenied ? (
+          <PermissionDeniedState />
+        ) : (
+          <Alert
+            action={
+              <Space wrap>
+                <Button
+                  disabled={activeTab?.loading || activeTab?.saving}
+                  size="small"
+                  onClick={() => void previewCurrentDependencies()}
+                >
+                  {i18nText(
+                    'frontstage',
+                    executableState === 'legacy'
+                      ? 'auto.preview_legacy_migration'
+                      : 'auto.preview_dependency_upgrade'
+                  )}
+                </Button>
+                {previewMatchesDraft ? (
+                  <Button
+                    disabled={activeTab?.saving}
+                    size="small"
+                    type="primary"
+                    onClick={applyCurrentDependencies}
+                  >
+                    {i18nText(
+                      'frontstage',
+                      previewKind === 'migration'
+                        ? 'auto.apply_legacy_migration'
+                        : 'auto.apply_dependency_upgrade'
+                    )}
+                  </Button>
+                ) : null}
+              </Space>
+            }
+            description={
+              executableOperationError ??
+              (previewMatchesDraft
+                ? i18nText('frontstage', 'auto.executable_preview_ready')
+                : executableState === 'legacy'
+                  ? i18nText('frontstage', 'auto.legacy_migration_description')
+                  : i18nText(
+                      'frontstage',
+                      'auto.dependency_upgrade_description'
+                    ))
+            }
+            message={i18nText(
+              'frontstage',
+              executableState === 'legacy'
+                ? 'auto.legacy_executable_state'
+                : 'auto.executable_dependency_state'
+            )}
+            showIcon
+            type={
+              executableOperationError
+                ? 'error'
+                : previewMatchesDraft
+                  ? 'success'
+                  : 'info'
+            }
+          />
+        )
+      }
       editorDiagnostics={compileDiagnostics}
       onChange={(nextDraft, modelPath) => {
         if (!modelPath) {
@@ -252,8 +435,8 @@ export function FrontstageJsxStudioDrawer({
         }
       }}
       onSave={() => {
-        if (!hasLegacySource) {
-          void blockTabs.saveActive().catch(() => undefined);
+        if (!hasLegacySource && executableState === 'ready') {
+          void saveReadyDraft();
         }
       }}
       renderResource={(section) =>

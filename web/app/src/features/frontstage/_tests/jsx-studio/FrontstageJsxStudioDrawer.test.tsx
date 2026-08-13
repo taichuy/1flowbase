@@ -14,9 +14,16 @@ import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
-import { LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC } from '@1flowbase/page-runtime';
+import {
+  LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
+  sha256Text
+} from '@1flowbase/page-runtime';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
+import {
+  NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
+  NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK
+} from '../../../../shared/code-block/native-react-executable-style';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
@@ -65,9 +72,9 @@ const pageRuntimeMocks = vi.hoisted(() => ({
 
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock('@1flowbase/page-runtime', async () => {
-  const actual = await vi.importActual<typeof import('@1flowbase/page-runtime')>(
-    '@1flowbase/page-runtime'
-  );
+  const actual = await vi.importActual<
+    typeof import('@1flowbase/page-runtime')
+  >('@1flowbase/page-runtime');
   return {
     ...actual,
     createJsBlockDiagnostics: (
@@ -294,7 +301,19 @@ describe('FrontstageJsxStudioDrawer', () => {
           },
           base_source: legacy.code,
           draft: legacy.draft,
-          source_sha256: 'sha256',
+          source_sha256: sha256Text(legacy.code),
+          executable: {
+            block_id: initialBlockId,
+            page_id: 'page-1',
+            source_code: legacy.code,
+            source_sha256: sha256Text(legacy.code),
+            dependency_lock: [],
+            tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
+            generated_css: '',
+            generated_css_sha256: sha256Text(''),
+            compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
+            executable_state: 'ready' as const
+          },
           loading: legacy.loading,
           saving: legacy.saving,
           error: legacy.error
@@ -312,6 +331,14 @@ describe('FrontstageJsxStudioDrawer', () => {
           ),
           setActiveDraft: legacy.setDraft,
           resetActive: legacy.reset,
+          previewActive: vi.fn().mockImplementation(async () => ({
+            source_code: legacy.draft,
+            dependency_lock: [],
+            tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
+            generated_css: '',
+            generated_css_sha256: sha256Text(''),
+            compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+          })),
           saveActive: legacy.save,
           handleDeletedBlock: vi.fn().mockResolvedValue('converged')
         };
@@ -1004,6 +1031,84 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  });
+
+  test('AC-009/010 requires legacy migration preview and confirmation before apply', async () => {
+    const source = 'export default function Legacy() { return <div />; }';
+    const payload = {
+      source_code: source,
+      dependency_lock: [],
+      tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
+      generated_css: '',
+      generated_css_sha256: sha256Text(''),
+      compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+    };
+    const previewActive = vi.fn().mockResolvedValue(payload);
+    const saveActive = vi.fn().mockResolvedValue(undefined);
+    const activeTab = {
+      block_id: block.id,
+      detail: { block_id: block.id, tab_id: 'tab-1', title: 'Orders' },
+      base_source: source,
+      draft: source,
+      source_sha256: null,
+      executable: {
+        block_id: block.id,
+        page_id: 'page-1',
+        source_code: source,
+        source_sha256: null,
+        dependency_lock: null,
+        tailwind_toolchain_lock: null,
+        generated_css: null,
+        generated_css_sha256: null,
+        compiler_identity: null,
+        executable_state: 'legacy' as const
+      },
+      loading: false,
+      saving: false,
+      error: null
+    };
+    blockTabsHook.useFrontstageBlockTabs.mockReturnValue({
+      tabs: [activeTab],
+      activeBlockId: activeTab.block_id,
+      activeTab,
+      anyDirty: false,
+      openBlock: vi.fn(),
+      activateBlock: vi.fn(),
+      closeBlock: vi.fn(),
+      setDraft: vi.fn(),
+      setActiveDraft: vi.fn(),
+      resetActive: vi.fn(),
+      previewActive,
+      saveActive,
+      handleDeletedBlock: vi.fn().mockResolvedValue('converged')
+    });
+
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="code"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={block}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={vi.fn()}
+      />
+    );
+
+    expect(saveActive).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '预览迁移' }));
+    await waitFor(() => expect(previewActive).toHaveBeenCalledTimes(1));
+    expect(saveActive).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: '应用迁移' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: '应用旧版迁移？' })).getByRole(
+        'button',
+        { name: /^确\s*定$/ }
+      )
+    );
+    await waitFor(() => expect(saveActive).toHaveBeenCalledWith(payload));
   });
 
   test('D4-AC-006 preserves controlled legacy source and blocks save/run with the stable diagnostic', () => {

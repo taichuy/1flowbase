@@ -6,7 +6,8 @@ import {
   fetchFrontstageBlockCode,
   frontstageBlockCodeQueryKey,
   saveFrontstageBlockCode,
-  type FrontstageBlockCode
+  type FrontstageBlockCode,
+  type SaveFrontstageBlockCodeInput
 } from '../api/block-code';
 import { isForbiddenResponseError } from '../lib/api-errors';
 
@@ -50,10 +51,10 @@ export function useFrontstageBlockCode({
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const canRead = Boolean(
     actor &&
-      workspaceId &&
-      actor.current_workspace_id === workspaceId &&
-      pageId &&
-      codeRef
+    workspaceId &&
+    actor.current_workspace_id === workspaceId &&
+    pageId &&
+    codeRef
   );
 
   const queryKey = useMemo(
@@ -83,7 +84,7 @@ export function useFrontstageBlockCode({
     refetchOnReconnect: false
   });
 
-  const code = blockCodeQuery.data?.code ?? '';
+  const code = blockCodeQuery.data?.source_code ?? '';
 
   useEffect(() => {
     setDraft(code);
@@ -98,13 +99,16 @@ export function useFrontstageBlockCode({
   };
 
   const saveMutation = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (
+      executable: Omit<SaveFrontstageBlockCodeInput, 'code_ref' | 'source_code'>
+    ) =>
       saveFrontstageBlockCode(
         requireValue(workspaceId, 'workspace id'),
         requireValue(pageId, 'page id'),
         {
-          codeRef: requireValue(codeRef, 'code ref'),
-          code: draft
+          code_ref: requireValue(codeRef, 'code ref'),
+          source_code: draft,
+          ...executable
         },
         requireCsrfToken(csrfToken)
       ),

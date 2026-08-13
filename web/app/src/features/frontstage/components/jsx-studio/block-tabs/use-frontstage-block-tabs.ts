@@ -1,12 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  canonicalizeNativeReactCatalogDependencyLock,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import {
+  compileNativeReactExecutableStyle,
+  readLockedNativeReactExecutableStyle
+} from '../../../../../shared/code-block/native-react-executable-style';
 import {
   fetchFrontstageBlockNode,
   fetchFrontstageBlockNodeCode,
   frontstageBlockTreeQueryKeys,
   saveFrontstageBlockNodeCode,
-  type FrontstageBlockNode
+  type FrontstageBlockNode,
+  type FrontstageBlockNodeCode
 } from '../../../api/block-tree';
 import { useAuthStore } from '../../../../../state/auth-store';
 import type { FrontstageBlockDeletedEvent } from './types';
@@ -17,6 +26,7 @@ export interface FrontstageBlockCodeTabState {
   base_source: string;
   draft: string;
   source_sha256: string | null;
+  executable: FrontstageBlockNodeCode | null;
   loading: boolean;
   saving: boolean;
   error: unknown | null;
@@ -29,9 +39,81 @@ function pendingTab(blockId: string): FrontstageBlockCodeTabState {
     base_source: '',
     draft: '',
     source_sha256: null,
+    executable: null,
     loading: true,
     saving: false,
     error: null
+  };
+}
+
+export interface FrontstageExecutableSavePayload {
+  source_code: string;
+  dependency_lock: NativeReactCatalogDependencyLock;
+  tailwind_toolchain_lock: Record<string, string>;
+  generated_css: string;
+  generated_css_sha256: string;
+  compiler_identity: Record<string, string>;
+}
+
+function sameStringRecord(
+  left: Record<string, string>,
+  right: Record<string, string>
+): boolean {
+  const leftEntries = Object.entries(left).sort(([a], [b]) =>
+    a.localeCompare(b)
+  );
+  const rightEntries = Object.entries(right).sort(([a], [b]) =>
+    a.localeCompare(b)
+  );
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
+}
+
+export async function previewFrontstageExecutableSave({
+  tab,
+  mode,
+  currentDependencyLock
+}: {
+  tab: FrontstageBlockCodeTabState;
+  mode: 'preserve' | 'upgrade';
+  currentDependencyLock?: NativeReactCatalogDependencyLock;
+}): Promise<FrontstageExecutableSavePayload> {
+  const compiled = await compileNativeReactExecutableStyle(tab.draft);
+  if (mode === 'upgrade') {
+    const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+      currentDependencyLock
+    );
+    if (!dependencyLock) {
+      throw new Error('Current dependency_lock is invalid.');
+    }
+    return {
+      source_code: tab.draft,
+      dependency_lock: dependencyLock,
+      ...compiled
+    };
+  }
+
+  if (!tab.executable) {
+    throw new Error('Frontstage block executable state is missing.');
+  }
+  const locked = readLockedNativeReactExecutableStyle(tab.executable);
+  if (
+    !sameStringRecord(
+      locked.tailwind_toolchain_lock,
+      compiled.tailwind_toolchain_lock
+    ) ||
+    !sameStringRecord(locked.compiler_identity, compiled.compiler_identity)
+  ) {
+    throw new Error(
+      'The locked toolchain cannot compile this edit. Preview a dependency upgrade first.'
+    );
+  }
+  return {
+    source_code: tab.draft,
+    dependency_lock: locked.dependency_lock,
+    tailwind_toolchain_lock: locked.tailwind_toolchain_lock,
+    generated_css: compiled.generated_css,
+    generated_css_sha256: compiled.generated_css_sha256,
+    compiler_identity: locked.compiler_identity
   };
 }
 
@@ -70,9 +152,7 @@ export function useFrontstageBlockTabs({
   const updateTab = useCallback(
     (
       blockId: string,
-      update: (
-        tab: FrontstageBlockCodeTabState
-      ) => FrontstageBlockCodeTabState
+      update: (tab: FrontstageBlockCodeTabState) => FrontstageBlockCodeTabState
     ) => {
       setTabs((current) =>
         current.map((tab) => (tab.block_id === blockId ? update(tab) : tab))
@@ -104,9 +184,10 @@ export function useFrontstageBlockTabs({
         updateTab(blockId, (tab) => ({
           ...tab,
           detail,
-          base_source: code.code,
-          draft: code.code,
+          base_source: code.source_code,
+          draft: code.source_code,
           source_sha256: code.source_sha256,
+          executable: code,
           loading: false,
           error: null
         }));
@@ -183,43 +264,66 @@ export function useFrontstageBlockTabs({
     }));
   }, [activeTab, updateTab]);
 
-  const saveActive = useCallback(async () => {
-    if (!activeTab) return;
-    const blockId = activeTab.block_id;
-    updateTab(blockId, (tab) => ({ ...tab, saving: true, error: null }));
-    try {
-      const code = await saveFrontstageBlockNodeCode(
-        workspaceId,
-        pageId,
-        blockId,
-        { code: activeTab.draft },
-        requireCsrfToken(csrfToken)
-      );
-      queryClient.setQueryData(
-        frontstageBlockTreeQueryKeys.code(workspaceId, pageId, blockId),
-        code
-      );
-      updateTab(blockId, (tab) => ({
-        ...tab,
-        base_source: code.code,
-        draft: code.code,
-        source_sha256: code.source_sha256,
-        saving: false,
-        error: null
-      }));
-    } catch (error) {
-      updateTab(blockId, (tab) => ({
-        ...tab,
-        saving: false,
-        error
-      }));
-      throw error;
-    }
-  }, [activeTab, csrfToken, pageId, queryClient, updateTab, workspaceId]);
+  const previewActive = useCallback(
+    async (
+      mode: 'preserve' | 'upgrade',
+      currentDependencyLock?: NativeReactCatalogDependencyLock
+    ) => {
+      if (!activeTab) throw new Error('No active block code tab.');
+      return previewFrontstageExecutableSave({
+        tab: activeTab,
+        mode,
+        currentDependencyLock
+      });
+    },
+    [activeTab]
+  );
+
+  const saveActive = useCallback(
+    async (payload: FrontstageExecutableSavePayload) => {
+      if (!activeTab) return;
+      if (payload.source_code !== activeTab.draft) {
+        throw new Error('The source changed after preview. Preview it again.');
+      }
+      const blockId = activeTab.block_id;
+      updateTab(blockId, (tab) => ({ ...tab, saving: true, error: null }));
+      try {
+        const code = await saveFrontstageBlockNodeCode(
+          workspaceId,
+          pageId,
+          blockId,
+          payload,
+          requireCsrfToken(csrfToken)
+        );
+        queryClient.setQueryData(
+          frontstageBlockTreeQueryKeys.code(workspaceId, pageId, blockId),
+          code
+        );
+        updateTab(blockId, (tab) => ({
+          ...tab,
+          base_source: code.source_code,
+          draft: code.source_code,
+          source_sha256: code.source_sha256,
+          executable: code,
+          saving: false,
+          error: null
+        }));
+      } catch (error) {
+        updateTab(blockId, (tab) => ({
+          ...tab,
+          saving: false,
+          error
+        }));
+        throw error;
+      }
+    },
+    [activeTab, csrfToken, pageId, queryClient, updateTab, workspaceId]
+  );
 
   const handleDeletedBlock = useCallback(
     async (event: FrontstageBlockDeletedEvent) => {
-      if (event.block_id === initialBlockId) return 'initial_root_deleted' as const;
+      if (event.block_id === initialBlockId)
+        return 'initial_root_deleted' as const;
 
       const openBlockIds = tabs.map((tab) => tab.block_id);
       setTabs((current) =>
@@ -257,14 +361,7 @@ export function useFrontstageBlockTabs({
       );
       return 'converged' as const;
     },
-    [
-      activeBlockId,
-      initialBlockId,
-      pageId,
-      tabs,
-      updateTab,
-      workspaceId
-    ]
+    [activeBlockId, initialBlockId, pageId, tabs, updateTab, workspaceId]
   );
 
   const anyDirty = useMemo(
@@ -283,6 +380,7 @@ export function useFrontstageBlockTabs({
     setDraft,
     setActiveDraft,
     resetActive,
+    previewActive,
     saveActive,
     handleDeletedBlock
   };

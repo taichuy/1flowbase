@@ -9,12 +9,7 @@ import { useFrontstageBlockCode } from '../hooks/use-frontstage-block-code';
 const frontstageApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
   frontstageBlockCodeQueryKey: vi.fn(
-    (
-      workspaceId: string,
-      pageId: string,
-      codeRef: string,
-      actorId: string
-    ) =>
+    (workspaceId: string, pageId: string, codeRef: string, actorId: string) =>
       [
         'frontstage',
         actorId,
@@ -29,6 +24,14 @@ const frontstageApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../api/block-code', () => frontstageApi);
+
+const executablePayload = {
+  dependency_lock: [],
+  tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
+  generated_css: '',
+  generated_css_sha256: 'css-sha256',
+  compiler_identity: { name: 'compiler' }
+};
 
 function authenticate(csrfToken: string | null = 'csrf-123') {
   if (!csrfToken) {
@@ -95,16 +98,20 @@ describe('useFrontstageBlockCode', () => {
     resetAuthStore();
     authenticate();
     frontstageApi.fetchFrontstageBlockCode.mockResolvedValue({
-      pageId: 'page-1',
-      codeRef: 'hero',
-      code: 'export default 1;',
-      source_sha256: 'source-v1'
+      page_id: 'page-1',
+      code_ref: 'hero',
+      source_code: 'export default 1;',
+      source_sha256: 'source-v1',
+      ...executablePayload,
+      executable_state: 'ready'
     });
     frontstageApi.saveFrontstageBlockCode.mockResolvedValue({
-      pageId: 'page-1',
-      codeRef: 'hero',
-      code: 'export default 2;',
-      source_sha256: 'source-v2'
+      page_id: 'page-1',
+      code_ref: 'hero',
+      source_code: 'export default 2;',
+      source_sha256: 'source-v2',
+      ...executablePayload,
+      executable_state: 'ready'
     });
   });
 
@@ -165,13 +172,17 @@ describe('useFrontstageBlockCode', () => {
     });
 
     await act(async () => {
-      await result.current.save();
+      await result.current.save(executablePayload);
     });
 
     expect(frontstageApi.saveFrontstageBlockCode).toHaveBeenCalledWith(
       'workspace-1',
       'page-1',
-      { codeRef: 'hero', code: 'export default 2;' },
+      {
+        code_ref: 'hero',
+        source_code: 'export default 2;',
+        ...executablePayload
+      },
       'csrf-123'
     );
     expect(invalidateQueriesSpy).not.toHaveBeenCalled();
@@ -249,7 +260,7 @@ describe('useFrontstageBlockCode', () => {
     });
 
     await act(async () => {
-      await result.current.save().catch((error: unknown) => {
+      await result.current.save(executablePayload).catch((error: unknown) => {
         saveError = error;
       });
     });
@@ -262,9 +273,12 @@ describe('useFrontstageBlockCode', () => {
   });
 
   test('marks block code read 403 as permission denied without changing the raw error', async () => {
-    const forbiddenError = Object.assign(new Error('raw block permission detail'), {
-      status: 403
-    });
+    const forbiddenError = Object.assign(
+      new Error('raw block permission detail'),
+      {
+        status: 403
+      }
+    );
     frontstageApi.fetchFrontstageBlockCode.mockRejectedValue(forbiddenError);
 
     const { result } = setupBlockCode();

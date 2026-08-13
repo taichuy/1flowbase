@@ -484,21 +484,31 @@ describe('frontstage block code feature api', () => {
     ]);
   });
 
-  test('adapts block code calls while preserving the source hash field', async () => {
+  test('preserves the executable DTO and sends the full atomic save payload', async () => {
+    const executable = {
+      source_sha256: 'read-source-sha256',
+      dependency_lock: [],
+      tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
+      generated_css: '.block{}',
+      generated_css_sha256: 'css-sha256',
+      compiler_identity: { name: 'compiler' },
+      executable_state: 'ready' as const
+    };
     const readSpy = vi
       .spyOn(apiClient, 'getFrontstageBlockCode')
       .mockResolvedValue({
         page_id: 'page-1',
         code_ref: 'hero',
-        code: 'export default 1;',
-        source_sha256: 'read-source-sha256'
+        source_code: 'export default 1;',
+        ...executable
       });
     const saveSpy = vi
       .spyOn(apiClient, 'saveFrontstageBlockCode')
       .mockResolvedValue({
         page_id: 'page-1',
         code_ref: 'hero',
-        code: 'export default 2;',
+        source_code: 'export default 2;',
+        ...executable,
         source_sha256: 'saved-source-sha256'
       });
 
@@ -506,22 +516,31 @@ describe('frontstage block code feature api', () => {
       await expect(
         fetchFrontstageBlockCode('workspace-1', 'page-1', 'hero')
       ).resolves.toEqual({
-        pageId: 'page-1',
-        codeRef: 'hero',
-        code: 'export default 1;',
-        source_sha256: 'read-source-sha256'
+        page_id: 'page-1',
+        code_ref: 'hero',
+        source_code: 'export default 1;',
+        ...executable
       });
       await expect(
         saveFrontstageBlockCode(
           'workspace-1',
           'page-1',
-          { codeRef: 'hero', code: 'export default 2;' },
+          {
+            code_ref: 'hero',
+            source_code: 'export default 2;',
+            dependency_lock: [],
+            tailwind_toolchain_lock: executable.tailwind_toolchain_lock,
+            generated_css: executable.generated_css,
+            generated_css_sha256: executable.generated_css_sha256,
+            compiler_identity: executable.compiler_identity
+          },
           'csrf-123'
         )
       ).resolves.toEqual({
-        pageId: 'page-1',
-        codeRef: 'hero',
-        code: 'export default 2;',
+        page_id: 'page-1',
+        code_ref: 'hero',
+        source_code: 'export default 2;',
+        ...executable,
         source_sha256: 'saved-source-sha256'
       });
       expect(readSpy).toHaveBeenCalledWith(
@@ -534,7 +553,14 @@ describe('frontstage block code feature api', () => {
         'workspace-1',
         'page-1',
         'hero',
-        { code: 'export default 2;' },
+        {
+          source_code: 'export default 2;',
+          dependency_lock: [],
+          tailwind_toolchain_lock: executable.tailwind_toolchain_lock,
+          generated_css: executable.generated_css,
+          generated_css_sha256: executable.generated_css_sha256,
+          compiler_identity: executable.compiler_identity
+        },
         'csrf-123',
         expect.any(String)
       );

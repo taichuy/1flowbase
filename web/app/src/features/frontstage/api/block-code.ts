@@ -1,22 +1,16 @@
 import {
   getFrontstageBlockCode,
   saveFrontstageBlockCode as saveConsoleFrontstageBlockCode,
-  type ConsoleFrontstageBlockCode
+  type ConsoleFrontstageBlockCode,
+  type SaveFrontstageBlockCodeInput as ConsoleSaveFrontstageBlockCodeInput
 } from '@1flowbase/api-client';
 
 import { getFrontstageApiBaseUrl } from './page-tree';
 
-export interface FrontstageBlockCode {
-  pageId: string;
-  codeRef: string;
-  code: string;
-  source_sha256: string;
-}
+export type FrontstageBlockCode = ConsoleFrontstageBlockCode;
 
-export interface SaveFrontstageBlockCodeInput {
-  codeRef: string;
-  code: string;
-}
+export type SaveFrontstageBlockCodeInput =
+  ConsoleSaveFrontstageBlockCodeInput & { code_ref: string };
 
 export const frontstageBlockCodeQueryKey = (
   workspaceId: string,
@@ -34,17 +28,6 @@ export const frontstageBlockCodeQueryKey = (
     codeRef
   ] as const;
 
-function mapFrontstageBlockCode(
-  blockCode: ConsoleFrontstageBlockCode
-): FrontstageBlockCode {
-  return {
-    pageId: blockCode.page_id,
-    codeRef: blockCode.code_ref,
-    code: blockCode.code,
-    source_sha256: blockCode.source_sha256
-  };
-}
-
 export async function fetchFrontstageBlockCode(
   workspaceId: string,
   pageId: string,
@@ -57,7 +40,7 @@ export async function fetchFrontstageBlockCode(
     getFrontstageApiBaseUrl()
   );
 
-  return mapFrontstageBlockCode(blockCode);
+  return blockCode;
 }
 
 export async function saveFrontstageBlockCode(
@@ -69,11 +52,18 @@ export async function saveFrontstageBlockCode(
   const blockCode = await saveConsoleFrontstageBlockCode(
     workspaceId,
     pageId,
-    input.codeRef,
-    { code: input.code },
+    input.code_ref,
+    {
+      source_code: input.source_code,
+      dependency_lock: input.dependency_lock,
+      tailwind_toolchain_lock: input.tailwind_toolchain_lock,
+      generated_css: input.generated_css,
+      generated_css_sha256: input.generated_css_sha256,
+      compiler_identity: input.compiler_identity
+    },
     csrfToken,
     getFrontstageApiBaseUrl()
   );
 
-  return mapFrontstageBlockCode(blockCode);
+  return blockCode;
 }
