@@ -13,11 +13,11 @@
           "path": "charts.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "4959dfbaf362b560d55fb65465b5758a960b304c53e197b4da577c8ccb6dfcaf",
-          "bytes": 779344
+          "sha256": "9e9f060861bab4465dd4a7504c78463b47fb320df969568cdf52eebd8a7e21ca",
+          "bytes": 757212
         }
       ],
-      "content_sha256": "52e371643b45f1231014ad8b35d29da2a54f8ca4c2e43d2d21e0d4b24941db32"
+      "content_sha256": "6e93de8bd24c59745b9f6363eecbb3443fe2a5487a4969ebf9ad62411398f52c"
     },
     {
       "module_source": "@1flowbase/native-components",
@@ -39,11 +39,11 @@
           "path": "native-components.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445",
-          "bytes": 535
+          "sha256": "4b0132d6bf899d0016ec4c94f9dd665b41d6b75b413fc66037706c80965af388",
+          "bytes": 471
         }
       ],
-      "content_sha256": "675fdbc2767b41a47aad9da63fb24b03a8bec96ad262c6fb62cdd426979dbf5b"
+      "content_sha256": "9ffbf119305a9fbd3622bd10e39c03054acb370dcabed36b2e69f31c670f42aa"
     },
     {
       "module_source": "@1flowbase/rich-text",
@@ -64,11 +64,11 @@
           "path": "rich-text.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "5f6c2876766bb25fac07ea3bc01a203c2f041f46d85281b5e8379bdf28c0d98d",
-          "bytes": 5386974
+          "sha256": "7ef0efeac9d0e1f9b46572435539e2281eb33ed91bbffd5a4ef4053ae09ae4bd",
+          "bytes": 5386674
         }
       ],
-      "content_sha256": "fdab0be970b380bba3de79b5adce65cebb5d84df34a1d60067abd08a6346002b"
+      "content_sha256": "3374665a1b056145a3eaaa58b806c2b65138aa5936450a9e9363bcbbe4c467dd"
     },
     {
       "module_source": "@ant-design/icons",
@@ -121,11 +121,11 @@
           "path": "ant-design-icons-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "c6a7f2d425adc8f21b2711d8698bd97dd88776abd4464d92b9727c8dc81f1ed7",
-          "bytes": 104360
+          "sha256": "59f521afa6ed40a1ad8badc1e501588316ecbd3f44ed82535df50d738031ebc6",
+          "bytes": 96661
         }
       ],
-      "content_sha256": "a67f90d09f54ab4ab25868b8c6cd12661e19cdc1ee6750e2992bef7dc4c310a1"
+      "content_sha256": "3f872827550bc46396b017e712ce1e92e44e91dad33ed7a034e17594fa150d21"
     },
     {
       "module_source": "tailwindcss",
@@ -139,8 +139,8 @@
           "path": "tailwindcss-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "ac69c37b87698bb0e15757fe86a62ed98a72283fc39b4d9b2bc8125bd21e0272",
-          "bytes": 332
+          "sha256": "12654dc6a0c23428c81678e417b5b7a456fb9049ce279cfe4390007ef7ee11de",
+          "bytes": 267
         }
       ],
       "compiler_identity": {
@@ -153,7 +153,7 @@
         "version": "4.3.3",
         "mode": "theme-and-utilities"
       },
-      "content_sha256": "1ed6fffbc4239156f9e1fe921e724a954848540295734493e6b74ad13fb9e120"
+      "content_sha256": "0c9e1647c020b73c5fb155bf79ca301b6f09d99a2d3793e87d5320aeb1acc1eb"
     }
   ],
   "retained_legacy_assets": [

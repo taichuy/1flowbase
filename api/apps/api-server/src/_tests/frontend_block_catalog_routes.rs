@@ -445,7 +445,7 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
     );
     assert_eq!(
         native_module["assets"][0]["sha256"],
-        "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445"
+        "4b0132d6bf899d0016ec4c94f9dd665b41d6b75b413fc66037706c80965af388"
     );
     assert_eq!(native_module["assets"][1]["role"], "shadow_style");
     assert_eq!(

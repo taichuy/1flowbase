@@ -1,6 +1,5 @@
 import { useEffect as e, useRef as t } from "react";
 import { jsx as n } from "react/jsx-runtime";
-//#region \0rolldown/runtime.js
 var r = Object.defineProperty, i = (e, t) => {
 	let n = {};
 	for (var i in e) r(n, i, {
@@ -392,8 +391,6 @@ function Pe(e, t) {
 		t.transform3dSupported = (n.ie && "transition" in s || n.edge || "WebKitCSSMatrix" in window && "m11" in new WebKitCSSMatrix() || "MozPerspective" in s) && !("OTransition" in s), t.transformSupported = t.transform3dSupported || n.ie && +n.version >= 9;
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/clazz.js
 var Fe = ".", Ie = "___EC__COMPONENT__CONTAINER___", Le = "___EC__EXTENDED_CLASS___";
 function Re(e) {
 	var t = {
@@ -485,8 +482,6 @@ function Je(e) {
 		return (!n || !n[Ie]) && (n = t[e.main] = {}, n[Ie] = !0), n;
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/mixin/makeStyleMapper.js
 function Ye(e, t) {
 	for (var n = 0; n < e.length; n++) e[n][1] || (e[n][1] = e[n][0]);
 	return t ||= !1, function(n, r, i) {
@@ -591,8 +586,6 @@ function it() {
 function at(e) {
 	return e && e.width && e.height;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/matrix.js
 function ot() {
 	return [
 		1,
@@ -629,8 +622,6 @@ function pt(e, t) {
 	var n = t[0], r = t[2], i = t[4], a = t[1], o = t[3], s = t[5], c = n * o - a * r;
 	return c ? (c = 1 / c, e[0] = o * c, e[1] = -a * c, e[2] = -r * c, e[3] = n * c, e[4] = (r * s - o * i) * c, e[5] = (a * i - n * s) * c, e) : null;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/vector.js
 function mt(e, t) {
 	return e ??= 0, t ??= 0, [e, t];
 }
@@ -680,8 +671,6 @@ function kt(e, t, n) {
 function At(e, t, n) {
 	return e[0] = Math.max(t[0], n[0]), e[1] = Math.max(t[1], n[1]), e;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/Point.js
 var J = function() {
 	function e(e, t) {
 		this.x = e || 0, this.y = t || 0;
@@ -855,8 +844,6 @@ function Zt() {
 	}
 	return r;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/text.js
 function Qt(e) {
 	$t ||= new et(100), e ||= "12px sans-serif";
 	var t = $t.get(e);
@@ -957,8 +944,6 @@ function fn(e, t, n) {
 	}
 	return e ||= {}, e.x = c, e.y = l, e.align = u, e.verticalAlign = d, e;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/helper/parseText.js
 var pn = /\{([a-zA-Z0-9_]+)\|([^}]*)\}/g;
 function mn(e, t, n, r, i, a) {
 	if (!n) {
@@ -1178,8 +1163,6 @@ function Pn(e) {
 	var t = e.stroke;
 	return t != null && t !== "none" && e.lineWidth > 0;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/Transformable.js
 var Fn = st, In = 5e-5;
 function Ln(e) {
 	return e > In || e < -In;
@@ -1270,8 +1253,6 @@ var Rn = [], zn = [], Bn = ot(), Vn = Math.abs, Hn = function() {
 function Gn(e, t) {
 	return ee(e, t, Wn);
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/animation/easing.js
 var Kn = {
 	linear: function(e) {
 		return e;
@@ -1510,8 +1491,6 @@ function _r(e, t, n, r, i, a, o) {
 	}
 	return l;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/animation/cubicEasing.js
 var vr = /cubic-bezier\(([0-9,\.e ]+)\)/;
 function yr(e) {
 	var t = e && vr.exec(e);
@@ -1524,8 +1503,6 @@ function yr(e) {
 		};
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/animation/Clip.js
 var br = function() {
 	function e(e) {
 		this._inited = !1, this._startTime = 0, this._pausedTime = 0, this._paused = !1, this._life = e.life || 1e3, this._delay = e.delay || 0, this.loop = e.loop || !1, this.onframe = e.onframe || je, this.ondestroy = e.ondestroy || je, this.onrestart = e.onrestart || je, e.easing && this.setEasing(e.easing);
@@ -2603,8 +2580,6 @@ function Ur(e) {
 	}
 	return e;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/svg/helper.js
 function Wr(e) {
 	return e.type === "linear";
 }
@@ -2620,8 +2595,6 @@ function Gr(e) {
 		return null;
 	};
 })();
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/animation/Animator.js
 var Kr = Array.prototype.slice;
 function qr(e, t, n) {
 	return (t - e) * n + e;
@@ -3452,8 +3425,6 @@ function Li(e) {
 function Ri(e, t, n) {
 	return !t && !e.__inHover && n && n.duration > 0;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/Displayable.js
 var zi = "__zr_style_" + Math.round(Math.random() * 10), Bi = {
 	shadowBlur: 0,
 	shadowOffsetX: 0,
@@ -3580,8 +3551,6 @@ var Hi = [
 function qi(e, t, n) {
 	return Gi.copy(e.getBoundingRect()), e.transform && Gi.applyTransform(e.transform), Ki.width = t, Ki.height = n, !Gi.intersect(Ki);
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/bbox.js
 var Ji = Math.min, Yi = Math.max, Xi = Math.sin, Zi = Math.cos, Qi = Math.PI * 2, $i = mt(), ea = mt(), ta = mt();
 function na(e, t, n, r, i, a) {
 	i[0] = Ji(e, n), i[1] = Ji(t, r), a[0] = Yi(e, n), a[1] = Yi(t, r);
@@ -3617,8 +3586,6 @@ function sa(e, t, n, r, i, a, o, s, c) {
 	}
 	for (var p = 0; p < a; p += Math.PI / 2) p > i && (ta[0] = Zi(p) * n + e, ta[1] = Xi(p) * r + t, l(s, ta, s), u(c, ta, c));
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/PathProxy.js
 var ca = {
 	M: 1,
 	L: 2,
@@ -3899,8 +3866,6 @@ var Ea = function() {
 		t._saveData = !0, t._ux = 0, t._uy = 0, t._pendingPtDist = 0, t._version = 0;
 	})(), e;
 }();
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/line.js
 function Da(e, t, n, r, i, a, o) {
 	if (i === 0) return !1;
 	var s = i, c = 0, l = e;
@@ -3910,28 +3875,20 @@ function Da(e, t, n, r, i, a, o) {
 	var u = c * a - o + l;
 	return u * u / (c * c + 1) <= s / 2 * s / 2;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/cubic.js
 function Oa(e, t, n, r, i, a, o, s, c, l, u) {
 	if (c === 0) return !1;
 	var d = c;
 	return u > t + d && u > r + d && u > a + d && u > s + d || u < t - d && u < r - d && u < a - d && u < s - d || l > e + d && l > n + d && l > i + d && l > o + d || l < e - d && l < n - d && l < i - d && l < o - d ? !1 : lr(e, t, n, r, i, a, o, s, l, u, null) <= d / 2;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/quadratic.js
 function ka(e, t, n, r, i, a, o, s, c) {
 	if (o === 0) return !1;
 	var l = o;
 	return c > t + l && c > r + l && c > a + l || c < t - l && c < r - l && c < a - l || s > e + l && s > n + l && s > i + l || s < e - l && s < n - l && s < i - l ? !1 : gr(e, t, n, r, i, a, s, c, null) <= l / 2;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/util.js
 var Aa = Math.PI * 2;
 function ja(e) {
 	return e %= Aa, e < 0 && (e += Aa), e;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/arc.js
 var Ma = Math.PI * 2;
 function Na(e, t, n, r, i, a, o, s, c) {
 	if (o === 0) return !1;
@@ -3948,8 +3905,6 @@ function Na(e, t, n, r, i, a, o, s, c) {
 	var f = Math.atan2(c, s);
 	return f < 0 && (f += Ma), f >= r && f <= i || f + Ma >= r && f + Ma <= i;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/windingLine.js
 function Pa(e, t, n, r, i, a) {
 	if (a > t && a > r || a < t && a < r || r === t) return 0;
 	var o = (a - t) / (r - t), s = r < t ? 1 : -1;
@@ -3957,8 +3912,6 @@ function Pa(e, t, n, r, i, a) {
 	var c = o * (n - e) + e;
 	return c === i ? Infinity : c > i ? s : 0;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/contain/path.js
 var Fa = Ea.CMD, Ia = Math.PI * 2, La = 1e-4;
 function Ra(e, t) {
 	return Math.abs(e - t) < La;
@@ -4082,8 +4035,6 @@ function Ka(e, t, n) {
 function qa(e, t, n, r) {
 	return Ga(e, t, !0, n, r);
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/Path.js
 var Ja = M({
 	fill: "#000",
 	stroke: null,
@@ -4302,8 +4253,6 @@ var Ja = M({
 	})(), t;
 }(Wi);
 $a.prototype.type = "tspan";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/Image.js
 var eo = M({
 	x: 0,
 	y: 0
@@ -4346,16 +4295,12 @@ var ro = function(e) {
 	}, t;
 }(Wi);
 ro.prototype.type = "image";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/helper/roundRect.js
 function io(e, t) {
 	var n = t.x, r = t.y, i = t.width, a = t.height, o = t.r, s, c, l, u;
 	i < 0 && (n += i, i = -i), a < 0 && (r += a, a = -a), typeof o == "number" ? s = c = l = u = o : o instanceof Array ? o.length === 1 ? s = c = l = u = o[0] : o.length === 2 ? (s = l = o[0], c = u = o[1]) : o.length === 3 ? (s = o[0], c = u = o[1], l = o[2]) : (s = o[0], c = o[1], l = o[2], u = o[3]) : s = c = l = u = 0;
 	var d;
 	s + c > i && (d = s + c, s *= i / d, c *= i / d), l + u > i && (d = l + u, l *= i / d, u *= i / d), c + l > a && (d = c + l, c *= a / d, l *= a / d), s + u > a && (d = s + u, s *= a / d, u *= a / d), e.moveTo(n + s, r), e.lineTo(n + i - c, r), c !== 0 && e.arc(n + i - c, r + c, c, -Math.PI / 2, 0), e.lineTo(n + i, r + a - l), l !== 0 && e.arc(n + i - l, r + a - l, l, 0, Math.PI / 2), e.lineTo(n + u, r + a), u !== 0 && e.arc(n + u, r + a - u, u, Math.PI / 2, Math.PI), e.lineTo(n, r + s), s !== 0 && e.arc(n + s, r + s, s, Math.PI, Math.PI * 1.5), e.closePath();
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/helper/subPixelOptimize.js
 var ao = Math.round;
 function oo(e, t, n) {
 	if (t) {
@@ -4378,8 +4323,6 @@ function co(e, t, n) {
 	var r = ao(e * 2);
 	return (r + ao(t)) % 2 == 0 ? r / 2 : (r + (n ? 1 : -1)) / 2;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Rect.js
 var lo = function() {
 	function e() {
 		this.x = 0, this.y = 0, this.width = 0, this.height = 0;
@@ -4404,8 +4347,6 @@ var lo = function() {
 	}, t;
 }(Za);
 fo.prototype.type = "rect";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/Text.js
 var po = { fill: "#000" }, mo = 2, ho = {}, go = { style: M({
 	fill: !0,
 	stroke: !0,
@@ -4607,8 +4548,6 @@ function ko(e) {
 function Ao(e) {
 	return !!(e.backgroundColor || e.lineHeight || e.borderWidth && e.borderColor);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/number.js
 var jo = 1e-4, Mo = 20;
 function No(e) {
 	return e.replace(/^\s+|\s+$/g, "");
@@ -4755,8 +4694,6 @@ function ps(e, t) {
 function ms(e) {
 	return e != null && isFinite(e);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/log.js
 var hs = "[ECharts] ", gs = {}, _s = typeof console < "u" && console.warn && console.log;
 function vs(e, t, n) {
 	if (_s) {
@@ -4773,8 +4710,6 @@ function ys(e, t) {
 function bs(e) {
 	throw Error(e);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/model.js
 function xs(e, t, n) {
 	return (t - e) * n + e;
 }
@@ -5109,8 +5044,6 @@ function _c(e, t) {
 function vc(e) {
 	return { overallReset: e };
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/innerStore.js
 var yc = Ws(), bc = function(e, t, n, r) {
 	if (r) {
 		var i = yc(r);
@@ -5154,8 +5087,6 @@ var yc = Ws(), bc = function(e, t, n, r) {
 function jc(e, t) {
 	return t.mainType === "series" ? e.getViewOfSeriesModel(t) : e.getViewOfComponentModel(t);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/states.js
 var Mc = 1, Nc = {}, Pc = Ws(), Fc = Ws(), Ic = [
 	"emphasis",
 	"blur",
@@ -5480,8 +5411,6 @@ function Rl(e) {
 	var n = e.states.select || {};
 	t.selectFill = n.style && n.style.fill || null, t.selectStroke = n.style && n.style.stroke || null;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/tool/transformPath.js
 var zl = Ea.CMD, Bl = [
 	[],
 	[],
@@ -5518,8 +5447,6 @@ function Ul(e, t) {
 		e.increaseVersion();
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/tool/path.js
 var Wl = Math.sqrt, Gl = Math.sin, Kl = Math.cos, ql = Math.PI;
 function Jl(e) {
 	return Math.sqrt(e[0] * e[0] + e[1] * e[1]);
@@ -5665,8 +5592,6 @@ function ou(e, t) {
 		}
 	}, o;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/Group.js
 var su = function(e) {
 	o(t, e);
 	function t(t) {
@@ -5745,8 +5670,6 @@ var su = function(e) {
 	}, t;
 }(Oi);
 su.prototype.type = "group";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Circle.js
 var cu = function() {
 	function e() {
 		this.cx = 0, this.cy = 0, this.r = 0;
@@ -5764,8 +5687,6 @@ var cu = function() {
 	}, t;
 }(Za);
 lu.prototype.type = "circle";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Ellipse.js
 var uu = function() {
 	function e() {
 		this.cx = 0, this.cy = 0, this.rx = 0, this.ry = 0;
@@ -5784,8 +5705,6 @@ var uu = function() {
 	}, t;
 }(Za);
 du.prototype.type = "ellipse";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/helper/roundSector.js
 var fu = Math.PI, pu = fu * 2, mu = Math.sin, hu = Math.cos, gu = Math.acos, _u = Math.atan2, vu = Math.abs, yu = Math.sqrt, bu = Math.max, xu = Math.min, Su = 1e-4;
 function Cu(e, t, n, r, i, a, o, s) {
 	var c = n - e, l = r - t, u = o - i, d = s - a, f = d * c - u * l;
@@ -5867,8 +5786,6 @@ function Eu(e, t) {
 		}
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Sector.js
 var Du = function() {
 	function e() {
 		this.cx = 0, this.cy = 0, this.r0 = 0, this.r = 0, this.startAngle = 0, this.endAngle = Math.PI * 2, this.clockwise = !0, this.cornerRadius = 0;
@@ -5888,8 +5805,6 @@ var Du = function() {
 	}, t;
 }(Za);
 Ou.prototype.type = "sector";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Ring.js
 var ku = function() {
 	function e() {
 		this.cx = 0, this.cy = 0, this.r = 0, this.r0 = 0;
@@ -5908,8 +5823,6 @@ var ku = function() {
 	}, t;
 }(Za);
 Au.prototype.type = "ring";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/helper/smoothBezier.js
 function ju(e, t, n, r) {
 	var i = [], a = [], o = [], s = [], c, l, u, d;
 	if (r) {
@@ -5932,8 +5845,6 @@ function ju(e, t, n, r) {
 	}
 	return n && i.push(i.shift()), i;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/helper/poly.js
 function Mu(e, t, n) {
 	var r = t.smooth, i = t.points;
 	if (i && i.length >= 2) {
@@ -5951,8 +5862,6 @@ function Mu(e, t, n) {
 		n && e.closePath();
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Polygon.js
 var Nu = function() {
 	function e() {
 		this.points = null, this.smooth = 0, this.smoothConstraint = null;
@@ -5970,8 +5879,6 @@ var Nu = function() {
 	}, t;
 }(Za);
 Pu.prototype.type = "polygon";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Polyline.js
 var Fu = function() {
 	function e() {
 		this.points = null, this.percent = 1, this.smooth = 0, this.smoothConstraint = null;
@@ -5994,8 +5901,6 @@ var Fu = function() {
 	}, t;
 }(Za);
 Iu.prototype.type = "polyline";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Line.js
 var Lu = {}, Ru = function() {
 	function e() {
 		this.x1 = 0, this.y1 = 0, this.x2 = 0, this.y2 = 0, this.percent = 1;
@@ -6027,8 +5932,6 @@ var Lu = {}, Ru = function() {
 	}, t;
 }(Za);
 zu.prototype.type = "line";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/BezierCurve.js
 var Bu = [], Vu = function() {
 	function e() {
 		this.x1 = 0, this.y1 = 0, this.x2 = 0, this.y2 = 0, this.cpx1 = 0, this.cpy1 = 0, this.percent = 1;
@@ -6062,8 +5965,6 @@ var Uu = function(e) {
 	}, t;
 }(Za);
 Uu.prototype.type = "bezier-curve";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/shape/Arc.js
 var Wu = function() {
 	function e() {
 		this.cx = 0, this.cy = 0, this.r = 0, this.startAngle = 0, this.endAngle = Math.PI * 2, this.clockwise = !0;
@@ -6087,8 +5988,6 @@ var Wu = function() {
 	}, t;
 }(Za);
 Gu.prototype.type = "arc";
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/graphic/CompoundPath.js
 var Ku = function(e) {
 	o(t, e);
 	function t() {
@@ -6290,8 +6189,6 @@ function hd(e, t, n) {
 function gd(e) {
 	sd(e).oldStyle = e.style;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/graphic.js
 var _d = /* @__PURE__ */ i({
 	Arc: () => Gu,
 	BezierCurve: () => Uu,
@@ -6619,8 +6516,6 @@ function df(e) {
 	return t.getType() === "canvas" ? t : null;
 }
 wd("circle", lu), wd("ellipse", du), wd("sector", Ou), wd("ring", Au), wd("polygon", Pu), wd("polyline", Iu), wd("rect", fo), wd("line", zu), wd("bezierCurve", Uu), wd("arc", Gu);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/label/labelStyle.js
 var ff = {};
 function pf(e, t) {
 	for (var n = 0; n < Ic.length; n++) {
@@ -6932,8 +6827,6 @@ var kf = {
 	}, e;
 }();
 Ve(Bf), Ge(Bf), P(Bf, If), P(Bf, zf), P(Bf, Ze), P(Bf, Nf);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/DataDiffer.js
 function Vf(e) {
 	return e == null ? 0 : e.length || 1;
 }
@@ -7122,8 +7015,6 @@ function Qf(e, t, n, r, i, a) {
 	}
 	return Wf.Not;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/Source.js
 var $f = function() {
 	function e(e) {
 		this.data = e.data || (e.sourceFormat === "keyedColumns" ? {} : []), this.sourceFormat = e.sourceFormat || "unknown", this.seriesLayoutBy = e.seriesLayoutBy || "column", this.startIndex = e.startIndex || 0, this.dimensionsDetectedCount = e.dimensionsDetectedCount, this.metaRawOption = e.metaRawOption;
@@ -7249,8 +7140,6 @@ function lp(e) {
 	var t = e.sourceFormat;
 	return t === "objectRows" || t === "keyedColumns";
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/helper/dataProvider.js
 var up, dp, fp, pp, mp, hp, gp = function() {
 	function e(e, t) {
 		var n = ep(e) ? e : np(e);
@@ -7389,8 +7278,6 @@ function Op(e, t, n) {
 		}
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/helper/dimensionHelper.js
 var kp = function() {
 	function e(e, t) {
 		this._encode = e, this._schema = t;
@@ -7438,16 +7325,12 @@ function Mp(e) {
 function Np(e) {
 	return !(e === "ordinal" || e === "time");
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/SeriesDimensionDefine.js
 var Pp = function() {
 	function e(e) {
 		this.otherDims = {}, e != null && j(this, e);
 	}
 	return e;
 }();
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/helper/dataValueHelper.js
 function Fp(e, t) {
 	var n = t && t.type;
 	return n === "ordinal" ? e : (n === "time" && !se(e) && e != null && e !== "-" && (e = +as(e)), e == null || e === "" ? NaN : Number(e));
@@ -7525,8 +7408,6 @@ function Rp(e) {
 function zp(e, t) {
 	return t > e.g && t >= e.ge && t < e.l && t <= e.le;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/DataStore.js
 var Bp = typeof Uint32Array > "u" ? Array : Uint32Array, Vp = typeof Uint16Array > "u" ? Array : Uint16Array, Hp = typeof Int32Array > "u" ? Array : Int32Array, Up = typeof Float64Array > "u" ? Array : Float64Array, Wp = {
 	float: Up,
 	int: Hp,
@@ -7947,8 +7828,6 @@ function tm(e) {
 function nm(e) {
 	return e > 30;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/SeriesData.js
 var rm = W, im = L, am = typeof Int32Array > "u" ? Array : Int32Array, om = "e\0\0", sm = -1, cm = [
 	"hasItemOption",
 	"_nameList",
@@ -8254,8 +8133,6 @@ var rm = W, im = L, am = typeof Int32Array > "u" ? Array : Int32Array, om = "e\0
 		};
 	}(), e;
 }();
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/helper/createDimensions.js
 function vm(e, t) {
 	ep(e) || (e = np(e)), t ||= {};
 	var n = t.coordDimensions || [], r = t.dimensionsDefine || e.dimensionsDefine || [], i = K(), a = [], o = ym(e, n, r, t.dimensionsCount), s = t.canOmitUnusedDimensions && nm(o), c = r === e.dimensionsDefine, l = c ? tm(e) : em(r), u = t.encodeDefine;
@@ -8350,8 +8227,6 @@ function bm(e, t, n) {
 	}
 	return t.set(e, !0), e;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/core/CoordinateSystem.js
 var xm = {}, Sm = {}, Cm = function() {
 	function e() {
 		this._normalMasterList = [], this._nonSeriesBoxMasterList = [];
@@ -8418,8 +8293,6 @@ function km(e) {
 	var c = r(n, t);
 	return c ? (o === 1 ? t.coordinateSystem = c : t.boxCoordinateSystem = c, o) : 0;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/referHelper.js
 var Am = function() {
 	function e(e) {
 		this.coordSysDims = [], this.axisMap = K(), this.categoryAxisMap = K(), this.coordSysName = e;
@@ -8463,8 +8336,6 @@ var Mm = {
 function Nm(e) {
 	return e.get("type") === "category";
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/helper/dataStackHelper.js
 function Pm(e, t, n) {
 	n ||= {};
 	var r = n.byIndex, i = n.stackedCoordDimension, a, o, s;
@@ -8519,8 +8390,6 @@ function Im(e, t) {
 function Lm(e, t) {
 	return Im(e, t) ? e.getCalculationInfo("stackResultDimension") : t;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/createSeriesData.js
 function Rm(e, t) {
 	var n = e.get("coordinateSystem"), r = Cm.get(n), i;
 	return t && t.coordSysDims && (i = L(t.coordSysDims, function(e) {
@@ -8562,8 +8431,6 @@ function Hm(e) {
 	for (var t = 0; t < e.length && e[t] == null;) t++;
 	return e[t];
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/component.js
 var Um = Math.round(Math.random() * 10);
 function Wm(e) {
 	return [e || "", Um++].join("_");
@@ -8632,8 +8499,6 @@ function Km(e, t) {
 function qm(e, t) {
 	return A(A({}, e, !0), t, !0);
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/fourPointsTransform.js
 var Jm = Math.log(2);
 function Ym(e, t, n, r, i, a) {
 	var o = r + "-" + i, s = e.length;
@@ -8740,8 +8605,6 @@ function Xm(e, t) {
 		};
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/dom.js
 var Zm = "___zrEVENTSAVED", Qm = [];
 function $m(e, t, n, r, i) {
 	return th(Qm, t, r, i, !0) && th(e, n, Qm[0], Qm[1]);
@@ -8810,8 +8673,6 @@ function sh(e) {
 		return oh[t];
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/i18n/langEN.js
 var ch = {
 	time: {
 		month: [
@@ -9119,8 +8980,6 @@ function yh() {
 	return mh[fh];
 }
 gh(dh, ch), gh(uh, lh);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/break.js
 var bh = null;
 function xh() {
 	return bh;
@@ -9137,8 +8996,6 @@ function wh(e) {
 	var t = e.brk;
 	return t ? t.hasBreaks() : !1;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/time.js
 var Th = 1e3, Eh = Th * 60, Dh = Eh * 60, Oh = Dh * 24, kh = Oh * 365, Ah = {
 	year: /({yyyy}|{yy})/,
 	month: /({MMMM}|{MMM}|{MM}|{M})/,
@@ -9310,8 +9167,6 @@ function ag(e) {
 function og(e) {
 	return e ? "setUTCMilliseconds" : "setMilliseconds";
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/format.js
 function sg(e) {
 	if (!us(e)) return U(e) ? e : "-";
 	var t = (e + "").split(".");
@@ -9398,8 +9253,6 @@ function gg(e, t) {
 		n.opener = null, n.location.href = e;
 	} else window.open(e, t);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/layout.js
 var _g = I, vg = [
 	"left",
 	"right",
@@ -9565,8 +9418,6 @@ function jg(e, t) {
 		Ae(t, n) && (e[n] = t[n]);
 	}), e;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/Component.js
 var Mg = Ws(), Ng = function(e) {
 	o(t, e);
 	function t(t, n, r) {
@@ -9621,8 +9472,6 @@ function Pg(e) {
 		return Re(e).main;
 	}), e !== "dataset" && N(t, "dataset") <= 0 && t.unshift("dataset"), t;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/mixin/palette.js
 var Fg = Ws();
 Ws();
 var Ig = function() {
@@ -9651,8 +9500,6 @@ function Rg(e, t, n, r, i, a, o) {
 function zg(e, t) {
 	t(e).paletteIdx = 0, t(e).paletteNameMap = {};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/mixin/dataFormat.js
 var Bg = /\{@(.+?)\}/g, Vg = function() {
 	function e() {}
 	return e.prototype.getDataParams = function(e, t) {
@@ -9709,8 +9556,6 @@ function Hg(e) {
 		frag: n
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/core/task.js
 function Ug(e) {
 	return new Wg(e);
 }
@@ -9902,8 +9747,6 @@ function t_(e, t, n, r) {
 function n_(e) {
 	return e === "arrayRows" || e === "objectRows";
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/helper/sourceManager.js
 var r_ = function() {
 	function e(e) {
 		this._sourceList = [], this._storeList = [], this._upstreamSignList = [], this._versionSignBase = 0, this._dirty = !0, this._sourceHost = e;
@@ -10005,8 +9848,6 @@ function i_(e) {
 function a_(e) {
 	throw Error(e);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/visual/tokens.js
 var Q = {
 	color: {},
 	darkColor: {},
@@ -10110,8 +9951,6 @@ Q.size = {
 	xxl: 40,
 	xxxl: 50
 };
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/tooltipMarkup.js
 var l_ = "line-height:1";
 function u_(e) {
 	var t = e.lineHeight;
@@ -10276,8 +10115,6 @@ var k_ = function() {
 		return this.richTextStyles[r] = n, "{" + r + "|" + e + "}";
 	}, e;
 }();
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/seriesFormatTooltip.js
 function A_(e) {
 	var t = e.series, n = e.dataIndex, r = e.multipleSeries, i = t.getData(), a = i.mapDimensionsAll("defaultedTooltip"), o = a.length, s = t.getRawValue(n), c = V(s), l = D_(t, n), u, d, f, p;
 	if (o > 1 || c && !o) {
@@ -10327,8 +10164,6 @@ function j_(e, t, n, r, i) {
 		blocks: l
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/Series.js
 var M_ = Ws();
 function N_(e, t) {
 	return e.getName(t) || e.getId(t);
@@ -10530,8 +10365,6 @@ function H_(e) {
 		return r;
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/symbol.js
 var U_ = Za.extend({
 	type: "triangle",
 	shape: {
@@ -10668,8 +10501,6 @@ function X_(e) {
 function Z_(e, t) {
 	if (e != null) return V(e) || (e = [e, e]), [X(e[0], t[0]) || 0, X(G(e[1], e[0]), t[1]) || 0];
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/line/LineSeries.js
 var Q_ = function(e) {
 	o(t, e);
 	function t() {
@@ -10717,8 +10548,6 @@ var Q_ = function(e) {
 		triggerEvent: !1
 	}, t;
 }(P_);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/labelHelper.js
 function $_(e, t) {
 	var n = e.mapDimensionsAll("defaultedLabel"), r = n.length;
 	if (r === 1) {
@@ -10738,8 +10567,6 @@ function ev(e, t) {
 	}
 	return r.join(" ");
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/Symbol.js
 var tv = function(e) {
 	o(t, e);
 	function t(t, n, r, i) {
@@ -10869,8 +10696,6 @@ var tv = function(e) {
 function nv(e, t) {
 	this.parent.drift(e, t);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/SymbolDraw.js
 function rv(e, t, n, r) {
 	return t && !isNaN(t[0]) && !isNaN(t[1]) && !(r && r.isIgnore && r.isIgnore(n)) && !(r && r.clipShape && !r.clipShape.contain(t[0], t[1])) && e.getItemVisual(n, "symbol") !== "none";
 }
@@ -10961,8 +10786,6 @@ var sv = function() {
 		}) : t.removeAll();
 	}, e;
 }();
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/line/helper.js
 function cv(e, t, n) {
 	var r = e.getBaseAxis(), i = e.getOtherAxis(r), a = lv(i, n), o = r.dim, s = i.dim, c = t.mapDimension(s), l = t.mapDimension(o), u = +(s === "x" || s === "radius"), d = L(e.dimensions, function(e) {
 		return t.mapDimension(e);
@@ -10992,8 +10815,6 @@ function uv(e, t, n, r) {
 function dv(e, t) {
 	return !isFinite(e) || !isFinite(t);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/vendor.js
 var fv = typeof Float32Array < "u" ? Float32Array : void 0, pv = typeof Float64Array < "u" ? Float64Array : void 0;
 function mv(e) {
 	return hv({ ctor: fv }, e).arr;
@@ -11010,8 +10831,6 @@ function hv(e, t) {
 	}
 	return e;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/line/lineAnimationDiff.js
 function gv(e, t) {
 	var n = [];
 	return t.diff(e).add(function(e) {
@@ -11066,8 +10885,6 @@ function _v(e, t, n, r, i, a, o, s) {
 		status: F
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/line/poly.js
 var vv = Math.min, yv = Math.max;
 function bv(e, t, n, r, i, a, o, s, c) {
 	for (var l, u, d, f, p, m, h = n, g = 0; g < r; g++) {
@@ -11194,8 +11011,6 @@ var xv = function() {
 		}
 	}, t;
 }(Za);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/createRenderPlanner.js
 function Tv() {
 	var e = Ws();
 	return function(t) {
@@ -11203,8 +11018,6 @@ function Tv() {
 		return (i !== o || a !== s) && "reset";
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/view/Chart.js
 var Ev = Ws(), Dv = Tv(), Ov = function() {
 	function e() {
 		this.group = new su(), this.uid = Wm("viewChart"), this.renderTask = Ug({
@@ -11263,8 +11076,6 @@ var Nv = {
 		}
 	}
 };
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/createClipPathFromCoordSys.js
 function Pv(e, t, n, r, i) {
 	var a = e.getArea(), o = a.x, s = a.y, c = a.width, l = a.height, u = n.get(["lineStyle", "width"]) || 0;
 	o -= u / 2, s -= u / 2, c += u, l += u, c = Math.ceil(c), o !== Math.floor(o) && (o = Math.floor(o), c++);
@@ -11307,13 +11118,9 @@ function Fv(e, t, n) {
 function Iv(e, t, n, r, i) {
 	return e ? e.type === "polar" ? Fv(e, t, n) : e.type === "cartesian2d" ? Pv(e, t, n, r, i) : null : null;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/CoordinateSystem.js
 function Lv(e, t) {
 	return e.type === t;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/Scale.js
 var Rv = function() {
 	function e() {}
 	return e.prototype.isBlank = function() {
@@ -11323,8 +11130,6 @@ var Rv = function() {
 	}, e;
 }();
 Je(Rv);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/data/OrdinalMeta.js
 var zv = 0, Bv = function() {
 	function e(e) {
 		this.categories = e.categories || [], this._needCollect = e.needCollect, this._deduplication = e.deduplication, this.uid = ++zv, this._onCollect = e.onCollect;
@@ -11448,8 +11253,6 @@ var Zv = {
 function Qv(e, t, n, r) {
 	sc(n, r) && (e[t][0] = n, e[t][1] = r);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/helper.js
 function $v(e) {
 	return ey(e) || ny(e);
 }
@@ -11511,8 +11314,6 @@ function dy(e, t, n) {
 		}, r);
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/Ordinal.js
 var fy = function(e) {
 	o(t, e);
 	function t(n) {
@@ -11595,8 +11396,6 @@ var fy = function(e) {
 	}, t;
 }(Rv);
 Rv.registerClass(fy);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/minorTicks.js
 function py(e, t, n, r) {
 	for (var i = e.getTicks({ expandToNicedExtent: !0 }), a = [], o = e.getExtent(), s = 1; s < i.length; s++) {
 		var c = i[s], l = i[s - 1];
@@ -11613,8 +11412,6 @@ function py(e, t, n, r) {
 	}
 	return a;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/Interval.js
 var my = function(e) {
 	o(t, e);
 	function t(n) {
@@ -11669,8 +11466,6 @@ var my = function(e) {
 	}, t.type = "interval", t;
 }(Rv);
 Rv.registerClass(my);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/Time.js
 var hy = function(e, t, n, r) {
 	for (; n < r;) {
 		var i = n + r >>> 1;
@@ -11893,8 +11688,6 @@ var Dy = function(e, t) {
 	});
 };
 Rv.registerClass(gy);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/scale/Log.js
 var Oy = 0, ky = 1, Ay = 2, jy = function(e) {
 	o(t, e);
 	function t(n) {
@@ -12088,8 +11881,6 @@ function Qy(e, t) {
 function $y(e, t) {
 	return ry(e) && !!t.get("boundaryGap");
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/line/LineView.js
 function eb(e, t) {
 	if (e.length === t.length) {
 		for (var n = 0; n < e.length; n++) if (e[n] !== t[n]) return;
@@ -12526,8 +12317,6 @@ var gb = function(e) {
 		}), this._polyline = this._polygon = this._coordSys = this._points = this._stackedOnPoints = this._endLabel = this._data = null;
 	}, t.type = "line", t;
 }(Ov);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/layout/points.js
 function _b(e, t) {
 	return {
 		seriesType: e,
@@ -12558,8 +12347,6 @@ function _b(e, t) {
 		}
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/processor/dataSample.js
 var vb = {
 	average: function(e) {
 		for (var t = 0, n = 0, r = 0; r < e.length; r++) isNaN(e[r]) || (t += e[r], n++);
@@ -12599,8 +12386,6 @@ function bb(e) {
 		}
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/line/install.js
 function xb(e) {
 	e.registerChartView(gb), e.registerSeriesModel(Q_), e.registerLayout(_b("line", !0)), e.registerVisual({
 		seriesType: "line",
@@ -12610,8 +12395,6 @@ function xb(e) {
 		}
 	}), e.registerProcessor(e.PRIORITY.PROCESSOR.STATISTIC, bb("line"));
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisTickLabelBuilder.js
 var Sb = Ws(), Cb = Ws(), wb = {
 	estimate: 1,
 	determine: 2
@@ -12763,8 +12546,6 @@ function Ub(e, t, n) {
 		});
 	}), a;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/cycleCache.js
 var Wb = Ws();
 function Gb(e) {
 	Wb(e).prepare = {};
@@ -12778,8 +12559,6 @@ function qb(e) {
 function Jb(e) {
 	return Wb(e).fullUpdate;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisStatistics.js
 var Yb = uc(), Xb = Ws(), Zb = Ws();
 function Qb(e, t) {
 	var n = e.model, r = Xb(Jb(n.ecModel)).keyed, i = r && r.get(t);
@@ -12888,8 +12667,6 @@ function vx(e, t, n, r, i) {
 		t != null && (t > 0 ? (t > o && (o = t), a = !1) : t === -2 && (a = !0));
 	}), ms(n) && n > 0 && ms(o) ? (e.w = r / n * o, e.w2 = o) : a && (e.w = r * hx, e.w2 = e.w * n / r);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/Axis.js
 var yx = [0, 1], bx = function() {
 	function e(e, t, n) {
 		this.onBand = !1, this.inverse = !1, this.dim = e, this.scale = t, this._extent = n || [0, 0];
@@ -12973,8 +12750,6 @@ function Sx(e, t, n) {
 		tick: { value: a[1] + 1 }
 	}), !0;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/cartesian/Axis2D.js
 var Cx = function(e) {
 	o(t, e);
 	function t(t, n, r, i, a) {
@@ -13139,14 +12914,10 @@ function zx(e) {
 function Bx(e, t, n, r) {
 	return !e || !t || e.label && e.label.ignore || t.label && t.label.ignore || !e.rect.intersect(t.rect, n, r) ? !1 : e.axisAligned && t.axisAligned ? !0 : Lx(e).intersect(Lx(t), n, r);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axis/axisBreakHelper.js
 var Vx = null;
 function Hx() {
 	return Vx;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axis/axisAction.js
 var Ux = "expandAxisBreak", Wx = Math.PI, Gx = [
 	[
 		1,
@@ -13652,8 +13423,6 @@ function SS(e, t, n) {
 		});
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/cartesian/cartesianAxisHelper.js
 function CS(e, t, n) {
 	n ||= {};
 	var r = t.axis, i = {}, a = r.getAxesOnZeroOf()[0], o = r.position, s = a ? "onZero" : o, c = r.dim, l = [
@@ -13702,8 +13471,6 @@ function DS(e, t, n) {
 	var r = CS(t, n);
 	e.updateCfg(r);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/scaleRawExtentInfo.js
 var OS = Ws(), kS = 3, AS = function() {
 	function e(e, t, n, r, i) {
 		var a = ry(e), o = a ? t.getCategories().length : null, s;
@@ -13862,8 +13629,6 @@ function GS(e, t, n, r) {
 		}
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisStatisticsMetricsImpl.js
 function KS() {
 	lx("liPosMinGap", qS);
 }
@@ -13899,8 +13664,6 @@ function qS(e, t, n) {
 	n.liPosMinGap = t.liPosMinGap = ms(g) ? g : m > 0 ? -2 : -1, n.serUids = r;
 }
 var JS = hv({ ctor: pv }, 50);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/axisSnippets.js
 function YS(e) {
 	return function(t, n) {
 		var r = gx(t, { fromStat: { key: e } });
@@ -13913,8 +13676,6 @@ function XS(e, t) {
 function ZS(e) {
 	return KS(), { liPosMinGap: !ry(e.scale) };
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/layout/barCommon.js
 function QS(e, t, n, r) {
 	px(e, {
 		key: t,
@@ -13926,8 +13687,6 @@ function QS(e, t, n, r) {
 function $S(e) {
 	return e.scale.rawExtentInfo.makeRenderInfo().startValue;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/cartesian/GridModel.js
 var eC = {
 	left: 0,
 	right: 0,
@@ -14107,8 +13866,6 @@ function mC(e) {
 		t("bar"), t("pictorialBar");
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/bar/BaseBarSeries.js
 var hC = function(e) {
 	o(t, e);
 	function t() {
@@ -14167,8 +13924,6 @@ var hC = function(e) {
 	}, t;
 }(P_);
 P_.registerClass(hC);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/bar/BarSeries.js
 var gC = function(e) {
 	o(t, e);
 	function t() {
@@ -14243,8 +13998,6 @@ function SC(e, t) {
 	var n = e[t];
 	n && n[_C] && (n.clear && n.clear(), e[t] = n[_C]);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/shape/sausage.js
 var CC = function() {
 	function e() {
 		this.cx = 0, this.cy = 0, this.r0 = 0, this.r = 0, this.startAngle = 0, this.endAngle = Math.PI * 2, this.clockwise = !0;
@@ -14265,8 +14018,6 @@ var CC = function() {
 		f ? (e.moveTo(p * i + n, m * i + r), e.arc(p * s + n, m * s + r, o, -Math.PI + c, c, !u)) : e.moveTo(p * a + n, m * a + r), e.arc(n, r, a, c, l, !u), e.arc(h * s + n, g * s + r, o, l - Math.PI * 2, l - Math.PI, !u), i !== 0 && e.arc(n, r, i, l, c, u);
 	}, t;
 }(Za);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/label/sectorLabel.js
 function TC(e, t) {
 	t ||= {};
 	var n = t.isRoundCap;
@@ -14345,8 +14096,6 @@ function DC(e, t, n) {
 function OC(e, t, n) {
 	return t * Math.cos(e) * (n ? 1 : -1);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/sectorHelper.js
 function kC(e, t, n) {
 	var r = e.get("borderRadius");
 	if (r == null) return n ? { cornerRadius: 0 } : null;
@@ -14361,8 +14110,6 @@ function kC(e, t, n) {
 		return dn(e, i);
 	}) };
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/bar/BarView.js
 var AC = Math.max, jC = Math.min, MC = function(e) {
 	o(t, e);
 	function t() {
@@ -14770,8 +14517,6 @@ function $C(e, t) {
 function ew(e, t) {
 	return e.width === 0 ? t.getOtherAxis(t.getBaseAxis()).inverse ? "left" : "right" : e.width >= 0 ? "right" : "left";
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/bar/install.js
 function tw(e) {
 	e.registerChartView(MC), e.registerSeriesModel(gC), e.registerLayout(e.PRIORITY.VISUAL.LAYOUT, uC("bar")), e.registerLayout(e.PRIORITY.VISUAL.PROGRESSIVE_LAYOUT, dC("bar")), e.registerProcessor(e.PRIORITY.PROCESSOR.STATISTIC, bb("bar")), e.registerAction({
 		type: "changeAxisOrder",
@@ -14787,8 +14532,6 @@ function tw(e) {
 		});
 	}), mC(e);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/legacy/dataSelectAction.js
 function nw(e, t) {
 	function n(t, n) {
 		var r = [];
@@ -14836,8 +14579,6 @@ function iw(e, t, n) {
 		e.isFromClick ? (rw("map", "selectchanged", t, r, e), rw("pie", "selectchanged", t, r, e)) : e.fromAction === "select" ? (rw("map", "selected", t, r, e), rw("pie", "selected", t, r, e)) : e.fromAction === "unselect" && (rw("map", "unselected", t, r, e), rw("pie", "unselected", t, r, e));
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/processor/dataFilter.js
 function aw(e) {
 	return {
 		seriesType: e,
@@ -14853,15 +14594,11 @@ function aw(e) {
 		}
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/helper/createSeriesDataSimply.js
 function ow(e, t, n) {
 	t = V(t) && { coordDimensions: t } || j({ encodeDefine: e.getEncode() }, t);
 	var r = e.getSource(), i = vm(r, t).dimensions, a = new _m(i, e);
 	return a.initData(r, n), a;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/visual/LegendVisualProvider.js
 var sw = function() {
 	function e(e, t) {
 		this._getDataWithEncodedVisual = e, this._getRawData = t;
@@ -15074,8 +14811,6 @@ function Cw(e, t) {
 	}
 	return n;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/pie/labelLayout.js
 var ww = Math.PI / 180;
 function Tw(e, t, n, r, i, a, o, s, c, l) {
 	if (e.length < 2) return;
@@ -15257,8 +14992,6 @@ function Mw(e) {
 		}
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/pie/pieLayout.js
 var Nw = Math.PI * 2, Pw = Math.PI / 180, Fw = _c("pie", Iw);
 function Iw(e, t) {
 	e.eachSeriesByType("pie", function(e) {
@@ -15426,8 +15159,6 @@ var Lw = Ws(), Rw = function(e) {
 		}
 	}, t.type = "pie", t;
 }(Ov);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/processor/negativeDataFilter.js
 function Bw(e) {
 	return {
 		seriesType: e,
@@ -15440,13 +15171,9 @@ function Bw(e) {
 		}
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/pie/install.js
 function Vw(e) {
 	e.registerChartView(zw), e.registerSeriesModel(lw), nw("pie", e.registerAction), e.registerLayout(Fw), e.registerProcessor(aw("pie")), e.registerProcessor(Bw("pie"));
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/mixin/Draggable.js
 var Hw = function() {
 	function e(e, t) {
 		this.target = e, this.topTarget = t && t.topTarget;
@@ -15729,8 +15456,6 @@ function hT(e, t, n) {
 	var r = e.painter;
 	return t < 0 || t > r.getWidth() || n < 0 || n > r.getHeight();
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/timsort.js
 var gT = 32, _T = 7;
 function vT(e) {
 	for (var t = 0; e >= gT;) t |= e & 1, e >>= 1;
@@ -15974,8 +15699,6 @@ function TT(e, t, n, r) {
 		o.forceMergeRuns();
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/Storage.js
 var ET = !1;
 function DT() {
 	ET || (ET = !0, console.warn("z / z2 / zlevel of displayable is invalid, which may cause unexpected errors"));
@@ -16041,8 +15764,6 @@ var kT = function() {
 }(), AT = q.hasGlobalWindow && (window.requestAnimationFrame && window.requestAnimationFrame.bind(window) || window.msRequestAnimationFrame && window.msRequestAnimationFrame.bind(window) || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame) || function(e) {
 	return setTimeout(e, 16);
 };
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/animation/Animation.js
 function jT() {
 	return (/* @__PURE__ */ new Date()).getTime();
 }
@@ -16391,8 +16112,6 @@ function rE(e, t) {
 function iE(e, t) {
 	QT[e] = t;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/globalDefault.js
 var aE = "";
 typeof navigator < "u" && (aE = navigator.platform || "");
 var oE = "rgba(0, 0, 0, 0.2)", sE = Q.color.theme[0], cE = zr(sE, null, null, .9), lE = {
@@ -16488,8 +16207,6 @@ function dE(e, t, n) {
 	var i = r(e);
 	return i ? n.concat(i) : n;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/Global.js
 var fE, pE, mE, hE = "\0_ec_inner", gE = 1, _E = function(e) {
 	o(t, e);
 	function t() {
@@ -16727,8 +16444,6 @@ function SE(e) {
 	}), { replaceMergeMainTypeMap: t };
 }
 P(_E, Ig);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/model/OptionManager.js
 var CE = /^(min|max)?(.+)$/, wE = function() {
 	function e(e) {
 		this._timelineOptions = [], this._mediaList = [], this._currentMediaIndices = [], this._api = e;
@@ -16801,8 +16516,6 @@ function DE(e, t, n) {
 function OE(e, t) {
 	return e.join(",") === t.join(",");
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/preprocessor/helper/compatStyle.js
 var kE = I, AE = W, jE = [
 	"areaStyle",
 	"lineStyle",
@@ -16910,8 +16623,6 @@ function BE(e, t) {
 		});
 	}), FE(zE(e.axisPointer), "label"), FE(zE(e.tooltip).axisPointer, "label");
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/preprocessor/backwardCompat.js
 function VE(e, t) {
 	for (var n = t.split(","), r = e, i = 0; i < n.length && (r &&= r[n[i]], r != null); i++);
 	return r;
@@ -16994,8 +16705,6 @@ function QE(e, t) {
 		}));
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/processor/dataStack.js
 var $E = vc(eD);
 function eD(e) {
 	var t = K();
@@ -17042,8 +16751,6 @@ function tD(e) {
 		});
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/view/Component.js
 var nD = function() {
 	function e() {
 		this.group = new su(), this.uid = Wm("viewComponent");
@@ -17054,8 +16761,6 @@ var nD = function() {
 	}, e;
 }();
 Ve(nD), Je(nD);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/visual/style.js
 var rD = Ws(), iD = {
 	itemStyle: Ye(Lf, !0),
 	lineStyle: Ye(Pf, !0)
@@ -17201,8 +16906,6 @@ function pD(e, t) {
 		});
 	}, n.resize(), n;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/core/Scheduler.js
 var mD = function() {
 	function e(e, t, n, r) {
 		this._stageTaskMap = K(), this.ecInstance = e, this.api = t, n = this._dataProcessorHandlers = n.slice(), r = this._visualHandlers = r.slice(), this._allHandlers = n.concat(r);
@@ -17397,8 +17100,6 @@ OD(TD, _E), OD(ED, Ac), TD.eachSeriesByType = TD.eachRawSeriesByType = function(
 function OD(e, t) {
 	for (var n in t.prototype) e[n] = je;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/theme/dark.js
 var $ = Q.darkColor, kD = $.background, AD = function() {
 	return {
 		axisLine: { lineStyle: { color: $.axisLine } },
@@ -17554,8 +17255,6 @@ var $ = Q.darkColor, kD = $.background, AD = function() {
 	}
 };
 MD.categoryAxis.splitLine.show = !1;
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/ECEventProcessor.js
 var ND = function() {
 	function e() {}
 	return e.prototype.normalizeQuery = function(e) {
@@ -17645,8 +17344,6 @@ var ND = function() {
 		return { dataEach: n.hasItemOption ? r : null };
 	}
 };
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/visual/helper.js
 function RD(e, t, n) {
 	switch (n) {
 		case "color": return e.getItemVisual(t, "style")[e.getVisual("drawType")];
@@ -17667,14 +17364,10 @@ function zD(e, t) {
 		default:
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/event.js
 function BD(e, t, n) {
 	for (var r; e && !(t(e) && (r = e, n));) e = e.__hostTarget || e.parent;
 	return r;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/core/lifecycle.js
 var VD = new hi(), HD = {};
 function UD(e, t) {
 	HD[e] = t;
@@ -17682,14 +17375,10 @@ function UD(e, t) {
 function WD(e) {
 	return HD[e];
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/custom/customSeriesRegister.js
 var GD = {};
 function KD(e, t) {
 	GD[e] = t;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/core/WeakMap.js
 var qD = Math.round(Math.random() * 9), JD = typeof Object.defineProperty == "function", YD = function() {
 	function e() {
 		this._id = "__ec_inner_" + qD++;
@@ -17712,8 +17401,6 @@ var qD = Math.round(Math.random() * 9), JD = typeof Object.defineProperty == "fu
 		return e;
 	}, e;
 }();
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/canvas/helper.js
 function XD(e) {
 	return isFinite(e);
 }
@@ -17744,8 +17431,6 @@ function nO(e, t, n) {
 	var s = document.defaultView.getComputedStyle(e);
 	return (e[i] || tO(s[r]) || tO(e.style[r])) - (tO(s[a]) || 0) - (tO(s[o]) || 0) || 0;
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/canvas/dashStyle.js
 function rO(e, t) {
 	return !e || e === "solid" || !(t > 0) ? null : e === "dashed" ? [4 * t, 2 * t] : e === "dotted" ? [t] : se(e) ? [e] : V(e) ? e : null;
 }
@@ -17759,8 +17444,6 @@ function iO(e) {
 	}
 	return [n, r];
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/canvas/graphic.js
 var aO = new Ea(!0);
 function oO(e) {
 	var t = e.stroke;
@@ -17947,8 +17630,6 @@ function MO(e, t, n) {
 	}
 	jO(e, a), t.clearTemporalDisplayables(), t.notClear = !0, e.restore();
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/util/decal.js
 var NO = new YD(), PO = new et(100), FO = [
 	"symbol",
 	"symbolSize",
@@ -18095,8 +17776,6 @@ function VO(e) {
 	for (var t = 0, n = 0; n < e.length; ++n) t += e[n];
 	return e.length % 2 == 1 ? t * 2 : t;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/visual/decal.js
 var HO = vc(UO);
 function UO(e, t) {
 	e.eachRawSeries(function(n) {
@@ -18117,8 +17796,6 @@ function UO(e, t) {
 		}
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/core/echarts.js
 var WO = 1, GO = 800, KO = 900, qO = 920, JO = 1e3, YO = 2e3, XO = 5e3, ZO = 1e3, QO = 1100, $O = 2e3, ek = 3e3, tk = 4e3, nk = 4500, rk = 4600, ik = 5e3, ak = 6e3, ok = 7e3, sk = {
 	PROCESSOR: {
 		SERIES_FILTER: GO,
@@ -19018,8 +18695,6 @@ function yA(e, t, n, r) {
 	} };
 }
 iA("default", {}), iA("dark", MD);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/extension.js
 var bA = [], xA = {
 	registerPreprocessor: aA,
 	registerProcessor: oA,
@@ -19070,8 +18745,6 @@ function SA(e) {
 	}
 	N(bA, e) >= 0 || (bA.push(e), H(e) && (e = { install: e }), e.install(xA));
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisModelCommonMixin.js
 var CA = function() {
 	function e() {}
 	return e.prototype.needIncludeZero = function() {
@@ -19087,8 +18760,6 @@ var CA = function() {
 	}, t.type = "cartesian2dAxis", t;
 }(Ng);
 P(wA, CA);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisDefault.js
 var TA = {
 	show: !0,
 	z: 0,
@@ -19208,8 +18879,6 @@ var TA = {
 	}, DA),
 	log: M({ logBase: 10 }, DA)
 };
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisModelCreator.js
 function kA(e, t, n, r) {
 	I(Fy, function(i, a) {
 		var s = A(A({}, OA[a], !0), r, !0), c = function(e) {
@@ -19239,8 +18908,6 @@ function kA(e, t, n, r) {
 function AA(e) {
 	return e.type || (e.data ? "category" : "value");
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/cartesian/Cartesian.js
 var jA = function() {
 	function e(e) {
 		this.type = "cartesian", this._dimList = [], this._axes = {}, this.name = e || "";
@@ -19317,8 +18984,6 @@ var PA = function(e) {
 		return new Y(r, i, Math.max(t[0], t[1]) - r + e, Math.max(n[0], n[1]) - i + e);
 	}, t;
 }(jA);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisAlignTicks.js
 function FA(e, t) {
 	var n = e.scale, r = e.model, i = US(n, r, r.ecModel, e, null), a = ny(n), o = ny(t) ? t.intervalStub : t, s = a ? n.intervalStub : n, c = n.base, l = o.getTicks(), u = o.getTicks({ expandToNicedExtent: !0 }), d = l.length - 1, f, p, m;
 	if (d === 1) f = p = 0, m = 1;
@@ -19377,8 +19042,6 @@ function FA(e, t) {
 		niceExtent: [k, O]
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/coord/axisNiceTicks.js
 function IA(e, t) {
 	var n = ny(e), r = n ? e.intervalStub : e, i = t.fixMinMax || [], a = n ? e.getExtent() : null, o = r.getExtent(), s = cy(o, i, t.rawExtentResult);
 	r.setExtent(s[0], s[1]), s = r.getExtent();
@@ -19710,8 +19373,6 @@ var ij = function(e, t, n, r, i, a) {
 		e && e.labelInfoList && e.dirVec && tS(e.labelInfoList, e.dirVec, r, i);
 	});
 };
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/modelHelper.js
 function aj(e, t) {
 	var n = {
 		axesInfo: {},
@@ -19824,8 +19485,6 @@ function mj(e) {
 function hj(e) {
 	return e.type + "||" + e.id;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axis/AxisView.js
 var gj = {}, _j = function(e) {
 	o(t, e);
 	function t() {
@@ -19898,8 +19557,6 @@ function yj(e, t, n, r) {
 function bj(e) {
 	vj(e).splitAreaColors = null;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axis/CartesianAxisView.js
 var xj = [
 	"splitArea",
 	"splitLine",
@@ -20013,8 +19670,6 @@ function Oj(e) {
 		e.xAxis && e.yAxis && !e.grid && (e.grid = {});
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/radar/backwardCompat.js
 function kj(e) {
 	var t = e.polar;
 	if (t) {
@@ -20028,8 +19683,6 @@ function kj(e) {
 		e && e.type === "radar" && e.polarIndex && (e.radarIndex = e.polarIndex);
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/radar/RadarSeries.js
 var Aj = "radar", jj = function(e) {
 	o(t, e);
 	function t() {
@@ -20399,8 +20052,6 @@ var Rj = function(e) {
 		}), r;
 	}, e.dimensions = [], e;
 }();
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/radar/install.js
 function Hj(e) {
 	e.registerCoordinateSystem("radar", Vj), e.registerComponentModel(Rj), e.registerComponentView(zj), e.registerVisual({
 		seriesType: "radar",
@@ -20412,8 +20063,6 @@ function Hj(e) {
 		}
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/radar/radarLayout.js
 var Uj = _c(Aj, Wj);
 function Wj(e) {
 	e.eachSeriesByType(Aj, function(e) {
@@ -20441,13 +20090,9 @@ function Gj(e) {
 function Kj(e) {
 	return [e.cx, e.cy];
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/radar/install.js
 function qj(e) {
 	SA(Hj), e.registerChartView(Mj), e.registerSeriesModel(jj), e.registerLayout(Uj), e.registerProcessor(aw("radar")), e.registerPreprocessor(kj);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/gauge/PointerPath.js
 var Jj = function() {
 	function e() {
 		this.angle = 0, this.width = 10, this.r = 10, this.x = 0, this.y = 0;
@@ -20466,8 +20111,6 @@ var Jj = function() {
 		o = t.angle - Math.PI / 2, e.moveTo(s, c), e.lineTo(t.x + n(o) * a, t.y + r(o) * a), e.lineTo(t.x + n(t.angle) * i, t.y + r(t.angle) * i), e.lineTo(t.x - n(o) * a, t.y - r(o) * a), e.lineTo(s, c);
 	}, t;
 }(Za);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/gauge/GaugeView.js
 function Xj(e, t) {
 	var n = e.get("center"), r = t.getWidth(), i = t.getHeight(), a = Math.min(r, i);
 	return {
@@ -20808,13 +20451,9 @@ var Qj = function(e) {
 		}
 	}, t;
 }(P_);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/gauge/install.js
 function eM(e) {
 	e.registerChartView(Qj), e.registerSeriesModel($j);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/funnel/FunnelSeries.js
 var tM = "funnel", nM = function(e) {
 	o(t, e);
 	function t() {
@@ -20928,8 +20567,6 @@ var tM = "funnel", nM = function(e) {
 		this.group.removeAll(), this._data = null;
 	}, t.prototype.dispose = function() {}, t.type = tM, t;
 }(Ov);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/funnel/funnelLayout.js
 function oM(e, t) {
 	for (var n = e.mapDimension("value"), r = e.mapArray(n, function(e) {
 		return e;
@@ -21013,13 +20650,9 @@ function lM(e, t) {
 function uM(e) {
 	return e.get("orient") === "horizontal";
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/chart/funnel/install.js
 function dM(e) {
 	e.registerChartView(aM), e.registerSeriesModel(nM), e.registerLayout(cM), e.registerProcessor(aw(tM));
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/BaseAxisPointer.js
 var fM = Ws(), pM = k, mM = z, hM = function() {
 	function e() {
 		this._dragging = !1, this.animationThreshold = 15;
@@ -21181,8 +20814,6 @@ function bM(e, t, n) {
 		e.type !== "group" && (r != null && (e.z = r), i != null && (e.zlevel = i), e.silent = n);
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/viewHelper.js
 function xM(e) {
 	var t = e.get("type"), n = e.getModel(t + "Style"), r;
 	return t === "line" ? (r = n.getLineStyle(), r.fill = null) : t === "shadow" && (r = n.getAreaStyle(), r.stroke = null), r;
@@ -21273,8 +20904,6 @@ function kM(e, t, n) {
 function AM(e, t, n) {
 	return [Fo(Po(t[0], t[1]), e - n / 2), Po(e + n / 2, Fo(t[0], t[1]))];
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/CartesianAxisPointer.js
 var jM = function(e) {
 	o(t, e);
 	function t() {
@@ -21332,8 +20961,6 @@ var NM = {
 function PM(e) {
 	return e.dim === "x" ? 0 : 1;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/AxisPointerModel.js
 var FM = function(e) {
 	o(t, e);
 	function t() {
@@ -21434,8 +21061,6 @@ function WM(e, t) {
 		(IM(n).records || {})[e] && (IM(n).records[e] = null);
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/AxisPointerView.js
 var GM = function(e) {
 	o(t, e);
 	function t() {
@@ -21458,8 +21083,6 @@ var GM = function(e) {
 		WM("axisPointer", t);
 	}, t.type = "axisPointer", t;
 }(nD);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/findPointFromSeries.js
 function KM(e, t) {
 	var n = [], r = e.seriesIndex, i;
 	if (r == null || !(i = t.getSeriesByIndex(r))) return { point: [] };
@@ -21482,8 +21105,6 @@ function KM(e, t) {
 		el: s
 	};
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/axisTrigger.js
 var qM = Ws();
 function JM(e, t, n) {
 	var r = e.currTrigger, i = [e.x, e.y], a = e, o = e.dispatchAction || z(n.dispatchAction, n), s = t.getComponent("axisPointer").coordSysAxesInfo;
@@ -21665,8 +21286,6 @@ function rN(e) {
 function iN(e) {
 	return !e || e[0] == null || isNaN(e[0]) || e[1] == null || isNaN(e[1]);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/axisPointer/install.js
 function aN(e) {
 	_j.registerAxisPointerClass("CartesianAxisPointer", jM), e.registerComponentModel(FM), e.registerComponentView(GM), e.registerPreprocessor(function(e) {
 		if (e) {
@@ -21682,13 +21301,9 @@ function aN(e) {
 		update: ":updateAxisPointer"
 	}, JM);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/grid/install.js
 function oN(e) {
 	SA(Oj), SA(aN);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/helper/listComponent.js
 function sN(e, t) {
 	var n = lg(t.get("padding")), r = t.getItemStyle(["color", "opacity"]);
 	return r.fill = t.get("backgroundColor"), new fo({
@@ -21704,8 +21319,6 @@ function sN(e, t) {
 		z2: -1
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/TooltipModel.js
 var cN = function(e) {
 	o(t, e);
 	function t() {
@@ -21755,8 +21368,6 @@ var cN = function(e) {
 		}
 	}, t;
 }(Ng);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/helper.js
 function lN(e) {
 	var t = e.get("confine");
 	return t == null ? e.get("renderMode") === "richText" : !!t;
@@ -21789,8 +21400,6 @@ function mN(e, t) {
 	var n = e.currentStyle || document.defaultView && document.defaultView.getComputedStyle(e);
 	return n ? t ? n[t] : n : null;
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/TooltipHTMLContent.js
 var hN = pN(fN, "transition"), gN = pN(dN, "transform"), _N = "position:absolute;display:block;border-style:solid;white-space:nowrap;z-index:9999999;" + (q.transform3dSupported ? "will-change:transform;" : "");
 function vN(e) {
 	return e = e === "left" ? "right" : e === "right" ? "left" : e === "top" ? "bottom" : "top", e;
@@ -22045,8 +21654,6 @@ function ON(e) {
 function kN(e, t, n, r) {
 	e[0] = n, e[1] = r, e[2] = e[0] / t.getWidth(), e[3] = e[1] / t.getHeight();
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/TooltipView.js
 var AN = new fo({ shape: {
 	x: -1,
 	y: -1,
@@ -22387,8 +21994,6 @@ function RN(e, t, n) {
 		}
 	}
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/tooltip/install.js
 function zN(e) {
 	SA(aN), e.registerComponentModel(cN), e.registerComponentView(jN), e.registerAction({
 		type: "showTip",
@@ -22400,8 +22005,6 @@ function zN(e) {
 		update: "tooltip:manuallyHideTip"
 	}, je);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/title/install.js
 var BN = function(e) {
 	o(t, e);
 	function t() {
@@ -22496,8 +22099,6 @@ var BN = function(e) {
 function HN(e) {
 	e.registerComponentModel(BN), e.registerComponentView(VN);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/LegendModel.js
 var UN = function(e, t) {
 	if (t === "all") return {
 		type: "all",
@@ -22877,8 +22478,6 @@ function $N(e, t, n, r) {
 		excludeSeriesId: r
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/legendAction.js
 function eP(e, t, n) {
 	var r = e === "allSelect" || e === "inverseSelect", i = {}, a = [];
 	n.eachComponent({
@@ -22913,8 +22512,6 @@ function tP(e, t) {
 function nP(e) {
 	e.registerAction("legendToggleSelect", "legendselectchanged", B(eP, "toggleSelected")), e.registerAction("legendAllSelect", "legendselectall", B(eP, "allSelect")), e.registerAction("legendInverseSelect", "legendinverseselect", B(eP, "inverseSelect")), e.registerAction("legendSelect", "legendselected", B(eP, "select")), e.registerAction("legendUnSelect", "legendunselected", B(eP, "unSelect"));
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/legendFilter.js
 var rP = vc(iP);
 function iP(e) {
 	var t = e.findComponents({ mainType: "legend" });
@@ -22923,15 +22520,11 @@ function iP(e) {
 		return !0;
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/installLegendPlain.js
 function aP(e) {
 	e.registerComponentModel(WN), e.registerComponentView(JN), e.registerProcessor(e.PRIORITY.PROCESSOR.SERIES_FILTER, rP), e.registerSubTypeDefaulter("legend", function() {
 		return "plain";
 	}), nP(e);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/ScrollableLegendModel.js
 var oP = function(e) {
 	o(t, e);
 	function t() {
@@ -22969,8 +22562,6 @@ function sP(e, t, n) {
 		ignoreSize: !!i
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/ScrollableLegendView.js
 var cP = su, lP = ["width", "height"], uP = ["x", "y"], dP = function(e) {
 	o(t, e);
 	function t() {
@@ -23104,8 +22695,6 @@ var cP = su, lP = ["width", "height"], uP = ["x", "y"], dP = function(e) {
 		}), t ?? r;
 	}, t.type = "legend.scroll", t;
 }(JN);
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/scrollableLegendAction.js
 function fP(e) {
 	e.registerAction("legendScroll", "legendscroll", function(e, t) {
 		var n = e.scrollDataIndex;
@@ -23118,18 +22707,12 @@ function fP(e) {
 		});
 	});
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/installLegendScroll.js
 function pP(e) {
 	SA(aP), e.registerComponentModel(oP), e.registerComponentView(dP), fP(e);
 }
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/component/legend/install.js
 function mP(e) {
 	SA(aP), SA(pP);
 }
-//#endregion
-//#region node_modules/.pnpm/zrender@6.1.0/node_modules/zrender/lib/canvas/Layer.js
 function hP(e, t, n) {
 	var r = p.createCanvas(), i = t.getWidth(), a = t.getHeight(), o = r.style;
 	return o && (o.position = "absolute", o.left = "0", o.top = "0", o.width = i + "px", o.height = a + "px", r.setAttribute("data-zr-dom-id", e)), r.width = i * n, r.height = a * n, r;
@@ -23588,13 +23171,9 @@ var NP = 1, PP = 2, FP = 4, IP = NP | FP, LP = function() {
 		return this._height;
 	}, e;
 }();
-//#endregion
-//#region node_modules/.pnpm/echarts@6.1.0/node_modules/echarts/lib/renderer/installCanvasRenderer.js
 function RP(e) {
 	e.registerPainter("canvas", LP);
 }
-//#endregion
-//#region packages/charts/src/safe-option.ts
 var zP = new Set([
 	"formatter",
 	"renderItem",
@@ -23630,8 +23209,6 @@ function HP(e, t, n) {
 	}
 	n.delete(e);
 }
-//#endregion
-//#region packages/charts/src/index.tsx
 SA([
 	tw,
 	dM,
@@ -23677,5 +23254,4 @@ function UP({ ariaLabel: r, className: i, option: a, style: o }) {
 		style: o
 	});
 }
-//#endregion
 export { UP as EChart };

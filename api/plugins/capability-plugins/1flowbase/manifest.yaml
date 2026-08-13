@@ -117,7 +117,7 @@ block_contributions:
           - path: "browser-assets/tailwindcss-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "ac69c37b87698bb0e15757fe86a62ed98a72283fc39b4d9b2bc8125bd21e0272"
+            sha256: "12654dc6a0c23428c81678e417b5b7a456fb9049ce279cfe4390007ef7ee11de"
         type_declarations: |
           declare module 'tailwindcss' {
             const tailwindcss: Readonly<{
@@ -201,7 +201,7 @@ block_contributions:
           - path: "browser-assets/native-components.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "5aeaf8f86d0cc70beb7fc5a32f79b17e653a75d5b1d7ee15c41e086cbca51445"
+            sha256: "4b0132d6bf899d0016ec4c94f9dd665b41d6b75b413fc66037706c80965af388"
           - path: "browser-assets/native-components.css"
             role: shadow_style
             media_type: "text/css; charset=utf-8"
@@ -265,7 +265,7 @@ block_contributions:
           - path: "browser-assets/ant-design-icons-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "c6a7f2d425adc8f21b2711d8698bd97dd88776abd4464d92b9727c8dc81f1ed7"
+            sha256: "59f521afa6ed40a1ad8badc1e501588316ecbd3f44ed82535df50d738031ebc6"
         type_declarations: |
           declare module '@ant-design/icons' {
             import type { ComponentType, CSSProperties } from 'react';
@@ -300,7 +300,7 @@ block_contributions:
           - path: "browser-assets/charts.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "4959dfbaf362b560d55fb65465b5758a960b304c53e197b4da577c8ccb6dfcaf"
+            sha256: "9e9f060861bab4465dd4a7504c78463b47fb320df969568cdf52eebd8a7e21ca"
         type_declarations: |
           declare module '@1flowbase/charts' {
             import type { ComponentType, CSSProperties } from 'react';
@@ -335,7 +335,7 @@ block_contributions:
           - path: "browser-assets/rich-text.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "5f6c2876766bb25fac07ea3bc01a203c2f041f46d85281b5e8379bdf28c0d98d"
+            sha256: "7ef0efeac9d0e1f9b46572435539e2281eb33ed91bbffd5a4ef4053ae09ae4bd"
           - path: "browser-assets/rich-text.css"
             role: shadow_style
             media_type: "text/css; charset=utf-8"

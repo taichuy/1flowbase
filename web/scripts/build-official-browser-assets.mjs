@@ -112,7 +112,10 @@ export async function buildOfficialBrowserAssets(
       );
       const assets = [];
       for (const outputName of outputNames) {
-        const bytes = await readFile(join(moduleOutput, outputName));
+        const bytes = normalizeOfficialAssetBytes(
+          outputName,
+          await readFile(join(moduleOutput, outputName))
+        );
         const target = join(outputDirectory, outputName);
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, bytes);
@@ -186,6 +189,16 @@ export async function buildOfficialBrowserAssets(
 
 function sha256Bytes(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+function normalizeOfficialAssetBytes(outputName, bytes) {
+  if (!outputName.endsWith('.js')) return bytes;
+  return Buffer.from(
+    bytes
+      .toString('utf8')
+      .replace(/^\/\/#region .*\r?\n/gmu, '')
+      .replace(/^\/\/#endregion\r?\n/gmu, '')
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
