@@ -4,6 +4,7 @@ mod backend_kind;
 mod runtime;
 
 pub use backend_kind::DurableBackendKind;
+pub use control_plane::ports::FrontstageExecutableUpgradeRepository;
 pub use runtime::{
     build_main_durable_postgres, build_main_durable_postgres_with_max_connections,
     build_main_durable_postgres_with_pool_settings, MainDurableRuntime, MainDurableStore,

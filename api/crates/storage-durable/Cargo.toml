@@ -6,4 +6,5 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+control-plane = { path = "../control-plane" }
 storage-postgres = { path = "postgres" }

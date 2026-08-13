@@ -13,6 +13,7 @@ pub mod file_management;
 pub mod flow;
 pub mod frontend_block_catalog;
 pub mod frontstage;
+pub mod frontstage_executable_upgrade;
 pub mod host_extension;
 pub mod i18n_catalog;
 pub mod js_dependency;
@@ -89,6 +90,12 @@ pub use frontstage::{
     FrontstageBlockDescendantProjection, FrontstageBlockNodeRecord, FrontstageBlockNodeSummary,
     FrontstageBlockPresentation, FrontstageBlockSearchResult, FrontstageBlockSubtreeImpact,
     FrontstagePageKind, FrontstagePageRecord, FrontstagePageTreeNode,
+};
+pub use frontstage_executable_upgrade::{
+    CompiledFrontstageExecutable, FrontstageExecutableCatalogLocator,
+    FrontstageExecutableUpgradeFailure, FrontstageExecutableUpgradeOutcome,
+    FrontstageExecutableUpgradeStart, FrontstageExecutableUpgradeTarget,
+    LegacyFrontstageExecutableSnapshot, LegacyFrontstageExecutableSnapshotRow,
 };
 pub use host_extension::{
     HostExtensionActivationStatus, HostExtensionInventoryRecord, HostExtensionTrustLevel,
