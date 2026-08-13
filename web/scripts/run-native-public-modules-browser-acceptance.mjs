@@ -98,6 +98,10 @@ async function verifyFixture(browserInstance, fixture) {
       const publicHosts = hosts.filter((host) =>
         host.shadowRoot?.querySelector('[data-testid^=public-modules-]')
       );
+      const richTextRoots = [
+        document,
+        ...hosts.map((host) => host.shadowRoot).filter(Boolean)
+      ].filter((root) => root.querySelector('.vditor'));
       return {
         hostCount: hosts.length,
         publicHostCount: publicHosts.length,
@@ -151,7 +155,27 @@ async function verifyFixture(browserInstance, fixture) {
         ).length,
         supportMarkers: document.head.querySelectorAll(
           '#vditorLuteScript, #vditorIconScript'
-        ).length
+        ).length,
+        richTextIcons: richTextRoots.map((root) => {
+          const toolbarIcons = [...root.querySelectorAll('.vditor-toolbar use')];
+          return {
+            spriteCount: root.querySelectorAll(
+              '[data-1flowbase-vditor-icons]'
+            ).length,
+            symbolCount: root.querySelectorAll(
+              'symbol[id^="vditor-icon-"]'
+            ).length,
+            toolbarIconCount: toolbarIcons.length,
+            unresolvedToolbarIcons: toolbarIcons.filter((icon) => {
+              const href = icon.getAttribute('href') ?? icon.getAttribute('xlink:href');
+              return !href?.startsWith('#') || !root.getElementById(href.slice(1));
+            }).length,
+            hiddenToolbarIcons: toolbarIcons.filter((icon) => {
+              const rect = icon.closest('svg')?.getBoundingClientRect();
+              return !rect || rect.width === 0 || rect.height === 0;
+            }).length
+          };
+        })
       };
     });
     assertNativeEvidence(fixture.name, nativeEvidence);
@@ -286,7 +310,16 @@ function assertNativeEvidence(name, evidence) {
     evidence.hostLayout?.display !== 'block' ||
     evidence.hostLayout?.gap !== 'normal' ||
     evidence.hostLayout?.padding !== '0px' ||
-    evidence.leakedModuleStyles !== 0
+    evidence.leakedModuleStyles !== 0 ||
+    evidence.richTextIcons.length !== 3 ||
+    evidence.richTextIcons.some(
+      (icons) =>
+        icons.spriteCount !== 1 ||
+        icons.symbolCount === 0 ||
+        icons.toolbarIconCount === 0 ||
+        icons.unresolvedToolbarIcons !== 0 ||
+        icons.hiddenToolbarIcons !== 0
+    )
   ) {
     throw new Error(
       `${name} ShadowRoot evidence failed: ${JSON.stringify(evidence)}`
