@@ -16,7 +16,7 @@ match_when:
   - 决定 Vditor 编辑与预览能力如何开放
 created_at: 2026-08-13 09
 updated_at: 2026-08-13 10
-last_verified_at: 2026-08-13 09
+last_verified_at: 2026-08-13 10
 decision_policy: direct_reference
 scope:
   - web/packages/rich-text
@@ -41,3 +41,7 @@ Vditor 本身已经拥有编辑、分屏预览、独立预览、编辑模式切�
 ## 适用场景
 
 调整 `@1flowbase/rich-text` 的公开 exports、Catalog component metadata、低代码 Demo 或 Vditor React 生命周期封装时适用。上传应复用 `ctx.api` 的 callable interface 和默认文件管理表，由后端解析实际文件表、存储与权限；不要让区块自己查管理端表列表或传环境 UUID。外部 CDN、任意上传 URL、Vditor cache 等能间接调用被 Runtime 禁止能力的 options 不对区块开放。
+
+## ShadowRoot 验收
+
+Vditor 在 Native React Runtime 的 ShadowRoot 内运行时，验收不能只等待 `.vditor-content` 挂载。必须确认工具栏 SVG `use` 引用在所属根节点内存在对应 `symbol`，且图标尺寸非零；同时覆盖同根多实例共享、不同根隔离和最后实例卸载清理，避免“编辑器能显示但工具栏为空”的假绿灯。
