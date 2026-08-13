@@ -25,6 +25,7 @@
     "./legacy-inventory.css": "./src/legacy-inventory.css"
   },
   "dependencies": {
+    "@1flowbase/page-runtime": "workspace:*",
     "sucrase": "3.35.1",
     "tailwindcss": "4.3.3"
   },

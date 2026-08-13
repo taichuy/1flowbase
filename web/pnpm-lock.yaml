@@ -326,6 +326,9 @@ importers:
 
   packages/tailwindcss-catalog:
     dependencies:
+      '@1flowbase/page-runtime':
+        specifier: workspace:*
+        version: link:../page-runtime
       sucrase:
         specifier: 3.35.1
         version: 3.35.1

@@ -75,6 +75,48 @@ describe('versioned executable Tailwind compiler contract', () => {
       error: { code: 'unknown_toolchain_lock' }
     });
   });
+
+  test.each([
+    ['malformed', [{ module_source: 'tailwindcss' }]],
+    [
+      'duplicate',
+      [
+        executableCompilerFixtures[0].request.dependency_lock[0],
+        executableCompilerFixtures[0].request.dependency_lock[0]
+      ]
+    ],
+    [
+      'noncanonical host binding',
+      [
+        {
+          module_source: 'react',
+          module_version: '19.2.5',
+          binding: 'fetched',
+          assets: [
+            {
+              role: 'browser_module',
+              media_type: 'text/javascript',
+              sha256: 'd'.repeat(64),
+              url: '/fixture-assets/react'
+            }
+          ],
+          exports: ['default']
+        }
+      ]
+    ]
+  ])(
+    'AC-compiler-lock rejects %s dependency locks',
+    async (_, dependencyLock) => {
+      const result = await compileTailwindExecutableArtifact({
+        ...executableCompilerFixtures[0].request,
+        dependency_lock: dependencyLock
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: 'invalid_dependency_lock' }
+      });
+    }
+  );
 });
 
 async function runCompiler(request: unknown): Promise<{

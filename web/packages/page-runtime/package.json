@@ -3,6 +3,16 @@
   "version": "0.3.4",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./dependency-lock": {
+      "types": "./dist/native-react-compiler/module-registry/contracts.d.ts",
+      "default": "./src/native-react-compiler/module-registry/contracts.ts"
+    }
+  },
   "dependencies": {
     "@1flowbase/page-protocol": "workspace:*",
     "@jridgewell/trace-mapping": "^0.3.31",

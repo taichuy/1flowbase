@@ -1,4 +1,8 @@
 import { transform } from 'sucrase';
+import {
+  canonicalizeNativeReactCatalogDependencyLock,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime/dependency-lock';
 
 import {
   compileTailwindUtilities,
@@ -31,15 +35,16 @@ export const TAILWIND_4_3_3_ARTIFACT_IDENTITY = Object.freeze({
   version: '4.3.3',
   contract: 'executable-compiler-v1',
   stylesheet_sha256: TAILWIND_STYLESHEET_SHA256,
-  tsx_validation: 'sucrase@3.35.1/allowed-imports-v1'
+  tsx_validation: 'sucrase@3.35.1/dependency-lock-imports-v2'
 });
 
 // Digest of the canonical TAILWIND_4_3_3_ARTIFACT_IDENTITY JSON value.
 export const TAILWIND_4_3_3_ARTIFACT_SHA256 =
-  'e0e26e17bafedaf1ee19b57b5a7037d0f5031e8389d0b9e03305989154316f0e';
+  'db8e4ecacf25ed2a926cbd5e8dfb4d5abeaf9db6bfe7025cd5a8fdaabed7efaf';
 
 export interface TailwindExecutableCompilerRequest {
   source_code: string;
+  dependency_lock: NativeReactCatalogDependencyLock;
   compiler_identity: Record<string, string>;
   toolchain_lock: Record<string, string>;
 }
@@ -48,6 +53,7 @@ export interface TailwindValidationDiagnostic {
   phase: 'validation';
   code:
     | 'invalid_request'
+    | 'invalid_dependency_lock'
     | 'unknown_compiler_identity'
     | 'unknown_toolchain_lock'
     | 'tsx_transform_failed'
@@ -73,6 +79,7 @@ export type TailwindExecutableCompilerResult =
       generated_css: string;
       generated_css_sha256: string;
       source_sha256: string;
+      dependency_lock: NativeReactCatalogDependencyLock;
     } & CanonicalExecutableIdentities)
   | {
       ok: false;
@@ -81,18 +88,16 @@ export type TailwindExecutableCompilerResult =
     };
 
 interface ExecutableCompilerVersion extends CanonicalExecutableIdentities {
-  compile(sourceCode: string): Promise<{
+  compile(
+    sourceCode: string,
+    dependencyLock: NativeReactCatalogDependencyLock
+  ): Promise<{
     generatedCss: string;
     diagnostics: TailwindValidationDiagnostic[];
   }>;
 }
 
-const allowedImports = new Set([
-  'react',
-  'antd',
-  '@1flowbase/ui',
-  'tailwindcss'
-]);
+const hostBaselineImports = new Set(['react', 'react/jsx-runtime', 'antd']);
 
 const tailwind433: ExecutableCompilerVersion = Object.freeze({
   compiler_identity: TAILWIND_4_3_3_COMPILER_IDENTITY,
@@ -100,8 +105,11 @@ const tailwind433: ExecutableCompilerVersion = Object.freeze({
   stylesheet_identity: TAILWIND_4_3_3_STYLESHEET_IDENTITY,
   artifact_identity: TAILWIND_4_3_3_ARTIFACT_IDENTITY,
   artifact_sha256: TAILWIND_4_3_3_ARTIFACT_SHA256,
-  async compile(sourceCode: string) {
-    const diagnostics = validateTsxSource(sourceCode);
+  async compile(
+    sourceCode: string,
+    dependencyLock: NativeReactCatalogDependencyLock
+  ) {
+    const diagnostics = validateTsxSource(sourceCode, dependencyLock);
     if (diagnostics.length > 0) return { generatedCss: '', diagnostics };
     const generatedCss = sourceImportsTailwind(sourceCode)
       ? (
@@ -148,7 +156,22 @@ export async function compileTailwindExecutableArtifact(
   }
 
   try {
-    const compiled = await version.compile(typedRequest.source_code);
+    const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+      typedRequest.dependency_lock
+    );
+    if (!dependencyLock) {
+      return failure([
+        diagnostic(
+          'invalid_dependency_lock',
+          'dependency_lock',
+          'dependency_lock must satisfy the canonical Native React catalog lock contract.'
+        )
+      ]);
+    }
+    const compiled = await version.compile(
+      typedRequest.source_code,
+      dependencyLock
+    );
     if (compiled.diagnostics.length > 0) return failure(compiled.diagnostics);
     return {
       ok: true,
@@ -156,6 +179,7 @@ export async function compileTailwindExecutableArtifact(
       generated_css: compiled.generatedCss,
       generated_css_sha256: await sha256Text(compiled.generatedCss),
       source_sha256: await sha256Text(typedRequest.source_code),
+      dependency_lock: dependencyLock,
       compiler_identity: version.compiler_identity,
       toolchain_lock: version.toolchain_lock,
       stylesheet_identity: version.stylesheet_identity,
@@ -195,6 +219,13 @@ function validateRequest(
       'source_code must be a string.'
     );
   }
+  if (!Array.isArray(value.dependency_lock)) {
+    return diagnostic(
+      'invalid_dependency_lock',
+      'dependency_lock',
+      'dependency_lock must be an array.'
+    );
+  }
   for (const field of ['compiler_identity', 'toolchain_lock'] as const) {
     if (!isStringRecord(value[field])) {
       return diagnostic(
@@ -207,7 +238,12 @@ function validateRequest(
   return undefined;
 }
 
-function validateTsxSource(source: string): TailwindValidationDiagnostic[] {
+function validateTsxSource(
+  source: string,
+  dependencyLock: NativeReactCatalogDependencyLock
+): TailwindValidationDiagnostic[] {
+  const allowedImports = new Set(hostBaselineImports);
+  for (const entry of dependencyLock) allowedImports.add(entry.module_source);
   const imports = readStaticImports(source);
   const illegalImport = imports.find(
     (moduleSource) => !allowedImports.has(moduleSource)
