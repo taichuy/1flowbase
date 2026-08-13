@@ -1057,7 +1057,7 @@ pub async fn upload_native_file(
     )
     .upload(UploadFileCommand {
         actor,
-        file_table_id,
+        target: control_plane::file_management::FileUploadTarget::Table(file_table_id),
         original_filename: filename.unwrap_or_else(|| "upload.bin".into()),
         content_type,
         bytes,
@@ -1068,6 +1068,7 @@ pub async fn upload_native_file(
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(UploadedFileResponse {
+            file_table_id: uploaded.file_table_id.to_string(),
             storage_id: uploaded.storage_id.to_string(),
             record: uploaded.record,
         })),

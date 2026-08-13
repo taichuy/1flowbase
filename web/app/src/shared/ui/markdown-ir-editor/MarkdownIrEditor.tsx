@@ -1,4 +1,4 @@
-import { MarkdownEditor } from '@1flowbase/rich-text';
+import { VditorEditor } from '@1flowbase/rich-text';
 
 type MarkdownIrEditorProps = {
   ariaLabel?: string;
@@ -16,7 +16,7 @@ export function MarkdownIrEditor({
   onChange
 }: MarkdownIrEditorProps) {
   return (
-    <MarkdownEditor
+    <VditorEditor
       ariaLabel={ariaLabel}
       className={className}
       height={height}

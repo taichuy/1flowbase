@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::_tests::support::MemoryFileManagementRepository;
-use control_plane::file_management::{FileUploadService, UploadFileCommand};
+use control_plane::file_management::{FileUploadService, FileUploadTarget, UploadFileCommand};
 use control_plane::ports::{FileManagementRepository, UpdateFileStorageBindingInput};
 use domain::{
     ActorContext, DataModelScopeKind, FileStorageHealthStatus, FileTableScopeKind,
@@ -264,7 +264,7 @@ async fn upload_service_writes_object_and_runtime_record_with_storage_snapshot()
     let uploaded = service
         .upload(UploadFileCommand {
             actor: actor.clone(),
-            file_table_id,
+            target: FileUploadTarget::Table(file_table_id),
             original_filename: "demo.txt".into(),
             content_type: Some("text/plain".into()),
             bytes: b"hello storage".to_vec(),
@@ -373,7 +373,7 @@ async fn upload_service_uses_current_table_binding_for_each_new_upload() {
     let first = service
         .upload(UploadFileCommand {
             actor: actor.clone(),
-            file_table_id,
+            target: FileUploadTarget::Table(file_table_id),
             original_filename: "first.txt".into(),
             content_type: Some("text/plain".into()),
             bytes: b"first".to_vec(),
@@ -396,7 +396,7 @@ async fn upload_service_uses_current_table_binding_for_each_new_upload() {
     let second = service
         .upload(UploadFileCommand {
             actor,
-            file_table_id,
+            target: FileUploadTarget::Table(file_table_id),
             original_filename: "second.txt".into(),
             content_type: Some("text/plain".into()),
             bytes: b"second".to_vec(),
@@ -475,7 +475,7 @@ async fn upload_service_requires_persisted_scope_grant_before_writing_runtime_re
     let result = service
         .upload(UploadFileCommand {
             actor,
-            file_table_id,
+            target: FileUploadTarget::Table(file_table_id),
             original_filename: "blocked.txt".into(),
             content_type: Some("text/plain".into()),
             bytes: b"blocked".to_vec(),

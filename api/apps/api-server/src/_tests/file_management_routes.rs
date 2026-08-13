@@ -89,6 +89,24 @@ fn build_file_upload_body(
     body
 }
 
+fn build_default_file_upload_body(
+    boundary: &str,
+    file_name: &str,
+    content_type: &str,
+    bytes: &[u8],
+) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{file_name}\"\r\nContent-Type: {content_type}\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    body
+}
+
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
@@ -111,6 +129,72 @@ async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {
         .as_str()
         .unwrap()
         .to_string()
+}
+
+#[tokio::test]
+async fn ac_001_upload_without_table_id_uses_the_workspace_default_file_table() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let boundary = "----1flowbase-default-file-upload";
+
+    let upload_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/files/upload")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(build_default_file_upload_body(
+                    boundary,
+                    "default.txt",
+                    "text/plain",
+                    b"default file table",
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (upload_parts, upload_body) = upload_response.into_parts();
+    let upload_body = to_bytes(upload_body, usize::MAX).await.unwrap();
+    assert_eq!(
+        upload_parts.status,
+        StatusCode::CREATED,
+        "upload failed: {}",
+        String::from_utf8_lossy(&upload_body)
+    );
+    let upload_payload: Value = serde_json::from_slice(&upload_body).unwrap();
+    let file_table_id = upload_payload["data"]["file_table_id"]
+        .as_str()
+        .expect("upload response must expose the resolved file table");
+    let record_id = upload_payload["data"]["record"]["id"]
+        .as_str()
+        .expect("upload response must expose the file record");
+
+    let content_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/files/{file_table_id}/records/{record_id}/content"
+                ))
+                .header("cookie", root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(content_response.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(content_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+        &b"default file table"[..]
+    );
 }
 
 async fn model_id_for_file_table(database_url: &str, file_table_id: &str) -> String {

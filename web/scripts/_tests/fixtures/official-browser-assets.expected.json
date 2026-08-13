@@ -10,7 +10,7 @@
   "exports": {
     "@1flowbase/charts": ["EChart"],
     "@1flowbase/native-components": ["ScrollableSurface", "Surface"],
-    "@1flowbase/rich-text": ["MarkdownEditor", "MarkdownPreview"],
+    "@1flowbase/rich-text": ["VditorEditor"],
     "@ant-design/icons": [
       "ArrowDownOutlined",
       "ArrowLeftOutlined",

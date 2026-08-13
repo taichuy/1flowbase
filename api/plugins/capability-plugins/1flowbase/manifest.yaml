@@ -324,29 +324,33 @@ block_contributions:
             insert_snippet: "<EChart option={{ xAxis: { type: 'category', data: [] }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: [] }] }} />"
       - source: "@1flowbase/rich-text"
         version: "1.0.0"
-        exports: [MarkdownEditor, MarkdownPreview]
+        exports: [VditorEditor]
         binding: fetched
         assets:
           - path: "browser-assets/rich-text.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "2b38c019e575e6e580b7955eaf37053bc7ac789fe6de71d492036e22f8993d56"
+            sha256: "6a957d202100f35ae258187c6003cd54119998a19280e2119f2a36f1f70e0714"
           - path: "browser-assets/rich-text.css"
             role: shadow_style
             media_type: "text/css; charset=utf-8"
             sha256: "ae29c715f0a1ca777cd93c846948f054b37dd7cd7a2a708f0f8727d4237e2592"
         type_declarations: |
           declare module '@1flowbase/rich-text' {
-            import type { ComponentType, HTMLAttributes } from 'react';
-            export interface MarkdownEditorProps { readonly ariaLabel?: string; readonly className?: string; readonly height?: number | string; readonly placeholder?: string; readonly value: string; readonly onChange: (value: string) => void; }
-            export interface MarkdownPreviewProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> { readonly value: string; }
-            export const MarkdownEditor: ComponentType<MarkdownEditorProps>;
-            export const MarkdownPreview: ComponentType<MarkdownPreviewProps>;
+            import type { ComponentType } from 'react';
+            export interface RichTextApiRequest { readonly body?: unknown; }
+            export interface RichTextApi { post<TResponse = unknown>(path: string, request?: RichTextApiRequest): Promise<TResponse>; }
+            export type VditorEditorMode = 'ir' | 'wysiwyg' | 'sv';
+            export type VditorPreviewMode = 'both' | 'editor';
+            export type VditorTheme = 'classic' | 'dark';
+            export interface VditorEditorHandle { getHTML(): string; getValue(): string; insertValue(value: string): void; focus(): void; blur(): void; setPreviewMode(mode: VditorPreviewMode): void; }
+            export interface VditorEditorProps { readonly api?: RichTextApi; readonly ariaLabel?: string; readonly className?: string; readonly height?: number | string; readonly mode?: VditorEditorMode; readonly onChange: (value: string) => void; readonly onReady?: (editor: VditorEditorHandle | null) => void; readonly outline?: boolean; readonly placeholder?: string; readonly previewMode?: VditorPreviewMode; readonly theme?: VditorTheme; readonly value: string; }
+            export const VditorEditor: ComponentType<VditorEditorProps>;
           }
         components:
-          - component_code: markdown_editor
-            export_name: MarkdownEditor
-            description: "Controlled same-origin Vditor Markdown editor for a block ShadowRoot."
+          - component_code: vditor_editor
+            export_name: VditorEditor
+            description: "Unified Vditor editor with edit modes, split preview, outline and governed file uploads."
             props:
               - name: value
                 type: string
@@ -356,24 +360,20 @@ block_contributions:
                 type: "(value: string) => void"
                 required: true
                 description: "Receives Markdown changes."
-            limitations: ["External CDN configuration and raw Vditor constructor access are not exposed."]
+              - name: api
+                type: RichTextApi
+                description: "BlockContext api capability used for governed uploads to the default file table."
+              - name: mode
+                type: VditorEditorMode
+                description: "Initial IR, WYSIWYG or source editing mode."
+              - name: previewMode
+                type: VditorPreviewMode
+                description: "Initial split preview or editor-only layout."
+            limitations: ["Raw Vditor construction, arbitrary CDN or upload URLs, and browser cache ownership are not exposed."]
             examples:
-              - title: "Markdown field"
-                code: "<MarkdownEditor value={markdown} onChange={setMarkdown} />"
-            insert_snippet: "<MarkdownEditor value={markdown} onChange={setMarkdown} />"
-          - component_code: markdown_preview
-            export_name: MarkdownPreview
-            description: "Controlled Markdown preview scoped to the block ShadowRoot."
-            props:
-              - name: value
-                type: string
-                required: true
-                description: "Markdown source to render."
-            limitations: ["External resources and arbitrary HTML execution are not exposed."]
-            examples:
-              - title: "Markdown preview"
-                code: "<MarkdownPreview value={markdown} />"
-            insert_snippet: "<MarkdownPreview value={markdown} />"
+              - title: "Full Vditor field"
+                code: "<VditorEditor api={ctx.api} value={markdown} onChange={setMarkdown} />"
+            insert_snippet: "<VditorEditor api={ctx.api} value={markdown} onChange={setMarkdown} />"
     context_contract:
       primitives: [text, image, link, button, rich_text, data_record]
       input_schema:

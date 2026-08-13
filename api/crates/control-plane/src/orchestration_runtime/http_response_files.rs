@@ -61,7 +61,7 @@ where
         )
         .upload(UploadFileCommand {
             actor: self.actor.clone(),
-            file_table_id: file_table.id,
+            target: crate::file_management::FileUploadTarget::Table(file_table.id),
             original_filename: input.filename.to_string(),
             content_type: Some(input.content_type.to_string()),
             bytes: input.bytes.to_vec(),

@@ -377,6 +377,12 @@ async fn openapi_contains_file_management_routes() {
         "binary"
     );
     assert_eq!(
+        paths["/api/console/files/upload"]["post"]["requestBody"]["content"]["multipart/form-data"]
+            ["schema"]["required"],
+        serde_json::json!(["file"]),
+        "the console upload contract must resolve the default file table when file_table_id is omitted"
+    );
+    assert_eq!(
         paths["/api/console/files/{file_table_id}/records/{record_id}/content"]["get"]["responses"]
             ["200"]["content"]["application/octet-stream"]["schema"]["format"],
         "binary"

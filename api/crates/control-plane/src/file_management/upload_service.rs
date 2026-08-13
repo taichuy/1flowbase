@@ -9,13 +9,19 @@ use crate::{
 
 pub struct UploadFileCommand {
     pub actor: domain::ActorContext,
-    pub file_table_id: Uuid,
+    pub target: FileUploadTarget,
     pub original_filename: String,
     pub content_type: Option<String>,
     pub bytes: Vec<u8>,
 }
 
+pub enum FileUploadTarget {
+    Default,
+    Table(Uuid),
+}
+
 pub struct UploadedFileView {
+    pub file_table_id: Uuid,
     pub record: serde_json::Value,
     pub storage_id: Uuid,
 }
@@ -43,11 +49,20 @@ where
     }
 
     pub async fn upload(&self, command: UploadFileCommand) -> Result<UploadedFileView> {
-        let file_table = self
-            .repository
-            .get_file_table(command.file_table_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("file_table"))?;
+        let file_table = match command.target {
+            FileUploadTarget::Default => self
+                .repository
+                .list_visible_file_tables(command.actor.current_workspace_id)
+                .await?
+                .into_iter()
+                .find(|table| table.is_default && table.status == "active")
+                .ok_or(ControlPlaneError::NotFound("default_file_table"))?,
+            FileUploadTarget::Table(file_table_id) => self
+                .repository
+                .get_file_table(file_table_id)
+                .await?
+                .ok_or(ControlPlaneError::NotFound("file_table"))?,
+        };
         let storage = self
             .repository
             .get_file_storage(file_table.bound_storage_id)
@@ -141,6 +156,7 @@ where
             .await?;
 
         Ok(UploadedFileView {
+            file_table_id: file_table.id,
             record,
             storage_id: storage.id,
         })

@@ -2,7 +2,7 @@ import { Button, ConfigProvider, Select } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { EChart } from '@1flowbase/charts';
 import { Surface } from '@1flowbase/native-components';
-import { MarkdownEditor, MarkdownPreview } from '@1flowbase/rich-text';
+import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import tailwindCss from '@1flowbase/tailwindcss-catalog/styles.css?inline';
@@ -196,7 +196,13 @@ function SecondBlock({ ctx }: { ctx: BlockContext }) {
   );
 }
 
-function PublicModulesBlock({ props }: { props: FixtureBlockProps }) {
+function PublicModulesBlock({
+  props,
+  ctx
+}: {
+  props: FixtureBlockProps;
+  ctx: BlockContext;
+}) {
   const [markdown, setMarkdown] = useState(`# ${props.label}`);
   return (
     <Surface
@@ -216,13 +222,13 @@ function PublicModulesBlock({ props }: { props: FixtureBlockProps }) {
         }}
         style={{ height: 140 }}
       />
-      <MarkdownEditor
+      <VditorEditor
+        api={ctx.api}
         ariaLabel={`editor-${props.label}`}
-        height={180}
+        height={260}
         value={markdown}
         onChange={setMarkdown}
       />
-      <MarkdownPreview aria-label={`preview-${props.label}`} value={markdown} />
     </Surface>
   );
 }
@@ -245,8 +251,15 @@ const publicModuleAssets = [
 
 const tailwindModuleAsset = fixtureModuleStyle('tailwindcss', 'e', tailwindCss);
 
-const RICH_TEXT_BROWSER_ASSET_SHA256 =
-  '2b38c019e575e6e580b7955eaf37053bc7ac789fe6de71d492036e22f8993d56';
+const richTextModule = officialBrowserAssets.modules.find(
+  (module) => module.module_source === '@1flowbase/rich-text'
+);
+const richTextBrowserAsset = richTextModule?.assets.find(
+  (asset) => asset.role === 'browser_module'
+);
+if (!richTextModule || !richTextBrowserAsset)
+  throw new Error('Official rich text browser asset is unavailable.');
+const RICH_TEXT_BROWSER_ASSET_SHA256 = richTextBrowserAsset.sha256;
 const iconsModule = officialBrowserAssets.modules.find(
   (module) => module.module_source === '@ant-design/icons'
 );
@@ -349,10 +362,12 @@ function CatalogIconsProbe() {
 }
 
 function CatalogRichTextProbe() {
-  const [Preview, setPreview] = useState<ComponentType<{
+  const [Editor, setEditor] = useState<ComponentType<{
     value: string;
-    'aria-label': string;
+    onChange(value: string): void;
+    ariaLabel: string;
   }> | null>(null);
+  const [value, setValue] = useState('# Catalog ready');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -370,7 +385,7 @@ function CatalogRichTextProbe() {
           module_source: '@1flowbase/rich-text',
           module_version: '1.0.0',
           binding: 'fetched',
-          exports: ['MarkdownEditor', 'MarkdownPreview'],
+          exports: ['VditorEditor'],
           assets: [
             {
               role: 'browser_module',
@@ -393,15 +408,16 @@ function CatalogRichTextProbe() {
     void registry.load('@1flowbase/rich-text').then(
       (module) => {
         if (disposed) return;
-        if (typeof module.MarkdownPreview !== 'function') {
-          setError('MarkdownPreview export is unavailable');
+        if (typeof module.VditorEditor !== 'function') {
+          setError('VditorEditor export is unavailable');
           return;
         }
-        setPreview(
+        setEditor(
           () =>
-            module.MarkdownPreview as ComponentType<{
+            module.VditorEditor as ComponentType<{
               value: string;
-              'aria-label': string;
+              onChange(value: string): void;
+              ariaLabel: string;
             }>
         );
       },
@@ -423,12 +439,16 @@ function CatalogRichTextProbe() {
       </div>
     );
   }
-  if (!Preview) {
+  if (!Editor) {
     return <div data-testid="catalog-rich-text-probe" data-status="loading" />;
   }
   return (
     <div data-testid="catalog-rich-text-probe" data-status="ready">
-      <Preview aria-label="catalog-rich-text-preview" value="# Catalog ready" />
+      <Editor
+        ariaLabel="catalog-rich-text-editor"
+        value={value}
+        onChange={setValue}
+      />
     </div>
   );
 }
