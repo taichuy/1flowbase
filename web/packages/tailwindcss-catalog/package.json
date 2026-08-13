@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "generate:stylesheet-contract": "node scripts/generate-stylesheet-contract.mjs",
     "lint": "eslint src --ext .ts",
     "test": "vitest run"
   }

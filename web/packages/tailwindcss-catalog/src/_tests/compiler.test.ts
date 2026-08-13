@@ -1,10 +1,16 @@
 import { describe, expect, test } from 'vitest';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import {
   compileTailwindUtilities,
   extractStaticTailwindCandidates
 } from '../compiler';
+import {
+  TAILWIND_STYLESHEET_SHA256,
+  TAILWIND_THEME_CSS,
+  TAILWIND_UTILITIES_CSS
+} from '../stylesheet-contract';
 
 describe('Native React Tailwind compiler contract', () => {
   const stylesheets = {
@@ -23,6 +29,16 @@ describe('Native React Tailwind compiler contract', () => {
       'utf8'
     )
   };
+
+  test('AC-001 freezes the same deterministic stylesheet contract in every runtime', () => {
+    expect(TAILWIND_THEME_CSS).toBe(stylesheets.themeCss);
+    expect(TAILWIND_UTILITIES_CSS).toBe(stylesheets.utilitiesCss);
+    expect(TAILWIND_STYLESHEET_SHA256).toBe(
+      createHash('sha256')
+        .update(`${stylesheets.themeCss}\n${stylesheets.utilitiesCss}`)
+        .digest('hex')
+    );
+  });
 
   test('AC-001 compiles standard static variants and arbitrary values without a private inventory', async () => {
     const source = [
@@ -92,7 +108,7 @@ describe('Native React Tailwind compiler contract', () => {
     expect(first.css).not.toContain('.bg-red-500');
     expect(first.css).not.toContain('.custom-class');
     expect(first.css).not.toMatch(
-      /(?:^|})\s*(?:\*|button|input|h[1-6])(?:,|{)/u
+      /(?:^|\})\s*(?:\*|button|input|h[1-6])(?:,|\{)/u
     );
   });
 

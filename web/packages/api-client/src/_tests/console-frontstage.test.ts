@@ -74,9 +74,8 @@ describe('console-frontstage client', () => {
       executable_state: 'legacy'
     } satisfies ConsoleFrontstageBlockCode;
 
-    expect(blockCode.source_sha256).toBe(
-      '56332e0a55734bc2b73df56a2df8635ed5c5b24b6d7a456b41de7cab9a2f3814'
-    );
+    expect(blockCode.executable_state).toBe('legacy');
+    expect(blockCode.source_sha256).toBeNull();
   });
 
   test('D2-AC-001 exposes the canonical registered React module identity', () => {

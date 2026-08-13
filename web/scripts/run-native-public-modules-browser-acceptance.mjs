@@ -136,7 +136,9 @@ async function verifyFixture(browserInstance, fixture) {
             .join('\n');
           return {
             hasPreflight:
-              /@layer base|(?:^|})\s*(?:button|input|h[1-6])(?:,|{)/u.test(css),
+              /@layer base|(?:^|\})\s*(?:button|input|h[1-6])(?:,|\{)/u.test(
+                css
+              ),
             hasAntSelector: /\.ant-/u.test(css),
             hasArbitraryGrid: css.includes('180px 1fr'),
             hasResponsiveVariant: css.includes('@media'),

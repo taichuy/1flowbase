@@ -1,6 +1,9 @@
 import { compile } from 'tailwindcss';
-import themeCss from 'tailwindcss/theme.css?raw';
-import utilitiesCss from 'tailwindcss/utilities.css?raw';
+
+import {
+  TAILWIND_THEME_CSS,
+  TAILWIND_UTILITIES_CSS
+} from './stylesheet-contract';
 
 export interface TailwindCompilation {
   css: string;
@@ -28,7 +31,10 @@ export async function compileTailwindUtilities(
   stylesheets: {
     themeCss: string;
     utilitiesCss: string;
-  } = { themeCss, utilitiesCss }
+  } = {
+    themeCss: TAILWIND_THEME_CSS,
+    utilitiesCss: TAILWIND_UTILITIES_CSS
+  }
 ): Promise<TailwindCompilation> {
   const compiler = await compile(
     `${stylesheets.themeCss}\n${stylesheets.utilitiesCss}`

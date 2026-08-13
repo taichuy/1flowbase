@@ -3,10 +3,39 @@ const test = require('node:test');
 
 const {
   collectTailwindBoundaryViolations,
+  readLegacyBoundaryUtilityClassNames,
   readStaticClassNameTokens
 } = require('../core.js');
 
 const utilities = new Set(['flex', 'gap-4', 'p-4']);
+
+test('AC-006 reads the legacy snapshot only for host boundary detection', () => {
+  const utilityClassNames = readLegacyBoundaryUtilityClassNames(
+    require('node:path').resolve(__dirname, '..', '..', '..', '..')
+  );
+  assert.equal(utilityClassNames.has('grid'), true);
+  assert.equal(utilityClassNames.has('grid-cols-[200px_1fr]'), false);
+});
+
+test('AC-006 allows only the source-driven compiler owner outside UI authoring', () => {
+  const files = [
+    {
+      path: 'web/app/src/shared/code-block/native-react-executable-style.ts',
+      content: "const importsTailwind = source.includes(\"import 'tailwindcss'\");"
+    },
+    {
+      path: 'web/app/src/features/demo/Demo.tsx',
+      content: "export const source = \"import 'tailwindcss'\";"
+    }
+  ];
+  assert.deepEqual(
+    collectTailwindBoundaryViolations(files, utilities).map(({ path, code }) => ({
+      path,
+      code
+    })),
+    [{ path: files[1].path, code: 'tailwind-owner-required' }]
+  );
+});
 
 test('AC-006 rejects host-global Tailwind and non-module @apply authoring', () => {
   const violations = collectTailwindBoundaryViolations(

@@ -417,9 +417,9 @@ describe('FrontstageJsxStudioDrawer', () => {
     );
   });
 
-  test('attributes Tailwind diagnostics to the active code tab and block', () => {
+  test('accepts full Tailwind and custom classes without private inventory diagnostics', () => {
     const activeSource =
-      'import \'tailwindcss\'; export default function ActiveBlock() { return <div className="unknown-layout" />; }';
+      'import \'tailwindcss\'; export default function ActiveBlock() { return <div className="grid grid-cols-[200px_1fr] bg-[#00ab73] md:grid-cols-2 custom-layout" />; }';
     const tailwindCatalogEntry: NormalizedFrontstageBlockCatalogEntry = {
       ...catalogEntry,
       codeModules: [
@@ -483,7 +483,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         tabId: 'active-tab',
         blockId: 'active-block'
       },
-      [expect.objectContaining({ code: 'transform_failed' })]
+      []
     );
   });
 
@@ -1103,10 +1103,9 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(saveActive).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: '应用迁移' }));
     fireEvent.click(
-      within(screen.getByRole('dialog', { name: '应用旧版迁移？' })).getByRole(
-        'button',
-        { name: /^确\s*定$/ }
-      )
+      within(
+        await screen.findByRole('dialog', { name: '应用旧版迁移？' })
+      ).getByRole('button', { name: /^确\s*定$/ })
     );
     await waitFor(() => expect(saveActive).toHaveBeenCalledWith(payload));
   });

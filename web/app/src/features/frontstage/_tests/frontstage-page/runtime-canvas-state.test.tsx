@@ -613,7 +613,7 @@ describe('FrontStagePage - runtime canvas state', () => {
             })
           ]
         }),
-        externalNpm: expect.any(Object)
+        externalNpm: undefined
       })
     );
   });

@@ -6,15 +6,17 @@ const SCANNED_ROOTS = [
   'web/packages/ui',
 ];
 
-function readOfficialUtilityClassNames(repoRoot) {
+function readLegacyBoundaryUtilityClassNames(repoRoot) {
   const inventoryPath = path.join(
     repoRoot,
     'web/packages/tailwindcss-catalog/src/inventory.ts'
   );
   const source = fs.readFileSync(inventoryPath, 'utf8');
-  const match = source.match(/const INVENTORY_SOURCE = `([\s\S]*?)`;/u);
+  const match = source.match(
+    /const LEGACY_INVENTORY_SOURCE = `([\s\S]*?)`;/u
+  );
   if (!match) {
-    throw new Error('Tailwind inventory source is unavailable.');
+    throw new Error('Legacy Tailwind boundary inventory source is unavailable.');
   }
   return new Set(match[1].trim().split(/\s+/u));
 }
@@ -42,6 +44,9 @@ function collectTailwindBoundaryViolations(
     const isLowCodeDiagnostic = normalizedPath.endsWith(
       '/shared/code-block/tailwind-utility-diagnostics.ts'
     );
+    const isSourceDrivenCompiler = normalizedPath.endsWith(
+      '/shared/code-block/native-react-executable-style.ts'
+    );
     const isCssModule = normalizedPath.endsWith('.module.css');
 
     if (
@@ -62,7 +67,8 @@ function collectTailwindBoundaryViolations(
       normalizedPath.startsWith('web/app/src/') &&
       !isTest &&
       (!isStyleBoundaryFixture || isCssModule) &&
-      !isLowCodeDiagnostic
+      !isLowCodeDiagnostic &&
+      !isSourceDrivenCompiler
     ) {
       if (isCssModule) {
         if (/@import\s+['"]tailwindcss(?:\/[^'"]*)?['"]/u.test(source)) {
@@ -138,7 +144,7 @@ async function main(_argv = [], deps = {}) {
   const repoRoot = deps.repoRoot || path.resolve(__dirname, '..', '..', '..');
   const files = deps.files || collectRepositorySourceFiles(repoRoot);
   const utilityClassNames =
-    deps.utilityClassNames || readOfficialUtilityClassNames(repoRoot);
+    deps.utilityClassNames || readLegacyBoundaryUtilityClassNames(repoRoot);
   const styleBoundaryImpactFiles =
     deps.styleBoundaryImpactFiles || readStyleBoundaryImpactFiles(repoRoot);
   const violations = collectTailwindBoundaryViolations(
@@ -162,7 +168,7 @@ async function main(_argv = [], deps = {}) {
 module.exports = {
   collectTailwindBoundaryViolations,
   main,
-  readOfficialUtilityClassNames,
+  readLegacyBoundaryUtilityClassNames,
   readStyleBoundaryImpactFiles,
   readStaticClassNameTokens
 };

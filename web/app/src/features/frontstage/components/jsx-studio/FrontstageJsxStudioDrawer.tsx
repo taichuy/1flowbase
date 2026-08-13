@@ -204,6 +204,8 @@ export function FrontstageJsxStudioDrawer({
     if (!executablePreview || !previewMatchesDraft) return;
     const kind = executablePreview.kind;
     Modal.confirm({
+      okText: i18nText('frontstage', 'auto.confirm'),
+      cancelText: i18nText('frontstage', 'auto.cancel'),
       title: i18nText(
         'frontstage',
         kind === 'migration'
@@ -397,7 +399,7 @@ export function FrontstageJsxStudioDrawer({
                       'auto.dependency_upgrade_description'
                     ))
             }
-            message={i18nText(
+            title={i18nText(
               'frontstage',
               executableState === 'legacy'
                 ? 'auto.legacy_executable_state'
