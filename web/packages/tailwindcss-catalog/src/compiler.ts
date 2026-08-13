@@ -3,7 +3,7 @@ import { compile } from 'tailwindcss';
 import {
   TAILWIND_THEME_CSS,
   TAILWIND_UTILITIES_CSS
-} from './stylesheet-contract';
+} from './stylesheet-contract.ts';
 
 export interface TailwindCompilation {
   css: string;
@@ -49,6 +49,12 @@ export async function compileTailwindUtilities(
   }
 
   return { css: previousCss, acceptedCandidates };
+}
+
+export function sourceImportsTailwind(source: string): boolean {
+  return /(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"]tailwindcss['"]/u.test(
+    source
+  );
 }
 
 function staticStringValues(source: string): string[] {

@@ -10,3 +10,5 @@ const tailwindcss = Object.freeze({
 } as const);
 
 export default tailwindcss;
+
+export * from './executable-contract.ts';

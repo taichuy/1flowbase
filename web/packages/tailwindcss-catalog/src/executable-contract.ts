@@ -1,0 +1,335 @@
+import { transform } from 'sucrase';
+
+import {
+  compileTailwindUtilities,
+  extractStaticTailwindCandidates,
+  sourceImportsTailwind
+} from './compiler.ts';
+import { TAILWIND_STYLESHEET_SHA256 } from './stylesheet-contract.ts';
+
+export const TAILWIND_4_3_3_COMPILER_IDENTITY = Object.freeze({
+  name: '@1flowbase/tailwindcss-catalog',
+  contract: 'source-driven-utilities-v1',
+  tailwind_version: '4.3.3'
+});
+
+export const TAILWIND_4_3_3_TOOLCHAIN_LOCK = Object.freeze({
+  package: 'tailwindcss',
+  version: '4.3.3',
+  mode: 'theme-and-utilities'
+});
+
+export const TAILWIND_4_3_3_STYLESHEET_IDENTITY = Object.freeze({
+  package: 'tailwindcss',
+  version: '4.3.3',
+  mode: 'theme-and-utilities',
+  sha256: TAILWIND_STYLESHEET_SHA256
+});
+
+export const TAILWIND_4_3_3_ARTIFACT_IDENTITY = Object.freeze({
+  name: '@1flowbase/tailwindcss-catalog/compiler',
+  version: '4.3.3',
+  contract: 'executable-compiler-v1',
+  stylesheet_sha256: TAILWIND_STYLESHEET_SHA256,
+  tsx_validation: 'sucrase@3.35.1/allowed-imports-v1'
+});
+
+// Digest of the canonical TAILWIND_4_3_3_ARTIFACT_IDENTITY JSON value.
+export const TAILWIND_4_3_3_ARTIFACT_SHA256 =
+  'e0e26e17bafedaf1ee19b57b5a7037d0f5031e8389d0b9e03305989154316f0e';
+
+export interface TailwindExecutableCompilerRequest {
+  source_code: string;
+  compiler_identity: Record<string, string>;
+  toolchain_lock: Record<string, string>;
+}
+
+export interface TailwindValidationDiagnostic {
+  phase: 'validation';
+  code:
+    | 'invalid_request'
+    | 'unknown_compiler_identity'
+    | 'unknown_toolchain_lock'
+    | 'tsx_transform_failed'
+    | 'illegal_import'
+    | 'compiler_failed';
+  path: string;
+  message: string;
+  source_location?: { line: number; column: number };
+}
+
+interface CanonicalExecutableIdentities {
+  compiler_identity: typeof TAILWIND_4_3_3_COMPILER_IDENTITY;
+  toolchain_lock: typeof TAILWIND_4_3_3_TOOLCHAIN_LOCK;
+  stylesheet_identity: typeof TAILWIND_4_3_3_STYLESHEET_IDENTITY;
+  artifact_identity: typeof TAILWIND_4_3_3_ARTIFACT_IDENTITY;
+  artifact_sha256: string;
+}
+
+export type TailwindExecutableCompilerResult =
+  | ({
+      ok: true;
+      validation_diagnostics: [];
+      generated_css: string;
+      generated_css_sha256: string;
+      source_sha256: string;
+    } & CanonicalExecutableIdentities)
+  | {
+      ok: false;
+      error: { code: TailwindValidationDiagnostic['code']; message: string };
+      validation_diagnostics: TailwindValidationDiagnostic[];
+    };
+
+interface ExecutableCompilerVersion extends CanonicalExecutableIdentities {
+  compile(sourceCode: string): Promise<{
+    generatedCss: string;
+    diagnostics: TailwindValidationDiagnostic[];
+  }>;
+}
+
+const allowedImports = new Set([
+  'react',
+  'antd',
+  '@1flowbase/ui',
+  'tailwindcss'
+]);
+
+const tailwind433: ExecutableCompilerVersion = Object.freeze({
+  compiler_identity: TAILWIND_4_3_3_COMPILER_IDENTITY,
+  toolchain_lock: TAILWIND_4_3_3_TOOLCHAIN_LOCK,
+  stylesheet_identity: TAILWIND_4_3_3_STYLESHEET_IDENTITY,
+  artifact_identity: TAILWIND_4_3_3_ARTIFACT_IDENTITY,
+  artifact_sha256: TAILWIND_4_3_3_ARTIFACT_SHA256,
+  async compile(sourceCode: string) {
+    const diagnostics = validateTsxSource(sourceCode);
+    if (diagnostics.length > 0) return { generatedCss: '', diagnostics };
+    const generatedCss = sourceImportsTailwind(sourceCode)
+      ? (
+          await compileTailwindUtilities(
+            extractStaticTailwindCandidates(sourceCode)
+          )
+        ).css
+      : '';
+    return { generatedCss, diagnostics: [] };
+  }
+});
+
+const compilerVersions: readonly ExecutableCompilerVersion[] = Object.freeze([
+  tailwind433
+]);
+
+export async function compileTailwindExecutableArtifact(
+  request: unknown
+): Promise<TailwindExecutableCompilerResult> {
+  const requestDiagnostic = validateRequest(request);
+  if (requestDiagnostic) return failure([requestDiagnostic]);
+
+  const typedRequest = request as TailwindExecutableCompilerRequest;
+  const version = compilerVersions.find((candidate) =>
+    exactRecord(candidate.toolchain_lock, typedRequest.toolchain_lock)
+  );
+  if (!version) {
+    return failure([
+      diagnostic(
+        'unknown_toolchain_lock',
+        'toolchain_lock',
+        'No executable Tailwind compiler is registered for the exact toolchain lock.'
+      )
+    ]);
+  }
+  if (!exactRecord(version.compiler_identity, typedRequest.compiler_identity)) {
+    return failure([
+      diagnostic(
+        'unknown_compiler_identity',
+        'compiler_identity',
+        'The compiler identity does not match the selected toolchain lock.'
+      )
+    ]);
+  }
+
+  try {
+    const compiled = await version.compile(typedRequest.source_code);
+    if (compiled.diagnostics.length > 0) return failure(compiled.diagnostics);
+    return {
+      ok: true,
+      validation_diagnostics: [],
+      generated_css: compiled.generatedCss,
+      generated_css_sha256: await sha256Text(compiled.generatedCss),
+      source_sha256: await sha256Text(typedRequest.source_code),
+      compiler_identity: version.compiler_identity,
+      toolchain_lock: version.toolchain_lock,
+      stylesheet_identity: version.stylesheet_identity,
+      artifact_identity: version.artifact_identity,
+      artifact_sha256: version.artifact_sha256
+    };
+  } catch {
+    return failure([
+      diagnostic(
+        'compiler_failed',
+        'compiler',
+        'Executable Tailwind compiler failed.'
+      )
+    ]);
+  }
+}
+
+function validateRequest(
+  request: unknown
+): TailwindValidationDiagnostic | undefined {
+  if (
+    typeof request !== 'object' ||
+    request === null ||
+    Array.isArray(request)
+  ) {
+    return diagnostic(
+      'invalid_request',
+      'request',
+      'Compiler request must be a JSON object.'
+    );
+  }
+  const value = request as Record<string, unknown>;
+  if (typeof value.source_code !== 'string') {
+    return diagnostic(
+      'invalid_request',
+      'source_code',
+      'source_code must be a string.'
+    );
+  }
+  for (const field of ['compiler_identity', 'toolchain_lock'] as const) {
+    if (!isStringRecord(value[field])) {
+      return diagnostic(
+        'invalid_request',
+        field,
+        `${field} must be a non-empty string record.`
+      );
+    }
+  }
+  return undefined;
+}
+
+function validateTsxSource(source: string): TailwindValidationDiagnostic[] {
+  const imports = readStaticImports(source);
+  const illegalImport = imports.find(
+    (moduleSource) => !allowedImports.has(moduleSource)
+  );
+  if (illegalImport) {
+    return [
+      diagnostic(
+        'illegal_import',
+        'source_code.imports',
+        `Import '${illegalImport}' is not allowed by the executable compiler contract.`
+      )
+    ];
+  }
+  if (/\bimport\s*\(/u.test(source)) {
+    return [
+      diagnostic(
+        'illegal_import',
+        'source_code.imports',
+        'Dynamic import is not allowed by the executable compiler contract.'
+      )
+    ];
+  }
+  try {
+    transform(source, {
+      transforms: ['typescript', 'jsx'],
+      jsxRuntime: 'automatic',
+      jsxImportSource: 'react',
+      production: true,
+      filePath: 'native-react-block.tsx'
+    });
+    return [];
+  } catch (error) {
+    const location = readSourceLocation(error);
+    return [
+      {
+        ...diagnostic(
+          'tsx_transform_failed',
+          'source_code',
+          `TSX validation failed: ${readErrorMessage(error)}`
+        ),
+        ...(location ? { source_location: location } : {})
+      }
+    ];
+  }
+}
+
+function readStaticImports(source: string): string[] {
+  const imports: string[] = [];
+  const pattern =
+    /(?:\bimport\s+(?:[^'";]+?\s+from\s+)?|\bexport\s+[^'";]+?\s+from\s+)['"]([^'"]+)['"]/gu;
+  for (const match of source.matchAll(pattern)) imports.push(match[1]);
+  return imports;
+}
+
+function readSourceLocation(
+  error: unknown
+): { line: number; column: number } | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const loc = (error as { loc?: unknown }).loc;
+  if (typeof loc !== 'object' || loc === null) return undefined;
+  const line = (loc as { line?: unknown }).line;
+  const column = (loc as { column?: unknown }).column;
+  return typeof line === 'number' && typeof column === 'number'
+    ? { line, column: column + 1 }
+    : undefined;
+}
+
+function readErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : 'Unknown transform error.';
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.values(value).every((entry) => typeof entry === 'string')
+  );
+}
+
+function exactRecord(
+  expected: Record<string, string>,
+  actual: Record<string, string>
+): boolean {
+  const expectedKeys = Object.keys(expected).sort();
+  const actualKeys = Object.keys(actual).sort();
+  return (
+    expectedKeys.length === actualKeys.length &&
+    expectedKeys.every(
+      (key, index) => key === actualKeys[index] && expected[key] === actual[key]
+    )
+  );
+}
+
+function diagnostic(
+  code: TailwindValidationDiagnostic['code'],
+  path: string,
+  message: string
+): TailwindValidationDiagnostic {
+  return { phase: 'validation', code, path, message };
+}
+
+function failure(
+  diagnostics: TailwindValidationDiagnostic[]
+): Extract<TailwindExecutableCompilerResult, { ok: false }> {
+  const first = diagnostics[0];
+  return {
+    ok: false,
+    error: { code: first.code, message: first.message },
+    validation_diagnostics: diagnostics
+  };
+}
+
+async function sha256Text(value: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value)
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+}

@@ -1,4 +1,10 @@
 declare module 'tailwindcss' {
+  interface TailwindCompiler {
+    build(candidates: string[]): string;
+  }
+
+  export function compile(css: string): Promise<TailwindCompiler>;
+
   const tailwindcss: Readonly<{
     name: 'tailwindcss';
     version: '4.3.3';

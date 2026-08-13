@@ -9,6 +9,23 @@
     "contract": "source-driven-utilities-v1",
     "tailwind_version": "4.3.3"
   },
+  "executable_artifact": {
+    "entry": "bin/compiler-4.3.3.mjs",
+    "identity_sha256": "e0e26e17bafedaf1ee19b57b5a7037d0f5031e8389d0b9e03305989154316f0e",
+    "identity": {
+      "name": "@1flowbase/tailwindcss-catalog/compiler",
+      "version": "4.3.3",
+      "contract": "executable-compiler-v1",
+      "stylesheet_sha256": "14dcde35d39129464213fc7736ea90d719ecee5953c5cf836f6c89baa9a3fd10",
+      "tsx_validation": "sucrase@3.35.1/allowed-imports-v1"
+    }
+  },
+  "stylesheet_identity": {
+    "package": "tailwindcss",
+    "version": "4.3.3",
+    "mode": "theme-and-utilities",
+    "sha256": "14dcde35d39129464213fc7736ea90d719ecee5953c5cf836f6c89baa9a3fd10"
+  },
   "toolchain_lock": {
     "package": "tailwindcss",
     "version": "4.3.3",
