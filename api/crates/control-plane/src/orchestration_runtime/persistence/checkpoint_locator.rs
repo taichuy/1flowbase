@@ -116,7 +116,6 @@ pub(super) const RECOVERY_CONTEXT_MARKER: &str = "__runtime_recovery_context";
 pub(super) struct SparseCheckpointContent {
     pub(super) content: Value,
     pub(super) parent_context_version_id: Option<Uuid>,
-    pub(super) sequence: i64,
     pub(super) variable_snapshot: Value,
 }
 
@@ -148,7 +147,6 @@ pub(super) fn compact_checkpoint_content(
     Ok(SparseCheckpointContent {
         content,
         parent_context_version_id,
-        sequence,
         variable_snapshot: json!({
             RECOVERY_CONTEXT_MARKER: {
                 "parent_context_version_id": parent_context_version_id,

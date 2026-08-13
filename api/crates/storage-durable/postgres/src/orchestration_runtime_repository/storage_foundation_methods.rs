@@ -35,6 +35,154 @@ fn write_canonical_runtime_json(
 }
 
 impl PgControlPlaneStore {
+    async fn append_provider_invocation_context(
+        &self,
+        input: &AppendProviderInvocationContextInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        let mut tx = self.pool().begin().await?;
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(input.flow_run_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        if let Some(row) = sqlx::query(
+            r#"
+            select p.id, p.scope_id, p.application_id, p.flow_run_id,
+                   p.previous_projection_id, p.context_sequence, p.transition_kind,
+                   p.transition_actor, p.declared_compaction_provenance,
+                   p.actual_content_id, p.created_at
+              from runtime_invocation_context_bindings b
+              join runtime_context_projections p on p.id = b.context_version_id
+             where b.invocation_span_id = $1
+            "#,
+        )
+        .bind(input.invocation_span_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            tx.commit().await?;
+            return map_context_version_record(row);
+        }
+        let previous = sqlx::query(
+            r#"
+            select p.id, c.content
+              from runtime_invocation_context_bindings b
+              join runtime_context_projections p on p.id = b.context_version_id
+              join runtime_canonical_contents c on c.id = p.actual_content_id
+             where b.flow_run_id = $1
+             order by b.created_at desc, b.invocation_span_id desc
+             limit 1
+            "#,
+        )
+        .bind(input.flow_run_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let parent_context_version_id: Option<Uuid> = previous.as_ref().map(|row| row.get("id"));
+        let explicit = input
+            .context_epoch
+            .get("declaration")
+            .and_then(Value::as_str)
+            == Some("explicit");
+        let observed_replacement = !explicit
+            && previous.as_ref().is_some_and(|row| {
+                let previous: Value = row.get("content");
+                let old = previous.get("provider_messages").and_then(Value::as_array);
+                let new = input
+                    .actual_context
+                    .get("provider_messages")
+                    .and_then(Value::as_array);
+                matches!((old, new), (Some(old), Some(new)) if !new.starts_with(old))
+            });
+        let transition_kind = if explicit {
+            domain::ContextTransitionKind::DeclaredCompaction
+        } else if observed_replacement {
+            domain::ContextTransitionKind::ObservedReplacement
+        } else if parent_context_version_id.is_some() {
+            domain::ContextTransitionKind::Append
+        } else {
+            domain::ContextTransitionKind::Initial
+        };
+        let transition_actor = if explicit {
+            domain::ContextTransitionActor::Client
+        } else {
+            domain::ContextTransitionActor::Host
+        };
+        let declared_provenance = explicit.then(|| input.context_epoch.clone());
+        let mut canonical = Vec::new();
+        write_canonical_runtime_json(&input.actual_context, &mut canonical)?;
+        let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
+        let content_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            insert into runtime_canonical_contents
+                (id, scope_id, application_id, content_hash, content, byte_size)
+            values ($1, $2, $3, $4, $5, $6)
+            on conflict (application_id, content_hash) do update
+                set content_hash = excluded.content_hash
+            returning id
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.scope_id)
+        .bind(input.application_id)
+        .bind(&content_hash)
+        .bind(&input.actual_context)
+        .bind(i64::try_from(canonical.len())?)
+        .fetch_one(&mut *tx)
+        .await?;
+        let sequence = sqlx::query_scalar::<_, i64>(
+            "select coalesce(max(context_sequence), -1) + 1 from runtime_context_projections where flow_run_id = $1",
+        )
+        .bind(input.flow_run_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let version_id = Uuid::now_v7();
+        let row = sqlx::query(
+            r#"
+            insert into runtime_context_projections (
+                id, flow_run_id, projection_kind, source_item_refs, model_input_ref,
+                model_input_hash, provider_continuation_metadata, previous_projection_id,
+                scope_id, application_id, context_sequence, transition_kind, transition_actor,
+                declared_compaction_provenance, actual_content_id
+            ) values (
+                $1, $2, 'context_version', '[]'::jsonb,
+                'runtime_canonical_content:' || $3::text, $4, '{}'::jsonb, $5,
+                $6, $7, $8, $9, $10, $11, $3
+            )
+            returning id, scope_id, application_id, flow_run_id, previous_projection_id,
+                      context_sequence, transition_kind, transition_actor,
+                      declared_compaction_provenance, actual_content_id, created_at
+            "#,
+        )
+        .bind(version_id)
+        .bind(input.flow_run_id)
+        .bind(content_id)
+        .bind(content_hash)
+        .bind(parent_context_version_id)
+        .bind(input.scope_id)
+        .bind(input.application_id)
+        .bind(sequence)
+        .bind(transition_kind.as_str())
+        .bind(transition_actor.as_str())
+        .bind(&declared_provenance)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            insert into runtime_invocation_context_bindings (
+                invocation_span_id, scope_id, application_id, flow_run_id, context_version_id
+            ) values ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(input.invocation_span_id)
+        .bind(input.scope_id)
+        .bind(input.application_id)
+        .bind(input.flow_run_id)
+        .bind(version_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        map_context_version_record(row)
+    }
+
     async fn put_canonical_runtime_content(
         &self,
         input: &PutCanonicalRuntimeContentInput,

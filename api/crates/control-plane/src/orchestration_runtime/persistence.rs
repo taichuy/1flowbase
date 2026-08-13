@@ -10,8 +10,9 @@ use crate::{
     capability_runtime::{host_tool_capability_id, mcp_tool_capability_id},
     ports::{
         AppendCapabilityInvocationInput, AppendContextProjectionInput,
-        AppendModelFailoverAttemptLedgerInput, AppendRunEventInput, AppendUsageLedgerInput,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CreateNodeRunInput,
+        AppendModelFailoverAttemptLedgerInput, AppendProviderInvocationContextInput,
+        AppendRunEventInput, AppendUsageLedgerInput, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalResult, CreateNodeRunInput,
         LinkUsageLedgerToModelFailoverAttemptInput, OrchestrationRuntimeRepository,
         PersistWaitingCallbackTaskInput, PersistWaitingKind, PersistWaitingStateInput,
         UpdateNodeRunInput,
@@ -93,7 +94,6 @@ pub(super) struct PersistedFlowDebugOutcome {
 struct PreparedRecoveryCheckpoint {
     context_content: Value,
     parent_context_version_id: Option<Uuid>,
-    context_sequence: i64,
     locator_payload: Value,
     variable_snapshot: Value,
 }
@@ -120,7 +120,6 @@ where
     Ok(PreparedRecoveryCheckpoint {
         context_content: compacted.content,
         parent_context_version_id: compacted.parent_context_version_id,
-        context_sequence: compacted.sequence,
         locator_payload: CheckpointLocatorPayload::from_snapshot(node_id, snapshot).into_json(),
         variable_snapshot: compacted.variable_snapshot,
     })
@@ -298,7 +297,6 @@ where
                     checkpoint_external_ref_payload: Some(json!({ "prompt": wait.prompt })),
                     context_content: recovery.context_content,
                     parent_context_version_id: recovery.parent_context_version_id,
-                    context_sequence: recovery.context_sequence,
                     context_transition_kind: domain::ContextTransitionKind::Append,
                     recovery_idempotency_key: format!("waiting_human:{}", waiting_node_run.id),
                     resume_claim_id,
@@ -392,7 +390,6 @@ where
                     checkpoint_external_ref_payload: external_ref_payload.clone(),
                     context_content: recovery.context_content,
                     parent_context_version_id: recovery.parent_context_version_id,
-                    context_sequence: recovery.context_sequence,
                     context_transition_kind: domain::ContextTransitionKind::Callback,
                     recovery_idempotency_key: format!("waiting_callback:{}", waiting_node_run.id),
                     resume_claim_id,

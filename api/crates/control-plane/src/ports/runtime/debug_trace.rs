@@ -152,6 +152,16 @@ pub struct BindInvocationContextInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct AppendProviderInvocationContextInput {
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub invocation_span_id: Uuid,
+    pub actual_context: serde_json::Value,
+    pub context_epoch: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
 pub struct AppendRecoveryHistoryInput {
     pub scope_id: Uuid,
     pub application_id: Uuid,
@@ -202,7 +212,6 @@ pub struct PersistWaitingStateInput {
     pub checkpoint_external_ref_payload: Option<serde_json::Value>,
     pub context_content: serde_json::Value,
     pub parent_context_version_id: Option<Uuid>,
-    pub context_sequence: i64,
     pub context_transition_kind: domain::ContextTransitionKind,
     pub recovery_idempotency_key: String,
     pub resume_claim_id: Option<Uuid>,

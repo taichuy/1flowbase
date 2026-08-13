@@ -126,6 +126,7 @@ string_enum!(ContextTransitionKind {
     Callback => "callback",
     Retry => "retry",
     DeclaredCompaction => "declared_compaction",
+    ObservedReplacement => "observed_replacement",
 });
 
 string_enum!(ContextTransitionActor {

@@ -85,6 +85,7 @@ fn parse_context_transition_kind(value: String) -> Result<domain::ContextTransit
         "callback" => Ok(domain::ContextTransitionKind::Callback),
         "retry" => Ok(domain::ContextTransitionKind::Retry),
         "declared_compaction" => Ok(domain::ContextTransitionKind::DeclaredCompaction),
+        "observed_replacement" => Ok(domain::ContextTransitionKind::ObservedReplacement),
         _ => Err(anyhow!("unknown context transition kind: {value}")),
     }
 }

@@ -125,6 +125,89 @@ async fn context_versions_reuse_projection_lineage_and_bind_runtime_span_invocat
 }
 
 #[tokio::test]
+async fn provider_invocation_context_tracks_explicit_and_observed_replacement_epochs() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = datetime!(2026-08-13 12:15:00 UTC);
+    let run = seed_flow_run(&store, &seeded, &compiled, started_at).await;
+    let first_span = store
+        .append_runtime_span(&AppendRuntimeSpanInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            parent_span_id: None,
+            kind: domain::RuntimeSpanKind::LlmTurn,
+            name: "epoch-1".into(),
+            status: domain::RuntimeSpanStatus::Succeeded,
+            capability_id: None,
+            input_ref: None,
+            output_ref: None,
+            error_payload: None,
+            metadata: json!({}),
+            started_at,
+            finished_at: Some(started_at),
+        })
+        .await
+        .unwrap();
+    let first = store
+        .append_provider_invocation_context(&AppendProviderInvocationContextInput {
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            flow_run_id: run.id,
+            invocation_span_id: first_span.id,
+            actual_context: json!({
+                "effective_system": ["fixed"],
+                "provider_messages": [{ "role": "user", "content": "old" }]
+            }),
+            context_epoch: json!({ "declaration": "unknown" }),
+        })
+        .await
+        .unwrap();
+    let second_span = store
+        .append_runtime_span(&AppendRuntimeSpanInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            parent_span_id: None,
+            kind: domain::RuntimeSpanKind::LlmTurn,
+            name: "epoch-2".into(),
+            status: domain::RuntimeSpanStatus::Succeeded,
+            capability_id: None,
+            input_ref: None,
+            output_ref: None,
+            error_payload: None,
+            metadata: json!({}),
+            started_at,
+            finished_at: Some(started_at),
+        })
+        .await
+        .unwrap();
+    let second = store
+        .append_provider_invocation_context(&AppendProviderInvocationContextInput {
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            flow_run_id: run.id,
+            invocation_span_id: second_span.id,
+            actual_context: json!({
+                "effective_system": ["fixed"],
+                "provider_messages": [{ "role": "user", "content": "summary" }]
+            }),
+            context_epoch: json!({ "declaration": "unknown" }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(second.parent_context_version_id, Some(first.id));
+    assert_eq!(
+        second.transition_kind,
+        ContextTransitionKind::ObservedReplacement
+    );
+    assert_eq!(second.transition_actor, ContextTransitionActor::Host);
+    assert!(second.declared_compaction_provenance.is_none());
+}
+
+#[tokio::test]
 async fn recovery_history_is_append_only_and_coordinates_do_not_embed_content() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -237,7 +320,6 @@ async fn persist_waiting_state_rolls_back_run_checkpoint_and_event_on_recovery_f
             checkpoint_external_ref_payload: None,
             context_content: json!({ "format": "runtime_snapshot_v1", "variable_pool": {} }),
             parent_context_version_id: Some(Uuid::now_v7()),
-            context_sequence: 1,
             context_transition_kind: ContextTransitionKind::Append,
             recovery_idempotency_key: "rollback-invalid-context".into(),
             resume_claim_id: None,

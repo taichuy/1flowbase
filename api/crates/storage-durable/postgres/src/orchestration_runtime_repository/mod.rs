@@ -20,9 +20,9 @@ use control_plane::{
         AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
         AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
         AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
-        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
-        AppendRuntimeItemInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
-        ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
+        AppendProviderInvocationContextInput, AppendRecoveryHistoryInput, AppendRunEventInput,
+        AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
+        AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
         BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
@@ -422,6 +422,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &BindInvocationContextInput,
     ) -> Result<domain::InvocationContextBindingRecord> {
         PgControlPlaneStore::bind_invocation_context(self, input).await
+    }
+
+    async fn append_provider_invocation_context(
+        &self,
+        input: &AppendProviderInvocationContextInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        PgControlPlaneStore::append_provider_invocation_context(self, input).await
     }
 
     async fn append_recovery_history(

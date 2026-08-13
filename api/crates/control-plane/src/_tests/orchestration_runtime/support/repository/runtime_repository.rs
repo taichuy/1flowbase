@@ -900,6 +900,115 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         })
     }
 
+    async fn append_provider_invocation_context(
+        &self,
+        input: &crate::ports::AppendProviderInvocationContextInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        if let Some(id) = inner
+            .invocation_context_versions_by_span
+            .get(&input.invocation_span_id)
+        {
+            return Ok(inner
+                .context_versions_by_id
+                .get(id)
+                .expect("invocation context version index must resolve")
+                .clone());
+        }
+        let parent_id = inner
+            .latest_invocation_context_version_by_run
+            .get(&input.flow_run_id)
+            .copied();
+        let previous_content = parent_id
+            .and_then(|id| inner.context_versions_by_id.get(&id))
+            .and_then(|version| {
+                inner
+                    .canonical_runtime_contents_by_id
+                    .get(&version.actual_content_id)
+            })
+            .map(|content| content.content.clone());
+        let explicit = input
+            .context_epoch
+            .get("declaration")
+            .and_then(Value::as_str)
+            == Some("explicit");
+        let observed_replacement = !explicit
+            && previous_content.as_ref().is_some_and(|previous| {
+                let old = previous.get("provider_messages").and_then(Value::as_array);
+                let new = input
+                    .actual_context
+                    .get("provider_messages")
+                    .and_then(Value::as_array);
+                matches!((old, new), (Some(old), Some(new)) if !new.starts_with(old))
+            });
+        let serialized = serde_json::to_string(&input.actual_context)?;
+        let content_key = (input.application_id, serialized.clone());
+        let content_id = inner
+            .canonical_runtime_content_ids_by_value
+            .get(&content_key)
+            .copied()
+            .unwrap_or_else(|| {
+                let content = domain::CanonicalRuntimeContentRecord {
+                    id: Uuid::now_v7(),
+                    scope_id: input.scope_id,
+                    application_id: input.application_id,
+                    content_hash: format!("sha256:{:064x}", serialized.len()),
+                    content: input.actual_context.clone(),
+                    byte_size: i64::try_from(serialized.len()).unwrap_or(i64::MAX),
+                    created_at: OffsetDateTime::now_utc(),
+                };
+                inner
+                    .canonical_runtime_content_ids_by_value
+                    .insert(content_key, content.id);
+                inner
+                    .canonical_runtime_contents_by_id
+                    .insert(content.id, content.clone());
+                content.id
+            });
+        let version = domain::ContextVersionRecord {
+            id: Uuid::now_v7(),
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            flow_run_id: input.flow_run_id,
+            parent_context_version_id: parent_id,
+            sequence: inner
+                .context_versions_by_id
+                .values()
+                .filter(|version| version.flow_run_id == input.flow_run_id)
+                .map(|version| version.sequence)
+                .max()
+                .unwrap_or(-1)
+                + 1,
+            transition_kind: if explicit {
+                domain::ContextTransitionKind::DeclaredCompaction
+            } else if observed_replacement {
+                domain::ContextTransitionKind::ObservedReplacement
+            } else if parent_id.is_some() {
+                domain::ContextTransitionKind::Append
+            } else {
+                domain::ContextTransitionKind::Initial
+            },
+            transition_actor: if explicit {
+                domain::ContextTransitionActor::Client
+            } else {
+                domain::ContextTransitionActor::Host
+            },
+            declared_compaction_provenance: explicit.then(|| input.context_epoch.clone()),
+            actual_content_id: content_id,
+            created_at: OffsetDateTime::now_utc(),
+        };
+        inner
+            .context_versions_by_id
+            .insert(version.id, version.clone());
+        inner
+            .invocation_context_versions_by_span
+            .insert(input.invocation_span_id, version.id);
+        inner
+            .latest_invocation_context_version_by_run
+            .insert(input.flow_run_id, version.id);
+        Ok(version)
+    }
+
     async fn append_recovery_history(
         &self,
         input: &crate::ports::AppendRecoveryHistoryInput,
@@ -1007,13 +1116,21 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 content.id
             }
         };
+        let context_sequence = inner
+            .context_versions_by_id
+            .values()
+            .filter(|version| version.flow_run_id == input.flow_run_id)
+            .map(|version| version.sequence)
+            .max()
+            .unwrap_or(-1)
+            + 1;
         let context_version = domain::ContextVersionRecord {
             id: Uuid::now_v7(),
             scope_id: input.scope_id,
             application_id: input.application_id,
             flow_run_id: input.flow_run_id,
             parent_context_version_id: input.parent_context_version_id,
-            sequence: input.context_sequence,
+            sequence: context_sequence,
             transition_kind: input.context_transition_kind,
             transition_actor: domain::ContextTransitionActor::Host,
             declared_compaction_provenance: None,
@@ -1028,6 +1145,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         let mut variable_snapshot = input.variable_snapshot.clone();
         variable_snapshot["__runtime_recovery_context"]["context_version_id"] =
             json!(context_version.id);
+        variable_snapshot["__runtime_recovery_context"]["sequence"] = json!(context_sequence);
         let checkpoint = domain::CheckpointRecord {
             id: input.checkpoint_id,
             flow_run_id: input.flow_run_id,

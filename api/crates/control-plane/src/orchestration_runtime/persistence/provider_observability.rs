@@ -109,6 +109,23 @@ where
         "model": trace.metrics_payload.get("model").cloned().unwrap_or(Value::Null),
     });
     let model_input_hash = model_input_hash(&model_input);
+    let invocation_context = repository
+        .append_provider_invocation_context(&AppendProviderInvocationContextInput {
+            scope_id,
+            application_id,
+            flow_run_id,
+            invocation_span_id: span_id,
+            actual_context: json!({
+                "effective_system": trace.debug_payload.get("effective_system").cloned().unwrap_or_else(|| json!([])),
+                "provider_messages": trace.debug_payload.get("provider_messages").cloned().unwrap_or_else(|| json!([])),
+            }),
+            context_epoch: trace
+                .debug_payload
+                .get("context_epoch")
+                .cloned()
+                .unwrap_or_else(|| json!({ "declaration": "unknown" })),
+        })
+        .await?;
     let projection = repository
         .append_context_projection(&AppendContextProjectionInput {
             flow_run_id,
@@ -125,7 +142,10 @@ where
             compacted_summary_ref: None,
             previous_projection_id: None,
             token_estimate: Some(estimate_tokens_for_text(&model_input.to_string())),
-            provider_continuation_metadata: json!({}),
+            provider_continuation_metadata: json!({
+                "context_version_id": invocation_context.id,
+                "context_epoch": trace.debug_payload.get("context_epoch").cloned().unwrap_or_else(|| json!({ "declaration": "unknown" })),
+            }),
         })
         .await?;
 

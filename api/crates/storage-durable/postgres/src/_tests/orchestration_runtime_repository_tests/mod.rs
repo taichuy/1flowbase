@@ -2,9 +2,9 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AppendContextVersionInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
-        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
-        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRepository,
-        AttachCompiledPlanToFlowRunInput, BindInvocationContextInput,
+        AppendProviderInvocationContextInput, AppendRecoveryHistoryInput, AppendRunEventInput,
+        AppendRuntimeEventInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
+        ApplicationRepository, AttachCompiledPlanToFlowRunInput, BindInvocationContextInput,
         ClearModelProviderRequestLogsBatchInput, CommitFlowRunTerminalInput,
         CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
         CompleteNodeRunInput, CreateApplicationInput, CreateCallbackTaskInput,

@@ -89,6 +89,12 @@ impl PgControlPlaneStore {
         .fetch_one(&mut *tx)
         .await?;
         let context_version_id = Uuid::now_v7();
+        let context_sequence = sqlx::query_scalar::<_, i64>(
+            "select coalesce(max(context_sequence), -1) + 1 from runtime_context_projections where flow_run_id = $1",
+        )
+        .bind(input.flow_run_id)
+        .fetch_one(&mut *tx)
+        .await?;
         sqlx::query(
             r#"
             insert into runtime_context_projections (
@@ -110,7 +116,7 @@ impl PgControlPlaneStore {
         .bind(input.parent_context_version_id)
         .bind(input.scope_id)
         .bind(input.application_id)
-        .bind(input.context_sequence)
+        .bind(context_sequence)
         .bind(input.context_transition_kind.as_str())
         .execute(&mut *tx)
         .await?;
@@ -119,6 +125,7 @@ impl PgControlPlaneStore {
         let mut variable_snapshot = input.variable_snapshot.clone();
         variable_snapshot["__runtime_recovery_context"]["context_version_id"] =
             json!(context_version_id);
+        variable_snapshot["__runtime_recovery_context"]["sequence"] = json!(context_sequence);
 
         let checkpoint_row = sqlx::query(
             r#"

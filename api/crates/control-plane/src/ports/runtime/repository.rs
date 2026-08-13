@@ -263,6 +263,10 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &BindInvocationContextInput,
     ) -> anyhow::Result<domain::InvocationContextBindingRecord>;
+    async fn append_provider_invocation_context(
+        &self,
+        input: &AppendProviderInvocationContextInput,
+    ) -> anyhow::Result<domain::ContextVersionRecord>;
     async fn append_recovery_history(
         &self,
         input: &AppendRecoveryHistoryInput,
