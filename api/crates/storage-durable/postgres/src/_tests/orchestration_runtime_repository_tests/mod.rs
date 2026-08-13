@@ -1,9 +1,10 @@
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput, AppendRunEventInput,
-        AppendRuntimeEventInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
-        ApplicationRepository, AttachCompiledPlanToFlowRunInput,
+        AppendContextVersionInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
+        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
+        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRepository,
+        AttachCompiledPlanToFlowRunInput, BindInvocationContextInput,
         ClearModelProviderRequestLogsBatchInput, CommitFlowRunTerminalInput,
         CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
         CompleteNodeRunInput, CreateApplicationInput, CreateCallbackTaskInput,
@@ -14,14 +15,16 @@ use control_plane::{
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository,
-        ProviderRequestLogTask, RecordFlowRunCallbackResumeAttemptInput, UpdateFlowRunInput,
-        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
-        UpdateRunEventPayloadInput, UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
+        ProviderRequestLogTask, PutCanonicalRuntimeContentInput,
+        RecordFlowRunCallbackResumeAttemptInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
+        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
     },
 };
 use domain::{
-    ApplicationType, CallbackTaskStatus, FlowRunCallbackResumeAttemptStatus, FlowRunMode,
-    FlowRunStatus, NodeRunStatus,
+    ApplicationType, CallbackTaskStatus, ContextTransitionActor, ContextTransitionKind,
+    FlowRunCallbackResumeAttemptStatus, FlowRunMode, FlowRunStatus, NodeRunStatus,
+    RecoveryCoordinate, RecoveryStateCode,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -376,3 +379,4 @@ mod public_runs;
 mod request_logs;
 mod runtime_events;
 mod runtime_facts;
+mod storage_foundation;

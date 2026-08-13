@@ -251,6 +251,22 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendContextProjectionInput,
     ) -> anyhow::Result<domain::ContextProjectionRecord>;
+    async fn put_canonical_runtime_content(
+        &self,
+        input: &PutCanonicalRuntimeContentInput,
+    ) -> anyhow::Result<domain::CanonicalRuntimeContentRecord>;
+    async fn append_context_version(
+        &self,
+        input: &AppendContextVersionInput,
+    ) -> anyhow::Result<domain::ContextVersionRecord>;
+    async fn bind_invocation_context(
+        &self,
+        input: &BindInvocationContextInput,
+    ) -> anyhow::Result<domain::InvocationContextBindingRecord>;
+    async fn append_recovery_history(
+        &self,
+        input: &AppendRecoveryHistoryInput,
+    ) -> anyhow::Result<domain::RecoveryHistoryRecord>;
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,

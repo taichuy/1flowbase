@@ -161,9 +161,11 @@ pub use plugin_worker::{PluginWorkerLeaseRecord, PluginWorkerStatus};
 pub use resource::runtime_model_resource_code;
 pub use resource_filter::{ResourceFilterExpr, ResourceFilterOperator};
 pub use runtime_observability::{
-    AuditHashRecord, BillingSessionRecord, BillingSessionStatus, CapabilityInvocationRecord,
-    ContextProjectionRecord, CostLedgerRecord, CreditLedgerRecord,
-    ModelFailoverAttemptLedgerRecord, RuntimeEventDurability, RuntimeEventLayer,
+    AuditHashRecord, BillingSessionRecord, BillingSessionStatus, CanonicalRuntimeContentRecord,
+    CapabilityInvocationRecord, ContextProjectionRecord, ContextTransitionActor,
+    ContextTransitionKind, ContextVersionRecord, CostLedgerRecord, CreditLedgerRecord,
+    InvocationContextBindingRecord, ModelFailoverAttemptLedgerRecord, RecoveryCoordinate,
+    RecoveryHistoryRecord, RecoveryStateCode, RuntimeEventDurability, RuntimeEventLayer,
     RuntimeEventRecord, RuntimeEventSource, RuntimeEventVisibility, RuntimeItemKind,
     RuntimeItemRecord, RuntimeItemStatus, RuntimeSpanKind, RuntimeSpanRecord, RuntimeSpanStatus,
     RuntimeTrustLevel, UsageLedgerRecord, UsageLedgerStatus,

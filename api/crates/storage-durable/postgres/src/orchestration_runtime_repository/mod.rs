@@ -18,12 +18,13 @@ use control_plane::{
     errors::ControlPlaneError,
     ports::{
         AppendBillingSessionInput, AppendCapabilityInvocationInput, AppendContextProjectionInput,
-        AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
-        AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput,
-        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunCountTokensResult,
-        ApplicationRunOverviewReadModel, ApplicationRunResumeTimelineReadModel,
-        ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
-        AttachCompiledPlanToFlowRunInput, CallbackResumeContext, CallbackResumeWaitingNode,
+        AppendContextVersionInput, AppendCostLedgerInput, AppendCreditLedgerInput,
+        AppendModelFailoverAttemptLedgerInput, AppendRecoveryHistoryInput, AppendRunEventInput,
+        AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
+        AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
+        ApplicationRunResumeTimelineReadModel, ApplicationRunTraceChildrenCursor,
+        ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
+        BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
         ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
         CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
@@ -39,13 +40,13 @@ use control_plane::{
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
-        OrchestrationRuntimeRepository, RecordFlowRunCallbackResumeAttemptInput,
-        RecordFlowRunCallbackResumeAttemptOutput, ReplaceApplicationRunTraceProjectionInput,
-        UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
-        UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
-        UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
-        UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
-        UpsertDebugVariableCacheEntryInput,
+        OrchestrationRuntimeRepository, PutCanonicalRuntimeContentInput,
+        RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
+        ReplaceApplicationRunTraceProjectionInput, UpdateCallbackTaskPayloadsInput,
+        UpdateCheckpointPayloadsInput, UpdateFlowRunInput, UpdateFlowRunPayloadsInput,
+        UpdateNodeRunInput, UpdateNodeRunPayloadsInput, UpdateRunEventPayloadInput,
+        UpsertApplicationRunTraceProjectionStatusInput, UpsertCompiledPlanInput,
+        UpsertDataModelSideEffectReceiptInput, UpsertDebugVariableCacheEntryInput,
     },
 };
 use sqlx::{Postgres, QueryBuilder, Row};
@@ -72,6 +73,7 @@ include!("application_run_monitoring_methods.rs");
 include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
+include!("storage_foundation_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
 include!("request_log_methods.rs");
@@ -392,6 +394,34 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AppendContextProjectionInput,
     ) -> Result<domain::ContextProjectionRecord> {
         PgControlPlaneStore::append_context_projection(self, input).await
+    }
+
+    async fn put_canonical_runtime_content(
+        &self,
+        input: &PutCanonicalRuntimeContentInput,
+    ) -> Result<domain::CanonicalRuntimeContentRecord> {
+        PgControlPlaneStore::put_canonical_runtime_content(self, input).await
+    }
+
+    async fn append_context_version(
+        &self,
+        input: &AppendContextVersionInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        PgControlPlaneStore::append_context_version(self, input).await
+    }
+
+    async fn bind_invocation_context(
+        &self,
+        input: &BindInvocationContextInput,
+    ) -> Result<domain::InvocationContextBindingRecord> {
+        PgControlPlaneStore::bind_invocation_context(self, input).await
+    }
+
+    async fn append_recovery_history(
+        &self,
+        input: &AppendRecoveryHistoryInput,
+    ) -> Result<domain::RecoveryHistoryRecord> {
+        PgControlPlaneStore::append_recovery_history(self, input).await
     }
 
     async fn append_usage_ledger(

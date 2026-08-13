@@ -121,3 +121,46 @@ pub struct AppendContextProjectionInput {
     pub token_estimate: Option<i64>,
     pub provider_continuation_metadata: serde_json::Value,
 }
+
+#[derive(Debug, Clone)]
+pub struct PutCanonicalRuntimeContentInput {
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub content: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppendContextVersionInput {
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub parent_context_version_id: Option<Uuid>,
+    pub sequence: i64,
+    pub transition_kind: domain::ContextTransitionKind,
+    pub transition_actor: domain::ContextTransitionActor,
+    pub declared_compaction_provenance: Option<serde_json::Value>,
+    pub actual_content_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct BindInvocationContextInput {
+    pub invocation_span_id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub context_version_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppendRecoveryHistoryInput {
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub node_run_id: Option<Uuid>,
+    pub sequence: i64,
+    pub state_code: domain::RecoveryStateCode,
+    pub coordinate: domain::RecoveryCoordinate,
+    pub context_version_id: Uuid,
+    pub recovery_content_id: Option<Uuid>,
+    pub idempotency_key: String,
+}

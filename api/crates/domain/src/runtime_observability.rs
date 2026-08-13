@@ -120,6 +120,92 @@ string_enum!(BillingSessionStatus {
     Failed => "failed",
 });
 
+string_enum!(ContextTransitionKind {
+    Initial => "initial",
+    Append => "append",
+    Callback => "callback",
+    Retry => "retry",
+    DeclaredCompaction => "declared_compaction",
+});
+
+string_enum!(ContextTransitionActor {
+    Host => "host",
+    Client => "client",
+    Provider => "provider",
+});
+
+string_enum!(RecoveryStateCode {
+    Running => "running",
+    WaitingCallback => "waiting_callback",
+    WaitingHuman => "waiting_human",
+    Paused => "paused",
+    Retrying => "retrying",
+    Succeeded => "succeeded",
+    Failed => "failed",
+    Cancelled => "cancelled",
+});
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CanonicalRuntimeContentRecord {
+    pub id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub content_hash: String,
+    pub content: serde_json::Value,
+    pub byte_size: i64,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextVersionRecord {
+    pub id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub parent_context_version_id: Option<Uuid>,
+    pub sequence: i64,
+    pub transition_kind: ContextTransitionKind,
+    pub transition_actor: ContextTransitionActor,
+    pub declared_compaction_provenance: Option<serde_json::Value>,
+    pub actual_content_id: Uuid,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvocationContextBindingRecord {
+    pub invocation_span_id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub context_version_id: Uuid,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryCoordinate {
+    pub node_sequence: i64,
+    pub iteration_index: i64,
+    pub attempt_index: i32,
+    pub resume_sequence: i64,
+    pub event_sequence: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryHistoryRecord {
+    pub id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub node_run_id: Option<Uuid>,
+    pub sequence: i64,
+    pub state_code: RecoveryStateCode,
+    pub coordinate: RecoveryCoordinate,
+    pub context_version_id: Uuid,
+    pub recovery_content_id: Option<Uuid>,
+    pub idempotency_key: String,
+    pub created_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeSpanRecord {
     pub id: Uuid,
