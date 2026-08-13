@@ -73,6 +73,14 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Resolve PostgreSQL 18 backup toolchain
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/node/postgres-toolchain/cli.js \
+            | grep -E '^API_POSTGRES_PG_(DUMP|RESTORE)_PATH=' \
+            >> "$GITHUB_ENV"
+
       # Cache only compiler dependency state. Gate evidence and runtime provenance
       # are still rebuilt and emitted by the repository-owned command below.
       - name: Restore Rust dependency cache

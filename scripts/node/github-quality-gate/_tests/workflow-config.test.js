@@ -211,6 +211,11 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
   assert.match(fullAiWorkflow, /timeout-minutes: 55/u);
   assert.match(fullAiWorkflow, /workflow_call:/u);
   assert.match(fullAiWorkflow, /workflow_dispatch:/u);
+  assert.match(
+    fullAiWorkflow,
+    /name: Resolve PostgreSQL 18 backup toolchain[\s\S]*node scripts\/node\/postgres-toolchain\/cli[.]js[\s\S]*API_POSTGRES_PG_[^\n]*DUMP[^\n]*RESTORE[^\n]*PATH[\s\S]*GITHUB_ENV/u,
+    "AI Gateway must start api-server with a PostgreSQL 18 backup toolchain matching its service database",
+  );
 
   assert.match(verifyWorkflow, /foundation-contract-gate:[\s\S]*uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u);
   assert.match(qualityGateWorkflow, /foundation-contract-gate:[\s\S]*uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u);
