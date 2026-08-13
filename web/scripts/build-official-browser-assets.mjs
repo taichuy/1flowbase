@@ -42,10 +42,6 @@ export async function buildOfficialBrowserAssets(
         plugins: [tailwindcss()],
         resolve: {
           alias: {
-            '@ant-design/icons': join(
-              WEB_ROOT,
-              'app/node_modules/@ant-design/icons'
-            ),
             echarts: join(WEB_ROOT, 'app/node_modules/echarts'),
             vditor: join(WEB_ROOT, 'app/node_modules/vditor')
           }
@@ -64,7 +60,7 @@ export async function buildOfficialBrowserAssets(
             formats: ['es'],
             name: directoryName
           },
-          minify: 'oxc',
+          minify: directoryName === 'ant-design-icons-catalog' ? false : 'oxc',
           outDir: moduleOutput,
           sourcemap: false,
           target: 'es2022',

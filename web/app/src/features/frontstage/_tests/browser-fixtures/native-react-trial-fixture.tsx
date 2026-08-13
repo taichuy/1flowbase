@@ -7,6 +7,7 @@ import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import tailwindCss from '@1flowbase/tailwindcss-catalog/styles.css?inline';
 import vditorCss from 'vditor/dist/index.css?raw';
+import iconsBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/ant-design-icons-catalog.js?raw';
 import richTextBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/rich-text.js?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { ComponentProps, ComponentType } from 'react';
@@ -245,6 +246,98 @@ const tailwindModuleAsset = fixtureModuleStyle('tailwindcss', 'e', tailwindCss);
 
 const RICH_TEXT_BROWSER_ASSET_SHA256 =
   '2b38c019e575e6e580b7955eaf37053bc7ac789fe6de71d492036e22f8993d56';
+const ICONS_BROWSER_ASSET_SHA256 =
+  '3fe087f20571dbd6831ce3d7d80934e951afaa546dc37d31ae5bf45253f7d612';
+
+function CatalogIconsProbe() {
+  const [Icon, setIcon] = useState<ComponentType<{
+    'aria-label': string;
+  }> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    const registry = createFrontstageNativeReactModuleRegistry(
+      [
+        {
+          module_source: 'react',
+          module_version: '19.2.5',
+          binding: 'host',
+          assets: [],
+          exports: [
+            'default',
+            'createContext',
+            'createElement',
+            'forwardRef',
+            'useContext',
+            'useEffect'
+          ]
+        },
+        {
+          module_source: '@ant-design/icons',
+          module_version: '6.1.0',
+          binding: 'fetched',
+          exports: ['CheckCircleOutlined'],
+          assets: [
+            {
+              role: 'browser_module',
+              media_type: 'text/javascript; charset=utf-8',
+              sha256: ICONS_BROWSER_ASSET_SHA256,
+              url: `/api/console/frontstage/fixture-workspace/component-module-assets/${ICONS_BROWSER_ASSET_SHA256}`
+            }
+          ]
+        }
+      ],
+      {
+        fetchAsset: async () =>
+          new Response(iconsBrowserModule, {
+            status: 200,
+            headers: { 'content-type': 'text/javascript; charset=utf-8' }
+          })
+      }
+    );
+
+    void registry.load('@ant-design/icons').then(
+      (module) => {
+        if (disposed) return;
+        if (typeof module.CheckCircleOutlined !== 'object') {
+          setError('CheckCircleOutlined export is unavailable');
+          return;
+        }
+        setIcon(
+          () =>
+            module.CheckCircleOutlined as ComponentType<{
+              'aria-label': string;
+            }>
+        );
+      },
+      (reason) => {
+        if (!disposed)
+          setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    );
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div data-testid="catalog-icons-probe" data-status="failed">
+        {error}
+      </div>
+    );
+  }
+  if (!Icon) {
+    return <div data-testid="catalog-icons-probe" data-status="loading" />;
+  }
+  return (
+    <div data-testid="catalog-icons-probe" data-status="ready">
+      <Icon aria-label="catalog-check-circle-icon" />
+    </div>
+  );
+}
 
 function CatalogRichTextProbe() {
   const [Preview, setPreview] = useState<ComponentType<{
@@ -535,6 +628,7 @@ function NativeReactTrialFixture() {
       </div>
       {pageMounted ? (
         <>
+          <CatalogIconsProbe />
           <CatalogRichTextProbe />
           <InstrumentedPageCanvas
             content={content}
