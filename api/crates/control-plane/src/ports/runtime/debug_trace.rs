@@ -200,9 +200,13 @@ pub struct PersistWaitingStateInput {
     pub locator_payload: serde_json::Value,
     pub variable_snapshot: serde_json::Value,
     pub checkpoint_external_ref_payload: Option<serde_json::Value>,
-    pub context_version_id: Uuid,
-    pub recovery_content_id: Option<Uuid>,
+    pub context_content: serde_json::Value,
+    pub parent_context_version_id: Option<Uuid>,
+    pub context_sequence: i64,
+    pub context_transition_kind: domain::ContextTransitionKind,
     pub recovery_idempotency_key: String,
+    pub resume_claim_id: Option<Uuid>,
+    pub resume_claim_token: Option<Uuid>,
     pub waiting_event: AppendRuntimeEventInput,
     pub kind: PersistWaitingKind,
 }
@@ -214,4 +218,85 @@ pub struct PersistedWaitingState {
     pub callback_task: Option<domain::CallbackTaskRecord>,
     pub waiting_event: domain::RuntimeEventRecord,
     pub recovery_history: domain::RecoveryHistoryRecord,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeClaimKind {
+    Human,
+    Callback,
+}
+
+impl ResumeClaimKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Callback => "callback",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeClaimStatus {
+    Processing,
+    Succeeded,
+    Failed,
+}
+
+impl ResumeClaimStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Processing => "processing",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AcquireResumeClaimInput {
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub flow_run_id: Uuid,
+    pub checkpoint_id: Uuid,
+    pub callback_task_id: Option<Uuid>,
+    pub kind: ResumeClaimKind,
+    pub request_payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResumeClaimRecord {
+    pub id: Uuid,
+    pub flow_run_id: Uuid,
+    pub checkpoint_id: Uuid,
+    pub callback_task_id: Option<Uuid>,
+    pub kind: ResumeClaimKind,
+    pub status: ResumeClaimStatus,
+    pub request_payload: serde_json::Value,
+    pub claim_token: Uuid,
+    pub generation: i64,
+    pub lease_expires_at: OffsetDateTime,
+    pub error_payload: Option<serde_json::Value>,
+    pub completed_at: Option<OffsetDateTime>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeClaimDisposition {
+    Acquired,
+    InProgress,
+    Completed,
+}
+
+#[derive(Debug, Clone)]
+pub struct AcquireResumeClaimOutput {
+    pub claim: ResumeClaimRecord,
+    pub disposition: ResumeClaimDisposition,
+}
+
+#[derive(Debug, Clone)]
+pub struct FinishResumeClaimInput {
+    pub claim_id: Uuid,
+    pub claim_token: Uuid,
+    pub status: ResumeClaimStatus,
+    pub error_payload: Option<serde_json::Value>,
+    pub completed_at: OffsetDateTime,
 }

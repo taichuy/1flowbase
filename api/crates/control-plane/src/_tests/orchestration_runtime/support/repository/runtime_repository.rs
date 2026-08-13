@@ -980,14 +980,62 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         flow_run.output_payload = input.output_payload.clone();
         flow_run.updated_at = OffsetDateTime::now_utc();
         let flow_run = flow_run.clone();
+        let serialized = serde_json::to_string(&input.context_content)?;
+        let content_key = (input.application_id, serialized.clone());
+        let content_id = match inner
+            .canonical_runtime_content_ids_by_value
+            .get(&content_key)
+            .copied()
+        {
+            Some(id) => id,
+            None => {
+                let content = domain::CanonicalRuntimeContentRecord {
+                    id: Uuid::now_v7(),
+                    scope_id: input.scope_id,
+                    application_id: input.application_id,
+                    content_hash: format!("sha256:{:064x}", serialized.len()),
+                    content: input.context_content.clone(),
+                    byte_size: i64::try_from(serialized.len())?,
+                    created_at: OffsetDateTime::now_utc(),
+                };
+                inner
+                    .canonical_runtime_content_ids_by_value
+                    .insert(content_key, content.id);
+                inner
+                    .canonical_runtime_contents_by_id
+                    .insert(content.id, content.clone());
+                content.id
+            }
+        };
+        let context_version = domain::ContextVersionRecord {
+            id: Uuid::now_v7(),
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            flow_run_id: input.flow_run_id,
+            parent_context_version_id: input.parent_context_version_id,
+            sequence: input.context_sequence,
+            transition_kind: input.context_transition_kind,
+            transition_actor: domain::ContextTransitionActor::Host,
+            declared_compaction_provenance: None,
+            actual_content_id: content_id,
+            created_at: OffsetDateTime::now_utc(),
+        };
+        inner
+            .context_versions_by_id
+            .insert(context_version.id, context_version.clone());
+        let mut locator_payload = input.locator_payload.clone();
+        locator_payload["context_version_id"] = json!(context_version.id);
+        let mut variable_snapshot = input.variable_snapshot.clone();
+        variable_snapshot["__runtime_recovery_context"]["context_version_id"] =
+            json!(context_version.id);
         let checkpoint = domain::CheckpointRecord {
             id: input.checkpoint_id,
             flow_run_id: input.flow_run_id,
             node_run_id: Some(input.node_run_id),
             status: input.checkpoint_status.clone(),
             reason: input.checkpoint_reason.clone(),
-            locator_payload: input.locator_payload.clone(),
-            variable_snapshot: input.variable_snapshot.clone(),
+            locator_payload,
+            variable_snapshot,
             external_ref_payload: input.checkpoint_external_ref_payload.clone(),
             created_at: OffsetDateTime::now_utc(),
         };
@@ -1062,12 +1110,37 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                 resume_sequence: i64::try_from(recovery_records.len())?,
                 event_sequence: waiting_event.sequence,
             },
-            context_version_id: input.context_version_id,
-            recovery_content_id: input.recovery_content_id,
+            context_version_id: context_version.id,
+            recovery_content_id: Some(content_id),
             idempotency_key: input.recovery_idempotency_key.clone(),
             created_at: OffsetDateTime::now_utc(),
         };
         recovery_records.push(recovery_history.clone());
+        match (input.resume_claim_id, input.resume_claim_token) {
+            (Some(claim_id), Some(claim_token)) => {
+                let claim = inner
+                    .resume_claims_by_target
+                    .values_mut()
+                    .find(|claim| claim.id == claim_id && claim.claim_token == claim_token)
+                    .ok_or_else(|| {
+                        crate::errors::ControlPlaneError::Conflict("resume_claim_not_owned")
+                    })?;
+                if claim.status != crate::ports::ResumeClaimStatus::Processing {
+                    return Err(crate::errors::ControlPlaneError::Conflict(
+                        "resume_claim_not_owned",
+                    )
+                    .into());
+                }
+                claim.status = crate::ports::ResumeClaimStatus::Succeeded;
+                claim.completed_at = Some(OffsetDateTime::now_utc());
+            }
+            (None, None) => {}
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "resume claim id and token must be provided together"
+                ))
+            }
+        }
         Ok(Some(crate::ports::PersistedWaitingState {
             flow_run,
             checkpoint,
@@ -1075,6 +1148,123 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             waiting_event,
             recovery_history,
         }))
+    }
+
+    async fn acquire_resume_claim(
+        &self,
+        input: &crate::ports::AcquireResumeClaimInput,
+    ) -> Result<crate::ports::AcquireResumeClaimOutput> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let target_id = input.callback_task_id.unwrap_or(input.checkpoint_id);
+        let flow_status = inner
+            .flow_runs_by_id
+            .get(&input.flow_run_id)
+            .ok_or_else(|| anyhow::anyhow!("flow run not found"))?
+            .status;
+        if let Some(existing) = inner.resume_claims_by_target.get_mut(&target_id) {
+            if existing.flow_run_id != input.flow_run_id
+                || existing.checkpoint_id != input.checkpoint_id
+                || existing.callback_task_id != input.callback_task_id
+                || existing.kind != input.kind
+                || existing.request_payload != input.request_payload
+            {
+                return Err(crate::errors::ControlPlaneError::Conflict(
+                    "resume_claim_payload_conflict",
+                )
+                .into());
+            }
+            let waiting_status = match input.kind {
+                crate::ports::ResumeClaimKind::Human => domain::FlowRunStatus::WaitingHuman,
+                crate::ports::ResumeClaimKind::Callback => domain::FlowRunStatus::WaitingCallback,
+            };
+            if existing.status == crate::ports::ResumeClaimStatus::Succeeded
+                || flow_status != waiting_status
+            {
+                existing.status = crate::ports::ResumeClaimStatus::Succeeded;
+                existing
+                    .completed_at
+                    .get_or_insert_with(OffsetDateTime::now_utc);
+                return Ok(crate::ports::AcquireResumeClaimOutput {
+                    claim: existing.clone(),
+                    disposition: crate::ports::ResumeClaimDisposition::Completed,
+                });
+            }
+            if existing.status == crate::ports::ResumeClaimStatus::Processing
+                && existing.lease_expires_at > OffsetDateTime::now_utc()
+            {
+                return Ok(crate::ports::AcquireResumeClaimOutput {
+                    claim: existing.clone(),
+                    disposition: crate::ports::ResumeClaimDisposition::InProgress,
+                });
+            }
+            existing.status = crate::ports::ResumeClaimStatus::Processing;
+            existing.claim_token = Uuid::now_v7();
+            existing.generation += 1;
+            existing.lease_expires_at = OffsetDateTime::now_utc() + time::Duration::minutes(5);
+            existing.error_payload = None;
+            existing.completed_at = None;
+            return Ok(crate::ports::AcquireResumeClaimOutput {
+                claim: existing.clone(),
+                disposition: crate::ports::ResumeClaimDisposition::Acquired,
+            });
+        }
+        let waiting_status = match input.kind {
+            crate::ports::ResumeClaimKind::Human => domain::FlowRunStatus::WaitingHuman,
+            crate::ports::ResumeClaimKind::Callback => domain::FlowRunStatus::WaitingCallback,
+        };
+        if flow_status != waiting_status {
+            return Err(
+                crate::errors::ControlPlaneError::Conflict("resume_claim_not_waiting").into(),
+            );
+        }
+        let claim = crate::ports::ResumeClaimRecord {
+            id: Uuid::now_v7(),
+            flow_run_id: input.flow_run_id,
+            checkpoint_id: input.checkpoint_id,
+            callback_task_id: input.callback_task_id,
+            kind: input.kind,
+            status: crate::ports::ResumeClaimStatus::Processing,
+            request_payload: input.request_payload.clone(),
+            claim_token: Uuid::now_v7(),
+            generation: 0,
+            lease_expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(5),
+            error_payload: None,
+            completed_at: None,
+        };
+        inner
+            .resume_claims_by_target
+            .insert(target_id, claim.clone());
+        Ok(crate::ports::AcquireResumeClaimOutput {
+            claim,
+            disposition: crate::ports::ResumeClaimDisposition::Acquired,
+        })
+    }
+
+    async fn finish_resume_claim(
+        &self,
+        input: &crate::ports::FinishResumeClaimInput,
+    ) -> Result<crate::ports::ResumeClaimRecord> {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let claim = inner
+            .resume_claims_by_target
+            .values_mut()
+            .find(|claim| claim.id == input.claim_id)
+            .ok_or_else(|| anyhow::anyhow!("resume claim not found"))?;
+        if claim.claim_token != input.claim_token
+            || (claim.status != crate::ports::ResumeClaimStatus::Processing
+                && claim.status != input.status)
+            || input.status == crate::ports::ResumeClaimStatus::Processing
+        {
+            return Err(
+                crate::errors::ControlPlaneError::Conflict("resume_claim_not_owned").into(),
+            );
+        }
+        if claim.status == crate::ports::ResumeClaimStatus::Processing {
+            claim.error_payload = input.error_payload.clone();
+            claim.completed_at = Some(input.completed_at);
+        }
+        claim.status = input.status;
+        Ok(claim.clone())
     }
 
     async fn append_usage_ledger(

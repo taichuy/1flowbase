@@ -43,13 +43,14 @@ use crate::{
     model_provider::failover_queue::{freeze_queue_items, FailoverQueueSnapshotItem},
     plugin_management::ready_current_node_plugin_installation,
     ports::{
-        AppendRunEventInput, ApplicationJsDependencySelectionRepository, ApplicationRepository,
-        CacheStore, CallbackResumeWaitingNode, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalResult, CompleteCallbackTaskInput, FlowRepository,
-        ModelDefinitionRepository, ModelProviderRepository, NodeContributionRepository,
-        OrchestrationRuntimeRepository, PluginRepository, ProviderRuntimePort,
-        RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream, TaskQueue,
-        UpdateFlowRunInput, UpdateNodeRunInput,
+        AcquireResumeClaimInput, AppendRunEventInput, ApplicationJsDependencySelectionRepository,
+        ApplicationRepository, CacheStore, CallbackResumeWaitingNode, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalResult, CompleteCallbackTaskInput, FinishResumeClaimInput,
+        FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
+        NodeContributionRepository, OrchestrationRuntimeRepository, PluginRepository,
+        ProviderRuntimePort, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
+        ResumeClaimStatus, RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream,
+        TaskQueue, UpdateFlowRunInput, UpdateNodeRunInput,
     },
     state_transition::{ensure_flow_run_transition, ensure_node_run_transition},
 };
@@ -1185,38 +1186,74 @@ where
         } else {
             None
         };
-        let execution = self
-            .resume_execution_segment(ResumeExecutionSegmentInput {
-                actor: &actor,
-                application: &application,
-                flow_run: &flow_run,
-                compiled_plan: &compiled_plan,
-                snapshot: &snapshot,
-                waiting_node_id: &waiting_node_id,
-                waiting_node_run_id: checkpoint.node_run_id,
-                resume_payload: &resume_patch,
+        let claim = self
+            .repository
+            .acquire_resume_claim(&AcquireResumeClaimInput {
+                scope_id: application.workspace_id,
+                application_id: command.application_id,
+                flow_run_id: flow_run.id,
+                checkpoint_id: checkpoint.id,
+                callback_task_id: None,
+                kind: ResumeClaimKind::Human,
+                request_payload: command.input_payload.clone(),
             })
             .await?;
+        if claim.disposition != ResumeClaimDisposition::Acquired {
+            return Ok(current_detail);
+        }
+        let result = async {
+            let execution = self
+                .resume_execution_segment(ResumeExecutionSegmentInput {
+                    actor: &actor,
+                    application: &application,
+                    flow_run: &flow_run,
+                    compiled_plan: &compiled_plan,
+                    snapshot: &snapshot,
+                    waiting_node_id: &waiting_node_id,
+                    waiting_node_run_id: checkpoint.node_run_id,
+                    resume_payload: &resume_patch,
+                })
+                .await?;
 
-        self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
-            scope_id: application.workspace_id,
-            application_name: &application.name,
-            task_queue: self.provider_request_log_queue.as_ref(),
-            application_id: command.application_id,
-            flow_run: &flow_run,
-            compiled_plan: Some(&compiled_plan),
-            outcome: &execution.outcome,
-            prepared_node_runs: Some(&execution.prepared_node_runs),
-            answer_presentation: execution.answer_presentation.as_ref(),
-            trigger_event_type: "flow_run_resumed",
-            trigger_event_payload: json!({
-                "checkpoint_id": checkpoint.id,
-                "input_payload": command.input_payload,
-            }),
-            base_started_at: next_node_started_at(&current_detail),
-            waiting_node_resume,
-        })
-        .await
+            self.persist_flow_debug_outcome(PersistFlowDebugOutcomeInput {
+                scope_id: application.workspace_id,
+                application_name: &application.name,
+                task_queue: self.provider_request_log_queue.as_ref(),
+                application_id: command.application_id,
+                flow_run: &flow_run,
+                compiled_plan: Some(&compiled_plan),
+                outcome: &execution.outcome,
+                prepared_node_runs: Some(&execution.prepared_node_runs),
+                answer_presentation: execution.answer_presentation.as_ref(),
+                trigger_event_type: "flow_run_resumed",
+                trigger_event_payload: json!({
+                    "checkpoint_id": checkpoint.id,
+                    "input_payload": command.input_payload,
+                }),
+                base_started_at: next_node_started_at(&current_detail),
+                waiting_node_resume,
+                resume_claim_id: Some(claim.claim.id),
+                resume_claim_token: Some(claim.claim.claim_token),
+            })
+            .await
+        }
+        .await;
+        let finish = FinishResumeClaimInput {
+            claim_id: claim.claim.id,
+            claim_token: claim.claim.claim_token,
+            status: if result.is_ok() {
+                ResumeClaimStatus::Succeeded
+            } else {
+                ResumeClaimStatus::Failed
+            },
+            error_payload: result
+                .as_ref()
+                .err()
+                .map(|error| json!({ "message": error.to_string() })),
+            completed_at: OffsetDateTime::now_utc(),
+        };
+        self.repository.finish_resume_claim(&finish).await?;
+        result
     }
 
     fn persist_flow_debug_outcome<'a>(

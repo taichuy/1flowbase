@@ -9,12 +9,12 @@ use uuid::Uuid;
 use crate::{
     capability_runtime::{host_tool_capability_id, mcp_tool_capability_id},
     ports::{
-        AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
+        AppendCapabilityInvocationInput, AppendContextProjectionInput,
         AppendModelFailoverAttemptLedgerInput, AppendRunEventInput, AppendUsageLedgerInput,
         CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CreateNodeRunInput,
         LinkUsageLedgerToModelFailoverAttemptInput, OrchestrationRuntimeRepository,
         PersistWaitingCallbackTaskInput, PersistWaitingKind, PersistWaitingStateInput,
-        PutCanonicalRuntimeContentInput, UpdateNodeRunInput,
+        UpdateNodeRunInput,
     },
     runtime_observability::{
         append_host_event, append_host_span, append_provider_stream_events_raw,
@@ -79,6 +79,8 @@ pub(super) struct PersistFlowDebugOutcomeInput<'a> {
     pub(super) trigger_event_payload: Value,
     pub(super) base_started_at: OffsetDateTime,
     pub(super) waiting_node_resume: Option<WaitingNodeResumeUpdate>,
+    pub(super) resume_claim_id: Option<Uuid>,
+    pub(super) resume_claim_token: Option<Uuid>,
 }
 
 pub(super) struct PersistedFlowDebugOutcome {
@@ -89,19 +91,17 @@ pub(super) struct PersistedFlowDebugOutcome {
 }
 
 struct PreparedRecoveryCheckpoint {
-    context_version: domain::ContextVersionRecord,
+    context_content: Value,
+    parent_context_version_id: Option<Uuid>,
+    context_sequence: i64,
     locator_payload: Value,
     variable_snapshot: Value,
 }
 
 async fn prepare_recovery_checkpoint<R>(
     repository: &R,
-    scope_id: Uuid,
-    application_id: Uuid,
-    flow_run_id: Uuid,
     node_id: &str,
     snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
-    transition_kind: domain::ContextTransitionKind,
 ) -> Result<PreparedRecoveryCheckpoint>
 where
     R: OrchestrationRuntimeRepository,
@@ -117,35 +117,12 @@ where
         }
         None => initial,
     };
-    let content = repository
-        .put_canonical_runtime_content(&PutCanonicalRuntimeContentInput {
-            scope_id,
-            application_id,
-            content: compacted.content,
-        })
-        .await?;
-    let context_version = repository
-        .append_context_version(&AppendContextVersionInput {
-            scope_id,
-            application_id,
-            flow_run_id,
-            parent_context_version_id: compacted.parent_context_version_id,
-            sequence: compacted.sequence,
-            transition_kind,
-            transition_actor: domain::ContextTransitionActor::Host,
-            declared_compaction_provenance: None,
-            actual_content_id: content.id,
-        })
-        .await?;
-    let mut variable_snapshot = compacted.variable_snapshot;
-    variable_snapshot[checkpoint_locator::RECOVERY_CONTEXT_MARKER]["context_version_id"] =
-        json!(context_version.id);
     Ok(PreparedRecoveryCheckpoint {
-        locator_payload: CheckpointLocatorPayload::from_snapshot(node_id, snapshot)
-            .with_context_version(context_version.id)
-            .into_json(),
-        variable_snapshot,
-        context_version,
+        context_content: compacted.content,
+        parent_context_version_id: compacted.parent_context_version_id,
+        context_sequence: compacted.sequence,
+        locator_payload: CheckpointLocatorPayload::from_snapshot(node_id, snapshot).into_json(),
+        variable_snapshot: compacted.variable_snapshot,
     })
 }
 
@@ -200,6 +177,8 @@ where
         trigger_event_payload,
         base_started_at,
         waiting_node_resume,
+        resume_claim_id,
+        resume_claim_token,
     } = input;
     let presentation_events = match (compiled_plan, prepared_node_runs) {
         (Some(plan), Some(prepared_node_runs)) => {
@@ -293,16 +272,7 @@ where
                 domain::FlowRunStatus::WaitingHuman,
                 "persist_flow_waiting_human",
             )?;
-            let recovery = prepare_recovery_checkpoint(
-                repository,
-                scope_id,
-                application_id,
-                flow_run.id,
-                &wait.node_id,
-                snapshot,
-                domain::ContextTransitionKind::Append,
-            )
-            .await?;
+            let recovery = prepare_recovery_checkpoint(repository, &wait.node_id, snapshot).await?;
             let waiting_event =
                 debug_stream_events::waiting_human(flow_run.id, waiting_node_run.id, &wait.node_id);
             let waiting_event_input = runtime_event_persister::build_runtime_event_input(
@@ -326,12 +296,13 @@ where
                     locator_payload: recovery.locator_payload,
                     variable_snapshot: recovery.variable_snapshot,
                     checkpoint_external_ref_payload: Some(json!({ "prompt": wait.prompt })),
-                    context_version_id: recovery.context_version.id,
-                    recovery_content_id: Some(recovery.context_version.actual_content_id),
-                    recovery_idempotency_key: format!(
-                        "waiting_human:{}:{}",
-                        waiting_node_run.id, recovery.context_version.id
-                    ),
+                    context_content: recovery.context_content,
+                    parent_context_version_id: recovery.parent_context_version_id,
+                    context_sequence: recovery.context_sequence,
+                    context_transition_kind: domain::ContextTransitionKind::Append,
+                    recovery_idempotency_key: format!("waiting_human:{}", waiting_node_run.id),
+                    resume_claim_id,
+                    resume_claim_token,
                     waiting_event: waiting_event_input,
                     kind: PersistWaitingKind::Human,
                 })
@@ -376,16 +347,7 @@ where
                 domain::FlowRunStatus::WaitingCallback,
                 "persist_flow_waiting_callback",
             )?;
-            let recovery = prepare_recovery_checkpoint(
-                repository,
-                scope_id,
-                application_id,
-                flow_run.id,
-                &wait.node_id,
-                snapshot,
-                domain::ContextTransitionKind::Callback,
-            )
-            .await?;
+            let recovery = prepare_recovery_checkpoint(repository, &wait.node_id, snapshot).await?;
             let external_ref_payload =
                 (wait.callback_kind != "llm_tool_calls").then(|| wait.request_payload.clone());
             let callback_task_id = Uuid::now_v7();
@@ -428,12 +390,13 @@ where
                     locator_payload: recovery.locator_payload,
                     variable_snapshot: recovery.variable_snapshot,
                     checkpoint_external_ref_payload: external_ref_payload.clone(),
-                    context_version_id: recovery.context_version.id,
-                    recovery_content_id: Some(recovery.context_version.actual_content_id),
-                    recovery_idempotency_key: format!(
-                        "waiting_callback:{}:{}",
-                        waiting_node_run.id, recovery.context_version.id
-                    ),
+                    context_content: recovery.context_content,
+                    parent_context_version_id: recovery.parent_context_version_id,
+                    context_sequence: recovery.context_sequence,
+                    context_transition_kind: domain::ContextTransitionKind::Callback,
+                    recovery_idempotency_key: format!("waiting_callback:{}", waiting_node_run.id),
+                    resume_claim_id,
+                    resume_claim_token,
                     waiting_event: waiting_event_input,
                     kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
                         id: callback_task_id,

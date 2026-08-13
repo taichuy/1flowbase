@@ -86,6 +86,8 @@ async fn orchestration_runtime_persists_visible_internal_llm_tool_route_events()
             trigger_event_payload: json!({}),
             base_started_at: now,
             waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
         },
     )
     .await

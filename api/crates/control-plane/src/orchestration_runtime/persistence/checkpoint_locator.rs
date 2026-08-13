@@ -80,14 +80,6 @@ impl CheckpointLocatorPayload {
         })
     }
 
-    pub(in crate::orchestration_runtime) fn with_context_version(
-        mut self,
-        context_version_id: Uuid,
-    ) -> Self {
-        self.context_version_id = Some(context_version_id);
-        self
-    }
-
     pub(in crate::orchestration_runtime) fn into_json(self) -> Value {
         let mut locator = json!({
             "node_id": self.node_id,

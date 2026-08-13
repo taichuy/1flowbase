@@ -17,11 +17,12 @@ use control_plane::{
     },
     errors::ControlPlaneError,
     ports::{
-        AppendBillingSessionInput, AppendCapabilityInvocationInput, AppendContextProjectionInput,
-        AppendContextVersionInput, AppendCostLedgerInput, AppendCreditLedgerInput,
-        AppendModelFailoverAttemptLedgerInput, AppendRecoveryHistoryInput, AppendRunEventInput,
-        AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
-        AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
+        AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
+        AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
+        AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
+        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
+        AppendRuntimeItemInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
+        ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, AttachCompiledPlanToFlowRunInput,
         BindInvocationContextInput, CallbackResumeContext, CallbackResumeWaitingNode,
@@ -34,16 +35,17 @@ use control_plane::{
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
         FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
-        FinishFlowRunCallbackResumeAttemptInput, GetApplicationRunMonitoringReportInput,
-        GetRuntimeDebugArtifactInput, LinkUsageLedgerToModelFailoverAttemptInput,
-        ListApplicationConversationRunsPageInput,
+        FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput,
+        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
         OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReplaceApplicationRunTraceProjectionInput, RuntimeContextContentVersion,
+        ReplaceApplicationRunTraceProjectionInput, ResumeClaimDisposition, ResumeClaimKind,
+        ResumeClaimRecord, ResumeClaimStatus, RuntimeContextContentVersion,
         UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
         UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
         UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
@@ -51,7 +53,7 @@ use control_plane::{
         UpsertDebugVariableCacheEntryInput,
     },
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::{Postgres, QueryBuilder, Row};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -78,6 +80,7 @@ include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
 include!("storage_foundation_methods.rs");
 include!("waiting_state_methods.rs");
+include!("resume_claim_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
 include!("request_log_methods.rs");
@@ -440,6 +443,20 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &PersistWaitingStateInput,
     ) -> Result<Option<PersistedWaitingState>> {
         PgControlPlaneStore::persist_waiting_state(self, input).await
+    }
+
+    async fn acquire_resume_claim(
+        &self,
+        input: &AcquireResumeClaimInput,
+    ) -> Result<AcquireResumeClaimOutput> {
+        PgControlPlaneStore::acquire_resume_claim(self, input).await
+    }
+
+    async fn finish_resume_claim(
+        &self,
+        input: &FinishResumeClaimInput,
+    ) -> Result<ResumeClaimRecord> {
+        PgControlPlaneStore::finish_resume_claim(self, input).await
     }
 
     async fn append_usage_ledger(

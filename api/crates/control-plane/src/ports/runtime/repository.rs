@@ -275,6 +275,14 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &PersistWaitingStateInput,
     ) -> anyhow::Result<Option<PersistedWaitingState>>;
+    async fn acquire_resume_claim(
+        &self,
+        input: &AcquireResumeClaimInput,
+    ) -> anyhow::Result<AcquireResumeClaimOutput>;
+    async fn finish_resume_claim(
+        &self,
+        input: &FinishResumeClaimInput,
+    ) -> anyhow::Result<ResumeClaimRecord>;
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,

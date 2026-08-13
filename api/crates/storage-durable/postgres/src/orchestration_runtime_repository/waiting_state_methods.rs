@@ -66,6 +66,60 @@ impl PgControlPlaneStore {
             return Ok(None);
         }
 
+        let mut canonical = Vec::new();
+        write_canonical_runtime_json(&input.context_content, &mut canonical)?;
+        let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
+        let byte_size = i64::try_from(canonical.len())?;
+        let content_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            insert into runtime_canonical_contents (
+                id, scope_id, application_id, content_hash, content, byte_size
+            ) values ($1, $2, $3, $4, $5, $6)
+            on conflict (application_id, content_hash) do update
+                set content_hash = excluded.content_hash
+            returning id
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.scope_id)
+        .bind(input.application_id)
+        .bind(&content_hash)
+        .bind(&input.context_content)
+        .bind(byte_size)
+        .fetch_one(&mut *tx)
+        .await?;
+        let context_version_id = Uuid::now_v7();
+        sqlx::query(
+            r#"
+            insert into runtime_context_projections (
+                id, flow_run_id, projection_kind, source_item_refs, model_input_ref,
+                model_input_hash, provider_continuation_metadata, previous_projection_id,
+                scope_id, application_id, context_sequence, transition_kind, transition_actor,
+                declared_compaction_provenance, actual_content_id
+            ) values (
+                $1, $2, 'context_version', '[]'::jsonb,
+                'runtime_canonical_content:' || $3::text, $4, '{}'::jsonb, $5,
+                $6, $7, $8, $9, 'host', null, $3
+            )
+            "#,
+        )
+        .bind(context_version_id)
+        .bind(input.flow_run_id)
+        .bind(content_id)
+        .bind(&content_hash)
+        .bind(input.parent_context_version_id)
+        .bind(input.scope_id)
+        .bind(input.application_id)
+        .bind(input.context_sequence)
+        .bind(input.context_transition_kind.as_str())
+        .execute(&mut *tx)
+        .await?;
+        let mut locator_payload = input.locator_payload.clone();
+        locator_payload["context_version_id"] = json!(context_version_id);
+        let mut variable_snapshot = input.variable_snapshot.clone();
+        variable_snapshot["__runtime_recovery_context"]["context_version_id"] =
+            json!(context_version_id);
+
         let checkpoint_row = sqlx::query(
             r#"
             insert into flow_run_checkpoints (
@@ -82,8 +136,8 @@ impl PgControlPlaneStore {
         .bind(input.node_run_id)
         .bind(&input.checkpoint_status)
         .bind(&input.checkpoint_reason)
-        .bind(&input.locator_payload)
-        .bind(&input.variable_snapshot)
+        .bind(&locator_payload)
+        .bind(&variable_snapshot)
         .bind(&input.checkpoint_external_ref_payload)
         .fetch_one(&mut *tx)
         .await?;
@@ -195,12 +249,36 @@ impl PgControlPlaneStore {
         )
         .bind(resume_sequence)
         .bind(event_sequence)
-        .bind(input.context_version_id)
-        .bind(input.recovery_content_id)
+        .bind(context_version_id)
+        .bind(content_id)
         .bind(&input.recovery_idempotency_key)
         .fetch_one(&mut *tx)
         .await?;
         let recovery_history = map_recovery_history_record(recovery_row)?;
+        match (input.resume_claim_id, input.resume_claim_token) {
+            (Some(claim_id), Some(claim_token)) => {
+                let updated = sqlx::query(
+                    r#"
+                    update flow_run_resume_claims
+                       set status = 'succeeded', completed_at = now(), updated_at = now()
+                     where id = $1 and claim_token = $2 and status = 'processing'
+                    "#,
+                )
+                .bind(claim_id)
+                .bind(claim_token)
+                .execute(&mut *tx)
+                .await?;
+                if updated.rows_affected() != 1 {
+                    return Err(ControlPlaneError::Conflict("resume_claim_not_owned").into());
+                }
+            }
+            (None, None) => {}
+            _ => {
+                return Err(anyhow!(
+                    "resume claim id and token must be provided together"
+                ))
+            }
+        }
         tx.commit().await?;
 
         let flow_run = self

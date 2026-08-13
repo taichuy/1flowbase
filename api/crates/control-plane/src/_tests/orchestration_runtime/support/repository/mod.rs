@@ -22,6 +22,7 @@ struct InMemoryOrchestrationRuntimeState {
     canonical_runtime_content_ids_by_value: HashMap<(Uuid, String), Uuid>,
     context_versions_by_id: HashMap<Uuid, domain::ContextVersionRecord>,
     recovery_history_by_flow_run_id: HashMap<Uuid, Vec<domain::RecoveryHistoryRecord>>,
+    resume_claims_by_target: HashMap<Uuid, crate::ports::ResumeClaimRecord>,
     usage_ledger_by_flow_run_id: HashMap<Uuid, Vec<domain::UsageLedgerRecord>>,
     cost_ledger_by_flow_run_id: HashMap<Uuid, Vec<domain::CostLedgerRecord>>,
     credit_ledger_by_idempotency: HashMap<(Uuid, String), domain::CreditLedgerRecord>,
