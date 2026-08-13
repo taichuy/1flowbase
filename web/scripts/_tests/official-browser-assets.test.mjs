@@ -56,6 +56,25 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
       'AC-REG-002 keeps bare CommonJS and AMD probes out of the ESM catalog asset'
     );
 
+    const icons = left.modules.find(
+      (module) => module.module_source === '@ant-design/icons'
+    );
+    assert.ok(icons, 'AC-001 publishes the official Ant Design icons module');
+    const iconsPackage = JSON.parse(
+      await readFile(
+        new URL(
+          '../../packages/ant-design-icons-catalog/package.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    );
+    assert.equal(
+      icons.module_version,
+      iconsPackage.dependencies['@ant-design/icons'],
+      'AC-001 keeps the Catalog module version aligned with its build dependency'
+    );
+
     const tailwind = left.modules.find(
       (module) => module.module_source === 'tailwindcss'
     );

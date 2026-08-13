@@ -86,6 +86,10 @@ async function verifyFixture(browserInstance, fixture) {
       .locator('[aria-label=catalog-rich-text-preview] h1')
       .filter({ hasText: 'Catalog ready' })
       .waitFor();
+    await page
+      .locator('[data-testid=catalog-icons-probe][data-status=ready]')
+      .waitFor();
+    await page.locator('[aria-label=catalog-check-circle-icon] svg').waitFor();
     const nativeEvidence = await page.evaluate(() => {
       const hosts = [
         ...document.querySelectorAll(
@@ -154,6 +158,17 @@ async function verifyFixture(browserInstance, fixture) {
     assertNativeEvidence(fixture.name, nativeEvidence);
 
     const stats = page.locator('[data-testid=native-frontstage-stats]');
+    await page.waitForFunction(async () => {
+      const element = document.querySelector(
+        '[data-testid=native-frontstage-stats]'
+      );
+      const before = element?.getAttribute('data-page-canvas-renders');
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+      return (
+        before !== null &&
+        before === element?.getAttribute('data-page-canvas-renders')
+      );
+    });
     const pageCanvasRendersBefore = Number(
       await stats.getAttribute('data-page-canvas-renders')
     );

@@ -65,7 +65,7 @@
     },
     {
       "module_source": "@ant-design/icons",
-      "module_version": "5.6.1",
+      "module_version": "6.1.0",
       "exports": [
         "ArrowDownOutlined",
         "ArrowLeftOutlined",
@@ -114,7 +114,7 @@
           "path": "ant-design-icons-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "1571f71386d3e5f310128922d8c9a599143c0bfe4e2f412bb560781c44ebb4fb"
+          "sha256": "3fe087f20571dbd6831ce3d7d80934e951afaa546dc37d31ae5bf45253f7d612"
         }
       ]
     },
