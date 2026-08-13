@@ -175,11 +175,12 @@ describe('useFrontstageBlockTabs', () => {
   });
 
   test('AC-005 saves and resets only the active public block tab', async () => {
+    const savedSource = 'export default function SavedRoot() { return null; }';
     const view = setup();
     await waitFor(() =>
       expect(view.result.current.activeTab?.loading).toBe(false)
     );
-    act(() => view.result.current.setActiveDraft('saved root source'));
+    act(() => view.result.current.setActiveDraft(savedSource));
 
     await act(async () => {
       await view.result.current.saveActiveDraft();
@@ -189,7 +190,7 @@ describe('useFrontstageBlockTabs', () => {
       'page-1',
       'root',
       {
-        source_code: 'saved root source',
+        source_code: savedSource,
         dependency_lock: [],
         tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
         generated_css: '',
@@ -198,16 +199,14 @@ describe('useFrontstageBlockTabs', () => {
       },
       'csrf-123'
     );
-    expect(view.result.current.activeTab?.base_source).toBe(
-      'saved root source'
-    );
+    expect(view.result.current.activeTab?.base_source).toBe(savedSource);
     expect(view.result.current.activeTab?.source_sha256).toBe(
-      sha256Text('saved root source')
+      sha256Text(savedSource)
     );
 
     act(() => view.result.current.setActiveDraft('discard me'));
     act(() => view.result.current.resetActive());
-    expect(view.result.current.activeTab?.draft).toBe('saved root source');
+    expect(view.result.current.activeTab?.draft).toBe(savedSource);
   });
 
   test('AC-005 converges subtree deletion through open-detail 404s', async () => {
@@ -274,7 +273,9 @@ describe('useFrontstageBlockTabs', () => {
     });
 
     act(() => view.result.current.activateBlock('root'));
-    act(() => view.result.current.setActiveDraft('unsaved root'));
+    const unsavedSource =
+      'export default function UnsavedRoot() { return null; }';
+    act(() => view.result.current.setActiveDraft(unsavedSource));
     api.saveFrontstageBlockNodeCode.mockRejectedValueOnce(
       Object.assign(new Error('forbidden'), { status: 403 })
     );
@@ -284,7 +285,7 @@ describe('useFrontstageBlockTabs', () => {
     expect(
       (view.result.current.activeTab?.error as { status?: number })?.status
     ).toBe(403);
-    expect(view.result.current.activeTab?.draft).toBe('unsaved root');
+    expect(view.result.current.activeTab?.draft).toBe(unsavedSource);
   });
 
   test('AC-005 stays on the public block-id dependency boundary', async () => {

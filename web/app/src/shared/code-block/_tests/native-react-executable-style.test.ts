@@ -62,7 +62,7 @@ describe('Native React executable style', () => {
         },
         compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
       })
-    ).rejects.toThrow(/no executable tailwind compiler/u);
+    ).rejects.toThrow(/no executable tailwind compiler/iu);
   });
 
   test('AC-011 rejects legacy, incomplete, and digest-mismatched rows', () => {

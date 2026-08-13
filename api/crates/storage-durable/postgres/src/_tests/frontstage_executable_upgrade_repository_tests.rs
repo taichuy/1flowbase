@@ -81,10 +81,11 @@ async fn fixture(legacy_count: usize) -> (PgControlPlaneStore, sqlx::PgPool, Vec
     .unwrap();
     let page_id = Uuid::now_v7();
     let tab_id = Uuid::now_v7();
-    sqlx::query("insert into frontstage_pages (id, workspace_id, kind, title, placement, rank) values ($1, $2, 'page', 'Upgrade', 'topbar', 'a')")
+    let mut transaction = pool.begin().await.unwrap();
+    sqlx::query("insert into frontstage_pages (id, workspace_id, kind, title, placement, slug, rank) values ($1, $2, 'page', 'Upgrade', 'topbar', 'upgrade', 'a')")
         .bind(page_id)
         .bind(workspace_id)
-        .execute(&pool)
+        .execute(&mut *transaction)
         .await
         .unwrap();
     sqlx::query("insert into frontstage_page_tabs (id, workspace_id, page_id, title, rank, is_default, document_root_uid) values ($1, $2, $3, 'Default', 'a', true, $4)")
@@ -92,9 +93,10 @@ async fn fixture(legacy_count: usize) -> (PgControlPlaneStore, sqlx::PgPool, Vec
         .bind(workspace_id)
         .bind(page_id)
         .bind(format!("frontstage.tab.{tab_id}.root"))
-        .execute(&pool)
+        .execute(&mut *transaction)
         .await
         .unwrap();
+    transaction.commit().await.unwrap();
 
     let mut legacy_ids = Vec::new();
     for index in 0..legacy_count {

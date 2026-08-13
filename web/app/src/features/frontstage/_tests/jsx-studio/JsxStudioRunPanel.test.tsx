@@ -270,7 +270,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(revokeDraftRun).toHaveBeenCalledTimes(2);
   });
 
-  test('AC-002 explains an unavailable optional pack without allowing the import', async () => {
+  test('AC-002 fails closed before an unavailable optional pack can allow the import', async () => {
     const compiler = vi.fn().mockResolvedValue({
       ok: false,
       diagnostics: [
@@ -293,10 +293,10 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Import source 'dayjs' is not allowed\. Optional External npm Pack is unavailable\./u
+        /Import 'dayjs' is not allowed by the executable compiler contract\./u
       )
     ).toBeInTheDocument();
-    expect(compiler).toHaveBeenCalledTimes(1);
+    expect(compiler).not.toHaveBeenCalled();
   });
 
   test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {
@@ -468,7 +468,9 @@ describe('JsxStudioRunPanel Native React run revision', () => {
   });
 
   test('R7-AC-001/003 captures render and event logs inside the owning Studio Console', async () => {
-    const browserLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const browserLog = vi
+      .spyOn(console, 'log')
+      .mockImplementation(() => undefined);
     const browserWarn = vi
       .spyOn(console, 'warn')
       .mockImplementation(() => undefined);
@@ -489,7 +491,9 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     });
     const consolePane = screen.getByTestId('js-block-console-pane');
 
-    expect(await within(consolePane).findByText('render count 0')).toBeVisible();
+    expect(
+      await within(consolePane).findByText('render count 0')
+    ).toBeVisible();
     fireEvent.click(
       await trialQueries(view.container).findByRole('button', {
         name: 'Emit runtime log'
@@ -497,11 +501,11 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     );
 
     expect(
-      await within(consolePane).findByText(
-        'button clicked {"count": 0}'
-      )
+      await within(consolePane).findByText('button clicked {"count": 0}')
     ).toBeVisible();
-    expect(await within(consolePane).findByText('render count 1')).toBeVisible();
+    expect(
+      await within(consolePane).findByText('render count 1')
+    ).toBeVisible();
     expect(browserLog).toHaveBeenCalledWith('render count', 1);
     expect(browserWarn).toHaveBeenCalledWith('button clicked', { count: 0 });
   });
@@ -531,7 +535,9 @@ describe('JsxStudioRunPanel Native React run revision', () => {
 
     const panes = await screen.findAllByTestId('js-block-console-pane');
     expect(await within(panes[0]!).findByText('first only')).toBeVisible();
-    expect(within(panes[0]!).queryByText('second only')).not.toBeInTheDocument();
+    expect(
+      within(panes[0]!).queryByText('second only')
+    ).not.toBeInTheDocument();
     expect(await within(panes[1]!).findByText('second only')).toBeVisible();
     expect(within(panes[1]!).queryByText('first only')).not.toBeInTheDocument();
     expect(browserInfo).toHaveBeenCalledTimes(2);

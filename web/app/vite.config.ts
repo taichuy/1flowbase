@@ -187,6 +187,12 @@ export default defineConfig(({ mode }) => {
         '@1flowbase/page-protocol': fileURLToPath(
           new URL('../packages/page-protocol/src/index.ts', import.meta.url)
         ),
+        '@1flowbase/page-runtime/dependency-lock': fileURLToPath(
+          new URL(
+            '../packages/page-runtime/src/native-react-compiler/module-registry/contracts.ts',
+            import.meta.url
+          )
+        ),
         '@1flowbase/page-runtime': fileURLToPath(
           new URL('../packages/page-runtime/src/index.ts', import.meta.url)
         ),

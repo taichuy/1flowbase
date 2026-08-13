@@ -13,6 +13,22 @@ import { prepareNativeReactSource } from '../native-react-source-preparation';
 import type { NativeReactBrowserCompileResult } from '../native-react-compiler-browser';
 
 const frozenSource = 'export default function Block() { return null; }';
+const tailwindDependencyLock = [
+  {
+    module_source: 'tailwindcss',
+    module_version: '4.3.3',
+    binding: 'fetched' as const,
+    assets: [
+      {
+        role: 'browser_module' as const,
+        media_type: 'text/javascript',
+        sha256: 'a'.repeat(64),
+        url: '/tailwindcss.js'
+      }
+    ],
+    exports: ['default']
+  }
+];
 
 function compiledArtifact() {
   const compiled = compileNativeReactComponent(
@@ -53,7 +69,7 @@ describe('Native React source preparation', () => {
       frozenSource:
         'import \'tailwindcss\'; export default () => <div className="grid unknown-layout" />;',
       requestId: 'unsupported-tailwind',
-      dependencyLock: [],
+      dependencyLock: tailwindDependencyLock,
       compiler,
       registryFactory
     });
