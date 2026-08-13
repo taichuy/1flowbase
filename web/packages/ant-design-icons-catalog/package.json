@@ -5,10 +5,8 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",
-  "dependencies": {
-    "@ant-design/icons": "6.1.0"
-  },
   "peerDependencies": {
+    "@ant-design/icons": "*",
     "react": "^19.0.0"
   },
   "scripts": {

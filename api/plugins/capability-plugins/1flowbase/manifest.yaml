@@ -253,14 +253,14 @@ block_contributions:
                 code: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
             insert_snippet: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
       - source: "@ant-design/icons"
-        version: "6.1.0"
+        version: "6.3.2"
         exports: [ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, CalendarOutlined, CheckCircleOutlined, CheckOutlined, ClockCircleOutlined, CloseCircleOutlined, CloseOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, ExclamationCircleOutlined, EyeInvisibleOutlined, EyeOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, HomeOutlined, InfoCircleOutlined, LeftOutlined, LinkOutlined, LoadingOutlined, LockOutlined, MailOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PlusOutlined, QuestionCircleOutlined, RightOutlined, SaveOutlined, SearchOutlined, SettingOutlined, UpOutlined, UploadOutlined, UserOutlined, WarningOutlined]
         binding: fetched
         assets:
           - path: "browser-assets/ant-design-icons-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "3fe087f20571dbd6831ce3d7d80934e951afaa546dc37d31ae5bf45253f7d612"
+            sha256: "c6a7f2d425adc8f21b2711d8698bd97dd88776abd4464d92b9727c8dc81f1ed7"
         type_declarations: |
           declare module '@ant-design/icons' {
             import type { ComponentType, CSSProperties } from 'react';
