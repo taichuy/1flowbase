@@ -8,6 +8,10 @@ import { build } from 'vite';
 
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPOSITORY_ROOT = resolve(WEB_ROOT, '..');
+const HOST_ICONS_DIRECTORY = join(
+  WEB_ROOT,
+  'app/node_modules/@ant-design/icons'
+);
 const DEFAULT_OUTPUT = join(
   REPOSITORY_ROOT,
   'api/plugins/capability-plugins/1flowbase/browser-assets'
@@ -34,6 +38,12 @@ export async function buildOfficialBrowserAssets(
       const descriptor = JSON.parse(
         await readFile(join(packageDirectory, 'catalog-module.json'), 'utf8')
       );
+      const moduleVersion =
+        directoryName === 'ant-design-icons-catalog'
+          ? JSON.parse(
+              await readFile(join(HOST_ICONS_DIRECTORY, 'package.json'), 'utf8')
+            ).version
+          : descriptor.module_version;
       const moduleOutput = join(stagingDirectory, directoryName);
       await build({
         configFile: false,
@@ -42,6 +52,7 @@ export async function buildOfficialBrowserAssets(
         plugins: [tailwindcss()],
         resolve: {
           alias: {
+            '@ant-design/icons': HOST_ICONS_DIRECTORY,
             echarts: join(WEB_ROOT, 'app/node_modules/echarts'),
             vditor: join(WEB_ROOT, 'app/node_modules/vditor')
           }
@@ -105,7 +116,7 @@ export async function buildOfficialBrowserAssets(
       }
       digestModules.push({
         module_source: descriptor.module_source,
-        module_version: descriptor.module_version,
+        module_version: moduleVersion,
         exports: [...descriptor.exports].sort(),
         type_declarations: typeDeclarations,
         assets

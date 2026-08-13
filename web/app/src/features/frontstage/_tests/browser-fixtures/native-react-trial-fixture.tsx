@@ -8,6 +8,7 @@ import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import tailwindCss from '@1flowbase/tailwindcss-catalog/styles.css?inline';
 import vditorCss from 'vditor/dist/index.css?raw';
 import iconsBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/ant-design-icons-catalog.js?raw';
+import officialBrowserAssets from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/official-browser-assets.digest-input.json';
 import richTextBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/rich-text.js?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { ComponentProps, ComponentType } from 'react';
@@ -246,8 +247,16 @@ const tailwindModuleAsset = fixtureModuleStyle('tailwindcss', 'e', tailwindCss);
 
 const RICH_TEXT_BROWSER_ASSET_SHA256 =
   '2b38c019e575e6e580b7955eaf37053bc7ac789fe6de71d492036e22f8993d56';
-const ICONS_BROWSER_ASSET_SHA256 =
-  '3fe087f20571dbd6831ce3d7d80934e951afaa546dc37d31ae5bf45253f7d612';
+const iconsModule = officialBrowserAssets.modules.find(
+  (module) => module.module_source === '@ant-design/icons'
+);
+const iconsBrowserAsset = iconsModule?.assets.find(
+  (asset) => asset.role === 'browser_module'
+);
+if (!iconsModule || !iconsBrowserAsset)
+  throw new Error('Official Ant Design icons browser asset is unavailable.');
+const ICONS_MODULE_VERSION = iconsModule.module_version;
+const ICONS_BROWSER_ASSET_SHA256 = iconsBrowserAsset.sha256;
 
 function CatalogIconsProbe() {
   const [Icon, setIcon] = useState<ComponentType<{
@@ -275,7 +284,7 @@ function CatalogIconsProbe() {
         },
         {
           module_source: '@ant-design/icons',
-          module_version: '6.1.0',
+          module_version: ICONS_MODULE_VERSION,
           binding: 'fetched',
           exports: ['CheckCircleOutlined'],
           assets: [

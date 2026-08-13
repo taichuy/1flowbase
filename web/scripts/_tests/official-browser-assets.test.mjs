@@ -60,6 +60,15 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
       (module) => module.module_source === '@ant-design/icons'
     );
     assert.ok(icons, 'AC-001 publishes the official Ant Design icons module');
+    const iconsDescriptor = JSON.parse(
+      await readFile(
+        new URL(
+          '../../packages/ant-design-icons-catalog/catalog-module.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    );
     const iconsPackage = JSON.parse(
       await readFile(
         new URL(
@@ -69,10 +78,29 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
         'utf8'
       )
     );
+    const hostIconsPackage = JSON.parse(
+      await readFile(
+        new URL(
+          '../../app/node_modules/@ant-design/icons/package.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    );
+    assert.equal(
+      Object.hasOwn(iconsDescriptor, 'module_version'),
+      false,
+      'AC-001 keeps generated module versions out of the static Catalog descriptor'
+    );
+    assert.equal(
+      iconsPackage.dependencies?.['@ant-design/icons'],
+      undefined,
+      'AC-001 keeps the host-owned dependency out of the Catalog package'
+    );
     assert.equal(
       icons.module_version,
-      iconsPackage.dependencies['@ant-design/icons'],
-      'AC-001 keeps the Catalog module version aligned with its build dependency'
+      hostIconsPackage.version,
+      'AC-001 derives the Catalog module version from the host-resolved dependency'
     );
 
     const tailwind = left.modules.find(

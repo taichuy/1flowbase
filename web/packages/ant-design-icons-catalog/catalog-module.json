@@ -1,6 +1,5 @@
 {
   "module_source": "@ant-design/icons",
-  "module_version": "6.1.0",
   "entry": "src/index.ts",
   "exports": [
     "ArrowDownOutlined",
