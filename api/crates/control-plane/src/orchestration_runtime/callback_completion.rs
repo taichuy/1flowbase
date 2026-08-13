@@ -90,6 +90,16 @@ where
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
             serde_json::from_value(compiled_record.plan.clone())?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
+        ensure_flow_run_transition(
+            flow_run.status,
+            domain::FlowRunStatus::WaitingCallback,
+            "complete_callback_task",
+        )?;
+        ensure_node_run_transition(
+            waiting_node.status,
+            domain::NodeRunStatus::WaitingCallback,
+            "complete_callback_task",
+        )?;
         let claim = self
             .repository
             .acquire_resume_claim(&AcquireResumeClaimInput {

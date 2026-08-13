@@ -1186,6 +1186,18 @@ where
         } else {
             None
         };
+        ensure_flow_run_transition(
+            flow_run.status,
+            domain::FlowRunStatus::WaitingHuman,
+            "resume_flow_run",
+        )?;
+        if let Some(waiting_node_resume) = &waiting_node_resume {
+            ensure_node_run_transition(
+                waiting_node_resume.from_status,
+                domain::NodeRunStatus::WaitingHuman,
+                "resume_flow_run",
+            )?;
+        }
         let claim = self
             .repository
             .acquire_resume_claim(&AcquireResumeClaimInput {

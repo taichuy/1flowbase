@@ -185,6 +185,8 @@ fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String,
 }
 
 fn llm_callback_append(node_id: &str, previous: &Value, current: &Value) -> Option<Value> {
+    let previous_node = previous.as_object()?;
+    let current_node = current.as_object()?;
     let previous_state = previous.get("__llm_tool_callback")?.as_object()?;
     let current_state = current.get("__llm_tool_callback")?.as_object()?;
     let previous_history = previous_state.get("history")?.as_array()?;
@@ -192,20 +194,36 @@ fn llm_callback_append(node_id: &str, previous: &Value, current: &Value) -> Opti
     if !current_history.starts_with(previous_history) {
         return None;
     }
-    let mut node_overlay = current.as_object()?.clone();
-    let mut state_overlay = node_overlay
-        .remove("__llm_tool_callback")?
-        .as_object()
-        .cloned()?;
-    state_overlay.remove("history");
-    state_overlay.remove("system");
+    let node_set = current_node
+        .iter()
+        .filter(|(key, value)| {
+            key.as_str() != "__llm_tool_callback" && previous_node.get(*key) != Some(*value)
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Map<_, _>>();
+    let node_remove = previous_node
+        .keys()
+        .filter(|key| key.as_str() != "__llm_tool_callback" && !current_node.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    let state_set = current_state
+        .iter()
+        .filter(|(key, value)| {
+            key.as_str() != "history" && previous_state.get(*key) != Some(*value)
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Map<_, _>>();
+    let state_remove = previous_state
+        .keys()
+        .filter(|key| key.as_str() != "history" && !current_state.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>();
     Some(json!({
         "node_id": node_id,
-        "node_overlay": node_overlay,
-        "state_overlay": state_overlay,
-        "system_changed": previous_state.get("system") != current_state.get("system"),
-        "system_present": current_state.contains_key("system"),
-        "system": current_state.get("system"),
+        "node_set": node_set,
+        "node_remove": node_remove,
+        "state_set": state_set,
+        "state_remove": state_remove,
         "history_append": current_history[previous_history.len()..],
     }))
 }
@@ -283,37 +301,83 @@ fn apply_llm_callback_append(variable_pool: &mut Map<String, Value>, append: &Va
         .get("__llm_tool_callback")
         .and_then(Value::as_object)
         .ok_or_else(|| anyhow!("LLM callback state must be an object"))?;
-    let mut node = append
-        .get("node_overlay")
-        .and_then(Value::as_object)
-        .cloned()
-        .ok_or_else(|| anyhow!("LLM callback append must contain node_overlay"))?;
-    let mut state = append
-        .get("state_overlay")
-        .and_then(Value::as_object)
-        .cloned()
-        .ok_or_else(|| anyhow!("LLM callback append must contain state_overlay"))?;
-    if append
-        .get("system_changed")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| anyhow!("LLM callback append must contain system_changed"))?
-    {
-        if append
-            .get("system_present")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| anyhow!("LLM callback append must contain system_present"))?
+    let (mut node, mut state) = if let Some(node_set) = append.get("node_set") {
+        let mut node = previous_node.clone();
+        for (key, value) in node_set
+            .as_object()
+            .ok_or_else(|| anyhow!("LLM callback node_set must be an object"))?
         {
-            state.insert(
-                "system".to_string(),
-                append
-                    .get("system")
-                    .cloned()
-                    .ok_or_else(|| anyhow!("LLM callback append must contain system"))?,
-            );
+            node.insert(key.clone(), value.clone());
         }
-    } else if let Some(system) = previous_state.get("system") {
-        state.insert("system".to_string(), system.clone());
-    }
+        for key in append
+            .get("node_remove")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("LLM callback node_remove must be an array"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("LLM callback node_remove entries must be strings"))
+            })
+        {
+            node.remove(key?);
+        }
+        let mut state = previous_state.clone();
+        for (key, value) in append
+            .get("state_set")
+            .and_then(Value::as_object)
+            .ok_or_else(|| anyhow!("LLM callback state_set must be an object"))?
+        {
+            state.insert(key.clone(), value.clone());
+        }
+        for key in append
+            .get("state_remove")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("LLM callback state_remove must be an array"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("LLM callback state_remove entries must be strings"))
+            })
+        {
+            state.remove(key?);
+        }
+        (node, state)
+    } else {
+        let node = append
+            .get("node_overlay")
+            .and_then(Value::as_object)
+            .cloned()
+            .ok_or_else(|| anyhow!("LLM callback append must contain node_overlay"))?;
+        let mut state = append
+            .get("state_overlay")
+            .and_then(Value::as_object)
+            .cloned()
+            .ok_or_else(|| anyhow!("LLM callback append must contain state_overlay"))?;
+        if append
+            .get("system_changed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| anyhow!("LLM callback append must contain system_changed"))?
+        {
+            if append
+                .get("system_present")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| anyhow!("LLM callback append must contain system_present"))?
+            {
+                state.insert(
+                    "system".to_string(),
+                    append
+                        .get("system")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("LLM callback append must contain system"))?,
+                );
+            }
+        } else if let Some(system) = previous_state.get("system") {
+            state.insert("system".to_string(), system.clone());
+        }
+        (node, state)
+    };
     let mut history = previous_state
         .get("history")
         .and_then(Value::as_array)

@@ -25,6 +25,7 @@ struct InMemoryOrchestrationRuntimeState {
     latest_invocation_context_version_by_run: HashMap<Uuid, Uuid>,
     recovery_history_by_flow_run_id: HashMap<Uuid, Vec<domain::RecoveryHistoryRecord>>,
     resume_claims_by_target: HashMap<Uuid, crate::ports::ResumeClaimRecord>,
+    resume_claim_acquire_count: usize,
     usage_ledger_by_flow_run_id: HashMap<Uuid, Vec<domain::UsageLedgerRecord>>,
     cost_ledger_by_flow_run_id: HashMap<Uuid, Vec<domain::CostLedgerRecord>>,
     credit_ledger_by_idempotency: HashMap<(Uuid, String), domain::CreditLedgerRecord>,
@@ -1008,6 +1009,39 @@ impl InMemoryOrchestrationRuntimeRepository {
             .get_mut(&flow_run_id)
             .expect("flow run should exist for test");
         flow_run.status = status;
+    }
+
+    pub(super) fn force_checkpoint_node_run_status(
+        &self,
+        checkpoint_id: Uuid,
+        status: domain::NodeRunStatus,
+    ) {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let node_run_id = inner
+            .checkpoints_by_id
+            .get(&checkpoint_id)
+            .and_then(|checkpoint| checkpoint.node_run_id)
+            .expect("checkpoint should own a node run for test");
+        inner
+            .node_runs_by_id
+            .get_mut(&node_run_id)
+            .expect("checkpoint node run should exist for test")
+            .status = status;
+    }
+
+    pub(super) fn resume_claim_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .resume_claims_by_target
+            .len()
+    }
+
+    pub(super) fn resume_claim_acquire_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .resume_claim_acquire_count
     }
 
     pub(super) fn force_flow_run_status_after_next_get(

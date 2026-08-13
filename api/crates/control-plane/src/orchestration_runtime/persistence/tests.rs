@@ -201,6 +201,7 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
                 "stale_output": true,
                 "__llm_tool_callback": {
                     "system": fixed_system,
+                    "provider_metadata": { "transport": "responses_websocket" },
                     "history": [{ "role": "user", "content": "summarize" }],
                     "pending_tool_calls": [{ "id": "call-1", "name": "lookup" }],
                     "obsolete_state": true
@@ -245,15 +246,70 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
     let second_serialized = serde_json::to_string(&second.content).unwrap();
 
     assert_eq!(second.content["format"], "runtime_delta_v1");
+    let callback_append = &second.content["llm_callback_appends"][0];
     assert_eq!(
-        second.content["llm_callback_appends"][0]["history_append"]
-            .as_array()
-            .unwrap()
-            .len(),
+        callback_append["history_append"].as_array().unwrap().len(),
         2
     );
+    assert!(callback_append.get("system").is_none());
+    assert!(callback_append.get("system_changed").is_none());
+    assert!(callback_append.get("system_present").is_none());
+    assert!(!second_serialized.contains("provider_metadata"));
+    assert!(!second_serialized.contains("responses_websocket"));
+    assert!(!second_serialized.contains("\"text\":\"waiting\""));
     assert!(!second_serialized.contains("fixed-prefix-"));
-    assert!(second_serialized.len() < 1_000);
+    let fixed_prefix_bytes = serde_json::to_vec(&first_pool).unwrap().len();
+    assert!(second_serialized.len() * 10 < fixed_prefix_bytes);
+
+    let mut third_pool = second_pool.clone();
+    third_pool.insert(
+        RECOVERY_CONTEXT_MARKER.to_string(),
+        json!({ "context_version_id": second_context_version_id, "sequence": 1 }),
+    );
+    third_pool["node-llm"]["__llm_tool_callback"]["system"] = json!("changed-system");
+    third_pool["node-llm"]["__llm_tool_callback"]["history"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "role": "assistant", "content": "round two" }));
+    let third = compact_checkpoint_content(
+        &orchestration_runtime::execution_state::CheckpointSnapshot {
+            next_node_index: 1,
+            variable_pool: third_pool.clone(),
+            active_node_ids: vec!["node-llm".to_string()],
+        },
+        Some(&second_pool),
+    )
+    .unwrap();
+    let third_serialized = serde_json::to_string(&third.content).unwrap();
+    assert_eq!(
+        third.content["llm_callback_appends"][0]["state_set"]["system"],
+        json!("changed-system")
+    );
+    assert_eq!(third_serialized.matches("changed-system").count(), 1);
+    assert!(!third_serialized.contains("fixed-prefix-"));
+
+    let third_context_version_id = Uuid::now_v7();
+    let mut fourth_pool = third_pool.clone();
+    fourth_pool.insert(
+        RECOVERY_CONTEXT_MARKER.to_string(),
+        json!({ "context_version_id": third_context_version_id, "sequence": 2 }),
+    );
+    fourth_pool["node-llm"]["__llm_tool_callback"]["history"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "role": "tool", "content": "round three" }));
+    let fourth = compact_checkpoint_content(
+        &orchestration_runtime::execution_state::CheckpointSnapshot {
+            next_node_index: 1,
+            variable_pool: fourth_pool.clone(),
+            active_node_ids: vec!["node-llm".to_string()],
+        },
+        Some(&third_pool),
+    )
+    .unwrap();
+    let fourth_serialized = serde_json::to_string(&fourth.content).unwrap();
+    assert!(!fourth_serialized.contains("changed-system"));
+    assert!(!fourth_serialized.contains("provider_metadata"));
 
     let mut materialized = materialize_checkpoint_content(&[
         crate::ports::RuntimeContextContentVersion {
@@ -266,12 +322,22 @@ fn compact_checkpoint_content_appends_llm_history_without_copying_fixed_context(
             sequence: 1,
             content: second.content,
         },
+        crate::ports::RuntimeContextContentVersion {
+            context_version_id: third_context_version_id,
+            sequence: 2,
+            content: third.content,
+        },
+        crate::ports::RuntimeContextContentVersion {
+            context_version_id: Uuid::now_v7(),
+            sequence: 3,
+            content: fourth.content,
+        },
     ])
     .unwrap();
     materialized.remove(RECOVERY_CONTEXT_MARKER);
-    second_pool.remove(RECOVERY_CONTEXT_MARKER);
+    fourth_pool.remove(RECOVERY_CONTEXT_MARKER);
 
-    assert_eq!(materialized, second_pool);
+    assert_eq!(materialized, fourth_pool);
 }
 
 #[test]

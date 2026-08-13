@@ -1273,6 +1273,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         input: &crate::ports::AcquireResumeClaimInput,
     ) -> Result<crate::ports::AcquireResumeClaimOutput> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        inner.resume_claim_acquire_count += 1;
         let target_id = input.callback_task_id.unwrap_or(input.checkpoint_id);
         let flow_status = inner
             .flow_runs_by_id
