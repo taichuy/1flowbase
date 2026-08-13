@@ -122,6 +122,253 @@ fn configure_image_llm_tool(plan: &mut CompiledPlan) {
     )]);
 }
 
+fn configure_image_llm_media_refs_tool(plan: &mut CompiledPlan) {
+    configure_image_llm_tool(plan);
+    let main_llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("main llm node should exist");
+    main_llm.config["visible_internal_llm_tools"][0]["preconditions"] = json!([
+        {
+            "kind": "media_content_available",
+            "argument_path": ["media_refs"],
+            "media_kind": "image"
+        }
+    ]);
+    main_llm.config["visible_internal_llm_tools"][0]["input_schema"] = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "task": { "type": "string" },
+            "media_refs": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string" }
+            }
+        },
+        "required": ["task", "media_refs"]
+    });
+}
+
+#[tokio::test]
+async fn ac_002_ac_003_media_refs_inject_only_selected_images_in_declared_order() {
+    let first = json!({
+        "type": "image",
+        "source": { "type": "base64", "media_type": "image/png", "data": "Zmlyc3Q=" }
+    });
+    let second = json!({
+        "type": "image",
+        "source": { "type": "base64", "media_type": "image/png", "data": "c2Vjb25k" }
+    });
+    let first_ref = plugin_framework::provider_contract::provider_media_content_ref(&first)
+        .expect("first image should have a media ref");
+    let second_ref = plugin_framework::provider_contract::provider_media_content_ref(&second)
+        .expect("second image should have a media ref");
+    let (invoker, captured_inputs) = sequential_tool_invoker(vec![
+        tool_call_response(vec![ProviderToolCall {
+            id: "call_image".to_string(),
+            name: "image_llm".to_string(),
+            arguments: json!({
+                "task": "按指定顺序比较图片",
+                "media_refs": [second_ref, first_ref]
+            }),
+            provider_metadata: json!({}),
+        }]),
+        final_llm_response("mounted-visible"),
+        final_llm_response("main-after-image"),
+    ]);
+    let mut plan = visible_internal_llm_tool_plan();
+    configure_image_llm_media_refs_tool(&mut plan);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": {
+                "query": "比较我上传的两张图",
+                "history": [{
+                    "role": "user",
+                    "content": "比较图片",
+                    "content_blocks": [first, second]
+                }]
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .expect("media_refs flow should execute");
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    let captured = captured_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned")
+        .clone();
+    assert_eq!(
+        captured.len(),
+        3,
+        "mounted image model must be invoked once"
+    );
+    let mounted_images = captured[1]
+        .messages
+        .iter()
+        .filter_map(|message| message.content_blocks.as_ref())
+        .flat_map(|blocks| blocks.as_array().into_iter().flatten())
+        .filter(|block| block["type"] == json!("image"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(mounted_images.len(), 2);
+    assert_eq!(mounted_images[0]["source"]["data"], json!("c2Vjb25k"));
+    assert_eq!(mounted_images[1]["source"]["data"], json!("Zmlyc3Q="));
+}
+
+#[tokio::test]
+async fn ac_004_unknown_media_ref_fails_closed_without_invoking_mounted_model() {
+    let (invoker, captured_inputs) = sequential_tool_invoker(vec![
+        tool_call_response(vec![ProviderToolCall {
+            id: "call_image".to_string(),
+            name: "image_llm".to_string(),
+            arguments: json!({
+                "task": "描述图片",
+                "media_refs": ["media_sha256_not_visible"]
+            }),
+            provider_metadata: json!({}),
+        }]),
+        final_llm_response("main-recovered"),
+    ]);
+    let mut plan = visible_internal_llm_tool_plan();
+    configure_image_llm_media_refs_tool(&mut plan);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": {
+                "query": "描述图片",
+                "history": [{
+                    "role": "user",
+                    "content_blocks": [{
+                        "type": "image",
+                        "source": { "type": "base64", "media_type": "image/png", "data": "aW1hZ2U=" }
+                    }]
+                }]
+            }
+        }),
+        &invoker,
+    )
+    .await
+    .expect("invalid media ref should be recoverable by the main model");
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    assert_eq!(
+        captured_inputs
+            .lock()
+            .expect("captured inputs mutex poisoned")
+            .len(),
+        2,
+        "invalid media_ref must not invoke the mounted image model"
+    );
+}
+
+#[tokio::test]
+async fn ac_005_media_ref_resolves_after_external_tool_callback_resume() {
+    let image = json!({
+        "type": "image",
+        "source": { "type": "base64", "media_type": "image/png", "data": "cGVyc2lzdGVk" }
+    });
+    let media_ref = plugin_framework::provider_contract::provider_media_content_ref(&image)
+        .expect("image should have a media ref");
+    let (waiting_invoker, _) =
+        sequential_tool_invoker(vec![tool_call_response(vec![ProviderToolCall {
+            id: "call_read".to_string(),
+            name: "Read".to_string(),
+            arguments: json!({ "file_path": "notes.txt" }),
+            provider_metadata: json!({}),
+        }])]);
+    let mut plan = visible_internal_llm_tool_plan();
+    configure_image_llm_media_refs_tool(&mut plan);
+    let waiting = start_flow_debug_run(
+        &plan,
+        &json!({
+            "node-start": {
+                "query": "先读说明，再分析图片",
+                "history": [{
+                    "role": "user",
+                    "content": "分析图片",
+                    "content_blocks": [image]
+                }],
+                "tools": [{
+                    "name": "Read",
+                    "description": "Read a file",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": { "file_path": { "type": "string" } },
+                        "required": ["file_path"]
+                    }
+                }]
+            }
+        }),
+        &waiting_invoker,
+    )
+    .await
+    .expect("external tool call should checkpoint");
+    let checkpoint = waiting
+        .checkpoint_snapshot
+        .expect("waiting callback should persist a checkpoint");
+
+    let (resume_invoker, resumed_inputs) = sequential_tool_invoker(vec![
+        tool_call_response(vec![ProviderToolCall {
+            id: "call_image".to_string(),
+            name: "image_llm".to_string(),
+            arguments: json!({
+                "task": "描述之前上传的图片",
+                "media_refs": [media_ref]
+            }),
+            provider_metadata: json!({}),
+        }]),
+        final_llm_response("mounted-after-resume"),
+        final_llm_response("main-after-resume"),
+    ]);
+    let resumed = resume_flow_debug_run(
+        &plan,
+        &checkpoint,
+        "node-llm",
+        &json!({
+            "tool_results": [{
+                "tool_call_id": "call_read",
+                "name": "Read",
+                "content": "instructions"
+            }]
+        }),
+        &resume_invoker,
+    )
+    .await
+    .expect("media ref should survive callback resume");
+
+    assert!(matches!(
+        resumed.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    let captured = resumed_inputs
+        .lock()
+        .expect("captured inputs mutex poisoned")
+        .clone();
+    assert_eq!(captured.len(), 3);
+    let mounted_images = captured[1]
+        .messages
+        .iter()
+        .filter_map(|message| message.content_blocks.as_ref())
+        .flat_map(|blocks| blocks.as_array().into_iter().flatten())
+        .filter(|block| block["type"] == json!("image"))
+        .collect::<Vec<_>>();
+    assert_eq!(mounted_images.len(), 1);
+    assert_eq!(mounted_images[0]["source"]["data"], json!("cGVyc2lzdGVk"));
+}
+
 #[tokio::test]
 async fn missing_workspace_image_path_waits_for_client_read_without_invoking_image_llm() {
     let (invoker, captured_inputs) = sequential_tool_invoker(vec![tool_call_response(vec![

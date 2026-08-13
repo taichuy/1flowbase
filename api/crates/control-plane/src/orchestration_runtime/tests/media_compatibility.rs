@@ -205,7 +205,7 @@ fn orchestration_runtime_textualizes_tool_result_media_for_text_models() {
 }
 
 #[test]
-fn orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_models() {
+fn orchestration_runtime_projects_media_refs_in_routed_guidance_for_text_models() {
     let mut input = ProviderInvocationInput {
         messages: vec![
             ProviderMessage {
@@ -258,7 +258,14 @@ fn orchestration_runtime_textualizes_routed_media_as_retry_guidance_for_text_mod
     assert!(tool_message.content.contains("\"name\":\"image_llm\""));
     assert!(tool_message
         .content
-        .contains("Call the routed media tool again"));
+        .contains("Pass one or more provided media_ref values in media_refs"));
+    let guidance: Value = serde_json::from_str(&tool_message.content)
+        .expect("routed media guidance must remain valid JSON");
+    let media_ref = guidance["media_blocks"][0]["media_ref"]
+        .as_str()
+        .expect("AC-001 routed media guidance must expose an opaque media_ref");
+    assert!(media_ref.starts_with("media_sha256_"));
+    assert_eq!(media_ref.len(), "media_sha256_".len() + 24);
     assert!(!tool_message
         .content
         .contains("tool_result_media_unsupported"));

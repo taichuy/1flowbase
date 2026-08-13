@@ -8,6 +8,7 @@ pub(in crate::execution_engine) fn project_visible_internal_llm_tool_shared_mess
         return;
     }
 
+    let explicit_media_refs = visible_internal_llm_tool_uses_media_refs(variable_pool);
     for message in messages.iter_mut() {
         let Some(blocks) = message
             .content_blocks
@@ -17,10 +18,9 @@ pub(in crate::execution_engine) fn project_visible_internal_llm_tool_shared_mess
             continue;
         };
         blocks.retain(|block| {
-            !matches!(
-                block.get("type").and_then(Value::as_str),
-                Some("reasoning" | "reasoning_redacted")
-            )
+            let block_type = block.get("type").and_then(Value::as_str);
+            !matches!(block_type, Some("reasoning" | "reasoning_redacted"))
+                && !(explicit_media_refs && image_content_block_is_supported(block))
         });
     }
     messages.retain(visible_internal_llm_tool_message_has_shared_content);
@@ -174,20 +174,26 @@ pub(in crate::execution_engine) async fn inject_visible_internal_llm_tool_media_
     input: &mut ProviderInvocationInput,
     variable_pool: &Map<String, Value>,
 ) {
-    let media_items = visible_internal_llm_tool_media_arguments(variable_pool);
-    if media_items.is_empty() {
-        return;
-    }
-
-    let mut injected_blocks = Vec::new();
-    for media in media_items {
-        if let Some(block) = image_content_block_from_workspace_media(&media).await {
-            injected_blocks.push(block);
+    let injected_blocks = match selected_image_content_blocks_for_media_refs(variable_pool) {
+        Some(Ok(blocks)) => blocks,
+        Some(Err(_)) => return,
+        None => {
+            let media_items = visible_internal_llm_tool_media_arguments(variable_pool);
+            if media_items.is_empty() {
+                return;
+            }
+            let mut blocks = Vec::new();
+            for media in media_items {
+                if let Some(block) = image_content_block_from_workspace_media(&media).await {
+                    blocks.push(block);
+                }
+            }
+            if blocks.is_empty() && !provider_input_has_image_content_blocks(input) {
+                blocks.extend(inherited_image_content_blocks(variable_pool));
+            }
+            blocks
         }
-    }
-    if injected_blocks.is_empty() && !provider_input_has_image_content_blocks(input) {
-        injected_blocks.extend(inherited_image_content_blocks(variable_pool));
-    }
+    };
     if injected_blocks.is_empty() {
         return;
     }
@@ -246,6 +252,10 @@ async fn visible_internal_llm_tool_media_unavailable_error(
 ) -> Option<Value> {
     let media_items =
         visible_internal_llm_tool_media_arguments_for_precondition(precondition, variable_pool);
+    if media_ref_argument_path(precondition) {
+        return selected_image_content_blocks_for_precondition(precondition, variable_pool)
+            .and_then(Result::err);
+    }
     let workspace_media = media_items
         .iter()
         .filter(|media| workspace_image_media_path(media).is_some())
@@ -317,7 +327,9 @@ fn visible_internal_llm_tool_media_arguments_for_precondition(
 ) -> Vec<Value> {
     visible_internal_llm_tool_media_arguments_at_path(
         &precondition.argument_path,
-        precondition.media_kind.as_deref(),
+        (!media_ref_argument_path(precondition))
+            .then_some(precondition.media_kind.as_deref())
+            .flatten(),
         variable_pool,
     )
 }
@@ -350,11 +362,111 @@ fn visible_internal_llm_tool_media_arguments_at_path(
     media_items
         .into_iter()
         .filter(|media| {
-            media_kind.is_none_or(|media_kind| {
-                media.get("kind").and_then(Value::as_str) == Some(media_kind)
-            })
+            media.is_string()
+                || media_kind.is_none_or(|media_kind| {
+                    media.get("kind").and_then(Value::as_str) == Some(media_kind)
+                })
         })
         .collect()
+}
+
+fn visible_internal_llm_tool_uses_media_refs(variable_pool: &Map<String, Value>) -> bool {
+    visible_internal_llm_tool_preconditions(variable_pool)
+        .iter()
+        .any(|precondition| match precondition {
+            VisibleInternalLlmToolPrecondition::MediaContentAvailable(media) => {
+                media_ref_argument_path(media)
+            }
+        })
+}
+
+fn media_ref_argument_path(precondition: &VisibleInternalLlmToolMediaContentPrecondition) -> bool {
+    precondition.argument_path.last().map(String::as_str) == Some("media_refs")
+}
+
+fn selected_image_content_blocks_for_media_refs(
+    variable_pool: &Map<String, Value>,
+) -> Option<Result<Vec<Value>, Value>> {
+    visible_internal_llm_tool_preconditions(variable_pool)
+        .iter()
+        .find(|precondition| match precondition {
+            VisibleInternalLlmToolPrecondition::MediaContentAvailable(media) => {
+                media_ref_argument_path(media)
+            }
+        })
+        .map(|precondition| match precondition {
+            VisibleInternalLlmToolPrecondition::MediaContentAvailable(media) => {
+                selected_image_content_blocks_for_precondition(media, variable_pool)
+                    .unwrap_or_else(|| Err(invalid_media_refs_error(Vec::new(), "media_refs must be a non-empty array of references supplied by the runtime")))
+            }
+        })
+}
+
+fn selected_image_content_blocks_for_precondition(
+    precondition: &VisibleInternalLlmToolMediaContentPrecondition,
+    variable_pool: &Map<String, Value>,
+) -> Option<Result<Vec<Value>, Value>> {
+    if !media_ref_argument_path(precondition) {
+        return None;
+    }
+    let media_refs =
+        visible_internal_llm_tool_media_arguments_for_precondition(precondition, variable_pool);
+    if media_refs.is_empty() {
+        return Some(Err(invalid_media_refs_error(
+            Vec::new(),
+            "media_refs must contain at least one reference supplied by the runtime",
+        )));
+    }
+
+    let mut requested = Vec::with_capacity(media_refs.len());
+    for value in media_refs {
+        let Some(media_ref) = value
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Some(Err(invalid_media_refs_error(
+                requested,
+                "every media_refs item must be a non-empty string",
+            )));
+        };
+        if requested.iter().any(|existing| existing == media_ref) {
+            return Some(Err(invalid_media_refs_error(
+                requested,
+                "media_refs must not contain duplicate references",
+            )));
+        }
+        requested.push(media_ref.to_string());
+    }
+
+    let available = inherited_image_content_blocks(variable_pool)
+        .into_iter()
+        .filter_map(|block| {
+            plugin_framework::provider_contract::provider_media_content_ref(&block)
+                .map(|media_ref| (media_ref, block))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut selected = Vec::with_capacity(requested.len());
+    for media_ref in &requested {
+        let Some(block) = available.get(media_ref) else {
+            return Some(Err(invalid_media_refs_error(
+                requested,
+                "a media_ref is not visible in the current tool-call context",
+            )));
+        };
+        selected.push(block.clone());
+    }
+    Some(Ok(selected))
+}
+
+fn invalid_media_refs_error(media_refs: Vec<String>, message: &str) -> Value {
+    json!({
+        "error_code": "visible_internal_llm_tool_media_ref_invalid",
+        "message": message,
+        "recoverable": true,
+        "media_refs": media_refs,
+        "hint": "Retry the routed media tool using only media_ref values provided by the current routed_media_content_available event."
+    })
 }
 
 fn inherited_image_content_blocks(variable_pool: &Map<String, Value>) -> Vec<Value> {
@@ -638,6 +750,57 @@ fn find_run_context_array(variable_pool: &Map<String, Value>, key: &str) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn media_ref_variable_pool(arguments: Value, history: Value) -> Map<String, Value> {
+        Map::from_iter([(
+            VISIBLE_INTERNAL_LLM_TOOL_VARIABLE.to_string(),
+            json!({
+                "arguments": arguments,
+                "preconditions": [{
+                    "kind": "media_content_available",
+                    "argument_path": ["media_refs"],
+                    "media_kind": "image"
+                }],
+                "context": { "history": history }
+            }),
+        )])
+    }
+
+    #[test]
+    fn media_refs_reject_non_string_duplicate_and_wrong_media_kind() {
+        let image = json!({
+            "type": "image",
+            "source": { "type": "base64", "media_type": "image/png", "data": "aW1hZ2U=" }
+        });
+        let image_ref = plugin_framework::provider_contract::provider_media_content_ref(&image)
+            .expect("image should have a media ref");
+        let document = json!({
+            "type": "document",
+            "source": { "type": "base64", "media_type": "application/pdf", "data": "cGRm" }
+        });
+        let document_ref =
+            plugin_framework::provider_contract::provider_media_content_ref(&document)
+                .expect("document should have a media ref");
+        let history = json!([{
+            "role": "user",
+            "content_blocks": [image, document]
+        }]);
+
+        for arguments in [
+            json!({ "media_refs": [42] }),
+            json!({ "media_refs": [image_ref.clone(), image_ref] }),
+            json!({ "media_refs": [document_ref] }),
+        ] {
+            let variable_pool = media_ref_variable_pool(arguments, history.clone());
+            let error = selected_image_content_blocks_for_media_refs(&variable_pool)
+                .expect("media_refs precondition should be detected")
+                .expect_err("invalid media refs must fail closed");
+            assert_eq!(
+                error["error_code"],
+                json!("visible_internal_llm_tool_media_ref_invalid")
+            );
+        }
+    }
 
     #[tokio::test]
     async fn resolves_workspace_media_from_repo_root_when_started_in_api_server_dir() {

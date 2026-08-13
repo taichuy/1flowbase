@@ -103,7 +103,7 @@ fn routed_media_tool_context(input: &ProviderInvocationInput) -> Option<Value> {
 fn routed_media_guidance_content(routed_media_tools: &Value, media_blocks: &Value) -> String {
     json!({
         "event": "routed_media_content_available",
-        "message": "Media content is available in conversation history for routed media tools. Call the routed media tool again with the same media path and task; do not ask the user to re-upload the image.",
+        "message": "Media content is available in conversation history for routed media tools. Pass one or more provided media_ref values in media_refs when calling the routed media tool; do not use a file path, URL, base64 data, or an invented reference.",
         "media_tools": routed_media_tools,
         "media_blocks": media_blocks,
     })
@@ -145,6 +145,10 @@ fn summarize_media_block(block: &Value) -> Option<Value> {
     }
     let mut summary = serde_json::Map::new();
     summary.insert("type".to_string(), Value::String(block_type.to_string()));
+    if let Some(media_ref) = plugin_framework::provider_contract::provider_media_content_ref(block)
+    {
+        summary.insert("media_ref".to_string(), Value::String(media_ref));
+    }
     if let Some(source_type) = block
         .get("source")
         .and_then(|source| source.get("type"))

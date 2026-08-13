@@ -93,16 +93,23 @@ pub(super) fn remove_visible_internal_tool_calls(
 }
 
 fn visible_internal_tool_call_has_media(tool_call: &Value, tool: &VisibleInternalLlmTool) -> bool {
-    tool.input_schema
+    let media_argument = tool
+        .input_schema
         .as_ref()
         .and_then(|schema| schema.get("properties"))
-        .and_then(|properties| properties.get("media"))
-        .is_some()
-        && tool_call
+        .and_then(|properties| {
+            properties
+                .get("media_refs")
+                .map(|_| "media_refs")
+                .or_else(|| properties.get("media").map(|_| "media"))
+        });
+    media_argument.is_some_and(|argument| {
+        tool_call
             .get("arguments")
-            .and_then(|arguments| arguments.get("media"))
+            .and_then(|arguments| arguments.get(argument))
             .and_then(Value::as_array)
             .is_some_and(|media| !media.is_empty())
+    })
 }
 
 pub(super) fn append_output_text(target: &mut String, output_payload: &Value) {
@@ -186,6 +193,16 @@ fn visible_internal_llm_tool_expected_guidance(error_payload: &Value) -> Option<
         return Some(
             visible_internal_llm_tool_error_detail(error_payload, "hint")
                 .unwrap_or("If this path is local to an external client, read the file with a client file tool first and call the routed LLM tool again after the image content block is present in history.")
+                .to_string(),
+        );
+    }
+
+    if visible_internal_llm_tool_error_code(error_payload)
+        == Some("visible_internal_llm_tool_media_ref_invalid")
+    {
+        return Some(
+            visible_internal_llm_tool_error_detail(error_payload, "hint")
+                .unwrap_or("Retry the routed media tool using only media_ref values supplied by the current runtime context.")
                 .to_string(),
         );
     }
