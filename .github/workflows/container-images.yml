@@ -15,6 +15,9 @@ on:
       - "web/app/package.json"
       - "web/pnpm-lock.yaml"
       - "web/pnpm-workspace.yaml"
+      - "web/packages/page-protocol/**"
+      - "web/packages/page-runtime/**"
+      - "web/packages/tailwindcss-catalog/**"
       - "api/apps/api-server/Cargo.toml"
       - "api/apps/plugin-runner/Cargo.toml"
       - "api/plugins/default-extensions.lock.json"
@@ -459,13 +462,15 @@ jobs:
               apt-get update
               apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config
               rm -rf /var/lib/apt/lists/*
-              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p api-server --bin api-server --bin system_recovery
+              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p api-server --bin api-server --bin system_recovery --bin frontstage_executable_upgrade
               install -Dm755 /workspace/target-cache/release/api-server /workspace/out/api-server
-              install -Dm755 /workspace/target-cache/release/system_recovery /workspace/out/system_recovery'
+              install -Dm755 /workspace/target-cache/release/system_recovery /workspace/out/system_recovery
+              install -Dm755 /workspace/target-cache/release/frontstage_executable_upgrade /workspace/out/frontstage_executable_upgrade'
 
           sha256sum "$artifact_root/api-server" | tee "$artifact_root/api-server.sha256"
           sha256sum "$artifact_root/system_recovery" | tee "$artifact_root/system_recovery.sha256"
-          ls -lh "$artifact_root/api-server" "$artifact_root/system_recovery"
+          sha256sum "$artifact_root/frontstage_executable_upgrade" | tee "$artifact_root/frontstage_executable_upgrade.sha256"
+          ls -lh "$artifact_root/api-server" "$artifact_root/system_recovery" "$artifact_root/frontstage_executable_upgrade"
           sudo chown -R "$(id -u):$(id -g)" "$cache_root"
 
       - name: Upload api-server binary artifact
@@ -519,16 +524,22 @@ jobs:
           cp tmp/api-server-binary-artifacts/api-server-binary-arm64/api-server tmp/api-server-binaries/arm64/api-server
           cp tmp/api-server-binary-artifacts/api-server-binary-amd64/system_recovery tmp/api-server-binaries/amd64/system_recovery
           cp tmp/api-server-binary-artifacts/api-server-binary-arm64/system_recovery tmp/api-server-binaries/arm64/system_recovery
+          cp tmp/api-server-binary-artifacts/api-server-binary-amd64/frontstage_executable_upgrade tmp/api-server-binaries/amd64/frontstage_executable_upgrade
+          cp tmp/api-server-binary-artifacts/api-server-binary-arm64/frontstage_executable_upgrade tmp/api-server-binaries/arm64/frontstage_executable_upgrade
           chmod 0755 \
             tmp/api-server-binaries/amd64/api-server \
             tmp/api-server-binaries/arm64/api-server \
             tmp/api-server-binaries/amd64/system_recovery \
-            tmp/api-server-binaries/arm64/system_recovery
+            tmp/api-server-binaries/arm64/system_recovery \
+            tmp/api-server-binaries/amd64/frontstage_executable_upgrade \
+            tmp/api-server-binaries/arm64/frontstage_executable_upgrade
           sha256sum \
             tmp/api-server-binaries/amd64/api-server \
             tmp/api-server-binaries/arm64/api-server \
             tmp/api-server-binaries/amd64/system_recovery \
-            tmp/api-server-binaries/arm64/system_recovery
+            tmp/api-server-binaries/arm64/system_recovery \
+            tmp/api-server-binaries/amd64/frontstage_executable_upgrade \
+            tmp/api-server-binaries/arm64/frontstage_executable_upgrade
 
       - name: Prepare api-server image references
         id: image_refs

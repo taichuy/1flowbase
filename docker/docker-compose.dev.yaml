@@ -30,6 +30,16 @@ services:
     expose:
       - "7801"
 
+  frontstage-executable-upgrade:
+    profiles: ["upgrade"]
+    image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
+    entrypoint: ["/usr/local/bin/frontstage_executable_upgrade"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      API_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-1flowbase}@db:5432/${POSTGRES_DB:-1flowbase}
+
   api:
     image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
     restart: unless-stopped

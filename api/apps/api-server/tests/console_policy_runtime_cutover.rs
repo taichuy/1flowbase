@@ -5,7 +5,8 @@ use api_server::{
     console_policy_migration::require_runtime_console_policy_cutover,
 };
 use control_plane::ports::{
-    RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRepository,
+    FrontstageExecutableUpgradeRepository, RoleConsolePolicyMigrationCutoverMarker,
+    RoleConsolePolicyMigrationRepository,
 };
 use sqlx::migrate::Migrator;
 use uuid::Uuid;
@@ -91,6 +92,23 @@ async fn ac_011_runtime_rejects_legacy_console_policy_marker_for_existing_roles(
     .await
     .expect("the runtime cutover marker must exist");
     assert_eq!(marker, "legacy");
+    let target = api_server::frontstage_executable_upgrade::target();
+    let start = store
+        .begin_frontstage_executable_upgrade(&target)
+        .await
+        .expect("the independent frontstage cutover must start");
+    let domain::FrontstageExecutableUpgradeStart::Run { run_id, .. } = start else {
+        panic!("the frontstage fixture must start a run");
+    };
+    let snapshot = store
+        .capture_frontstage_executable_upgrade_snapshot(&target, run_id)
+        .await
+        .expect("the empty frontstage snapshot must be captured");
+    assert!(snapshot.rows.is_empty());
+    store
+        .commit_frontstage_executable_upgrade(&target, &snapshot, &[])
+        .await
+        .expect("the independent frontstage cutover must complete");
     pool.close().await;
 
     let error = app_from_config(&test_config(&database_url))

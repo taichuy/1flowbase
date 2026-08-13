@@ -851,8 +851,23 @@ if ($PullImages) {
 
 if ($StartContainers) {
   if ($NewDatabaseMode -eq "external") {
+    Write-Host "Running required frontstage executable upgrade against external PostgreSQL."
+    Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "run", "--rm", "frontstage-executable-upgrade")
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Frontstage executable upgrade failed; the new runtime was not started."
+    }
     Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "up", "-d")
   } else {
+    Write-Host "Starting the owned PostgreSQL service for the required frontstage executable upgrade."
+    Invoke-ComposeCommand @("up", "-d", "db")
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Could not start PostgreSQL for the frontstage executable upgrade."
+    }
+    Write-Host "Running required frontstage executable upgrade."
+    Invoke-ComposeCommand @("run", "--rm", "frontstage-executable-upgrade")
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Frontstage executable upgrade failed; the new runtime was not started."
+    }
     Invoke-ComposeCommand @("up", "-d")
   }
 } else {

@@ -23,8 +23,8 @@ use axum::{
 };
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use control_plane::ports::{
-    DownloadedOfficialPluginPackage, OfficialPluginCatalogSnapshot, OfficialPluginSourceEntry,
-    OfficialPluginSourcePort,
+    DownloadedOfficialPluginPackage, FrontstageExecutableUpgradeRepository,
+    OfficialPluginCatalogSnapshot, OfficialPluginSourceEntry, OfficialPluginSourcePort,
 };
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -364,6 +364,31 @@ async fn app_from_config_uses_local_host_infrastructure_session_store() {
     let mut config = default_test_config();
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
+
+    let durable = storage_durable::build_main_durable_postgres(&config.database_url)
+        .await
+        .unwrap();
+    let target = api_server::frontstage_executable_upgrade::target();
+    let start = durable
+        .store
+        .begin_frontstage_executable_upgrade(&target)
+        .await
+        .unwrap();
+    let domain::FrontstageExecutableUpgradeStart::Run { run_id, .. } = start else {
+        panic!("fresh fixture must start the executable cutover");
+    };
+    let snapshot = durable
+        .store
+        .capture_frontstage_executable_upgrade_snapshot(&target, run_id)
+        .await
+        .unwrap();
+    assert!(snapshot.rows.is_empty());
+    durable
+        .store
+        .commit_frontstage_executable_upgrade(&target, &snapshot, &[])
+        .await
+        .unwrap();
+    drop(durable);
 
     let app = api_server::app_from_config(&config).await.unwrap();
     let response = app
