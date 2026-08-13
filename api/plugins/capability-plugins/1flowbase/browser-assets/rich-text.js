@@ -162755,34 +162755,81 @@ function m() {
 //#endregion
 //#region packages/rich-text/src/index.tsx
 var h = "/__1flowbase_bundled_vditor__";
-function g({ ariaLabel: r = "markdown_editor", className: i, height: a = 180, placeholder: o = "", value: s, onChange: c }) {
-	let l = t(null), u = t(null), f = t(!1), p = t(s), g = t(c);
+function g({ api: r, ariaLabel: i = "vditor_editor", className: a, height: o = 360, mode: s = "ir", onChange: c, onReady: l, outline: u = !0, placeholder: f = "", previewMode: p = "both", theme: g = "classic", value: v }) {
+	let y = t(null), C = t(null), w = t(!1), T = t(v), E = t(r), D = t(c), O = t(l);
 	return e(() => {
-		g.current = c;
+		E.current = r;
+	}, [r]), e(() => {
+		D.current = c;
 	}, [c]), e(() => {
-		p.current = s;
-		let e = u.current;
-		e && f.current && e.getValue() !== s && e.setValue(s, !0);
-	}, [s]), e(() => {
-		let e = l.current;
+		O.current = l;
+	}, [l]), e(() => {
+		T.current = v;
+		let e = C.current;
+		e && w.current && e.getValue() !== v && e.setValue(v, !0);
+	}, [v]), e(() => {
+		let e = y.current;
 		if (!e) return;
 		let t = !1, n = () => void 0;
 		return queueMicrotask(() => {
 			if (t) return;
 			n = m();
-			let r = new d.default(e, {
+			let i = [
+				"headings",
+				"bold",
+				"italic",
+				"strike",
+				"link",
+				"|",
+				"list",
+				"ordered-list",
+				"check",
+				"outdent",
+				"indent",
+				"|",
+				"quote",
+				"line",
+				"code",
+				"inline-code",
+				"insert-before",
+				"insert-after",
+				"|",
+				...r ? ["upload"] : [],
+				"table",
+				"|",
+				"undo",
+				"redo",
+				"|",
+				"fullscreen",
+				"edit-mode",
+				{
+					name: "more",
+					toolbar: [
+						"both",
+						"code-theme",
+						"content-theme",
+						"outline",
+						"preview",
+						"info"
+					]
+				}
+			], a = new d.default(e, {
 				_lutePath: h,
 				cache: { enable: !1 },
 				cdn: h,
-				height: a,
+				height: o,
 				hint: {
 					emoji: {},
 					emojiPath: h
 				},
 				i18n: window.VditorI18n,
-				image: { isPreview: !1 },
-				mode: "ir",
-				placeholder: o,
+				image: { isPreview: !0 },
+				mode: s,
+				outline: {
+					enable: u,
+					position: "left"
+				},
+				placeholder: f,
 				preview: {
 					hljs: { enable: !1 },
 					markdown: {
@@ -162790,102 +162837,95 @@ function g({ ariaLabel: r = "markdown_editor", className: i, height: a = 180, pl
 						mathBlockPreview: !1,
 						sanitize: !0
 					},
-					mode: "editor",
-					render: { media: { enable: !1 } },
+					mode: p,
+					render: { media: { enable: !0 } },
 					theme: {
 						current: "ant-design",
 						path: h
 					}
 				},
-				toolbar: [
-					"headings",
-					"bold",
-					"italic",
-					"strike",
-					"|",
-					"list",
-					"ordered-list",
-					"check",
-					"|",
-					"quote",
-					"code",
-					"link",
-					"table",
-					"|",
-					"undo",
-					"redo"
-				],
+				theme: g,
+				toolbar: i,
 				upload: {
-					url: "",
-					linkToImgUrl: ""
+					accept: "image/*,.pdf,.txt,.md,.csv,.json,.zip",
+					handler: c,
+					linkToImgUrl: "",
+					multiple: !0,
+					url: ""
 				},
-				value: p.current,
+				value: T.current,
 				after: () => {
 					if (t) {
-						y(r);
+						x(a);
 						return;
 					}
-					f.current = !0, r.getValue() !== p.current && r.setValue(p.current, !0);
+					w.current = !0, a.getValue() !== T.current && a.setValue(T.current, !0), O.current?.(b(a));
 				},
 				input: (e) => {
-					p.current = e, g.current(e);
+					T.current = e, D.current(e);
 				}
 			});
-			u.current = r;
+			C.current = a;
+			async function c(e) {
+				let t = E.current;
+				if (!t) throw Error("File upload is unavailable.");
+				let n = await Promise.all(e.map((e) => _(t, e)));
+				return a.insertValue(`${n.join("\n")}\n`), null;
+			}
 		}), () => {
-			t = !0, n(), f.current = !1;
-			let e = u.current;
-			u.current = null, e && y(e);
+			t = !0, n(), w.current = !1, O.current?.(null);
+			let e = C.current;
+			C.current = null, e && x(e);
 		};
-	}, [a, o]), /* @__PURE__ */ n("div", {
-		ref: l,
-		"aria-label": r,
-		className: b("oneflow-markdown-editor", i)
+	}, [
+		!!r,
+		o,
+		s,
+		u,
+		f,
+		p,
+		g
+	]), /* @__PURE__ */ n("div", {
+		ref: y,
+		"aria-label": i,
+		className: S("oneflow-markdown-editor", a)
 	});
 }
-function _({ className: r, value: i, ...a }) {
-	let o = t(null);
-	return e(() => {
-		let e = o.current;
-		if (!e) return;
-		let t = !1, n = m();
-		return d.default.md2html(i, {
-			cdn: h,
-			emojiPath: h,
-			hljs: { enable: !1 },
-			i18n: window.VditorI18n,
-			markdown: {
-				codeBlockPreview: !1,
-				mathBlockPreview: !1,
-				sanitize: !0
-			},
-			mode: "light",
-			render: { media: { enable: !1 } }
-		}).then((n) => {
-			t || e.replaceChildren(v(n));
-		}), () => {
-			t = !0, n(), e.replaceChildren();
-		};
-	}, [i]), /* @__PURE__ */ n("div", {
-		ref: o,
-		className: b("oneflow-markdown-preview", "vditor-reset", r),
-		...a
-	});
+async function _(e, t) {
+	let n = await e.post("/api/console/files/upload", { body: { file: {
+		base64: v(await t.arrayBuffer()),
+		content_type: t.type || "application/octet-stream",
+		file_name: t.name
+	} } });
+	if (!n.file_table_id || !n.record?.id) throw Error("File upload returned an invalid resource identity.");
+	let r = `/api/console/files/${encodeURIComponent(n.file_table_id)}/records/${encodeURIComponent(n.record.id)}/content`, i = y(t.name);
+	return t.type.startsWith("image/") ? `![${i}](${r})` : `[${i}](${r})`;
 }
 function v(e) {
-	let t = document.createElement("template");
-	return t.innerHTML = e, t.content.querySelectorAll("img,video,audio,iframe,object,embed,source").forEach((e) => e.remove()), t.content.querySelectorAll("a").forEach((e) => {
-		let t = e.getAttribute("href");
-		(!t || /^(?:https?:)?\/\//i.test(t)) && e.removeAttribute("href"), e.removeAttribute("target");
-	}), t.content;
+	let t = new Uint8Array(e), n = "";
+	for (let e = 0; e < t.length; e += 32768) n += String.fromCharCode(...t.subarray(e, e + 32768));
+	return btoa(n);
 }
 function y(e) {
+	return e.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+}
+function b(e) {
+	return {
+		getHTML: () => e.getHTML(),
+		getValue: () => e.getValue(),
+		insertValue: (t) => e.insertValue(t),
+		focus: () => e.focus(),
+		blur: () => e.blur(),
+		setPreviewMode: (t) => e.setPreviewMode(t)
+	};
+}
+function x(e) {
 	try {
 		e.destroy();
 	} catch {}
 }
-function b(...e) {
+function S(...e) {
 	return e.filter(Boolean).join(" ");
 }
 //#endregion
-export { g as MarkdownEditor, _ as MarkdownPreview };
+export { g as VditorEditor };

@@ -83,8 +83,7 @@ async function verifyFixture(browserInstance, fixture) {
       .locator('[data-testid=catalog-rich-text-probe][data-status=ready]')
       .waitFor();
     await page
-      .locator('[aria-label=catalog-rich-text-preview] h1')
-      .filter({ hasText: 'Catalog ready' })
+      .locator('[aria-label=catalog-rich-text-editor] .vditor-content')
       .waitFor();
     await page
       .locator('[data-testid=catalog-icons-probe][data-status=ready]')

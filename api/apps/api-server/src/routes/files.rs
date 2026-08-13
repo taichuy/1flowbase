@@ -26,6 +26,7 @@ use crate::{
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UploadedFileResponse {
+    pub file_table_id: String,
     pub storage_id: String,
     #[schema(value_type = Object)]
     pub record: serde_json::Value,
@@ -34,7 +35,7 @@ pub struct UploadedFileResponse {
 #[derive(ToSchema)]
 #[allow(dead_code)]
 struct UploadFileMultipartBody {
-    file_table_id: String,
+    file_table_id: Option<String>,
     #[schema(value_type = String, format = Binary)]
     file: Vec<u8>,
 }
@@ -78,7 +79,7 @@ impl UploadFileActorInput {
 #[derive(Debug, Serialize, Deserialize)]
 struct UploadFileActionInput {
     actor: UploadFileActorInput,
-    file_table_id: Uuid,
+    file_table_id: Option<Uuid>,
     original_filename: String,
     content_type: Option<String>,
     bytes: Vec<u8>,
@@ -181,7 +182,10 @@ fn upload_file_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKerne
             )
             .upload(control_plane::file_management::UploadFileCommand {
                 actor: input.actor.into_actor(),
-                file_table_id: input.file_table_id,
+                target: input.file_table_id.map_or(
+                    control_plane::file_management::FileUploadTarget::Default,
+                    control_plane::file_management::FileUploadTarget::Table,
+                ),
                 original_filename: input.original_filename,
                 content_type: input.content_type,
                 bytes: input.bytes,
@@ -190,6 +194,7 @@ fn upload_file_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKerne
             .map_err(|error| map_runtime_error(error).0)?;
 
             Ok(serde_json::to_value(UploadedFileResponse {
+                file_table_id: uploaded.file_table_id.to_string(),
                 storage_id: uploaded.storage_id.to_string(),
                 record: uploaded.record,
             })?)
@@ -232,12 +237,10 @@ pub async fn upload_file(
         }
     }
 
-    let file_table_id = parse_uuid(
-        file_table_id
-            .as_deref()
-            .ok_or_else(|| invalid_input("file_table_id"))?,
-        "file_table_id",
-    )?;
+    let file_table_id = file_table_id
+        .as_deref()
+        .map(|value| parse_uuid(value, "file_table_id"))
+        .transpose()?;
     let output = upload_file_action_kernel(state.clone())?
         .dispatch_json(
             "files",

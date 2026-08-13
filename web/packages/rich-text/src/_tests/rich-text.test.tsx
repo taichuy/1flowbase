@@ -1,9 +1,14 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const destroy = vi.fn();
 const setValue = vi.fn();
 const getValue = vi.fn(() => 'initial');
+const getHTML = vi.fn(() => '<p>initial</p>');
+const insertValue = vi.fn();
+const focus = vi.fn();
+const blur = vi.fn();
+const setPreviewMode = vi.fn();
 const options: Array<Record<string, unknown>> = [];
 
 vi.mock('vditor/dist/js/lute/lute.min.js', () => ({}));
@@ -20,54 +25,89 @@ vi.mock('vditor', () => ({
     }
     destroy = destroy;
     getValue = getValue;
+    getHTML = getHTML;
+    insertValue = insertValue;
+    focus = focus;
+    blur = blur;
+    setPreviewMode = setPreviewMode;
     setValue = setValue;
   }
 }));
 
-import { MarkdownEditor, MarkdownPreview } from '../index';
+import { VditorEditor } from '../index';
 
-describe('@1flowbase/rich-text (AC-PUB-006)', () => {
+describe('@1flowbase/rich-text unified Vditor contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     options.length = 0;
   });
 
-  it('owns a controlled editor with cache, uploads and remote CDN disabled', async () => {
+  it('AC-002 owns one full editor with local assets and the native preview experience', async () => {
     const view = render(
-      <MarkdownEditor value="initial" onChange={vi.fn()} ariaLabel="editor" />
+      <VditorEditor value="initial" onChange={vi.fn()} ariaLabel="editor" />
     );
     await act(async () => undefined);
 
     expect(options[0]).toMatchObject({
       cache: { enable: false },
       cdn: '/__1flowbase_bundled_vditor__',
-      upload: { linkToImgUrl: '', url: '' }
+      mode: 'ir',
+      preview: { mode: 'both' }
     });
-    expect(options[0]?.toolbar).not.toContain('upload');
+    expect(options[0]?.toolbar).toContain('fullscreen');
+    expect(options[0]?.toolbar).toContain('edit-mode');
 
     view.unmount();
     expect(destroy).toHaveBeenCalledTimes(1);
   });
 
-  it('sanitizes preview HTML and removes network-capable content', async () => {
+  it('AC-003 uploads through the governed block API and inserts the platform content URL', async () => {
+    const post = vi.fn(async () => ({
+      file_table_id: 'table-1',
+      record: { id: 'record-1' },
+      storage_id: 'storage-1'
+    }));
     const view = render(
-      <MarkdownPreview aria-label="preview" value="fixture" />
+      <VditorEditor
+        api={{ post }}
+        ariaLabel="editor"
+        value="initial"
+        onChange={vi.fn()}
+      />
     );
     await act(async () => undefined);
 
-    const preview = screen.getByLabelText('preview');
-    expect(preview.querySelector('img')).toBeNull();
-    expect(preview.querySelector('a')).not.toHaveAttribute('href');
+    const upload = options[0]?.upload as {
+      handler(files: File[]): Promise<string | null>;
+    };
+    const file = {
+      name: 'diagram.png',
+      type: 'image/png',
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer
+    } as File;
+    await expect(upload.handler([file])).resolves.toBeNull();
+
+    expect(post).toHaveBeenCalledWith('/api/console/files/upload', {
+      body: {
+        file: {
+          base64: 'AQID',
+          content_type: 'image/png',
+          file_name: 'diagram.png'
+        }
+      }
+    });
+    expect(insertValue).toHaveBeenCalledWith(
+      '![diagram.png](/api/console/files/table-1/records/record-1/content)\n'
+    );
     view.unmount();
-    expect(document.getElementById('vditorLuteScript')).toBeNull();
   });
 
   it('owns two independent instances and releases shared support markers after the last unmount', async () => {
     const { unmount: unmountFirst } = render(
-      <MarkdownEditor value="first" onChange={vi.fn()} ariaLabel="first" />
+      <VditorEditor value="first" onChange={vi.fn()} ariaLabel="first" />
     );
     const { unmount: unmountSecond } = render(
-      <MarkdownEditor value="second" onChange={vi.fn()} ariaLabel="second" />
+      <VditorEditor value="second" onChange={vi.fn()} ariaLabel="second" />
     );
     await act(async () => undefined);
 

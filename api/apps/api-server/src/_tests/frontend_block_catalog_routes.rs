@@ -476,6 +476,17 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
     assert_eq!(tailwind_module["exports"], json!(["default"]));
     assert_eq!(tailwind_module["assets"][0]["role"], "shadow_style");
     assert_eq!(tailwind_module["assets"][1]["role"], "browser_module");
+    let rich_text_module = jsx_block["code_modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|module| module["source"] == "@1flowbase/rich-text")
+        .unwrap();
+    assert_eq!(rich_text_module["exports"], json!(["VditorEditor"]));
+    assert!(rich_text_module["type_declarations"]
+        .as_str()
+        .unwrap()
+        .contains("interface VditorEditorProps"));
     for module in jsx_block["code_modules"].as_array().unwrap() {
         let source = module["source"].as_str().unwrap();
         if matches!(source, "react" | "antd") {

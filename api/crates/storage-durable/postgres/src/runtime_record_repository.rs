@@ -968,7 +968,7 @@ pub(crate) fn push_field_value(
     }
     if matches!(
         field.physical_column_name.as_str(),
-        "created_by" | "updated_by"
+        "created_by" | "updated_by" | "storage_id"
     ) {
         builder.push_bind(json_nullable_uuid(value)?);
         return Ok(());

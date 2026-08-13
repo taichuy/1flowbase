@@ -44,10 +44,9 @@
       "module_source": "@1flowbase/rich-text",
       "module_version": "1.0.0",
       "exports": [
-        "MarkdownEditor",
-        "MarkdownPreview"
+        "VditorEditor"
       ],
-      "type_declarations": "declare module '@1flowbase/rich-text' {\n  import type { ComponentType, HTMLAttributes } from 'react';\n\n  export interface MarkdownEditorProps {\n    readonly ariaLabel?: string;\n    readonly className?: string;\n    readonly height?: number | string;\n    readonly placeholder?: string;\n    readonly value: string;\n    readonly onChange: (value: string) => void;\n  }\n  export interface MarkdownPreviewProps extends Omit<\n    HTMLAttributes<HTMLDivElement>,\n    'children'\n  > {\n    readonly value: string;\n  }\n  export const MarkdownEditor: ComponentType<MarkdownEditorProps>;\n  export const MarkdownPreview: ComponentType<MarkdownPreviewProps>;\n}\n",
+      "type_declarations": "declare module '@1flowbase/rich-text' {\n  import type { ComponentType } from 'react';\n\n  export interface RichTextApiRequest {\n    readonly body?: unknown;\n  }\n  export interface RichTextApi {\n    post<TResponse = unknown>(\n      path: string,\n      request?: RichTextApiRequest\n    ): Promise<TResponse>;\n  }\n  export type VditorEditorMode = 'ir' | 'wysiwyg' | 'sv';\n  export type VditorPreviewMode = 'both' | 'editor';\n  export type VditorTheme = 'classic' | 'dark';\n  export interface VditorEditorHandle {\n    getHTML(): string;\n    getValue(): string;\n    insertValue(value: string): void;\n    focus(): void;\n    blur(): void;\n    setPreviewMode(mode: VditorPreviewMode): void;\n  }\n  export interface VditorEditorProps {\n    readonly api?: RichTextApi;\n    readonly ariaLabel?: string;\n    readonly className?: string;\n    readonly height?: number | string;\n    readonly mode?: VditorEditorMode;\n    readonly onChange: (value: string) => void;\n    readonly onReady?: (editor: VditorEditorHandle | null) => void;\n    readonly outline?: boolean;\n    readonly placeholder?: string;\n    readonly previewMode?: VditorPreviewMode;\n    readonly theme?: VditorTheme;\n    readonly value: string;\n  }\n  export const VditorEditor: ComponentType<VditorEditorProps>;\n}\n",
       "assets": [
         {
           "path": "rich-text.css",
@@ -59,7 +58,7 @@
           "path": "rich-text.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "2b38c019e575e6e580b7955eaf37053bc7ac789fe6de71d492036e22f8993d56"
+          "sha256": "6a957d202100f35ae258187c6003cd54119998a19280e2119f2a36f1f70e0714"
         }
       ]
     },
