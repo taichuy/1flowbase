@@ -146,6 +146,41 @@ string_enum!(RecoveryStateCode {
     Cancelled => "cancelled",
 });
 
+impl RecoveryStateCode {
+    pub fn allows_transition_to(self, next: Self) -> bool {
+        match self {
+            Self::Running => matches!(
+                next,
+                Self::WaitingCallback
+                    | Self::WaitingHuman
+                    | Self::Paused
+                    | Self::Retrying
+                    | Self::Succeeded
+                    | Self::Failed
+                    | Self::Cancelled
+            ),
+            Self::WaitingCallback | Self::WaitingHuman => matches!(
+                next,
+                Self::Running | Self::Retrying | Self::Succeeded | Self::Failed | Self::Cancelled
+            ),
+            Self::Paused => matches!(
+                next,
+                Self::Running | Self::Succeeded | Self::Failed | Self::Cancelled
+            ),
+            Self::Retrying => matches!(
+                next,
+                Self::Running
+                    | Self::WaitingCallback
+                    | Self::WaitingHuman
+                    | Self::Succeeded
+                    | Self::Failed
+                    | Self::Cancelled
+            ),
+            Self::Succeeded | Self::Failed | Self::Cancelled => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CanonicalRuntimeContentRecord {
     pub id: Uuid,

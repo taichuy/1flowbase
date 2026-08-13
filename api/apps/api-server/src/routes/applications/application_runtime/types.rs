@@ -111,6 +111,14 @@ pub struct RunArchiveV1EntryResponse {
     pub runtime_events: Vec<serde_json::Value>,
     pub runtime_items: Vec<serde_json::Value>,
     pub context_projections: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub canonical_contents: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub invocation_context_bindings: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub recovery_history: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub resume_claims: Vec<serde_json::Value>,
     pub usage_ledger: Vec<serde_json::Value>,
     pub model_failover_attempts: Vec<serde_json::Value>,
     pub capability_invocations: Vec<serde_json::Value>,

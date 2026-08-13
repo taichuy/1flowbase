@@ -1369,6 +1369,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             .find(|claim| claim.id == input.claim_id)
             .ok_or_else(|| anyhow::anyhow!("resume claim not found"))?;
         if claim.claim_token != input.claim_token
+            || claim.generation != input.expected_generation
             || (claim.status != crate::ports::ResumeClaimStatus::Processing
                 && claim.status != input.status)
             || input.status == crate::ports::ResumeClaimStatus::Processing

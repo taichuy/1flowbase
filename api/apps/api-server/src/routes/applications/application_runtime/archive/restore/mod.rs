@@ -12,6 +12,9 @@ struct ArchiveRestoreIdMaps {
     usage_ledger: std::collections::HashMap<Uuid, Uuid>,
     model_failover_attempts: std::collections::HashMap<Uuid, Uuid>,
     context_projections: std::collections::HashMap<Uuid, Uuid>,
+    canonical_contents: std::collections::HashMap<Uuid, Uuid>,
+    checkpoints: std::collections::HashMap<Uuid, Uuid>,
+    callback_tasks: std::collections::HashMap<Uuid, Uuid>,
 }
 
 use records::*;

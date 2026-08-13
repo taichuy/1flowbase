@@ -791,6 +791,7 @@ impl PgControlPlaneStore {
         .await?;
 
         let flow_run = map_flow_run_record(row)?;
+        append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
             .await?;
         if is_terminal_application_run_log_status(flow_run.status) {
@@ -871,6 +872,7 @@ impl PgControlPlaneStore {
 
         if let Some(row) = row {
             let flow_run = map_flow_run_record(row)?;
+            append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
             Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
                 .await?;
             if is_terminal_application_run_log_status(flow_run.status) {
@@ -1044,6 +1046,8 @@ impl PgControlPlaneStore {
         .bind(&input.terminal_event_payload)
         .execute(&mut *tx)
         .await?;
+
+        append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
 
         tx.commit().await?;
         match self

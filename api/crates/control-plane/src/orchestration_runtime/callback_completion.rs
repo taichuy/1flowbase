@@ -194,6 +194,7 @@ where
             .finish_resume_claim(&FinishResumeClaimInput {
                 claim_id: claim.claim.id,
                 claim_token: claim.claim.claim_token,
+                expected_generation: claim.claim.generation,
                 status: if result.is_ok() {
                     ResumeClaimStatus::Succeeded
                 } else {

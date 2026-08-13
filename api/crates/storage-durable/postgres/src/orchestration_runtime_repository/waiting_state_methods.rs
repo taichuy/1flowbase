@@ -66,27 +66,12 @@ impl PgControlPlaneStore {
             return Ok(None);
         }
 
-        let mut canonical = Vec::new();
-        write_canonical_runtime_json(&input.context_content, &mut canonical)?;
-        let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
-        let byte_size = i64::try_from(canonical.len())?;
-        let content_id = sqlx::query_scalar::<_, Uuid>(
-            r#"
-            insert into runtime_canonical_contents (
-                id, scope_id, application_id, content_hash, content, byte_size
-            ) values ($1, $2, $3, $4, $5, $6)
-            on conflict (application_id, content_hash) do update
-                set content_hash = excluded.content_hash
-            returning id
-            "#,
+        let (content_id, content_hash, _) = put_canonical_runtime_content_in_transaction(
+            &mut tx,
+            input.scope_id,
+            input.application_id,
+            &input.context_content,
         )
-        .bind(Uuid::now_v7())
-        .bind(input.scope_id)
-        .bind(input.application_id)
-        .bind(&content_hash)
-        .bind(&input.context_content)
-        .bind(byte_size)
-        .fetch_one(&mut *tx)
         .await?;
         let context_version_id = Uuid::now_v7();
         let context_sequence = sqlx::query_scalar::<_, i64>(

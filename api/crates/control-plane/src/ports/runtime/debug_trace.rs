@@ -405,6 +405,7 @@ pub struct AcquireResumeClaimOutput {
 pub struct FinishResumeClaimInput {
     pub claim_id: Uuid,
     pub claim_token: Uuid,
+    pub expected_generation: i64,
     pub status: ResumeClaimStatus,
     pub error_payload: Option<serde_json::Value>,
     pub completed_at: OffsetDateTime,

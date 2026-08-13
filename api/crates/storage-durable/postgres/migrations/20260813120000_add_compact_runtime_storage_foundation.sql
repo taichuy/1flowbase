@@ -38,7 +38,6 @@ before update on runtime_canonical_contents
 for each row execute function reject_runtime_canonical_content_update();
 
 alter table runtime_context_projections
-    add column scope_id uuid references workspaces(id) on delete cascade,
     add column application_id uuid references applications(id) on delete cascade,
     add column context_sequence bigint check (context_sequence >= 0),
     add column transition_kind text check (

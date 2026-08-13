@@ -151,15 +151,19 @@ impl PgControlPlaneStore {
         })
     }
 
-    async fn finish_resume_claim(&self, input: &FinishResumeClaimInput) -> Result<ResumeClaimRecord> {
+    async fn finish_resume_claim(
+        &self,
+        input: &FinishResumeClaimInput,
+    ) -> Result<ResumeClaimRecord> {
         if input.status == ResumeClaimStatus::Processing {
             return Err(anyhow!("resume claim cannot finish as processing"));
         }
         let row = sqlx::query(&format!(
-            "update flow_run_resume_claims set status = $3, error_payload = case when status = 'processing' then $4 else error_payload end, completed_at = coalesce(completed_at, $5), updated_at = now() where id = $1 and claim_token = $2 and status in ('processing', $3) returning {RESUME_CLAIM_COLUMNS}"
+            "update flow_run_resume_claims set status = $4, error_payload = case when status = 'processing' then $5 else error_payload end, completed_at = coalesce(completed_at, $6), updated_at = now() where id = $1 and claim_token = $2 and generation = $3 and status in ('processing', $4) returning {RESUME_CLAIM_COLUMNS}"
         ))
         .bind(input.claim_id)
         .bind(input.claim_token)
+        .bind(input.expected_generation)
         .bind(input.status.as_str())
         .bind(&input.error_payload)
         .bind(input.completed_at)

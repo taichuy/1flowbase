@@ -187,6 +187,10 @@ pub(crate) async fn restore_run_archive_v1(
                 &entry.context_projections,
                 "context_projection_id",
             )?,
+            canonical_contents: preassign_archive_ids(
+                &entry.canonical_contents,
+                "canonical_content_id",
+            )?,
             ..Default::default()
         };
         for node in &entry.node_runs {
@@ -289,11 +293,37 @@ pub(crate) async fn restore_run_archive_v1(
             let source_checkpoint_id = Uuid::parse_str(&checkpoint.id)
                 .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
             let target_checkpoint_id = Uuid::now_v7();
+            id_maps
+                .checkpoints
+                .insert(source_checkpoint_id, target_checkpoint_id);
             let target_node_run_id = checkpoint
                 .node_run_id
                 .as_deref()
                 .and_then(|value| Uuid::parse_str(value).ok())
                 .and_then(|source_id| id_maps.node_runs.get(&source_id).copied());
+            let mut locator_payload = checkpoint.locator_payload.clone();
+            if let Some(source_context_id) = locator_payload
+                .get("context_version_id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+            {
+                if let Some(target_context_id) = id_maps.context_projections.get(&source_context_id)
+                {
+                    locator_payload["context_version_id"] = serde_json::json!(target_context_id);
+                }
+            }
+            let mut variable_snapshot = checkpoint.variable_snapshot.clone();
+            if let Some(source_context_id) = variable_snapshot
+                .pointer("/__runtime_recovery_context/context_version_id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| Uuid::parse_str(value).ok())
+            {
+                if let Some(target_context_id) = id_maps.context_projections.get(&source_context_id)
+                {
+                    variable_snapshot["__runtime_recovery_context"]["context_version_id"] =
+                        serde_json::json!(target_context_id);
+                }
+            }
             sqlx::query(
                 r#"
                 insert into flow_run_checkpoints (
@@ -316,8 +346,8 @@ pub(crate) async fn restore_run_archive_v1(
             .bind(target_node_run_id)
             .bind(&checkpoint.status)
             .bind(&checkpoint.reason)
-            .bind(&checkpoint.locator_payload)
-            .bind(&checkpoint.variable_snapshot)
+            .bind(&locator_payload)
+            .bind(&variable_snapshot)
             .bind(&checkpoint.external_ref_payload)
             .bind(parse_archive_time(&checkpoint.created_at)?)
             .execute(&mut *tx)
@@ -336,6 +366,9 @@ pub(crate) async fn restore_run_archive_v1(
             let source_task_id = Uuid::parse_str(&task.id)
                 .map_err(|_| ControlPlaneError::InvalidInput("callback_task_id"))?;
             let target_task_id = Uuid::now_v7();
+            id_maps
+                .callback_tasks
+                .insert(source_task_id, target_task_id);
             let source_node_id = Uuid::parse_str(&task.node_run_id)
                 .map_err(|_| ControlPlaneError::InvalidInput("callback_task_node_run_id"))?;
             let target_node_run_id = id_maps
@@ -438,13 +471,52 @@ pub(crate) async fn restore_run_archive_v1(
             &entry.runtime_items,
         )
         .await?;
+        insert_canonical_contents_from_archive(
+            &mut tx,
+            job_id,
+            application.workspace_id,
+            application.id,
+            &mut id_maps,
+            &entry.canonical_contents,
+        )
+        .await?;
         insert_context_projections_from_archive(
             &mut tx,
             job_id,
             application.workspace_id,
+            application.id,
             target_run_id,
             &id_maps,
             &entry.context_projections,
+        )
+        .await?;
+        insert_invocation_context_bindings_from_archive(
+            &mut tx,
+            application.workspace_id,
+            application.id,
+            target_run_id,
+            &id_maps,
+            &entry.invocation_context_bindings,
+        )
+        .await?;
+        insert_recovery_history_from_archive(
+            &mut tx,
+            job_id,
+            application.workspace_id,
+            application.id,
+            target_run_id,
+            &id_maps,
+            &entry.recovery_history,
+        )
+        .await?;
+        insert_resume_claims_from_archive(
+            &mut tx,
+            job_id,
+            application.workspace_id,
+            application.id,
+            target_run_id,
+            &id_maps,
+            &entry.resume_claims,
         )
         .await?;
         insert_capability_invocations_from_archive(

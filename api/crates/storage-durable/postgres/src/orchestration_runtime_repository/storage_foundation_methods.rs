@@ -34,6 +34,169 @@ fn write_canonical_runtime_json(
     Ok(())
 }
 
+async fn put_canonical_runtime_content_in_transaction(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    scope_id: Uuid,
+    application_id: Uuid,
+    content: &Value,
+) -> Result<(Uuid, String, i64)> {
+    let mut canonical = Vec::new();
+    write_canonical_runtime_json(content, &mut canonical)?;
+    let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
+    let byte_size = i64::try_from(canonical.len())?;
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("canonical-runtime:{application_id}:{content_hash}"))
+        .execute(&mut **tx)
+        .await?;
+    let inserted = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        insert into runtime_canonical_contents (
+            id, scope_id, application_id, content_hash, content, byte_size
+        )
+        select $1, $2, applications.id, $3, $4, $5
+          from applications
+         where applications.id = $6 and applications.scope_id = $2
+        on conflict (application_id, content_hash) do nothing
+        returning id
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope_id)
+    .bind(&content_hash)
+    .bind(content)
+    .bind(byte_size)
+    .bind(application_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let (content_id, stored_content, stored_byte_size) = match inserted {
+        Some(content_id) => (content_id, content.clone(), byte_size),
+        None => {
+            sqlx::query_as::<_, (Uuid, Value, i64)>(
+                r#"
+            select id, content, byte_size
+              from runtime_canonical_contents
+             where scope_id = $1 and application_id = $2 and content_hash = $3
+            "#,
+            )
+            .bind(scope_id)
+            .bind(application_id)
+            .bind(&content_hash)
+            .fetch_one(&mut **tx)
+            .await?
+        }
+    };
+    if stored_content != *content || stored_byte_size != byte_size {
+        return Err(anyhow!(
+            "canonical runtime content hash collision for application {application_id}"
+        ));
+    }
+    Ok((content_id, content_hash, byte_size))
+}
+
+fn recovery_state_for_flow_status(
+    status: domain::FlowRunStatus,
+) -> Option<domain::RecoveryStateCode> {
+    match status {
+        domain::FlowRunStatus::Running => Some(domain::RecoveryStateCode::Running),
+        domain::FlowRunStatus::WaitingCallback => Some(domain::RecoveryStateCode::WaitingCallback),
+        domain::FlowRunStatus::WaitingHuman => Some(domain::RecoveryStateCode::WaitingHuman),
+        domain::FlowRunStatus::Paused => Some(domain::RecoveryStateCode::Paused),
+        domain::FlowRunStatus::Succeeded => Some(domain::RecoveryStateCode::Succeeded),
+        domain::FlowRunStatus::Failed => Some(domain::RecoveryStateCode::Failed),
+        domain::FlowRunStatus::Cancelled => Some(domain::RecoveryStateCode::Cancelled),
+        domain::FlowRunStatus::Queued | domain::FlowRunStatus::Incomplete => None,
+    }
+}
+
+async fn append_flow_run_recovery_state_in_transaction(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow_run: &domain::FlowRunRecord,
+) -> Result<()> {
+    let Some(state_code) = recovery_state_for_flow_status(flow_run.status) else {
+        return Ok(());
+    };
+    let Some((context_version_id, recovery_content_id, node_run_id)) =
+        sqlx::query_as::<_, (Uuid, Uuid, Option<Uuid>)>(
+            r#"
+            select id, actual_content_id, node_run_id
+              from runtime_context_projections
+             where flow_run_id = $1 and projection_kind = 'context_version'
+             order by context_sequence desc nulls last, created_at desc, id desc
+             limit 1
+            "#,
+        )
+        .bind(flow_run.id)
+        .fetch_optional(&mut **tx)
+        .await?
+    else {
+        return Ok(());
+    };
+    let last_state = sqlx::query_scalar::<_, String>(
+        "select state_code from flow_run_recovery_history where flow_run_id = $1 order by sequence desc, id desc limit 1",
+    )
+    .bind(flow_run.id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if last_state.as_deref() == Some(state_code.as_str()) {
+        return Ok(());
+    }
+    let (sequence, node_sequence, iteration_index, attempt_index, resume_sequence) =
+        sqlx::query_as::<_, (i64, i64, i64, i32, i64)>(
+            r#"
+            select coalesce(max(sequence), -1) + 1,
+                   coalesce(max(node_sequence), 0),
+                   coalesce(max(iteration_index), 0),
+                   coalesce(max(attempt_index), 0),
+                   coalesce(max(resume_sequence), 0)
+              from flow_run_recovery_history where flow_run_id = $1
+            "#,
+        )
+        .bind(flow_run.id)
+        .fetch_one(&mut **tx)
+        .await?;
+    let event_sequence = sqlx::query_scalar::<_, i64>(
+        "select coalesce(max(sequence), 0) from runtime_events where flow_run_id = $1",
+    )
+    .bind(flow_run.id)
+    .fetch_one(&mut **tx)
+    .await?;
+    let scope_id = sqlx::query_scalar::<_, Uuid>(
+        "select scope_id from flow_runs where id = $1 and application_id = $2",
+    )
+    .bind(flow_run.id)
+    .bind(flow_run.application_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    sqlx::query(
+        r#"
+        insert into flow_run_recovery_history (
+            id, scope_id, application_id, flow_run_id, node_run_id, sequence, state_code,
+            node_sequence, iteration_index, attempt_index, resume_sequence, event_sequence,
+            context_version_id, recovery_content_id, idempotency_key
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        on conflict (flow_run_id, idempotency_key) do nothing
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope_id)
+    .bind(flow_run.application_id)
+    .bind(flow_run.id)
+    .bind(node_run_id)
+    .bind(sequence)
+    .bind(state_code.as_str())
+    .bind(node_sequence)
+    .bind(iteration_index)
+    .bind(attempt_index)
+    .bind(resume_sequence)
+    .bind(event_sequence)
+    .bind(context_version_id)
+    .bind(recovery_content_id)
+    .bind(format!("flow-state:{}:{sequence}", state_code.as_str()))
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 impl PgControlPlaneStore {
     async fn append_provider_invocation_context(
         &self,
@@ -107,26 +270,12 @@ impl PgControlPlaneStore {
             domain::ContextTransitionActor::Host
         };
         let declared_provenance = explicit.then(|| input.context_epoch.clone());
-        let mut canonical = Vec::new();
-        write_canonical_runtime_json(&input.actual_context, &mut canonical)?;
-        let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
-        let content_id = sqlx::query_scalar::<_, Uuid>(
-            r#"
-            insert into runtime_canonical_contents
-                (id, scope_id, application_id, content_hash, content, byte_size)
-            values ($1, $2, $3, $4, $5, $6)
-            on conflict (application_id, content_hash) do update
-                set content_hash = excluded.content_hash
-            returning id
-            "#,
+        let (content_id, content_hash, _) = put_canonical_runtime_content_in_transaction(
+            &mut tx,
+            input.scope_id,
+            input.application_id,
+            &input.actual_context,
         )
-        .bind(Uuid::now_v7())
-        .bind(input.scope_id)
-        .bind(input.application_id)
-        .bind(&content_hash)
-        .bind(&input.actual_context)
-        .bind(i64::try_from(canonical.len())?)
-        .fetch_one(&mut *tx)
         .await?;
         let sequence = sqlx::query_scalar::<_, i64>(
             "select coalesce(max(context_sequence), -1) + 1 from runtime_context_projections where flow_run_id = $1",
@@ -187,55 +336,25 @@ impl PgControlPlaneStore {
         &self,
         input: &PutCanonicalRuntimeContentInput,
     ) -> Result<domain::CanonicalRuntimeContentRecord> {
-        let mut canonical = Vec::new();
-        write_canonical_runtime_json(&input.content, &mut canonical)?;
-        let content_hash = format!("sha256:{:x}", Sha256::digest(&canonical));
-        let byte_size = i64::try_from(canonical.len())?;
+        let mut tx = self.pool().begin().await?;
+        let (content_id, _, _) = put_canonical_runtime_content_in_transaction(
+            &mut tx,
+            input.scope_id,
+            input.application_id,
+            &input.content,
+        )
+        .await?;
         let row = sqlx::query(
             r#"
-            insert into runtime_canonical_contents (
-                id, scope_id, application_id, content_hash, content, byte_size
-            )
-            select $1, $2, applications.id, $3, $4, $5
-              from applications
-             where applications.id = $6 and applications.scope_id = $2
-            on conflict (application_id, content_hash) do nothing
-            returning id, scope_id, application_id, content_hash, content, byte_size, created_at
+            select id, scope_id, application_id, content_hash, content, byte_size, created_at
+              from runtime_canonical_contents where id = $1
             "#,
         )
-        .bind(Uuid::now_v7())
-        .bind(input.scope_id)
-        .bind(&content_hash)
-        .bind(&input.content)
-        .bind(byte_size)
-        .bind(input.application_id)
-        .fetch_optional(self.pool())
+        .bind(content_id)
+        .fetch_one(&mut *tx)
         .await?;
-
-        let row = match row {
-            Some(row) => row,
-            None => {
-                sqlx::query(
-                    r#"
-                select id, scope_id, application_id, content_hash, content, byte_size, created_at
-                  from runtime_canonical_contents
-                 where scope_id = $1 and application_id = $2 and content_hash = $3
-                "#,
-                )
-                .bind(input.scope_id)
-                .bind(input.application_id)
-                .bind(&content_hash)
-                .fetch_one(self.pool())
-                .await?
-            }
-        };
+        tx.commit().await?;
         let record = map_canonical_runtime_content_record(row);
-        if record.content != input.content {
-            return Err(anyhow!(
-                "canonical runtime content hash collision for application {}",
-                input.application_id
-            ));
-        }
         Ok(record)
     }
 
