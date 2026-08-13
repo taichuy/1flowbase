@@ -316,6 +316,176 @@ fn trace_projection_status_ensure_checks_lightweight_watermark_before_full_sourc
 }
 
 #[test]
+fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_boundaries() {
+    let log_handlers = include_str!("../log_handlers.rs");
+    let overview_loader =
+        application_runtime_function_source(log_handlers, "async fn load_application_run_overview");
+    assert!(overview_loader.contains("get_application_run_overview"));
+    assert!(!overview_loader.contains("get_application_run_detail"));
+
+    let resume_timeline = application_runtime_function_source(
+        log_handlers,
+        "pub async fn get_application_run_resume_timeline",
+    );
+    assert!(resume_timeline.contains("get_application_run_resume_timeline"));
+    assert!(!resume_timeline.contains("get_application_run_detail"));
+    let resume_timeline_summary = application_runtime_function_source(
+        log_handlers,
+        "pub async fn get_application_run_resume_timeline_summary",
+    );
+    assert!(resume_timeline_summary.contains("get_application_run_resume_timeline_summary"));
+    assert!(!resume_timeline_summary.contains("get_application_run_resume_timeline("));
+
+    let trace_detail = application_runtime_function_source(
+        log_handlers,
+        "pub async fn get_application_run_trace_node_detail",
+    );
+    assert!(trace_detail.contains("list_application_run_trace_checkpoints"));
+    assert!(trace_detail.contains("list_application_run_trace_events"));
+    assert!(!trace_detail.contains("get_application_run_detail"));
+
+    assert!(include_str!("../export_handlers.rs").contains("get_application_run_detail"));
+    assert!(include_str!("../archive/document.rs").contains("get_application_run_detail"));
+}
+
+#[test]
+fn resume_timeline_contract_fixture_preserves_callback_payloads_and_event_order() {
+    let application_id = Uuid::from_u128(1);
+    let flow_run_id = Uuid::from_u128(2);
+    let node_run_id = Uuid::from_u128(3);
+    let callback_id = Uuid::from_u128(4);
+    let first_event_id = Uuid::from_u128(5);
+    let second_event_id = Uuid::from_u128(6);
+    let flow_run = test_flow_run_record(
+        application_id,
+        flow_run_id,
+        domain::FlowRunStatus::WaitingCallback,
+        serde_json::json!({ "answer": "partial" }),
+    );
+    let response = ApplicationRunResumeTimelineResponse {
+        flow_run: to_flow_run_response(flow_run),
+        callback_tasks: vec![to_callback_task_response(domain::CallbackTaskRecord {
+            id: callback_id,
+            flow_run_id,
+            node_run_id,
+            callback_kind: "llm_tool_calls".to_string(),
+            status: domain::CallbackTaskStatus::Pending,
+            request_payload: serde_json::json!({ "tool_calls": [{ "id": "call-1" }] }),
+            response_payload: None,
+            external_ref_payload: Some(serde_json::json!({ "callback": "external" })),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            completed_at: None,
+        })],
+        events: vec![
+            to_run_event_response(domain::RunEventRecord {
+                id: first_event_id,
+                flow_run_id,
+                node_run_id: Some(node_run_id),
+                sequence: 7,
+                event_type: "public_run_resume_requested".to_string(),
+                payload: serde_json::json!({ "attempt": 1 }),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            }),
+            to_run_event_response(domain::RunEventRecord {
+                id: second_event_id,
+                flow_run_id,
+                node_run_id: Some(node_run_id),
+                sequence: 8,
+                event_type: "flow_run_resumed".to_string(),
+                payload: serde_json::json!({ "attempt": 1 }),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            }),
+        ],
+    };
+    let value = serde_json::to_value(response).unwrap();
+
+    assert_eq!(
+        value["callback_tasks"][0],
+        serde_json::json!({
+            "id": callback_id.to_string(),
+            "flow_run_id": flow_run_id.to_string(),
+            "node_run_id": node_run_id.to_string(),
+            "callback_kind": "llm_tool_calls",
+            "status": "pending",
+            "request_payload": { "tool_calls": [{ "id": "call-1" }] },
+            "response_payload": null,
+            "external_ref_payload": { "callback": "external" },
+            "created_at": "1970-01-01T00:00:00Z",
+            "completed_at": null
+        })
+    );
+    assert_eq!(
+        value["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|event| event["event_type"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["public_run_resume_requested", "flow_run_resumed"]
+    );
+    assert_eq!(value["events"][0]["sequence"], 7);
+    assert_eq!(value["events"][1]["sequence"], 8);
+}
+
+#[test]
+fn overview_contract_fixture_preserves_answer_snapshot_and_top_level_fields() {
+    let application = test_application_record();
+    let flow_run_id = Uuid::from_u128(20);
+    let waiting_node_run_id = Uuid::from_u128(21);
+    let answer_node_run_id = Uuid::from_u128(22);
+    let flow_run = test_flow_run_record(
+        application.id,
+        flow_run_id,
+        domain::FlowRunStatus::WaitingCallback,
+        serde_json::json!({ "answer": "partial answer" }),
+    );
+    let overview = control_plane::ports::ApplicationRunOverviewReadModel {
+        flow_run,
+        node_runs: vec![domain::NodeRunRecord {
+            id: answer_node_run_id,
+            flow_run_id,
+            node_id: "node-answer".to_string(),
+            node_type: "answer".to_string(),
+            node_alias: "Answer".to_string(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: serde_json::json!({
+                "presentation": {
+                    "complete": false,
+                    "materialized_from": "waiting_prefix"
+                }
+            }),
+            output_payload: serde_json::json!({ "answer": "partial answer" }),
+            error_payload: None,
+            metrics_payload: serde_json::json!({}),
+            debug_payload: serde_json::json!({}),
+            started_at: OffsetDateTime::UNIX_EPOCH,
+            finished_at: Some(OffsetDateTime::UNIX_EPOCH),
+        }],
+        tool_callback_count: 0,
+        waiting_node_id: Some("node-tool".to_string()),
+        waiting_node_run_id: Some(waiting_node_run_id),
+    };
+    let value =
+        serde_json::to_value(to_application_run_overview_response(&application, overview)).unwrap();
+
+    let object = value.as_object().unwrap();
+    assert_eq!(object.len(), 4);
+    for field in ["run", "statistics", "flow_run", "answer_snapshot"] {
+        assert!(object.contains_key(field), "overview is missing {field}");
+    }
+    assert_eq!(value["answer_snapshot"]["kind"], "answer");
+    assert_eq!(value["answer_snapshot"]["text"], "partial answer");
+    assert_eq!(
+        value["answer_snapshot"]["answer_node_run_id"],
+        answer_node_run_id.to_string()
+    );
+    assert_eq!(
+        value["answer_snapshot"]["waiting_node_run_id"],
+        waiting_node_run_id.to_string()
+    );
+}
+
+#[test]
 fn trace_node_content_response_serializes_refs_without_heavy_containers() {
     let trace_node_id = Uuid::now_v7();
     let flow_run_id = Uuid::now_v7();

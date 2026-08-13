@@ -64,13 +64,14 @@ jobs:
         run: |
           set -euo pipefail
           target=x86_64-unknown-linux-musl
+          official_root="$GITHUB_WORKSPACE/tmp/provider-conformance/official-source"
           providers=(openai anthropic aliyun_bailian deepseek gemini openai_compatible)
           rm -rf tmp/provider-conformance/packages
 
           for provider_code in "${providers[@]}"; do
-            plugin_dir="tmp/provider-conformance/official-source/runtime-extensions/@taichuy/${provider_code}"
+            plugin_dir="${official_root}/runtime-extensions/@taichuy/${provider_code}"
             cross build --manifest-path "${plugin_dir}/Cargo.toml" --release --target "${target}"
-            runtime_binary_name="$(node tmp/provider-conformance/official-source/scripts/list-provider-package-targets.mjs --plugin-dir "${plugin_dir}" --rust-target "${target}" --field runtime_binary_name)"
+            runtime_binary_name="$(node "${official_root}/scripts/list-provider-package-targets.mjs" --plugin-dir "${plugin_dir}" --rust-target "${target}" --field runtime_binary_name)"
             node scripts/node/plugin/cli.js package \
               "${plugin_dir}" \
               --out "tmp/provider-conformance/packages/${provider_code}" \

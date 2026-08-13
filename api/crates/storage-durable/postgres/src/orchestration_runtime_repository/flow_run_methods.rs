@@ -300,10 +300,9 @@ impl PgControlPlaneStore {
                 .find_published_flow_run_by_idempotency_key(
                     input.application_id,
                     conflict_api_key,
-                    input
-                        .idempotency_key
-                        .as_deref()
-                        .ok_or_else(|| anyhow!("idempotency conflict without an idempotency key"))?,
+                    input.idempotency_key.as_deref().ok_or_else(|| {
+                        anyhow!("idempotency conflict without an idempotency key")
+                    })?,
                 )
                 .await?
                 .ok_or_else(|| anyhow!("idempotency conflict canonical flow run is unavailable"))?;
@@ -792,6 +791,7 @@ impl PgControlPlaneStore {
         .await?;
 
         let flow_run = map_flow_run_record(row)?;
+        append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
             .await?;
         if is_terminal_application_run_log_status(flow_run.status) {
@@ -872,6 +872,7 @@ impl PgControlPlaneStore {
 
         if let Some(row) = row {
             let flow_run = map_flow_run_record(row)?;
+            append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
             Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
                 .await?;
             if is_terminal_application_run_log_status(flow_run.status) {
@@ -991,6 +992,8 @@ impl PgControlPlaneStore {
 
         let scope_id = flow_run_scope_id_for_update(&mut tx, flow_run.id).await?;
         let flow_event_sequence = next_event_sequence(&mut tx, flow_run.id).await?;
+        let resume_timeline_description =
+            resume_timeline_description(&input.flow_run_event_payload);
         sqlx::query(
             r#"
             insert into flow_run_events (
@@ -1000,8 +1003,10 @@ impl PgControlPlaneStore {
                 node_run_id,
                 sequence,
                 event_type,
-                payload
-            ) values ($1, $2, $3, null, $4, $5, $6)
+                payload,
+                resume_timeline_description,
+                resume_timeline_description_projected
+            ) values ($1, $2, $3, null, $4, $5, $6, $7, true)
             "#,
         )
         .bind(Uuid::now_v7())
@@ -1010,6 +1015,7 @@ impl PgControlPlaneStore {
         .bind(flow_event_sequence)
         .bind(input.result.flow_run_event_type())
         .bind(&input.flow_run_event_payload)
+        .bind(resume_timeline_description)
         .execute(&mut *tx)
         .await?;
 
@@ -1045,6 +1051,8 @@ impl PgControlPlaneStore {
         .bind(&input.terminal_event_payload)
         .execute(&mut *tx)
         .await?;
+
+        append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
 
         tx.commit().await?;
         match self
@@ -1116,18 +1124,25 @@ impl PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             select
-                id,
-                flow_run_id,
-                node_run_id,
-                status,
-                reason,
-                locator_payload,
-                variable_snapshot,
-                external_ref_payload,
-                created_at
-            from flow_run_checkpoints
-            where flow_run_id = $1
-              and id = $2
+                checkpoints.id,
+                checkpoints.flow_run_id,
+                checkpoints.node_run_id,
+                checkpoints.status,
+                checkpoints.reason,
+                checkpoints.locator_payload,
+                coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
+                checkpoints.external_ref_payload,
+                checkpoints.created_at
+            from flow_run_checkpoints checkpoints
+            left join runtime_legacy_shadow_rows shadow_rows
+              on shadow_rows.source_table = 'flow_run_checkpoints'
+             and shadow_rows.source_column = 'variable_snapshot'
+             and shadow_rows.source_row_id = checkpoints.id
+            left join runtime_canonical_contents contents
+              on contents.id = shadow_rows.canonical_content_id
+             and contents.content = checkpoints.variable_snapshot
+            where checkpoints.flow_run_id = $1
+              and checkpoints.id = $2
             "#,
         )
         .bind(flow_run_id)
@@ -1312,15 +1327,39 @@ impl PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        let Some(row) = row else {
-            if self
-                .get_callback_task(input.callback_task_id)
-                .await?
-                .is_some()
-            {
-                return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
+        let row = match row {
+            Some(row) => row,
+            None => {
+                let replay = sqlx::query(
+                    r#"
+                    select id, flow_run_id, node_run_id, callback_kind, status,
+                           case when callback_kind = 'llm_tool_calls'
+                                then jsonb_build_object('tool_calls', request_payload -> 'tool_calls')
+                                else request_payload end as request_payload,
+                           response_payload,
+                           case when callback_kind = 'llm_tool_calls' then null
+                                else external_ref_payload end as external_ref_payload,
+                           created_at, completed_at
+                      from flow_run_callback_tasks
+                     where id = $1 and status = 'completed' and response_payload = $2
+                    "#,
+                )
+                .bind(input.callback_task_id)
+                .bind(&input.response_payload)
+                .fetch_optional(self.pool())
+                .await?;
+                if let Some(replay) = replay {
+                    replay
+                } else if self
+                    .get_callback_task(input.callback_task_id)
+                    .await?
+                    .is_some()
+                {
+                    return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
+                } else {
+                    return Err(ControlPlaneError::NotFound("callback_task").into());
+                }
             }
-            return Err(ControlPlaneError::NotFound("callback_task").into());
         };
 
         map_callback_task_record(row)

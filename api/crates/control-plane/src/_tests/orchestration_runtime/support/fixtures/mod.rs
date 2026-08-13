@@ -21,6 +21,7 @@ pub struct SeededWaitingHumanRun {
 pub struct SeededWaitingCallbackRun {
     pub actor_user_id: Uuid,
     pub application_id: Uuid,
+    pub flow_run_id: Uuid,
     pub callback_task_id: Uuid,
 }
 
@@ -409,6 +410,7 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
         SeededWaitingCallbackRun {
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
+            flow_run_id: detail.flow_run.id,
             callback_task_id: detail.callback_tasks.first().expect("callback task").id,
         }
     }
@@ -473,6 +475,23 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
 
     pub async fn force_flow_run_status(&self, flow_run_id: Uuid, status: domain::FlowRunStatus) {
         self.repository.force_flow_run_status(flow_run_id, status);
+    }
+
+    pub async fn force_checkpoint_node_run_status(
+        &self,
+        checkpoint_id: Uuid,
+        status: domain::NodeRunStatus,
+    ) {
+        self.repository
+            .force_checkpoint_node_run_status(checkpoint_id, status);
+    }
+
+    pub fn resume_claim_count(&self) -> usize {
+        self.repository.resume_claim_count()
+    }
+
+    pub fn resume_claim_acquire_count(&self) -> usize {
+        self.repository.resume_claim_acquire_count()
     }
 
     pub async fn force_flow_run_status_after_next_get(

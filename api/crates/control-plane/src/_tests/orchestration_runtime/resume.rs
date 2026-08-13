@@ -152,6 +152,33 @@ async fn complete_callback_task_updates_task_and_requeues_waiting_run() {
 }
 
 #[tokio::test]
+async fn complete_callback_task_rejects_terminal_flow_before_claim() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service.seed_waiting_callback_run("Support Agent").await;
+    service
+        .force_flow_run_status(seeded.flow_run_id, FlowRunStatus::Succeeded)
+        .await;
+
+    let error = service
+        .complete_callback_task(CompleteCallbackTaskCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            callback_task_id: seeded.callback_task_id,
+            response_payload: json!({ "result": { "status": "ok" } }),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(service.resume_claim_acquire_count(), 0);
+    assert_eq!(service.resume_claim_count(), 0);
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::InvalidStateTransition { resource, from, to, .. })
+            if *resource == "flow_run" && from == "succeeded" && to == "waiting_callback"
+    ));
+}
+
+#[tokio::test]
 async fn resume_flow_run_rejects_terminal_flow_status_transition() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service.seed_waiting_human_run("Support Agent").await;
@@ -170,9 +197,39 @@ async fn resume_flow_run_rejects_terminal_flow_status_transition() {
         .await
         .unwrap_err();
 
+    assert_eq!(service.resume_claim_acquire_count(), 0);
+    assert_eq!(service.resume_claim_count(), 0);
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::InvalidStateTransition { resource, from, to, .. })
-            if *resource == "flow_run" && from == "succeeded" && to == "succeeded"
+            if *resource == "flow_run" && from == "succeeded" && to == "waiting_human"
+    ));
+}
+
+#[tokio::test]
+async fn resume_flow_run_rejects_invalid_waiting_node_before_claim() {
+    let service = OrchestrationRuntimeService::for_tests();
+    let seeded = service.seed_waiting_human_run("Support Agent").await;
+    service
+        .force_checkpoint_node_run_status(seeded.checkpoint_id, domain::NodeRunStatus::Succeeded)
+        .await;
+
+    let error = service
+        .resume_flow_run(ResumeFlowRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            flow_run_id: seeded.flow_run_id,
+            checkpoint_id: seeded.checkpoint_id,
+            input_payload: json!({ "node-human": { "input": "已审核通过" } }),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(service.resume_claim_acquire_count(), 0);
+    assert_eq!(service.resume_claim_count(), 0);
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::InvalidStateTransition { resource, from, to, .. })
+            if *resource == "node_run" && from == "succeeded" && to == "waiting_human"
     ));
 }

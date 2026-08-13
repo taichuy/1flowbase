@@ -7,6 +7,7 @@ impl PgControlPlaneStore {
         let scope_id = flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_event_sequence(&mut tx, input.flow_run_id).await?;
+        let resume_timeline_description = resume_timeline_description(&input.payload);
         let row = sqlx::query(
             r#"
             insert into flow_run_events (
@@ -16,8 +17,10 @@ impl PgControlPlaneStore {
                 node_run_id,
                 sequence,
                 event_type,
-                payload
-            ) values ($1, $2, $3, $4, $5, $6, $7)
+                payload,
+                resume_timeline_description,
+                resume_timeline_description_projected
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, true)
             returning
                 id,
                 flow_run_id,
@@ -35,6 +38,7 @@ impl PgControlPlaneStore {
         .bind(next_sequence)
         .bind(&input.event_type)
         .bind(&input.payload)
+        .bind(resume_timeline_description)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -73,7 +77,9 @@ impl PgControlPlaneStore {
                 node_run_id,
                 sequence,
                 event_type,
-                payload
+                payload,
+                resume_timeline_description,
+                resume_timeline_description_projected
             ) "#,
         );
         builder.push_values(inputs.iter().enumerate(), |mut row, (index, input)| {
@@ -83,7 +89,9 @@ impl PgControlPlaneStore {
                 .push_bind(input.node_run_id)
                 .push_bind(first_sequence + index as i64)
                 .push_bind(&input.event_type)
-                .push_bind(&input.payload);
+                .push_bind(&input.payload)
+                .push_bind(resume_timeline_description(&input.payload))
+                .push_bind(true);
         });
         builder.push(
             r#"
@@ -438,6 +446,15 @@ impl PgControlPlaneStore {
 
         Ok(map_context_projection_record(row))
     }
+}
 
-
+fn resume_timeline_description(payload: &serde_json::Value) -> Option<&str> {
+    ["resume_request_id", "callback_task_id"]
+        .into_iter()
+        .find_map(|key| {
+            payload
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+        })
 }

@@ -141,13 +141,53 @@ async fn build_run_archive_v1_entry(
         )
         .await?,
     )?;
-    let context_projections = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_context_projections(
-            &state.store,
-            run_id,
-        )
-        .await?,
-    )?;
+    let context_projections = archive_json_rows(
+        &state.store,
+        r#"
+        select to_jsonb(projections) as value
+          from runtime_context_projections projections
+         where flow_run_id = $1 order by created_at, id
+        "#,
+        run_id,
+    )
+    .await?;
+    let canonical_contents = archive_json_rows(
+        &state.store,
+        r#"
+        select to_jsonb(contents) as value
+          from runtime_canonical_contents contents
+         where exists (
+             select 1 from runtime_context_projections projections
+              where projections.flow_run_id = $1
+                and projections.actual_content_id = contents.id
+         ) or exists (
+             select 1 from flow_run_recovery_history recovery
+              where recovery.flow_run_id = $1
+                and recovery.recovery_content_id = contents.id
+         )
+         order by created_at, id
+        "#,
+        run_id,
+    )
+    .await?;
+    let invocation_context_bindings = archive_json_rows(
+        &state.store,
+        "select to_jsonb(bindings) as value from runtime_invocation_context_bindings bindings where flow_run_id = $1 order by created_at, invocation_span_id",
+        run_id,
+    )
+    .await?;
+    let recovery_history = archive_json_rows(
+        &state.store,
+        "select to_jsonb(recovery) as value from flow_run_recovery_history recovery where flow_run_id = $1 order by sequence, id",
+        run_id,
+    )
+    .await?;
+    let resume_claims = archive_json_rows(
+        &state.store,
+        "select to_jsonb(claims) as value from flow_run_resume_claims claims where flow_run_id = $1 order by created_at, id",
+        run_id,
+    )
+    .await?;
     let usage_ledger = records_to_json_values(
         <MainDurableStore as OrchestrationRuntimeRepository>::list_usage_ledger(
             &state.store,
@@ -184,12 +224,27 @@ async fn build_run_archive_v1_entry(
         runtime_events,
         runtime_items,
         context_projections,
+        canonical_contents,
+        invocation_context_bindings,
+        recovery_history,
+        resume_claims,
         usage_ledger,
         model_failover_attempts,
         capability_invocations,
         trace_tree,
         export_warnings,
     })
+}
+
+async fn archive_json_rows(
+    store: &MainDurableStore,
+    query: &str,
+    run_id: Uuid,
+) -> Result<Vec<serde_json::Value>, ApiError> {
+    Ok(sqlx::query_scalar::<_, serde_json::Value>(query)
+        .bind(run_id)
+        .fetch_all(store.pool())
+        .await?)
 }
 
 fn records_to_json_values<T: Serialize>(

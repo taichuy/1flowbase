@@ -27,8 +27,8 @@ pub mod resource;
 pub mod resource_filter;
 pub mod runtime_observability;
 pub mod scope;
-pub mod system_defaults;
 pub mod system_backup;
+pub mod system_defaults;
 pub mod ui_management;
 
 pub use ai_native_operation::{AiNativeCompactProfile, AiNativeGenerateProfile, AiNativeOperation};
@@ -161,19 +161,21 @@ pub use plugin_worker::{PluginWorkerLeaseRecord, PluginWorkerStatus};
 pub use resource::runtime_model_resource_code;
 pub use resource_filter::{ResourceFilterExpr, ResourceFilterOperator};
 pub use runtime_observability::{
-    AuditHashRecord, BillingSessionRecord, BillingSessionStatus, CapabilityInvocationRecord,
-    ContextProjectionRecord, CostLedgerRecord, CreditLedgerRecord,
-    ModelFailoverAttemptLedgerRecord, RuntimeEventDurability, RuntimeEventLayer,
+    AuditHashRecord, BillingSessionRecord, BillingSessionStatus, CanonicalRuntimeContentRecord,
+    CapabilityInvocationRecord, ContextProjectionRecord, ContextTransitionActor,
+    ContextTransitionKind, ContextVersionRecord, CostLedgerRecord, CreditLedgerRecord,
+    InvocationContextBindingRecord, ModelFailoverAttemptLedgerRecord, RecoveryCoordinate,
+    RecoveryHistoryRecord, RecoveryStateCode, RuntimeEventDurability, RuntimeEventLayer,
     RuntimeEventRecord, RuntimeEventSource, RuntimeEventVisibility, RuntimeItemKind,
     RuntimeItemRecord, RuntimeItemStatus, RuntimeSpanKind, RuntimeSpanRecord, RuntimeSpanStatus,
     RuntimeTrustLevel, UsageLedgerRecord, UsageLedgerStatus,
 };
 pub use scope::{ScopeContext, TenantRecord, WorkspaceRecord, DEFAULT_SCOPE_ID, SYSTEM_SCOPE_ID};
+pub use system_backup::*;
 pub use system_defaults::{
     DefaultUpgradePolicy, DEFAULT_AUTO_INCLUDE_NEW_PROVIDER_INSTANCES,
     DEFAULT_CODE_ISOLATION_TIMEOUT_MS,
 };
-pub use system_backup::*;
 pub use ui_management::{
     validate_ui_code_template, validate_ui_component_contract, UiCodeTemplate,
     UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentContractRevision,

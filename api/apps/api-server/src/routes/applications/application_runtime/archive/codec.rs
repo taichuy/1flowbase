@@ -169,6 +169,10 @@ fn trace_export_to_archive_entry(
         runtime_events: Vec::new(),
         runtime_items: Vec::new(),
         context_projections: Vec::new(),
+        canonical_contents: Vec::new(),
+        invocation_context_bindings: Vec::new(),
+        recovery_history: Vec::new(),
+        resume_claims: Vec::new(),
         usage_ledger: Vec::new(),
         model_failover_attempts: Vec::new(),
         capability_invocations: Vec::new(),
@@ -244,6 +248,32 @@ fn run_archive_v1_entry_digest_payload(entry: &RunArchiveV1EntryResponse) -> ser
         "model_failover_attempts": &entry.model_failover_attempts,
         "capability_invocations": &entry.capability_invocations,
     });
+    if let Some(object) = value.as_object_mut() {
+        if !entry.canonical_contents.is_empty() {
+            object.insert(
+                "canonical_contents".to_string(),
+                serde_json::json!(&entry.canonical_contents),
+            );
+        }
+        if !entry.invocation_context_bindings.is_empty() {
+            object.insert(
+                "invocation_context_bindings".to_string(),
+                serde_json::json!(&entry.invocation_context_bindings),
+            );
+        }
+        if !entry.recovery_history.is_empty() {
+            object.insert(
+                "recovery_history".to_string(),
+                serde_json::json!(&entry.recovery_history),
+            );
+        }
+        if !entry.resume_claims.is_empty() {
+            object.insert(
+                "resume_claims".to_string(),
+                serde_json::json!(&entry.resume_claims),
+            );
+        }
+    }
     remove_run_archive_digest_volatile_fields(&mut value);
     value
 }

@@ -17,29 +17,37 @@ use control_plane::{
     },
     errors::ControlPlaneError,
     ports::{
-        AppendBillingSessionInput, AppendCapabilityInvocationInput, AppendContextProjectionInput,
+        AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
+        AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
         AppendCostLedgerInput, AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput,
-        AppendRunEventInput, AppendRuntimeEventInput, AppendRuntimeItemInput,
-        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRunCountTokensResult,
+        AppendProviderInvocationContextInput, AppendRecoveryHistoryInput, AppendRunEventInput,
+        AppendRuntimeEventInput, AppendRuntimeItemInput, AppendRuntimeSpanInput,
+        AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
+        ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
-        AttachCompiledPlanToFlowRunInput, CallbackResumeContext, CallbackResumeWaitingNode,
-        ClearModelProviderRequestLogsBatchInput, ClearModelProviderRequestLogsBatchResult,
-        CommitFlowRunTerminalInput, CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult,
-        CompleteCallbackTaskInput, CompleteFlowRunInput, CompleteNodeRunInput,
-        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
-        CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
-        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
+        AttachCompiledPlanToFlowRunInput, BindInvocationContextInput, CallbackResumeContext,
+        CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
+        ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
+        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
+        CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
+        ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
+        CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
+        CreateRuntimeDebugArtifactInput, DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
         FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
-        FinishFlowRunCallbackResumeAttemptInput, GetApplicationRunMonitoringReportInput,
-        GetRuntimeDebugArtifactInput, LinkUsageLedgerToModelFailoverAttemptInput,
-        ListApplicationConversationRunsPageInput,
+        FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput,
+        GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
         ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
-        OrchestrationRuntimeRepository, RecordFlowRunCallbackResumeAttemptInput,
-        RecordFlowRunCallbackResumeAttemptOutput, ReplaceApplicationRunTraceProjectionInput,
+        OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
+        PersistedWaitingState, PutCanonicalRuntimeContentInput,
+        RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
+        ReplaceApplicationRunTraceProjectionInput, ResumeClaimDisposition, ResumeClaimKind,
+        ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
+        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion,
         UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
         UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
         UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
@@ -47,6 +55,7 @@ use control_plane::{
         UpsertDebugVariableCacheEntryInput,
     },
 };
+use serde_json::{json, Value};
 use sqlx::{Postgres, QueryBuilder, Row};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -71,6 +80,10 @@ include!("application_run_monitoring_methods.rs");
 include!("debug_variable_cache_methods.rs");
 include!("flow_run_methods.rs");
 include!("flow_run_callback_resume_attempt_methods.rs");
+include!("storage_foundation_methods.rs");
+include!("legacy_shadow_methods.rs");
+include!("waiting_state_methods.rs");
+include!("resume_claim_methods.rs");
 include!("ledger_methods.rs");
 include!("read_methods.rs");
 include!("request_log_methods.rs");
@@ -393,6 +406,83 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         PgControlPlaneStore::append_context_projection(self, input).await
     }
 
+    async fn put_canonical_runtime_content(
+        &self,
+        input: &PutCanonicalRuntimeContentInput,
+    ) -> Result<domain::CanonicalRuntimeContentRecord> {
+        PgControlPlaneStore::put_canonical_runtime_content(self, input).await
+    }
+
+    async fn append_context_version(
+        &self,
+        input: &AppendContextVersionInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        PgControlPlaneStore::append_context_version(self, input).await
+    }
+
+    async fn bind_invocation_context(
+        &self,
+        input: &BindInvocationContextInput,
+    ) -> Result<domain::InvocationContextBindingRecord> {
+        PgControlPlaneStore::bind_invocation_context(self, input).await
+    }
+
+    async fn append_provider_invocation_context(
+        &self,
+        input: &AppendProviderInvocationContextInput,
+    ) -> Result<domain::ContextVersionRecord> {
+        PgControlPlaneStore::append_provider_invocation_context(self, input).await
+    }
+
+    async fn append_recovery_history(
+        &self,
+        input: &AppendRecoveryHistoryInput,
+    ) -> Result<domain::RecoveryHistoryRecord> {
+        PgControlPlaneStore::append_recovery_history(self, input).await
+    }
+
+    async fn convert_legacy_runtime_shadow_batch(
+        &self,
+        input: &ConvertLegacyRuntimeShadowBatchInput,
+    ) -> Result<ConvertLegacyRuntimeShadowBatchResult> {
+        PgControlPlaneStore::convert_legacy_runtime_shadow_batch(self, input).await
+    }
+
+    async fn rollback_legacy_runtime_shadow(
+        &self,
+        input: &RollbackLegacyRuntimeShadowInput,
+    ) -> Result<RollbackLegacyRuntimeShadowResult> {
+        PgControlPlaneStore::rollback_legacy_runtime_shadow(self, input).await
+    }
+
+    async fn load_runtime_context_content_lineage(
+        &self,
+        context_version_id: Uuid,
+    ) -> Result<Vec<RuntimeContextContentVersion>> {
+        PgControlPlaneStore::load_runtime_context_content_lineage(self, context_version_id).await
+    }
+
+    async fn persist_waiting_state(
+        &self,
+        input: &PersistWaitingStateInput,
+    ) -> Result<Option<PersistedWaitingState>> {
+        PgControlPlaneStore::persist_waiting_state(self, input).await
+    }
+
+    async fn acquire_resume_claim(
+        &self,
+        input: &AcquireResumeClaimInput,
+    ) -> Result<AcquireResumeClaimOutput> {
+        PgControlPlaneStore::acquire_resume_claim(self, input).await
+    }
+
+    async fn finish_resume_claim(
+        &self,
+        input: &FinishResumeClaimInput,
+    ) -> Result<ResumeClaimRecord> {
+        PgControlPlaneStore::finish_resume_claim(self, input).await
+    }
+
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,
@@ -638,6 +728,66 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunDetail>> {
         PgControlPlaneStore::get_application_run_detail(self, application_id, flow_run_id).await
+    }
+
+    async fn get_application_run_overview(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunOverviewReadModel>> {
+        PgControlPlaneStore::get_application_run_overview(self, application_id, flow_run_id).await
+    }
+
+    async fn get_application_run_resume_timeline(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineReadModel>> {
+        PgControlPlaneStore::get_application_run_resume_timeline(self, application_id, flow_run_id)
+            .await
+    }
+
+    async fn get_application_run_resume_timeline_summary(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineSummaryReadModel>> {
+        PgControlPlaneStore::get_application_run_resume_timeline_summary(
+            self,
+            application_id,
+            flow_run_id,
+        )
+        .await
+    }
+
+    async fn list_application_run_trace_checkpoints(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::CheckpointRecord>> {
+        PgControlPlaneStore::list_application_run_trace_checkpoints(
+            self,
+            application_id,
+            flow_run_id,
+            node_run_ids,
+        )
+        .await
+    }
+
+    async fn list_application_run_trace_events(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::RunEventRecord>> {
+        PgControlPlaneStore::list_application_run_trace_events(
+            self,
+            application_id,
+            flow_run_id,
+            node_run_ids,
+        )
+        .await
     }
 
     async fn get_application_run_trace_projection_source(

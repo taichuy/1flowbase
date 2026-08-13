@@ -1,4 +1,5 @@
 use super::*;
+use plugin_framework::provider_contract::ProtocolContextEnvelope;
 
 pub(super) struct BuiltProviderInvocation {
     pub(super) input: ProviderInvocationInput,
@@ -15,6 +16,7 @@ pub(super) struct LlmInvocationDebugContext {
     previous_response_id: Option<String>,
     effective_max_output_tokens: Option<u64>,
     max_output_tokens_source: &'static str,
+    context_epoch: Value,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -29,6 +31,7 @@ impl LlmInvocationDebugContext {
         previous_response_id: Option<String>,
         context: &ProviderPromptContext,
         model_parameters: &ResolvedLlmModelParameters,
+        context_epoch: Value,
     ) -> Self {
         Self {
             context_policy,
@@ -39,6 +42,7 @@ impl LlmInvocationDebugContext {
             previous_response_id,
             effective_max_output_tokens: model_parameters.effective_max_output_tokens,
             max_output_tokens_source: model_parameters.max_output_tokens_source,
+            context_epoch,
         }
     }
 
@@ -83,6 +87,7 @@ impl LlmInvocationDebugContext {
             "max_output_tokens_source".to_string(),
             Value::String(self.max_output_tokens_source.to_string()),
         );
+        payload.insert("context_epoch".to_string(), self.context_epoch.clone());
         Value::Object(payload)
     }
 }
@@ -167,13 +172,6 @@ where
     ]);
     let model_parameters =
         resolve_model_parameters(plan, node, runtime, resolved_inputs, variable_pool)?;
-    let debug_context = LlmInvocationDebugContext::from_provider_context(
-        context_policy,
-        previous_response_id.clone(),
-        &provider_context,
-        &model_parameters,
-    );
-
     let mut run_context = BTreeMap::from([(
         "resolved_inputs".to_string(),
         Value::Object(resolved_inputs.clone()),
@@ -184,6 +182,14 @@ where
 
     let protocol_context =
         resolve_protocol_context(node, variable_pool, runtime_context, invoker).await?;
+    let context_epoch = client_context_epoch(protocol_context.as_ref())?;
+    let debug_context = LlmInvocationDebugContext::from_provider_context(
+        context_policy,
+        previous_response_id.clone(),
+        &provider_context,
+        &model_parameters,
+        context_epoch,
+    );
     let mut required_capabilities = runtime_context.provider_invocation_capabilities.clone();
     let protocol_context_capability =
         plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext;
@@ -236,6 +242,44 @@ where
         input,
         debug_context,
     })
+}
+
+fn client_context_epoch(
+    envelope: Option<&ProtocolContextEnvelope>,
+) -> std::result::Result<Value, Value> {
+    let Some(declaration) = envelope
+        .and_then(|envelope| envelope.body.get("context_management"))
+        .and_then(Value::as_object)
+        .and_then(|context| context.get("one_flow_context"))
+    else {
+        return Ok(json!({ "declaration": "unknown" }));
+    };
+    let object = declaration.as_object().ok_or_else(|| {
+        json!({ "error_code": "invalid_context_epoch_declaration", "message": "context_management.one_flow_context must be an object" })
+    })?;
+    let allowed = ["epoch", "parent_epoch", "transition", "provenance"];
+    if object.keys().any(|key| !allowed.contains(&key.as_str()))
+        || object.get("epoch").and_then(Value::as_u64).is_none()
+        || object
+            .get("parent_epoch")
+            .is_some_and(|value| !value.is_null() && !value.is_u64())
+        || object.get("transition").and_then(Value::as_str) != Some("compaction")
+        || object
+            .get("provenance")
+            .is_some_and(|value| !value.is_object())
+    {
+        return Err(json!({
+            "error_code": "invalid_context_epoch_declaration",
+            "message": "context_management.one_flow_context is invalid"
+        }));
+    }
+    Ok(json!({
+        "declaration": "explicit",
+        "epoch": object.get("epoch"),
+        "parent_epoch": object.get("parent_epoch").cloned().unwrap_or(Value::Null),
+        "transition": "compaction",
+        "provenance": object.get("provenance").cloned().unwrap_or_else(|| json!({})),
+    }))
 }
 
 async fn resolve_protocol_context<I>(
@@ -394,4 +438,50 @@ pub(super) fn has_pending_tool_calls(output_payload: &Value) -> bool {
         .get("tool_calls")
         .and_then(Value::as_array)
         .is_some_and(|tool_calls| !tool_calls.is_empty())
+}
+
+#[cfg(test)]
+mod context_epoch_tests {
+    use super::*;
+
+    fn envelope(declaration: Value) -> ProtocolContextEnvelope {
+        ProtocolContextEnvelope {
+            source_protocol: "anthropic_messages".into(),
+            body: BTreeMap::from([("context_management".into(), declaration)]),
+            ..ProtocolContextEnvelope::default()
+        }
+    }
+
+    #[test]
+    fn legacy_client_is_unknown_without_content_length_inference() {
+        assert_eq!(
+            client_context_epoch(None).unwrap(),
+            json!({ "declaration": "unknown" })
+        );
+    }
+
+    #[test]
+    fn explicit_client_compaction_preserves_epoch_provenance() {
+        let parsed = client_context_epoch(Some(&envelope(json!({
+            "one_flow_context": {
+                "epoch": 4,
+                "parent_epoch": 3,
+                "transition": "compaction",
+                "provenance": { "client": "claude-code", "reason": "automatic" }
+            }
+        }))))
+        .unwrap();
+        assert_eq!(parsed["declaration"], "explicit");
+        assert_eq!(parsed["epoch"], 4);
+        assert_eq!(parsed["parent_epoch"], 3);
+    }
+
+    #[test]
+    fn malformed_explicit_client_compaction_is_rejected() {
+        let error = client_context_epoch(Some(&envelope(json!({
+            "one_flow_context": { "epoch": "four", "transition": "compaction" }
+        }))))
+        .unwrap_err();
+        assert_eq!(error["error_code"], "invalid_context_epoch_declaration");
+    }
 }

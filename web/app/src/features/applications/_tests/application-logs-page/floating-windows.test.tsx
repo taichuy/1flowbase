@@ -268,7 +268,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       sampleTraceNodeContent()
     );
     runtimeApi.fetchApplicationRunResumeTimeline.mockResolvedValue({
-      flow_run: sampleRunDetail().flow_run,
+      flow_run_status: sampleRunDetail().flow_run.status,
       callback_tasks: sampleRunDetail().callback_tasks,
       events: sampleRunDetail().events
     });

@@ -1,6 +1,6 @@
 import { Empty, Tag, Typography } from 'antd';
 
-import type { ApplicationRunResumeTimeline as ApplicationRunResumeTimelineData } from '../../api/runtime';
+import type { ApplicationRunResumeTimelineSummary as ApplicationRunResumeTimelineData } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import './application-run-detail-panel.css';
 
@@ -90,11 +90,6 @@ function callbackKindLabel(callbackKind: string) {
   }
 }
 
-function payloadString(payload: Record<string, unknown>, key: string) {
-  const value = payload[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
-
 function buildResumeTimeline(
   detail: ApplicationRunResumeTimelineData
 ): ResumeTimelineItem[] {
@@ -110,9 +105,7 @@ function buildResumeTimeline(
       title: resumeEventLabel(event.event_type),
       status: i18nText('applications', 'auto.resume_timeline_event'),
       color: eventStatusColor(event.event_type),
-      description:
-        payloadString(event.payload, 'resume_request_id') ??
-        payloadString(event.payload, 'callback_task_id')
+      description: event.description
     });
   }
   const callbackItems = detail.callback_tasks.map((task) => ({
@@ -142,7 +135,7 @@ export function ApplicationRunResumeTimeline({
         <Typography.Text strong style={{ fontSize: 13 }}>
           {i18nText('applications', 'auto.resume_timeline')}
         </Typography.Text>
-        {detail ? <Tag>{detail.flow_run.status}</Tag> : null}
+        {detail ? <Tag>{detail.flow_run_status}</Tag> : null}
       </div>
       {items.length > 0 ? (
         <div className="application-run-detail__timeline-list">

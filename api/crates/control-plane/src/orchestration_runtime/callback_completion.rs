@@ -90,6 +90,31 @@ where
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
             serde_json::from_value(compiled_record.plan.clone())?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
+        ensure_flow_run_transition(
+            flow_run.status,
+            domain::FlowRunStatus::WaitingCallback,
+            "complete_callback_task",
+        )?;
+        ensure_node_run_transition(
+            waiting_node.status,
+            domain::NodeRunStatus::WaitingCallback,
+            "complete_callback_task",
+        )?;
+        let claim = self
+            .repository
+            .acquire_resume_claim(&AcquireResumeClaimInput {
+                scope_id: application.workspace_id,
+                application_id: command.application_id,
+                flow_run_id: flow_run.id,
+                checkpoint_id: checkpoint.id,
+                callback_task_id: Some(command.callback_task_id),
+                kind: ResumeClaimKind::Callback,
+                request_payload: command.response_payload.clone(),
+            })
+            .await?;
+        if claim.disposition != ResumeClaimDisposition::Acquired {
+            return Ok(flow_run);
+        }
         let callback_task = self
             .repository
             .complete_callback_task(&CompleteCallbackTaskInput {
@@ -98,75 +123,101 @@ where
                 completed_at: OffsetDateTime::now_utc(),
             })
             .await?;
-        if callback_task.callback_kind == "data_model_side_effect_confirmation" {
-            return self
-                .complete_data_model_side_effect_callback(
-                    command,
-                    &actor,
-                    &callback_task,
-                    &waiting_node,
+        let result = if callback_task.callback_kind == "data_model_side_effect_confirmation" {
+            self.complete_data_model_side_effect_callback(
+                command,
+                &actor,
+                &callback_task,
+                &waiting_node,
+                base_started_at,
+                &application,
+                &checkpoint,
+                &flow_run,
+                &compiled_plan,
+                &claim.claim,
+            )
+            .await
+        } else {
+            async {
+                let snapshot =
+                    checkpoint_snapshot_from_record_with_context(&self.repository, &checkpoint)
+                        .await?;
+                let waiting_node_id = checkpoint_node_id(&checkpoint)?;
+                let execution = self
+                    .resume_execution_segment(ResumeExecutionSegmentInput {
+                        actor: &actor,
+                        application: &application,
+                        flow_run: &flow_run,
+                        compiled_plan: &compiled_plan,
+                        snapshot: &snapshot,
+                        waiting_node_id: &waiting_node_id,
+                        waiting_node_run_id: Some(callback_task.node_run_id),
+                        resume_payload: &command.response_payload,
+                    })
+                    .await?;
+                let waiting_node_output_payload = if callback_task.callback_kind == "llm_tool_calls"
+                {
+                    waiting_node.output_payload.clone()
+                } else {
+                    callback_task.response_payload.clone().ok_or_else(|| {
+                        anyhow!("completed callback task is missing response payload")
+                    })?
+                };
+
+                self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
+                    scope_id: application.workspace_id,
+                    application_name: &application.name,
+                    task_queue: self.provider_request_log_queue.as_ref(),
+                    application_id: command.application_id,
+                    flow_run: &flow_run,
+                    compiled_plan: Some(&compiled_plan),
+                    outcome: &execution.outcome,
+                    prepared_node_runs: Some(&execution.prepared_node_runs),
+                    answer_presentation: execution.answer_presentation.as_ref(),
+                    trigger_event_type: "flow_run_resumed",
+                    trigger_event_payload: json!({
+                        "callback_task_id": callback_task.id,
+                        "response_payload": command.response_payload,
+                    }),
                     base_started_at,
-                    &application,
-                    &checkpoint,
-                    &flow_run,
-                    &compiled_plan,
-                )
-                .await;
-        }
-        let snapshot = checkpoint_snapshot_from_record(&checkpoint)?;
-        let waiting_node_id = checkpoint_node_id(&checkpoint)?;
-        let execution = self
-            .resume_execution_segment(ResumeExecutionSegmentInput {
-                actor: &actor,
-                application: &application,
-                flow_run: &flow_run,
-                compiled_plan: &compiled_plan,
-                snapshot: &snapshot,
-                waiting_node_id: &waiting_node_id,
-                waiting_node_run_id: Some(callback_task.node_run_id),
-                resume_payload: &command.response_payload,
+                    waiting_node_resume: Some(WaitingNodeResumeUpdate {
+                        node_run_id: callback_task.node_run_id,
+                        from_status: waiting_node.status,
+                        output_payload: waiting_node_output_payload,
+                        metrics_payload: json!({
+                            "resumed": true,
+                            "callback_kind": callback_task.callback_kind,
+                        }),
+                        debug_payload: json!({
+                            "callback_task_id": callback_task.id,
+                            "callback_kind": callback_task.callback_kind,
+                        }),
+                    }),
+                    resume_claim_id: Some(claim.claim.id),
+                    resume_claim_token: Some(claim.claim.claim_token),
+                })
+                .await
+            }
+            .await
+        };
+        self.repository
+            .finish_resume_claim(&FinishResumeClaimInput {
+                claim_id: claim.claim.id,
+                claim_token: claim.claim.claim_token,
+                expected_generation: claim.claim.generation,
+                status: if result.is_ok() {
+                    ResumeClaimStatus::Succeeded
+                } else {
+                    ResumeClaimStatus::Failed
+                },
+                error_payload: result
+                    .as_ref()
+                    .err()
+                    .map(|error| json!({ "message": error.to_string() })),
+                completed_at: OffsetDateTime::now_utc(),
             })
             .await?;
-        let waiting_node_output_payload = if callback_task.callback_kind == "llm_tool_calls" {
-            waiting_node.output_payload.clone()
-        } else {
-            callback_task
-                .response_payload
-                .clone()
-                .ok_or_else(|| anyhow!("completed callback task is missing response payload"))?
-        };
-
-        self.persist_flow_debug_outcome_record(PersistFlowDebugOutcomeInput {
-            scope_id: application.workspace_id,
-            application_name: &application.name,
-            task_queue: self.provider_request_log_queue.as_ref(),
-            application_id: command.application_id,
-            flow_run: &flow_run,
-            compiled_plan: Some(&compiled_plan),
-            outcome: &execution.outcome,
-            prepared_node_runs: Some(&execution.prepared_node_runs),
-            answer_presentation: execution.answer_presentation.as_ref(),
-            trigger_event_type: "flow_run_resumed",
-            trigger_event_payload: json!({
-                "callback_task_id": callback_task.id,
-                "response_payload": command.response_payload,
-            }),
-            base_started_at,
-            waiting_node_resume: Some(WaitingNodeResumeUpdate {
-                node_run_id: callback_task.node_run_id,
-                from_status: waiting_node.status,
-                output_payload: waiting_node_output_payload,
-                metrics_payload: json!({
-                    "resumed": true,
-                    "callback_kind": callback_task.callback_kind,
-                }),
-                debug_payload: json!({
-                    "callback_task_id": callback_task.id,
-                    "callback_kind": callback_task.callback_kind,
-                }),
-            }),
-        })
-        .await
+        result
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -181,6 +232,7 @@ where
         checkpoint: &domain::CheckpointRecord,
         flow_run: &domain::FlowRunRecord,
         compiled_plan: &orchestration_runtime::compiled_plan::CompiledPlan,
+        resume_claim: &ResumeClaimRecord,
     ) -> Result<domain::FlowRunRecord>
     where
         R: crate::ports::FileManagementRepository,
@@ -266,7 +318,8 @@ where
             return Ok(failed_flow_run);
         }
 
-        let snapshot = checkpoint_snapshot_from_record(checkpoint)?;
+        let snapshot =
+            checkpoint_snapshot_from_record_with_context(&self.repository, checkpoint).await?;
         let resumed_execution = self
             .resume_execution_segment(ResumeExecutionSegmentInput {
                 actor,
@@ -322,6 +375,8 @@ where
                     "confirmed": true,
                 }),
             }),
+            resume_claim_id: Some(resume_claim.id),
+            resume_claim_token: Some(resume_claim.claim_token),
         })
         .await
     }

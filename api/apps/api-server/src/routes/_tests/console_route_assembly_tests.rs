@@ -606,6 +606,11 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "GET",
+                "/api/console/applications/:id/logs/runs/:run_id/resume-timeline-summary",
+                "applications.view",
+            ),
+            (
+                "GET",
                 "/api/console/applications/:id/logs/runs/:run_id/nodes/:node_id",
                 "applications.view",
             ),

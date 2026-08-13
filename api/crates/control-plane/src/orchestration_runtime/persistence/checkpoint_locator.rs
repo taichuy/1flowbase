@@ -5,6 +5,7 @@ pub(in crate::orchestration_runtime) struct CheckpointLocatorPayload {
     node_id: String,
     next_node_index: usize,
     active_node_ids: Vec<String>,
+    context_version_id: Option<Uuid>,
 }
 
 impl CheckpointLocatorPayload {
@@ -16,6 +17,7 @@ impl CheckpointLocatorPayload {
             node_id: node_id.to_string(),
             next_node_index: snapshot.next_node_index,
             active_node_ids: snapshot.active_node_ids.clone(),
+            context_version_id: None,
         }
     }
 
@@ -29,6 +31,7 @@ impl CheckpointLocatorPayload {
             node_id: node_id.to_string(),
             next_node_index,
             active_node_ids,
+            context_version_id: None,
         }
     }
 
@@ -61,20 +64,32 @@ impl CheckpointLocatorPayload {
                     .ok_or_else(|| anyhow!("checkpoint active_node_ids must be strings"))
             })
             .collect::<Result<Vec<_>>>()?;
+        let context_version_id = checkpoint
+            .locator_payload
+            .get("context_version_id")
+            .and_then(Value::as_str)
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| anyhow!("checkpoint context_version_id must be a UUID"))?;
 
         Ok(Self {
             node_id,
             next_node_index,
             active_node_ids,
+            context_version_id,
         })
     }
 
     pub(in crate::orchestration_runtime) fn into_json(self) -> Value {
-        json!({
+        let mut locator = json!({
             "node_id": self.node_id,
             "next_node_index": self.next_node_index,
             "active_node_ids": self.active_node_ids,
-        })
+        });
+        if let Some(context_version_id) = self.context_version_id {
+            locator["context_version_id"] = json!(context_version_id);
+        }
+        locator
     }
 
     pub(in crate::orchestration_runtime) fn into_checkpoint_snapshot(
@@ -96,11 +111,319 @@ impl CheckpointLocatorPayload {
     }
 }
 
+pub(super) const RECOVERY_CONTEXT_MARKER: &str = "__runtime_recovery_context";
+
+pub(super) struct SparseCheckpointContent {
+    pub(super) content: Value,
+    pub(super) parent_context_version_id: Option<Uuid>,
+    pub(super) variable_snapshot: Value,
+}
+
+pub(super) fn compact_checkpoint_content(
+    snapshot: &orchestration_runtime::execution_state::CheckpointSnapshot,
+    previous_variable_pool: Option<&Map<String, Value>>,
+) -> Result<SparseCheckpointContent> {
+    let marker = snapshot
+        .variable_pool
+        .get(RECOVERY_CONTEXT_MARKER)
+        .and_then(Value::as_object);
+    let parent_context_version_id = marker
+        .and_then(|marker| marker.get("context_version_id"))
+        .and_then(Value::as_str)
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|_| anyhow!("runtime recovery context marker must contain a UUID"))?;
+    let sequence = marker
+        .and_then(|marker| marker.get("sequence"))
+        .and_then(Value::as_i64)
+        .map(|sequence| sequence + 1)
+        .unwrap_or(0);
+    let mut current = snapshot.variable_pool.clone();
+    current.remove(RECOVERY_CONTEXT_MARKER);
+    let content = match previous_variable_pool {
+        None => json!({ "format": "runtime_snapshot_v1", "variable_pool": current }),
+        Some(previous) => checkpoint_delta_content(previous, &current),
+    };
+    Ok(SparseCheckpointContent {
+        content,
+        parent_context_version_id,
+        variable_snapshot: json!({
+            RECOVERY_CONTEXT_MARKER: {
+                "parent_context_version_id": parent_context_version_id,
+                "sequence": sequence,
+            }
+        }),
+    })
+}
+
+fn checkpoint_delta_content(previous: &Map<String, Value>, current: &Map<String, Value>) -> Value {
+    let mut set = Map::new();
+    let mut llm_callback_appends = Vec::new();
+    for (key, value) in current {
+        if previous.get(key) != Some(value) {
+            if let Some(append) = previous
+                .get(key)
+                .and_then(|previous| llm_callback_append(key, previous, value))
+            {
+                llm_callback_appends.push(append);
+                continue;
+            }
+            set.insert(key.clone(), value.clone());
+        }
+    }
+    let remove = previous
+        .keys()
+        .filter(|key| !current.contains_key(*key) && key.as_str() != RECOVERY_CONTEXT_MARKER)
+        .cloned()
+        .collect::<Vec<_>>();
+    json!({
+        "format": "runtime_delta_v1",
+        "set": set,
+        "remove": remove,
+        "llm_callback_appends": llm_callback_appends,
+    })
+}
+
+fn llm_callback_append(node_id: &str, previous: &Value, current: &Value) -> Option<Value> {
+    let previous_node = previous.as_object()?;
+    let current_node = current.as_object()?;
+    let previous_state = previous.get("__llm_tool_callback")?.as_object()?;
+    let current_state = current.get("__llm_tool_callback")?.as_object()?;
+    let previous_history = previous_state.get("history")?.as_array()?;
+    let current_history = current_state.get("history")?.as_array()?;
+    if !current_history.starts_with(previous_history) {
+        return None;
+    }
+    let node_set = current_node
+        .iter()
+        .filter(|(key, value)| {
+            key.as_str() != "__llm_tool_callback" && previous_node.get(*key) != Some(*value)
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Map<_, _>>();
+    let node_remove = previous_node
+        .keys()
+        .filter(|key| key.as_str() != "__llm_tool_callback" && !current_node.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    let state_set = current_state
+        .iter()
+        .filter(|(key, value)| {
+            key.as_str() != "history" && previous_state.get(*key) != Some(*value)
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Map<_, _>>();
+    let state_remove = previous_state
+        .keys()
+        .filter(|key| key.as_str() != "history" && !current_state.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    Some(json!({
+        "node_id": node_id,
+        "node_set": node_set,
+        "node_remove": node_remove,
+        "state_set": state_set,
+        "state_remove": state_remove,
+        "history_append": current_history[previous_history.len()..],
+    }))
+}
+
+pub(super) fn materialize_checkpoint_content(
+    lineage: &[crate::ports::RuntimeContextContentVersion],
+) -> Result<Map<String, Value>> {
+    let mut variable_pool = Map::new();
+    for version in lineage {
+        match version.content.get("format").and_then(Value::as_str) {
+            Some("runtime_snapshot_v1") => {
+                variable_pool = version
+                    .content
+                    .get("variable_pool")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .ok_or_else(|| {
+                        anyhow!("runtime snapshot content must contain variable_pool")
+                    })?;
+            }
+            Some("runtime_delta_v1") => {
+                let set = version
+                    .content
+                    .get("set")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| anyhow!("runtime delta content must contain set"))?;
+                for (key, value) in set {
+                    variable_pool.insert(key.clone(), value.clone());
+                }
+                for key in version
+                    .content
+                    .get("remove")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    variable_pool.remove(key);
+                }
+                for append in version
+                    .content
+                    .get("llm_callback_appends")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    apply_llm_callback_append(&mut variable_pool, append)?;
+                }
+            }
+            _ => return Err(anyhow!("unknown runtime checkpoint content format")),
+        }
+    }
+    if let Some(latest) = lineage.last() {
+        variable_pool.insert(
+            RECOVERY_CONTEXT_MARKER.to_string(),
+            json!({
+                "context_version_id": latest.context_version_id,
+                "sequence": latest.sequence,
+            }),
+        );
+    }
+    Ok(variable_pool)
+}
+
+fn apply_llm_callback_append(variable_pool: &mut Map<String, Value>, append: &Value) -> Result<()> {
+    let node_id = append
+        .get("node_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("LLM callback append is missing node_id"))?;
+    let previous_node = variable_pool
+        .get(node_id)
+        .and_then(Value::as_object)
+        .ok_or_else(|| anyhow!("LLM callback node state must be an object"))?;
+    let previous_state = previous_node
+        .get("__llm_tool_callback")
+        .and_then(Value::as_object)
+        .ok_or_else(|| anyhow!("LLM callback state must be an object"))?;
+    let (mut node, mut state) = if let Some(node_set) = append.get("node_set") {
+        let mut node = previous_node.clone();
+        for (key, value) in node_set
+            .as_object()
+            .ok_or_else(|| anyhow!("LLM callback node_set must be an object"))?
+        {
+            node.insert(key.clone(), value.clone());
+        }
+        for key in append
+            .get("node_remove")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("LLM callback node_remove must be an array"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("LLM callback node_remove entries must be strings"))
+            })
+        {
+            node.remove(key?);
+        }
+        let mut state = previous_state.clone();
+        for (key, value) in append
+            .get("state_set")
+            .and_then(Value::as_object)
+            .ok_or_else(|| anyhow!("LLM callback state_set must be an object"))?
+        {
+            state.insert(key.clone(), value.clone());
+        }
+        for key in append
+            .get("state_remove")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("LLM callback state_remove must be an array"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("LLM callback state_remove entries must be strings"))
+            })
+        {
+            state.remove(key?);
+        }
+        (node, state)
+    } else {
+        let node = append
+            .get("node_overlay")
+            .and_then(Value::as_object)
+            .cloned()
+            .ok_or_else(|| anyhow!("LLM callback append must contain node_overlay"))?;
+        let mut state = append
+            .get("state_overlay")
+            .and_then(Value::as_object)
+            .cloned()
+            .ok_or_else(|| anyhow!("LLM callback append must contain state_overlay"))?;
+        if append
+            .get("system_changed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| anyhow!("LLM callback append must contain system_changed"))?
+        {
+            if append
+                .get("system_present")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| anyhow!("LLM callback append must contain system_present"))?
+            {
+                state.insert(
+                    "system".to_string(),
+                    append
+                        .get("system")
+                        .cloned()
+                        .ok_or_else(|| anyhow!("LLM callback append must contain system"))?,
+                );
+            }
+        } else if let Some(system) = previous_state.get("system") {
+            state.insert("system".to_string(), system.clone());
+        }
+        (node, state)
+    };
+    let mut history = previous_state
+        .get("history")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| anyhow!("LLM callback history must be an array"))?;
+    history.extend(
+        append
+            .get("history_append")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| anyhow!("LLM callback append must contain history_append"))?,
+    );
+    state.insert("history".to_string(), Value::Array(history));
+    node.insert("__llm_tool_callback".to_string(), Value::Object(state));
+    variable_pool.insert(node_id.to_string(), Value::Object(node));
+    Ok(())
+}
+
+#[cfg(test)]
 pub(in crate::orchestration_runtime) fn checkpoint_snapshot_from_record(
     checkpoint: &domain::CheckpointRecord,
 ) -> Result<orchestration_runtime::execution_state::CheckpointSnapshot> {
     CheckpointLocatorPayload::from_record(checkpoint)?
         .into_checkpoint_snapshot(&checkpoint.variable_snapshot)
+}
+
+pub(in crate::orchestration_runtime) async fn checkpoint_snapshot_from_record_with_context<R>(
+    repository: &R,
+    checkpoint: &domain::CheckpointRecord,
+) -> Result<orchestration_runtime::execution_state::CheckpointSnapshot>
+where
+    R: crate::ports::OrchestrationRuntimeRepository,
+{
+    let locator = CheckpointLocatorPayload::from_record(checkpoint)?;
+    let Some(context_version_id) = locator.context_version_id else {
+        return locator.into_checkpoint_snapshot(&checkpoint.variable_snapshot);
+    };
+    let lineage = repository
+        .load_runtime_context_content_lineage(context_version_id)
+        .await?;
+    let variable_pool = materialize_checkpoint_content(&lineage)?;
+    Ok(orchestration_runtime::execution_state::CheckpointSnapshot {
+        next_node_index: locator.next_node_index,
+        variable_pool,
+        active_node_ids: locator.active_node_ids,
+    })
 }
 
 pub(in crate::orchestration_runtime) fn checkpoint_node_id(

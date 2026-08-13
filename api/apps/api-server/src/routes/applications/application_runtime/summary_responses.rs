@@ -1,7 +1,5 @@
 fn format_time(value: time::OffsetDateTime) -> String {
-    value
-        .format(&Rfc3339)
-        .unwrap_or_else(|_| value.to_string())
+    value.format(&Rfc3339).unwrap_or_else(|_| value.to_string())
 }
 
 fn format_optional_time(value: Option<time::OffsetDateTime>) -> Option<String> {
@@ -128,15 +126,19 @@ fn callback_task_tool_callback_count(task: &domain::CallbackTaskRecord) -> i64 {
 }
 
 fn application_run_tool_callback_count(detail: &domain::ApplicationRunDetail) -> i64 {
-    let debug_payloads = detail
-        .node_runs
+    application_run_tool_callback_count_for_records(&detail.node_runs, &detail.callback_tasks)
+}
+
+fn application_run_tool_callback_count_for_records(
+    node_runs: &[domain::NodeRunRecord],
+    callback_tasks: &[domain::CallbackTaskRecord],
+) -> i64 {
+    let debug_payloads = node_runs
         .iter()
         .map(|node_run| node_run.debug_payload.clone())
         .collect::<Vec<_>>();
-    let indexed_count =
-        count_llm_tool_callback_trace_items(&debug_payloads, &detail.callback_tasks) as i64;
-    let task_count = detail
-        .callback_tasks
+    let indexed_count = count_llm_tool_callback_trace_items(&debug_payloads, callback_tasks) as i64;
+    let task_count = callback_tasks
         .iter()
         .map(callback_task_tool_callback_count)
         .sum();
@@ -147,13 +149,23 @@ fn application_run_tool_callback_count(detail: &domain::ApplicationRunDetail) ->
 fn application_run_statistics(
     detail: &domain::ApplicationRunDetail,
 ) -> application_logs::ApplicationRunStatisticsResponse {
+    application_run_statistics_for_records(
+        &detail.node_runs,
+        application_run_tool_callback_count(detail),
+    )
+}
+
+fn application_run_statistics_for_records(
+    node_runs: &[domain::NodeRunRecord],
+    tool_callback_count: i64,
+) -> application_logs::ApplicationRunStatisticsResponse {
     let mut unique_node_ids = HashSet::new();
     let mut total_tokens = None;
     let mut input_tokens = None;
     let mut output_tokens = None;
     let mut input_cache_hit_tokens = None;
 
-    for node_run in &detail.node_runs {
+    for node_run in node_runs {
         unique_node_ids.insert(node_run.node_id.as_str());
 
         if let Some(node_tokens) = metrics_payload_total_tokens(&node_run.metrics_payload) {
@@ -185,7 +197,7 @@ fn application_run_statistics(
             input_cache_hit_tokens,
         ),
         unique_node_count: unique_node_ids.len() as i64,
-        tool_callback_count: application_run_tool_callback_count(detail),
+        tool_callback_count,
     }
 }
 

@@ -27,7 +27,7 @@ use control_plane::{
         ResumeFlowRunCommand, StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
     },
     ports::{
-        ApplicationRepository, ApplicationRunTraceChildrenCursor,
+        ApplicationRepository, ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput,
         ListApplicationRunTraceChildrenPageInput, OrchestrationRuntimeRepository,
@@ -332,6 +332,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/applications/:id/logs/runs/:run_id/resume-timeline",
             console_get(
                 get_application_run_resume_timeline,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/logs/runs/:run_id/resume-timeline-summary",
+            console_get(
+                get_application_run_resume_timeline_summary,
                 ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
             ),
         )

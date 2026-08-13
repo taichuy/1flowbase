@@ -58,6 +58,107 @@ fn trace_archive_import_keeps_non_user_principals_without_a_created_by_identity(
     }
 }
 
+#[test]
+fn run_archive_json_round_trip_preserves_compact_runtime_reference_order() {
+    let run_id = "019ef419-9a7d-7eb1-a777-963d56131f65";
+    let context_id = "019ff900-0000-7000-8000-000000000001";
+    let content_id = "019ff900-0000-7000-8000-000000000002";
+    let span_id = "019ff900-0000-7000-8000-000000000003";
+    let checkpoint_id = "019ff900-0000-7000-8000-000000000004";
+    let mut archive = build_archive_from_trace_exports(
+        ApplicationRunSelectedExportManifestResponse {
+            export_version: 1,
+            exported_at: "2026-08-13T14:00:00Z".to_string(),
+            export_status: "complete".to_string(),
+            application_id: "019ef3f7-bac8-74a2-82c6-daf4b8246766".to_string(),
+            run_count: 1,
+            selected_run_ids: vec![run_id.to_string()],
+            entries: vec![ApplicationRunSelectedExportManifestRunResponse {
+                run_id: run_id.to_string(),
+                title: "hi".to_string(),
+                started_at: "2026-06-23T10:49:39.197566Z".to_string(),
+                filename: "runs/run.json".to_string(),
+                export_status: "complete".to_string(),
+                export_warning_count: 0,
+            }],
+        },
+        vec![trace_export_fixture(run_id)],
+    )
+    .unwrap();
+    let entry = &mut archive.entries[0];
+    entry.canonical_contents = vec![serde_json::json!({
+        "id": content_id,
+        "content_hash": format!("sha256:{}", "a".repeat(64)),
+        "content": { "messages": [{ "role": "user", "content": "hello" }] },
+        "byte_size": 49,
+        "created_at": "2026-08-13T14:00:00Z"
+    })];
+    entry.context_projections = vec![serde_json::json!({
+        "id": context_id,
+        "flow_run_id": run_id,
+        "projection_kind": "context_version",
+        "source_item_refs": [],
+        "model_input_ref": format!("runtime_canonical_content:{content_id}"),
+        "model_input_hash": format!("sha256:{}", "a".repeat(64)),
+        "provider_continuation_metadata": {},
+        "context_sequence": 0,
+        "transition_kind": "initial",
+        "transition_actor": "host",
+        "actual_content_id": content_id,
+        "created_at": "2026-08-13T14:00:00Z"
+    })];
+    entry.invocation_context_bindings = vec![serde_json::json!({
+        "invocation_span_id": span_id,
+        "context_version_id": context_id,
+        "created_at": "2026-08-13T14:00:01Z"
+    })];
+    entry.recovery_history = vec![serde_json::json!({
+        "id": "019ff900-0000-7000-8000-000000000005",
+        "flow_run_id": run_id,
+        "sequence": 0,
+        "state_code": "waiting_human",
+        "node_sequence": 1,
+        "iteration_index": 0,
+        "attempt_index": 0,
+        "resume_sequence": 0,
+        "event_sequence": 2,
+        "context_version_id": context_id,
+        "recovery_content_id": content_id,
+        "idempotency_key": "wait-1",
+        "created_at": "2026-08-13T14:00:02Z"
+    })];
+    entry.resume_claims = vec![serde_json::json!({
+        "id": "019ff900-0000-7000-8000-000000000006",
+        "flow_run_id": run_id,
+        "checkpoint_id": checkpoint_id,
+        "resume_kind": "human",
+        "status": "succeeded",
+        "request_payload": { "answer": "approved" },
+        "claim_token": "019ff900-0000-7000-8000-000000000007",
+        "generation": 1,
+        "lease_expires_at": "2026-08-13T14:05:00Z",
+        "created_at": "2026-08-13T14:00:03Z",
+        "updated_at": "2026-08-13T14:00:04Z",
+        "completed_at": "2026-08-13T14:00:04Z"
+    })];
+    let expected_canonical_contents = entry.canonical_contents.clone();
+    let expected_context_projections = entry.context_projections.clone();
+    let expected_bindings = entry.invocation_context_bindings.clone();
+    let expected_recovery = entry.recovery_history.clone();
+    let expected_claims = entry.resume_claims.clone();
+    let parsed: RunArchiveV1Response =
+        serde_json::from_slice(&serde_json::to_vec(&archive).unwrap()).unwrap();
+    let parsed_entry = &parsed.entries[0];
+    assert_eq!(parsed_entry.canonical_contents, expected_canonical_contents);
+    assert_eq!(
+        parsed_entry.context_projections,
+        expected_context_projections
+    );
+    assert_eq!(parsed_entry.invocation_context_bindings, expected_bindings);
+    assert_eq!(parsed_entry.recovery_history, expected_recovery);
+    assert_eq!(parsed_entry.resume_claims, expected_claims);
+}
+
 fn selected_runs_trace_zip_fixture() -> Vec<u8> {
     let run_id = "019ef419-9a7d-7eb1-a777-963d56131f65";
     let entry_path = "runs/001_20260623T104939197566Z_019ef419_hi.json";

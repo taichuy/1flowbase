@@ -111,6 +111,14 @@ pub struct RunArchiveV1EntryResponse {
     pub runtime_events: Vec<serde_json::Value>,
     pub runtime_items: Vec<serde_json::Value>,
     pub context_projections: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub canonical_contents: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub invocation_context_bindings: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub recovery_history: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub resume_claims: Vec<serde_json::Value>,
     pub usage_ledger: Vec<serde_json::Value>,
     pub model_failover_attempts: Vec<serde_json::Value>,
     pub capability_invocations: Vec<serde_json::Value>,
@@ -622,6 +630,30 @@ pub struct ApplicationRunResumeTimelineResponse {
     pub flow_run: FlowRunResponse,
     pub callback_tasks: Vec<CallbackTaskResponse>,
     pub events: Vec<RunEventResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunResumeTimelineSummaryResponse {
+    pub flow_run_status: String,
+    pub callback_tasks: Vec<ApplicationRunResumeCallbackSummaryResponse>,
+    pub events: Vec<ApplicationRunResumeEventSummaryResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunResumeCallbackSummaryResponse {
+    pub id: String,
+    pub callback_kind: String,
+    pub status: String,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ApplicationRunResumeEventSummaryResponse {
+    pub id: String,
+    pub event_type: String,
+    pub description: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

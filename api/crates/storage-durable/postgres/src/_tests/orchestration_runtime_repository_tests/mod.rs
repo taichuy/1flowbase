@@ -1,26 +1,33 @@
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        AppendCreditLedgerInput, AppendModelFailoverAttemptLedgerInput, AppendRunEventInput,
-        AppendRuntimeEventInput, AppendRuntimeSpanInput, AppendUsageLedgerInput,
-        ApplicationRepository, AttachCompiledPlanToFlowRunInput,
+        AcquireResumeClaimInput, AppendContextVersionInput, AppendCreditLedgerInput,
+        AppendModelFailoverAttemptLedgerInput, AppendProviderInvocationContextInput,
+        AppendRecoveryHistoryInput, AppendRunEventInput, AppendRuntimeEventInput,
+        AppendRuntimeSpanInput, AppendUsageLedgerInput, ApplicationRepository,
+        AttachCompiledPlanToFlowRunInput, BindInvocationContextInput,
         ClearModelProviderRequestLogsBatchInput, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteNodeRunInput,
-        CreateApplicationInput, CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
+        CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
+        CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput, CreateApplicationInput,
+        CreateCallbackTaskInput, CreateCheckpointInput, CreateFlowRunInput,
         CreateFlowRunShellInput, CreateNodeRunInput, CreateRuntimeDebugArtifactInput,
         DeleteModelProviderRequestLogsInput, FinishFlowRunCallbackResumeAttemptInput,
-        FlowRepository, GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
+        FinishResumeClaimInput, FlowRepository, GetApplicationRunMonitoringReportInput,
+        GetRuntimeDebugArtifactInput, LegacyRuntimeShadowExecution, LegacyRuntimeShadowSourceKind,
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunsPageInput,
-        ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository,
-        ProviderRequestLogTask, RecordFlowRunCallbackResumeAttemptInput, UpdateFlowRunInput,
+        ListModelProviderRequestLogsPageInput, OrchestrationRuntimeRepository, PersistWaitingKind,
+        PersistWaitingStateInput, ProviderRequestLogTask, PutCanonicalRuntimeContentInput,
+        RecordFlowRunCallbackResumeAttemptInput, ResumeClaimDisposition, ResumeClaimKind,
+        ResumeClaimStatus, RollbackLegacyRuntimeShadowInput, UpdateFlowRunInput,
         UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
         UpdateRunEventPayloadInput, UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
     },
 };
 use domain::{
-    ApplicationType, CallbackTaskStatus, FlowRunCallbackResumeAttemptStatus, FlowRunMode,
-    FlowRunStatus, NodeRunStatus,
+    ApplicationType, CallbackTaskStatus, ContextTransitionActor, ContextTransitionKind,
+    FlowRunCallbackResumeAttemptStatus, FlowRunMode, FlowRunStatus, NodeRunStatus,
+    RecoveryCoordinate, RecoveryStateCode,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -371,7 +378,9 @@ mod application_trace_projection;
 mod callback_resume;
 mod debug_artifacts;
 mod flow_runs;
+mod legacy_shadow;
 mod public_runs;
 mod request_logs;
 mod runtime_events;
 mod runtime_facts;
+mod storage_foundation;

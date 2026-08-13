@@ -16,6 +16,7 @@ import type {
   ConsoleApplicationRunTraceToolCallbackContent,
   ConsoleApplicationRunTraceTree,
   ConsoleApplicationRunResumeTimeline,
+  ConsoleApplicationRunResumeTimelineSummary,
   ConsoleRunArchiveChunkUpload,
   ConsoleRunArchiveImportJob,
   ConsoleRunArchiveUploadSession,
@@ -465,6 +466,17 @@ export function getConsoleApplicationRunResumeTimeline(
 ) {
   return apiFetch<ConsoleApplicationRunResumeTimeline>({
     path: `/api/console/applications/${applicationId}/logs/runs/${runId}/resume-timeline`,
+    baseUrl
+  });
+}
+
+export function getConsoleApplicationRunResumeTimelineSummary(
+  applicationId: string,
+  runId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleApplicationRunResumeTimelineSummary>({
+    path: `/api/console/applications/${applicationId}/logs/runs/${runId}/resume-timeline-summary`,
     baseUrl
   });
 }

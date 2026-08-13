@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 
@@ -11,6 +11,107 @@ use crate::mappers::orchestration_runtime_mapper::{
     StoredFlowRunRow, StoredModelFailoverAttemptLedgerRow, StoredNodeRunRow, StoredRunEventRow,
     StoredRuntimeEventRow, StoredRuntimeItemRow, StoredRuntimeSpanRow, StoredUsageLedgerRow,
 };
+
+pub(super) fn map_canonical_runtime_content_record(
+    row: PgRow,
+) -> domain::CanonicalRuntimeContentRecord {
+    domain::CanonicalRuntimeContentRecord {
+        id: row.get("id"),
+        scope_id: row.get("scope_id"),
+        application_id: row.get("application_id"),
+        content_hash: row.get("content_hash"),
+        content: row.get("content"),
+        byte_size: row.get("byte_size"),
+        created_at: row.get("created_at"),
+    }
+}
+
+pub(super) fn map_context_version_record(row: PgRow) -> Result<domain::ContextVersionRecord> {
+    Ok(domain::ContextVersionRecord {
+        id: row.get("id"),
+        scope_id: row.get("scope_id"),
+        application_id: row.get("application_id"),
+        flow_run_id: row.get("flow_run_id"),
+        parent_context_version_id: row.get("previous_projection_id"),
+        sequence: row.get("context_sequence"),
+        transition_kind: parse_context_transition_kind(row.get("transition_kind"))?,
+        transition_actor: parse_context_transition_actor(row.get("transition_actor"))?,
+        declared_compaction_provenance: row.get("declared_compaction_provenance"),
+        actual_content_id: row.get("actual_content_id"),
+        created_at: row.get("created_at"),
+    })
+}
+
+pub(super) fn map_invocation_context_binding_record(
+    row: PgRow,
+) -> domain::InvocationContextBindingRecord {
+    domain::InvocationContextBindingRecord {
+        invocation_span_id: row.get("invocation_span_id"),
+        scope_id: row.get("scope_id"),
+        application_id: row.get("application_id"),
+        flow_run_id: row.get("flow_run_id"),
+        context_version_id: row.get("context_version_id"),
+        created_at: row.get("created_at"),
+    }
+}
+
+pub(super) fn map_recovery_history_record(row: PgRow) -> Result<domain::RecoveryHistoryRecord> {
+    Ok(domain::RecoveryHistoryRecord {
+        id: row.get("id"),
+        scope_id: row.get("scope_id"),
+        application_id: row.get("application_id"),
+        flow_run_id: row.get("flow_run_id"),
+        node_run_id: row.get("node_run_id"),
+        sequence: row.get("sequence"),
+        state_code: parse_recovery_state_code(row.get("state_code"))?,
+        coordinate: domain::RecoveryCoordinate {
+            node_sequence: row.get("node_sequence"),
+            iteration_index: row.get("iteration_index"),
+            attempt_index: row.get("attempt_index"),
+            resume_sequence: row.get("resume_sequence"),
+            event_sequence: row.get("event_sequence"),
+        },
+        context_version_id: row.get("context_version_id"),
+        recovery_content_id: row.get("recovery_content_id"),
+        idempotency_key: row.get("idempotency_key"),
+        created_at: row.get("created_at"),
+    })
+}
+
+fn parse_context_transition_kind(value: String) -> Result<domain::ContextTransitionKind> {
+    match value.as_str() {
+        "initial" => Ok(domain::ContextTransitionKind::Initial),
+        "append" => Ok(domain::ContextTransitionKind::Append),
+        "callback" => Ok(domain::ContextTransitionKind::Callback),
+        "retry" => Ok(domain::ContextTransitionKind::Retry),
+        "declared_compaction" => Ok(domain::ContextTransitionKind::DeclaredCompaction),
+        "observed_replacement" => Ok(domain::ContextTransitionKind::ObservedReplacement),
+        _ => Err(anyhow!("unknown context transition kind: {value}")),
+    }
+}
+
+fn parse_context_transition_actor(value: String) -> Result<domain::ContextTransitionActor> {
+    match value.as_str() {
+        "host" => Ok(domain::ContextTransitionActor::Host),
+        "client" => Ok(domain::ContextTransitionActor::Client),
+        "provider" => Ok(domain::ContextTransitionActor::Provider),
+        _ => Err(anyhow!("unknown context transition actor: {value}")),
+    }
+}
+
+fn parse_recovery_state_code(value: String) -> Result<domain::RecoveryStateCode> {
+    match value.as_str() {
+        "running" => Ok(domain::RecoveryStateCode::Running),
+        "waiting_callback" => Ok(domain::RecoveryStateCode::WaitingCallback),
+        "waiting_human" => Ok(domain::RecoveryStateCode::WaitingHuman),
+        "paused" => Ok(domain::RecoveryStateCode::Paused),
+        "retrying" => Ok(domain::RecoveryStateCode::Retrying),
+        "succeeded" => Ok(domain::RecoveryStateCode::Succeeded),
+        "failed" => Ok(domain::RecoveryStateCode::Failed),
+        "cancelled" => Ok(domain::RecoveryStateCode::Cancelled),
+        _ => Err(anyhow!("unknown recovery state code: {value}")),
+    }
+}
 
 pub(super) fn map_compiled_plan_record(row: PgRow) -> Result<domain::CompiledPlanRecord> {
     Ok(PgOrchestrationRuntimeMapper::to_compiled_plan_record(

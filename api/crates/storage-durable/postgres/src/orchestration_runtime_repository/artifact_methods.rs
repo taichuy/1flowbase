@@ -200,7 +200,9 @@ impl PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             update flow_run_events
-            set payload = $2
+            set payload = $2,
+                resume_timeline_description = $3,
+                resume_timeline_description_projected = true
             where id = $1
             returning
                 id,
@@ -214,6 +216,7 @@ impl PgControlPlaneStore {
         )
         .bind(input.run_event_id)
         .bind(&input.payload)
+        .bind(resume_timeline_description(&input.payload))
         .fetch_one(self.pool())
         .await?;
 

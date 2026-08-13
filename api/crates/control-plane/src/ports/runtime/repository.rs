@@ -251,6 +251,56 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendContextProjectionInput,
     ) -> anyhow::Result<domain::ContextProjectionRecord>;
+    async fn put_canonical_runtime_content(
+        &self,
+        input: &PutCanonicalRuntimeContentInput,
+    ) -> anyhow::Result<domain::CanonicalRuntimeContentRecord>;
+    async fn append_context_version(
+        &self,
+        input: &AppendContextVersionInput,
+    ) -> anyhow::Result<domain::ContextVersionRecord>;
+    async fn bind_invocation_context(
+        &self,
+        input: &BindInvocationContextInput,
+    ) -> anyhow::Result<domain::InvocationContextBindingRecord>;
+    async fn append_provider_invocation_context(
+        &self,
+        input: &AppendProviderInvocationContextInput,
+    ) -> anyhow::Result<domain::ContextVersionRecord>;
+    async fn append_recovery_history(
+        &self,
+        input: &AppendRecoveryHistoryInput,
+    ) -> anyhow::Result<domain::RecoveryHistoryRecord>;
+    async fn convert_legacy_runtime_shadow_batch(
+        &self,
+        input: &ConvertLegacyRuntimeShadowBatchInput,
+    ) -> anyhow::Result<ConvertLegacyRuntimeShadowBatchResult> {
+        let _ = input;
+        anyhow::bail!("convert_legacy_runtime_shadow_batch not implemented")
+    }
+    async fn rollback_legacy_runtime_shadow(
+        &self,
+        input: &RollbackLegacyRuntimeShadowInput,
+    ) -> anyhow::Result<RollbackLegacyRuntimeShadowResult> {
+        let _ = input;
+        anyhow::bail!("rollback_legacy_runtime_shadow not implemented")
+    }
+    async fn load_runtime_context_content_lineage(
+        &self,
+        context_version_id: Uuid,
+    ) -> anyhow::Result<Vec<RuntimeContextContentVersion>>;
+    async fn persist_waiting_state(
+        &self,
+        input: &PersistWaitingStateInput,
+    ) -> anyhow::Result<Option<PersistedWaitingState>>;
+    async fn acquire_resume_claim(
+        &self,
+        input: &AcquireResumeClaimInput,
+    ) -> anyhow::Result<AcquireResumeClaimOutput>;
+    async fn finish_resume_claim(
+        &self,
+        input: &FinishResumeClaimInput,
+    ) -> anyhow::Result<ResumeClaimRecord>;
     async fn append_usage_ledger(
         &self,
         input: &AppendUsageLedgerInput,
@@ -422,6 +472,48 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Option<domain::ApplicationRunDetail>>;
+    async fn get_application_run_overview(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationRunOverviewReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_application_run_overview not implemented")
+    }
+    async fn get_application_run_resume_timeline(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationRunResumeTimelineReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_application_run_resume_timeline not implemented")
+    }
+    async fn get_application_run_resume_timeline_summary(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<ApplicationRunResumeTimelineSummaryReadModel>> {
+        let _ = (application_id, flow_run_id);
+        anyhow::bail!("get_application_run_resume_timeline_summary not implemented")
+    }
+    async fn list_application_run_trace_checkpoints(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> anyhow::Result<Vec<domain::CheckpointRecord>> {
+        let _ = (application_id, flow_run_id, node_run_ids);
+        anyhow::bail!("list_application_run_trace_checkpoints not implemented")
+    }
+    async fn list_application_run_trace_events(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> anyhow::Result<Vec<domain::RunEventRecord>> {
+        let _ = (application_id, flow_run_id, node_run_ids);
+        anyhow::bail!("list_application_run_trace_events not implemented")
+    }
     async fn get_application_run_trace_projection_source(
         &self,
         application_id: Uuid,

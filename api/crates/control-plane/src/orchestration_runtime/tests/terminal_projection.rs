@@ -103,6 +103,8 @@ async fn late_success_projects_cancelled_winner_without_success_terminal_or_answ
             trigger_event_payload: json!({}),
             base_started_at: now,
             waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
         },
     )
     .await

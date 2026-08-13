@@ -45,19 +45,26 @@ impl PgControlPlaneStore {
         let checkpoint_row = sqlx::query(
             r#"
             select
-                id,
-                flow_run_id,
-                node_run_id,
-                status,
-                reason,
-                locator_payload,
-                variable_snapshot,
+                checkpoints.id,
+                checkpoints.flow_run_id,
+                checkpoints.node_run_id,
+                checkpoints.status,
+                checkpoints.reason,
+                checkpoints.locator_payload,
+                coalesce(contents.content, checkpoints.variable_snapshot) as variable_snapshot,
                 null::jsonb as external_ref_payload,
-                created_at
-            from flow_run_checkpoints
-            where flow_run_id = $1
-              and node_run_id = $2
-            order by created_at desc, id desc
+                checkpoints.created_at
+            from flow_run_checkpoints checkpoints
+            left join runtime_legacy_shadow_rows shadow_rows
+              on shadow_rows.source_table = 'flow_run_checkpoints'
+             and shadow_rows.source_column = 'variable_snapshot'
+             and shadow_rows.source_row_id = checkpoints.id
+            left join runtime_canonical_contents contents
+              on contents.id = shadow_rows.canonical_content_id
+             and contents.content = checkpoints.variable_snapshot
+            where checkpoints.flow_run_id = $1
+              and checkpoints.node_run_id = $2
+            order by checkpoints.created_at desc, checkpoints.id desc
             limit 1
             "#,
         )
@@ -322,6 +329,10 @@ impl PgControlPlaneStore {
                 created_at
             from runtime_context_projections
             where flow_run_id = $1
+              and not exists (
+                  select 1 from runtime_legacy_shadow_rows shadow_rows
+                   where shadow_rows.context_version_id = runtime_context_projections.id
+              )
             order by created_at asc, id asc
             "#,
         )
@@ -903,6 +914,82 @@ impl PgControlPlaneStore {
             flow_run,
             callback_tasks,
         }))
+    }
+
+    async fn get_application_run_overview(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunOverviewReadModel>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+        let (waiting_node_id, waiting_node_run_id) =
+            latest_overview_waiting_node(self, flow_run.id).await?;
+
+        Ok(Some(ApplicationRunOverviewReadModel {
+            node_runs: list_node_runs_for_flow_run(self, flow_run.id).await?,
+            tool_callback_count: overview_tool_callback_count(self, flow_run.id).await?,
+            waiting_node_id,
+            waiting_node_run_id,
+            flow_run,
+        }))
+    }
+
+    async fn get_application_run_resume_timeline(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineReadModel>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(ApplicationRunResumeTimelineReadModel {
+            callback_tasks: list_callback_tasks_for_flow_run(self, flow_run.id).await?,
+            events: list_resume_timeline_events_for_flow_run(self, flow_run.id).await?,
+            flow_run,
+        }))
+    }
+
+    async fn get_application_run_resume_timeline_summary(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<Option<ApplicationRunResumeTimelineSummaryReadModel>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(ApplicationRunResumeTimelineSummaryReadModel {
+            flow_run_status: flow_run.status,
+            callback_tasks: list_resume_timeline_callback_summaries(self, flow_run.id).await?,
+            events: list_resume_timeline_event_summaries(self, flow_run.id).await?,
+        }))
+    }
+
+    async fn list_application_run_trace_checkpoints(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::CheckpointRecord>> {
+        list_trace_checkpoints_for_node_runs(self, application_id, flow_run_id, node_run_ids).await
+    }
+
+    async fn list_application_run_trace_events(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_run_ids: Vec<Uuid>,
+    ) -> Result<Vec<domain::RunEventRecord>> {
+        list_trace_events_for_node_runs(self, application_id, flow_run_id, node_run_ids).await
     }
 
     async fn get_application_run_trace_projection_source(

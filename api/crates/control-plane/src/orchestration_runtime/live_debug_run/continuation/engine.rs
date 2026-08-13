@@ -163,6 +163,8 @@ where
             }),
             base_started_at: flow_run.started_at,
             waiting_node_resume: None,
+            resume_claim_id: None,
+            resume_claim_token: None,
         })
         .await
 }

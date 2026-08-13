@@ -694,6 +694,7 @@ async fn openapi_contains_application_console_routes() {
         "/api/console/applications/{id}/logs/runs/{run_id}/trace-tree/nodes/{trace_node_id}/content",
         "/api/console/applications/{id}/logs/runs/{run_id}/trace-tree/nodes/{trace_node_id}/details/{detail_ref_id}",
         "/api/console/applications/{id}/logs/runs/{run_id}/resume-timeline",
+        "/api/console/applications/{id}/logs/runs/{run_id}/resume-timeline-summary",
         "/api/console/applications/{id}/logs/runs/{run_id}/nodes/{node_id}",
     ] {
         assert!(paths.contains_key(route), "missing path {route}");
