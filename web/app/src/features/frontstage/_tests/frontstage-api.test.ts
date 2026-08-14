@@ -438,7 +438,21 @@ describe('frontstage page content feature api', () => {
     const input = {
       payload: { blocks: [{ id: 'hero-1', renderer_version: 'v1' }] },
       code_ref: 'hero-1-code',
-      code: 'export default function Hero() {}'
+      source_code: 'export default function Hero() {}',
+      dependency_lock: [],
+      tailwind_toolchain_lock: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'utilities'
+      },
+      generated_css: '',
+      generated_css_sha256:
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      compiler_identity: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'utilities'
+      }
     };
 
     try {

@@ -61,6 +61,9 @@ where
             }
         };
         let pending_callback_task = &resume_context.callback_task;
+        if pending_callback_task.status != domain::CallbackTaskStatus::Pending {
+            return Err(ControlPlaneError::Conflict("callback_task_not_pending").into());
+        }
         if pending_callback_task.callback_kind == "data_model_side_effect_confirmation" {
             let confirmation_payload = pending_callback_task
                 .external_ref_payload

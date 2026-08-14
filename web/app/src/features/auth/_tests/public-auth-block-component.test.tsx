@@ -206,7 +206,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     ['non-builtin password', { is_builtin: false }],
     ['non-password', { is_builtin: true, auth_type: 'qr-code' }]
   ])(
-    'AC-003 shows the escape form after a %s authenticator fails twice',
+    'AC-003 shows the escape form when a %s authenticator source is rejected before preparation',
     async (_case, overrides) => {
       const nativeCompiler = vi.fn().mockResolvedValue({
         ok: false,
@@ -223,7 +223,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(
         await screen.findByTestId('builtin-password-sign-in')
       ).toBeVisible();
-      expect(nativeCompiler).toHaveBeenCalledTimes(2);
+      expect(nativeCompiler).not.toHaveBeenCalled();
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     }
   );
@@ -245,17 +245,17 @@ describe('PublicAuthBlock Native Host composition', () => {
       />
     );
 
+    await vi.waitFor(() => expect(nativeCompiler).toHaveBeenCalledOnce());
     await act(async () => {
-      await Promise.resolve();
-      vi.advanceTimersByTime(10_000);
+      await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(
       screen.queryByRole('heading', { name: 'Welcome' })
     ).not.toBeInTheDocument();
-    expect(nativeCompiler).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(nativeCompiler).toHaveBeenCalledTimes(2));
 
     await act(async () => {
-      vi.advanceTimersByTime(10_000);
+      await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(screen.getByRole('heading', { name: 'Welcome' })).toBeVisible();
 
@@ -349,7 +349,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       })
     );
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(session));
-    expect(nativeCompiler).toHaveBeenCalledTimes(2);
+    expect(nativeCompiler).not.toHaveBeenCalled();
   });
 
   test('D4-AC-001/003/004 accepts only a canonical session response and keeps local state while the API is pending', async () => {

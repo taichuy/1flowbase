@@ -630,6 +630,18 @@ impl OrchestrationRuntimeService<InMemoryOrchestrationRuntimeRepository, InMemor
             .expect("callback task should exist")
     }
 
+    pub async fn checkpoint_snapshot_for_tests(
+        &self,
+        checkpoint: &domain::CheckpointRecord,
+    ) -> orchestration_runtime::execution_state::CheckpointSnapshot {
+        crate::orchestration_runtime::persistence::checkpoint_snapshot_from_record_with_context(
+            &self.repository,
+            checkpoint,
+        )
+        .await
+        .expect("checkpoint snapshot should be recoverable")
+    }
+
     pub async fn list_runtime_items(&self, flow_run_id: Uuid) -> Vec<domain::RuntimeItemRecord> {
         OrchestrationRuntimeRepository::list_runtime_items(&self.repository, flow_run_id)
             .await

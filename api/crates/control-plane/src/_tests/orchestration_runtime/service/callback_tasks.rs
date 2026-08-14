@@ -329,9 +329,9 @@ async fn live_llm_tool_calls_create_callback_task_and_pause_downstream() {
     assert_eq!(checkpoint.locator_payload["node_id"], "node-llm");
     assert!(checkpoint.external_ref_payload.is_none());
     assert_eq!(checkpoint.locator_payload["next_node_index"], json!(1));
+    let snapshot = service.checkpoint_snapshot_for_tests(checkpoint).await;
     assert_eq!(
-        checkpoint.variable_snapshot["node-llm"]["__llm_tool_callback"]["pending_tool_calls"][0]
-            ["id"],
+        snapshot.variable_pool["node-llm"]["__llm_tool_callback"]["pending_tool_calls"][0]["id"],
         "call_weather"
     );
 }
@@ -1150,12 +1150,13 @@ async fn live_debug_checkpoint_snapshot_stores_llm_output_metrics_without_proces
     assert!(llm_node.output_payload.get("provider_route").is_some());
     assert!(llm_node.metrics_payload.get("usage").is_some());
 
-    let snapshot = &waiting_detail
+    let checkpoint = waiting_detail
         .checkpoints
         .last()
-        .expect("waiting human checkpoint should be stored")
-        .variable_snapshot;
+        .expect("waiting human checkpoint should be stored");
+    let snapshot = service.checkpoint_snapshot_for_tests(checkpoint).await;
     let llm_snapshot = snapshot
+        .variable_pool
         .get("node-llm")
         .expect("llm output should be available to waiting node");
     assert_eq!(

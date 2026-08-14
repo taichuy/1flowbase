@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { compileNativeReactExecutableStyle } from '../../../../shared/code-block/native-react-executable-style';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import { useWindowWorkspaceOverlayZIndex } from '../../../../shared/ui/window-workspace/WindowWorkspaceWindow';
@@ -224,6 +225,9 @@ export function BlockSchemaTreePanel({
     const values = await form.validateFields();
     try {
       if (formTarget.mode === 'create') {
+        const executable = await compileNativeReactExecutableStyle(
+          INITIAL_BLOCK_SOURCE
+        );
         const created = await mutations.create.mutateAsync({
           tab_id: formTarget.parent.tab_id,
           title: values.title,
@@ -232,7 +236,9 @@ export function BlockSchemaTreePanel({
           parent_block_id: formTarget.parent.block_id,
           before_block_id: null,
           after_block_id: null,
-          code: INITIAL_BLOCK_SOURCE,
+          source_code: INITIAL_BLOCK_SOURCE,
+          dependency_lock: [],
+          ...executable,
           runtime_descriptor: null
         });
         await loadChildren(formTarget.parent);

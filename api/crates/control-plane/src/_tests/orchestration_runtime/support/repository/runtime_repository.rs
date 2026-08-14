@@ -1074,6 +1074,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         input: &crate::ports::PersistWaitingStateInput,
     ) -> Result<Option<crate::ports::PersistedWaitingState>> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        force_status_before_next_flow_update(&mut inner, input.flow_run_id);
         let target_status = match input.kind {
             crate::ports::PersistWaitingKind::Human => domain::FlowRunStatus::WaitingHuman,
             crate::ports::PersistWaitingKind::Callback(_) => domain::FlowRunStatus::WaitingCallback,
@@ -1240,9 +1241,9 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                     .resume_claims_by_target
                     .values_mut()
                     .find(|claim| claim.id == claim_id && claim.claim_token == claim_token)
-                    .ok_or_else(|| {
-                        crate::errors::ControlPlaneError::Conflict("resume_claim_not_owned")
-                    })?;
+                    .ok_or(crate::errors::ControlPlaneError::Conflict(
+                        "resume_claim_not_owned",
+                    ))?;
                 if claim.status != crate::ports::ResumeClaimStatus::Processing {
                     return Err(crate::errors::ControlPlaneError::Conflict(
                         "resume_claim_not_owned",
