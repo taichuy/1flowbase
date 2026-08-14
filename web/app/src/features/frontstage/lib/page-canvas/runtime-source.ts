@@ -18,6 +18,10 @@ export interface FrontstagePageCanvasBlockCodeReadRequest {
   order: number;
   sourceIndex: number;
   slotIndex: number;
+  installationId: string | null;
+  providerCode: string | null;
+  pluginId: string | null;
+  pluginVersion: string | null;
   contributionCode: string;
 }
 
@@ -89,6 +93,10 @@ function createReadRequest(
     order: slot.order,
     sourceIndex: slot.sourceIndex,
     slotIndex,
+    installationId: slot.catalog.installationId,
+    providerCode: slot.catalog.providerCode,
+    pluginId: slot.contribution.pluginId,
+    pluginVersion: slot.contribution.pluginVersion,
     contributionCode: slot.contribution.code
   };
 

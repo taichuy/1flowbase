@@ -8,6 +8,7 @@ import {
 import {
   fetchExternalNpmPack,
   mergeExternalNpmModules,
+  type ExternalNpmModule,
   type ExternalNpmPackState
 } from './external-npm';
 
@@ -16,13 +17,7 @@ export type FrontstageBlockCatalogEntry = Omit<
   'code_modules'
 > & {
   code_modules: Array<
-    Omit<ConsoleFrontendBlockCatalogEntry['code_modules'][number], 'assets'> & {
-      assets: Array<
-        ConsoleFrontendBlockCatalogEntry['code_modules'][number]['assets'][number] & {
-          url?: string;
-        }
-      >;
-    }
+    ConsoleFrontendBlockCatalogEntry['code_modules'][number] | ExternalNpmModule
   >;
 };
 

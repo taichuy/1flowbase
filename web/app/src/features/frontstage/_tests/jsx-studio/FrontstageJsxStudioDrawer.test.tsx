@@ -211,7 +211,8 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
           role: 'browser_module',
           media_type: 'text/javascript; charset=utf-8',
           sha256:
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         }
       ],
       exports: ['Button'],

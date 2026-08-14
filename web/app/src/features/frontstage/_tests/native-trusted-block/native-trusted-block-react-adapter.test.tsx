@@ -12,6 +12,10 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../lib/native-trusted-block-react-adapter';
+import {
+  TrustedFrontendContributionHandle,
+  type PreparedTrustedFrontendContribution
+} from '../../lib/native-trusted-block-contribution-lifecycle';
 
 const providerRecords = vi.hoisted(() => ({
   configs: [] as Array<Record<string, unknown>>,
@@ -152,9 +156,9 @@ describe('frontstage native trusted block declarative portal host', () => {
       (config) => config.prefixCls
     );
     expect(shadowStylePrefixes).toHaveLength(2);
-    expect(shadowStylePrefixes.every((prefix) => typeof prefix === 'string')).toBe(
-      true
-    );
+    expect(
+      shadowStylePrefixes.every((prefix) => typeof prefix === 'string')
+    ).toBe(true);
     expect(new Set(shadowStylePrefixes).size).toBe(2);
 
     const source = readFileSync(
@@ -223,6 +227,57 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(unmounted).not.toHaveBeenCalled();
+  });
+
+  test('D5-P2 mounts once, updates without remounting, and disposes the typed contribution instance once', async () => {
+    const root = createBlockRoot();
+    const contribution = preparedContribution();
+    const mount = vi.spyOn(
+      TrustedFrontendContributionHandle.prototype,
+      'mount'
+    );
+    const update = vi.spyOn(
+      TrustedFrontendContributionHandle.prototype,
+      'update'
+    );
+    const dispose = vi.spyOn(
+      TrustedFrontendContributionHandle.prototype,
+      'dispose'
+    );
+    const Block = ({ props }: { props: Record<string, unknown> }) => (
+      <output>{String(props.title)}</output>
+    );
+    const view = render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="typed:1"
+        plan={createPlan()}
+        component={Block}
+        ctx={createContext()}
+        contribution={contribution}
+      />
+    );
+    await shadowQueries(root).findByText('Initial');
+
+    view.rerender(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="typed:1"
+        plan={createPlan({ props: { title: 'Updated' } })}
+        component={Block}
+        ctx={createContext()}
+        contribution={contribution}
+      />
+    );
+    await shadowQueries(root).findByText('Updated');
+    expect(mount).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalled();
+
+    view.unmount();
+    expect(dispose).toHaveBeenCalledOnce();
+    mount.mockRestore();
+    update.mockRestore();
+    dispose.mockRestore();
   });
 
   test('D3R-AC-007 scopes providers, authored CSS, and popup containment to the block ShadowRoot', async () => {
@@ -464,4 +519,21 @@ function moduleStyle(digestCharacter: string, css: string) {
     url: `/assets/${digestCharacter}`,
     bytes: new TextEncoder().encode(css).buffer as ArrayBuffer
   };
+}
+
+function preparedContribution(): PreparedTrustedFrontendContribution {
+  const contribution: PreparedTrustedFrontendContribution = {
+    contributionId: 'frontend-block.installation-1.hero',
+    blockId: 'installation-1:hero',
+    blockVersion: '1.0.0',
+    assetIntegrity: ['verified_sha256'],
+    grantedPermissions: ['frontend-block.ui-mount.trusted-host'],
+    graphFingerprint: 'graph-fingerprint',
+    runtimeKind: 'trusted_native',
+    executionKind: 'ui_mount',
+    isolationRequirement: 'trusted_host_realm',
+    lifecycleKind: 'workspace_assignment',
+    createHandle: () => new TrustedFrontendContributionHandle(contribution)
+  };
+  return contribution;
 }

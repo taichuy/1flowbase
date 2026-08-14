@@ -386,6 +386,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       actorId: actor?.id,
       actorWorkspaceId: actor?.current_workspace_id,
       readPlan: pageCanvasCodeReadPlan,
+      catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null,
       externalNpm: blockCatalog.externalNpm,
       demandsByBlockId: runtimeDemandsByBlockId
     });

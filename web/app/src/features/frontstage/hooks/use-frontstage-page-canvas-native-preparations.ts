@@ -28,6 +28,7 @@ import {
 import {
   FrontstageNativePreparationScheduler,
   FrontstagePageNativeModuleRegistryCache,
+  prepareFrontstageNativeContribution,
   type FrontstageNativePreparationSnapshot,
   type FrontstageNativePreparationTask
 } from '../lib/page-canvas/native-runtime-preparation';
@@ -38,6 +39,7 @@ import {
   describeExternalNpmImportFailure,
   type ExternalNpmPackState
 } from '../api/external-npm';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 
 type NativePreparationSource = ConsoleFrontstageBlockCode;
 
@@ -45,6 +47,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
   actorId: string | null | undefined;
   actorWorkspaceId: string | null | undefined;
   readPlan: FrontstagePageCanvasBlockCodeReadPlan | null | undefined;
+  catalogEntries?: readonly NormalizedFrontstageBlockCatalogEntry[] | null;
   externalNpm: ExternalNpmPackState;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
   maxConcurrent?: number;
@@ -74,6 +77,7 @@ export function useFrontstagePageCanvasNativePreparations({
   actorId,
   actorWorkspaceId,
   readPlan,
+  catalogEntries,
   externalNpm,
   demandsByBlockId,
   maxConcurrent = 2,
@@ -108,10 +112,23 @@ export function useFrontstagePageCanvasNativePreparations({
   );
 
   const tasks = useMemo<FrontstageNativePreparationTask[]>(() => {
-    if (!actorId || !readPlan || actorWorkspaceId !== readPlan.workspaceId) {
+    if (
+      !actorId ||
+      !readPlan ||
+      catalogEntries === null ||
+      actorWorkspaceId !== readPlan.workspaceId
+    ) {
       return [];
     }
     return readPlan.requests.map((request) => {
+      const catalogEntry = catalogEntries?.find(
+        (entry) =>
+          entry.installationId === request.installationId &&
+          entry.providerCode === request.providerCode &&
+          entry.pluginId === request.pluginId &&
+          entry.pluginVersion === request.pluginVersion &&
+          entry.contributionCode === request.contributionCode
+      );
       return {
         blockId: request.blockId,
         slotIndex: request.slotIndex,
@@ -119,7 +136,25 @@ export function useFrontstagePageCanvasNativePreparations({
           actorId,
           readPlan.workspaceId,
           request.codeRef,
-          externalNpm.status
+          externalNpm.status,
+          catalogEntries === undefined
+            ? 'legacy-fixture'
+            : catalogEntry
+              ? JSON.stringify({
+                  contributionId: catalogEntry.raw.frontend_contribution_id,
+                  blockVersion: catalogEntry.raw.frontend_block_version,
+                  graphFingerprint: catalogEntry.raw.graph_fingerprint,
+                  grantedPermissions: catalogEntry.raw.granted_permissions,
+                  assets: catalogEntry.raw.code_modules.flatMap((module) =>
+                    module.assets.map((asset) => ({
+                      sha256: asset.sha256,
+                      url: asset.url,
+                      integrity:
+                        'integrity' in asset ? asset.integrity : 'external'
+                    }))
+                  )
+                })
+              : 'binding-missing'
         ].join('/'),
         observationContext: {
           actorId,
@@ -139,6 +174,14 @@ export function useFrontstagePageCanvasNativePreparations({
             ...observation
           }),
         prepare: async (signal, enterStage) => {
+          const contribution =
+            catalogEntries === undefined
+              ? undefined
+              : prepareFrontstageNativeContribution(
+                  catalogEntries,
+                  request,
+                  readPlan.workspaceId
+                );
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
           const executable = readLockedNativeReactExecutableStyle(source);
@@ -236,6 +279,7 @@ export function useFrontstagePageCanvasNativePreparations({
             artifactCacheTier,
             moduleAssets: [...moduleAssets, executable.shadow_style_asset],
             generatedCssSha256: executable.generated_css_sha256,
+            ...(contribution ? { contribution } : {}),
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
               runtimeFingerprint: currentRuntimeFingerprint,
@@ -251,6 +295,7 @@ export function useFrontstagePageCanvasNativePreparations({
     actorWorkspaceId,
     artifactCache,
     compile,
+    catalogEntries,
     componentFactoryFlights,
     externalNpm,
     fetchSource,

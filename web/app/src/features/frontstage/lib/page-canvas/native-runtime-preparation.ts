@@ -18,6 +18,10 @@ import type {
   FrontstageRuntimeObservationCacheTier,
   FrontstageRuntimeObservationContext
 } from './runtime-observation';
+import type { PreparedTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
+import { prepareTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
+import type { FrontstagePageCanvasBlockCodeReadRequest } from './runtime-source';
 
 export type FrontstageNativePreparationStage =
   | 'idle'
@@ -57,6 +61,33 @@ export interface FrontstageNativePreparedRuntime {
   artifactCacheTier: 'l2' | 'miss';
   moduleAssets: NativeReactResolvedModuleAsset[];
   generatedCssSha256?: string;
+  contribution?: PreparedTrustedFrontendContribution;
+}
+
+export function prepareFrontstageNativeContribution(
+  catalogEntries: readonly NormalizedFrontstageBlockCatalogEntry[],
+  request: FrontstagePageCanvasBlockCodeReadRequest,
+  workspaceId: string
+): PreparedTrustedFrontendContribution {
+  const catalogEntry = catalogEntries.find(
+    (entry) =>
+      entry.installationId === request.installationId &&
+      entry.providerCode === request.providerCode &&
+      entry.pluginId === request.pluginId &&
+      entry.pluginVersion === request.pluginVersion &&
+      entry.contributionCode === request.contributionCode
+  );
+  if (!catalogEntry) {
+    throw new Error('Trusted frontend contribution binding is unavailable.');
+  }
+  return prepareTrustedFrontendContribution(catalogEntry.raw, {
+    workspaceId,
+    installationId: request.installationId ?? '',
+    providerCode: request.providerCode ?? '',
+    pluginId: request.pluginId ?? '',
+    pluginVersion: request.pluginVersion ?? '',
+    contributionCode: request.contributionCode
+  });
 }
 
 interface FrontstageNativePreparationSnapshotBase {

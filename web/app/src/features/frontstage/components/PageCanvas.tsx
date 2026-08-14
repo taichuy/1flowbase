@@ -440,6 +440,7 @@ function FrontstageNativeRuntimeInstance({
       }
       ctx={context}
       moduleAssets={preparation.prepared.moduleAssets}
+      contribution={preparation.prepared.contribution}
       onRuntimeError={onRuntimeError}
     />
   );

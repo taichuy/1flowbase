@@ -6,6 +6,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
   type ErrorInfo,
@@ -26,6 +27,11 @@ import {
   type NativeTrustedBlockPreparePlan,
   type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
+
+import type {
+  PreparedTrustedFrontendContribution,
+  TrustedFrontendContributionHandle
+} from './native-trusted-block-contribution-lifecycle';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -75,6 +81,7 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
+  contribution?: PreparedTrustedFrontendContribution;
 }
 
 /**
@@ -90,26 +97,65 @@ export function FrontstageNativeTrustedBlockPortalHost({
   moduleAssets = [],
   providerScope,
   providerWrapper,
-  onRuntimeError
+  onRuntimeError,
+  contribution
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
+  const lifecycleRef = useRef<TrustedFrontendContributionHandle | null>(null);
+  const renderInput = useMemo(
+    () => ({ plan, BlockComponent, ctx, moduleAssets, providerScope }),
+    [BlockComponent, ctx, moduleAssets, plan, providerScope]
+  );
+  const mountedRenderInput = useRef<typeof renderInput | null>(null);
 
   useEffect(() => {
-    const nextSurface = attachNativeTrustedBlockPortalSurface({
-      root,
-      blockId: plan.blockId
-    });
-    setSurface(nextSurface);
+    const lifecycle = contribution?.createHandle() ?? null;
+    lifecycleRef.current = lifecycle;
+    let nextSurface: NativeTrustedBlockPortalSurface | null = null;
+    const attachSurface = () => {
+      nextSurface = attachNativeTrustedBlockPortalSurface({
+        root,
+        blockId: plan.blockId
+      });
+    };
+    if (lifecycle) {
+      lifecycle.mount({
+        mount: attachSurface,
+        dispose: () => nextSurface?.dispose()
+      });
+    } else {
+      attachSurface();
+    }
+    const mountedSurface =
+      nextSurface as NativeTrustedBlockPortalSurface | null;
+    if (!mountedSurface) {
+      throw new Error('Native trusted block surface mount failed.');
+    }
+    mountedRenderInput.current = renderInput;
+    setSurface(mountedSurface);
 
     return () => {
-      nextSurface.dispose();
+      mountedRenderInput.current = null;
+      lifecycleRef.current = null;
+      if (lifecycle) {
+        lifecycle.dispose();
+      } else {
+        mountedSurface.dispose();
+      }
     };
     // Surface disposal stays in the passive phase so React removes every
     // portal-owned ShadowRoot child before the surface clears host-owned DOM.
     // renderEpoch remains the React portal key and does not recreate the DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root]);
+  }, [root, contribution]);
+
+  useEffect(() => {
+    const lifecycle = lifecycleRef.current;
+    if (!lifecycle || mountedRenderInput.current === renderInput) return;
+    lifecycle.update();
+    mountedRenderInput.current = renderInput;
+  }, [renderInput]);
 
   const styleCache = useMemo(() => (surface ? createCache() : null), [surface]);
   const portalContainment = useMemo(

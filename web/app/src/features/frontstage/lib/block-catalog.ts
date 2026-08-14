@@ -1,4 +1,3 @@
-import { frontstageComponentModuleAssetPath } from '@1flowbase/api-client';
 import {
   FRONTEND_BLOCK_CONTEXT_PRIMITIVES,
   FRONTEND_BLOCK_RUNTIMES,
@@ -62,7 +61,8 @@ export interface NormalizedFrontstageBlockCodeModule {
     role: 'browser_module' | 'shadow_style' | 'support';
     media_type: string;
     sha256: string;
-    url?: string;
+    url: string;
+    integrity?: 'verified_sha256';
   }>;
   exports: string[];
   type_declarations: string;
@@ -206,8 +206,7 @@ export interface FrontstageNativeDependencyLockResolution {
 }
 
 export function resolveFrontstageNativeDependencyLock({
-  catalogEntry,
-  workspaceId
+  catalogEntry
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
   workspaceId: string;
@@ -227,10 +226,10 @@ export function resolveFrontstageNativeDependencyLock({
       module_version: codeModule.version,
       binding: codeModule.binding,
       assets: codeModule.assets.map((asset) => ({
-        ...asset,
-        url:
-          asset.url ??
-          frontstageComponentModuleAssetPath(workspaceId, asset.sha256)
+        role: asset.role,
+        media_type: asset.media_type,
+        sha256: asset.sha256,
+        url: asset.url
       })),
       exports: codeModule.exports
     }))
@@ -407,7 +406,10 @@ function normalizeModuleAssets(
         item.role !== 'shadow_style' &&
         item.role !== 'support') ||
       !isNonEmptyString(item.media_type) ||
-      !isSha256(item.sha256)
+      !isSha256(item.sha256) ||
+      !isNonEmptyString(item.url) ||
+      (item.integrity !== 'verified_sha256' &&
+        !item.url.startsWith('/external-npm/assets/'))
     ) {
       return null;
     }
@@ -415,7 +417,10 @@ function normalizeModuleAssets(
       role: item.role,
       media_type: item.media_type,
       sha256: item.sha256,
-      ...(isNonEmptyString(item.url) ? { url: item.url } : {})
+      url: item.url,
+      ...(item.integrity === 'verified_sha256'
+        ? { integrity: item.integrity }
+        : {})
     });
   }
   return assets;

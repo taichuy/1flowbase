@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   FrontstageNativePreparationScheduler,
   FrontstagePageNativeModuleRegistryCache,
+  prepareFrontstageNativeContribution,
   type FrontstageNativePreparedRuntime,
   type FrontstageNativePreparationTask
 } from '../../lib/page-canvas/native-runtime-preparation';
@@ -18,6 +19,34 @@ import {
 import { frontstageRuntimeSourceMatchesDigest } from '../../lib/page-canvas/runtime-source';
 
 describe('Frontstage Native React preparation demand', () => {
+  test('D5-P2 fails closed before Native preparation when the exact typed contribution binding is unavailable', () => {
+    expect(() =>
+      prepareFrontstageNativeContribution(
+        [],
+        {
+          requestId: 'request-1',
+          workspaceId: 'workspace-1',
+          pageId: 'page-1',
+          blockId: 'block-1',
+          sourceBlockId: 'block-1',
+          codeRef: 'block-1-code',
+          sourceCodeRef: 'block-1-code',
+          runtimeEntry: 'index.js',
+          runtimeKind: 'native_react',
+          order: 0,
+          sourceIndex: 0,
+          slotIndex: 0,
+          installationId: 'installation-1',
+          providerCode: 'official',
+          pluginId: 'official.blocks',
+          pluginVersion: '1.0.0',
+          contributionCode: 'hero'
+        },
+        'workspace-1'
+      )
+    ).toThrowError('Trusted frontend contribution binding is unavailable.');
+  });
+
   test('D3-AC-001 keeps 0/1 mount intent, 2 preload, 3 dormant and stable priority/slot order', () => {
     const values = [
       { blockId: 'dormant', slotIndex: 0 },

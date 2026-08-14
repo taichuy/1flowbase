@@ -57,7 +57,8 @@ const codeModules = CATALOG_MODULE_SOURCES.map(
             {
               role: 'browser_module',
               media_type: 'text/javascript; charset=utf-8',
-              sha256: (index + 1).toString(16).repeat(64)
+              sha256: (index + 1).toString(16).repeat(64),
+              url: `/fixture-assets/${(index + 1).toString(16).repeat(64)}`
             }
           ],
     exports: ['default'],

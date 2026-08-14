@@ -214,7 +214,24 @@ describe('useFrontstageBlockCatalog', () => {
           storage: 'none',
           secrets: 'none'
         },
-        ui_capabilities: ['responsive']
+        ui_capabilities: ['responsive'],
+        frontend_contribution_id: 'frontend-block.installation-1.hero_banner',
+        frontend_block_id: 'installation-1:hero_banner',
+        frontend_block_version: '1.0.0',
+        runtime_kind: 'trusted_native',
+        execution_kind: 'ui_mount',
+        isolation_requirement: 'trusted_host_realm',
+        requested_permissions: ['frontend-block.ui-mount.trusted-host'],
+        granted_permissions: ['frontend-block.ui-mount.trusted-host'],
+        workspace_id: 'workspace-1',
+        lifecycle_kind: 'workspace_assignment',
+        graph_fingerprint: 'graph-fingerprint',
+        provenance: {
+          module_id: '1flowbase.boot.core',
+          module_version: '1',
+          module_kind: 'boot_core'
+        },
+        disable_reason: null
       }
     ];
     const items = [

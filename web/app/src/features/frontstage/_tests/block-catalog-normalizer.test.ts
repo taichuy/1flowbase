@@ -37,6 +37,23 @@ function createCatalogEntry(
       secrets: 'none'
     },
     ui_capabilities: ['responsive'],
+    frontend_contribution_id: 'frontend-block.installation-1.hero_banner',
+    frontend_block_id: 'installation-1:hero_banner',
+    frontend_block_version: '1.0.0',
+    runtime_kind: 'trusted_native',
+    execution_kind: 'ui_mount',
+    isolation_requirement: 'trusted_host_realm',
+    requested_permissions: ['frontend-block.ui-mount.trusted-host'],
+    granted_permissions: ['frontend-block.ui-mount.trusted-host'],
+    workspace_id: 'workspace-1',
+    lifecycle_kind: 'workspace_assignment',
+    graph_fingerprint: 'graph-fingerprint',
+    provenance: {
+      module_id: '1flowbase.boot.core',
+      module_version: '1',
+      module_kind: 'boot_core'
+    },
+    disable_reason: null,
     ...overrides
   };
 }
@@ -303,9 +320,12 @@ describe('frontstage block catalog normalizer', () => {
 });
 
 function browserAsset(digestCharacter: string) {
+  const sha256 = digestCharacter.repeat(64);
   return {
     role: 'browser_module' as const,
     media_type: 'text/javascript; charset=utf-8',
-    sha256: digestCharacter.repeat(64)
+    sha256,
+    url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`,
+    integrity: 'verified_sha256' as const
   };
 }

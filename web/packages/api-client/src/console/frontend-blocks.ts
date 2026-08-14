@@ -19,10 +19,31 @@ export interface ConsoleFrontendBlockCodeModule {
     role: 'browser_module' | 'shadow_style' | 'support';
     media_type: string;
     sha256: string;
+    url: string;
+    integrity: 'verified_sha256';
   }>;
   exports: string[];
   type_declarations: string;
 }
+
+export interface ConsoleFrontendContributionProvenance {
+  module_id: string;
+  module_version: string;
+  module_kind: 'boot_core' | 'trusted_host' | 'runtime' | 'capability' | 'user';
+}
+
+export type ConsoleFrontendContributionDisableReason =
+  | 'verification_invalid'
+  | 'desired_state_inactive'
+  | 'artifact_unavailable'
+  | 'version_mismatch'
+  | 'assignment_missing'
+  | 'assignment_workspace_mismatch'
+  | 'assignment_stale'
+  | 'catalog_identity_mismatch'
+  | 'unsupported_runtime'
+  | 'permission_denied'
+  | 'asset_invalid';
 
 export interface ConsoleFrontendBlockCatalogEntry {
   installation_id: string;
@@ -40,6 +61,19 @@ export interface ConsoleFrontendBlockCatalogEntry {
   context_contract: ConsoleFrontendBlockContextContract;
   permissions: ConsoleFrontendBlockPermissions;
   ui_capabilities: string[];
+  frontend_contribution_id: string;
+  frontend_block_id: string;
+  frontend_block_version: string;
+  runtime_kind: 'trusted_native' | 'isolated';
+  execution_kind: 'ui_mount';
+  isolation_requirement: 'trusted_host_realm' | 'independent_realm';
+  requested_permissions: string[];
+  granted_permissions: string[];
+  workspace_id: string;
+  lifecycle_kind: 'workspace_assignment';
+  graph_fingerprint: string;
+  provenance: ConsoleFrontendContributionProvenance;
+  disable_reason: ConsoleFrontendContributionDisableReason | null;
 }
 
 export function listConsoleFrontendBlocks(

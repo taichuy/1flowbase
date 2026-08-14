@@ -659,7 +659,8 @@ describe('frontstage block catalog feature api', () => {
             storage: 'read',
             secrets: 'deny'
           },
-          ui_capabilities: ['resizable', 'configure']
+          ui_capabilities: ['resizable', 'configure'],
+          ...frontendContributionFields()
         }
       ]);
     const fetchSpy = vi
@@ -693,7 +694,8 @@ describe('frontstage block catalog feature api', () => {
               storage: 'read',
               secrets: 'deny'
             },
-            ui_capabilities: ['resizable', 'configure']
+            ui_capabilities: ['resizable', 'configure'],
+            ...frontendContributionFields()
           }
         ],
         externalNpm: { status: 'absent' }
@@ -725,7 +727,8 @@ describe('frontstage block catalog feature api', () => {
         storage: 'read',
         secrets: 'deny'
       },
-      ui_capabilities: ['resizable']
+      ui_capabilities: ['resizable'],
+      ...frontendContributionFields()
     };
     const listSpy = vi
       .spyOn(apiClient, 'listConsoleFrontendBlocks')
@@ -762,3 +765,25 @@ describe('frontstage block catalog feature api', () => {
     }
   });
 });
+
+function frontendContributionFields() {
+  return {
+    frontend_contribution_id: 'frontend-block.installation-1.official.hero',
+    frontend_block_id: 'installation-1:official.hero',
+    frontend_block_version: '1.0.0',
+    runtime_kind: 'trusted_native' as const,
+    execution_kind: 'ui_mount' as const,
+    isolation_requirement: 'trusted_host_realm' as const,
+    requested_permissions: ['frontend-block.ui-mount.trusted-host'],
+    granted_permissions: ['frontend-block.ui-mount.trusted-host'],
+    workspace_id: 'workspace-1',
+    lifecycle_kind: 'workspace_assignment' as const,
+    graph_fingerprint: 'graph-fingerprint',
+    provenance: {
+      module_id: '1flowbase.boot.core',
+      module_version: '1',
+      module_kind: 'boot_core' as const
+    },
+    disable_reason: null
+  };
+}
