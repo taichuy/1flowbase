@@ -287,7 +287,9 @@ impl ProviderInputPipeline {
                 status: PipelineContributionStatus::Succeeded,
                 error: None,
             });
-            input = candidate;
+            // Permission checks compare the contribution output before Core derives capability
+            // metadata, so these host-owned fields cannot be mistaken for plugin rewrites.
+            input = validated_candidate;
         }
         let receipt = build_receipt(
             &self.graph_fingerprint,

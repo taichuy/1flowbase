@@ -12,7 +12,9 @@ use plugin_framework::{
         PermissionCode, ScopeSemantics,
     },
     provider_contract::{
-        NativePromptBlock, ProviderInvocationInput, ProviderMessage, ProviderMessageRole,
+        NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType,
+        ProviderInvocationCapability, ProviderInvocationInput, ProviderMessage,
+        ProviderMessageRole,
     },
 };
 use serde_json::json;
@@ -30,6 +32,7 @@ use crate::provider_input_pipeline::{
 enum Rewrite {
     AppendOrder(&'static str),
     AllVisible,
+    ToolsAndCachedSystem,
     ProviderCode,
     ProviderConfig,
     TraceContext,
@@ -58,6 +61,16 @@ impl ProviderInputPipelineContribution for Rewrite {
                 input
                     .model_parameters
                     .insert("temperature".to_string(), json!(0.2));
+            }
+            Self::ToolsAndCachedSystem => {
+                input.tools.push(json!({ "name": "pipeline_tool" }));
+                input.system.push(NativePromptBlock::Text {
+                    text: "cached system".to_string(),
+                    cache_control: Some(NativePromptCacheControl {
+                        cache_type: NativePromptCacheControlType::Ephemeral,
+                        ttl: None,
+                    }),
+                });
             }
             Self::ProviderCode => input.provider_code = "crossed-provider".to_string(),
             Self::ProviderConfig => input.provider_config = json!({ "api_key": "forbidden" }),
@@ -325,6 +338,47 @@ async fn permitted_model_visible_rewrites_are_explained_by_the_receipt() {
         PipelineContributionStatus::Succeeded
     );
     assert_ne!(receipt.before_digest, receipt.after_digest);
+}
+
+#[tokio::test]
+async fn tools_rewrite_keeps_core_capabilities_synchronized_and_receipt_matches_final_input() {
+    let tools_pipeline = pipeline(
+        vec![contributor(
+            "fixture.tools",
+            "fixture.tools.rewrite",
+            &[REWRITE_SYSTEM_PERMISSION, REWRITE_TOOLS_PERMISSION],
+            None,
+        )],
+        vec![registration(
+            "fixture.tools.rewrite",
+            Rewrite::ToolsAndCachedSystem,
+            Duration::from_secs(1),
+        )],
+    );
+    let output = tools_pipeline.execute(canonical_input()).await.unwrap();
+    let receipt = output.receipt.as_ref().unwrap();
+
+    assert!(output
+        .input
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::SystemPromptBlocks));
+    assert!(output
+        .input
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::SystemPromptCacheControl));
+    assert_eq!(
+        receipt.contributions[0].changed_fields,
+        vec!["system", "tools"]
+    );
+    let after_digest = receipt.after_digest.clone();
+
+    let final_input_receipt = pipeline(Vec::new(), Vec::new())
+        .execute(output.input)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    assert_eq!(after_digest, final_input_receipt.before_digest);
 }
 
 #[tokio::test]
