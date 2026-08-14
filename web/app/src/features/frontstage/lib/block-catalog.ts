@@ -249,6 +249,12 @@ export function isFrontstageBlockNativeRuntime(
   return getRuntimeKind(entry) === 'native_react';
 }
 
+export function isFrontstageBlockIsolatedRuntime(
+  entry: NormalizedFrontstageBlockCatalogEntry | FrontstageBlockRuntimeKind
+): boolean {
+  return getRuntimeKind(entry) === 'isolated_iframe';
+}
+
 export function supportsFrontstageBlockCapability(
   entry: NormalizedFrontstageBlockCatalogEntry,
   capability: FrontstageBlockUiCapability

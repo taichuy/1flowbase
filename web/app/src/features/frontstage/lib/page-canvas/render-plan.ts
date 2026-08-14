@@ -1,5 +1,6 @@
 import {
   FRONTSTAGE_BLOCK_RUNTIME_KINDS,
+  isFrontstageBlockIsolatedRuntime,
   isFrontstageBlockNativeRuntime,
   type FrontstageBlockRuntimeKind
 } from '../block-catalog';
@@ -15,7 +16,10 @@ import type {
   FrontstagePageDocumentDiagnostic
 } from '../page-document';
 
-export type FrontstagePageRenderMode = 'native_react' | 'placeholder';
+export type FrontstagePageRenderMode =
+  | 'native_react'
+  | 'isolated_iframe'
+  | 'placeholder';
 
 export type FrontstagePageRenderPlanFallbackReasonCode =
   | 'missing_code_ref'
@@ -41,6 +45,7 @@ export interface FrontstageBlockRenderPlanItem {
   order: number;
   renderMode: FrontstagePageRenderMode;
   canPrepareNativeReact: boolean;
+  canMountIsolatedIframe: boolean;
   fallbackReasons: FrontstagePageRenderPlanFallbackReason[];
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
@@ -126,13 +131,16 @@ function createMissingCodeRefReason(
 }
 
 function createMissingRuntimeEntryReason(
-  sourceIndex: number
+  sourceIndex: number,
+  runtimeKind: string | null
 ): FrontstagePageRenderPlanFallbackReason {
   return {
     code: 'missing_runtime_entry',
     path: `blocks.${sourceIndex}.runtime.entry`,
     message:
-      'Frontstage block cannot enter the Native React runtime without a runtime entry.'
+      runtimeKind === 'isolated_iframe'
+        ? 'Frontstage block cannot enter the isolated iframe runtime without a runtime entry.'
+        : 'Frontstage block cannot enter the Native React runtime without a runtime entry.'
   };
 }
 
@@ -190,10 +198,7 @@ function resolveRuntimeReason(
     return createUnknownRuntimeReason(sourceIndex);
   }
 
-  if (
-    !knownRuntimeKinds.has(runtimeKind) ||
-    !isFrontstageBlockNativeRuntime(runtimeKind as FrontstageBlockRuntimeKind)
-  ) {
+  if (!knownRuntimeKinds.has(runtimeKind)) {
     return createUnsupportedRuntimeReason(sourceIndex, runtimeKind);
   }
 
@@ -232,8 +237,11 @@ function createFallbackReasons(
   }
 
   if (
-    !asRequiredString(block.codeRef) ||
-    !asRequiredString(block.sourceCodeRef)
+    asRequiredString(block.runtime.kind) !== null &&
+    isFrontstageBlockNativeRuntime(
+      asRequiredString(block.runtime.kind) as FrontstageBlockRuntimeKind
+    ) &&
+    (!asRequiredString(block.codeRef) || !asRequiredString(block.sourceCodeRef))
   ) {
     reasons.push(createMissingCodeRefReason(sourceIndex));
   }
@@ -244,7 +252,12 @@ function createFallbackReasons(
   }
 
   if (!asRequiredString(block.runtime.entry)) {
-    reasons.push(createMissingRuntimeEntryReason(sourceIndex));
+    reasons.push(
+      createMissingRuntimeEntryReason(
+        sourceIndex,
+        asRequiredString(block.runtime.kind)
+      )
+    );
   }
 
   return reasons;
@@ -271,7 +284,18 @@ export function createFrontstageBlockRenderPlanItem(
   sourceIndex = 0
 ): FrontstageBlockRenderPlanItem {
   const fallbackReasons = createFallbackReasons(block, sourceIndex);
-  const canPrepareNativeReact = fallbackReasons.length === 0;
+  const runtimeKind = asRequiredString(block.runtime.kind);
+  const canRender = fallbackReasons.length === 0;
+  const canPrepareNativeReact = Boolean(
+    canRender &&
+    runtimeKind &&
+    isFrontstageBlockNativeRuntime(runtimeKind as FrontstageBlockRuntimeKind)
+  );
+  const canMountIsolatedIframe = Boolean(
+    canRender &&
+    runtimeKind &&
+    isFrontstageBlockIsolatedRuntime(runtimeKind as FrontstageBlockRuntimeKind)
+  );
 
   return {
     blockId: block.id,
@@ -281,8 +305,13 @@ export function createFrontstageBlockRenderPlanItem(
     rendererVersion: block.rendererVersion,
     sourceIndex,
     order: block.order,
-    renderMode: canPrepareNativeReact ? 'native_react' : 'placeholder',
+    renderMode: canPrepareNativeReact
+      ? 'native_react'
+      : canMountIsolatedIframe
+        ? 'isolated_iframe'
+        : 'placeholder',
     canPrepareNativeReact,
+    canMountIsolatedIframe,
     fallbackReasons,
     catalog: cloneCatalog(block.catalog),
     contribution: cloneContribution(block.contribution),

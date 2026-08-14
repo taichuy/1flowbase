@@ -7,6 +7,7 @@ import type {
 import {
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME,
+  type IsolatedFrontendBlockCapabilityHandlers,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
@@ -79,6 +80,8 @@ import {
   createFrontstageNativeBlockContextCapabilities,
   type FrontstageNativeBlockContextHost
 } from '../lib/page-canvas/native-block-context-host';
+import { FrontstageIsolatedFrontendBlockHost } from '../lib/isolated-frontend-block-react-adapter';
+import type { PreparedFrontstageIsolatedContribution } from '../lib/isolated-frontend-block-contribution';
 
 export type FrontstagePageCanvasRuntimeContext = Pick<
   BlockContext,
@@ -99,6 +102,12 @@ type PageCanvasProps = {
   onSelectBlock?: (blockId: string | null) => void;
   onRetry?: () => void;
   runtimePreparations?: readonly FrontstageNativePreparationSnapshot[] | null;
+  isolatedRuntimePreparations?:
+    | readonly PreparedFrontstageIsolatedContribution[]
+    | null;
+  isolatedCapabilityHandlersByBlockId?: Readonly<
+    Record<string, IsolatedFrontendBlockCapabilityHandlers>
+  >;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   renderBlockIds?: readonly string[];
@@ -150,6 +159,8 @@ function formatPageTitle(content: FrontstagePageContent): string {
 type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
   runtimePreparation?: FrontstageNativePreparationSnapshot | null;
+  isolatedPreparation?: PreparedFrontstageIsolatedContribution | null;
+  isolatedCapabilityHandlers?: IsolatedFrontendBlockCapabilityHandlers;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
@@ -222,6 +233,57 @@ function resolveRendererVersionError(
       { value1: item.rendererVersion ?? '' }
     )
   };
+}
+
+function IsolatedRuntimeSlotSurface({
+  preparation,
+  capabilityHandlers,
+  contentViewportStyle
+}: {
+  preparation: PreparedFrontstageIsolatedContribution;
+  capabilityHandlers?: IsolatedFrontendBlockCapabilityHandlers;
+  contentViewportStyle: CSSProperties;
+}) {
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [runtimeError, setRuntimeError] = useState<Error | null>(null);
+  useEffect(
+    () => setRuntimeError(null),
+    [preparation.contributionId, preparation.program.source]
+  );
+  if (runtimeError) {
+    return (
+      <div
+        className="frontstage-native-block-state frontstage-native-block-state--error"
+        style={contentViewportStyle}
+      >
+        <Alert
+          type="error"
+          showIcon
+          title={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+          description={runtimeError.message}
+        />
+      </div>
+    );
+  }
+  return (
+    <div style={contentViewportStyle}>
+      <div
+        ref={setRoot}
+        data-testid={`frontstage-isolated-block-root-${preparation.blockInstanceId}`}
+        style={{ width: '100%', minWidth: 0, height: '100%' }}
+      />
+      {root ? (
+        <FrontstageIsolatedFrontendBlockHost
+          root={root}
+          preparation={preparation}
+          capabilityHandlers={capabilityHandlers}
+          onRuntimeError={setRuntimeError}
+        />
+      ) : (
+        <BlockUiLoadingShell />
+      )}
+    </div>
+  );
 }
 
 function NativeRuntimeSlotSurface({
@@ -449,6 +511,8 @@ function FrontstageNativeRuntimeInstance({
 function RenderPlanSlot({
   item,
   runtimePreparation,
+  isolatedPreparation,
+  isolatedCapabilityHandlers,
   signalCoordinator,
   runtimeContext,
   nativeContextHost,
@@ -565,6 +629,20 @@ function RenderPlanSlot({
       );
     }
 
+    if (item.renderMode === 'isolated_iframe') {
+      return isolatedPreparation ? (
+        <IsolatedRuntimeSlotSurface
+          preparation={isolatedPreparation}
+          capabilityHandlers={isolatedCapabilityHandlers}
+          contentViewportStyle={contentViewportStyle}
+        />
+      ) : (
+        <div style={contentViewportStyle}>
+          <BlockUiLoadingShell />
+        </div>
+      );
+    }
+
     if (runtimePreparation) {
       return (
         <NativeRuntimeSlotSurface
@@ -653,6 +731,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   onSelectBlock,
   onRetry,
   runtimePreparations,
+  isolatedRuntimePreparations,
+  isolatedCapabilityHandlersByBlockId,
   runtimeContext,
   nativeContextHost,
   renderBlockIds,
@@ -956,6 +1036,15 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                     runtimePreparations?.find(
                       (preparation) => preparation.blockId === item.blockId
                     ) ?? null
+                  }
+                  isolatedPreparation={
+                    isolatedRuntimePreparations?.find(
+                      (preparation) =>
+                        preparation.blockInstanceId === item.blockId
+                    ) ?? null
+                  }
+                  isolatedCapabilityHandlers={
+                    isolatedCapabilityHandlersByBlockId?.[item.blockId]
                   }
                   signalCoordinator={signalCoordinator}
                   runtimeContext={runtimeContext}

@@ -1,4 +1,7 @@
-export const FRONTEND_BLOCK_RUNTIMES = ['native_react'] as const;
+export const FRONTEND_BLOCK_RUNTIMES = [
+  'native_react',
+  'isolated_iframe'
+] as const;
 
 export const FRONTEND_BLOCK_CONTEXT_PRIMITIVES = [
   'text',

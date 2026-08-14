@@ -24,6 +24,7 @@ function frontstageBlockFixture(): FrontstageBlockRenderPlanItem {
     order: 0,
     renderMode: 'native_react',
     canPrepareNativeReact: true,
+    canMountIsolatedIframe: false,
     fallbackReasons: [],
     catalog: { providerCode: null, installationId: null },
     contribution: { pluginId: null, pluginVersion: null, code: 'hero' },

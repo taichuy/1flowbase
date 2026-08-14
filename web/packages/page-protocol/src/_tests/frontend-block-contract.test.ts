@@ -5,11 +5,13 @@ import {
   FRONTEND_BLOCK_PACKAGE_BOUNDARIES,
   FRONTEND_BLOCK_RUNTIMES,
   FRONTEND_BLOCK_UI_CAPABILITIES,
+  ISOLATED_FRONTEND_BLOCK_CAPABILITIES,
   createFrontendBlockCodeCapabilities,
   isFrontendBlockContextPrimitive,
   isFrontendBlockPackageBoundary,
   isFrontendBlockRuntime,
   isFrontendBlockUiCapability,
+  isIsolatedFrontendBlockCapability,
   normalizeFrontendBlockContextPrimitive,
   normalizeFrontendBlockContextPrimitives,
   normalizeFrontendBlockRuntime,
@@ -60,7 +62,13 @@ describe('frontend block contract vocabulary', () => {
     ).toEqual(['@1flowbase/charts']);
   });
   test('exports the backend-aligned manifest and catalog vocabularies', () => {
-    expect(FRONTEND_BLOCK_RUNTIMES).toEqual(['native_react']);
+    expect(FRONTEND_BLOCK_RUNTIMES).toEqual([
+      'native_react',
+      'isolated_iframe'
+    ]);
+    expect(ISOLATED_FRONTEND_BLOCK_CAPABILITIES).toEqual([
+      'block.output.publish'
+    ]);
     expect(FRONTEND_BLOCK_CONTEXT_PRIMITIVES).toEqual([
       'text',
       'image',
@@ -92,6 +100,7 @@ describe('frontend block contract vocabulary', () => {
 
   test('guards runtime, context primitives, ui capabilities, and package boundaries', () => {
     expect(isFrontendBlockRuntime('native_react')).toBe(true);
+    expect(isFrontendBlockRuntime('isolated_iframe')).toBe(true);
     expect(isFrontendBlockRuntime('iframe')).toBe(false);
     expect(isFrontendBlockRuntime('worker')).toBe(false);
     expect(isFrontendBlockRuntime(null)).toBe(false);
@@ -106,10 +115,17 @@ describe('frontend block contract vocabulary', () => {
     expect(isFrontendBlockPackageBoundary('frontend-block-runtime')).toBe(
       false
     );
+    expect(isIsolatedFrontendBlockCapability('block.output.publish')).toBe(
+      true
+    );
+    expect(isIsolatedFrontendBlockCapability('host.fetch')).toBe(false);
   });
 
   test('normalizes single contract values without widening unknown strings', () => {
     expect(normalizeFrontendBlockRuntime('native_react')).toBe('native_react');
+    expect(normalizeFrontendBlockRuntime('isolated_iframe')).toBe(
+      'isolated_iframe'
+    );
     expect(normalizeFrontendBlockRuntime('iframe')).toBeNull();
     expect(normalizeFrontendBlockRuntime('worker')).toBeNull();
     expect(normalizeFrontendBlockContextPrimitive('data_record')).toBe(

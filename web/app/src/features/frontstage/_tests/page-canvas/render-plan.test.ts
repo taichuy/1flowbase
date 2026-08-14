@@ -57,6 +57,27 @@ function createBlock(
 }
 
 describe('frontstage page canvas render plan', () => {
+  test('D5-P3 selects isolated iframe without requiring Native code refs', () => {
+    const item = createFrontstageBlockRenderPlanItem(
+      createBlock({
+        codeRef: '',
+        sourceCodeRef: null,
+        runtime: {
+          kind: 'isolated_iframe',
+          entry: '@1flowbase/isolated-chart',
+          hint: 'isolated_iframe'
+        }
+      })
+    );
+
+    expect(item).toMatchObject({
+      renderMode: 'isolated_iframe',
+      canPrepareNativeReact: false,
+      canMountIsolatedIframe: true,
+      fallbackReasons: []
+    });
+  });
+
   test('creates stable Native React block items ordered by block order', () => {
     const document = createFrontstagePageDocument(
       createPageContent({
@@ -114,6 +135,7 @@ describe('frontstage page canvas render plan', () => {
       codeRef: 'first-code',
       renderMode: 'native_react',
       canPrepareNativeReact: true,
+      canMountIsolatedIframe: false,
       fallbackReasons: [],
       runtime: {
         kind: 'native_react',

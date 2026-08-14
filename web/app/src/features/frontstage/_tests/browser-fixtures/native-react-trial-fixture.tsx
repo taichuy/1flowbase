@@ -14,6 +14,7 @@ import iconsBrowserModule from '../../../../../../../api/plugins/capability-plug
 import officialBrowserAssets from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/official-browser-assets.digest-input.json';
 import richTextBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/rich-text.js?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
+import type { IsolatedFrontendBlockCapabilityHandlers } from '@1flowbase/page-runtime';
 import type { ComponentProps, ComponentType } from 'react';
 import {
   StrictMode,
@@ -37,6 +38,7 @@ import {
   type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
+import type { PreparedFrontstageIsolatedContribution } from '../../lib/isolated-frontend-block-contribution';
 
 const FROZEN_TAILWIND_FIXTURE_SOURCE = `
 import 'tailwindcss';
@@ -48,6 +50,22 @@ const tailwindCss = (
     extractStaticTailwindCandidates(FROZEN_TAILWIND_FIXTURE_SOURCE)
   )
 ).css;
+
+const ISOLATED_FIXTURE_SOURCE = `globalThis.__oneflowbaseIsolatedBlock = {
+  mount(root, props, capabilities) {
+    let tick = 0;
+    root.dataset.label = String(props.label);
+    const timer = setInterval(() => {
+      tick += 1;
+      root.dataset.tick = String(tick);
+      capabilities.request('block.output.publish', { tick }).catch(() => {});
+    }, 25);
+    return {
+      update(nextProps) { root.dataset.label = String(nextProps.label); },
+      dispose() { clearInterval(timer); }
+    };
+  }
+};`;
 
 type FixtureBlockProps = {
   label: string;
@@ -70,6 +88,8 @@ const fixtureCounters = {
   publishStarted: 0,
   publishCompleted: 0,
   publishLastOutcome: 'idle',
+  isolatedMessages: 0,
+  isolatedLastTick: 0,
   nextHookIdentity: 0
 };
 
@@ -88,6 +108,10 @@ function syncFixtureCounters() {
   stats.dataset.publishStarted = String(fixtureCounters.publishStarted);
   stats.dataset.publishCompleted = String(fixtureCounters.publishCompleted);
   stats.dataset.publishLastOutcome = fixtureCounters.publishLastOutcome;
+  stats.dataset.isolatedMessages = String(fixtureCounters.isolatedMessages);
+  stats.dataset.isolatedLastTick = String(fixtureCounters.isolatedLastTick);
+  stats.dataset.isolatedReadySignal =
+    fixtureCounters.isolatedMessages > 0 ? 'settled' : 'pending';
 }
 
 function useFixtureBlockCounters(block: 'first' | 'second') {
@@ -529,7 +553,19 @@ function NativeReactTrialFixture() {
                 3,
                 { label: 'b' },
                 { inputs: [], outputs: [] }
-              )
+              ),
+              {
+                id: 'isolated',
+                renderer_version: 'v1',
+                contributionCode: 'qa.isolated.timer',
+                runtime: {
+                  kind: 'isolated_iframe',
+                  entry: '@fixture/isolated-timer'
+                },
+                layout: { order: 4, region: 'main', span: 12 },
+                props: { label: `isolated-${sourceRevision}` },
+                ports: { inputs: [], outputs: [] }
+              }
             ]
           }
         }
@@ -573,6 +609,46 @@ function NativeReactTrialFixture() {
     ],
     [demands.first, demands.second, preparationFailure, sourceRevision]
   );
+  const isolatedPreparations = useMemo<
+    readonly PreparedFrontstageIsolatedContribution[]
+  >(
+    () => [
+      {
+        state: 'prepared',
+        blockInstanceId: 'isolated',
+        contributionId: 'frontend-block.fixture.isolated-timer',
+        blockId: 'fixture:isolated-timer',
+        blockVersion: '1.0.0',
+        graphFingerprint: 'fixture-isolated-graph',
+        runtimeKind: 'isolated',
+        executionKind: 'ui_mount',
+        isolationRequirement: 'independent_realm',
+        lifecycleKind: 'workspace_assignment',
+        grantedPermissions: ['frontend-block.ui-mount.isolated-realm'],
+        assetIntegrity: 'verified_sha256',
+        program: {
+          source: ISOLATED_FIXTURE_SOURCE,
+          props: { label: `isolated-${sourceRevision}` }
+        }
+      }
+    ],
+    [sourceRevision]
+  );
+  const isolatedCapabilityHandlers = useMemo<
+    Readonly<Record<string, IsolatedFrontendBlockCapabilityHandlers>>
+  >(
+    () => ({
+      isolated: {
+        'block.output.publish': (payload) => {
+          fixtureCounters.isolatedMessages += 1;
+          fixtureCounters.isolatedLastTick = readIsolatedTick(payload);
+          syncFixtureCounters();
+          return { accepted: true };
+        }
+      }
+    }),
+    []
+  );
   const [observations, setObservations] = useState<
     readonly FrontstageRuntimeObservation[]
   >(() => readFrontstageRuntimeObservations());
@@ -601,6 +677,11 @@ function NativeReactTrialFixture() {
         data-publish-started={fixtureCounters.publishStarted}
         data-publish-completed={fixtureCounters.publishCompleted}
         data-publish-last-outcome={fixtureCounters.publishLastOutcome}
+        data-isolated-messages={fixtureCounters.isolatedMessages}
+        data-isolated-last-tick={fixtureCounters.isolatedLastTick}
+        data-isolated-ready-signal={
+          fixtureCounters.isolatedMessages > 0 ? 'settled' : 'pending'
+        }
         data-max-concurrent="1"
         data-demands={`${demands.first},${demands.second}`}
         data-observation-stages={observations
@@ -680,6 +761,8 @@ function NativeReactTrialFixture() {
           <InstrumentedPageCanvas
             content={content}
             runtimePreparations={hidden ? [] : preparations}
+            isolatedRuntimePreparations={hidden ? [] : isolatedPreparations}
+            isolatedCapabilityHandlersByBlockId={isolatedCapabilityHandlers}
             runtimeContext={{
               currentUser: { id: 'fixture-user', displayName: 'Fixture User' },
               workspace: { id: 'fixture-workspace' },
@@ -791,6 +874,18 @@ function fixtureModuleStyle(
     url: `/fixture-assets/${moduleSource}/${digestCharacter}`,
     bytes: new TextEncoder().encode(css).buffer as ArrayBuffer
   };
+}
+
+function readIsolatedTick(payload: unknown): number {
+  if (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'tick' in payload &&
+    typeof payload.tick === 'number'
+  ) {
+    return payload.tick;
+  }
+  throw new Error('Isolated fixture tick payload is invalid.');
 }
 
 const root = document.getElementById('root');
