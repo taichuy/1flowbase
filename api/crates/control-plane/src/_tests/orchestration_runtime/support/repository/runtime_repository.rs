@@ -1074,6 +1074,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         input: &crate::ports::PersistWaitingStateInput,
     ) -> Result<Option<crate::ports::PersistedWaitingState>> {
         let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        force_status_before_next_flow_update(&mut inner, input.flow_run_id);
         let target_status = match input.kind {
             crate::ports::PersistWaitingKind::Human => domain::FlowRunStatus::WaitingHuman,
             crate::ports::PersistWaitingKind::Callback(_) => domain::FlowRunStatus::WaitingCallback,
