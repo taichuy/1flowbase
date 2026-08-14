@@ -4,8 +4,8 @@ use control_plane::{
     audit::audit_log,
     ports::{
         CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockExecutableInput, FrontstageBlockPosition,
-        FrontstageBlockTreeRepository, FrontstagePageRepository,
+        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput, FrontstageBlockPosition,
+        FrontstageBlockTreeRepository, FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
     },
 };
 use domain::FrontstageBlockPresentation;
@@ -88,14 +88,9 @@ fn create_input(
         input_mapping: BTreeMap::new(),
         output_mapping: BTreeMap::new(),
         runtime_descriptor: json!({ "id": block_id, "codeRef": code_ref }),
-        executable: FrontstageBlockExecutableInput {
+        code: FrontstageBlockCodeInput {
             source_code: format!("export default function {block_id}() {{ return null; }}"),
             dependency_lock: json!([]),
-            tailwind_toolchain_lock: json!({ "package": "tailwindcss", "version": "4.3.3" }),
-            generated_css: String::new(),
-            generated_css_sha256:
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned(),
-            compiler_identity: json!({ "name": "tailwindcss", "abi": "v1" }),
         },
         audit_log: audit,
     }
@@ -125,6 +120,65 @@ async fn block_fixture() -> (PgPool, PgControlPlaneStore, Uuid, Uuid) {
     .unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     (pool, store, workspace_id, actor_user_id)
+}
+
+#[tokio::test]
+async fn block_code_save_rejects_a_stale_source_revision_atomically() {
+    let (pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "revision").await;
+    let source = "export default function root() { return null; }";
+    store
+        .create_frontstage_block_node(&create_input(
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            "root",
+            "root-code",
+            FrontstageBlockPosition::default(),
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
+    let stale = audit_log(
+        Some(workspace_id),
+        Some(actor_user_id),
+        "frontstage_block",
+        Some(page_id),
+        "frontstage.block_node_code_saved",
+        json!({ "block_id": "root" }),
+    );
+    let error = store
+        .save_frontstage_block_node_code(&SaveFrontstageBlockNodeCodeInput {
+            workspace_id,
+            actor_user_id,
+            page_id,
+            block_id: "root".to_owned(),
+            expected_source_revision: Some("0".repeat(64)),
+            code: FrontstageBlockCodeInput {
+                source_code: "export default 2;".to_owned(),
+                dependency_lock: json!([]),
+            },
+            audit_log: stale,
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+        Some(control_plane::errors::ControlPlaneError::Conflict(
+            "frontstage_block_source_revision"
+        ))
+    ));
+    let persisted: String = sqlx::query_scalar(
+        "select code from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = 'root-code'",
+    )
+    .bind(workspace_id)
+    .bind(page_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(persisted, source);
 }
 
 // AC-001/008: the cutover preserves the public id and complete runtime descriptor while deriving

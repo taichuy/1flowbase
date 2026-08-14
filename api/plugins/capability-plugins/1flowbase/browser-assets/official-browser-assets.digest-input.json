@@ -126,41 +126,6 @@
         }
       ],
       "content_sha256": "3f872827550bc46396b017e712ce1e92e44e91dad33ed7a034e17594fa150d21"
-    },
-    {
-      "module_source": "tailwindcss",
-      "module_version": "4.3.3",
-      "exports": [
-        "default"
-      ],
-      "type_declarations": "declare module 'tailwindcss' {\n  const tailwindcss: Readonly<{\n    name: 'tailwindcss';\n    version: '4.3.3';\n    mode: 'block-preset';\n    compiler: Readonly<{\n      name: '@1flowbase/tailwindcss-catalog';\n      contract: 'block-preset-v1';\n      tailwind_version: '4.3.3';\n    }>;\n  }>;\n  export default tailwindcss;\n}\n",
-      "assets": [
-        {
-          "path": "tailwindcss-catalog.css",
-          "role": "shadow_style",
-          "media_type": "text/css; charset=utf-8",
-          "sha256": "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36",
-          "bytes": 63411571
-        },
-        {
-          "path": "tailwindcss-catalog.js",
-          "role": "browser_module",
-          "media_type": "text/javascript; charset=utf-8",
-          "sha256": "d6da027db1739246d27aaeb9252950ad17eef3f4567764073e023eccaab2a457",
-          "bytes": 249
-        }
-      ],
-      "compiler_identity": {
-        "name": "@1flowbase/tailwindcss-catalog",
-        "contract": "block-preset-v1",
-        "tailwind_version": "4.3.3"
-      },
-      "toolchain_lock": {
-        "package": "tailwindcss",
-        "version": "4.3.3",
-        "mode": "block-preset"
-      },
-      "content_sha256": "caf6a1526a1ab4e013b74933ef888bb7896b92d0047626e6e17ab163e4ed0c02"
     }
   ],
   "retained_legacy_assets": [

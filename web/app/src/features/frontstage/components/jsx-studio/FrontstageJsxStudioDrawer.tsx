@@ -134,7 +134,6 @@ export function FrontstageJsxStudioDrawer({
     projection.allowedImportSources
   ]);
   const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
-  const executableState = activeTab?.executable?.executable_state;
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
@@ -250,12 +249,12 @@ export function FrontstageJsxStudioDrawer({
       onInjectContext={injectFrontstageContextComment}
       onReset={blockTabs.resetActive}
       onRun={() => {
-        if (!hasLegacySource && executableState === 'ready') {
+        if (!hasLegacySource && activeTab?.executable) {
           setRunRevision((current) => (current ?? 0) + 1);
         }
       }}
       onSave={() => {
-        if (!hasLegacySource && executableState === 'ready') {
+        if (!hasLegacySource && activeTab?.executable) {
           void blockTabs.saveActiveDraft().catch(() => undefined);
         }
       }}

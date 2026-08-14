@@ -26,18 +26,14 @@ pub struct CreateFrontstageBlockNodeInput {
     pub input_mapping: BTreeMap<String, String>,
     pub output_mapping: BTreeMap<String, String>,
     pub runtime_descriptor: serde_json::Value,
-    pub executable: FrontstageBlockExecutableInput,
+    pub code: FrontstageBlockCodeInput,
     pub audit_log: domain::AuditLogRecord,
 }
 
 #[derive(Debug, Clone)]
-pub struct FrontstageBlockExecutableInput {
+pub struct FrontstageBlockCodeInput {
     pub source_code: String,
     pub dependency_lock: serde_json::Value,
-    pub tailwind_toolchain_lock: serde_json::Value,
-    pub generated_css: String,
-    pub generated_css_sha256: String,
-    pub compiler_identity: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +57,8 @@ pub struct SaveFrontstageBlockNodeCodeInput {
     pub actor_user_id: Uuid,
     pub page_id: Uuid,
     pub block_id: String,
-    pub executable: FrontstageBlockExecutableInput,
+    pub expected_source_revision: Option<String>,
+    pub code: FrontstageBlockCodeInput,
     pub audit_log: domain::AuditLogRecord,
 }
 

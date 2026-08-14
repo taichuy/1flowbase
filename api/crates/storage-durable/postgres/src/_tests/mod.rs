@@ -7,7 +7,6 @@ mod file_management_repository_tests;
 mod flow_repository_tests;
 mod frontend_block_catalog_repository_tests;
 mod frontstage;
-mod frontstage_executable_upgrade_repository_tests;
 mod host_infrastructure_config_repository_tests;
 mod i18n_catalog_repository_tests;
 mod i18n_global_key_migration_tests;

@@ -1,207 +1,178 @@
 import type {
-  ConsoleFrontstageBlockCode,
-  ConsoleFrontstageBlockRuntimeLayer
-} from '@1flowbase/api-client';
-import {
-  canonicalizeNativeReactCatalogDependencyLock,
-  sha256Text,
-  type NativeReactCatalogDependencyLock,
-  type NativeReactResolvedModuleAsset
+  NativeReactCatalogDependencyLock,
+  NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
+import { sha256Text } from '@1flowbase/page-runtime';
 import {
-  compileTailwindExecutableArtifact,
-  TAILWIND_4_3_3_COMPILER_IDENTITY,
-  TAILWIND_4_3_3_TOOLCHAIN_LOCK
-} from '@1flowbase/tailwindcss-catalog/executable-contract';
+  compileTailwindBase,
+  compileTailwindUtilities,
+  extractStaticTailwindCandidates,
+  findUnboundedTailwindClassExpressions,
+  sourceImportsTailwind
+} from '@1flowbase/tailwindcss-catalog/compiler';
 
-export const NATIVE_REACT_TAILWIND_COMPILER_IDENTITY = Object.freeze({
-  ...TAILWIND_4_3_3_COMPILER_IDENTITY
-});
+import tailwindStyleCompilerWorkerUrl from './native-react-style-compiler.worker?worker&url';
 
-export const NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK = Object.freeze({
-  ...TAILWIND_4_3_3_TOOLCHAIN_LOCK
-});
-
-type ExecutableDto =
-  | Pick<
-      ConsoleFrontstageBlockCode,
-      | 'source_code'
-      | 'source_sha256'
-      | 'dependency_lock'
-      | 'tailwind_toolchain_lock'
-      | 'generated_css'
-      | 'generated_css_sha256'
-      | 'compiler_identity'
-      | 'executable_state'
-    >
-  | Pick<
-      ConsoleFrontstageBlockRuntimeLayer,
-      | 'source_code'
-      | 'source_sha256'
-      | 'dependency_lock'
-      | 'tailwind_toolchain_lock'
-      | 'generated_css'
-      | 'generated_css_sha256'
-      | 'compiler_identity'
-      | 'executable_state'
-    >;
-
-export interface LockedNativeReactExecutableStyle {
-  source_code: string;
-  source_sha256: string;
-  dependency_lock: NativeReactCatalogDependencyLock;
-  generated_css: string;
-  generated_css_sha256: string;
-  tailwind_toolchain_lock: Record<string, string>;
-  compiler_identity: Record<string, string>;
-  executable_style_identity: string;
-  shadow_style_asset: NativeReactResolvedModuleAsset;
-}
+export const NATIVE_REACT_TAILWIND_COMPILER_ABI =
+  'tailwindcss-4.3.3-candidates-v1';
 
 export interface NativeReactExecutableStyleCompilation {
-  generated_css: string;
-  generated_css_sha256: string;
-  tailwind_toolchain_lock: Record<string, string>;
-  compiler_identity: Record<string, string>;
+  candidates: string[];
+  candidate_identity: string;
+  base_css: string;
+  base_css_sha256: string;
+  utility_css: string;
+  utility_css_sha256: string;
+  assets: NativeReactResolvedModuleAsset[];
 }
 
-export function readLockedNativeReactExecutableStyle(
-  value: ExecutableDto
-): LockedNativeReactExecutableStyle {
-  if (
-    value.executable_state !== 'ready' ||
-    !value.source_sha256 ||
-    !value.dependency_lock ||
-    !isNonEmptyStringRecord(value.tailwind_toolchain_lock) ||
-    value.generated_css === null ||
-    !value.generated_css_sha256 ||
-    !isNonEmptyStringRecord(value.compiler_identity)
-  ) {
-    throw new Error(
-      'Frontstage block executable state is legacy or incomplete.'
-    );
-  }
-  const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
-    value.dependency_lock
-  );
-  if (!dependencyLock) {
-    throw new Error('Frontstage block dependency_lock is invalid.');
-  }
-  const sourceSha256 = value.source_sha256.toLowerCase();
-  const generatedCssSha256 = value.generated_css_sha256.toLowerCase();
-  if (sha256Text(value.source_code) !== sourceSha256) {
-    throw new Error(
-      'Frontstage block source_sha256 does not match source_code.'
-    );
-  }
-  if (sha256Text(value.generated_css) !== generatedCssSha256) {
-    throw new Error(
-      'Frontstage block generated_css_sha256 does not match generated_css.'
-    );
-  }
-  const executableStyleIdentity = sha256Text(
-    JSON.stringify(
-      canonicalValue({
-        generated_css_sha256: generatedCssSha256,
-        tailwind_toolchain_lock: value.tailwind_toolchain_lock,
-        compiler_identity: value.compiler_identity
-      })
-    )
-  );
-  return {
-    source_code: value.source_code,
-    source_sha256: sourceSha256,
-    dependency_lock: dependencyLock,
-    generated_css: value.generated_css,
-    generated_css_sha256: generatedCssSha256,
-    tailwind_toolchain_lock: value.tailwind_toolchain_lock,
-    compiler_identity: value.compiler_identity,
-    executable_style_identity: executableStyleIdentity,
-    shadow_style_asset: createNativeReactExecutableStyleAsset(
-      value.generated_css,
-      generatedCssSha256
-    )
-  };
-}
+type WorkerResponse =
+  | {
+      requestId: string;
+      ok: true;
+      baseCss: string;
+      utilityCss: string;
+      acceptedCandidates: string[];
+    }
+  | { requestId: string; ok: false; message: string };
 
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalValue);
-  if (typeof value !== 'object' || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, canonicalValue(entry)])
-  );
-}
-
-function isNonEmptyStringRecord(
-  value: unknown
-): value is Record<string, string> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length > 0 &&
-    Object.values(value).every(
-      (entry) => typeof entry === 'string' && entry.trim().length > 0
-    )
-  );
-}
+const memory = new Map<string, NativeReactExecutableStyleCompilation>();
+const flights = new Map<
+  string,
+  Promise<NativeReactExecutableStyleCompilation>
+>();
+const STYLE_CACHE_BUDGET = 8 * 1024 * 1024;
 
 export async function compileNativeReactExecutableStyle(
   sourceCode: string,
-  dependencyLock: NativeReactCatalogDependencyLock = []
+  _dependencyLock: NativeReactCatalogDependencyLock = []
 ): Promise<NativeReactExecutableStyleCompilation> {
-  return compileLockedNativeReactExecutableStyle({
-    sourceCode,
-    dependencyLock,
-    tailwindToolchainLock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-    compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+  if (!sourceImportsTailwind(sourceCode)) return emptyStyle();
+  if (findUnboundedTailwindClassExpressions(sourceCode).length > 0) {
+    throw new Error(
+      'Tailwind className must resolve to a finite set of local literals; use a static string or finite conditional/template.'
+    );
+  }
+  const candidates = extractStaticTailwindCandidates(sourceCode);
+  const candidateIdentity = sha256Text(
+    JSON.stringify({ abi: NATIVE_REACT_TAILWIND_COMPILER_ABI, candidates })
+  );
+  const cached = memory.get(candidateIdentity);
+  if (cached) return cached;
+  let flight = flights.get(candidateIdentity);
+  if (!flight) {
+    flight = compileCandidateSet(candidateIdentity, candidates).finally(() => {
+      flights.delete(candidateIdentity);
+    });
+    flights.set(candidateIdentity, flight);
+  }
+  return flight;
+}
+
+async function compileCandidateSet(
+  candidateIdentity: string,
+  candidates: string[]
+): Promise<NativeReactExecutableStyleCompilation> {
+  const persisted = await readPersistedStyle(candidateIdentity, candidates);
+  if (persisted) {
+    memory.set(candidateIdentity, persisted);
+    return persisted;
+  }
+  const result = await compileInWorker(candidates);
+  const baseSha = sha256Text(result.baseCss);
+  const utilitySha = sha256Text(result.utilityCss);
+  const value: NativeReactExecutableStyleCompilation = {
+    candidates,
+    candidate_identity: candidateIdentity,
+    base_css: result.baseCss,
+    base_css_sha256: baseSha,
+    utility_css: result.utilityCss,
+    utility_css_sha256: utilitySha,
+    assets: [
+      createStyleAsset('frontstage/tailwind-base', result.baseCss, baseSha),
+      createStyleAsset(
+        'frontstage/tailwind-utilities',
+        result.utilityCss,
+        utilitySha
+      )
+    ]
+  };
+  memory.set(candidateIdentity, value);
+  void persistStyle(value);
+  return value;
+}
+
+async function compileInWorker(candidates: string[]): Promise<{
+  baseCss: string;
+  utilityCss: string;
+  acceptedCandidates: string[];
+}> {
+  if (typeof Worker !== 'function') {
+    const [baseCss, utilities] = await Promise.all([
+      compileTailwindBase(),
+      compileTailwindUtilities(candidates)
+    ]);
+    return {
+      baseCss,
+      utilityCss: utilities.css,
+      acceptedCandidates: utilities.acceptedCandidates
+    };
+  }
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const worker = new Worker(tailwindStyleCompilerWorkerUrl, {
+      type: 'module',
+      name: 'native-react-tailwind-compiler'
+    });
+    const finish = () => worker.terminate();
+    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      if (event.data.requestId !== requestId) return;
+      finish();
+      if (!event.data.ok) {
+        reject(new Error(event.data.message));
+        return;
+      }
+      resolve({
+        baseCss: event.data.baseCss,
+        utilityCss: event.data.utilityCss,
+        acceptedCandidates: event.data.acceptedCandidates
+      });
+    };
+    worker.onerror = (event) => {
+      finish();
+      reject(new Error(event.message || 'Tailwind compiler Worker failed.'));
+    };
+    worker.postMessage({ requestId, candidates });
   });
 }
 
-export async function compileLockedNativeReactExecutableStyle({
-  sourceCode,
-  dependencyLock,
-  tailwindToolchainLock,
-  compilerIdentity
-}: {
-  sourceCode: string;
-  dependencyLock: NativeReactCatalogDependencyLock;
-  tailwindToolchainLock: Record<string, string>;
-  compilerIdentity: Record<string, string>;
-}): Promise<
-  NativeReactExecutableStyleCompilation & {
-    dependency_lock: NativeReactCatalogDependencyLock;
-  }
-> {
-  const result = await compileTailwindExecutableArtifact({
-    source_code: sourceCode,
-    dependency_lock: dependencyLock,
-    compiler_identity: compilerIdentity,
-    toolchain_lock: tailwindToolchainLock
-  });
-  if (!result.ok) throw new Error(result.error.message);
-  if (
-    result.source_sha256 !== sha256Text(sourceCode) ||
-    result.generated_css_sha256 !== sha256Text(result.generated_css) ||
-    JSON.stringify(canonicalValue(result.dependency_lock)) !==
-      JSON.stringify(canonicalValue(dependencyLock)) ||
-    JSON.stringify(canonicalValue(result.toolchain_lock)) !==
-      JSON.stringify(canonicalValue(tailwindToolchainLock)) ||
-    JSON.stringify(canonicalValue(result.compiler_identity)) !==
-      JSON.stringify(canonicalValue(compilerIdentity))
-  ) {
-    throw new Error(
-      'Executable compiler result does not match its locked input.'
-    );
-  }
+function emptyStyle(): NativeReactExecutableStyleCompilation {
+  const emptySha = sha256Text('');
   return {
-    dependency_lock: result.dependency_lock,
-    generated_css: result.generated_css,
-    generated_css_sha256: result.generated_css_sha256,
-    tailwind_toolchain_lock: result.toolchain_lock,
-    compiler_identity: result.compiler_identity
+    candidates: [],
+    candidate_identity: sha256Text(
+      NATIVE_REACT_TAILWIND_COMPILER_ABI + ':disabled'
+    ),
+    base_css: '',
+    base_css_sha256: emptySha,
+    utility_css: '',
+    utility_css_sha256: emptySha,
+    assets: []
+  };
+}
+
+function createStyleAsset(
+  moduleSource: string,
+  css: string,
+  sha256: string
+): NativeReactResolvedModuleAsset {
+  return {
+    module_source: moduleSource,
+    role: 'shadow_style',
+    media_type: 'text/css',
+    sha256,
+    url: `frontstage-style:${sha256}`,
+    bytes: new TextEncoder().encode(css).buffer
   };
 }
 
@@ -209,12 +180,162 @@ export function createNativeReactExecutableStyleAsset(
   generatedCss: string,
   generatedCssSha256 = sha256Text(generatedCss)
 ): NativeReactResolvedModuleAsset {
+  return createStyleAsset(
+    'frontstage/executable-style',
+    generatedCss,
+    generatedCssSha256
+  );
+}
+
+interface PersistedStyleRecord {
+  key: string;
+  kind: 'tailwind_style';
+  abi: string;
+  identity: string;
+  candidates: string[];
+  baseCss: string;
+  utilityCss: string;
+  byteSize: number;
+  lastAccessedAt: number;
+}
+
+async function readPersistedStyle(
+  identity: string,
+  candidates: string[]
+): Promise<NativeReactExecutableStyleCompilation | null> {
+  try {
+    const record = await withStyleStore('readonly', (store) =>
+      requestValue<PersistedStyleRecord | undefined>(
+        store.get(styleCacheKey(identity))
+      )
+    );
+    if (
+      !record ||
+      record.kind !== 'tailwind_style' ||
+      record.abi !== NATIVE_REACT_TAILWIND_COMPILER_ABI ||
+      record.identity !== identity ||
+      JSON.stringify(record.candidates) !== JSON.stringify(candidates)
+    )
+      return null;
+    const value = styleFromCss(
+      identity,
+      candidates,
+      record.baseCss,
+      record.utilityCss
+    );
+    void persistStyle(value);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+async function persistStyle(
+  value: NativeReactExecutableStyleCompilation
+): Promise<void> {
+  try {
+    const record: PersistedStyleRecord = {
+      key: styleCacheKey(value.candidate_identity),
+      kind: 'tailwind_style',
+      abi: NATIVE_REACT_TAILWIND_COMPILER_ABI,
+      identity: value.candidate_identity,
+      candidates: value.candidates,
+      baseCss: value.base_css,
+      utilityCss: value.utility_css,
+      byteSize: new Blob([value.base_css, value.utility_css]).size,
+      lastAccessedAt: Date.now()
+    };
+    if (record.byteSize > STYLE_CACHE_BUDGET) return;
+    await withStyleStore('readwrite', async (store) => {
+      const all = await requestValue<unknown[]>(store.getAll());
+      const styles = all
+        .filter(isPersistedStyleRecord)
+        .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt);
+      let bytes = styles
+        .filter((entry) => entry.key !== record.key)
+        .reduce((sum, entry) => sum + entry.byteSize, 0);
+      for (const entry of styles) {
+        if (bytes + record.byteSize <= STYLE_CACHE_BUDGET) break;
+        if (entry.key === record.key) continue;
+        await requestValue(store.delete(entry.key));
+        bytes -= entry.byteSize;
+      }
+      await requestValue(store.put(record));
+    });
+  } catch {
+    // Persistent caching is an optimization; memory and Worker compilation remain valid.
+  }
+}
+
+function styleFromCss(
+  identity: string,
+  candidates: string[],
+  baseCss: string,
+  utilityCss: string
+): NativeReactExecutableStyleCompilation {
+  const baseSha = sha256Text(baseCss);
+  const utilitySha = sha256Text(utilityCss);
   return {
-    module_source: 'frontstage/executable-style',
-    role: 'shadow_style',
-    media_type: 'text/css',
-    sha256: generatedCssSha256,
-    url: `frontstage-executable-style:${generatedCssSha256}`,
-    bytes: new TextEncoder().encode(generatedCss).buffer
+    candidates,
+    candidate_identity: identity,
+    base_css: baseCss,
+    base_css_sha256: baseSha,
+    utility_css: utilityCss,
+    utility_css_sha256: utilitySha,
+    assets: [
+      createStyleAsset('frontstage/tailwind-base', baseCss, baseSha),
+      createStyleAsset('frontstage/tailwind-utilities', utilityCss, utilitySha)
+    ]
   };
+}
+
+function styleCacheKey(identity: string): string {
+  return `tailwind-style/${identity}`;
+}
+
+function isPersistedStyleRecord(value: unknown): value is PersistedStyleRecord {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as PersistedStyleRecord).kind === 'tailwind_style' &&
+    typeof (value as PersistedStyleRecord).byteSize === 'number'
+  );
+}
+
+async function withStyleStore<T>(
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => Promise<T>
+): Promise<T> {
+  if (typeof indexedDB === 'undefined')
+    throw new Error('IndexedDB unavailable');
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('1flowbase-frontstage-runtime-records', 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains('records')) {
+        request.result.createObjectStore('records', { keyPath: 'key' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    const transaction = database.transaction('records', mode);
+    const completed = new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    const result = await run(transaction.objectStore('records'));
+    await completed;
+    return result;
+  } finally {
+    database.close();
+  }
+}
+
+function requestValue<T = unknown>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }

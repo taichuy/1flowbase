@@ -51,11 +51,6 @@ export interface ConsoleFrontstageBlockNodeCode {
   source_code: string;
   source_sha256: string | null;
   dependency_lock: unknown[] | null;
-  tailwind_toolchain_lock: Record<string, string> | null;
-  generated_css: string | null;
-  generated_css_sha256: string | null;
-  compiler_identity: Record<string, string> | null;
-  executable_state: 'legacy' | 'ready';
 }
 
 export interface ConsoleFrontstageBlockRuntimeLayer {
@@ -68,14 +63,8 @@ export interface ConsoleFrontstageBlockRuntimeLayer {
   input_mapping: Record<string, string>;
   output_mapping: Record<string, string>;
   runtime_descriptor: unknown;
-  source_code: string;
-  source_sha256: string | null;
-  dependency_lock: unknown[] | null;
-  tailwind_toolchain_lock: Record<string, string> | null;
-  generated_css: string | null;
-  generated_css_sha256: string | null;
-  compiler_identity: Record<string, string> | null;
-  executable_state: 'legacy' | 'ready';
+  code_ref: string;
+  source_revision: string | null;
 }
 
 export interface ConsoleFrontstageBlockRuntimeAssembly {
@@ -96,10 +85,6 @@ export interface CreateConsoleFrontstageBlockNodeInput {
   after_block_id: string | null;
   source_code: string;
   dependency_lock: unknown[];
-  tailwind_toolchain_lock: Record<string, string>;
-  generated_css: string;
-  generated_css_sha256: string;
-  compiler_identity: Record<string, string>;
   input_mapping?: Record<string, string>;
   output_mapping?: Record<string, string>;
   runtime_descriptor: unknown | null;
@@ -127,10 +112,7 @@ export interface DeleteConsoleFrontstageBlockSubtreeInput {
 export interface SaveConsoleFrontstageBlockNodeCodeInput {
   source_code: string;
   dependency_lock: unknown[];
-  tailwind_toolchain_lock: Record<string, string>;
-  generated_css: string;
-  generated_css_sha256: string;
-  compiler_identity: Record<string, string>;
+  expected_source_revision?: string | null;
 }
 
 export interface ConsoleFrontstageBlockListQuery {

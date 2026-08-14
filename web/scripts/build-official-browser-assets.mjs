@@ -6,9 +6,6 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { build } from 'vite';
 
-import { compileTailwindBlockPreset } from '../packages/tailwindcss-catalog/src/compiler.ts';
-import { TAILWIND_BLOCK_PRESET_ASSET } from '../packages/tailwindcss-catalog/src/executable-contract.ts';
-
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPOSITORY_ROOT = resolve(WEB_ROOT, '..');
 const HOST_ICONS_DIRECTORY = join(
@@ -28,17 +25,13 @@ const MODULE_DIRECTORIES = [
   'ant-design-icons-catalog',
   'native-components',
   'charts',
-  'rich-text',
-  'tailwindcss-catalog'
+  'rich-text'
 ];
 
 export async function buildOfficialBrowserAssets(
   outputDirectory = DEFAULT_OUTPUT
 ) {
-  const legacyTailwindBytes = await readFile(LEGACY_TAILWIND_ASSET_PATH).catch(
-    () =>
-      readFile(join(DEFAULT_OUTPUT, 'tailwindcss-catalog.css'))
-  );
+  const legacyTailwindBytes = await readFile(LEGACY_TAILWIND_ASSET_PATH);
   const stagingDirectory = join(WEB_ROOT, '.official-browser-assets-staging');
   await rm(stagingDirectory, { force: true, recursive: true });
   await mkdir(stagingDirectory, { recursive: true });
@@ -57,22 +50,7 @@ export async function buildOfficialBrowserAssets(
             ).version
           : descriptor.module_version;
       const moduleOutput = join(stagingDirectory, directoryName);
-      let moduleEntry = join(packageDirectory, descriptor.entry);
-      if (directoryName === 'tailwindcss-catalog') {
-        const preset = await compileTailwindBlockPreset();
-        const presetPath = join(
-          stagingDirectory,
-          TAILWIND_BLOCK_PRESET_ASSET.path
-        );
-        const entryPath = join(stagingDirectory, 'tailwindcss-catalog-entry.js');
-        await writeFile(presetPath, preset.css, 'utf8');
-        await writeFile(
-          entryPath,
-          `import ${JSON.stringify(presetPath)};\nexport { default } from ${JSON.stringify(join(packageDirectory, descriptor.entry))};\n`,
-          'utf8'
-        );
-        moduleEntry = entryPath;
-      }
+      const moduleEntry = join(packageDirectory, descriptor.entry);
       await build({
         configFile: false,
         logLevel: 'silent',
@@ -165,21 +143,6 @@ export async function buildOfficialBrowserAssets(
           ? { toolchain_lock: descriptor.toolchain_lock }
           : {})
       };
-      if (directoryName === 'tailwindcss-catalog') {
-        const presetAsset = assets.find(
-          (asset) => asset.path === TAILWIND_BLOCK_PRESET_ASSET.path
-        );
-        if (
-          !presetAsset ||
-          presetAsset.role !== TAILWIND_BLOCK_PRESET_ASSET.role ||
-          presetAsset.media_type !== TAILWIND_BLOCK_PRESET_ASSET.media_type ||
-          presetAsset.sha256 !== TAILWIND_BLOCK_PRESET_ASSET.sha256
-        ) {
-          throw new Error(
-            'Tailwind block preset asset does not match the executable contract.'
-          );
-        }
-      }
       digestModules.push({
         ...moduleDigestInput,
         content_sha256: sha256Bytes(

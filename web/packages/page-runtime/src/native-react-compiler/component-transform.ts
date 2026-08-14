@@ -21,7 +21,8 @@ import { transformNativeReactTsx } from './tsx-transform';
 const NATIVE_REACT_HOST_ABI_IMPORTS = new Set([
   'react',
   'react/jsx-runtime',
-  'antd'
+  'antd',
+  'tailwindcss'
 ]);
 
 export type NativeReactComponentTransformResult =
@@ -72,7 +73,9 @@ export function transformNativeReactComponentSource(
     acceptedImportSources
   );
   if (!parsed.ok) return { ok: false, errors: [parsed.error] };
-  const bindings = collectInjectedModules(parsed.value.imports);
+  const bindings = collectInjectedModules(
+    parsed.value.imports.filter(({ source }) => source !== 'tailwindcss')
+  );
   if (!bindings.ok) return { ok: false, errors: [bindings.error] };
 
   const executableSource = applyEdits(tsx.code, [

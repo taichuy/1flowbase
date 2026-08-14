@@ -1,6 +1,42 @@
 use super::*;
 
 #[tokio::test]
+async fn frontstage_block_codes_persist_only_source_and_dependency_declarations() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let derived_columns: Vec<String> = sqlx::query_scalar(
+        "select column_name from information_schema.columns where table_schema = current_schema() and table_name = 'frontstage_block_codes' and column_name = any($1) order by column_name",
+    )
+    .bind(vec![
+        "tailwind_toolchain_lock",
+        "generated_css",
+        "generated_css_sha256",
+        "compiler_identity",
+    ])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let versions: Vec<i64> = sqlx::query_scalar(
+        "select version from _sqlx_migrations where version >= 20260814100000 order by version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(
+        derived_columns.is_empty(),
+        "derived columns remain: {derived_columns:?}; versions: {versions:?}"
+    );
+
+    let upgrade_tables: Vec<String> = sqlx::query_scalar(
+        "select table_name from information_schema.tables where table_schema = current_schema() and table_name like 'frontstage_executable_upgrade%' order by table_name",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(upgrade_tables.is_empty());
+}
+
+#[tokio::test]
 async fn full_migrations_reject_group_owned_tabs_and_block_codes_at_commit() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();

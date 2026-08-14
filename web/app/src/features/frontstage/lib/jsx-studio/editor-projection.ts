@@ -21,6 +21,11 @@ export function createFrontstageJsxEditorProjection({
   const codeModules = catalogEntry?.codeModules ?? [];
   const monacoExtraLibs = [
     ...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS,
+    {
+      source: 'tailwindcss',
+      filePath: 'file:///node_modules/tailwindcss/index.d.ts',
+      content: "declare module 'tailwindcss' {}\n"
+    },
     ...codeModules.map((codeModule) => ({
       source: codeModule.source,
       filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
@@ -28,9 +33,10 @@ export function createFrontstageJsxEditorProjection({
     }))
   ];
   return {
-    allowedImportSources: new Set(
-      codeModules.map((codeModule) => codeModule.source)
-    ),
+    allowedImportSources: new Set([
+      'tailwindcss',
+      ...codeModules.map((codeModule) => codeModule.source)
+    ]),
     componentCatalogQuery: catalogEntry
       ? {
           installation_id: catalogEntry.installationId,

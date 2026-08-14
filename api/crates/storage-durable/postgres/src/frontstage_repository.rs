@@ -200,10 +200,6 @@ fn map_frontstage_block_code_row(
         source_code: row.get("source_code"),
         source_sha256: row.get("source_sha256"),
         dependency_lock: row.get("dependency_lock"),
-        tailwind_toolchain_lock: row.get("tailwind_toolchain_lock"),
-        generated_css: row.get("generated_css"),
-        generated_css_sha256: row.get("generated_css_sha256"),
-        compiler_identity: row.get("compiler_identity"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -1023,8 +1019,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             select workspace_id, page_id, code_ref, code as source_code, source_sha256,
-                   dependency_lock, tailwind_toolchain_lock, generated_css,
-                   generated_css_sha256, compiler_identity, created_at, updated_at
+                   dependency_lock, created_at, updated_at
             from frontstage_block_codes
             where workspace_id = $1 and page_id = $2 and code_ref = $3
             "#,
@@ -1071,13 +1066,9 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 code,
                 source_sha256,
                 dependency_lock,
-                tailwind_toolchain_lock,
-                generated_css,
-                generated_css_sha256,
-                compiler_identity,
                 created_by,
                 updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
             on conflict (workspace_id, page_id, code_ref) do nothing
             returning id
             "#,
@@ -1086,16 +1077,12 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&input.code_ref)
-        .bind(&input.executable.source_code)
+        .bind(&input.code.source_code)
         .bind(format!(
             "{:x}",
-            Sha256::digest(input.executable.source_code.as_bytes())
+            Sha256::digest(input.code.source_code.as_bytes())
         ))
-        .bind(&input.executable.dependency_lock)
-        .bind(&input.executable.tailwind_toolchain_lock)
-        .bind(&input.executable.generated_css)
-        .bind(&input.executable.generated_css_sha256)
-        .bind(&input.executable.compiler_identity)
+        .bind(&input.code.dependency_lock)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
         .await?;
@@ -1235,40 +1222,35 @@ impl FrontstagePageRepository for PgControlPlaneStore {
                 workspace_id,
                 page_id,
                 code_ref,
-                code, source_sha256, dependency_lock, tailwind_toolchain_lock,
-                generated_css, generated_css_sha256, compiler_identity
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                code, source_sha256, dependency_lock
+            ) values ($1, $2, $3, $4, $5, $6, $7)
             on conflict (workspace_id, page_id, code_ref)
             do update set
                 code = excluded.code,
                 source_sha256 = excluded.source_sha256,
                 dependency_lock = excluded.dependency_lock,
-                tailwind_toolchain_lock = excluded.tailwind_toolchain_lock,
-                generated_css = excluded.generated_css,
-                generated_css_sha256 = excluded.generated_css_sha256,
-                compiler_identity = excluded.compiler_identity,
                 updated_at = now()
+            where $8::text is null or frontstage_block_codes.source_sha256 = $8
             returning workspace_id, page_id, code_ref, code as source_code, source_sha256,
-                      dependency_lock, tailwind_toolchain_lock, generated_css,
-                      generated_css_sha256, compiler_identity, created_at, updated_at
+                      dependency_lock, created_at, updated_at
             "#,
         )
         .bind(Uuid::now_v7())
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&input.code_ref)
-        .bind(&input.executable.source_code)
+        .bind(&input.code.source_code)
         .bind(format!(
             "{:x}",
-            sha2::Sha256::digest(input.executable.source_code.as_bytes())
+            sha2::Sha256::digest(input.code.source_code.as_bytes())
         ))
-        .bind(&input.executable.dependency_lock)
-        .bind(&input.executable.tailwind_toolchain_lock)
-        .bind(&input.executable.generated_css)
-        .bind(&input.executable.generated_css_sha256)
-        .bind(&input.executable.compiler_identity)
-        .fetch_one(self.pool())
-        .await?;
+        .bind(&input.code.dependency_lock)
+        .bind(&input.expected_source_revision)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::Conflict(
+            "frontstage_block_source_revision",
+        ))?;
 
         Ok(map_frontstage_block_code_row(row))
     }

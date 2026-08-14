@@ -1,11 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
-import type { NativeReactCatalogDependencyLock } from '@1flowbase/page-runtime';
+import {
+  canonicalizeNativeReactCatalogDependencyLock,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import {
-  compileLockedNativeReactExecutableStyle,
-  readLockedNativeReactExecutableStyle
-} from '../../../../../shared/code-block/native-react-executable-style';
 import {
   fetchFrontstageBlockNode,
   fetchFrontstageBlockNodeCode,
@@ -46,32 +45,27 @@ function pendingTab(blockId: string): FrontstageBlockCodeTabState {
 export interface FrontstageExecutableSavePayload {
   source_code: string;
   dependency_lock: NativeReactCatalogDependencyLock;
-  tailwind_toolchain_lock: Record<string, string>;
-  generated_css: string;
-  generated_css_sha256: string;
-  compiler_identity: Record<string, string>;
+  expected_source_revision: string | null;
 }
 
 export async function compileFrontstageExecutableSave(
   tab: FrontstageBlockCodeTabState
 ): Promise<FrontstageExecutableSavePayload> {
   if (!tab.executable) {
-    throw new Error('Frontstage block executable state is missing.');
+    throw new Error('Frontstage block source state is missing.');
   }
-  const locked = readLockedNativeReactExecutableStyle(tab.executable);
-  const compiled = await compileLockedNativeReactExecutableStyle({
-    sourceCode: tab.draft,
-    dependencyLock: locked.dependency_lock,
-    tailwindToolchainLock: locked.tailwind_toolchain_lock,
-    compilerIdentity: locked.compiler_identity
-  });
+  const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+    tab.executable.dependency_lock ?? []
+  );
+  if (!dependencyLock) {
+    throw new Error('Frontstage block dependency_lock is invalid.');
+  }
   return {
     source_code: tab.draft,
-    dependency_lock: compiled.dependency_lock,
-    tailwind_toolchain_lock: compiled.tailwind_toolchain_lock,
-    generated_css: compiled.generated_css,
-    generated_css_sha256: compiled.generated_css_sha256,
-    compiler_identity: compiled.compiler_identity
+    expected_source_revision: tab.source_sha256,
+    dependency_lock: dependencyLock.filter(
+      ({ module_source }) => module_source !== 'tailwindcss'
+    )
   };
 }
 

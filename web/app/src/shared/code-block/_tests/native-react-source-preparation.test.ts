@@ -194,13 +194,7 @@ describe('Native React source preparation', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.component).toBeTypeOf('function');
-    expect(result.moduleAssets).toEqual([
-      moduleAsset,
-      expect.objectContaining({
-        module_source: 'frontstage/executable-style',
-        role: 'shadow_style'
-      })
-    ]);
+    expect(result.moduleAssets).toEqual([moduleAsset]);
     expect(registryFactory).toHaveBeenCalledWith(artifact.dependencyLock);
     expect(moduleRegistry.resolveModuleAssets).toHaveBeenCalledWith(
       artifact.program.injectedModules.map(({ source }) => source)

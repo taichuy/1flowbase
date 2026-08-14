@@ -1,14 +1,9 @@
 use super::*;
 
-fn executable(source_code: &str) -> control_plane::ports::FrontstageBlockExecutableInput {
-    control_plane::ports::FrontstageBlockExecutableInput {
+fn code(source_code: &str) -> control_plane::ports::FrontstageBlockCodeInput {
+    control_plane::ports::FrontstageBlockCodeInput {
         source_code: source_code.to_owned(),
         dependency_lock: json!([]),
-        tailwind_toolchain_lock: json!({ "package": "tailwindcss", "version": "4.3.3" }),
-        generated_css: String::new(),
-        generated_css_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-            .to_owned(),
-        compiler_identity: json!({ "name": "tailwindcss", "abi": "v1" }),
     }
 }
 
@@ -174,7 +169,7 @@ async fn block_creation_commits_document_code_and_audit_atomically() {
             tab_id,
             document_payload: first_document.clone(),
             code_ref: "first-code".into(),
-            executable: executable("export default function First() { return null; }"),
+            code: code("export default function First() { return null; }"),
             audit_log: first_audit,
         })
         .await
@@ -215,7 +210,7 @@ async fn block_creation_commits_document_code_and_audit_atomically() {
             tab_id,
             document_payload: failed_document,
             code_ref: "rolled-back-code".into(),
-            executable: executable("export default function RolledBack() { return null; }"),
+            code: code("export default function RolledBack() { return null; }"),
             audit_log: duplicate_audit,
         })
         .await

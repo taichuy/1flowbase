@@ -15,7 +15,6 @@ pub mod flow;
 pub mod flow_run_title;
 pub mod frontend_block_catalog;
 pub mod frontstage;
-pub mod frontstage_executable_upgrade;
 pub mod host_extension;
 pub mod host_extension_boot;
 pub mod host_extension_inventory;

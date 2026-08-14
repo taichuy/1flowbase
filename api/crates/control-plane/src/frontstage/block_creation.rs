@@ -20,7 +20,7 @@ pub struct CreateFrontstageBlockCommand {
     pub tab_id: Uuid,
     pub document_payload: Value,
     pub code_ref: String,
-    pub executable: crate::ports::FrontstageBlockExecutableInput,
+    pub code: crate::ports::FrontstageBlockCodeInput,
 }
 
 impl<R> FrontstagePageService<R>
@@ -62,7 +62,7 @@ where
                 tab_id: command.tab_id,
                 document_payload: command.document_payload,
                 code_ref,
-                executable: super::block_tree::validate_executable(command.executable)?,
+                code: super::block_tree::validate_code(command.code)?,
                 audit_log,
             })
             .await

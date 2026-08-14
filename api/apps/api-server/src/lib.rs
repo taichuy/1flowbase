@@ -10,7 +10,6 @@ pub mod console_surface_registry;
 pub mod error_response;
 pub mod extension_bootstrap;
 pub mod extension_bus;
-pub mod frontstage_executable_upgrade;
 pub mod host_extension_boot;
 pub mod host_extension_loader;
 pub mod host_extensions;
@@ -289,7 +288,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .store
         .clone()
         .with_runtime_table_name_policy(config.runtime_table_name_policy.clone());
-    frontstage_executable_upgrade::require_cutover(&store).await?;
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
     let extension_assembly = extension_bus::assemble_extension_graph_input(
         api_workspace_root()?,

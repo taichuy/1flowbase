@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -182,35 +181,8 @@ pub struct FrontstageBlockCodeRecord {
     pub source_code: String,
     pub source_sha256: Option<String>,
     pub dependency_lock: Option<serde_json::Value>,
-    pub tailwind_toolchain_lock: Option<serde_json::Value>,
-    pub generated_css: Option<String>,
-    pub generated_css_sha256: Option<String>,
-    pub compiler_identity: Option<serde_json::Value>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
-}
-
-impl FrontstageBlockCodeRecord {
-    pub fn executable_state(&self) -> FrontstageBlockExecutableState {
-        if self.source_sha256.is_some()
-            && self.dependency_lock.is_some()
-            && self.tailwind_toolchain_lock.is_some()
-            && self.generated_css.is_some()
-            && self.generated_css_sha256.is_some()
-            && self.compiler_identity.is_some()
-        {
-            FrontstageBlockExecutableState::Ready
-        } else {
-            FrontstageBlockExecutableState::Legacy
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FrontstageBlockExecutableState {
-    Legacy,
-    Ready,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,7 +238,7 @@ pub struct FrontstageBlockNodeRecord {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrontstageBlockRuntimeLayer {
     pub node: FrontstageBlockNodeRecord,
-    pub executable: FrontstageBlockCodeRecord,
+    pub source_revision: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -346,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn ac_009_011_historical_code_is_explicitly_legacy() {
+    fn block_code_is_only_persisted_user_input_and_revision_metadata() {
         let record = FrontstageBlockCodeRecord {
             workspace_id: Uuid::nil(),
             page_id: Uuid::nil(),
@@ -354,16 +326,10 @@ mod tests {
             source_code: "export default null".to_owned(),
             source_sha256: None,
             dependency_lock: None,
-            tailwind_toolchain_lock: None,
-            generated_css: None,
-            generated_css_sha256: None,
-            compiler_identity: None,
             created_at: OffsetDateTime::UNIX_EPOCH,
             updated_at: OffsetDateTime::UNIX_EPOCH,
         };
-        assert_eq!(
-            record.executable_state(),
-            FrontstageBlockExecutableState::Legacy
-        );
+        assert_eq!(record.source_code, "export default null");
+        assert!(record.source_sha256.is_none());
     }
 }

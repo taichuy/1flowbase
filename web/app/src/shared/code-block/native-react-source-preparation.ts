@@ -15,10 +15,7 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompilerWorkerFactory
 } from './native-react-compiler-browser';
-import {
-  compileNativeReactExecutableStyle,
-  createNativeReactExecutableStyleAsset
-} from './native-react-executable-style';
+import { compileNativeReactExecutableStyle } from './native-react-executable-style';
 
 export type NativeReactSourcePreparationDiagnostic =
   | NativeReactCompileDiagnostic
@@ -120,13 +117,7 @@ export async function prepareNativeReactSource({
       ok: true,
       artifact: evaluated.artifact,
       component: evaluated.component,
-      moduleAssets: [
-        ...moduleAssets,
-        createNativeReactExecutableStyleAsset(
-          preparedExecutableStyle.generated_css,
-          preparedExecutableStyle.generated_css_sha256
-        )
-      ],
+      moduleAssets: [...moduleAssets, ...preparedExecutableStyle.assets],
       executableStyle: preparedExecutableStyle
     };
   } catch (error) {

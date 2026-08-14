@@ -2,6 +2,7 @@ import {
   evaluateNativeReactComponentArtifactWithRegistry,
   diagnoseLegacyBlockModuleSource,
   NativeReactSourceContractError,
+  canonicalizeNativeReactCatalogDependencyLock,
   nativeReactCatalogDependencyLockIdentity,
   type NativeReactCatalogDependencyLock,
   type NativeReactModuleRegistry
@@ -18,7 +19,7 @@ import {
   getNativeReactRuntimeFingerprint,
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
-import { readLockedNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
+import { compileNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
@@ -184,18 +185,27 @@ export function useFrontstagePageCanvasNativePreparations({
                 );
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
-          const executable = readLockedNativeReactExecutableStyle(source);
-          const dependencyLock = executable.dependency_lock;
+          const canonicalDependencyLock =
+            canonicalizeNativeReactCatalogDependencyLock(
+              source.dependency_lock ?? []
+            );
+          if (!canonicalDependencyLock)
+            throw new Error('Frontstage dependency_lock is invalid.');
+          const dependencyLock = canonicalDependencyLock.filter(
+            ({ module_source }) => module_source !== 'tailwindcss'
+          );
+          const executableStyle = await compileNativeReactExecutableStyle(
+            source.source_code,
+            dependencyLock
+          );
+          throwIfAborted(signal);
           const currentRuntimeFingerprint =
             runtimeFingerprint ??
-            getNativeReactRuntimeFingerprint(
-              dependencyLock,
-              executable.executable_style_identity
-            );
+            getNativeReactRuntimeFingerprint(dependencyLock);
           const dependencyLockIdentity =
             nativeReactCatalogDependencyLockIdentity(dependencyLock);
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
-            executable.source_code
+            source.source_code
           );
           if (legacyDiagnostic) {
             throw new NativeReactSourceContractError(legacyDiagnostic);
@@ -204,7 +214,7 @@ export function useFrontstagePageCanvasNativePreparations({
           const identity = createFrontstageNativeReactArtifactCacheIdentity({
             actorId,
             workspaceId: readPlan.workspaceId,
-            source: executable.source_code,
+            source: source.source_code,
             dependencyLock,
             runtimeFingerprint: currentRuntimeFingerprint
           });
@@ -218,7 +228,7 @@ export function useFrontstagePageCanvasNativePreparations({
           } else {
             enterStage('compile', 'miss');
             const compiled = await compile({
-              source: executable.source_code,
+              source: source.source_code,
               requestId: `${request.requestId}:${identity.source_sha256}`,
               dependencyLock,
               runtimeFingerprint: currentRuntimeFingerprint
@@ -277,14 +287,14 @@ export function useFrontstagePageCanvasNativePreparations({
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
-            moduleAssets: [...moduleAssets, executable.shadow_style_asset],
-            generatedCssSha256: executable.generated_css_sha256,
+            moduleAssets: [...moduleAssets, ...executableStyle.assets],
+            generatedCssSha256: executableStyle.utility_css_sha256,
             ...(contribution ? { contribution } : {}),
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
               runtimeFingerprint: currentRuntimeFingerprint,
               dependencyLockIdentity,
-              executableStyleIdentity: executable.executable_style_identity
+              executableStyleIdentity: executableStyle.candidate_identity
             }
           };
         }
