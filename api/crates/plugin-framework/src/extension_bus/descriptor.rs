@@ -212,17 +212,12 @@ pub enum ModuleDisableReason {
     WorkspaceAssignment,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ModuleActivationDeclaration {
+    #[default]
     Active,
     Disabled { reason: ModuleDisableReason },
-}
-
-impl Default for ModuleActivationDeclaration {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
