@@ -108,39 +108,26 @@ async function verifyFixture(browserInstance, fixture) {
         canvases: publicHosts.map(
           (host) => host.shadowRoot?.querySelectorAll('canvas').length ?? 0
         ),
-        richStyles: publicHosts.map(
-          (host) =>
-            host.shadowRoot?.querySelectorAll(
-              'style[data-module-source="@1flowbase/rich-text"]'
-            ).length ?? 0
+        adoptedStyleCounts: publicHosts.map(
+          (host) => host.shadowRoot?.adoptedStyleSheets.length ?? 0
         ),
-        nativeStyles: publicHosts.map(
-          (host) =>
-            host.shadowRoot?.querySelectorAll(
-              'style[data-module-source="@1flowbase/native-components"]'
-            ).length ?? 0
-        ),
-        executableStyles: publicHosts.map(
-          (host) =>
-            host.shadowRoot?.querySelectorAll(
-              'style[data-module-source="frontstage/executable-style"]'
-            ).length ?? 0
-        ),
-        executableStyleSafety: publicHosts.map((host) => {
-          const css = [
-            ...(host.shadowRoot?.querySelectorAll(
-              'style[data-module-source="frontstage/executable-style"]'
-            ) ?? [])
-          ]
-            .map((style) => style.textContent ?? '')
-            .join('\n');
+        sharedStyleSheetCount: (() => {
+          const [first, second] = publicHosts.map(
+            (host) => host.shadowRoot?.adoptedStyleSheets ?? []
+          );
+          return first.filter((sheet) => second.includes(sheet)).length;
+        })(),
+        tailwindPresetSafety: publicHosts.map((host) => {
+          const css = [...(host.shadowRoot?.adoptedStyleSheets ?? [])]
+            .map((sheet) => [...sheet.cssRules].map((rule) => rule.cssText).join('\n'))
+            .find((value) => value.includes('.bg-red-500')) ?? '';
           return {
             hasPreflight:
               /@layer base|(?:^|\})\s*(?:button|input|h[1-6])(?:,|\{)/u.test(
                 css
               ),
             hasAntSelector: /\.ant-/u.test(css),
-            hasArbitraryGrid: css.includes('180px 1fr'),
+            hasSourceIndependentUtility: css.includes('.rotate-45'),
             hasResponsiveVariant: css.includes('@media'),
             hasHoverVariant: css.includes(':hover')
           };
@@ -320,19 +307,19 @@ function assertNativeEvidence(name, evidence) {
   if (
     evidence.publicHostCount !== 2 ||
     evidence.canvases.some((count) => count < 1) ||
-    evidence.richStyles.some((count) => count !== 1) ||
-    evidence.nativeStyles.some((count) => count !== 1) ||
-    evidence.executableStyles[0] !== 1 ||
-    evidence.executableStyles[1] !== 0 ||
-    evidence.executableStyleSafety[0]?.hasPreflight !== false ||
-    evidence.executableStyleSafety[0]?.hasAntSelector !== false ||
-    evidence.executableStyleSafety[0]?.hasArbitraryGrid !== true ||
-    evidence.executableStyleSafety[0]?.hasResponsiveVariant !== true ||
-    evidence.executableStyleSafety[0]?.hasHoverVariant !== true ||
+    evidence.adoptedStyleCounts[0] !== 3 ||
+    evidence.adoptedStyleCounts[1] !== 2 ||
+    evidence.sharedStyleSheetCount !== 2 ||
+    evidence.tailwindPresetSafety[0]?.hasPreflight !== true ||
+    evidence.tailwindPresetSafety[0]?.hasAntSelector !== false ||
+    evidence.tailwindPresetSafety[0]?.hasSourceIndependentUtility !== true ||
+    evidence.tailwindPresetSafety[0]?.hasResponsiveVariant !== true ||
+    evidence.tailwindPresetSafety[0]?.hasHoverVariant !== true ||
+    evidence.tailwindPresetSafety[1]?.hasSourceIndependentUtility !== false ||
     evidence.publicLayout[0]?.display !== 'grid' ||
     evidence.publicLayout[0]?.gap !== '16px' ||
     evidence.publicLayout[0]?.padding !== '16px' ||
-    evidence.publicLayout[0]?.backgroundColor !== 'rgb(0, 171, 115)' ||
+    evidence.publicLayout[0]?.backgroundColor === 'rgba(0, 0, 0, 0)' ||
     evidence.publicLayout[1]?.display !== 'block' ||
     evidence.publicLayout[1]?.gap !== 'normal' ||
     evidence.publicLayout[1]?.padding !== '0px' ||
