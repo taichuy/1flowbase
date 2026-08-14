@@ -1240,9 +1240,9 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
                     .resume_claims_by_target
                     .values_mut()
                     .find(|claim| claim.id == claim_id && claim.claim_token == claim_token)
-                    .ok_or_else(|| {
-                        crate::errors::ControlPlaneError::Conflict("resume_claim_not_owned")
-                    })?;
+                    .ok_or(crate::errors::ControlPlaneError::Conflict(
+                        "resume_claim_not_owned",
+                    ))?;
                 if claim.status != crate::ports::ResumeClaimStatus::Processing {
                     return Err(crate::errors::ControlPlaneError::Conflict(
                         "resume_claim_not_owned",

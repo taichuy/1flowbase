@@ -138,7 +138,7 @@ impl FrontstageExecutableUpgradeCompiler for NodeFrontstageExecutableCompiler {
             .process
             .run(&request)
             .await
-            .map_err(|code| compiler_failure(code))?;
+            .map_err(compiler_failure)?;
         let response: CompilerResponse =
             serde_json::from_slice(&output).map_err(|_| compiler_failure("malformed_output"))?;
         if !response.ok {
