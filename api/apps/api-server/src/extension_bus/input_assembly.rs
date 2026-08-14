@@ -23,6 +23,10 @@ pub const BOOT_CORE_MODULE_ID: &str = "1flowbase.boot-core";
 pub const CACHE_STORE_EXTENSION_POINT_ID: &str = "1flowbase.boot.cache-store";
 pub const CACHE_STORE_CONTRACT_ID: &str = "cache-store";
 pub const CACHE_STORE_CONTRACT_VERSION: &str = "1";
+pub const MODEL_PROVIDER_EXTENSION_POINT_ID: &str = "1flowbase.runtime.model-provider";
+pub const MODEL_PROVIDER_CONTRACT_ID: &str = "model-provider";
+pub const MODEL_PROVIDER_CONTRACT_VERSION: &str =
+    plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleActivationFact {
@@ -188,8 +192,31 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
         activation: ModuleActivationDeclaration::Active,
         dependencies: BTreeSet::new(),
         granted_permissions: BTreeSet::new(),
-        extension_points: vec![cache_store_extension_point()?],
+        extension_points: vec![
+            cache_store_extension_point()?,
+            model_provider_extension_point()?,
+        ],
         contributions: Vec::new(),
+    })
+}
+
+fn model_provider_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(MODEL_PROVIDER_EXTENSION_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Slot,
+        contract: ContractDescriptor::new(
+            MODEL_PROVIDER_CONTRACT_ID,
+            MODEL_PROVIDER_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::Global,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::RuntimeWorker,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
     })
 }
 

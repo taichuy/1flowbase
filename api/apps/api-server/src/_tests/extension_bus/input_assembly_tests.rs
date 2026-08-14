@@ -66,6 +66,46 @@ fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
             .as_str(),
         "official.local-infra-host.infrastructure.cache-store.local"
     );
+
+    let model_provider = graph
+        .points()
+        .iter()
+        .find(|point| {
+            point.descriptor().point_id.as_str()
+                == api_server::extension_bus::MODEL_PROVIDER_EXTENSION_POINT_ID
+        })
+        .unwrap();
+    assert_eq!(
+        model_provider.descriptor().point_kind,
+        ExtensionPointKind::Slot
+    );
+    assert_eq!(model_provider.descriptor().cardinality, Cardinality::Many);
+    assert_eq!(model_provider.descriptor().scope, ScopeSemantics::Global);
+    assert_eq!(
+        model_provider.descriptor().contract.contract_id.as_str(),
+        api_server::extension_bus::MODEL_PROVIDER_CONTRACT_ID
+    );
+    assert_eq!(
+        model_provider
+            .descriptor()
+            .contract
+            .contract_version
+            .as_str(),
+        api_server::extension_bus::MODEL_PROVIDER_CONTRACT_VERSION
+    );
+    assert_eq!(
+        model_provider.descriptor().failure,
+        FailureSemantics::FailClosed
+    );
+    assert_eq!(
+        model_provider.descriptor().delivery,
+        DeliverySemantics::Synchronous
+    );
+    assert_eq!(
+        model_provider.descriptor().lifecycle,
+        LifecycleSemantics::RuntimeWorker
+    );
+    assert!(model_provider.contributions().is_empty());
 }
 
 // Root #1688 AC-001/AC-002: set declaration order is not graph resolution order.

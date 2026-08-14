@@ -165,17 +165,19 @@ async fn fixture() -> Fixture {
         .await
         .unwrap();
 
-    let provider_runtime = Arc::new(ApiRuntimeServices::new(
-        Arc::new(RwLock::new(
-            plugin_runner::provider_host::ProviderHost::default(),
-        )),
-        Arc::new(RwLock::new(
-            plugin_runner::capability_host::CapabilityHost::default(),
-        )),
-        Arc::new(RwLock::new(
-            plugin_runner::data_source_host::DataSourceHost::default(),
-        )),
-    ));
+    let provider_runtime = Arc::new(
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
+            Arc::new(RwLock::new(
+                plugin_runner::provider_host::ProviderHost::default(),
+            )),
+            Arc::new(RwLock::new(
+                plugin_runner::capability_host::CapabilityHost::default(),
+            )),
+            Arc::new(RwLock::new(
+                plugin_runner::data_source_host::DataSourceHost::default(),
+            )),
+        ),
+    );
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
     registry.rebuild(store.list_runtime_model_metadata().await.unwrap());

@@ -47,6 +47,12 @@ use crate::runtime_activity::{
     ApplicationActivityKind, ApplicationRuntimeActivityTracker,
 };
 
+mod model_provider_slot;
+
+pub use model_provider_slot::{
+    ModelProviderBindingProvenance, ModelProviderSlotBinding, ModelProviderSlotResolver,
+};
+
 #[derive(Clone)]
 pub struct ApiRuntimeServices {
     provider_host: Arc<RwLock<ProviderHost>>,
@@ -54,10 +60,34 @@ pub struct ApiRuntimeServices {
     data_source_host: Arc<RwLock<DataSourceHost>>,
     data_model_template_catalog:
         runtime_core::data_model_template_registry::DataModelTemplateCatalog,
+    model_provider_slot_resolver: Option<ModelProviderSlotResolver>,
 }
 
 impl ApiRuntimeServices {
     pub fn new(
+        provider_host: Arc<RwLock<ProviderHost>>,
+        capability_host: Arc<RwLock<CapabilityHost>>,
+        data_source_host: Arc<RwLock<DataSourceHost>>,
+        model_provider_extension_graph: Arc<
+            plugin_framework::extension_bus::EffectiveExtensionGraph,
+        >,
+    ) -> Self {
+        Self {
+            provider_host,
+            capability_host,
+            data_source_host,
+            data_model_template_catalog:
+                runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
+            model_provider_slot_resolver: Some(ModelProviderSlotResolver::new(
+                model_provider_extension_graph,
+            )),
+        }
+    }
+
+    /// Explicit escape hatch for lightweight and legacy test states.
+    /// Production boot must use [`Self::new`] with the published Extension Bus graph.
+    #[doc(hidden)]
+    pub fn new_without_model_provider_extension_graph_for_tests(
         provider_host: Arc<RwLock<ProviderHost>>,
         capability_host: Arc<RwLock<CapabilityHost>>,
         data_source_host: Arc<RwLock<DataSourceHost>>,
@@ -68,7 +98,16 @@ impl ApiRuntimeServices {
             data_source_host,
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
+            model_provider_slot_resolver: None,
         }
+    }
+
+    pub fn model_provider_extension_graph(
+        &self,
+    ) -> Option<&Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>> {
+        self.model_provider_slot_resolver
+            .as_ref()
+            .map(ModelProviderSlotResolver::graph_arc)
     }
 
     pub fn data_model_template_catalog(
@@ -206,7 +245,8 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
-        self.ensure_provider_loaded(installation).await
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await
     }
 
     async fn validate_provider(
@@ -214,10 +254,11 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<Value> {
-        self.ensure_provider_loaded(installation).await?;
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await?;
         let operation = {
             let host = self.services.provider_host.read().await;
-            host.validate_operation(&installation.plugin_id, provider_config)
+            host.validate_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
         operation
@@ -231,10 +272,11 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<Vec<ProviderModelDescriptor>> {
-        self.ensure_provider_loaded(installation).await?;
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await?;
         let operation = {
             let host = self.services.provider_host.read().await;
-            host.list_models_operation(&installation.plugin_id, provider_config)
+            host.list_models_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
         operation
@@ -248,10 +290,11 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         provider_config: Value,
     ) -> anyhow::Result<ProviderBalanceResult> {
-        self.ensure_provider_loaded(installation).await?;
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await?;
         let operation = {
             let host = self.services.provider_host.read().await;
-            host.get_balance_operation(&installation.plugin_id, provider_config)
+            host.get_balance_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
         operation
@@ -265,14 +308,16 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         input: ProviderCountTokensInput,
     ) -> anyhow::Result<ProviderCountTokensResult> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        binding.require_provider_code(&input.as_invocation().provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
         let operation_name = "count_tokens";
-        trace_provider_operation_boundary(installation, operation_name, "start", "started");
+        trace_provider_operation_boundary(&binding, operation_name, "start", "started");
         let result = async {
-            self.ensure_provider_loaded(installation).await?;
+            self.ensure_provider_loaded(&binding).await?;
             let operation = {
                 let host = self.services.provider_host.read().await;
-                host.count_tokens_operation(&installation.plugin_id, input)
+                host.count_tokens_operation(&binding.plugin_id, input)
                     .map_err(anyhow::Error::new)
             };
             match operation {
@@ -285,7 +330,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         }
         .await;
         trace_provider_operation_boundary(
-            installation,
+            &binding,
             operation_name,
             "end",
             if result.is_ok() {
@@ -303,11 +348,13 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderCompactResult> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
-        self.ensure_provider_loaded(installation).await?;
+        self.ensure_provider_loaded(&binding).await?;
         let operation = {
             let host = self.services.provider_host.read().await;
-            host.compact_operation(&installation.plugin_id, input)
+            host.compact_operation(&binding.plugin_id, input)
                 .map_err(anyhow::Error::new)
         };
         let result = match operation {
@@ -326,14 +373,16 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         input: ProviderInvocationInput,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
         let operation_name = "invoke_stream";
-        trace_provider_operation_boundary(installation, operation_name, "start", "started");
+        trace_provider_operation_boundary(&binding, operation_name, "start", "started");
         let result = async {
-            self.ensure_provider_loaded(installation).await?;
+            self.ensure_provider_loaded(&binding).await?;
             let operation = {
                 let host = self.services.provider_host.read().await;
-                host.invoke_stream_operation(&installation.plugin_id, input)
+                host.invoke_stream_operation(&binding.plugin_id, input)
                     .map_err(map_provider_framework_error)
             };
             match operation {
@@ -349,7 +398,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         }
         .await;
         trace_provider_operation_boundary(
-            installation,
+            &binding,
             operation_name,
             "end",
             if result.is_ok() {
@@ -368,18 +417,20 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         input: ProviderInvocationInput,
         live_events: Option<ProviderLiveEventSenders>,
     ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        binding.require_provider_code(&input.provider_code)?;
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
         let operation_name = "invoke_stream_with_live_events";
-        trace_provider_operation_boundary(installation, operation_name, "start", "started");
+        trace_provider_operation_boundary(&binding, operation_name, "start", "started");
         let result = async {
-            self.ensure_provider_loaded(installation).await?;
+            self.ensure_provider_loaded(&binding).await?;
             let operation = {
                 let host = self.services.provider_host.read().await;
                 let (required_live_events, diagnostic_live_events) = live_events
                     .map(|senders| (Some(senders.required), Some(senders.diagnostic)))
                     .unwrap_or((None, None));
                 host.invoke_stream_with_live_events_operation(
-                    &installation.plugin_id,
+                    &binding.plugin_id,
                     input,
                     required_live_events,
                     diagnostic_live_events,
@@ -399,7 +450,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         }
         .await;
         trace_provider_operation_boundary(
-            installation,
+            &binding,
             operation_name,
             "end",
             if result.is_ok() {
@@ -414,20 +465,20 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 }
 
 fn trace_provider_operation_boundary(
-    installation: &domain::LocalPluginInstallationRecord,
+    binding: &ModelProviderSlotBinding,
     operation: &'static str,
     phase: &'static str,
     status: &'static str,
 ) {
-    let package_sha256 = installation
-        .expected_checksum
+    let package_sha256 = binding
+        .artifact_checksum
         .as_deref()
         .unwrap_or("")
         .trim_start_matches("sha256:");
     info!(
         operation = %operation,
-        provider_code = %installation.provider_code,
-        installation_id = %installation.id,
+        provider_code = %binding.provider_code,
+        installation_id = %binding.installation_id,
         package_sha256 = %package_sha256,
         phase = %phase,
         status = %status,
@@ -974,30 +1025,38 @@ impl ApiProviderRuntime {
             .map(|tracker| tracker.start(application_id, kind))
     }
 
-    async fn ensure_provider_loaded(
+    fn resolve_model_provider_binding(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<ModelProviderSlotBinding> {
+        match self.services.model_provider_slot_resolver.as_ref() {
+            Some(resolver) => resolver.resolve(installation),
+            None => ModelProviderSlotBinding::legacy_for_tests(installation),
+        }
+    }
+
+    async fn ensure_provider_loaded(
+        &self,
+        binding: &ModelProviderSlotBinding,
     ) -> anyhow::Result<()> {
         let ensure_loaded_started = std::time::Instant::now();
         let mut host = self.services.provider_host.write().await;
-        let source_identity = provider_source_identity(installation);
-        let eligibility = legacy_manifest_eligibility(installation)?;
-        let result = match eligibility.as_ref() {
+        let result = match binding.legacy_manifest_eligibility() {
             Some(eligibility) => host.load_legacy_installed_if_needed(
-                &installation.plugin_id,
-                required_local_path(installation)?,
-                Some(source_identity.as_str()),
+                &binding.plugin_id,
+                binding.package_root(),
+                Some(binding.source_identity.as_str()),
                 eligibility,
             ),
             None => host.load_if_needed(
-                &installation.plugin_id,
-                required_local_path(installation)?,
-                Some(source_identity.as_str()),
+                &binding.plugin_id,
+                binding.package_root(),
+                Some(binding.source_identity.as_str()),
             ),
         }
         .map_err(map_provider_framework_error);
         tracing::debug!(
-            plugin_id = %installation.plugin_id,
+            plugin_id = %binding.plugin_id,
             provider_ensure_loaded_ms = ensure_loaded_started.elapsed().as_millis() as u64,
             "provider ensure_loaded finished"
         );
@@ -1111,20 +1170,6 @@ fn legacy_manifest_eligibility(
         expected_versioned_plugin_id: installation.plugin_id.clone(),
         expected_raw_manifest_fingerprint: fingerprint,
     }))
-}
-
-fn provider_source_identity(installation: &domain::LocalPluginInstallationRecord) -> String {
-    format!(
-        "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
-        installation.id,
-        installation.expected_checksum.as_deref().unwrap_or(""),
-        installation
-            .artifact
-            .manifest_fingerprint
-            .as_deref()
-            .unwrap_or(""),
-        installation.updated_at.unix_timestamp_nanos()
-    )
 }
 
 fn required_local_path(

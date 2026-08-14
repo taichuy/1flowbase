@@ -381,6 +381,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Arc::new(RwLock::new(
             plugin_runner::data_source_host::DataSourceHost::default(),
         )),
+        Arc::clone(&extension_graph),
     ));
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
@@ -533,6 +534,12 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let api_runtime_profile = Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?);
     let extension_boot_snapshot =
         Arc::new(extension_bus::ExtensionBootSnapshot::new(extension_graph));
+    if !provider_runtime
+        .model_provider_extension_graph()
+        .is_some_and(|graph| Arc::ptr_eq(graph, extension_boot_snapshot.graph_arc()))
+    {
+        anyhow::bail!("model provider slot resolver must use the published extension graph");
+    }
 
     let state = Arc::new(ApiState {
         #[cfg(test)]
