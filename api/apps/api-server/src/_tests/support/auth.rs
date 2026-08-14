@@ -303,6 +303,7 @@ async fn test_state_with_runtime_profile_state(
             settings_feature_registry,
             console_operation_registry,
             infrastructure,
+            extension_boot_snapshot: None,
             console_surface_registry: Arc::new(
                 crate::console_surface_registry::ConsoleSurfaceRegistry::default(),
             ),

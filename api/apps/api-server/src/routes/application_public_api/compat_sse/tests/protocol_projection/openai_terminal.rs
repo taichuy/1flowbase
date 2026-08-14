@@ -111,6 +111,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
+        extension_boot_snapshot: base_state.extension_boot_snapshot.clone(),
         console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),
         runtime_engine: base_state.runtime_engine.clone(),

@@ -14,12 +14,13 @@ use storage_durable::MainDurableStore;
 use time::OffsetDateTime;
 
 use crate::error_response::ApiError;
-use crate::host_infrastructure::HostInfrastructureRegistry;
 use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
     config::ApiConfig,
     console_surface_registry::ConsoleSurfaceRegistry,
+    extension_bus::ExtensionBootSnapshot,
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
+    host_infrastructure::HostInfrastructureRegistry,
     routes::console_route_assembly::{
         compile_migrated_console_operation_registry, migrated_core_console_route_assembly,
         ConsoleRouteAssembly,
@@ -292,6 +293,8 @@ pub struct ApiState {
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
     pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
+    /// Present on production boot; lightweight test states may omit the production graph.
+    pub extension_boot_snapshot: Option<Arc<ExtensionBootSnapshot>>,
     pub console_surface_registry: Arc<ConsoleSurfaceRegistry>,
     pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     pub runtime_engine: Arc<RuntimeEngine>,

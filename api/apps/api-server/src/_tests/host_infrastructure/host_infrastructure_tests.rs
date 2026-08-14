@@ -47,7 +47,7 @@ async fn compiled_cache_winner_activates_factory_and_publishes_trait_service() {
         Vec::new(),
     )
     .unwrap();
-    let graph = assembly.compile_graph().unwrap();
+    let graph = std::sync::Arc::new(assembly.compile_graph().unwrap());
     let manifests = assembly.into_host_extension_manifests();
     let host_extensions =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
@@ -92,7 +92,7 @@ fn missing_cache_factory_fails_before_registry_is_returned() {
         Vec::new(),
     )
     .unwrap();
-    let graph = assembly.compile_graph().unwrap();
+    let graph = std::sync::Arc::new(assembly.compile_graph().unwrap());
     let manifests = assembly.into_host_extension_manifests();
     let host_extensions =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
@@ -101,15 +101,22 @@ fn missing_cache_factory_fails_before_registry_is_returned() {
         .unwrap();
     let factories = crate::host_infrastructure::CacheStoreActivationFactoryRegistry::default();
 
-    let error = crate::host_infrastructure::build_local_host_infrastructure_from_host_extensions_with_cache_factories(
+    let activation = crate::host_infrastructure::build_local_host_infrastructure_from_host_extensions_with_cache_factories(
         &host_extensions,
         &graph,
         &factories,
-    )
-    .err()
-    .unwrap();
+    );
+    let (error, published_snapshot) = match activation {
+        Ok(_) => (
+            None,
+            Some(crate::extension_bus::ExtensionBootSnapshot::new(graph)),
+        ),
+        Err(error) => (Some(error), None),
+    };
 
+    assert!(published_snapshot.is_none());
     assert!(error
+        .unwrap()
         .to_string()
         .contains("no cache-store activation factory registered for winner"));
 }

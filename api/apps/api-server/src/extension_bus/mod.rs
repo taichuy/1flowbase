@@ -1,5 +1,9 @@
+mod boot_snapshot;
 mod input_assembly;
 
+pub use boot_snapshot::{
+    EffectiveExtensionPlan, ExtensionBootSnapshot, EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,
+};
 pub(crate) use input_assembly::infrastructure_provider_contribution_id;
 pub use input_assembly::{
     assemble_extension_graph_input, ExtensionGraphInputAssembly, ModuleActivationFact,

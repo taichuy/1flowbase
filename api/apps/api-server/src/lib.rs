@@ -292,7 +292,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         extension_bus::DEFAULT_PLUGIN_SET_PATH,
         Vec::new(),
     )?;
-    let extension_graph = extension_assembly.compile_graph()?;
+    let extension_graph = Arc::new(extension_assembly.compile_graph()?);
     let builtin_host_extensions = extension_assembly.into_host_extension_manifests();
     let mut host_extension_registry =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
@@ -530,6 +530,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await
         .map(Arc::new),
     )?;
+    let api_runtime_profile = Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?);
+    let extension_boot_snapshot =
+        Arc::new(extension_bus::ExtensionBootSnapshot::new(extension_graph));
 
     let state = Arc::new(ApiState {
         #[cfg(test)]
@@ -541,13 +544,14 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,
+        extension_boot_snapshot: Some(extension_boot_snapshot),
         console_surface_registry: compiled_console_plan.console_surface_registry.clone(),
         file_storage_registry,
         runtime_engine,
         provider_runtime,
         process_started_at,
         runtime_activity,
-        api_runtime_profile: Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?),
+        api_runtime_profile,
         plugin_runner_system: Arc::new(HttpPluginRunnerSystemClient::new(
             config.plugin_runner_internal_base_url.clone(),
         )),

@@ -54,7 +54,7 @@ pub fn build_local_host_infrastructure() -> HostInfrastructureRegistry {
 
 pub fn build_local_host_infrastructure_from_host_extensions(
     host_extensions: &HostExtensionRegistry,
-    graph: &EffectiveExtensionGraph,
+    graph: &Arc<EffectiveExtensionGraph>,
 ) -> Result<HostInfrastructureRegistry> {
     let factories = builtin_cache_store_activation_factories()?;
     build_local_host_infrastructure_from_host_extensions_with_cache_factories(
@@ -66,10 +66,10 @@ pub fn build_local_host_infrastructure_from_host_extensions(
 
 pub(crate) fn build_local_host_infrastructure_from_host_extensions_with_cache_factories(
     host_extensions: &HostExtensionRegistry,
-    graph: &EffectiveExtensionGraph,
+    graph: &Arc<EffectiveExtensionGraph>,
     cache_store_factories: &CacheStoreActivationFactoryRegistry,
 ) -> Result<HostInfrastructureRegistry> {
-    let activated_cache_store = cache_store_factories.activate(graph, host_extensions)?;
+    let activated_cache_store = cache_store_factories.activate(graph.as_ref(), host_extensions)?;
     let mut registry = HostInfrastructureRegistry::default();
     for contract in LOCAL_INFRASTRUCTURE_CONTRACTS {
         if *contract == CACHE_STORE_CONTRACT_ID {
