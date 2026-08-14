@@ -90,7 +90,7 @@ pub type HostInfrastructureProvidersViewDefinition = InterfaceOperationDefinitio
     HostInfrastructureProvidersViewOutputSchema,
 >;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct InterfaceOperationBinding<I, O>
 where
     I: InterfaceOperationSchema,
@@ -175,7 +175,7 @@ impl
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct InterfaceOperationCatalog {
     providers_view: HostInfrastructureProvidersViewBinding,
 }

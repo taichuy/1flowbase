@@ -10,7 +10,7 @@ use crate::routes::host_infrastructure::interface_operation::InterfaceOperationC
 
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
     interface_operations: Option<InterfaceOperationCatalog>,

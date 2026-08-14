@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import {
@@ -89,6 +89,8 @@ export function useFrontstagePageCanvasIsolatedPreparations({
   catalogEntries,
   fetchAsset = fetchIsolatedAsset
 }: UseFrontstagePageCanvasIsolatedPreparationsInput): UseFrontstagePageCanvasIsolatedPreparationsResult {
+  const stableCatalogEntries =
+    useSemanticallyStableCatalogEntries(catalogEntries);
   const requests = useMemo(
     () =>
       createFrontstageIsolatedPreparationRequests({ workspaceId, renderPlan }),
@@ -112,7 +114,7 @@ export function useFrontstagePageCanvasIsolatedPreparations({
     if (
       !actorId ||
       actorWorkspaceId !== workspaceId ||
-      catalogEntries === null ||
+      stableCatalogEntries === null ||
       requests.length === 0
     ) {
       setState({ owner: requests, ...emptyCurrentResult });
@@ -123,7 +125,7 @@ export function useFrontstagePageCanvasIsolatedPreparations({
     void Promise.all(
       requests.map(async (request) => {
         try {
-          const catalogEntry = catalogEntries?.find(
+          const catalogEntry = stableCatalogEntries?.find(
             (entry) =>
               entry.installationId === request.installationId &&
               entry.providerCode === request.providerCode &&
@@ -166,15 +168,31 @@ export function useFrontstagePageCanvasIsolatedPreparations({
   }, [
     actorId,
     actorWorkspaceId,
-    catalogEntries,
     emptyCurrentResult,
     fetchAsset,
     identityErrorsByBlockId,
     requests,
+    stableCatalogEntries,
     workspaceId
   ]);
 
   return state.owner === requests ? state : emptyCurrentResult;
+}
+
+function useSemanticallyStableCatalogEntries(
+  entries: readonly NormalizedFrontstageBlockCatalogEntry[] | null | undefined
+): readonly NormalizedFrontstageBlockCatalogEntry[] | null | undefined {
+  const identity =
+    entries === undefined
+      ? 'undefined'
+      : entries === null
+        ? 'null'
+        : JSON.stringify(entries.map((entry) => entry.raw));
+  const snapshot = useRef({ identity, entries });
+  if (snapshot.current.identity !== identity) {
+    snapshot.current = { identity, entries };
+  }
+  return snapshot.current.entries;
 }
 
 function createIsolatedIdentityErrors(
