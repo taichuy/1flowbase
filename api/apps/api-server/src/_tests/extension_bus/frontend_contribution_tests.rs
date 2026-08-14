@@ -220,6 +220,38 @@ fn boot_point_and_valid_workspace_assignment_produce_one_scoped_typed_binding() 
 }
 
 #[test]
+fn isolated_iframe_projects_independent_realm_and_narrow_permission() {
+    let assembly = assembly();
+    let graph = Arc::new(assembly.compile_graph().unwrap());
+    let resolver = FrontendContributionResolver::compile(graph).unwrap();
+    let workspace_id = Uuid::now_v7();
+    let (mut isolated, root) = candidate(workspace_id);
+    isolated.catalog_entry.runtime = "isolated_iframe".to_string();
+
+    let binding = match resolver.resolve(isolated) {
+        FrontendContributionResolution::Active(binding) => binding,
+        FrontendContributionResolution::Disabled(receipt) => {
+            panic!("isolated candidate disabled: {:?}", receipt.reason)
+        }
+    };
+
+    assert_eq!(
+        binding.runtime_kind,
+        FrontendContributionRuntimeKind::Isolated
+    );
+    assert_eq!(
+        binding.isolation_requirement,
+        FrontendContributionIsolationRequirement::IndependentRealm
+    );
+    assert_eq!(
+        binding.requested_permissions,
+        vec![FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION]
+    );
+    assert_eq!(binding.requested_permissions, binding.granted_permissions);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn invalid_runtime_facts_and_workspace_scope_fail_closed() {
     let assembly = assembly();
     let graph = Arc::new(assembly.compile_graph().unwrap());

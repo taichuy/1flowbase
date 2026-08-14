@@ -29,6 +29,7 @@ import {
 import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
+import { useFrontstagePageCanvasIsolatedPreparations } from '../hooks/use-frontstage-page-canvas-isolated-preparations';
 import { useFrontstageRuntimeAssembly } from '../hooks/use-frontstage-runtime-assembly';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
 import {
@@ -389,6 +390,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null,
       externalNpm: blockCatalog.externalNpm,
       demandsByBlockId: runtimeDemandsByBlockId
+    });
+  const pageCanvasIsolatedPreparations =
+    useFrontstagePageCanvasIsolatedPreparations({
+      actorId: actor?.id,
+      actorWorkspaceId: actor?.current_workspace_id,
+      workspaceId,
+      renderPlan: isBlockRuntimeRoute ? null : activePageRenderPlan,
+      catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null
     });
   const assemblyPreparations = useFrontstageRuntimeAssembly({
     assembly: blockRuntimeAssembly,
@@ -1073,6 +1082,16 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           isBlockRuntimeRoute
             ? assemblyPreparations
             : pageCanvasNativePreparations.preparations
+        }
+        isolatedRuntimePreparations={
+          isBlockRuntimeRoute
+            ? undefined
+            : pageCanvasIsolatedPreparations.preparations
+        }
+        isolatedRuntimePreparationErrorsByBlockId={
+          isBlockRuntimeRoute
+            ? undefined
+            : pageCanvasIsolatedPreparations.errorsByBlockId
         }
         runtimeContext={nativeBlockRuntimeContext}
         nativeContextHost={nativeContextHost}

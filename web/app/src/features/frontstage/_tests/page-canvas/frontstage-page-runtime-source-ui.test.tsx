@@ -20,6 +20,9 @@ const blockCodeHook = vi.hoisted(() => ({
 const nativePreparationsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn()
 }));
+const isolatedPreparationsHook = vi.hoisted(() => ({
+  useFrontstagePageCanvasIsolatedPreparations: vi.fn()
+}));
 const blockCodeApi = vi.hoisted(() => ({
   fetchFrontstageBlockCode: vi.fn(),
   frontstageBlockCodeQueryKey: vi.fn(
@@ -45,6 +48,10 @@ vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => nativePreparationsHook
+);
+vi.mock(
+  '../../hooks/use-frontstage-page-canvas-isolated-preparations',
+  () => isolatedPreparationsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
 
@@ -221,6 +228,9 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       save: vi.fn()
     });
     mockNativePreparations();
+    isolatedPreparationsHook.useFrontstagePageCanvasIsolatedPreparations.mockReturnValue(
+      { preparations: [], errorsByBlockId: {} }
+    );
     blockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
       pageId: 'page-1',
       codeRef: 'hero-code',
@@ -337,5 +347,77 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         })
       );
     });
+  });
+
+  test('passes graph-backed isolated render requests into production preparation', async () => {
+    const content = createCatalogMatchedPageContent();
+    content.document.payload = {
+      blocks: [
+        {
+          id: 'hero',
+          renderer_version: 'v1',
+          catalog: {
+            providerCode: 'official',
+            installationId: 'installation-1'
+          },
+          contribution: {
+            pluginId: 'official.blocks',
+            pluginVersion: '1.0.0',
+            code: 'hero'
+          },
+          runtime: {
+            kind: 'isolated_iframe',
+            entry: '@official/isolated-hero'
+          },
+          layout: { order: 0, region: 'main' }
+        }
+      ]
+    };
+    const catalogEntry = createCatalogEntry();
+    catalogEntry.runtimeKind = 'isolated_iframe';
+    catalogEntry.raw = {
+      runtime: 'isolated_iframe',
+      runtime_kind: 'isolated'
+    } as NormalizedFrontstageBlockCatalogEntry['raw'];
+    blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
+      items: [catalogEntry],
+      diagnostics: [],
+      loading: false,
+      error: null,
+      isSuccess: true
+    });
+
+    render(
+      <AppProviders>
+        <FrontStagePage
+          workspaceId="workspace-1"
+          pageId="page-1"
+          initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
+          pageContent={content}
+        />
+      </AppProviders>
+    );
+
+    await waitFor(() =>
+      expect(
+        isolatedPreparationsHook.useFrontstagePageCanvasIsolatedPreparations
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: 'actor-1',
+          actorWorkspaceId: 'workspace-1',
+          workspaceId: 'workspace-1',
+          catalogEntries: [catalogEntry],
+          renderPlan: expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                blockId: 'hero',
+                renderMode: 'isolated_iframe',
+                canMountIsolatedIframe: true
+              })
+            ]
+          })
+        })
+      )
+    );
   });
 });

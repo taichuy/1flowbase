@@ -1,9 +1,11 @@
 import {
   isIsolatedFrontendBlockCapability,
-  type IsolatedFrontendBlockCapability,
+  isIsolatedFrontendBlockOutputPublishRequest,
   type IsolatedFrontendBlockCapabilityRequest,
+  type IsolatedFrontendBlockCapabilityAck,
   type IsolatedFrontendBlockCapabilityResponse,
   type IsolatedFrontendBlockHostCommand,
+  type IsolatedFrontendBlockOutputPublishRequest,
   type IsolatedFrontendBlockProgram,
   type IsolatedFrontendBlockRealmEvent
 } from '@1flowbase/page-protocol';
@@ -20,12 +22,11 @@ export type IsolatedFrontendBlockRealmState =
   | 'failed'
   | 'terminated';
 
-export type IsolatedFrontendBlockCapabilityHandlers = Partial<
-  Record<
-    IsolatedFrontendBlockCapability,
-    (payload: unknown) => unknown | Promise<unknown>
-  >
->;
+export type IsolatedFrontendBlockCapabilityHandlers = Partial<{
+  'block.output.publish': (
+    payload: IsolatedFrontendBlockOutputPublishRequest
+  ) => void | Promise<void>;
+}>;
 
 export interface IsolatedFrontendBlockRealmOptions {
   capabilityHandlers?: IsolatedFrontendBlockCapabilityHandlers;
@@ -316,7 +317,16 @@ class BrowserIsolatedFrontendBlockRealm implements IsolatedFrontendBlockRealmHan
       );
       return;
     }
-    const handler = this.handlers[request.capability];
+    if (!isIsolatedFrontendBlockOutputPublishRequest(request.payload)) {
+      this.respondCapability(
+        request.requestId,
+        false,
+        undefined,
+        'capability_denied'
+      );
+      return;
+    }
+    const handler = this.handlers['block.output.publish'];
     if (!handler) {
       this.respondCapability(
         request.requestId,
@@ -327,8 +337,10 @@ class BrowserIsolatedFrontendBlockRealm implements IsolatedFrontendBlockRealmHan
       return;
     }
     try {
-      const value = await handler(request.payload);
-      if (this.active) this.respondCapability(request.requestId, true, value);
+      await handler(request.payload);
+      if (this.active) {
+        this.respondCapability(request.requestId, true, { accepted: true });
+      }
     } catch {
       if (this.active) {
         this.respondCapability(
@@ -344,7 +356,7 @@ class BrowserIsolatedFrontendBlockRealm implements IsolatedFrontendBlockRealmHan
   private respondCapability(
     requestId: string,
     ok: boolean,
-    value?: unknown,
+    value?: IsolatedFrontendBlockCapabilityAck,
     error?: IsolatedFrontendBlockCapabilityResponse['error']
   ): void {
     this.post({

@@ -94,7 +94,7 @@ describe('isolated frontend block realm', () => {
   test('mounts, updates, defaults unknown capabilities to deny, and terminates idempotently', async () => {
     const root = document.createElement('div');
     document.body.append(root);
-    const publish = vi.fn(() => ({ accepted: true }));
+    const publish = vi.fn();
     const realm = prepareIsolatedFrontendBlockRealm(
       { source: PROGRAM_SOURCE, props: { label: 'first' } },
       { capabilityHandlers: { 'block.output.publish': publish } }
@@ -135,15 +135,29 @@ describe('isolated frontend block realm', () => {
       type: 'capability_request',
       requestId: 'published',
       capability: 'block.output.publish',
-      payload: { port: 'result', value: 42 }
+      payload: { output: 'result', value: 42 }
     });
     await Promise.resolve();
-    expect(publish).toHaveBeenCalledWith({ port: 'result', value: 42 });
+    expect(publish).toHaveBeenCalledWith({ output: 'result', value: 42 });
     expect(channel.port1.sent).toContainEqual({
       type: 'capability_response',
       requestId: 'published',
       ok: true,
       value: { accepted: true }
+    });
+
+    channel.port2.postMessage({
+      type: 'capability_request',
+      requestId: 'malformed',
+      capability: 'block.output.publish',
+      payload: { value: 43 }
+    });
+    expect(publish).toHaveBeenCalledOnce();
+    expect(channel.port1.sent).toContainEqual({
+      type: 'capability_response',
+      requestId: 'malformed',
+      ok: false,
+      error: 'capability_denied'
     });
 
     realm.update({ label: 'second' });

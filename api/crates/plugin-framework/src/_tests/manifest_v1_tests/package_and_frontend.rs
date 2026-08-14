@@ -516,6 +516,56 @@ block_contributions:
 }
 
 #[test]
+fn d5_p3_accepts_only_registered_native_and_isolated_frontend_runtimes() {
+    let isolated = parse_plugin_manifest(
+        r#"
+manifest_version: 1
+plugin_id: isolated_frontend_block@0.1.0
+version: 0.1.0
+publisher_namespace: acme
+vendor: acme
+display_name: Isolated Frontend Block
+description: isolated iframe contribution
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: capability_plugin
+execution_mode: declarative_only
+slot_codes: [frontend_block]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.capability/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/isolated-frontend-block
+block_contributions:
+  - contribution_code: isolated_chart
+    title: Isolated Chart
+    runtime: isolated_iframe
+    entry: "@acme/isolated-chart"
+    context_contract:
+      primitives: [data_record]
+      input_schema: { type: object }
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+    ui_capabilities: [responsive]
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(isolated.block_contributions[0].runtime, "isolated_iframe");
+}
+
+#[test]
 fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
     let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/capability-plugins/1flowbase/manifest.yaml");
@@ -720,7 +770,7 @@ block_contributions:
 
     assert!(invalid_runtime
         .to_string()
-        .contains("block_contributions[].runtime must be one of native_react"));
+        .contains("block_contributions[].runtime must be one of native_react, isolated_iframe"));
 
     let missing_entry = parse_plugin_manifest(
         r#"

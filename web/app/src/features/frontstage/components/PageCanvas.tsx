@@ -105,6 +105,7 @@ type PageCanvasProps = {
   isolatedRuntimePreparations?:
     | readonly PreparedFrontstageIsolatedContribution[]
     | null;
+  isolatedRuntimePreparationErrorsByBlockId?: Readonly<Record<string, Error>>;
   isolatedCapabilityHandlersByBlockId?: Readonly<
     Record<string, IsolatedFrontendBlockCapabilityHandlers>
   >;
@@ -160,6 +161,7 @@ type RenderPlanSlotProps = {
   item: FrontstageBlockRenderPlanItem;
   runtimePreparation?: FrontstageNativePreparationSnapshot | null;
   isolatedPreparation?: PreparedFrontstageIsolatedContribution | null;
+  isolatedPreparationError?: Error | null;
   isolatedCapabilityHandlers?: IsolatedFrontendBlockCapabilityHandlers;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
@@ -282,6 +284,28 @@ function IsolatedRuntimeSlotSurface({
       ) : (
         <BlockUiLoadingShell />
       )}
+    </div>
+  );
+}
+
+function IsolatedRuntimeErrorSurface({
+  error,
+  contentViewportStyle
+}: {
+  error: Error;
+  contentViewportStyle: CSSProperties;
+}) {
+  return (
+    <div
+      className="frontstage-native-block-state frontstage-native-block-state--error"
+      style={contentViewportStyle}
+    >
+      <Alert
+        type="error"
+        showIcon
+        title={i18nText('frontstage', 'auto.runtime_preview_unavailable')}
+        description={error.message}
+      />
     </div>
   );
 }
@@ -512,6 +536,7 @@ function RenderPlanSlot({
   item,
   runtimePreparation,
   isolatedPreparation,
+  isolatedPreparationError,
   isolatedCapabilityHandlers,
   signalCoordinator,
   runtimeContext,
@@ -630,6 +655,14 @@ function RenderPlanSlot({
     }
 
     if (item.renderMode === 'isolated_iframe') {
+      if (isolatedPreparationError) {
+        return (
+          <IsolatedRuntimeErrorSurface
+            error={isolatedPreparationError}
+            contentViewportStyle={contentViewportStyle}
+          />
+        );
+      }
       return isolatedPreparation ? (
         <IsolatedRuntimeSlotSurface
           preparation={isolatedPreparation}
@@ -732,6 +765,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   onRetry,
   runtimePreparations,
   isolatedRuntimePreparations,
+  isolatedRuntimePreparationErrorsByBlockId,
   isolatedCapabilityHandlersByBlockId,
   runtimeContext,
   nativeContextHost,
@@ -1042,6 +1076,9 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                       (preparation) =>
                         preparation.blockInstanceId === item.blockId
                     ) ?? null
+                  }
+                  isolatedPreparationError={
+                    isolatedRuntimePreparationErrorsByBlockId?.[item.blockId]
                   }
                   isolatedCapabilityHandlers={
                     isolatedCapabilityHandlersByBlockId?.[item.blockId]

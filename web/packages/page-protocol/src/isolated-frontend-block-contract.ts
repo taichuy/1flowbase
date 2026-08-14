@@ -19,11 +19,20 @@ export interface IsolatedFrontendBlockCapabilityRequest {
   payload: unknown;
 }
 
+export interface IsolatedFrontendBlockOutputPublishRequest {
+  output: string;
+  value: unknown;
+}
+
+export interface IsolatedFrontendBlockCapabilityAck {
+  accepted: true;
+}
+
 export interface IsolatedFrontendBlockCapabilityResponse {
   type: 'capability_response';
   requestId: string;
   ok: boolean;
-  value?: unknown;
+  value?: IsolatedFrontendBlockCapabilityAck;
   error?: 'capability_denied' | 'capability_failed';
 }
 
@@ -54,4 +63,19 @@ export function isIsolatedFrontendBlockCapability(
   return ISOLATED_FRONTEND_BLOCK_CAPABILITIES.some(
     (capability) => capability === value
   );
+}
+
+export function isIsolatedFrontendBlockOutputPublishRequest(
+  value: unknown
+): value is IsolatedFrontendBlockOutputPublishRequest {
+  return (
+    isRecord(value) &&
+    typeof value.output === 'string' &&
+    /^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/u.test(value.output) &&
+    Object.prototype.hasOwnProperty.call(value, 'value')
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -58,7 +58,7 @@ const ISOLATED_FIXTURE_SOURCE = `globalThis.__oneflowbaseIsolatedBlock = {
     const timer = setInterval(() => {
       tick += 1;
       root.dataset.tick = String(tick);
-      capabilities.request('block.output.publish', { tick }).catch(() => {});
+      capabilities.request('block.output.publish', { output: 'tick', value: tick }).catch(() => {});
     }, 25);
     return {
       update(nextProps) { root.dataset.label = String(nextProps.label); },
@@ -641,9 +641,8 @@ function NativeReactTrialFixture() {
       isolated: {
         'block.output.publish': (payload) => {
           fixtureCounters.isolatedMessages += 1;
-          fixtureCounters.isolatedLastTick = readIsolatedTick(payload);
+          fixtureCounters.isolatedLastTick = readIsolatedTick(payload.value);
           syncFixtureCounters();
-          return { accepted: true };
         }
       }
     }),

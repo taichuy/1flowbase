@@ -340,6 +340,11 @@ fn runtime_contract(
             FrontendContributionIsolationRequirement::TrustedHostRealm,
             FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
         )),
+        "isolated_iframe" => Some((
+            FrontendContributionRuntimeKind::Isolated,
+            FrontendContributionIsolationRequirement::IndependentRealm,
+            FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+        )),
         _ => None,
     }
 }

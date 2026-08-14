@@ -58,6 +58,24 @@ describe('PageCanvas isolated frontend contributions', () => {
       screen.queryByTestId('mounted-isolated-contribution-isolated-a')
     ).not.toBeInTheDocument();
   });
+
+  test('uses the existing runtime error surface for preparation failures', () => {
+    render(
+      <PageCanvas
+        content={createFrontstagePageContentFixture()}
+        runtimeBlocks={[isolatedBlock('isolated-a')]}
+        renderBlockIds={['isolated-a']}
+        isolatedRuntimePreparationErrorsByBlockId={{
+          'isolated-a': new Error('isolated binding failed')
+        }}
+      />
+    );
+
+    expect(screen.getByText('isolated binding failed')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('mounted-isolated-contribution-isolated-a')
+    ).not.toBeInTheDocument();
+  });
 });
 
 function isolatedBlock(id: string): FrontstageBlockInstance {

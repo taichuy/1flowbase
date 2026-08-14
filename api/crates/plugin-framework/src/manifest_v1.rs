@@ -665,7 +665,7 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
     Ok(())
 }
 
-const FRONTEND_BLOCK_ALLOWED_RUNTIMES: &[&str] = &["native_react"];
+const FRONTEND_BLOCK_ALLOWED_RUNTIMES: &[&str] = &["native_react", "isolated_iframe"];
 const FRONTEND_BLOCK_ALLOWED_PRIMITIVES: &[&str] = &[
     "text",
     "image",

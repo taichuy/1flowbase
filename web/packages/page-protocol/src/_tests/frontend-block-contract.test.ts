@@ -12,6 +12,7 @@ import {
   isFrontendBlockRuntime,
   isFrontendBlockUiCapability,
   isIsolatedFrontendBlockCapability,
+  isIsolatedFrontendBlockOutputPublishRequest,
   normalizeFrontendBlockContextPrimitive,
   normalizeFrontendBlockContextPrimitives,
   normalizeFrontendBlockRuntime,
@@ -119,6 +120,21 @@ describe('frontend block contract vocabulary', () => {
       true
     );
     expect(isIsolatedFrontendBlockCapability('host.fetch')).toBe(false);
+    expect(
+      isIsolatedFrontendBlockOutputPublishRequest({
+        output: 'result.total',
+        value: 42
+      })
+    ).toBe(true);
+    expect(isIsolatedFrontendBlockOutputPublishRequest({ value: 42 })).toBe(
+      false
+    );
+    expect(
+      isIsolatedFrontendBlockOutputPublishRequest({
+        output: 'invalid output',
+        value: 42
+      })
+    ).toBe(false);
   });
 
   test('normalizes single contract values without widening unknown strings', () => {

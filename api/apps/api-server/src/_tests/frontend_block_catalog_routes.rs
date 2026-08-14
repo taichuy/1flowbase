@@ -677,3 +677,52 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
         Some("text")
     );
 }
+
+#[tokio::test]
+async fn d5_p3_catalog_projects_isolated_runtime_contract_without_new_dto_fields() {
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
+    let installation_id = seed_frontend_block(&database_url, true).await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    sqlx::query(
+        "update frontend_block_catalog set runtime = 'isolated_iframe', entry = '@acme/native-components' where installation_id = $1",
+    )
+    .bind(installation_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let isolated = payload["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["contribution_code"] == "hero_banner")
+        .unwrap();
+    assert_eq!(isolated["runtime"], "isolated_iframe");
+    assert_eq!(isolated["runtime_kind"], "isolated");
+    assert_eq!(isolated["execution_kind"], "ui_mount");
+    assert_eq!(isolated["isolation_requirement"], "independent_realm");
+    assert_eq!(isolated["lifecycle_kind"], "workspace_assignment");
+    assert_eq!(
+        isolated["requested_permissions"],
+        json!(["frontend-block.ui-mount.isolated-realm"])
+    );
+    assert_eq!(
+        isolated["requested_permissions"],
+        isolated["granted_permissions"]
+    );
+}
