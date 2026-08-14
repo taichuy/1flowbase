@@ -4,7 +4,12 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
-    frontend_block_catalog::{FrontendBlockCatalogService, ListFrontendBlockCatalogQuery},
+    frontend_block_catalog::{
+        FrontendBlockCatalogService, ListFrontendBlockCatalogQuery,
+        FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID, FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+        FRONTEND_BLOCK_CONTRIBUTION_POINT_ID, FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+        FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
+    },
     js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery},
     node_contribution::{
         ApplicationNodeAuthoringStatus, ApplicationNodeCatalogService,
@@ -12,7 +17,7 @@ use control_plane::{
     },
     ports::{
         AuthRepository, FrontendBlockCatalogRepository, JsDependencyRepository,
-        NodeContributionRepository, ReplaceInstallationFrontendBlocksInput,
+        NodeContributionRepository, PluginRepository, ReplaceInstallationFrontendBlocksInput,
         ReplaceInstallationJsDependenciesInput, RoleConsolePolicyReader,
     },
 };
@@ -21,6 +26,56 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::plugin_management::support::actor_with_permissions;
+
+fn frontend_contribution_graph() -> Arc<plugin_framework::extension_bus::EffectiveExtensionGraph> {
+    use std::collections::BTreeSet;
+
+    use plugin_framework::extension_bus::{
+        compile_extension_graph, Cardinality, ContractDescriptor, DeliverySemantics,
+        ExtensionBusVersion, ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind,
+        FailureSemantics, LifecycleSemantics, ModuleActivationDeclaration, ModuleDescriptor,
+        ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy, PermissionCode,
+        ScopeSemantics,
+    };
+
+    Arc::new(
+        compile_extension_graph(vec![ModuleDescriptor {
+            bus_version: ExtensionBusVersion::V1,
+            module_id: ModuleId::new("1flowbase.boot-core").unwrap(),
+            module_version: ModuleVersion::new("1").unwrap(),
+            module_kind: ModuleKind::BootCore,
+            activation: ModuleActivationDeclaration::Active,
+            dependencies: BTreeSet::new(),
+            granted_permissions: BTreeSet::new(),
+            extension_points: vec![ExtensionPointDescriptor {
+                point_id: ExtensionPointId::new(FRONTEND_BLOCK_CONTRIBUTION_POINT_ID).unwrap(),
+                owner_module_id: ModuleId::new("1flowbase.boot-core").unwrap(),
+                point_kind: ExtensionPointKind::Contribution,
+                contract: ContractDescriptor::new(
+                    FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID,
+                    FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+                )
+                .unwrap(),
+                scope: ScopeSemantics::Workspace,
+                cardinality: Cardinality::Many,
+                ordering: OrderingSemantics::Lexicographic,
+                failure: FailureSemantics::FailClosed,
+                delivery: DeliverySemantics::Synchronous,
+                lifecycle: LifecycleSemantics::WorkspaceAssignment,
+                allowed_permissions: [
+                    FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
+                    FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+                ]
+                .into_iter()
+                .map(|permission| PermissionCode::new(permission).unwrap())
+                .collect(),
+                override_policy: OverridePolicy::Sealed,
+            }],
+            contributions: Vec::new(),
+        }])
+        .unwrap(),
+    )
+}
 
 #[derive(Clone)]
 struct MemoryNodeContributionRepository {
@@ -182,6 +237,126 @@ impl FrontendBlockCatalogRepository for MemoryNodeContributionRepository {
         _node_id: &str,
         _workspace_id: Uuid,
     ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
+        Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl PluginRepository for MemoryNodeContributionRepository {
+    async fn upsert_installation(
+        &self,
+        _input: &control_plane::ports::UpsertPluginInstallationInput,
+    ) -> Result<domain::PluginInstallationRecord> {
+        unimplemented!()
+    }
+
+    async fn get_installation(
+        &self,
+        _installation_id: Uuid,
+    ) -> Result<Option<domain::PluginInstallationRecord>> {
+        Ok(None)
+    }
+
+    async fn list_installations(&self) -> Result<Vec<domain::PluginInstallationRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn upsert_plugin_package_catalog_projection(
+        &self,
+        _input: &control_plane::ports::UpsertPluginPackageCatalogProjectionInput,
+    ) -> Result<domain::PluginPackageCatalogProjectionRecord> {
+        unimplemented!()
+    }
+
+    async fn get_plugin_package_catalog_projection(
+        &self,
+        _installation_id: Uuid,
+    ) -> Result<Option<domain::PluginPackageCatalogProjectionRecord>> {
+        Ok(None)
+    }
+
+    async fn list_plugin_package_catalog_projections(
+        &self,
+    ) -> Result<Vec<domain::PluginPackageCatalogProjectionRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn delete_installation(&self, _installation_id: Uuid) -> Result<()> {
+        unimplemented!()
+    }
+
+    async fn list_pending_restart_host_extensions(
+        &self,
+    ) -> Result<Vec<domain::PluginInstallationRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn update_desired_state(
+        &self,
+        _input: &control_plane::ports::UpdatePluginDesiredStateInput,
+    ) -> Result<domain::PluginInstallationRecord> {
+        unimplemented!()
+    }
+
+    async fn upsert_artifact_instance(
+        &self,
+        _input: &control_plane::ports::UpsertPluginArtifactInstanceInput,
+    ) -> Result<domain::PluginArtifactInstanceRecord> {
+        unimplemented!()
+    }
+
+    async fn get_artifact_instance(
+        &self,
+        _node_id: &str,
+        _installation_id: Uuid,
+    ) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
+        Ok(None)
+    }
+
+    async fn list_artifact_instances(
+        &self,
+        _node_id: &str,
+    ) -> Result<Vec<domain::PluginArtifactInstanceRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn create_assignment(
+        &self,
+        _input: &control_plane::ports::CreatePluginAssignmentInput,
+    ) -> Result<domain::PluginAssignmentRecord> {
+        unimplemented!()
+    }
+
+    async fn list_assignments(
+        &self,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<domain::PluginAssignmentRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
+        Ok(Vec::new())
+    }
+
+    async fn create_task(
+        &self,
+        _input: &control_plane::ports::CreatePluginTaskInput,
+    ) -> Result<domain::PluginTaskRecord> {
+        unimplemented!()
+    }
+
+    async fn update_task_status(
+        &self,
+        _input: &control_plane::ports::UpdatePluginTaskStatusInput,
+    ) -> Result<domain::PluginTaskRecord> {
+        unimplemented!()
+    }
+
+    async fn get_task(&self, _task_id: Uuid) -> Result<Option<domain::PluginTaskRecord>> {
+        Ok(None)
+    }
+
+    async fn list_tasks(&self) -> Result<Vec<domain::PluginTaskRecord>> {
         Ok(Vec::new())
     }
 }
@@ -491,7 +666,8 @@ async fn ac_1281_frontend_blocks_policy_only_allows_without_legacy_grant() {
     )
     .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
 
-    FrontendBlockCatalogService::new(repository, "test-node")
+    FrontendBlockCatalogService::new(repository, "test-node", frontend_contribution_graph())
+        .unwrap()
         .list_frontend_blocks(ListFrontendBlockCatalogQuery {
             actor_user_id: Uuid::now_v7(),
         })
@@ -507,12 +683,17 @@ async fn ac_1281_frontend_blocks_legacy_only_does_not_authorize() {
         Vec::new(),
     );
 
-    assert!(FrontendBlockCatalogService::new(repository, "test-node")
-        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
-            actor_user_id: Uuid::now_v7(),
-        })
-        .await
-        .is_err());
+    assert!(FrontendBlockCatalogService::new(
+        repository,
+        "test-node",
+        frontend_contribution_graph()
+    )
+    .unwrap()
+    .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+        actor_user_id: Uuid::now_v7(),
+    })
+    .await
+    .is_err());
 }
 
 #[tokio::test]

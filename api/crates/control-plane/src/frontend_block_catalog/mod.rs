@@ -2,8 +2,22 @@ use anyhow::Result;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
+    sync::Arc,
 };
 use uuid::Uuid;
+
+mod frontend_contribution;
+
+pub use frontend_contribution::{
+    FrontendContributionAssetBinding, FrontendContributionAssetIntegrity,
+    FrontendContributionBinding, FrontendContributionCandidate, FrontendContributionDisableReason,
+    FrontendContributionDisabledReceipt, FrontendContributionExecutionKind,
+    FrontendContributionIsolationRequirement, FrontendContributionResolution,
+    FrontendContributionResolver, FrontendContributionRuntimeKind,
+    FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID, FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+    FRONTEND_BLOCK_CONTRIBUTION_POINT_ID, FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+    FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
+};
 
 use crate::{
     errors::ControlPlaneError,
@@ -317,23 +331,29 @@ fn component_matches(entry: &FrontendComponentCapability, search: &str) -> bool 
 
 #[derive(Debug, Clone)]
 pub struct FrontendBlockCatalogView {
-    pub entries: Vec<domain::FrontendBlockCatalogEntry>,
+    pub entries: Vec<FrontendContributionBinding>,
 }
 
 pub struct FrontendBlockCatalogService<R> {
     repository: R,
     node_id: String,
+    resolver: FrontendContributionResolver,
 }
 
 impl<R> FrontendBlockCatalogService<R>
 where
-    R: AuthRepository + FrontendBlockCatalogRepository + RoleConsolePolicyReader,
+    R: AuthRepository + FrontendBlockCatalogRepository + PluginRepository + RoleConsolePolicyReader,
 {
-    pub fn new(repository: R, node_id: impl Into<String>) -> Self {
-        Self {
+    pub fn new(
+        repository: R,
+        node_id: impl Into<String>,
+        graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+    ) -> Result<Self> {
+        Ok(Self {
             repository,
             node_id: node_id.into(),
-        }
+            resolver: FrontendContributionResolver::compile(graph)?,
+        })
     }
 
     pub async fn list_frontend_blocks(
@@ -382,6 +402,69 @@ where
             entry.code_template_language = Some(revision.language.as_str().to_string());
             entry.code_template_version = Some(format!("managed-r{}", revision.revision));
         }
+        let entries = resolve_frontend_contributions(
+            &self.repository,
+            &self.node_id,
+            actor.current_workspace_id,
+            &self.resolver,
+            entries,
+        )
+        .await?;
         Ok(FrontendBlockCatalogView { entries })
     }
+}
+
+async fn resolve_frontend_contributions<R>(
+    repository: &R,
+    node_id: &str,
+    workspace_id: Uuid,
+    resolver: &FrontendContributionResolver,
+    catalog_entries: Vec<domain::FrontendBlockCatalogEntry>,
+) -> Result<Vec<FrontendContributionBinding>>
+where
+    R: FrontendBlockCatalogRepository + PluginRepository,
+{
+    let assignments = repository.list_assignments(workspace_id).await?;
+    let mut candidates = Vec::with_capacity(catalog_entries.len());
+    for catalog_entry in catalog_entries {
+        let Some(installation) = repository
+            .get_installation(catalog_entry.installation_id)
+            .await?
+        else {
+            continue;
+        };
+        let Some(artifact) = repository
+            .get_artifact_instance(node_id, installation.id)
+            .await?
+        else {
+            continue;
+        };
+        let assignment = assignments
+            .iter()
+            .find(|assignment| assignment.installation_id == installation.id)
+            .cloned();
+        candidates.push(FrontendContributionCandidate {
+            workspace_id,
+            installation,
+            artifact,
+            assignment,
+            catalog_entry,
+        });
+    }
+    let resolver = resolver.clone();
+    tokio::task::spawn_blocking(move || {
+        candidates
+            .into_iter()
+            .filter_map(|candidate| match resolver.resolve(candidate) {
+                FrontendContributionResolution::Active(binding) => Some(binding),
+                FrontendContributionResolution::Disabled(_) => None,
+            })
+            .collect()
+    })
+    .await
+    .map_err(|_| {
+        anyhow::Error::from(ControlPlaneError::UpstreamUnavailable(
+            "frontend_block_catalog",
+        ))
+    })
 }

@@ -26,6 +26,11 @@ use crate::routes::host_infrastructure::interface_operation::{
     INTERFACE_OPERATION_CONTRACT_ID, INTERFACE_OPERATION_CONTRACT_VERSION,
     INTERFACE_OPERATION_OWNER_MODULE_ID, INTERFACE_OPERATION_POINT_ID,
 };
+use control_plane::frontend_block_catalog::{
+    FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID, FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+    FRONTEND_BLOCK_CONTRIBUTION_POINT_ID, FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+    FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
+};
 
 pub const DEFAULT_PLUGIN_SET_PATH: &str = "plugins/sets/default.yaml";
 pub const BOOT_CORE_MODULE_ID: &str = "1flowbase.boot-core";
@@ -229,8 +234,35 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             runtime_event_diagnostic_extension_point()?,
             runtime_event_after_commit_extension_point()?,
             interface_operation_extension_point()?,
+            frontend_block_contribution_extension_point()?,
         ],
         contributions: Vec::new(),
+    })
+}
+
+fn frontend_block_contribution_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(FRONTEND_BLOCK_CONTRIBUTION_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Contribution,
+        contract: ContractDescriptor::new(
+            FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID,
+            FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::Workspace,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::WorkspaceAssignment,
+        allowed_permissions: [
+            FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
+            FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
+        ]
+        .into_iter()
+        .map(PermissionCode::new)
+        .collect::<std::result::Result<_, _>>()?,
+        override_policy: OverridePolicy::Sealed,
     })
 }
 

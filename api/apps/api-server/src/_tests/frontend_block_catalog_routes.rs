@@ -1,8 +1,5 @@
 use crate::{
-    _tests::support::{
-        login_and_capture_cookie, test_api_state_with_database_url, test_app_with_database_url,
-        test_config,
-    },
+    _tests::support::{login_and_capture_cookie, test_api_state_with_database_url, test_config},
     provider_runtime::ApiProviderRuntime,
 };
 use axum::{
@@ -11,8 +8,42 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use std::sync::Arc;
 use tower::ServiceExt;
 use uuid::Uuid;
+
+async fn test_frontend_block_app_with_database_url() -> (axum::Router, String) {
+    let (mut state, database_url) = test_api_state_with_database_url().await;
+    let assembly = crate::extension_bus::assemble_extension_graph_input(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap();
+    let snapshot = Arc::new(
+        crate::extension_bus::ExtensionBootSnapshot::compile(
+            Arc::new(assembly.compile_graph().unwrap()),
+            assembly.interface_operations(),
+        )
+        .unwrap(),
+    );
+    let route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        snapshot.interface_operations(),
+    );
+    let registry =
+        crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
+            &state.settings_feature_registry,
+            route_assembly.bindings(),
+        )
+        .unwrap();
+    let mutable_state = Arc::get_mut(&mut state).unwrap();
+    mutable_state.extension_boot_snapshot = Some(snapshot);
+    mutable_state.console_operation_registry = Arc::new(registry);
+    (
+        crate::app_with_state_and_config(state, &test_config()),
+        database_url,
+    )
+}
 
 async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uuid {
     let pool = PgPool::connect(database_url).await.unwrap();
@@ -176,7 +207,7 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
 
 #[tokio::test]
 async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fail_closed() {
-    let (app, database_url) = test_app_with_database_url().await;
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let workspace_id: Uuid =
@@ -360,7 +391,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 
 #[tokio::test]
 async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
-    let (app, _) = test_app_with_database_url().await;
+    let (app, _) = test_frontend_block_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let response = app
@@ -389,6 +420,12 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
 
     assert_eq!(jsx_block["code_template_language"], "tsx");
     assert_eq!(jsx_block["code_template_version"], "6.0.0");
+    assert_eq!(jsx_block["runtime_kind"], "trusted_native");
+    assert_eq!(jsx_block["execution_kind"], "ui_mount");
+    assert_eq!(jsx_block["isolation_requirement"], "trusted_host_realm");
+    assert_eq!(jsx_block["lifecycle_kind"], "workspace_assignment");
+    assert_eq!(jsx_block["provenance"]["module_kind"], "boot_core");
+    assert!(jsx_block["graph_fingerprint"].as_str().is_some());
     let code_template = jsx_block["code_template"].as_str().unwrap();
     assert!(code_template.contains("export default function ExampleBlock"));
     assert!(code_template.contains("useState"));
@@ -568,7 +605,7 @@ async fn builtin_jsx_block_bootstrap_is_idempotent() {
 
 #[tokio::test]
 async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_blocks() {
-    let (app, database_url) = test_app_with_database_url().await;
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     seed_frontend_block(&database_url, false).await;
     seed_frontend_block(&database_url, true).await;
@@ -617,6 +654,24 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
     );
     assert_eq!(entry["code_modules"][0]["binding"], "fetched");
+    assert_eq!(
+        entry["code_modules"][0]["assets"][0]["integrity"],
+        "verified_sha256"
+    );
+    assert!(entry["code_modules"][0]["assets"][0]["url"]
+        .as_str()
+        .unwrap()
+        .contains("/component-module-assets/"));
+    assert_eq!(entry["runtime_kind"], "trusted_native");
+    assert_eq!(entry["execution_kind"], "ui_mount");
+    assert_eq!(entry["isolation_requirement"], "trusted_host_realm");
+    assert_eq!(entry["lifecycle_kind"], "workspace_assignment");
+    assert_eq!(
+        entry["requested_permissions"],
+        json!(["frontend-block.ui-mount.trusted-host"])
+    );
+    assert_eq!(entry["requested_permissions"], entry["granted_permissions"]);
+    assert_eq!(entry["disable_reason"], Value::Null);
     assert_eq!(
         entry["context_contract"]["primitives"][0].as_str(),
         Some("text")
