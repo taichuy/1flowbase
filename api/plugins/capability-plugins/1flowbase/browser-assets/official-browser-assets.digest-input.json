@@ -133,7 +133,7 @@
       "exports": [
         "default"
       ],
-      "type_declarations": "declare module 'tailwindcss' {\n  interface TailwindCompiler {\n    build(candidates: string[]): string;\n  }\n\n  export function compile(css: string): Promise<TailwindCompiler>;\n\n  const tailwindcss: Readonly<{\n    name: 'tailwindcss';\n    version: '4.3.3';\n    mode: 'block-preset';\n    compiler: Readonly<{\n      name: '@1flowbase/tailwindcss-catalog';\n      contract: 'block-preset-v1';\n      tailwind_version: '4.3.3';\n    }>;\n  }>;\n  export default tailwindcss;\n}\n",
+      "type_declarations": "declare module 'tailwindcss' {\n  const tailwindcss: Readonly<{\n    name: 'tailwindcss';\n    version: '4.3.3';\n    mode: 'block-preset';\n    compiler: Readonly<{\n      name: '@1flowbase/tailwindcss-catalog';\n      contract: 'block-preset-v1';\n      tailwind_version: '4.3.3';\n    }>;\n  }>;\n  export default tailwindcss;\n}\n",
       "assets": [
         {
           "path": "tailwindcss-catalog.css",
@@ -146,8 +146,8 @@
           "path": "tailwindcss-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "717942a84a795ffb7b988968c16dcacd3aa08d01a41f34a1c867508c083e1857",
-          "bytes": 256969
+          "sha256": "d6da027db1739246d27aaeb9252950ad17eef3f4567764073e023eccaab2a457",
+          "bytes": 249
         }
       ],
       "compiler_identity": {
@@ -160,7 +160,7 @@
         "version": "4.3.3",
         "mode": "block-preset"
       },
-      "content_sha256": "6ca9767a43556527fc1eceddc0bdf708e2169d38c879542859e9c7319f1ec132"
+      "content_sha256": "caf6a1526a1ab4e013b74933ef888bb7896b92d0047626e6e17ab163e4ed0c02"
     }
   ],
   "retained_legacy_assets": [

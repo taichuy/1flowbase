@@ -287,6 +287,44 @@ pub(crate) async fn commit_plugin_installation(
         .await?;
     }
 
+    for asset in &input.retained_frontend_module_assets {
+        let inserted = sqlx::query(
+            r#"
+                insert into retained_frontend_module_assets (
+                    installation_id, module_source, sha256, media_type, bytes
+                ) values ($1, $2, $3, $4, $5)
+                on conflict (installation_id, module_source, sha256) do nothing
+                returning sha256
+            "#,
+        )
+        .bind(installation_id)
+        .bind(&asset.module_source)
+        .bind(&asset.sha256)
+        .bind(&asset.media_type)
+        .bind(&asset.bytes)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if inserted.is_none() {
+            let matches: bool = sqlx::query_scalar(
+                r#"
+                    select media_type = $4 and bytes = $5
+                    from retained_frontend_module_assets
+                    where installation_id = $1 and module_source = $2 and sha256 = $3
+                "#,
+            )
+            .bind(installation_id)
+            .bind(&asset.module_source)
+            .bind(&asset.sha256)
+            .bind(&asset.media_type)
+            .bind(&asset.bytes)
+            .fetch_one(&mut *tx)
+            .await?;
+            if !matches {
+                anyhow::bail!("retained frontend module asset identity conflict");
+            }
+        }
+    }
+
     tx.commit().await?;
     Ok(record)
 }

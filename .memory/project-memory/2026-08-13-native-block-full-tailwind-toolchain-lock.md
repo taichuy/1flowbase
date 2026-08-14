@@ -2,7 +2,7 @@
 memory_type: project
 title: 代码区块完整 Tailwind 与可复现工具链锁定
 created_at: 2026-08-13 18
-updated_at: 2026-08-14 15
+updated_at: 2026-08-14 18
 decision_policy: verify_before_decision
 scope:
   - web/packages/page-runtime
@@ -43,6 +43,8 @@ keywords:
 - 缓存只作性能优化；缓存删除不得改变运行结果。
 - 平台升级只改变新建区块默认工具链；已有区块只有显式升级并成功保存后才切换。
 - runtime 继续把样式作为 `shadow_style` 注入当前区块 ShadowRoot。
+- 插件安装事务按 `installation + module_source + SHA-256` 耐久保留校验后的浏览器资产；只有仍被 workspace 区块 lock 引用且安装归属有效时，历史 SHA 才可读取。
+- `tailwindcss` runtime module 只导出区块作者所需的默认元数据；编译器实现仅从独立 `executable-contract` / CLI 入口使用，不进入受控 module registry。
 - 不开放第三方 plugin、自定义配置、JavaScript 配置执行或主仓全局 Tailwind。
 - Block Preset 取代源码静态命中 contract，但不推翻主仓 Tailwind 禁令和 ShadowRoot 隔离。
 

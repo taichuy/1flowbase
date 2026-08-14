@@ -7,6 +7,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -390,6 +391,155 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 }
 
 #[tokio::test]
+async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let installation_id = seed_frontend_block(&database_url, true).await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let workspace_id: Uuid =
+        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let page_id = Uuid::now_v7();
+    let tab_id = Uuid::now_v7();
+    let mut transaction = pool.begin().await.unwrap();
+    sqlx::query(
+        r#"
+        insert into frontstage_pages (
+            id, workspace_id, kind, title, rank
+        ) values ($1, $2, 'page', 'Retained asset fixture', 'a')
+        "#,
+    )
+    .bind(page_id)
+    .bind(workspace_id)
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into frontstage_page_tabs (
+            id, workspace_id, page_id, title, rank, is_default, document_root_uid
+        ) values ($1, $2, $3, 'Default', 'a', true, $4)
+        "#,
+    )
+    .bind(tab_id)
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(format!("frontstage.tab.{tab_id}.root"))
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+    let actor_id: Uuid = sqlx::query_scalar("select id from users where account = 'root' limit 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let old_bytes = b"export function Button() {}\n";
+    let old_sha256 = format!("{:x}", Sha256::digest(old_bytes));
+    let new_sha256 = format!("{:x}", Sha256::digest(b"export function ButtonV2() {}\n"));
+
+    sqlx::query(
+        r#"
+        insert into retained_frontend_module_assets (
+            installation_id, module_source, sha256, media_type, bytes
+        ) values ($1, '@acme/native-components', $2, 'text/javascript; charset=utf-8', $3)
+        "#,
+    )
+    .bind(installation_id)
+    .bind(&old_sha256)
+    .bind(old_bytes.as_slice())
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        update frontend_block_catalog
+        set code_modules = jsonb_set(code_modules, '{0,assets,0,sha256}', to_jsonb($2::text))
+        where installation_id = $1
+        "#,
+    )
+    .bind(installation_id)
+    .bind(&new_sha256)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let source_code = "import { Button } from '@acme/native-components';\nexport default Button;";
+    sqlx::query(
+        r#"
+        insert into frontstage_block_codes (
+            id, workspace_id, page_id, code_ref, code, source_sha256,
+            dependency_lock, tailwind_toolchain_lock, generated_css,
+            generated_css_sha256, compiler_identity, created_by, updated_by
+        ) values ($1, $2, $3, 'retained-asset-fixture', $4, $5, $6, $7, '', $8, $9, $10, $10)
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(source_code)
+    .bind(format!("{:x}", Sha256::digest(source_code.as_bytes())))
+    .bind(json!([{
+        "module_source": "@acme/native-components",
+        "module_version": "1.2.3",
+        "binding": "fetched",
+        "assets": [{
+            "role": "browser_module",
+            "media_type": "text/javascript; charset=utf-8",
+            "sha256": old_sha256,
+            "url": format!("/api/console/frontstage/{workspace_id}/component-module-assets/{old_sha256}")
+        }],
+        "exports": ["Button"]
+    }]))
+    .bind(json!({"package": "tailwindcss", "version": "4.3.3", "mode": "block-preset"}))
+    .bind("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    .bind(json!({"name": "fixture", "contract": "retained-asset-v1"}))
+    .bind(actor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let asset_url =
+        format!("/api/console/frontstage/{workspace_id}/component-module-assets/{old_sha256}");
+    let retained_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&asset_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(retained_response.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(retained_response.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .as_ref(),
+        old_bytes
+    );
+
+    sqlx::query("delete from frontstage_block_codes where code_ref = 'retained-asset-fixture'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let unreferenced_response = app
+        .oneshot(
+            Request::builder()
+                .uri(&asset_url)
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unreferenced_response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
     let (app, _) = test_frontend_block_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -511,8 +661,19 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .unwrap();
     assert_eq!(tailwind_module["version"], "4.3.3");
     assert_eq!(tailwind_module["exports"], json!(["default"]));
-    assert_eq!(tailwind_module["assets"].as_array().unwrap().len(), 1);
-    assert_eq!(tailwind_module["assets"][0]["role"], "browser_module");
+    let tailwind_assets = tailwind_module["assets"].as_array().unwrap();
+    assert_eq!(tailwind_assets.len(), 2);
+    assert!(tailwind_assets
+        .iter()
+        .any(|asset| asset["role"] == "browser_module"));
+    let tailwind_shadow_style = tailwind_assets
+        .iter()
+        .find(|asset| asset["role"] == "shadow_style")
+        .unwrap();
+    assert_eq!(
+        tailwind_shadow_style["sha256"],
+        "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
+    );
     let rich_text_module = jsx_block["code_modules"]
         .as_array()
         .unwrap()
@@ -601,6 +762,24 @@ async fn builtin_jsx_block_bootstrap_is_idempotent() {
     assert_eq!(installation_count, 1);
     assert_eq!(catalog_count, 1);
     assert_eq!(assignment_count, 0);
+    let retained_charts_bytes: Vec<u8> = sqlx::query_scalar(
+        r#"
+        select bytes
+        from retained_frontend_module_assets
+        where installation_id in (
+            select id from extension_installations where artifact_id = '1flowbase'
+        )
+          and module_source = '@1flowbase/charts'
+          and sha256 = 'b4df3cc6116a254e1dd7451e99c5d01a48cd23bd4a6f35df10f97dba2e888338'
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&retained_charts_bytes)),
+        "b4df3cc6116a254e1dd7451e99c5d01a48cd23bd4a6f35df10f97dba2e888338"
+    );
 }
 
 #[tokio::test]

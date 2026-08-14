@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::ports::{
     FrontendBlockCatalogRepository, ReplaceInstallationFrontendBlocksInput,
+    RetainedFrontendModuleAsset,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -186,6 +187,52 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
         rows.into_iter().map(map_catalog_row).collect()
+    }
+
+    async fn get_retained_frontend_module_asset(
+        &self,
+        workspace_id: Uuid,
+        sha256: &str,
+    ) -> Result<Option<RetainedFrontendModuleAsset>> {
+        let row = sqlx::query(
+            r#"
+            select retained.sha256, retained.media_type, retained.bytes
+            from retained_frontend_module_assets retained
+            inner join extension_installations installation
+                on installation.id = retained.installation_id
+            where retained.sha256 = $2
+              and installation.verification_status = 'valid'
+              and (
+                  installation.source_kind = 'builtin'
+                  or exists (
+                      select 1
+                      from plugin_assignments assignment
+                      where assignment.installation_id = retained.installation_id
+                        and assignment.workspace_id = $1
+                  )
+              )
+              and exists (
+                  select 1
+                  from frontstage_block_codes block_code
+                  cross join lateral jsonb_array_elements(block_code.dependency_lock) module
+                  cross join lateral jsonb_array_elements(module->'assets') asset
+                  where block_code.workspace_id = $1
+                    and module->>'module_source' = retained.module_source
+                    and asset->>'sha256' = retained.sha256
+              )
+            limit 1
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(sha256)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row.map(|row| RetainedFrontendModuleAsset {
+            sha256: row.get("sha256"),
+            media_type: row.get("media_type"),
+            bytes: row.get("bytes"),
+        }))
     }
 
     async fn list_ui_component_overrides_for_catalog(

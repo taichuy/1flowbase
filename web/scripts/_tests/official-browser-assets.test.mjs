@@ -143,6 +143,11 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
       version: '4.3.3',
       mode: 'block-preset'
     });
+    assert.doesNotMatch(
+      tailwind.type_declarations,
+      /TailwindCompiler|export function compile/u,
+      'AC-001 exposes only the runtime metadata contract from the tailwindcss module'
+    );
     assert.deepEqual(
       tailwind.assets.map((asset) => asset.role),
       ['shadow_style', 'browser_module'],
@@ -165,6 +170,26 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
     assert.match(presetCss, /\.md\\:grid-cols-2/u);
     assert.match(presetCss, /::file-selector-button/u);
     assert.doesNotMatch(presetCss, /\.ant-/u);
+    const tailwindBrowserAsset = tailwind.assets.find(
+      (asset) => asset.role === 'browser_module'
+    );
+    assert.ok(
+      tailwindBrowserAsset,
+      'AC-001 publishes the Tailwind runtime metadata module'
+    );
+    const tailwindBrowserSource = await readFile(
+      join(first, tailwindBrowserAsset.path),
+      'utf8'
+    );
+    assert.ok(
+      Buffer.byteLength(tailwindBrowserSource) < 4096,
+      'AC-001 keeps the executable compiler out of the runtime metadata module'
+    );
+    assert.doesNotMatch(
+      tailwindBrowserSource,
+      /\brequire\b|compileTailwindExecutableArtifact|sucrase/u,
+      'AC-001 keeps compiler dependency syntax out of the runtime module registry'
+    );
     const [legacyTailwind] = left.retained_legacy_assets;
     assert.deepEqual(legacyTailwind, {
       identity: 'tailwindcss-inventory-v1',

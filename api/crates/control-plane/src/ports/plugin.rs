@@ -32,6 +32,22 @@ pub struct CommitPluginInstallationInput {
     pub node_contributions: ReplaceInstallationNodeContributionsInput,
     pub js_dependencies: ReplaceInstallationJsDependenciesInput,
     pub frontend_blocks: ReplaceInstallationFrontendBlocksInput,
+    pub retained_frontend_module_assets: Vec<RetainedFrontendModuleAssetInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RetainedFrontendModuleAssetInput {
+    pub module_source: String,
+    pub sha256: String,
+    pub media_type: String,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RetainedFrontendModuleAsset {
+    pub sha256: String,
+    pub media_type: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -414,6 +430,14 @@ pub trait FrontendBlockCatalogRepository: Send + Sync {
         _node_id: &str,
     ) -> anyhow::Result<Vec<domain::FrontendBlockCatalogEntry>> {
         Ok(Vec::new())
+    }
+
+    async fn get_retained_frontend_module_asset(
+        &self,
+        _workspace_id: Uuid,
+        _sha256: &str,
+    ) -> anyhow::Result<Option<RetainedFrontendModuleAsset>> {
+        Ok(None)
     }
 
     async fn list_ui_component_overrides_for_catalog(
