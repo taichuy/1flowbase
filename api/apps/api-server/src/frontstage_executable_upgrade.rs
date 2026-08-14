@@ -1,4 +1,4 @@
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{path::PathBuf, process::Stdio, time::Duration};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -15,8 +15,10 @@ use tokio::{
 };
 
 const COMPILER_ROOT: &str = "/app/frontstage-executable-compiler";
-const COMPILER_ENTRY: &str =
-    "/app/frontstage-executable-compiler/packages/tailwindcss-catalog/bin/compiler-4.3.3.mjs";
+const COMPILER_ENTRY_RELATIVE: &str = "packages/tailwindcss-catalog/bin/compiler-4.3.3.mjs";
+const COMPILER_NODE_PATH: &str = "/usr/local/bin/node";
+const COMPILER_ROOT_ENV: &str = "API_FRONTSTAGE_EXECUTABLE_COMPILER_ROOT";
+const COMPILER_NODE_PATH_ENV: &str = "API_FRONTSTAGE_EXECUTABLE_NODE_PATH";
 const COMPILER_ENTRY_SHA256: &str =
     "603eb3ed18b81b7de3ce3f0e1f6f599dc1c6d58e246b6f567bad59e2a4d0a704";
 const COMPILER_TIMEOUT: Duration = Duration::from_secs(30);
@@ -26,23 +28,25 @@ const MAX_COMPILER_STDERR_BYTES: usize = 64 * 1024;
 
 pub fn target() -> domain::FrontstageExecutableUpgradeTarget {
     domain::FrontstageExecutableUpgradeTarget {
-        marker: "frontstage-tailwind-4.3.3-executable-v1".into(),
+        marker: "frontstage-tailwind-4.3.3-block-preset-v1".into(),
         contract_identity: json!({
             "name": "@1flowbase/tailwindcss-catalog/compiler",
             "version": "4.3.3",
             "contract": "executable-compiler-v1",
-            "stylesheet_sha256": "14dcde35d39129464213fc7736ea90d719ecee5953c5cf836f6c89baa9a3fd10",
+            "preset": "default-utilities-standard-variants-v1",
+            "preset_asset_sha256": "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36",
+            "stylesheet_sha256": "41e1b1cefc721fa2889683134f896f1bafa9907d9057800343b2b7376f7d36a1",
             "tsx_validation": "sucrase@3.35.1/dependency-lock-imports-v2",
         }),
         compiler_identity: json!({
             "name": "@1flowbase/tailwindcss-catalog",
-            "contract": "source-driven-utilities-v1",
+            "contract": "block-preset-v1",
             "tailwind_version": "4.3.3",
         }),
         toolchain_lock: json!({
             "package": "tailwindcss",
             "version": "4.3.3",
-            "mode": "theme-and-utilities",
+            "mode": "block-preset",
         }),
     }
 }
@@ -59,7 +63,7 @@ pub async fn require_cutover(store: &storage_durable::MainDurableStore) -> Resul
 pub async fn run_upgrade(store: storage_durable::MainDurableStore) -> Result<()> {
     control_plane::frontstage_executable_upgrade::FrontstageExecutableUpgradeService::new(
         store,
-        NodeFrontstageExecutableCompiler::release(),
+        NodeFrontstageExecutableCompiler::from_env(),
     )
     .run(target())
     .await?;
@@ -71,12 +75,18 @@ pub struct NodeFrontstageExecutableCompiler {
 }
 
 impl NodeFrontstageExecutableCompiler {
-    fn release() -> Self {
+    fn from_env() -> Self {
+        let root = std::env::var_os(COMPILER_ROOT_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(COMPILER_ROOT));
+        let program = std::env::var_os(COMPILER_NODE_PATH_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(COMPILER_NODE_PATH));
         Self {
             process: CompilerProcess {
-                program: Path::new("/usr/local/bin/node").into(),
-                entry: Path::new(COMPILER_ENTRY).into(),
-                current_dir: Path::new(COMPILER_ROOT).into(),
+                program,
+                entry: root.join(COMPILER_ENTRY_RELATIVE),
+                current_dir: root,
                 entry_sha256: COMPILER_ENTRY_SHA256.into(),
                 timeout: COMPILER_TIMEOUT,
             },
@@ -150,7 +160,7 @@ impl FrontstageExecutableUpgradeCompiler for NodeFrontstageExecutableCompiler {
             ));
         }
         let artifact_digest_matches = response.artifact_sha256.as_deref()
-            == Some("db8e4ecacf25ed2a926cbd5e8dfb4d5abeaf9db6bfe7025cd5a8fdaabed7efaf");
+            == Some("2005c459882fcaeb283ff36706b327efebf8783414ecaa111f92f628c4ba0af8");
         if response.artifact_identity.as_ref() != Some(&target.contract_identity)
             || !artifact_digest_matches
         {
@@ -273,7 +283,8 @@ async fn read_bounded(
 }
 
 pub fn verify_release_artifact() -> Result<()> {
-    let bytes = std::fs::read(COMPILER_ENTRY).context("read compiler entry")?;
+    let compiler = NodeFrontstageExecutableCompiler::from_env();
+    let bytes = std::fs::read(&compiler.process.entry).context("read compiler entry")?;
     let digest = format!("{:x}", Sha256::digest(bytes));
     if digest != COMPILER_ENTRY_SHA256 {
         bail!("compiler entry digest mismatch")

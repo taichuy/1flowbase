@@ -473,7 +473,9 @@ where
     let rows = sqlx::query(
         r#"
         select code.id as row_id, code.workspace_id, code.page_id, code.code_ref,
-               code.code as source_code, node.runtime_descriptor,
+               code.code as source_code,
+               coalesce(node.runtime_descriptor, jsonb_build_object('codeRef', code.code_ref))
+                 as runtime_descriptor,
                catalog.installation_id, catalog.provider_code, catalog.plugin_id,
                catalog.plugin_version, catalog.contribution_code, catalog.code_modules,
                count(catalog.id) over (partition by code.id) as catalog_matches
@@ -482,12 +484,26 @@ where
           on node.scope_id = code.workspace_id
          and node.tree_partition_id = code.page_id
          and node.code_ref = code.code_ref
-        left join frontend_block_catalog catalog
-          on catalog.installation_id::text = node.runtime_descriptor #>> '{catalog,installationId}'
-         and catalog.provider_code = node.runtime_descriptor #>> '{catalog,providerCode}'
-         and catalog.plugin_id = node.runtime_descriptor #>> '{contribution,pluginId}'
-         and catalog.plugin_version = node.runtime_descriptor #>> '{contribution,pluginVersion}'
-         and catalog.contribution_code = node.runtime_descriptor #>> '{contribution,code}'
+        left join frontend_block_catalog catalog on (
+          catalog.installation_id::text = node.runtime_descriptor #>> '{catalog,installationId}'
+          and catalog.provider_code = node.runtime_descriptor #>> '{catalog,providerCode}'
+          and catalog.plugin_id = node.runtime_descriptor #>> '{contribution,pluginId}'
+          and catalog.plugin_version = node.runtime_descriptor #>> '{contribution,pluginVersion}'
+          and catalog.contribution_code = node.runtime_descriptor #>> '{contribution,code}'
+        ) or (
+          (
+            node.id is null
+            or (
+              not (node.runtime_descriptor ? 'catalog')
+              and not (node.runtime_descriptor ? 'contribution')
+            )
+          )
+          and catalog.id = (
+            select (array_agg(candidate.id order by candidate.id))[1]
+            from frontend_block_catalog candidate
+            having count(*) = 1
+          )
+        )
         where code.source_sha256 is null or code.dependency_lock is null
            or code.tailwind_toolchain_lock is null or code.generated_css is null
            or code.generated_css_sha256 is null or code.compiler_identity is null

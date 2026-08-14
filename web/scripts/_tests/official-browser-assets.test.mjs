@@ -59,6 +59,29 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
       'AC-REG-002 keeps bare CommonJS and AMD probes out of the ESM catalog asset'
     );
 
+    const charts = left.modules.find(
+      (module) => module.module_source === '@1flowbase/charts'
+    );
+    assert.ok(charts, 'AC-004 publishes the official charts module');
+    const chartsBrowserAsset = charts.assets.find(
+      (asset) => asset.role === 'browser_module'
+    );
+    assert.ok(chartsBrowserAsset, 'AC-004 publishes charts as a browser module');
+    const chartsSource = await readFile(
+      join(first, chartsBrowserAsset.path),
+      'utf8'
+    );
+    assert.match(
+      chartsSource,
+      /import \{ useEffect, useRef \} from "react";/u,
+      'AC-004 preserves collision-safe React host import bindings'
+    );
+    assert.match(
+      chartsSource,
+      /import \{ jsx \} from "react\/jsx-runtime";/u,
+      'AC-004 preserves the JSX runtime host import binding'
+    );
+
     const icons = left.modules.find(
       (module) => module.module_source === '@ant-design/icons'
     );
@@ -112,19 +135,36 @@ test('AC-REG-001 emits stable exports, types, assets and digest inputs', async (
     assert.ok(tailwind, 'AC-001 publishes the official tailwindcss module');
     assert.deepEqual(tailwind.compiler_identity, {
       name: '@1flowbase/tailwindcss-catalog',
-      contract: 'source-driven-utilities-v1',
+      contract: 'block-preset-v1',
       tailwind_version: '4.3.3'
     });
     assert.deepEqual(tailwind.toolchain_lock, {
       package: 'tailwindcss',
       version: '4.3.3',
-      mode: 'theme-and-utilities'
+      mode: 'block-preset'
     });
     assert.deepEqual(
       tailwind.assets.map((asset) => asset.role),
-      ['browser_module'],
-      'AC-003 keeps generated source CSS out of the current Catalog module'
+      ['shadow_style', 'browser_module'],
+      'AC-001 publishes one source-independent ShadowRoot preset'
     );
+    const presetAsset = tailwind.assets.find(
+      (asset) => asset.role === 'shadow_style'
+    );
+    assert.ok(presetAsset, 'AC-001 publishes the Tailwind block preset');
+    assert.equal(presetAsset.path, 'tailwindcss-catalog.css');
+    assert.equal(
+      presetAsset.sha256,
+      '77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36'
+    );
+    const presetCss = await readFile(join(first, presetAsset.path), 'utf8');
+    assert.match(presetCss, /\.grid\{/u);
+    assert.match(presetCss, /\.hover\\:bg-red-500:hover/u);
+    assert.match(presetCss, /\.focus-visible\\:ring-2:focus-visible/u);
+    assert.match(presetCss, /\.disabled\\:opacity-50:disabled/u);
+    assert.match(presetCss, /\.md\\:grid-cols-2/u);
+    assert.match(presetCss, /::file-selector-button/u);
+    assert.doesNotMatch(presetCss, /\.ant-/u);
     const [legacyTailwind] = left.retained_legacy_assets;
     assert.deepEqual(legacyTailwind, {
       identity: 'tailwindcss-inventory-v1',

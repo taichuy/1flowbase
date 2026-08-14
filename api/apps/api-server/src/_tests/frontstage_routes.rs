@@ -318,14 +318,14 @@ fn ready_executable_payload(source_code: &str) -> Value {
         "tailwind_toolchain_lock": {
             "package": "tailwindcss",
             "version": "4.3.3",
-            "mode": "theme-and-utilities"
+            "mode": "block-preset"
         },
         "generated_css": "",
         "generated_css_sha256":
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "compiler_identity": {
             "name": "@1flowbase/tailwindcss-catalog",
-            "contract": "source-driven-utilities-v1",
+            "contract": "block-preset-v1",
             "tailwind_version": "4.3.3"
         }
     })

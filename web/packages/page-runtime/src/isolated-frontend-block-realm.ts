@@ -214,7 +214,7 @@ class BrowserIsolatedFrontendBlockRealm implements IsolatedFrontendBlockRealmHan
       const iframe = root.ownerDocument.createElement('iframe');
       iframe.setAttribute('sandbox', ISOLATED_FRONTEND_BLOCK_SANDBOX);
       iframe.setAttribute('srcdoc', srcdoc);
-      iframe.referrerPolicy = 'no-referrer';
+      iframe.setAttribute('referrerpolicy', 'no-referrer');
       iframe.style.border = '0';
       iframe.style.display = 'block';
       iframe.style.width = '100%';

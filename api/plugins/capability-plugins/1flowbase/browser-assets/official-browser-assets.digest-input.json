@@ -13,11 +13,11 @@
           "path": "charts.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "9e9f060861bab4465dd4a7504c78463b47fb320df969568cdf52eebd8a7e21ca",
-          "bytes": 757212
+          "sha256": "b4df3cc6116a254e1dd7451e99c5d01a48cd23bd4a6f35df10f97dba2e888338",
+          "bytes": 1383257
         }
       ],
-      "content_sha256": "6e93de8bd24c59745b9f6363eecbb3443fe2a5487a4969ebf9ad62411398f52c"
+      "content_sha256": "d1bce19e8f68322688e268948efbcd205d86bbe2222f3db7a41ef96f2264fa7c"
     },
     {
       "module_source": "@1flowbase/native-components",
@@ -133,27 +133,34 @@
       "exports": [
         "default"
       ],
-      "type_declarations": "declare module 'tailwindcss' {\n  const tailwindcss: Readonly<{\n    name: 'tailwindcss';\n    version: '4.3.3';\n    mode: 'theme-and-utilities';\n    compiler: Readonly<{\n      name: '@1flowbase/tailwindcss-catalog';\n      contract: 'source-driven-utilities-v1';\n      tailwind_version: '4.3.3';\n    }>;\n  }>;\n  export default tailwindcss;\n}\n",
+      "type_declarations": "declare module 'tailwindcss' {\n  interface TailwindCompiler {\n    build(candidates: string[]): string;\n  }\n\n  export function compile(css: string): Promise<TailwindCompiler>;\n\n  const tailwindcss: Readonly<{\n    name: 'tailwindcss';\n    version: '4.3.3';\n    mode: 'block-preset';\n    compiler: Readonly<{\n      name: '@1flowbase/tailwindcss-catalog';\n      contract: 'block-preset-v1';\n      tailwind_version: '4.3.3';\n    }>;\n  }>;\n  export default tailwindcss;\n}\n",
       "assets": [
+        {
+          "path": "tailwindcss-catalog.css",
+          "role": "shadow_style",
+          "media_type": "text/css; charset=utf-8",
+          "sha256": "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36",
+          "bytes": 63411571
+        },
         {
           "path": "tailwindcss-catalog.js",
           "role": "browser_module",
           "media_type": "text/javascript; charset=utf-8",
-          "sha256": "12654dc6a0c23428c81678e417b5b7a456fb9049ce279cfe4390007ef7ee11de",
-          "bytes": 267
+          "sha256": "717942a84a795ffb7b988968c16dcacd3aa08d01a41f34a1c867508c083e1857",
+          "bytes": 256969
         }
       ],
       "compiler_identity": {
         "name": "@1flowbase/tailwindcss-catalog",
-        "contract": "source-driven-utilities-v1",
+        "contract": "block-preset-v1",
         "tailwind_version": "4.3.3"
       },
       "toolchain_lock": {
         "package": "tailwindcss",
         "version": "4.3.3",
-        "mode": "theme-and-utilities"
+        "mode": "block-preset"
       },
-      "content_sha256": "0c9e1647c020b73c5fb155bf79ca301b6f09d99a2d3793e87d5320aeb1acc1eb"
+      "content_sha256": "6ca9767a43556527fc1eceddc0bdf708e2169d38c879542859e9c7319f1ec132"
     }
   ],
   "retained_legacy_assets": [

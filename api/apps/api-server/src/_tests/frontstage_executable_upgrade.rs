@@ -83,7 +83,7 @@ async fn artifact_identity_mismatch_fails_closed() {
         "compiler_identity": target().compiler_identity,
         "toolchain_lock": target().toolchain_lock,
         "artifact_identity": { "name": "wrong" },
-        "artifact_sha256": "db8e4ecacf25ed2a926cbd5e8dfb4d5abeaf9db6bfe7025cd5a8fdaabed7efaf"
+        "artifact_sha256": "2005c459882fcaeb283ff36706b327efebf8783414ecaa111f92f628c4ba0af8"
     });
     let script = format!("cat >/dev/null\nprintf '%s\\n' '{}'\n", response);
     let (compiler, root) = compiler(&script, Duration::from_secs(1));

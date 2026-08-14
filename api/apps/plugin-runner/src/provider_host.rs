@@ -33,7 +33,8 @@ use plugin_framework::provider_contract::ProviderCountTokensMethod;
 use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
     call_executable, call_executable_streaming, ProviderWorkerCleanupReason,
-    ProviderWorkerCleanupReceipt, DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
+    ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState,
+    DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
 };
 
 use self::supervisor::ProviderWorkerSupervisor;
@@ -1069,12 +1070,14 @@ mod operations;
 mod supervisor;
 
 use operations::{
-    elapsed_milliseconds, format_timestamp, lock_provider_worker_registry, merge_models,
-    normalize_balance, normalize_models, provider_invocation_limits, provider_pool_key,
-    provider_stream_transport, provider_worker_cleanup_receipt, provider_worker_handle,
-    provider_worker_supervisor_snapshot, record_provider_worker_cleanup,
-    take_provider_worker_for_quiesce,
+    elapsed_milliseconds, format_timestamp, merge_models, normalize_balance, normalize_models,
+    provider_invocation_limits, provider_pool_key, provider_stream_transport,
+    provider_worker_cleanup_receipt, provider_worker_handle, provider_worker_supervisor_snapshot,
+    record_provider_worker_cleanup, take_provider_worker_for_quiesce,
 };
+
+#[cfg(test)]
+use operations::lock_provider_worker_registry;
 
 #[cfg(test)]
 #[path = "_tests/provider_host.rs"]

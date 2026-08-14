@@ -4,29 +4,31 @@ import {
   type NativeReactCatalogDependencyLock
 } from '@1flowbase/page-runtime/dependency-lock';
 
-import {
-  compileTailwindUtilities,
-  extractStaticTailwindCandidates,
-  sourceImportsTailwind
-} from './compiler.ts';
 import { TAILWIND_STYLESHEET_SHA256 } from './stylesheet-contract.ts';
+
+export const TAILWIND_BLOCK_PRESET_ASSET = Object.freeze({
+  path: 'tailwindcss-catalog.css',
+  role: 'shadow_style' as const,
+  media_type: 'text/css; charset=utf-8',
+  sha256: '77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36'
+});
 
 export const TAILWIND_4_3_3_COMPILER_IDENTITY = Object.freeze({
   name: '@1flowbase/tailwindcss-catalog',
-  contract: 'source-driven-utilities-v1',
+  contract: 'block-preset-v1',
   tailwind_version: '4.3.3'
 });
 
 export const TAILWIND_4_3_3_TOOLCHAIN_LOCK = Object.freeze({
   package: 'tailwindcss',
   version: '4.3.3',
-  mode: 'theme-and-utilities'
+  mode: 'block-preset'
 });
 
 export const TAILWIND_4_3_3_STYLESHEET_IDENTITY = Object.freeze({
   package: 'tailwindcss',
   version: '4.3.3',
-  mode: 'theme-and-utilities',
+  mode: 'block-preset',
   sha256: TAILWIND_STYLESHEET_SHA256
 });
 
@@ -34,13 +36,15 @@ export const TAILWIND_4_3_3_ARTIFACT_IDENTITY = Object.freeze({
   name: '@1flowbase/tailwindcss-catalog/compiler',
   version: '4.3.3',
   contract: 'executable-compiler-v1',
+  preset: 'default-utilities-standard-variants-v1',
+  preset_asset_sha256: TAILWIND_BLOCK_PRESET_ASSET.sha256,
   stylesheet_sha256: TAILWIND_STYLESHEET_SHA256,
   tsx_validation: 'sucrase@3.35.1/dependency-lock-imports-v2'
 });
 
 // Digest of the canonical TAILWIND_4_3_3_ARTIFACT_IDENTITY JSON value.
 export const TAILWIND_4_3_3_ARTIFACT_SHA256 =
-  'db8e4ecacf25ed2a926cbd5e8dfb4d5abeaf9db6bfe7025cd5a8fdaabed7efaf';
+  '2005c459882fcaeb283ff36706b327efebf8783414ecaa111f92f628c4ba0af8';
 
 export interface TailwindExecutableCompilerRequest {
   source_code: string;
@@ -111,14 +115,7 @@ const tailwind433: ExecutableCompilerVersion = Object.freeze({
   ) {
     const diagnostics = validateTsxSource(sourceCode, dependencyLock);
     if (diagnostics.length > 0) return { generatedCss: '', diagnostics };
-    const generatedCss = sourceImportsTailwind(sourceCode)
-      ? (
-          await compileTailwindUtilities(
-            extractStaticTailwindCandidates(sourceCode)
-          )
-        ).css
-      : '';
-    return { generatedCss, diagnostics: [] };
+    return { generatedCss: '', diagnostics: [] };
   }
 });
 
@@ -156,10 +153,10 @@ export async function compileTailwindExecutableArtifact(
   }
 
   try {
-    const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+    const canonicalDependencyLock = canonicalizeNativeReactCatalogDependencyLock(
       typedRequest.dependency_lock
     );
-    if (!dependencyLock) {
+    if (!canonicalDependencyLock) {
       return failure([
         diagnostic(
           'invalid_dependency_lock',
@@ -168,6 +165,9 @@ export async function compileTailwindExecutableArtifact(
         )
       ]);
     }
+    const dependencyLock = withTailwindBlockPresetAsset(
+      canonicalDependencyLock
+    );
     const compiled = await version.compile(
       typedRequest.source_code,
       dependencyLock
@@ -195,6 +195,48 @@ export async function compileTailwindExecutableArtifact(
       )
     ]);
   }
+}
+
+function withTailwindBlockPresetAsset(
+  dependencyLock: NativeReactCatalogDependencyLock
+): NativeReactCatalogDependencyLock {
+  return dependencyLock.map((entry) => {
+    if (entry.module_source !== 'tailwindcss') return entry;
+    const existing = entry.assets.find(
+      (asset) => asset.role === TAILWIND_BLOCK_PRESET_ASSET.role
+    );
+    if (existing) {
+      if (
+        existing.sha256 !== TAILWIND_BLOCK_PRESET_ASSET.sha256 ||
+        existing.media_type !== TAILWIND_BLOCK_PRESET_ASSET.media_type
+      ) {
+        throw new Error('Tailwind block preset asset identity mismatch.');
+      }
+      return entry;
+    }
+    const browserAsset = entry.assets.find(
+      (asset) => asset.role === 'browser_module'
+    );
+    const assetUrl = browserAsset?.url.replace(
+      /[a-f0-9]{64}$/u,
+      TAILWIND_BLOCK_PRESET_ASSET.sha256
+    );
+    if (!assetUrl || assetUrl === browserAsset?.url) {
+      throw new Error('Tailwind browser asset URL cannot derive the preset URL.');
+    }
+    return {
+      ...entry,
+      assets: [
+        ...entry.assets,
+        {
+          role: TAILWIND_BLOCK_PRESET_ASSET.role,
+          media_type: TAILWIND_BLOCK_PRESET_ASSET.media_type,
+          sha256: TAILWIND_BLOCK_PRESET_ASSET.sha256,
+          url: assetUrl
+        }
+      ]
+    };
+  });
 }
 
 function validateRequest(

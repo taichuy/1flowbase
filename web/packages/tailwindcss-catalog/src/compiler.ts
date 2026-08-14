@@ -1,9 +1,80 @@
-import { compile } from 'tailwindcss';
+import * as tailwindcss from 'tailwindcss';
 
 import {
+  TAILWIND_PREFLIGHT_CSS,
   TAILWIND_THEME_CSS,
   TAILWIND_UTILITIES_CSS
 } from './stylesheet-contract.ts';
+
+export const TAILWIND_BLOCK_PRESET_VARIANTS = Object.freeze([
+  'hover',
+  'focus',
+  'focus-visible',
+  'active',
+  'disabled',
+  'sm',
+  'md',
+  'lg',
+  'xl',
+  '2xl'
+] as const);
+
+let blockPresetFlight:
+  | Promise<{ css: string; baseCandidates: number; candidates: number }>
+  | undefined;
+
+interface TailwindDesignSystem {
+  getClassList(): Array<readonly [string, unknown]>;
+}
+
+const loadDesignSystem = (
+  tailwindcss as unknown as {
+    __unstable__loadDesignSystem(css: string): Promise<TailwindDesignSystem>;
+  }
+).__unstable__loadDesignSystem;
+
+/**
+ * Builds the source-independent stylesheet attached by `import 'tailwindcss'`.
+ * The exact Tailwind version owns the finite default class inventory; the
+ * product contract adds one standard state or responsive variant at a time.
+ */
+export async function compileTailwindBlockPreset(): Promise<{
+  css: string;
+  baseCandidates: number;
+  candidates: number;
+}> {
+  blockPresetFlight ??= buildTailwindBlockPreset();
+  return blockPresetFlight;
+}
+
+async function buildTailwindBlockPreset(): Promise<{
+  css: string;
+  baseCandidates: number;
+  candidates: number;
+}> {
+  const stylesheet = [
+    TAILWIND_THEME_CSS,
+    TAILWIND_PREFLIGHT_CSS,
+    TAILWIND_UTILITIES_CSS
+  ].join('\n');
+  const designSystem = await loadDesignSystem(stylesheet);
+  const baseCandidates = designSystem
+    .getClassList()
+    .map(([candidate]) => candidate)
+    .sort();
+  const candidates = [
+    ...baseCandidates,
+    ...TAILWIND_BLOCK_PRESET_VARIANTS.flatMap((variant) =>
+      baseCandidates.map((candidate) => `${variant}:${candidate}`)
+    )
+  ];
+  const compiler = await tailwindcss.compile(stylesheet);
+  return {
+    css: compiler.build(candidates),
+    baseCandidates: baseCandidates.length,
+    candidates: candidates.length
+  };
+}
 
 export interface TailwindCompilation {
   css: string;
@@ -11,9 +82,8 @@ export interface TailwindCompilation {
 }
 
 /**
- * Collects complete static strings from TSX source. Tailwind remains the
- * authority that decides which tokens are valid candidates; 1flowbase does
- * not maintain a parallel utility inventory.
+ * Fixture-only compatibility helper. Ready block execution uses the
+ * source-independent Block Preset and never calls this candidate compiler.
  */
 export function extractStaticTailwindCandidates(source: string): string[] {
   const candidates = new Set<string>();
@@ -26,6 +96,7 @@ export function extractStaticTailwindCandidates(source: string): string[] {
   return [...candidates].sort();
 }
 
+/** @see extractStaticTailwindCandidates */
 export async function compileTailwindUtilities(
   candidates: readonly string[],
   stylesheets: {
@@ -36,7 +107,7 @@ export async function compileTailwindUtilities(
     utilitiesCss: TAILWIND_UTILITIES_CSS
   }
 ): Promise<TailwindCompilation> {
-  const compiler = await compile(
+  const compiler = await tailwindcss.compile(
     `${stylesheets.themeCss}\n${stylesheets.utilitiesCss}`
   );
   let previousCss = compiler.build([]);
