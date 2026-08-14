@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.6",
+    "catalog_version": "2.0.7",
     "files": [
       {
         "keys": [
@@ -250,6 +250,8 @@
           "Get application run overview in the system backend.",
           "Get application run resume timeline",
           "Get application run resume timeline in the system backend.",
+          "Get application run resume timeline summary",
+          "Get application run resume timeline summary in the system backend.",
           "Get application run trace node children",
           "Get application run trace node children in the system backend.",
           "Get application run trace node content",
@@ -677,7 +679,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:ed9c8df7556867425f9d9ac6cd65a0261a4576c30958bb7bfec8a41a8bf6c3fb"
+        "sha256": "sha256:f58b48084f64d6eac6bb234d250feaaa7bb07a578d54ab2308e5a60e3afca1ac"
       },
       {
         "keys": [
@@ -865,6 +867,8 @@
           "Get application run overview in the system backend.",
           "Get application run resume timeline",
           "Get application run resume timeline in the system backend.",
+          "Get application run resume timeline summary",
+          "Get application run resume timeline summary in the system backend.",
           "Get application run trace node children",
           "Get application run trace node children in the system backend.",
           "Get application run trace node content",
@@ -1292,7 +1296,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:4c039698e57e228e876e8b6eb10f40051f9bc5d271b7d5f68b537e041b2fa144"
+        "sha256": "sha256:9e336fc478719cea5acd7bda184d7b8d86c2a40fa8af8b54c0d35ac6362225e7"
       },
       {
         "keys": [
@@ -1625,13 +1629,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-08-13T16:48:59.000Z",
+    "generated_at": "2026-08-14T04:04:29.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:6c636a498a9cdd0c362b9462580d227064dbcc25a96e3cdf55f5d4c06bf0b42c",
+    "semantic_sha256": "sha256:c40e26230e12ca11d63704f5e101b620f872f0c277a0590db59af6e49f4886b0",
     "source_locale": "en_US"
   },
   "messages": [
@@ -3313,6 +3317,20 @@
       "translations": {
         "en_US": "Get application run resume timeline in the system backend.",
         "zh_Hans": "获取应用运行恢复时间线（系统后端）"
+      }
+    },
+    {
+      "key": "Get application run resume timeline summary",
+      "translations": {
+        "en_US": "Get application run resume timeline summary",
+        "zh_Hans": "获取应用运行恢复时间线摘要"
+      }
+    },
+    {
+      "key": "Get application run resume timeline summary in the system backend.",
+      "translations": {
+        "en_US": "Get application run resume timeline summary in the system backend.",
+        "zh_Hans": "获取应用运行恢复时间线摘要（系统后端）"
       }
     },
     {

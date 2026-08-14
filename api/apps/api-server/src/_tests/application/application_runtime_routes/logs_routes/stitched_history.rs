@@ -86,7 +86,30 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         .await
         .unwrap();
     }
+
+    // The debug-run fixture completes before the historical Claude Code records are shaped.
+    // Reset only its isolated test records, then keep the persisted edge legal: running ->
+    // cancelled. Production recovery history remains append-only and rejects terminal rewrites.
     for run_id in [run_a_uuid, run_b_uuid] {
+        sqlx::query("delete from flow_run_recovery_history where flow_run_id = $1")
+            .bind(run_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"
+            update flow_runs
+            set status = 'running',
+                finished_at = null,
+                error_payload = null,
+                updated_at = now()
+            where id = $1
+            "#,
+        )
+        .bind(run_id)
+        .execute(&pool)
+        .await
+        .unwrap();
         <MainDurableStore as OrchestrationRuntimeRepository>::update_flow_run(
             &state.store,
             &UpdateFlowRunInput {
