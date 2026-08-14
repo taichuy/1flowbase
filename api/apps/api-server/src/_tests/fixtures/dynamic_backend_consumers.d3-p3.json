@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 302,
-  "count": 604,
+  "projected_interface_count": 303,
+  "count": 606,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -315,6 +315,12 @@
       "GET",
       "/api/console/applications/:id/logs/runs/:run_id/resume-timeline",
       "Get application run resume timeline"
+    ],
+    [
+      "get_application_run_resume_timeline_summary",
+      "GET",
+      "/api/console/applications/:id/logs/runs/:run_id/resume-timeline-summary",
+      "Get application run resume timeline summary"
     ],
     [
       "get_application_run_trace_tree",

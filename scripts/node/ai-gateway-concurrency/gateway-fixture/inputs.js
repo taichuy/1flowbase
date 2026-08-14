@@ -42,6 +42,23 @@ function requireFile(value, label, { executable = false } = {}) {
   return resolved;
 }
 
+function requireDirectory(value, label) {
+  const resolved = path.resolve(requireString(value, label));
+  let stat;
+  try {
+    stat = fs.statSync(resolved);
+  } catch {
+    fixtureError(`${label} does not exist`);
+  }
+  if (!stat.isDirectory()) fixtureError(`${label} must be a directory`);
+  return resolved;
+}
+
+function siblingExecutable(binary, name) {
+  const extension = path.extname(binary);
+  return path.join(path.dirname(binary), `${name}${extension === '.exe' ? '.exe' : ''}`);
+}
+
 function requirePostgresUrl(value) {
   const raw = requireString(value, 'temporary PostgreSQL URL');
   let parsed;
@@ -93,9 +110,21 @@ function normalizeOptions(options) {
     ? requireString(options.artifactRoot, 'governance artifact root')
     : path.resolve('tmp', 'test-governance', 'ai-gateway-concurrency');
   if (!path.isAbsolute(artifactRoot)) fixtureError('governance artifact root must be absolute');
+  const apiServerBin = requireFile(options.apiServerBin, 'api-server binary', { executable: true });
   return {
     databaseUrl: requirePostgresUrl(options.databaseUrl),
-    apiServerBin: requireFile(options.apiServerBin, 'api-server binary', { executable: true }),
+    apiServerBin,
+    frontstageExecutableUpgradeBin: requireFile(
+      options.frontstageExecutableUpgradeBin || siblingExecutable(apiServerBin, 'frontstage_executable_upgrade'),
+      'frontstage executable upgrade binary',
+      { executable: true }
+    ),
+    frontstageCompilerRoot: requireDirectory(
+      options.frontstageCompilerRoot
+        || process.env.API_FRONTSTAGE_EXECUTABLE_COMPILER_ROOT
+        || path.join(process.cwd(), 'web'),
+      'frontstage executable compiler root'
+    ),
     pluginRunnerBin: requireFile(options.pluginRunnerBin, 'plugin-runner binary', { executable: true }),
     openaiPackage: requireFile(options.openaiPackage, 'official OpenAI package archive'),
     anthropicPackage: requireFile(options.anthropicPackage, 'official Anthropic package archive'),
@@ -115,7 +144,9 @@ function normalizeOptions(options) {
 module.exports = {
   GatewayFixtureError,
   normalizeOptions,
+  requireDirectory,
   requireLoopbackUrl,
   requirePort,
   requirePostgresUrl,
+  siblingExecutable,
 };

@@ -70,6 +70,27 @@ const blockCodeApi = vi.hoisted(() => ({
   ),
   saveFrontstageBlockCode: vi.fn()
 }));
+const blockTreeApi = vi.hoisted(() => ({
+  fetchFrontstageBlockNode: vi.fn(),
+  fetchFrontstageBlockNodeCode: vi.fn(),
+  saveFrontstageBlockNodeCode: vi.fn(),
+  frontstageBlockTreeQueryKeys: {
+    block: (workspaceId: string, pageId: string, blockId: string) => [
+      'frontstage',
+      workspaceId,
+      pageId,
+      blockId,
+      'detail'
+    ],
+    code: (workspaceId: string, pageId: string, blockId: string) => [
+      'frontstage',
+      workspaceId,
+      pageId,
+      blockId,
+      'code'
+    ]
+  }
+}));
 const pageTabsApi = vi.hoisted(() => ({
   createFrontstagePageTab: vi.fn(),
   deleteFrontstagePageTab: vi.fn(),
@@ -103,6 +124,7 @@ vi.mock(
   () => runtimeSessionsHook
 );
 vi.mock('../../api/block-code', () => blockCodeApi);
+vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
 vi.mock('../../components/jsx-studio/JsxStudioRunPanel', () => ({
   JsxStudioRunPanel: (props: unknown) => {
@@ -396,6 +418,7 @@ function createCatalogEntry(
       inputSchema: {}
     },
     uiCapabilities: [],
+    codeModules: [],
     codeCapabilities: {
       template: {
         source: PLUGIN_CODE_TEMPLATE,
@@ -481,6 +504,44 @@ describe('FrontStagePage - design controls', () => {
       pageId: 'page-1',
       codeRef: 'frontstage-js-block-1-code',
       code: 'saved template'
+    });
+    blockTreeApi.fetchFrontstageBlockNode.mockResolvedValue({
+      block_id: 'orders-block',
+      workspace_id: 'workspace-1',
+      page_id: 'page-1',
+      tab_id: 'tab-1',
+      parent_block_id: null,
+      rank: '000001',
+      presentation: 'page',
+      title: 'Orders',
+      description: null,
+      schema_version: 1,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: {}
+    });
+    blockTreeApi.fetchFrontstageBlockNodeCode.mockResolvedValue({
+      block_id: 'orders-block',
+      page_id: 'page-1',
+      source_code: 'export default function Orders() { return null; }',
+      source_sha256: 'source-sha',
+      dependency_lock: [],
+      tailwind_toolchain_lock: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'theme-and-utilities'
+      },
+      generated_css: '',
+      generated_css_sha256:
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      compiler_identity: {
+        name: '@1flowbase/tailwindcss-catalog',
+        tailwind_version: '4.3.3',
+        contract: 'source-driven-utilities-v1'
+      },
+      executable_state: 'ready'
     });
   });
 
@@ -1001,11 +1062,25 @@ describe('FrontStagePage - design controls', () => {
     expect(block.id).toMatch(/^frontstage-js-block-[0-9a-f-]{36}$/);
     expect(block.codeRef).toBe(`${String(block.id)}-code`);
     expect(block).not.toHaveProperty('layout');
-    expect(createInput).toEqual({
-      payload: createInput.payload,
-      code_ref: block.codeRef,
-      code: selectedTemplate
-    });
+    expect(createInput).toEqual(
+      expect.objectContaining({
+        payload: createInput.payload,
+        code_ref: block.codeRef,
+        source_code: selectedTemplate,
+        dependency_lock: [],
+        generated_css: '',
+        generated_css_sha256:
+          'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        tailwind_toolchain_lock: expect.objectContaining({
+          package: 'tailwindcss',
+          version: '4.3.3'
+        }),
+        compiler_identity: expect.objectContaining({
+          name: '@1flowbase/tailwindcss-catalog',
+          tailwind_version: '4.3.3'
+        })
+      })
+    );
   });
 
   test('AC-011 rejects a catalog entry without a code template before saving', async () => {
@@ -1166,7 +1241,7 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(createButton);
     fireEvent.click(createButton);
 
-    expect(createBlock).toHaveBeenCalledOnce();
+    await waitFor(() => expect(createBlock).toHaveBeenCalledOnce());
     expect(createButton).toBeDisabled();
     await act(async () => completeCreation?.());
   });

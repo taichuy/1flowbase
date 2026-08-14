@@ -12,6 +12,7 @@ import type { CSSProperties, FC, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
 
+import { compileNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
@@ -865,10 +866,23 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       }
 
       const codeRef = createdBlock.codeRef;
+      const dependencyLockResolution = resolveFrontstageNativeDependencyLock({
+        catalogEntry: entry,
+        workspaceId
+      });
+      if (dependencyLockResolution.error) {
+        throw new Error(dependencyLockResolution.error);
+      }
+      const executable = await compileNativeReactExecutableStyle(
+        codeTemplate.source,
+        dependencyLockResolution.dependencyLock
+      );
       const nextContent = await pageContentSave.createBlock({
         payload: input.payload,
         code_ref: codeRef,
-        code: codeTemplate.source
+        source_code: codeTemplate.source,
+        dependency_lock: dependencyLockResolution.dependencyLock,
+        ...executable
       });
 
       setSavedPageContent(nextContent);

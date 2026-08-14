@@ -23,6 +23,8 @@ function fixtureFiles() {
     options: {
       databaseUrl: 'postgres://fixture@127.0.0.1/fixture_db',
       apiServerBin: make('api-server', 0o700),
+      frontstageExecutableUpgradeBin: make('frontstage_executable_upgrade', 0o700),
+      frontstageCompilerRoot: root,
       pluginRunnerBin: make('plugin-runner', 0o700),
       openaiPackage: make('openai.1flowbasepkg'),
       anthropicPackage: make('anthropic.1flowbasepkg'),
@@ -109,11 +111,13 @@ class FakeOwnerClient {
 function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persistServiceLogs } = {}) {
   const spawned = [];
   const stopped = [];
+  const upgrades = [];
   const events = [];
   const ports = [41001, 41002];
   return {
     spawned,
     stopped,
+    upgrades,
     events,
     dependencies: {
       reserveLoopbackPort: async () => ports.shift(),
@@ -140,6 +144,10 @@ function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persist
         spawned.push(handle);
         return handle;
       },
+      runFrontstageExecutableUpgrade(binary, env, options) {
+        upgrades.push({ binary, env, options });
+        events.push(`upgrade:${path.basename(binary)}`);
+      },
       waitForHealth: async () => {},
       async stopOwned(handle) {
         if (handle) {
@@ -159,6 +167,49 @@ function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persist
     },
   };
 }
+
+test('frontstage executable upgrade completes before fixture api-server starts', async () => {
+  const files = fixtureFiles();
+  const fake = fakeDependencies();
+  let fixture;
+  try {
+    fixture = await createGatewayFixture(files.options, fake.dependencies);
+
+    assert.equal(fake.upgrades.length, 1);
+    assert.equal(path.basename(fake.upgrades[0].binary), 'frontstage_executable_upgrade');
+    assert.equal(fake.upgrades[0].env.API_DATABASE_URL, files.options.databaseUrl);
+    assert.equal(fake.upgrades[0].options.cwd, path.dirname(fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT));
+    await fixture.close();
+    assert.deepEqual(fake.events, [
+      'upgrade:frontstage_executable_upgrade',
+      'persist',
+      'stop:api-server',
+      'stop:plugin-runner',
+      'rm',
+    ]);
+  } finally {
+    await fixture?.close();
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
+
+test('frontstage executable upgrade failure prevents fixture api-server startup', async () => {
+  const files = fixtureFiles();
+  const fake = fakeDependencies();
+  fake.dependencies.runFrontstageExecutableUpgrade = () => {
+    throw new Error('controlled frontstage upgrade failure');
+  };
+  try {
+    await assert.rejects(
+      createGatewayFixture(files.options, fake.dependencies),
+      /controlled frontstage upgrade failure/u
+    );
+    assert.deepEqual(fake.spawned.map((handle) => path.basename(handle.binary)), ['plugin-runner']);
+    assert.deepEqual(fake.events, ['persist', 'stop:plugin-runner', 'rm']);
+  } finally {
+    fs.rmSync(files.root, { recursive: true, force: true });
+  }
+});
 
 // Root #1377 AC-001/003/004/005/008: real lifecycle targets are assembled from owner APIs.
 test('lifecycle exposes gateway, durable, activity, and active-stream targets then cleans up', async () => {
@@ -237,7 +288,13 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
       'api-server',
       'plugin-runner',
     ]);
-    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'stop:plugin-runner', 'rm']);
+    assert.deepEqual(fake.events, [
+      'upgrade:frontstage_executable_upgrade',
+      'persist',
+      'stop:api-server',
+      'stop:plugin-runner',
+      'rm',
+    ]);
     for (const service of ['api-server', 'plugin-runner']) {
       const log = fs.readFileSync(path.join(files.options.artifactRoot, `service-${service}.log`), 'utf8');
       assert.match(log, /\[REDACTED\]/u);
@@ -335,7 +392,13 @@ test('controlled bootstrap failure terminates both owned children and removes sc
       'api-server',
       'plugin-runner',
     ]);
-    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'stop:plugin-runner', 'rm']);
+    assert.deepEqual(fake.events, [
+      'upgrade:frontstage_executable_upgrade',
+      'persist',
+      'stop:api-server',
+      'stop:plugin-runner',
+      'rm',
+    ]);
     for (const service of ['api-server', 'plugin-runner']) {
       assert.equal(fs.existsSync(path.join(files.options.artifactRoot, `service-${service}.log`)), true);
     }
@@ -368,7 +431,7 @@ test('explicit API port is asserted before either child starts and is not random
     assert.deepEqual(fake.events.slice(0, 3), [
       'assert-port:7800',
       'spawn:plugin-runner',
-      'spawn:api-server',
+      'upgrade:frontstage_executable_upgrade',
     ]);
   } finally {
     fs.rmSync(files.root, { recursive: true, force: true });
@@ -383,7 +446,13 @@ test('injected service-log write failure still stops both children, removes scra
     fixture = await createGatewayFixture(files.options, fake.dependencies);
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
     await assert.rejects(fixture.close(), /controlled log write failure/u);
-    assert.deepEqual(fake.events, ['persist', 'stop:api-server', 'stop:plugin-runner', 'rm']);
+    assert.deepEqual(fake.events, [
+      'upgrade:frontstage_executable_upgrade',
+      'persist',
+      'stop:api-server',
+      'stop:plugin-runner',
+      'rm',
+    ]);
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
     await fixture?.close().catch(() => {});

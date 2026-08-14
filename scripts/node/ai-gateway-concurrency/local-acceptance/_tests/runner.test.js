@@ -20,6 +20,7 @@ function fixtureManifest() {
     database: { container: 'docker-db-1', image: 'postgres:18-alpine', host: '127.0.0.1', port: 35432 },
     artifacts: {
       apiServer: { path: '/bin/api-server', sha256: '1'.repeat(64) },
+      frontstageExecutableUpgrade: { path: '/bin/frontstage_executable_upgrade', sha256: '9'.repeat(64) },
       pluginRunner: { path: '/bin/plugin-runner', sha256: '2'.repeat(64) },
       openaiPackage: { path: '/packages/openai', sha256: '3'.repeat(64) },
       anthropicPackage: { path: '/packages/anthropic', sha256: '4'.repeat(64) },

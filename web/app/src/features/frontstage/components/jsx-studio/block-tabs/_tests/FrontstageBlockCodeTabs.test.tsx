@@ -15,6 +15,7 @@ function tab(
     base_source: `source:${blockId}`,
     draft,
     source_sha256: `hash:${blockId}`,
+    executable: null,
     loading: false,
     saving: false,
     error: null
