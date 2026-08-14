@@ -6,6 +6,8 @@ use super::catalog_projection::{
 use super::*;
 use sha2::{Digest, Sha256};
 
+use crate::ports::RetainedFrontendModuleAssetInput;
+
 pub struct InstallPluginCommand {
     pub actor_user_id: Uuid,
     pub package_root: String,
