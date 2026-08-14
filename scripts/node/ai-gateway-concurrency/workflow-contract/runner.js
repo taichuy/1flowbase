@@ -262,6 +262,7 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
     fixture = await createFixture({
       databaseUrl: inputs.databaseUrl,
       apiServerBin: inputs.apiServerBin,
+      frontstageCompilerRoot: path.join(inputs.repoRoot, 'web'),
       pluginRunnerBin: inputs.pluginRunnerBin,
       openaiPackage: inputs.openaiPackage,
       anthropicPackage: inputs.anthropicPackage,

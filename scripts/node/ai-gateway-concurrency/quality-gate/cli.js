@@ -481,14 +481,26 @@ async function runQualityGate(rawOptions) {
           hostTarget,
         ]);
     }
-    attempt("gateway-build", "cargo", [
+    attempt("gateway-api-build", "cargo", [
       "build",
       "--manifest-path",
       path.join(repoRoot, "api/Cargo.toml"),
       "--release",
       "-p",
       "api-server",
+      "--bin",
+      "api-server",
+      "--bin",
+      "frontstage_executable_upgrade",
+    ]);
+    attempt("gateway-plugin-runner-build", "cargo", [
+      "build",
+      "--manifest-path",
+      path.join(repoRoot, "api/Cargo.toml"),
+      "--release",
       "-p",
+      "plugin-runner",
+      "--bin",
       "plugin-runner",
     ]);
 
