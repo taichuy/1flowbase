@@ -45,6 +45,21 @@ test('runtime image locks Node 24 and compiler artifact identity without runtime
   assert.doesNotMatch(runtimeBase, /pnpm install|npm install/u);
 });
 
+test('runtime image reuses the Node base principal for the flowbase user', () => {
+  const dockerfile = read('docker/api-server.Dockerfile');
+  const runtimeBase = dockerfile.slice(dockerfile.indexOf('AS runtime-base'));
+
+  assert.match(
+    runtimeBase,
+    /groupmod --gid "\$\{APP_GID\}" --new-name flowbase node/u
+  );
+  assert.match(
+    runtimeBase,
+    /usermod --uid "\$\{APP_UID\}" --gid "\$\{APP_GID\}" --login flowbase/u
+  );
+  assert.doesNotMatch(runtimeBase, /groupadd|useradd/u);
+});
+
 test('compose upgrade service is isolated from unrelated runtime services', () => {
   for (const relativePath of [
     'docker/docker-compose.yaml',

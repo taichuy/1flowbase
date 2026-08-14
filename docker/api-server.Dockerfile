@@ -70,8 +70,9 @@ RUN apt-get update \
   && /usr/lib/postgresql/18/bin/pg_restore --version | grep -Eq 'PostgreSQL\) 18[.]' \
   && apt-get purge -y --auto-remove curl gnupg \
   && rm -rf /var/lib/apt/lists/* \
-  && groupadd --gid "${APP_GID}" flowbase \
-  && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin flowbase
+  && groupmod --gid "${APP_GID}" --new-name flowbase node \
+  && usermod --uid "${APP_UID}" --gid "${APP_GID}" --login flowbase \
+    --home /home/flowbase --move-home --shell /usr/sbin/nologin node
 
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore
