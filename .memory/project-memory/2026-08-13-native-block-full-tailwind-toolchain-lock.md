@@ -2,7 +2,7 @@
 memory_type: project
 title: 代码区块完整 Tailwind 与可复现工具链锁定
 created_at: 2026-08-13 18
-updated_at: 2026-08-13 18
+updated_at: 2026-08-14 15
 decision_policy: verify_before_decision
 scope:
   - web/packages/page-runtime
@@ -11,7 +11,7 @@ scope:
   - web/app/src/shared/code-block
   - api/crates/control-plane
   - api/crates/storage-durable
-status: issue_discussion
+status: implemented
 keywords:
   - native-react
   - tailwindcss
@@ -25,7 +25,7 @@ keywords:
 
 ## 谁在做什么？
 
-用户在 `2026-08-13 18` 确认把代码区块从 #1671 的有限 Tailwind utility inventory 改为标准 Tailwind v4 源码驱动编译方向。AI 已创建 GitHub Single Issue #1679 供用户在线审阅，当前为 `phase:discussion`，尚未授权实现。
+用户已确认把代码区块从源码静态命中 utility 改为版本化 Tailwind Block Preset。`import 'tailwindcss'` 在区块 ShadowRoot 内挂载完整预设，不再由当前源码候选决定可用 utility；实现及目标区块升级已完成。
 
 ## 为什么这样做？
 
@@ -37,17 +37,18 @@ keywords:
 
 ## 当前方向
 
-- 根据冻结 TSX 源码生成 utilities-only CSS，继续关闭 Preflight。
-- 源码、完整 Tailwind toolchain lock、生成 CSS 耐久制品与摘要由后端可执行状态原子持久化。
+- `import 'tailwindcss'` 使用版本锁定的 `block-preset-v1`，包含 theme、Preflight、默认 utility families 与标准 variants。
+- 每区块 `generated_css` 允许为空；Tailwind 样式由 dependency lock 中的受控 `shadow_style` 资产提供。
+- 源码、完整 Tailwind toolchain lock、样式资产摘要与编译器身份由后端可执行状态原子持久化。
 - 缓存只作性能优化；缓存删除不得改变运行结果。
 - 平台升级只改变新建区块默认工具链；已有区块只有显式升级并成功保存后才切换。
 - runtime 继续把样式作为 `shadow_style` 注入当前区块 ShadowRoot。
 - 不开放第三方 plugin、自定义配置、JavaScript 配置执行或主仓全局 Tailwind。
-- #1679 取代 #1671 的有限 inventory contract，但不推翻主仓 Tailwind 禁令和 ShadowRoot 隔离。
+- Block Preset 取代源码静态命中 contract，但不推翻主仓 Tailwind 禁令和 ShadowRoot 隔离。
 
 ## 截止日期
 
-无固定日期。下一状态转换是用户审阅并确认 #1679 正文后，将 Issue 改为 `phase:ready`，再授权实现。
+无固定日期。当前实现与目标区块升级已完成，后续只保留用户人工视觉验收。
 
 ## 决策背后动机
 
@@ -56,4 +57,4 @@ keywords:
 ## 验收证据入口
 
 - GitHub Issue：https://github.com/taichuy/1flowbase/issues/1679
-- 重点验证：完整静态 Tailwind 能力、自定义 CSS 混用、A/B/host ShadowRoot 隔离、双版本 lock、cache-miss 可复现、原子保存、历史迁移 preview/rollback。
+- 重点验证：版本化 Block Preset、自定义 CSS 混用、A/B/host ShadowRoot 隔离、双版本 lock、cache-miss 可复现、原子保存、历史迁移 preview/rollback。
