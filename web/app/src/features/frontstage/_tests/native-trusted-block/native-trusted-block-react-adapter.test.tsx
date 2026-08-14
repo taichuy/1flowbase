@@ -367,7 +367,9 @@ describe('frontstage native trusted block declarative portal host', () => {
   test('AC-003 shares one constructable stylesheet by asset digest across ShadowRoots', async () => {
     const replaceSync = vi.fn();
     class SharedStyleSheet {
-      replaceSync = replaceSync;
+      replaceSync(css: string) {
+        replaceSync(css);
+      }
     }
     vi.stubGlobal('CSSStyleSheet', SharedStyleSheet);
     const previousStyleSheetDescriptor = Object.getOwnPropertyDescriptor(
