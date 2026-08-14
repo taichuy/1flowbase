@@ -134,11 +134,7 @@ impl FrontstageExecutableUpgradeCompiler for NodeFrontstageExecutableCompiler {
             toolchain_lock: &target.toolchain_lock,
         })
         .map_err(|_| compiler_failure("request_encode_failed"))?;
-        let output = self
-            .process
-            .run(&request)
-            .await
-            .map_err(compiler_failure)?;
+        let output = self.process.run(&request).await.map_err(compiler_failure)?;
         let response: CompilerResponse =
             serde_json::from_slice(&output).map_err(|_| compiler_failure("malformed_output"))?;
         if !response.ok {
