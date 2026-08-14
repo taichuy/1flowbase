@@ -6,16 +6,34 @@ use plugin_framework::extension_bus::{
 };
 use serde::Serialize;
 
+use crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog;
+
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
 #[derive(Debug, Clone)]
 pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
+    interface_operations: Option<InterfaceOperationCatalog>,
 }
 
 impl ExtensionBootSnapshot {
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
-        Self { graph }
+        Self {
+            graph,
+            interface_operations: None,
+        }
+    }
+
+    pub(crate) fn compile(
+        graph: Arc<EffectiveExtensionGraph>,
+        descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
+    ) -> anyhow::Result<Self> {
+        let interface_operations =
+            InterfaceOperationCatalog::compile(Arc::clone(&graph), descriptors)?;
+        Ok(Self {
+            graph,
+            interface_operations: Some(interface_operations),
+        })
     }
 
     pub fn graph(&self) -> &EffectiveExtensionGraph {
@@ -28,6 +46,10 @@ impl ExtensionBootSnapshot {
 
     pub fn fingerprint(&self) -> &str {
         self.graph.fingerprint().as_str()
+    }
+
+    pub fn interface_operations(&self) -> Option<&InterfaceOperationCatalog> {
+        self.interface_operations.as_ref()
     }
 
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {

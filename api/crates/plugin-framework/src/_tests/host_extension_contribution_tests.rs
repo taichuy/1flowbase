@@ -977,6 +977,103 @@ migrations: []
     )
 }
 
+#[test]
+fn interface_operation_manifest_is_typed_and_old_manifests_default_to_empty() {
+    let manifest = parse_host_extension_contribution_manifest(&host_extension_manifest_with(
+        r#"
+interface_operations:
+  - operation_id: host_infrastructure.providers.view
+    method: get
+    path: /api/console/settings/host-infrastructure/providers
+    input:
+      contract_id: none
+      contract_version: "1"
+    output:
+      contract_id: host-infrastructure-provider-config-list
+      contract_version: "1"
+    required_core_permission: core.interface-operation.host-infrastructure-providers-view
+    auth_policy: core_console_operation
+    audit_policy: read_only
+    error_policy: core_api_error
+routes: []
+workers: []
+migrations: []
+"#,
+    ))
+    .unwrap();
+
+    let operation = &manifest.interface_operations[0];
+    assert_eq!(operation.operation_id, "host_infrastructure.providers.view");
+    assert_eq!(operation.method.as_str(), "GET");
+    assert_eq!(operation.input.contract_id, "none");
+    assert_eq!(
+        operation.output.contract_id,
+        "host-infrastructure-provider-config-list"
+    );
+
+    let legacy = parse_host_extension_contribution_manifest(&host_extension_manifest_with(
+        "routes: []\nworkers: []\nmigrations: []",
+    ))
+    .unwrap();
+    assert!(legacy.interface_operations.is_empty());
+}
+
+#[test]
+fn interface_operation_manifest_rejects_non_console_path_and_duplicate_identity() {
+    let invalid_path = host_extension_manifest_with(
+        r#"
+interface_operations:
+  - operation_id: operation.view
+    method: get
+    path: /api/system/providers
+    input: { contract_id: none, contract_version: "1" }
+    output: { contract_id: providers, contract_version: "1" }
+    required_core_permission: core.providers.view
+    auth_policy: core_console_operation
+    audit_policy: read_only
+    error_policy: core_api_error
+routes: []
+workers: []
+migrations: []
+"#,
+    );
+    assert!(parse_host_extension_contribution_manifest(&invalid_path)
+        .unwrap_err()
+        .to_string()
+        .contains("interface_operations[].path"));
+
+    let duplicate = host_extension_manifest_with(
+        r#"
+interface_operations:
+  - operation_id: operation.view
+    method: get
+    path: /api/console/providers
+    input: { contract_id: none, contract_version: "1" }
+    output: { contract_id: providers, contract_version: "1" }
+    required_core_permission: core.providers.view
+    auth_policy: core_console_operation
+    audit_policy: read_only
+    error_policy: core_api_error
+  - operation_id: operation.view
+    method: get
+    path: /api/console/providers/duplicate
+    input: { contract_id: none, contract_version: "1" }
+    output: { contract_id: providers, contract_version: "1" }
+    required_core_permission: core.providers.view
+    auth_policy: core_console_operation
+    audit_policy: read_only
+    error_policy: core_api_error
+routes: []
+workers: []
+migrations: []
+"#,
+    );
+    assert!(parse_host_extension_contribution_manifest(&duplicate)
+        .unwrap_err()
+        .to_string()
+        .contains("operation_id must be unique"));
+}
+
 fn host_extension_manifest_with(contributions: &str) -> String {
     format!(
         r#"

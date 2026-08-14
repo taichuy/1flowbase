@@ -63,6 +63,20 @@ infrastructure_providers:
     description: Local in-process host infrastructure provider.
     config_ref: secret://system/official.local-infra-host/config
     config_schema: []
+interface_operations:
+  - operation_id: host_infrastructure.providers.view
+    method: get
+    path: /api/console/settings/host-infrastructure/providers
+    input:
+      contract_id: none
+      contract_version: "1"
+    output:
+      contract_id: host-infrastructure-provider-config-list
+      contract_version: "1"
+    required_core_permission: core.interface-operation.host-infrastructure-providers-view
+    auth_policy: core_console_operation
+    audit_policy: read_only
+    error_policy: core_api_error
 routes: []
 workers: []
 migrations: []

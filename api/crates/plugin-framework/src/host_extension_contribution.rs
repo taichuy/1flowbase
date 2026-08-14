@@ -81,6 +81,70 @@ pub struct HostExtensionRouteManifest {
     pub action: HostExtensionRouteActionManifest,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionInterfaceOperationMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+}
+
+impl HostExtensionInterfaceOperationMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Patch => "PATCH",
+            Self::Delete => "DELETE",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionInterfaceOperationContractManifest {
+    pub contract_id: String,
+    pub contract_version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionInterfaceOperationAuthPolicy {
+    CoreConsoleOperation,
+    ContributorManaged,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionInterfaceOperationAuditPolicy {
+    ReadOnly,
+    Mutating,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionInterfaceOperationErrorPolicy {
+    CoreApiError,
+    ContributorDefined,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionInterfaceOperationManifest {
+    pub operation_id: String,
+    pub method: HostExtensionInterfaceOperationMethod,
+    pub path: String,
+    pub input: HostExtensionInterfaceOperationContractManifest,
+    pub output: HostExtensionInterfaceOperationContractManifest,
+    pub required_core_permission: String,
+    pub auth_policy: HostExtensionInterfaceOperationAuthPolicy,
+    pub audit_policy: HostExtensionInterfaceOperationAuditPolicy,
+    pub error_policy: HostExtensionInterfaceOperationErrorPolicy,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct HostExtensionConsoleSurfacesManifest {
@@ -200,6 +264,8 @@ pub struct HostExtensionContributionManifest {
     pub auth_providers: Vec<AuthProviderContributionManifest>,
     #[serde(default)]
     pub scope_providers: Vec<ScopeProviderContributionManifest>,
+    #[serde(default)]
+    pub interface_operations: Vec<HostExtensionInterfaceOperationManifest>,
     pub routes: Vec<HostExtensionRouteManifest>,
     #[serde(default)]
     pub settings_features: Vec<SettingsFeatureRegistration>,
@@ -316,6 +382,49 @@ fn validate_host_extension_contribution_manifest(
     }
     for provider in &manifest.scope_providers {
         validate_scope_provider_contribution(provider)?;
+    }
+    let mut interface_operation_ids = BTreeSet::new();
+    let mut interface_operation_routes = BTreeSet::new();
+    for operation in &manifest.interface_operations {
+        validate_non_empty(
+            &operation.operation_id,
+            "interface_operations[].operation_id",
+        )?;
+        if !interface_operation_ids.insert(operation.operation_id.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "interface_operations[].operation_id must be unique",
+            ));
+        }
+        if !operation.path.starts_with("/api/console/") {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "interface_operations[].path must start with /api/console/",
+            ));
+        }
+        if !interface_operation_routes.insert((operation.method, operation.path.as_str())) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "interface_operations[] method/path must be unique",
+            ));
+        }
+        validate_non_empty(
+            &operation.input.contract_id,
+            "interface_operations[].input.contract_id",
+        )?;
+        validate_non_empty(
+            &operation.input.contract_version,
+            "interface_operations[].input.contract_version",
+        )?;
+        validate_non_empty(
+            &operation.output.contract_id,
+            "interface_operations[].output.contract_id",
+        )?;
+        validate_non_empty(
+            &operation.output.contract_version,
+            "interface_operations[].output.contract_version",
+        )?;
+        validate_non_empty(
+            &operation.required_core_permission,
+            "interface_operations[].required_core_permission",
+        )?;
     }
     validate_auth_provider_contributions(manifest)?;
     let public_auth_route_ids = manifest

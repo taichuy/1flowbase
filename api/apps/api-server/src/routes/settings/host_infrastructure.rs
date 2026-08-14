@@ -40,6 +40,7 @@ use crate::{
     },
 };
 
+pub mod interface_operation;
 mod memory_support;
 
 use memory_support::{
@@ -436,10 +437,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/settings/host-infrastructure/providers",
+            interface_operation::host_infrastructure_providers_view_console_path(),
             console_get(
                 list_host_infrastructure_providers,
-                ConsoleOperation("host_infrastructure.providers.view".to_string()),
+                ConsoleOperation(
+                    interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+                        .to_string(),
+                ),
             ),
         )
         .route(
@@ -914,16 +918,23 @@ pub async fn list_host_infrastructure_providers(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
     require_session(&state, &headers).await?;
-    let providers =
+    let providers = list_host_infrastructure_providers_typed(state.as_ref()).await?;
+
+    Ok(Json(ApiSuccess::new(providers)))
+}
+
+pub(crate) async fn list_host_infrastructure_providers_typed(
+    state: &ApiState,
+) -> Result<Vec<HostInfrastructureProviderConfigResponse>, ApiError> {
+    Ok(
         HostInfrastructureConfigService::new(state.store.clone(), state.api_node_id.clone())
             .list_providers()
             .await?
             .providers
             .into_iter()
             .map(to_provider_response)
-            .collect();
-
-    Ok(Json(ApiSuccess::new(providers)))
+            .collect(),
+    )
 }
 
 #[utoipa::path(

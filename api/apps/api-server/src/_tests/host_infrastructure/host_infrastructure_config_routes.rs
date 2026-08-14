@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_config,
@@ -163,6 +163,31 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     .await
     .unwrap();
 
+    let extension_assembly = crate::extension_bus::assemble_extension_graph_input(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap();
+    let extension_snapshot = crate::extension_bus::ExtensionBootSnapshot::compile(
+        Arc::new(extension_assembly.compile_graph().unwrap()),
+        extension_assembly.interface_operations(),
+    )
+    .unwrap();
+    let typed_payload = serde_json::to_value(
+        extension_snapshot
+            .interface_operations()
+            .unwrap()
+            .providers_view()
+            .dispatch(
+                Arc::clone(&state),
+                crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewInput,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
     let app = crate::app_with_state_and_config(state, &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let list_response = app
@@ -179,6 +204,7 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         .unwrap();
     assert_eq!(list_response.status(), StatusCode::OK);
     let list_payload = response_json(list_response).await;
+    assert_eq!(list_payload["data"], typed_payload);
     assert_eq!(list_payload["data"][0]["display_name"], "Redis");
     assert_eq!(list_payload["data"][0]["runtime_status"], "inactive");
     assert_eq!(list_payload["data"][0]["desired_state"], "disabled");

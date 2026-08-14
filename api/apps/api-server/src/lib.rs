@@ -293,6 +293,10 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         Vec::new(),
     )?;
     let extension_graph = Arc::new(extension_assembly.compile_graph()?);
+    let extension_boot_snapshot = Arc::new(extension_bus::ExtensionBootSnapshot::compile(
+        Arc::clone(&extension_graph),
+        extension_assembly.interface_operations(),
+    )?);
     let builtin_host_extensions = extension_assembly.into_host_extension_manifests();
     let mut host_extension_registry =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
@@ -516,6 +520,11 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         control_plane::auth::AuthenticatorRegistry::from_host_extensions(&host_extension_registry)?,
     );
     let compiled_console_plan = compile_console_boot_plan(console_host_extensions)?;
+    extension_boot_snapshot
+        .interface_operations()
+        .ok_or_else(|| anyhow::anyhow!("interface operation catalog is absent at production boot"))?
+        .providers_view()
+        .validate_console_registry(&compiled_console_plan.console_operation_registry)?;
     activate_prepared_host_extensions(&store, &config.api_node_id, prepared_host_extensions)
         .await?;
     let process_started_at = OffsetDateTime::now_utc();
@@ -532,8 +541,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .map(Arc::new),
     )?;
     let api_runtime_profile = Arc::new(HostApiRuntimeProfileCollector::new(process_started_at)?);
-    let extension_boot_snapshot =
-        Arc::new(extension_bus::ExtensionBootSnapshot::new(extension_graph));
     if !provider_runtime
         .model_provider_extension_graph()
         .is_some_and(|graph| Arc::ptr_eq(graph, extension_boot_snapshot.graph_arc()))

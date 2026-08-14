@@ -34,9 +34,13 @@ pub use frontend_module_asset::*;
 pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementationKind};
 pub use host_extension_contribution::{
     parse_host_extension_contribution_manifest, AuthProviderContributionManifest,
-    HostExtensionBootstrapPhase, HostExtensionContributionManifest, HostExtensionMigrationManifest,
-    HostExtensionNativeEntrypointManifest, HostExtensionRouteActionManifest,
-    HostExtensionRouteManifest, HostExtensionWorkerManifest, HostInfrastructureProviderManifest,
+    HostExtensionBootstrapPhase, HostExtensionContributionManifest,
+    HostExtensionInterfaceOperationAuditPolicy, HostExtensionInterfaceOperationAuthPolicy,
+    HostExtensionInterfaceOperationContractManifest, HostExtensionInterfaceOperationErrorPolicy,
+    HostExtensionInterfaceOperationManifest, HostExtensionInterfaceOperationMethod,
+    HostExtensionMigrationManifest, HostExtensionNativeEntrypointManifest,
+    HostExtensionRouteActionManifest, HostExtensionRouteManifest, HostExtensionWorkerManifest,
+    HostInfrastructureProviderManifest,
 };
 pub use host_extension_dropin::*;
 pub use host_extension_manifest::{

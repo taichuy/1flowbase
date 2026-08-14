@@ -19,6 +19,14 @@ use plugin_framework::{
     HostExtensionContributionManifest, PluginConsumptionKind, PluginManifestV1,
 };
 
+use crate::routes::host_infrastructure::interface_operation::{
+    HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID,
+    HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
+    HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID, HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
+    INTERFACE_OPERATION_CONTRACT_ID, INTERFACE_OPERATION_CONTRACT_VERSION,
+    INTERFACE_OPERATION_OWNER_MODULE_ID, INTERFACE_OPERATION_POINT_ID,
+};
+
 pub const DEFAULT_PLUGIN_SET_PATH: &str = "plugins/sets/default.yaml";
 pub const BOOT_CORE_MODULE_ID: &str = "1flowbase.boot-core";
 pub const CACHE_STORE_EXTENSION_POINT_ID: &str = "1flowbase.boot.cache-store";
@@ -66,6 +74,7 @@ pub struct ExtensionGraphInputAssembly {
     plugin_set: DeploymentPluginSet,
     module_descriptors: Vec<ModuleDescriptor>,
     host_extension_manifests: Vec<(PluginManifestV1, HostExtensionContributionManifest)>,
+    interface_operations: Vec<plugin_framework::HostExtensionInterfaceOperationManifest>,
 }
 
 impl ExtensionGraphInputAssembly {
@@ -87,6 +96,12 @@ impl ExtensionGraphInputAssembly {
         self,
     ) -> Vec<(PluginManifestV1, HostExtensionContributionManifest)> {
         self.host_extension_manifests
+    }
+
+    pub fn interface_operations(
+        &self,
+    ) -> &[plugin_framework::HostExtensionInterfaceOperationManifest] {
+        &self.interface_operations
     }
 
     pub fn compile_graph(&self) -> Result<EffectiveExtensionGraph> {
@@ -112,6 +127,7 @@ pub fn assemble_extension_graph_input(
 
     let mut module_descriptors = vec![boot_core_descriptor()?];
     let mut host_extension_manifests = Vec::new();
+    let mut interface_operations = Vec::new();
 
     for module_id in plugin_set.host_extension_ids() {
         let manifest = load_package_manifest(
@@ -127,6 +143,7 @@ pub fn assemble_extension_graph_input(
             &contribution,
             activation,
         )?);
+        interface_operations.extend(contribution.interface_operations.iter().cloned());
         host_extension_manifests.push((manifest, contribution));
     }
     for module_id in plugin_set.runtime_extension_ids() {
@@ -167,6 +184,7 @@ pub fn assemble_extension_graph_input(
         plugin_set,
         module_descriptors,
         host_extension_manifests,
+        interface_operations,
     })
 }
 
@@ -210,8 +228,31 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             runtime_event_required_extension_point()?,
             runtime_event_diagnostic_extension_point()?,
             runtime_event_after_commit_extension_point()?,
+            interface_operation_extension_point()?,
         ],
         contributions: Vec::new(),
+    })
+}
+
+fn interface_operation_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(INTERFACE_OPERATION_POINT_ID)?,
+        owner_module_id: ModuleId::new(INTERFACE_OPERATION_OWNER_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Contribution,
+        contract: ContractDescriptor::new(
+            INTERFACE_OPERATION_CONTRACT_ID,
+            INTERFACE_OPERATION_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::System,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::BootSnapshot,
+        allowed_permissions: BTreeSet::from([PermissionCode::new(
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
+        )?]),
+        override_policy: OverridePolicy::Sealed,
     })
 }
 
@@ -374,6 +415,39 @@ fn derive_host_module_descriptor(
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    for operation in &contribution.interface_operations {
+        descriptor.contributions.push(ContributionDescriptor {
+            contribution_id: ContributionId::new(format!(
+                "{}.interface-operation.{}",
+                contribution.extension_id, operation.operation_id
+            ))?,
+            contributor_module_id: ModuleId::new(contribution.extension_id.as_str())?,
+            point_id: ExtensionPointId::new(INTERFACE_OPERATION_POINT_ID)?,
+            contract_version: plugin_framework::extension_bus::ContractVersion::new(
+                INTERFACE_OPERATION_CONTRACT_VERSION,
+            )?,
+            required_permissions: BTreeSet::from([PermissionCode::new(
+                operation.required_core_permission.clone(),
+            )?]),
+            mode: ContributionMode::Append,
+            ordering: ContributionOrdering::default(),
+        });
+    }
+    if contribution.extension_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID {
+        descriptor.granted_permissions.insert(PermissionCode::new(
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
+        )?);
+    }
+    if contribution.extension_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID
+        && contribution.interface_operations.iter().any(|operation| {
+            operation.operation_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+        })
+        && !descriptor.contributions.iter().any(|candidate| {
+            candidate.contribution_id.as_str() == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID
+        })
+    {
+        bail!("official providers view interface operation contribution id mismatch");
+    }
     Ok(descriptor)
 }
 
