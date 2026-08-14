@@ -1007,6 +1007,14 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
     let compiled = seed_compiled_plan(&store, &seeded).await;
     let started_at = datetime!(2026-08-13 08:00:00 UTC);
     let large_payload = "x".repeat(1_000_000);
+    let callback_request_payload = json!({
+        "tool_calls": [{
+            "id": "call-1",
+            "name": "lookup",
+            "arguments": { "large_context": large_payload.clone() }
+        }],
+        "fixed_context_copy": large_payload.clone()
+    });
     let run = seed_flow_run_with_mode(
         &store,
         &seeded,
@@ -1032,14 +1040,7 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
             flow_run_id: run.id,
             node_run_id: node.id,
             callback_kind: "llm_tool_calls".to_string(),
-            request_payload: json!({
-                "tool_calls": [{
-                    "id": "call-1",
-                    "name": "lookup",
-                    "arguments": { "large_context": large_payload.clone() }
-                }],
-                "fixed_context_copy": large_payload.clone()
-            }),
+            request_payload: callback_request_payload.clone(),
             external_ref_payload: Some(json!({ "large_external_context": true })),
         },
     )
@@ -1128,7 +1129,7 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
     .unwrap();
     assert_eq!(
         timeline.callback_tasks[0].request_payload,
-        callback.request_payload
+        callback_request_payload
     );
     assert_eq!(
         timeline.callback_tasks[0].response_payload,
