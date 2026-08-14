@@ -8,11 +8,13 @@ use std::{collections::BTreeMap, sync::Arc};
 use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 
+#[cfg(test)]
 pub(crate) use cache_store_activation::CacheStoreActivationFactoryRegistry;
 pub use contracts::{
     CacheStore, ClaimedTask, DistributedLock, EventBus, ProviderTransportStore, RateLimitDecision,
     RateLimitStore, RuntimeEventStream, TaskQueue,
 };
+#[cfg(test)]
 pub(crate) use local::build_local_host_infrastructure_from_host_extensions_with_cache_factories;
 pub use local::{
     build_local_host_infrastructure, build_local_host_infrastructure_from_host_extensions,

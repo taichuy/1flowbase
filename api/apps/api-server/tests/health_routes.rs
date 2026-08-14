@@ -223,6 +223,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             api_runtime_profile: std::sync::Arc::new(
                 HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
             ),
+            extension_boot_snapshot: None,
             plugin_runner_system: std::sync::Arc::new(UnreachablePluginRunnerSystemClient),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),

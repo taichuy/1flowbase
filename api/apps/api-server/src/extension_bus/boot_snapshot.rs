@@ -17,6 +17,7 @@ pub struct ExtensionBootSnapshot {
 }
 
 impl ExtensionBootSnapshot {
+    #[cfg(test)]
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
             graph,

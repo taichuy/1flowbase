@@ -431,7 +431,7 @@ where
             && attempt_runtime.provider_code == runtime.provider_code
             && attempt_runtime.protocol == runtime.protocol
             && attempt_runtime.model == runtime.model;
-        let mut invocation = if route_matches_probe {
+        let invocation = if route_matches_probe {
             routing_probe
                 .take()
                 .expect("the routing probe is consumed by at most one matching route")

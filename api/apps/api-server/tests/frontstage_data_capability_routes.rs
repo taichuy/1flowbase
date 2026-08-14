@@ -228,6 +228,7 @@ async fn fixture() -> Fixture {
         api_runtime_profile: Arc::new(
             HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
         ),
+        extension_boot_snapshot: None,
         plugin_runner_system: Arc::new(UnreachablePluginRunner),
         official_plugin_source: Arc::new(NoopPluginSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
