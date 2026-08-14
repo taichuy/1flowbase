@@ -392,7 +392,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 
 #[tokio::test]
 async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
-    let (app, database_url) = test_app_with_database_url().await;
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let workspace_id: Uuid =
