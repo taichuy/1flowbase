@@ -160,7 +160,13 @@ function runApiServerShard({ repoRoot, shardIndex, shardCount, cargoTestThreads,
   fs.rmSync(shardDir, { recursive: true, force: true });
   fs.mkdirSync(shardDir, { recursive: true });
   const llvmEnv = parseLlvmCovEnvironment(run(commands[0], { env, spawnSyncImpl, capture: true }));
-  const instrumentedEnv = { ...env, ...llvmEnv, LLVM_PROFILE_FILE: commands[2].profilePattern, CARGO_PROFILE_TEST_DEBUG: '0' };
+  const instrumentedEnv = {
+    ...env,
+    ...llvmEnv,
+    LLVM_PROFILE_FILE: commands[2].profilePattern,
+    CARGO_PROFILE_TEST_DEBUG: '0',
+    RUST_MIN_STACK: String(8 * 1024 * 1024),
+  };
   const inventoryText = run(commands[1], { env: instrumentedEnv, spawnSyncImpl, capture: true });
   const inventory = JSON.parse(inventoryText);
   fs.writeFileSync(path.join(shardDir, `inventory-${shardIndex}.json`), `${JSON.stringify(inventory)}\n`, 'utf8');

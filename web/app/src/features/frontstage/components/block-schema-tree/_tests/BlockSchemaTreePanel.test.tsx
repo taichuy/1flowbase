@@ -129,18 +129,13 @@ describe('BlockSchemaTreePanel', () => {
       screen.getByRole('searchbox', { name: /搜索区块|Search blocks/u })
     ).toBeInTheDocument();
     expect(await screen.findByText('Root page')).toBeInTheDocument();
-    expect(
-      screen.getByText('Root page').closest('[role="treeitem"]')
-    ).toHaveAttribute('aria-selected', 'true');
-    expect(
-      screen.getByText('Root page').closest('[role="treeitem"]')
-        ?.querySelector('.ant-tree-iconEle')
-    ).toBeNull();
-    expect(screen.queryByText(/根容器|Root container/u)).not.toBeInTheDocument();
-
     const rootTreeItem = screen
       .getByText('Root page')
       .closest('[role="treeitem"]');
+    expect(rootTreeItem).toHaveAttribute('aria-selected', 'true');
+    expect(rootTreeItem?.querySelector('.ant-tree-iconEle')).toBeNull();
+    expect(screen.queryByText(/根容器|Root container/u)).not.toBeInTheDocument();
+
     const switcher = rootTreeItem?.querySelector('.ant-tree-switcher');
     expect(switcher).not.toBeNull();
     fireEvent.click(switcher as Element);
@@ -185,7 +180,7 @@ describe('BlockSchemaTreePanel', () => {
     expect(getComputedStyle(childIndent as Element).width).toBe(
       'var(--ant-tree-indent-size)'
     );
-    expect(document.head.textContent).toContain('--ant-tree-indent-size:12px');
+    expect(document.head).toHaveTextContent('--ant-tree-indent-size:12px');
 
     view.rerender(
       <BlockSchemaTreePanel

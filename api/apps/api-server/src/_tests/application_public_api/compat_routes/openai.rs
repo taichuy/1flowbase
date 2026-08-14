@@ -4,7 +4,8 @@ use super::*;
 async fn openai_chat_completions_accepts_bearer_and_preserves_model() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Compatible Route App").await;
-    assert_published_compat_plan_has_provider_route(state.as_ref()).await;
+    assert_published_compat_plan_has_provider_route(state.as_ref(), "OpenAI Compatible Route App")
+        .await;
 
     let response = post_json(
         &app,

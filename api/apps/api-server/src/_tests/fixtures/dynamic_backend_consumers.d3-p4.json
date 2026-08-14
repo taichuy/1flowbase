@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 74,
+  "count": 76,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -36,6 +36,11 @@
       "category": "settings_feature_label",
       "path": "api/crates/access-control/src/settings_features.rs",
       "key": "Authentication center"
+    },
+    {
+      "category": "settings_feature_label",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "Backup and recovery"
     },
     {
       "category": "settings_feature_label",
@@ -111,6 +116,11 @@
       "category": "settings_policy_group",
       "path": "api/crates/access-control/src/settings_features.rs",
       "key": "Authentication center operations"
+    },
+    {
+      "category": "settings_policy_group",
+      "path": "api/crates/access-control/src/settings_features.rs",
+      "key": "System backup and controlled recovery operations"
     },
     {
       "category": "settings_policy_group",

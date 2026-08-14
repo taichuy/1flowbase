@@ -130,7 +130,7 @@ fn snapshot_from_metadata(
         content_length: object_metadata.len(),
         validator: format!(
             "local:{}:{sidecar_fingerprint}",
-            metadata_fingerprint(&object_metadata)
+            metadata_fingerprint(object_metadata)
         ),
     }
 }

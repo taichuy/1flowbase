@@ -418,6 +418,15 @@ fn api_config_accepts_production_with_explicit_allowed_origins() {
             "https://console.example.com,https://ops.example.com",
         ),
         ("API_PROVIDER_SECRET_MASTER_KEY", "provider-secret-key"),
+        (
+            "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
+            "/tmp/1flowbase-backups",
+        ),
+        (
+            "API_SYSTEM_BACKUP_KEY_BASE64",
+            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        ),
+        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
         ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
@@ -479,6 +488,15 @@ fn api_config_marks_session_cookie_secure_in_production() {
             "API_PROVIDER_SECRET_MASTER_KEY",
             "strong-provider-secret-master-key",
         ),
+        (
+            "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
+            "/tmp/1flowbase-backups",
+        ),
+        (
+            "API_SYSTEM_BACKUP_KEY_BASE64",
+            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        ),
+        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
         ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
@@ -499,6 +517,15 @@ fn api_config_allows_disabling_secure_session_cookie_for_plain_http_deployments(
         ("API_ENV", "production"),
         ("API_ALLOWED_ORIGINS", "http://192.168.31.25:3200"),
         ("API_COOKIE_SECURE", "false"),
+        (
+            "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
+            "/tmp/1flowbase-backups",
+        ),
+        (
+            "API_SYSTEM_BACKUP_KEY_BASE64",
+            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        ),
+        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         (
             "API_PROVIDER_SECRET_MASTER_KEY",
             "strong-provider-secret-master-key",

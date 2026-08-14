@@ -28,6 +28,3 @@ the Ordered Tree model and fields, creates or resumes source-keyed records, crea
 repairs their linked Blocks under the `architecture-materials` page, and prints the root
 Block's canonical deep link. Existing source-linked data must match the manifest exactly;
 on mismatch the importer stops instead of rewriting user data.
-
-`_tests/ac-010-authenticity.test.js` is the deferred Root-QA authenticity fixture. Delivery C
-defines it but does not execute it.

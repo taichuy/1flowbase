@@ -42,12 +42,18 @@ async fn compatible_template_catalog_projects_descriptor_system_fields() {
             "required": true
         })
     );
+    let ordered_tree_fields = ordered_tree["system_fields"].as_array().unwrap();
+    let created_at = ordered_tree_fields
+        .iter()
+        .find(|field| field["code"] == json!("created_at"))
+        .unwrap();
+    assert_eq!(created_at["field_kind"], json!("datetime"));
+    let parent_id = ordered_tree_fields
+        .iter()
+        .find(|field| field["code"] == json!("parent_id"))
+        .unwrap();
     assert_eq!(
-        ordered_tree["system_fields"][4]["field_kind"],
-        json!("datetime")
-    );
-    assert_eq!(
-        ordered_tree["system_fields"][6],
+        *parent_id,
         json!({
             "code": "parent_id",
             "summary": "parent_id system field",

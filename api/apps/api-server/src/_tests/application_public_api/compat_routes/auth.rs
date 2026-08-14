@@ -62,7 +62,8 @@ async fn compatible_routes_return_not_published_for_unpublished_key_application(
 async fn three_ingress_routes_create_agentflow_runs_without_generate_bindings() {
     let (app, state) = test_app_with_state().await;
     let token = setup_unbound_published_app_key(&app, "Three Ingress Unbound App").await;
-    assert_published_compat_plan_has_provider_route(state.as_ref()).await;
+    assert_published_compat_plan_has_provider_route(state.as_ref(), "Three Ingress Unbound App")
+        .await;
     let before = flow_run_count(state.as_ref()).await;
 
     let native = post_json(
@@ -101,7 +102,11 @@ async fn three_ingress_routes_create_agentflow_runs_without_generate_bindings() 
 async fn d2_ac_003_openai_chat_user_does_not_require_provider_end_user_reference_capability() {
     let (app, state) = test_app_with_state().await;
     let token = setup_published_app(&app, "OpenAI Conversation User Capability App").await;
-    assert_published_compat_plan_has_provider_route(state.as_ref()).await;
+    assert_published_compat_plan_has_provider_route(
+        state.as_ref(),
+        "OpenAI Conversation User Capability App",
+    )
+    .await;
     let before = flow_run_count(state.as_ref()).await;
     let mut body = openai_body(false);
     body["user"] = json!("openai-conversation-user");

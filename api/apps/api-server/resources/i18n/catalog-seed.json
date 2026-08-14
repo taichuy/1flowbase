@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.4",
+    "catalog_version": "2.0.6",
     "files": [
       {
         "keys": [
@@ -132,6 +132,8 @@
           "Create roles in the system backend.",
           "Create run archive upload session",
           "Create run archive upload session in the system backend.",
+          "Create system backups",
+          "Create system backups in the system backend.",
           "Create UI management templates",
           "Create UI management templates in the system backend.",
           "Create user API key",
@@ -188,6 +190,8 @@
           "Delete plugins families in the system backend.",
           "Delete roles",
           "Delete roles in the system backend.",
+          "Delete system backups",
+          "Delete system backups in the system backend.",
           "Disable members",
           "Disable members in the system backend.",
           "Discover data sources",
@@ -312,6 +316,8 @@
           "Import MCP upstream tools in the system backend.",
           "Import official MCP bundle",
           "Import official MCP bundle in the system backend.",
+          "Import system backups",
+          "Import system backups in the system backend.",
           "Import uploaded MCP bundle",
           "Import uploaded MCP bundle in the system backend.",
           "Install extension center",
@@ -382,6 +388,8 @@
           "List roles in the system backend.",
           "List roles permission options",
           "List roles permission options in the system backend.",
+          "List system backups",
+          "List system backups in the system backend.",
           "List UI management components",
           "List UI management components in the system backend.",
           "List UI management templates",
@@ -508,6 +516,20 @@
           "Switch MCP bundle library release in the system backend.",
           "Sync MCP bundle library release",
           "Sync MCP bundle library release in the system backend.",
+          "System backups detail",
+          "System backups detail in the system backend.",
+          "System backups download",
+          "System backups download in the system backend.",
+          "System backups recovery intent",
+          "System backups recovery intent in the system backend.",
+          "System backups recovery preflight",
+          "System backups recovery preflight in the system backend.",
+          "System backups recovery reauth",
+          "System backups recovery reauth in the system backend.",
+          "System backups recovery status",
+          "System backups recovery status in the system backend.",
+          "System backups verify",
+          "System backups verify in the system backend.",
           "Test connection",
           "Test connection in the system backend.",
           "Test draft connection",
@@ -655,7 +677,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:e943b7700bd58f9086163035c54738b4b24f4b0751525a649b99b1189e2cb6eb"
+        "sha256": "sha256:ed9c8df7556867425f9d9ac6cd65a0261a4576c30958bb7bfec8a41a8bf6c3fb"
       },
       {
         "keys": [
@@ -725,6 +747,8 @@
           "Create roles in the system backend.",
           "Create run archive upload session",
           "Create run archive upload session in the system backend.",
+          "Create system backups",
+          "Create system backups in the system backend.",
           "Create UI management templates",
           "Create UI management templates in the system backend.",
           "Create user API key",
@@ -781,6 +805,8 @@
           "Delete plugins families in the system backend.",
           "Delete roles",
           "Delete roles in the system backend.",
+          "Delete system backups",
+          "Delete system backups in the system backend.",
           "Disable members",
           "Disable members in the system backend.",
           "Discover data sources",
@@ -905,6 +931,8 @@
           "Import MCP upstream tools in the system backend.",
           "Import official MCP bundle",
           "Import official MCP bundle in the system backend.",
+          "Import system backups",
+          "Import system backups in the system backend.",
           "Import uploaded MCP bundle",
           "Import uploaded MCP bundle in the system backend.",
           "Install extension center",
@@ -975,6 +1003,8 @@
           "List roles in the system backend.",
           "List roles permission options",
           "List roles permission options in the system backend.",
+          "List system backups",
+          "List system backups in the system backend.",
           "List UI management components",
           "List UI management components in the system backend.",
           "List UI management templates",
@@ -1101,6 +1131,20 @@
           "Switch MCP bundle library release in the system backend.",
           "Sync MCP bundle library release",
           "Sync MCP bundle library release in the system backend.",
+          "System backups detail",
+          "System backups detail in the system backend.",
+          "System backups download",
+          "System backups download in the system backend.",
+          "System backups recovery intent",
+          "System backups recovery intent in the system backend.",
+          "System backups recovery preflight",
+          "System backups recovery preflight in the system backend.",
+          "System backups recovery reauth",
+          "System backups recovery reauth in the system backend.",
+          "System backups recovery status",
+          "System backups recovery status in the system backend.",
+          "System backups verify",
+          "System backups verify in the system backend.",
           "Test connection",
           "Test connection in the system backend.",
           "Test draft connection",
@@ -1248,7 +1292,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:1e9916f66e979a916ac7fe4c27c16a6bc394ca36e3d5ad6a9e571314f8f78bb5"
+        "sha256": "sha256:4c039698e57e228e876e8b6eb10f40051f9bc5d271b7d5f68b537e041b2fa144"
       },
       {
         "keys": [
@@ -1260,7 +1304,7 @@
           "Application management operations",
           "Authentication center",
           "Authentication center operations",
-          "Code template and component contract management operations",
+          "Backup and recovery",
           "Data model and data source operations",
           "Data source",
           "Discover and manage host-installed extensions",
@@ -1280,14 +1324,14 @@
           "Permission management",
           "Role and permission operations",
           "Root language catalog operations",
+          "System backup and controlled recovery operations",
           "System runtime",
           "System runtime operations",
-          "UI management",
           "User management"
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/settings/en_US.json",
-        "sha256": "sha256:e3351a58e6b1ab7fd77d881fb1cb13917b5107a26ddf5949fc1def49664fffbf"
+        "sha256": "sha256:27460de61fd6c90ed2d6f7a059226f2e7f48711dacacc36b31ba40eb1150d4be"
       },
       {
         "keys": [
@@ -1299,7 +1343,7 @@
           "Application management operations",
           "Authentication center",
           "Authentication center operations",
-          "Code template and component contract management operations",
+          "Backup and recovery",
           "Data model and data source operations",
           "Data source",
           "Discover and manage host-installed extensions",
@@ -1319,14 +1363,14 @@
           "Permission management",
           "Role and permission operations",
           "Root language catalog operations",
+          "System backup and controlled recovery operations",
           "System runtime",
           "System runtime operations",
-          "UI management",
           "User management"
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/settings/zh_Hans.json",
-        "sha256": "sha256:65dd1a4de29b730034dba850301fe3c5076d44d0f2b14c63cbeb841e2b604d62"
+        "sha256": "sha256:1027babefb331e5a77e75079fac75ee1264e3bcb4f1bc258ce647dd58289e44a"
       },
       {
         "keys": [
@@ -1581,13 +1625,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-08-03T13:53:16.000Z",
+    "generated_at": "2026-08-13T16:48:59.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:1dfa3ede10d919e6461b3f017492586b5d73e02e4ad6da98ae0c3d687ffe6e4e",
+    "semantic_sha256": "sha256:6c636a498a9cdd0c362b9462580d227064dbcc25a96e3cdf55f5d4c06bf0b42c",
     "source_locale": "en_US"
   },
   "messages": [
@@ -1767,6 +1811,13 @@
       }
     },
     {
+      "key": "Backup and recovery",
+      "translations": {
+        "en_US": "Backup and recovery",
+        "zh_Hans": "Backup and recovery"
+      }
+    },
+    {
       "key": "Batch delete models",
       "translations": {
         "en_US": "Batch delete models",
@@ -1918,13 +1969,6 @@
       "translations": {
         "en_US": "Clear model providers request logs in the system backend.",
         "zh_Hans": "清除模型供应商请求日志（系统后端）"
-      }
-    },
-    {
-      "key": "Code template and component contract management operations",
-      "translations": {
-        "en_US": "Code template and component contract management operations",
-        "zh_Hans": "Code template and component contract management operations"
       }
     },
     {
@@ -2261,6 +2305,20 @@
       "translations": {
         "en_US": "Create run archive upload session in the system backend.",
         "zh_Hans": "创建运行归档上传会话（系统后端）"
+      }
+    },
+    {
+      "key": "Create system backups",
+      "translations": {
+        "en_US": "Create system backups",
+        "zh_Hans": "Create system backups"
+      }
+    },
+    {
+      "key": "Create system backups in the system backend.",
+      "translations": {
+        "en_US": "Create system backups in the system backend.",
+        "zh_Hans": "Create system backups in the system backend."
       }
     },
     {
@@ -2744,6 +2802,20 @@
       "translations": {
         "en_US": "Delete roles in the system backend.",
         "zh_Hans": "删除角色（系统后端）"
+      }
+    },
+    {
+      "key": "Delete system backups",
+      "translations": {
+        "en_US": "Delete system backups",
+        "zh_Hans": "Delete system backups"
+      }
+    },
+    {
+      "key": "Delete system backups in the system backend.",
+      "translations": {
+        "en_US": "Delete system backups in the system backend.",
+        "zh_Hans": "Delete system backups in the system backend."
       }
     },
     {
@@ -3720,6 +3792,20 @@
       }
     },
     {
+      "key": "Import system backups",
+      "translations": {
+        "en_US": "Import system backups",
+        "zh_Hans": "Import system backups"
+      }
+    },
+    {
+      "key": "Import system backups in the system backend.",
+      "translations": {
+        "en_US": "Import system backups in the system backend.",
+        "zh_Hans": "Import system backups in the system backend."
+      }
+    },
+    {
       "key": "Import uploaded MCP bundle",
       "translations": {
         "en_US": "Import uploaded MCP bundle",
@@ -4185,14 +4271,14 @@
       "key": "List model templates",
       "translations": {
         "en_US": "List model templates",
-        "zh_Hans": "列出模型模板"
+        "zh_Hans": "List model templates"
       }
     },
     {
       "key": "List model templates in the system backend.",
       "translations": {
         "en_US": "List model templates in the system backend.",
-        "zh_Hans": "列出模型模板（系统后端）"
+        "zh_Hans": "List model templates in the system backend."
       }
     },
     {
@@ -4235,6 +4321,20 @@
       "translations": {
         "en_US": "List roles permission options in the system backend.",
         "zh_Hans": "列出角色权限选项（系统后端）"
+      }
+    },
+    {
+      "key": "List system backups",
+      "translations": {
+        "en_US": "List system backups",
+        "zh_Hans": "List system backups"
+      }
+    },
+    {
+      "key": "List system backups in the system backend.",
+      "translations": {
+        "en_US": "List system backups in the system backend.",
+        "zh_Hans": "List system backups in the system backend."
       }
     },
     {
@@ -5435,6 +5535,111 @@
       }
     },
     {
+      "key": "System backup and controlled recovery operations",
+      "translations": {
+        "en_US": "System backup and controlled recovery operations",
+        "zh_Hans": "System backup and controlled recovery operations"
+      }
+    },
+    {
+      "key": "System backups detail",
+      "translations": {
+        "en_US": "System backups detail",
+        "zh_Hans": "System backups detail"
+      }
+    },
+    {
+      "key": "System backups detail in the system backend.",
+      "translations": {
+        "en_US": "System backups detail in the system backend.",
+        "zh_Hans": "System backups detail in the system backend."
+      }
+    },
+    {
+      "key": "System backups download",
+      "translations": {
+        "en_US": "System backups download",
+        "zh_Hans": "System backups download"
+      }
+    },
+    {
+      "key": "System backups download in the system backend.",
+      "translations": {
+        "en_US": "System backups download in the system backend.",
+        "zh_Hans": "System backups download in the system backend."
+      }
+    },
+    {
+      "key": "System backups recovery intent",
+      "translations": {
+        "en_US": "System backups recovery intent",
+        "zh_Hans": "System backups recovery intent"
+      }
+    },
+    {
+      "key": "System backups recovery intent in the system backend.",
+      "translations": {
+        "en_US": "System backups recovery intent in the system backend.",
+        "zh_Hans": "System backups recovery intent in the system backend."
+      }
+    },
+    {
+      "key": "System backups recovery preflight",
+      "translations": {
+        "en_US": "System backups recovery preflight",
+        "zh_Hans": "System backups recovery preflight"
+      }
+    },
+    {
+      "key": "System backups recovery preflight in the system backend.",
+      "translations": {
+        "en_US": "System backups recovery preflight in the system backend.",
+        "zh_Hans": "System backups recovery preflight in the system backend."
+      }
+    },
+    {
+      "key": "System backups recovery reauth",
+      "translations": {
+        "en_US": "System backups recovery reauth",
+        "zh_Hans": "System backups recovery reauth"
+      }
+    },
+    {
+      "key": "System backups recovery reauth in the system backend.",
+      "translations": {
+        "en_US": "System backups recovery reauth in the system backend.",
+        "zh_Hans": "System backups recovery reauth in the system backend."
+      }
+    },
+    {
+      "key": "System backups recovery status",
+      "translations": {
+        "en_US": "System backups recovery status",
+        "zh_Hans": "System backups recovery status"
+      }
+    },
+    {
+      "key": "System backups recovery status in the system backend.",
+      "translations": {
+        "en_US": "System backups recovery status in the system backend.",
+        "zh_Hans": "System backups recovery status in the system backend."
+      }
+    },
+    {
+      "key": "System backups verify",
+      "translations": {
+        "en_US": "System backups verify",
+        "zh_Hans": "System backups verify"
+      }
+    },
+    {
+      "key": "System backups verify in the system backend.",
+      "translations": {
+        "en_US": "System backups verify in the system backend.",
+        "zh_Hans": "System backups verify in the system backend."
+      }
+    },
+    {
       "key": "System Role Type",
       "translations": {
         "en_US": "System Role Type",
@@ -5488,13 +5693,6 @@
       "translations": {
         "en_US": "Title",
         "zh_Hans": "标题"
-      }
-    },
-    {
-      "key": "UI management",
-      "translations": {
-        "en_US": "UI management",
-        "zh_Hans": "UI management"
       }
     },
     {

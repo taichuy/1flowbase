@@ -61,7 +61,17 @@
 .frontstage-block-schema-tree__search-results {
   max-height: 240px;
   margin-top: 8px;
+  margin-bottom: 0;
+  padding: 0;
   overflow: auto;
+  list-style: none;
+}
+
+.frontstage-block-schema-tree__search-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
 }
 
 .frontstage-block-schema-tree__search-result {

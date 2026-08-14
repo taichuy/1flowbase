@@ -1,6 +1,6 @@
 {
-  "catalog_version": "2.0.4",
-  "semantic_sha256": "sha256:1dfa3ede10d919e6461b3f017492586b5d73e02e4ad6da98ae0c3d687ffe6e4e",
-  "official_commit": "9fabfbbc1bdf059a7bc4ffd06a540a5235ccb999",
-  "release_id": "b005a8e0-2141-88ec-a692-6a3ac3dfec42"
+  "catalog_version": "2.0.6",
+  "semantic_sha256": "sha256:6c636a498a9cdd0c362b9462580d227064dbcc25a96e3cdf55f5d4c06bf0b42c",
+  "official_commit": "c35597a5fb286147648a6777cf08f75f694836e4",
+  "release_id": "40cf7f37-a0e5-8567-bea8-248e9959a65c"
 }

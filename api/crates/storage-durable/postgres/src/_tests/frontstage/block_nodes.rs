@@ -53,6 +53,7 @@ async fn create_page_and_tab(
     (page_id, tab_id)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_input(
     workspace_id: Uuid,
     actor_user_id: Uuid,

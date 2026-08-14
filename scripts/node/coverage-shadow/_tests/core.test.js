@@ -133,21 +133,24 @@ test('shard orchestration fails closed when nextest execution fails', () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-shadow-shard-'));
   fs.mkdirSync(path.join(repoRoot, 'api'), { recursive: true });
   let call = 0;
+  let testEnv;
   assert.throws(() => runApiServerShard({
     repoRoot,
     shardIndex: 1,
     shardCount: 4,
     cargoTestThreads: 2,
     env: { QUALITY_GATE_TARGET_SHA: 'abc' },
-    spawnSyncImpl() {
+    spawnSyncImpl(_command, _args, options) {
       call += 1;
       if (call === 1) {
         return { status: 0, stdout: "export RUSTC_WRAPPER='/bin/cov'\nexport CARGO_LLVM_COV='1'\n" };
       }
       if (call === 2) return { status: 0, stdout: JSON.stringify(inventory(['a'])) };
+      testEnv = options.env;
       return { status: 7, stdout: '', stderr: 'failed' };
     },
   }), /failed with exit code 7/u);
+  assert.equal(testEnv.RUST_MIN_STACK, '8388608');
 });
 
 test('merge fails closed when a shard artifact is absent', () => {

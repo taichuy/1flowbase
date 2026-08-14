@@ -31,6 +31,7 @@ import {
 } from './TailwindStyleBoundaryScenes';
 import { useAuthStore } from '../state/auth-store';
 import type { StyleBoundaryRuntimeScene } from './types';
+import './style-boundary-fixtures.css';
 
 function getAccountPopupChildren() {
   const items = createAccountMenuItems() ?? [];
@@ -134,7 +135,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundaryApplicationFetch();
 
     return (
-      <div style={{ width: 1280, height: 800 }}>
+      <div
+        className="style-boundary-agent-flow-node-detail"
+        style={{ width: 1280, height: 800 }}
+      >
         <AgentFlowEditorShell
           applicationId="app-1"
           applicationName="Support Agent"

@@ -68,10 +68,36 @@ pub(super) fn before_frontstage_page_tab_ownership_migrator() -> Migrator {
     }
 }
 
+pub(super) fn frontstage_page_tab_ownership_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| migration.version <= FRONTSTAGE_PAGE_TAB_OWNERSHIP_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
 pub(super) fn before_frontstage_block_renderer_version_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
         .iter()
         .filter(|migration| migration.version < FRONTSTAGE_BLOCK_RENDERER_VERSION_MIGRATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+}
+
+pub(super) fn frontstage_block_renderer_version_migrator() -> Migrator {
+    let migrations = sqlx::migrate!("./migrations")
+        .iter()
+        .filter(|migration| {
+            migration.version <= FRONTSTAGE_BLOCK_RENDERER_VERSION_MIGRATION_VERSION
+        })
         .cloned()
         .collect::<Vec<_>>();
     Migrator {

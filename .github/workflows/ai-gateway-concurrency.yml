@@ -97,6 +97,21 @@ jobs:
             tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai -> target
             tmp/ai-gateway-concurrency/official-source/runtime-extensions/@taichuy/openai_compatible -> target
 
+      - name: Prepare PostgreSQL 18 backup clients
+        shell: bash
+        run: |
+          tools_dir="$RUNNER_TEMP/postgresql-18-tools"
+          mkdir -p "$tools_dir"
+          for tool in pg_dump pg_restore; do
+            sed "s/__TOOL__/$tool/g" > "$tools_dir/$tool" <<'SCRIPT'
+          #!/bin/sh
+          exec docker run --pull=never --rm -i --network host --env PGPASSWORD postgres:18.4 __TOOL__ "$@"
+          SCRIPT
+            chmod +x "$tools_dir/$tool"
+          done
+          echo "API_POSTGRES_PG_DUMP_PATH=$tools_dir/pg_dump" >> "$GITHUB_ENV"
+          echo "API_POSTGRES_PG_RESTORE_PATH=$tools_dir/pg_restore" >> "$GITHUB_ENV"
+
       - name: Run the single blocking AI Gateway quality command
         id: protocol_conformance
         shell: bash

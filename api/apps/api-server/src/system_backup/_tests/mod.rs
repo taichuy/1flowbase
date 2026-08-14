@@ -29,7 +29,7 @@ fn temporary_root(label: &str) -> PathBuf {
 }
 
 fn fingerprint(value: char) -> String {
-    std::iter::repeat(value).take(64).collect()
+    std::iter::repeat_n(value, 64).collect()
 }
 
 fn manifest(backup_set_id: BackupSetId) -> BackupManifest {

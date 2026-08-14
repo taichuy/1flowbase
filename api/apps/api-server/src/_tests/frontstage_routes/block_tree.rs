@@ -1,5 +1,6 @@
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 async fn create_block(
     app: &axum::Router,
     cookie: &str,

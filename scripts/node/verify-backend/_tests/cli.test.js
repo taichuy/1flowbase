@@ -214,6 +214,7 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
           CARGO_BUILD_JOBS: '4',
           CARGO_INCREMENTAL: '0',
           CARGO_PROFILE_TEST_DEBUG: '0',
+          RUST_MIN_STACK: '8388608',
         },
       },
     ]
