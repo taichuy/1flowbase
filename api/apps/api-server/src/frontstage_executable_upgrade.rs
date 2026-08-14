@@ -1,4 +1,4 @@
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{path::PathBuf, process::Stdio, time::Duration};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -15,8 +15,10 @@ use tokio::{
 };
 
 const COMPILER_ROOT: &str = "/app/frontstage-executable-compiler";
-const COMPILER_ENTRY: &str =
-    "/app/frontstage-executable-compiler/packages/tailwindcss-catalog/bin/compiler-4.3.3.mjs";
+const COMPILER_ENTRY_RELATIVE: &str = "packages/tailwindcss-catalog/bin/compiler-4.3.3.mjs";
+const COMPILER_NODE_PATH: &str = "/usr/local/bin/node";
+const COMPILER_ROOT_ENV: &str = "API_FRONTSTAGE_EXECUTABLE_COMPILER_ROOT";
+const COMPILER_NODE_PATH_ENV: &str = "API_FRONTSTAGE_EXECUTABLE_NODE_PATH";
 const COMPILER_ENTRY_SHA256: &str =
     "603eb3ed18b81b7de3ce3f0e1f6f599dc1c6d58e246b6f567bad59e2a4d0a704";
 const COMPILER_TIMEOUT: Duration = Duration::from_secs(30);
@@ -59,7 +61,7 @@ pub async fn require_cutover(store: &storage_durable::MainDurableStore) -> Resul
 pub async fn run_upgrade(store: storage_durable::MainDurableStore) -> Result<()> {
     control_plane::frontstage_executable_upgrade::FrontstageExecutableUpgradeService::new(
         store,
-        NodeFrontstageExecutableCompiler::release(),
+        NodeFrontstageExecutableCompiler::from_env(),
     )
     .run(target())
     .await?;
@@ -71,12 +73,18 @@ pub struct NodeFrontstageExecutableCompiler {
 }
 
 impl NodeFrontstageExecutableCompiler {
-    fn release() -> Self {
+    fn from_env() -> Self {
+        let root = std::env::var_os(COMPILER_ROOT_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(COMPILER_ROOT));
+        let program = std::env::var_os(COMPILER_NODE_PATH_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(COMPILER_NODE_PATH));
         Self {
             process: CompilerProcess {
-                program: Path::new("/usr/local/bin/node").into(),
-                entry: Path::new(COMPILER_ENTRY).into(),
-                current_dir: Path::new(COMPILER_ROOT).into(),
+                program,
+                entry: root.join(COMPILER_ENTRY_RELATIVE),
+                current_dir: root,
                 entry_sha256: COMPILER_ENTRY_SHA256.into(),
                 timeout: COMPILER_TIMEOUT,
             },
@@ -269,7 +277,8 @@ async fn read_bounded(
 }
 
 pub fn verify_release_artifact() -> Result<()> {
-    let bytes = std::fs::read(COMPILER_ENTRY).context("read compiler entry")?;
+    let compiler = NodeFrontstageExecutableCompiler::from_env();
+    let bytes = std::fs::read(&compiler.process.entry).context("read compiler entry")?;
     let digest = format!("{:x}", Sha256::digest(bytes));
     if digest != COMPILER_ENTRY_SHA256 {
         bail!("compiler entry digest mismatch")

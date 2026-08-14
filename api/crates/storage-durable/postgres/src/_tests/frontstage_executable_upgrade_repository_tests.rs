@@ -294,6 +294,94 @@ async fn commit_is_all_or_nothing_audited_and_leaves_old_ready_untouched() {
 }
 
 #[tokio::test]
+async fn snapshot_uses_the_only_catalog_for_legacy_code_without_a_node_locator() {
+    let (store, pool, _, ready_id) = fixture(0).await;
+    let (workspace_id, page_id): (Uuid, Uuid) =
+        sqlx::query_as("select workspace_id, page_id from frontstage_block_codes where id = $1")
+            .bind(ready_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "insert into frontstage_block_codes (id, workspace_id, page_id, code_ref, code) values ($1, $2, $3, 'legacy-orphan', 'export default () => null;')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(page_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let snapshot = started_snapshot(&store, &target()).await;
+
+    assert_eq!(snapshot.rows.len(), 1);
+    assert_eq!(snapshot.rows[0].code_ref, "legacy-orphan");
+    assert_eq!(
+        snapshot.rows[0].catalog_locator.contribution_code,
+        "frontstage.js-ui-block"
+    );
+}
+
+#[tokio::test]
+async fn snapshot_refuses_legacy_code_without_a_locator_when_catalog_is_ambiguous() {
+    let (store, pool, _, ready_id) = fixture(0).await;
+    sqlx::query(
+        r#"
+        insert into frontend_block_catalog (
+            id, installation_id, provider_code, plugin_id, plugin_version,
+            contribution_code, title, runtime, entry, context_contract,
+            permission_network, permission_storage, permission_secrets,
+            ui_capabilities, code_template, code_template_version,
+            code_template_language, code_modules
+        )
+        select $1, installation_id, provider_code, plugin_id, plugin_version,
+               'frontstage.other-block', title, runtime, entry, context_contract,
+               permission_network, permission_storage, permission_secrets,
+               ui_capabilities, code_template, code_template_version,
+               code_template_language, code_modules
+        from frontend_block_catalog
+        limit 1
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (workspace_id, page_id): (Uuid, Uuid) =
+        sqlx::query_as("select workspace_id, page_id from frontstage_block_codes where id = $1")
+            .bind(ready_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "insert into frontstage_block_codes (id, workspace_id, page_id, code_ref, code) values ($1, $2, $3, 'ambiguous-orphan', 'export default () => null;')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(page_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let target = target();
+    let domain::FrontstageExecutableUpgradeStart::Run { run_id, .. } = store
+        .begin_frontstage_executable_upgrade(&target)
+        .await
+        .unwrap()
+    else {
+        panic!("fixture must start a run");
+    };
+
+    let error = store
+        .capture_frontstage_executable_upgrade_snapshot(&target, run_id)
+        .await
+        .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("frontstage_executable_upgrade_catalog_locator"));
+}
+
+#[tokio::test]
 async fn snapshot_drift_blocks_every_update() {
     let (store, pool, legacy_ids, _) = fixture(2).await;
     let target = target();

@@ -210,7 +210,29 @@ function getServicePrestartCommands(service, sourceEnv = process.env) {
     return [];
   }
 
+  const frontstageCompilerEnv = {
+    ...env,
+    API_FRONTSTAGE_EXECUTABLE_COMPILER_ROOT: path.join(
+      service.repoRoot,
+      "web",
+    ),
+    API_FRONTSTAGE_EXECUTABLE_NODE_PATH: process.execPath,
+  };
+
   return [
+    {
+      description: "api-server development frontstage executable upgrade",
+      command: service.command,
+      args: [
+        "run",
+        "-p",
+        "api-server",
+        "--bin",
+        "frontstage_executable_upgrade",
+      ],
+      cwd: service.cwd,
+      env: frontstageCompilerEnv,
+    },
     {
       description: "api-server development root password reset",
       command: service.command,
