@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 use super::{
-    ContributionDescriptor, ExtensionBusVersion, ExtensionPointDescriptor, ModuleId, ModuleKind,
-    ModuleVersion,
+    ContributionDescriptor, ContributionId, ExtensionBusVersion, ExtensionPointDescriptor,
+    ModuleDisableReason, ModuleId, ModuleKind, ModuleVersion,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -35,6 +35,97 @@ impl Provenance {
 
     pub fn module_kind(&self) -> ModuleKind {
         self.module_kind
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ModuleResolutionStatus {
+    Active,
+    Inactive { reason: ModuleInactivityReason },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ModuleInactivityReason {
+    Disabled { reason: ModuleDisableReason },
+    DependencyInactive { dependency_module_id: ModuleId },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModuleResolutionReceipt {
+    provenance: Provenance,
+    status: ModuleResolutionStatus,
+}
+
+impl ModuleResolutionReceipt {
+    pub(crate) fn new(provenance: Provenance, status: ModuleResolutionStatus) -> Self {
+        Self { provenance, status }
+    }
+
+    pub fn provenance(&self) -> &Provenance {
+        &self.provenance
+    }
+
+    pub fn status(&self) -> &ModuleResolutionStatus {
+        &self.status
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ContributionInactivityReason {
+    ModuleInactive {
+        reason: ModuleInactivityReason,
+    },
+    PointOwnerInactive {
+        owner_module_id: ModuleId,
+        reason: ModuleInactivityReason,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ContributionResolutionStatus {
+    Active,
+    SupersededBy {
+        contribution_id: ContributionId,
+    },
+    Inactive {
+        reason: ContributionInactivityReason,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ContributionResolutionReceipt {
+    descriptor: ContributionDescriptor,
+    provenance: Provenance,
+    status: ContributionResolutionStatus,
+}
+
+impl ContributionResolutionReceipt {
+    pub(crate) fn new(
+        descriptor: ContributionDescriptor,
+        provenance: Provenance,
+        status: ContributionResolutionStatus,
+    ) -> Self {
+        Self {
+            descriptor,
+            provenance,
+            status,
+        }
+    }
+
+    pub fn descriptor(&self) -> &ContributionDescriptor {
+        &self.descriptor
+    }
+
+    pub fn provenance(&self) -> &Provenance {
+        &self.provenance
+    }
+
+    pub fn status(&self) -> &ContributionResolutionStatus {
+        &self.status
     }
 }
 
@@ -113,7 +204,9 @@ pub struct EffectiveExtensionGraph {
     bus_version: ExtensionBusVersion,
     module_order: Vec<ModuleId>,
     module_provenance: Vec<Provenance>,
+    module_receipts: Vec<ModuleResolutionReceipt>,
     points: Vec<EffectiveExtensionPoint>,
+    contribution_receipts: Vec<ContributionResolutionReceipt>,
     fingerprint: ExtensionGraphFingerprint,
 }
 
@@ -122,14 +215,18 @@ impl EffectiveExtensionGraph {
         bus_version: ExtensionBusVersion,
         module_order: Vec<ModuleId>,
         module_provenance: Vec<Provenance>,
+        module_receipts: Vec<ModuleResolutionReceipt>,
         points: Vec<EffectiveExtensionPoint>,
+        contribution_receipts: Vec<ContributionResolutionReceipt>,
         fingerprint: ExtensionGraphFingerprint,
     ) -> Self {
         Self {
             bus_version,
             module_order,
             module_provenance,
+            module_receipts,
             points,
+            contribution_receipts,
             fingerprint,
         }
     }
@@ -146,8 +243,16 @@ impl EffectiveExtensionGraph {
         &self.module_provenance
     }
 
+    pub fn module_receipts(&self) -> &[ModuleResolutionReceipt] {
+        &self.module_receipts
+    }
+
     pub fn points(&self) -> &[EffectiveExtensionPoint] {
         &self.points
+    }
+
+    pub fn contribution_receipts(&self) -> &[ContributionResolutionReceipt] {
+        &self.contribution_receipts
     }
 
     pub fn fingerprint(&self) -> &ExtensionGraphFingerprint {

@@ -165,15 +165,64 @@ pub enum FailureSemantics {
 pub enum DeliverySemantics {
     Synchronous,
     Asynchronous,
-    Stream,
+    AfterCommitDurable,
+    RequiredStream,
+    DiagnosticBestEffort,
+}
+
+impl DeliverySemantics {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Synchronous => "synchronous",
+            Self::Asynchronous => "asynchronous",
+            Self::AfterCommitDurable => "after_commit_durable",
+            Self::RequiredStream => "required_stream",
+            Self::DiagnosticBestEffort => "diagnostic_best_effort",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleSemantics {
-    Boot,
-    Restart,
-    Runtime,
+    BootSnapshot,
+    Invocation,
+    RuntimeWorker,
+    WorkspaceAssignment,
+    UiMount,
+}
+
+impl LifecycleSemantics {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BootSnapshot => "boot_snapshot",
+            Self::Invocation => "invocation",
+            Self::RuntimeWorker => "runtime_worker",
+            Self::WorkspaceAssignment => "workspace_assignment",
+            Self::UiMount => "ui_mount",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleDisableReason {
+    DeploymentPolicy,
+    DesiredState,
+    WorkspaceAssignment,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ModuleActivationDeclaration {
+    Active,
+    Disabled { reason: ModuleDisableReason },
+}
+
+impl Default for ModuleActivationDeclaration {
+    fn default() -> Self {
+        Self::Active
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -264,6 +313,8 @@ pub struct ModuleDescriptor {
     pub module_id: ModuleId,
     pub module_version: ModuleVersion,
     pub module_kind: ModuleKind,
+    #[serde(default)]
+    pub activation: ModuleActivationDeclaration,
     #[serde(default)]
     pub dependencies: BTreeSet<ModuleDependency>,
     #[serde(default)]

@@ -2,11 +2,12 @@ use std::collections::BTreeSet;
 
 use plugin_framework::extension_bus::{
     compile_extension_graph, Cardinality, CompilationError, ContractDescriptor, ContractVersion,
-    ContributionDescriptor, ContributionId, ContributionMode, ContributionOrdering,
-    DeliverySemantics, ExtensionBusVersion, ExtensionPointDescriptor, ExtensionPointId,
-    ExtensionPointKind, FailureSemantics, LifecycleSemantics, ModuleDependency, ModuleDescriptor,
-    ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy, PermissionCode,
-    ScopeSemantics,
+    ContributionDescriptor, ContributionId, ContributionInactivityReason, ContributionMode,
+    ContributionOrdering, ContributionResolutionStatus, DeliverySemantics, ExtensionBusVersion,
+    ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind, FailureSemantics,
+    LifecycleSemantics, ModuleActivationDeclaration, ModuleDependency, ModuleDescriptor,
+    ModuleDisableReason, ModuleId, ModuleInactivityReason, ModuleKind, ModuleResolutionStatus,
+    ModuleVersion, OrderingSemantics, OverridePolicy, PermissionCode, ScopeSemantics,
 };
 
 fn module(id: &str, kind: ModuleKind) -> ModuleDescriptor {
@@ -15,6 +16,7 @@ fn module(id: &str, kind: ModuleKind) -> ModuleDescriptor {
         module_id: ModuleId::new(id).unwrap(),
         module_version: ModuleVersion::new("1.0.0").unwrap(),
         module_kind: kind,
+        activation: ModuleActivationDeclaration::Active,
         dependencies: BTreeSet::new(),
         granted_permissions: BTreeSet::new(),
         extension_points: vec![],
@@ -33,7 +35,7 @@ fn point(id: &str, owner: &str, cardinality: Cardinality) -> ExtensionPointDescr
         ordering: OrderingSemantics::Dependency,
         failure: FailureSemantics::FailClosed,
         delivery: DeliverySemantics::Synchronous,
-        lifecycle: LifecycleSemantics::Boot,
+        lifecycle: LifecycleSemantics::BootSnapshot,
         allowed_permissions: BTreeSet::new(),
         override_policy: OverridePolicy::Sealed,
     }
@@ -242,6 +244,104 @@ fn effective_graph_carries_provenance_and_stable_fingerprint() {
         .all(|c| c.is_ascii_hexdigit()));
 }
 
+// Root #1688 AC-002/AC-010: override resolution remains deterministic and inspectable.
+#[test]
+fn trusted_override_preserves_deterministic_resolution_receipts() {
+    let mut modules = valid_modules();
+    modules[0].extension_points[0].override_policy = OverridePolicy::TrustedHost;
+    let mut host = module("trusted", ModuleKind::TrustedHost);
+    let mut winner = contribution("trusted.override", "trusted", "core.actions");
+    winner.mode = ContributionMode::Override;
+    host.contributions.push(winner);
+    modules.push(host);
+
+    let forward = compile_extension_graph(modules.clone()).unwrap();
+    let mut fewer_receipts = modules.clone();
+    fewer_receipts
+        .iter_mut()
+        .find(|module| module.module_id.as_str() == "alpha")
+        .unwrap()
+        .contributions
+        .retain(|entry| entry.contribution_id.as_str() != "alpha.aux");
+    let fewer_receipts = compile_extension_graph(fewer_receipts).unwrap();
+    assert_ne!(forward.fingerprint(), fewer_receipts.fingerprint());
+
+    modules.reverse();
+    for module in &mut modules {
+        module.contributions.reverse();
+    }
+    let reversed = compile_extension_graph(modules).unwrap();
+
+    assert_eq!(forward.fingerprint(), reversed.fingerprint());
+    assert_eq!(forward.points()[0].contributions().len(), 1);
+    assert_eq!(forward.contribution_receipts().len(), 4);
+    assert_eq!(
+        forward.points()[0].contributions()[0]
+            .descriptor()
+            .contribution_id
+            .as_str(),
+        "trusted.override"
+    );
+    let alpha_receipt = forward
+        .contribution_receipts()
+        .iter()
+        .find(|receipt| receipt.descriptor().contribution_id.as_str() == "alpha.action")
+        .unwrap();
+    assert_eq!(
+        alpha_receipt.status(),
+        &ContributionResolutionStatus::SupersededBy {
+            contribution_id: ContributionId::new("trusted.override").unwrap(),
+        }
+    );
+    assert!(forward.contribution_receipts().iter().any(|receipt| {
+        receipt.descriptor().contribution_id.as_str() == "trusted.override"
+            && receipt.status() == &ContributionResolutionStatus::Active
+    }));
+}
+
+// Root #1688 AC-010: D1-P2 activation facts remain visible without becoming consumer handles.
+#[test]
+fn inactive_module_and_contribution_keep_typed_receipts() {
+    let mut modules = valid_modules();
+    let alpha = modules
+        .iter_mut()
+        .find(|module| module.module_id.as_str() == "alpha")
+        .unwrap();
+    alpha.activation = ModuleActivationDeclaration::Disabled {
+        reason: ModuleDisableReason::DesiredState,
+    };
+
+    let graph = compile_extension_graph(modules).unwrap();
+    let alpha_module = graph
+        .module_receipts()
+        .iter()
+        .find(|receipt| receipt.provenance().module_id().as_str() == "alpha")
+        .unwrap();
+    let inactive_reason = ModuleInactivityReason::Disabled {
+        reason: ModuleDisableReason::DesiredState,
+    };
+    assert_eq!(
+        alpha_module.status(),
+        &ModuleResolutionStatus::Inactive {
+            reason: inactive_reason.clone(),
+        }
+    );
+    assert!(graph.points()[0].contributions().iter().all(|entry| entry
+        .provenance()
+        .module_id()
+        .as_str()
+        != "alpha"));
+    assert!(graph.contribution_receipts().iter().any(|receipt| {
+        receipt.descriptor().contribution_id.as_str() == "alpha.action"
+            && receipt.status()
+                == &ContributionResolutionStatus::Inactive {
+                    reason: ContributionInactivityReason::ModuleInactive {
+                        reason: inactive_reason.clone(),
+                    },
+                }
+    }));
+}
+
 #[test]
 fn contract_exposes_all_five_stable_point_kinds() {
     assert_eq!(
@@ -261,4 +361,64 @@ fn contract_exposes_all_five_stable_point_kinds() {
             "resource_action",
         ]
     );
+}
+
+#[test]
+fn contract_exposes_stable_lifecycle_and_delivery_inventories() {
+    assert_eq!(
+        [
+            LifecycleSemantics::BootSnapshot,
+            LifecycleSemantics::Invocation,
+            LifecycleSemantics::RuntimeWorker,
+            LifecycleSemantics::WorkspaceAssignment,
+            LifecycleSemantics::UiMount,
+        ]
+        .map(LifecycleSemantics::as_str),
+        [
+            "boot_snapshot",
+            "invocation",
+            "runtime_worker",
+            "workspace_assignment",
+            "ui_mount",
+        ]
+    );
+    assert_eq!(
+        [
+            DeliverySemantics::Synchronous,
+            DeliverySemantics::Asynchronous,
+            DeliverySemantics::AfterCommitDurable,
+            DeliverySemantics::RequiredStream,
+            DeliverySemantics::DiagnosticBestEffort,
+        ]
+        .map(DeliverySemantics::as_str),
+        [
+            "synchronous",
+            "asynchronous",
+            "after_commit_durable",
+            "required_stream",
+            "diagnostic_best_effort",
+        ]
+    );
+}
+
+#[test]
+fn compilation_rejects_event_delivery_on_non_event_point_and_inverse() {
+    let mut core = module("core", ModuleKind::BootCore);
+    let mut non_event = point("core.actions", "core", Cardinality::Many);
+    non_event.delivery = DeliverySemantics::RequiredStream;
+    core.extension_points.push(non_event);
+    assert!(matches!(
+        compile_extension_graph(vec![core]),
+        Err(CompilationError::IncompatibleDeliverySemantics { .. })
+    ));
+
+    let mut core = module("core", ModuleKind::BootCore);
+    let mut event_stream = point("core.events", "core", Cardinality::Many);
+    event_stream.point_kind = ExtensionPointKind::EventStream;
+    event_stream.delivery = DeliverySemantics::Synchronous;
+    core.extension_points.push(event_stream);
+    assert!(matches!(
+        compile_extension_graph(vec![core]),
+        Err(CompilationError::IncompatibleDeliverySemantics { .. })
+    ));
 }
