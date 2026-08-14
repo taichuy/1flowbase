@@ -43,8 +43,7 @@ export function getNativeReactCompilerWorkerUrl(): string {
 }
 
 export function getNativeReactRuntimeFingerprint(
-  dependencyLock: NativeReactCatalogDependencyLock = [],
-  executableStyleIdentity = 'preview'
+  dependencyLock: NativeReactCatalogDependencyLock = []
 ): string {
   return createNativeReactRuntimeFingerprint(
     getNativeReactCompilerWorkerUrl(),
@@ -52,8 +51,7 @@ export function getNativeReactRuntimeFingerprint(
       react: reactPackageJson.version,
       react_jsx_runtime: reactPackageJson.version,
       antd: antdPackageJson.version,
-      catalog: nativeReactHostAbiIdentity(dependencyLock),
-      executable_style: executableStyleIdentity
+      catalog: nativeReactHostAbiIdentity(dependencyLock)
     })
   );
 }

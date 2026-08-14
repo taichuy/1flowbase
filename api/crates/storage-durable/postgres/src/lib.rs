@@ -10,7 +10,6 @@ pub mod file_management_repository;
 pub mod flow_repository;
 pub mod frontend_block_catalog_repository;
 pub mod frontstage_block_repository;
-pub mod frontstage_executable_upgrade_repository;
 pub mod frontstage_repository;
 pub mod host_extension_migration_repository;
 pub mod host_infrastructure_config_repository;
@@ -56,6 +55,7 @@ pub fn crate_name() -> &'static str {
 }
 
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
+    // The embedded forward-only migration set is the only schema initialization path.
     sqlx::migrate!("./migrations").run(pool).await?;
     Ok(())
 }

@@ -109,33 +109,6 @@ block_contributions:
             export const message: Record<string, unknown>; export const notification: Record<string, unknown>;
             export const theme: Record<string, unknown>; export const version: string;
           }
-      - source: "tailwindcss"
-        version: "4.3.3"
-        exports: [default]
-        binding: fetched
-        assets:
-          - path: "browser-assets/tailwindcss-catalog.css"
-            role: shadow_style
-            media_type: "text/css; charset=utf-8"
-            sha256: "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
-          - path: "browser-assets/tailwindcss-catalog.js"
-            role: browser_module
-            media_type: "text/javascript; charset=utf-8"
-            sha256: "d6da027db1739246d27aaeb9252950ad17eef3f4567764073e023eccaab2a457"
-        type_declarations: |
-          declare module 'tailwindcss' {
-            const tailwindcss: Readonly<{
-              name: 'tailwindcss';
-              version: '4.3.3';
-              mode: 'block-preset';
-              compiler: Readonly<{
-                name: '@1flowbase/tailwindcss-catalog';
-                contract: 'block-preset-v1';
-                tailwind_version: '4.3.3';
-              }>;
-            }>;
-            export default tailwindcss;
-          }
       - source: "@1flowbase/block-sdk"
         version: "1.0.0"
         exports: [blockSdkVersion]

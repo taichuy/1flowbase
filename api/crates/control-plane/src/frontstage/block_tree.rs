@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -11,7 +10,7 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockExecutableInput, FrontstageBlockPosition,
+        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput, FrontstageBlockPosition,
         FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
         FrontstagePageRepository, MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
         UpdateFrontstageBlockNodeInput,
@@ -65,7 +64,7 @@ pub struct CreateFrontstageBlockNodeCommand {
     pub description: Option<String>,
     pub presentation: domain::FrontstageBlockPresentation,
     pub position: FrontstageBlockPosition,
-    pub executable: FrontstageBlockExecutableInput,
+    pub code: FrontstageBlockCodeInput,
     pub input_mapping: BTreeMap<String, String>,
     pub output_mapping: BTreeMap<String, String>,
     pub runtime_descriptor: Option<Value>,
@@ -93,7 +92,8 @@ pub struct DeleteFrontstageBlockSubtreeCommand {
 
 pub struct SaveFrontstageBlockNodeCodeCommand {
     pub scope: FrontstageBlockScopeCommand,
-    pub executable: FrontstageBlockExecutableInput,
+    pub expected_source_revision: Option<String>,
+    pub code: FrontstageBlockCodeInput,
 }
 
 pub struct FrontstageBlockOpenTarget {
@@ -363,7 +363,7 @@ where
                 input_mapping: command.input_mapping,
                 output_mapping: command.output_mapping,
                 runtime_descriptor,
-                executable: validate_executable(command.executable)?,
+                code: validate_code(command.code)?,
                 audit_log,
             })
             .await
@@ -551,7 +551,10 @@ where
                 actor_user_id: command.scope.actor_user_id,
                 page_id: command.scope.page_id,
                 block_id: command.scope.block_id,
-                executable: validate_executable(command.executable)?,
+                expected_source_revision: validate_source_revision(
+                    command.expected_source_revision,
+                )?,
+                code: validate_code(command.code)?,
                 audit_log,
             })
             .await
@@ -623,55 +626,26 @@ where
     }
 }
 
-pub(super) fn validate_executable(
-    executable: FrontstageBlockExecutableInput,
-) -> Result<FrontstageBlockExecutableInput> {
-    if !is_dependency_lock(&executable.dependency_lock) {
+pub(super) fn validate_code(code: FrontstageBlockCodeInput) -> Result<FrontstageBlockCodeInput> {
+    if !is_dependency_lock(&code.dependency_lock) {
         return Err(ControlPlaneError::InvalidInput("dependency_lock").into());
     }
-    if !is_identity_object(&executable.tailwind_toolchain_lock) {
-        return Err(ControlPlaneError::InvalidInput("tailwind_toolchain_lock").into());
-    }
-    if !is_identity_object(&executable.compiler_identity) {
-        return Err(ControlPlaneError::InvalidInput("compiler_identity").into());
-    }
-    let digest = format!("{:x}", Sha256::digest(executable.generated_css.as_bytes()));
-    if digest != executable.generated_css_sha256 {
-        return Err(ControlPlaneError::InvalidInput("generated_css_sha256").into());
-    }
-    let imports_tailwind = executable.source_code.contains("import 'tailwindcss'")
-        || executable.source_code.contains("import \"tailwindcss\"");
-    let has_tailwind_shadow_style = executable
-        .dependency_lock
-        .as_array()
-        .is_some_and(|entries| {
-            entries.iter().any(|entry| {
-                entry.get("module_source").and_then(Value::as_str) == Some("tailwindcss")
-                    && entry
-                        .get("assets")
-                        .and_then(Value::as_array)
-                        .is_some_and(|assets| {
-                            assets.iter().any(|asset| {
-                                asset.get("role").and_then(Value::as_str) == Some("shadow_style")
-                            })
-                        })
-            })
-        });
-    let has_tailwind_style_payload =
-        !executable.generated_css.is_empty() || has_tailwind_shadow_style;
-    if imports_tailwind != has_tailwind_style_payload {
-        return Err(ControlPlaneError::InvalidInput("tailwind_style_payload").into());
-    }
-    Ok(executable)
+    Ok(code)
 }
 
-fn is_identity_object(value: &Value) -> bool {
-    value.as_object().is_some_and(|object| {
-        !object.is_empty()
-            && object
-                .values()
-                .all(|value| value.as_str().is_some_and(|value| !value.trim().is_empty()))
-    })
+pub(super) fn validate_source_revision(value: Option<String>) -> Result<Option<String>> {
+    match value {
+        Some(value)
+            if value.len() == 64
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) =>
+        {
+            Ok(Some(value))
+        }
+        Some(_) => Err(ControlPlaneError::InvalidInput("expected_source_revision").into()),
+        None => Ok(None),
+    }
 }
 
 fn is_dependency_lock(value: &Value) -> bool {
@@ -810,87 +784,40 @@ fn map_block_repository_error(error: anyhow::Error) -> anyhow::Error {
 }
 
 #[cfg(test)]
-mod executable_state_tests {
+mod code_input_tests {
     use super::*;
 
-    fn executable() -> FrontstageBlockExecutableInput {
-        FrontstageBlockExecutableInput {
+    fn code() -> FrontstageBlockCodeInput {
+        FrontstageBlockCodeInput {
             source_code: "import 'tailwindcss'; export default () => null;".to_owned(),
             dependency_lock: serde_json::json!([]),
-            tailwind_toolchain_lock: serde_json::json!({
-                "package": "tailwindcss",
-                "version": "4.3.3",
-                "theme_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-            }),
-            generated_css: "a{}".to_owned(),
-            generated_css_sha256:
-                "5f546eb4606b5c2b7d2a449a5cc2bbb477ed5a246c7051ce871b12f2dbfc8419".to_owned(),
-            compiler_identity: serde_json::json!({ "name": "tailwindcss", "abi": "v1" }),
-        }
-    }
-
-    fn block_preset_executable() -> FrontstageBlockExecutableInput {
-        FrontstageBlockExecutableInput {
-            source_code: "import 'tailwindcss'; export default () => null;".to_owned(),
-            dependency_lock: serde_json::json!([{
-                "module_source": "tailwindcss",
-                "module_version": "4.3.3",
-                "binding": "fetched",
-                "assets": [{
-                    "role": "shadow_style",
-                    "media_type": "text/css; charset=utf-8",
-                    "sha256": "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36",
-                    "url": "/api/console/frontstage/workspace/component-module-assets/77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
-                }],
-                "exports": ["default"]
-            }]),
-            tailwind_toolchain_lock: serde_json::json!({
-                "package": "tailwindcss",
-                "version": "4.3.3",
-                "mode": "block-preset"
-            }),
-            generated_css: String::new(),
-            generated_css_sha256:
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned(),
-            compiler_identity: serde_json::json!({
-                "name": "@1flowbase/tailwindcss-catalog",
-                "contract": "block-preset-v1",
-                "tailwind_version": "4.3.3"
-            }),
         }
     }
 
     #[test]
-    fn ac_005_006_preserves_a_deterministic_locked_executable_payload() {
-        let validated = validate_executable(executable()).expect("fixture must be valid");
-        assert_eq!(validated.generated_css, "a{}");
-        assert_eq!(validated.tailwind_toolchain_lock["version"], "4.3.3");
+    fn accepts_source_and_user_dependency_declarations_only() {
+        let validated = validate_code(code()).expect("fixture must be valid");
+        assert!(validated.source_code.contains("tailwindcss"));
+        assert_eq!(validated.dependency_lock, serde_json::json!([]));
     }
 
     #[test]
-    fn ac_block_preset_accepts_shadow_style_with_empty_per_block_css() {
-        let validated = validate_executable(block_preset_executable())
-            .expect("the versioned ShadowRoot preset is the Tailwind style payload");
-        assert!(validated.generated_css.is_empty());
-    }
-
-    #[test]
-    fn ac_008_011_rejects_digest_mismatch_before_the_repository_write() {
-        let mut input = executable();
-        input.generated_css_sha256 = "0".repeat(64);
-        let error = validate_executable(input).expect_err("mismatch must fail closed");
+    fn rejects_invalid_dependency_declarations() {
+        let mut input = code();
+        input.dependency_lock = serde_json::json!({});
+        let error = validate_code(input).expect_err("invalid lock must fail");
         assert!(matches!(
             error.downcast_ref::<ControlPlaneError>(),
-            Some(ControlPlaneError::InvalidInput("generated_css_sha256"))
+            Some(ControlPlaneError::InvalidInput("dependency_lock"))
         ));
     }
 
     #[test]
-    fn ac_011_rejects_tailwind_import_without_a_style_payload() {
-        let mut input = executable();
-        input.generated_css.clear();
-        input.generated_css_sha256 =
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned();
-        assert!(validate_executable(input).is_err());
+    fn validates_optimistic_source_revisions() {
+        assert_eq!(
+            validate_source_revision(Some("a".repeat(64))).unwrap(),
+            Some("a".repeat(64))
+        );
+        assert!(validate_source_revision(Some("latest".to_owned())).is_err());
     }
 }

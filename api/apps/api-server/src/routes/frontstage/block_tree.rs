@@ -13,7 +13,7 @@ use control_plane::{
         MoveFrontstageBlockNodeCommand, SaveFrontstageBlockNodeCodeCommand,
         SearchFrontstageBlocksCommand, UpdateFrontstageBlockNodeCommand,
     },
-    ports::{FrontstageBlockExecutableInput, FrontstageBlockPosition},
+    ports::{FrontstageBlockCodeInput, FrontstageBlockPosition},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -49,7 +49,7 @@ pub struct CreateFrontstageBlockNodeBody {
     pub before_block_id: Option<String>,
     pub after_block_id: Option<String>,
     #[serde(flatten)]
-    pub executable: FrontstageBlockExecutableBody,
+    pub code: FrontstageBlockCodeBody,
     #[serde(default)]
     pub input_mapping: BTreeMap<String, String>,
     #[serde(default)]
@@ -81,21 +81,16 @@ pub struct DeleteFrontstageBlockSubtreeBody {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveFrontstageBlockNodeCodeBody {
+    pub expected_source_revision: Option<String>,
     #[serde(flatten)]
-    pub executable: FrontstageBlockExecutableBody,
+    pub code: FrontstageBlockCodeBody,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct FrontstageBlockExecutableBody {
+pub struct FrontstageBlockCodeBody {
     pub source_code: String,
     #[schema(value_type = Vec<Object>)]
     pub dependency_lock: Value,
-    #[schema(value_type = Object)]
-    pub tailwind_toolchain_lock: Value,
-    pub generated_css: String,
-    pub generated_css_sha256: String,
-    #[schema(value_type = Object)]
-    pub compiler_identity: Value,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -187,13 +182,6 @@ pub struct FrontstageBlockNodeCodeResponse {
     pub source_sha256: Option<String>,
     #[schema(value_type = Option<Vec<Object>>)]
     pub dependency_lock: Option<Value>,
-    #[schema(value_type = Option<Object>)]
-    pub tailwind_toolchain_lock: Option<Value>,
-    pub generated_css: Option<String>,
-    pub generated_css_sha256: Option<String>,
-    #[schema(value_type = Option<Object>)]
-    pub compiler_identity: Option<Value>,
-    pub executable_state: domain::frontstage::FrontstageBlockExecutableState,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -208,17 +196,8 @@ pub struct FrontstageBlockRuntimeLayerResponse {
     pub output_mapping: BTreeMap<String, String>,
     #[schema(value_type = Object)]
     pub runtime_descriptor: Value,
-    pub source_code: String,
-    pub source_sha256: Option<String>,
-    #[schema(value_type = Option<Vec<Object>>)]
-    pub dependency_lock: Option<Value>,
-    #[schema(value_type = Option<Object>)]
-    pub tailwind_toolchain_lock: Option<Value>,
-    pub generated_css: Option<String>,
-    pub generated_css_sha256: Option<String>,
-    #[schema(value_type = Option<Object>)]
-    pub compiler_identity: Option<Value>,
-    pub executable_state: domain::frontstage::FrontstageBlockExecutableState,
+    pub code_ref: String,
+    pub source_revision: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -367,7 +346,7 @@ pub async fn create_frontstage_block_node(
                 before_block_id: body.before_block_id,
                 after_block_id: body.after_block_id,
             },
-            executable: executable_input(body.executable),
+            code: code_input(body.code),
             input_mapping: body.input_mapping,
             output_mapping: body.output_mapping,
             runtime_descriptor: body.runtime_descriptor,
@@ -641,7 +620,8 @@ pub async fn save_frontstage_block_node_code(
     let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .save_block_node_code(SaveFrontstageBlockNodeCodeCommand {
             scope,
-            executable: executable_input(body.executable),
+            expected_source_revision: body.expected_source_revision,
+            code: code_input(body.code),
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_code_response(
@@ -750,25 +730,18 @@ fn to_code_response(
     block_id: String,
     code: domain::frontstage::FrontstageBlockCodeRecord,
 ) -> FrontstageBlockNodeCodeResponse {
-    let executable_state = code.executable_state();
     FrontstageBlockNodeCodeResponse {
         block_id,
         page_id: code.page_id.to_string(),
         source_code: code.source_code,
         source_sha256: code.source_sha256,
         dependency_lock: code.dependency_lock,
-        tailwind_toolchain_lock: code.tailwind_toolchain_lock,
-        generated_css: code.generated_css,
-        generated_css_sha256: code.generated_css_sha256,
-        compiler_identity: code.compiler_identity,
-        executable_state,
     }
 }
 
 fn to_runtime_layer_response(
     layer: domain::frontstage::FrontstageBlockRuntimeLayer,
 ) -> FrontstageBlockRuntimeLayerResponse {
-    let executable_state = layer.executable.executable_state();
     FrontstageBlockRuntimeLayerResponse {
         block_id: layer.node.block_id,
         tab_id: layer.node.tab_id.to_string(),
@@ -779,25 +752,15 @@ fn to_runtime_layer_response(
         input_mapping: layer.node.input_mapping,
         output_mapping: layer.node.output_mapping,
         runtime_descriptor: layer.node.runtime_descriptor,
-        source_code: layer.executable.source_code,
-        source_sha256: layer.executable.source_sha256,
-        dependency_lock: layer.executable.dependency_lock,
-        tailwind_toolchain_lock: layer.executable.tailwind_toolchain_lock,
-        generated_css: layer.executable.generated_css,
-        generated_css_sha256: layer.executable.generated_css_sha256,
-        compiler_identity: layer.executable.compiler_identity,
-        executable_state,
+        code_ref: layer.node.code_ref,
+        source_revision: layer.source_revision,
     }
 }
 
-fn executable_input(body: FrontstageBlockExecutableBody) -> FrontstageBlockExecutableInput {
-    FrontstageBlockExecutableInput {
+fn code_input(body: FrontstageBlockCodeBody) -> FrontstageBlockCodeInput {
+    FrontstageBlockCodeInput {
         source_code: body.source_code,
         dependency_lock: body.dependency_lock,
-        tailwind_toolchain_lock: body.tailwind_toolchain_lock,
-        generated_css: body.generated_css,
-        generated_css_sha256: body.generated_css_sha256,
-        compiler_identity: body.compiler_identity,
     }
 }
 

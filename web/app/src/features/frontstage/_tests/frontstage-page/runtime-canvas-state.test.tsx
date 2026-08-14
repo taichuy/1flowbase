@@ -500,15 +500,8 @@ describe('FrontStagePage - runtime canvas state', () => {
         renderer_version: 'v1',
         runtime: { kind: 'native_react', entry: 'index.js' }
       },
-      source_code: `export default function Block() { return <h1>source:${blockId}</h1>; }`,
-      source_sha256: 'a'.repeat(64),
-      dependency_lock: [],
-      tailwind_toolchain_lock: { package: 'tailwindcss' },
-      generated_css: '',
-      generated_css_sha256:
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      compiler_identity: { name: 'tailwindcss' },
-      executable_state: 'ready' as const
+      code_ref: `frontstage.block.${blockId}`,
+      source_revision: 'a'.repeat(64)
     });
     const assembly = {
       layers: [

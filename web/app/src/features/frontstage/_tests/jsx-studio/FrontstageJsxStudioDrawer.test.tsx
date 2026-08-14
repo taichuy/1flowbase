@@ -20,10 +20,6 @@ import {
 } from '@1flowbase/page-runtime';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
-import {
-  NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-  NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK
-} from '../../../../shared/code-block/native-react-executable-style';
 import { FrontstageJsxStudioDrawer } from '../../components/jsx-studio/FrontstageJsxStudioDrawer';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
@@ -308,12 +304,7 @@ describe('FrontstageJsxStudioDrawer', () => {
             page_id: 'page-1',
             source_code: legacy.code,
             source_sha256: sha256Text(legacy.code),
-            dependency_lock: [],
-            tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-            generated_css: '',
-            generated_css_sha256: sha256Text(''),
-            compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-            executable_state: 'ready' as const
+            dependency_lock: []
           },
           loading: legacy.loading,
           saving: legacy.saving,

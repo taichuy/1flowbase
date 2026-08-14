@@ -56,10 +56,9 @@ export async function saveFrontstageBlockCode(
     {
       source_code: input.source_code,
       dependency_lock: input.dependency_lock,
-      tailwind_toolchain_lock: input.tailwind_toolchain_lock,
-      generated_css: input.generated_css,
-      generated_css_sha256: input.generated_css_sha256,
-      compiler_identity: input.compiler_identity
+      ...(input.expected_source_revision !== undefined
+        ? { expected_source_revision: input.expected_source_revision }
+        : {})
     },
     csrfToken,
     getFrontstageApiBaseUrl()

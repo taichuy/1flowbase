@@ -351,25 +351,8 @@ fn map_record(row: &PgRow) -> Result<domain::FrontstageBlockNodeRecord> {
 fn map_runtime_layer(row: &PgRow) -> Result<domain::frontstage::FrontstageBlockRuntimeLayer> {
     Ok(domain::frontstage::FrontstageBlockRuntimeLayer {
         node: map_record(row)?,
-        executable: map_executable(row),
+        source_revision: row.get("source_revision"),
     })
-}
-
-fn map_executable(row: &PgRow) -> domain::frontstage::FrontstageBlockCodeRecord {
-    domain::frontstage::FrontstageBlockCodeRecord {
-        workspace_id: row.get("scope_id"),
-        page_id: row.get("tree_partition_id"),
-        code_ref: row.get("code_ref"),
-        source_code: row.get("source_code"),
-        source_sha256: row.get("source_sha256"),
-        dependency_lock: row.get("dependency_lock"),
-        tailwind_toolchain_lock: row.get("tailwind_toolchain_lock"),
-        generated_css: row.get("generated_css"),
-        generated_css_sha256: row.get("generated_css_sha256"),
-        compiler_identity: row.get("compiler_identity"),
-        created_at: row.get("source_created_at"),
-        updated_at: row.get("source_updated_at"),
-    }
 }
 
 async fn get_record_in_transaction(
@@ -615,9 +598,8 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             r#"
             insert into frontstage_block_codes (
                 id, workspace_id, page_id, code_ref, code, source_sha256,
-                dependency_lock, tailwind_toolchain_lock, generated_css,
-                generated_css_sha256, compiler_identity, created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+                dependency_lock, created_by, updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
             on conflict (workspace_id, page_id, code_ref) do nothing
             returning id
             "#,
@@ -626,16 +608,12 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&input.code_ref)
-        .bind(&input.executable.source_code)
+        .bind(&input.code.source_code)
         .bind(format!(
             "{:x}",
-            Sha256::digest(input.executable.source_code.as_bytes())
+            Sha256::digest(input.code.source_code.as_bytes())
         ))
-        .bind(&input.executable.dependency_lock)
-        .bind(&input.executable.tailwind_toolchain_lock)
-        .bind(&input.executable.generated_css)
-        .bind(&input.executable.generated_css_sha256)
-        .bind(&input.executable.compiler_identity)
+        .bind(&input.code.dependency_lock)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
         .await?;
@@ -748,11 +726,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
                   and not parent_node.id = any(ancestry.path)
             )
             select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping,
-                   node.runtime_descriptor, source.code as source_code, source.source_sha256,
-                   source.dependency_lock, source.tailwind_toolchain_lock,
-                   source.generated_css, source.generated_css_sha256,
-                   source.compiler_identity, source.created_at as source_created_at,
-                   source.updated_at as source_updated_at
+                   node.runtime_descriptor, source.source_sha256 as source_revision
             from ancestry
             join frontstage_block_nodes node
               on node.scope_id = $1
@@ -1134,32 +1108,29 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             r#"
             update frontstage_block_codes
             set code = $4, source_sha256 = $5, dependency_lock = $6,
-                tailwind_toolchain_lock = $7, generated_css = $8,
-                generated_css_sha256 = $9, compiler_identity = $10,
-                updated_by = $11, updated_at = now()
+                updated_by = $8, updated_at = now()
             where workspace_id = $1 and page_id = $2 and code_ref = $3
+              and ($7::text is null or source_sha256 = $7)
             returning workspace_id, page_id, code_ref, code as source_code, source_sha256,
-                      dependency_lock, tailwind_toolchain_lock, generated_css,
-                      generated_css_sha256, compiler_identity, created_at, updated_at
+                      dependency_lock, created_at, updated_at
             "#,
         )
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&code_ref)
-        .bind(&input.executable.source_code)
+        .bind(&input.code.source_code)
         .bind(format!(
             "{:x}",
-            Sha256::digest(input.executable.source_code.as_bytes())
+            Sha256::digest(input.code.source_code.as_bytes())
         ))
-        .bind(&input.executable.dependency_lock)
-        .bind(&input.executable.tailwind_toolchain_lock)
-        .bind(&input.executable.generated_css)
-        .bind(&input.executable.generated_css_sha256)
-        .bind(&input.executable.compiler_identity)
+        .bind(&input.code.dependency_lock)
+        .bind(&input.expected_source_revision)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
         .await?
-        .ok_or(ControlPlaneError::NotFound("frontstage_block_code"))?;
+        .ok_or(ControlPlaneError::Conflict(
+            "frontstage_block_source_revision",
+        ))?;
         insert_audit(&mut tx, &input.audit_log).await?;
         tx.commit().await?;
         Ok(domain::frontstage::FrontstageBlockCodeRecord {
@@ -1169,10 +1140,6 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             source_code: row.get("source_code"),
             source_sha256: row.get("source_sha256"),
             dependency_lock: row.get("dependency_lock"),
-            tailwind_toolchain_lock: row.get("tailwind_toolchain_lock"),
-            generated_css: row.get("generated_css"),
-            generated_css_sha256: row.get("generated_css_sha256"),
-            compiler_identity: row.get("compiler_identity"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         })

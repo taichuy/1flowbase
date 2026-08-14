@@ -6,84 +6,27 @@ import {
   TAILWIND_UTILITIES_CSS
 } from './stylesheet-contract.ts';
 
-export const TAILWIND_BLOCK_PRESET_VARIANTS = Object.freeze([
-  'hover',
-  'focus',
-  'focus-visible',
-  'active',
-  'disabled',
-  'sm',
-  'md',
-  'lg',
-  'xl',
-  '2xl'
-] as const);
-
-let blockPresetFlight:
-  | Promise<{ css: string; baseCandidates: number; candidates: number }>
-  | undefined;
-
-interface TailwindDesignSystem {
-  getClassList(): Array<readonly [string, unknown]>;
-}
-
-const loadDesignSystem = (
-  tailwindcss as unknown as {
-    __unstable__loadDesignSystem(css: string): Promise<TailwindDesignSystem>;
-  }
-).__unstable__loadDesignSystem;
-
-/**
- * Builds the source-independent stylesheet attached by `import 'tailwindcss'`.
- * The exact Tailwind version owns the finite default class inventory; the
- * product contract adds one standard state or responsive variant at a time.
- */
-export async function compileTailwindBlockPreset(): Promise<{
-  css: string;
-  baseCandidates: number;
-  candidates: number;
-}> {
-  blockPresetFlight ??= buildTailwindBlockPreset();
-  return blockPresetFlight;
-}
-
-async function buildTailwindBlockPreset(): Promise<{
-  css: string;
-  baseCandidates: number;
-  candidates: number;
-}> {
-  const stylesheet = [
-    TAILWIND_THEME_CSS,
-    TAILWIND_PREFLIGHT_CSS,
-    TAILWIND_UTILITIES_CSS
-  ].join('\n');
-  const designSystem = await loadDesignSystem(stylesheet);
-  const baseCandidates = designSystem
-    .getClassList()
-    .map(([candidate]) => candidate)
-    .sort();
-  const candidates = [
-    ...baseCandidates,
-    ...TAILWIND_BLOCK_PRESET_VARIANTS.flatMap((variant) =>
-      baseCandidates.map((candidate) => `${variant}:${candidate}`)
-    )
-  ];
-  const compiler = await tailwindcss.compile(stylesheet);
-  return {
-    css: compiler.build(candidates),
-    baseCandidates: baseCandidates.length,
-    candidates: candidates.length
-  };
-}
-
 export interface TailwindCompilation {
   css: string;
   acceptedCandidates: string[];
 }
 
+export interface UnboundedTailwindClassExpression {
+  expression: string;
+  index: number;
+  length: number;
+}
+
+export async function compileTailwindBase(): Promise<string> {
+  const compiler = await tailwindcss.compile(
+    `${TAILWIND_THEME_CSS}\n${TAILWIND_PREFLIGHT_CSS}`
+  );
+  return compiler.build([]);
+}
+
 /**
- * Fixture-only compatibility helper. Ready block execution uses the
- * source-independent Block Preset and never calls this candidate compiler.
+ * Extracts the finite literal candidate set owned by one block. Dynamic
+ * values are intentionally not expanded without an explicit finite literal.
  */
 export function extractStaticTailwindCandidates(source: string): string[] {
   const candidates = new Set<string>();
@@ -94,6 +37,36 @@ export function extractStaticTailwindCandidates(source: string): string[] {
     }
   }
   return [...candidates].sort();
+}
+
+/**
+ * Finds JSX class expressions whose possible strings cannot be bounded from
+ * local literals. Callers surface these as a safelist/finite-expression
+ * diagnostic instead of silently emitting incomplete CSS.
+ */
+export function findUnboundedTailwindClassExpressions(
+  source: string
+): UnboundedTailwindClassExpression[] {
+  if (!sourceImportsTailwind(source)) return [];
+  const finiteVariables = collectFiniteVariables(source);
+  const assignments = [...source.matchAll(/\bclass(?:Name)?\s*=/gu)];
+  const unbounded: UnboundedTailwindClassExpression[] = [];
+  for (const assignment of assignments) {
+    const assignmentIndex = assignment.index ?? 0;
+    let cursor = assignmentIndex + assignment[0].length;
+    while (/\s/u.test(source[cursor] ?? '')) cursor += 1;
+    if (source[cursor] !== '{') continue;
+    const end = findMatchingBrace(source, cursor);
+    if (end === -1) continue;
+    const expression = source.slice(cursor + 1, end).trim();
+    if (resolveFiniteExpression(expression, finiteVariables) !== null) continue;
+    unbounded.push({
+      expression,
+      index: assignmentIndex,
+      length: assignment[0].length
+    });
+  }
+  return unbounded;
 }
 
 /** @see extractStaticTailwindCandidates */
@@ -110,16 +83,15 @@ export async function compileTailwindUtilities(
   const compiler = await tailwindcss.compile(
     `${stylesheets.themeCss}\n${stylesheets.utilitiesCss}`
   );
-  let previousCss = compiler.build([]);
+  const emptyCss = compiler.build([]);
   const acceptedCandidates: string[] = [];
 
   for (const candidate of [...new Set(candidates)].sort()) {
-    const nextCss = compiler.build([candidate]);
-    if (nextCss !== previousCss) acceptedCandidates.push(candidate);
-    previousCss = nextCss;
+    if (compiler.build([candidate]) !== emptyCss)
+      acceptedCandidates.push(candidate);
   }
 
-  return { css: previousCss, acceptedCandidates };
+  return { css: compiler.build(acceptedCandidates), acceptedCandidates };
 }
 
 export function sourceImportsTailwind(source: string): boolean {
@@ -130,34 +102,109 @@ export function sourceImportsTailwind(source: string): boolean {
 
 function staticStringValues(source: string): string[] {
   const values: string[] = [];
-  let index = 0;
-
-  while (index < source.length) {
-    const quote = source[index];
-    if (quote !== "'" && quote !== '"' && quote !== '`') {
-      index += 1;
+  const finiteVariables = collectFiniteVariables(source);
+  for (const match of source.matchAll(
+    /\bclass(?:Name)?\s*=\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`|\{([^}]*)\})/gu
+  )) {
+    const direct = match[1] ?? match[2] ?? match[3];
+    if (direct !== undefined) {
+      values.push(...expandFiniteTemplate(direct, finiteVariables));
       continue;
     }
-
-    const start = index + 1;
-    let dynamicTemplate = false;
-    index += 1;
-    while (index < source.length) {
-      if (source[index] === '\\') {
-        index += 2;
-        continue;
-      }
-      if (quote === '`' && source[index] === '$' && source[index + 1] === '{') {
-        dynamicTemplate = true;
-      }
-      if (source[index] === quote) {
-        if (!dynamicTemplate) values.push(source.slice(start, index));
-        index += 1;
-        break;
-      }
-      index += 1;
+    const expression = match[4] ?? '';
+    const finiteExpression = resolveFiniteExpression(
+      expression.trim(),
+      finiteVariables
+    );
+    if (finiteExpression) values.push(...finiteExpression);
+    for (const literal of expression.matchAll(/(['"])(.*?)\1/gu)) {
+      values.push(literal[2]);
+    }
+    for (const template of expression.matchAll(/`([^`]*)`/gu)) {
+      values.push(...expandFiniteTemplate(template[1], finiteVariables));
     }
   }
-
+  for (const match of source.matchAll(
+    /\bclass(?:Name)?\s*=\s*\{\s*`([^`]*)`\s*\}/gu
+  )) {
+    values.push(...expandFiniteTemplate(match[1], finiteVariables));
+  }
   return values;
+}
+
+function collectFiniteVariables(source: string): Map<string, string[]> {
+  const finiteVariables = new Map<string, string[]>();
+  for (const match of source.matchAll(
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*[^;?]+\?\s*(['"])(.*?)\2\s*:\s*(['"])(.*?)\4/gu
+  )) {
+    finiteVariables.set(match[1], [match[3], match[5]]);
+  }
+  return finiteVariables;
+}
+
+function resolveFiniteExpression(
+  expression: string,
+  finiteVariables: ReadonlyMap<string, string[]>
+): string[] | null {
+  const quoted = expression.match(/^(['"])(.*?)\1$/u);
+  if (quoted) return [quoted[2]];
+  const template = expression.match(/^`([\s\S]*)`$/u);
+  if (template) {
+    const expanded = expandFiniteTemplate(template[1], finiteVariables);
+    return expanded.length > 0 ? expanded : null;
+  }
+  const variable = finiteVariables.get(expression);
+  if (variable) return variable;
+  return ternaryChoices(expression);
+}
+
+function findMatchingBrace(source: string, start: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '{') depth += 1;
+    if (character === '}' && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function expandFiniteTemplate(
+  template: string,
+  finiteVariables: ReadonlyMap<string, string[]>
+): string[] {
+  let results = [''];
+  let cursor = 0;
+  for (const match of template.matchAll(/\$\{([^}]+)\}/gu)) {
+    const start = match.index ?? 0;
+    const prefix = template.slice(cursor, start);
+    const expression = match[1].trim();
+    const choices =
+      finiteVariables.get(expression) ?? ternaryChoices(expression);
+    if (!choices || results.length * choices.length > 128) return [];
+    results = results.flatMap((result) =>
+      choices.map((choice) => result + prefix + choice)
+    );
+    cursor = start + match[0].length;
+  }
+  const suffix = template.slice(cursor);
+  return results.map((result) => result + suffix);
+}
+
+function ternaryChoices(expression: string): string[] | null {
+  const match = expression.match(
+    /^[^?]+\?\s*(['"])(.*?)\1\s*:\s*(['"])(.*?)\3$/u
+  );
+  return match ? [match[2], match[4]] : null;
 }

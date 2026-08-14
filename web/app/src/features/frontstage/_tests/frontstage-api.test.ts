@@ -542,11 +542,7 @@ describe('frontstage block code feature api', () => {
           {
             code_ref: 'hero',
             source_code: 'export default 2;',
-            dependency_lock: [],
-            tailwind_toolchain_lock: executable.tailwind_toolchain_lock,
-            generated_css: executable.generated_css,
-            generated_css_sha256: executable.generated_css_sha256,
-            compiler_identity: executable.compiler_identity
+            dependency_lock: []
           },
           'csrf-123'
         )
@@ -569,11 +565,7 @@ describe('frontstage block code feature api', () => {
         'hero',
         {
           source_code: 'export default 2;',
-          dependency_lock: [],
-          tailwind_toolchain_lock: executable.tailwind_toolchain_lock,
-          generated_css: executable.generated_css,
-          generated_css_sha256: executable.generated_css_sha256,
-          compiler_identity: executable.compiler_identity
+          dependency_lock: []
         },
         'csrf-123',
         expect.any(String)

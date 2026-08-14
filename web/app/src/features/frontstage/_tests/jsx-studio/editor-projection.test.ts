@@ -13,12 +13,13 @@ describe('Frontstage JSX editor projection', () => {
     });
 
     expect(projection.componentCatalogQuery).toBeNull();
-    expect([...projection.allowedImportSources]).toEqual([]);
+    expect([...projection.allowedImportSources]).toEqual(['tailwindcss']);
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ source: '@1flowbase/native-react-jsx' }),
-        expect.objectContaining({ source: '@1flowbase/native-react-context' })
+        expect.objectContaining({ source: '@1flowbase/native-react-context' }),
+        expect.objectContaining({ source: 'tailwindcss' })
       ])
     );
     expect(projection.monacoExtraLibs).not.toEqual(
@@ -60,6 +61,7 @@ describe('Frontstage JSX editor projection', () => {
       contribution_code: 'frontstage.js-ui-block'
     });
     expect([...projection.allowedImportSources]).toEqual([
+      'tailwindcss',
       '@1flowbase/native-components'
     ]);
     expect(projection.monacoExtraLibs.at(-1)?.content).toContain(

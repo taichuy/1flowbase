@@ -1,93 +1,43 @@
 import { describe, expect, test } from 'vitest';
 
-import {
-  compileLockedNativeReactExecutableStyle,
-  compileNativeReactExecutableStyle,
-  NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-  NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-  readLockedNativeReactExecutableStyle
-} from '../native-react-executable-style';
+import { compileNativeReactExecutableStyle } from '../native-react-executable-style';
 
-const tailwindDependencyLock = [
-  {
-    module_source: 'tailwindcss',
-    module_version: '4.3.3',
-    binding: 'fetched' as const,
-    assets: [
-      {
-        role: 'browser_module' as const,
-        media_type: 'text/javascript',
-        sha256: 'a'.repeat(64),
-        url: `/tailwindcss-${'a'.repeat(64)}`
-      }
-    ],
-    exports: ['default']
-  }
-];
-
-describe('Native React executable style', () => {
-  test('AC-001/002 validates Tailwind source while the locked preset owns styles', async () => {
+describe('Native React local Tailwind style compilation', () => {
+  test('generates only the finite candidates used by one block', async () => {
     const result = await compileNativeReactExecutableStyle(
-      'import \'tailwindcss\'; export default () => <div className="hero bg-[#00ab73] md:grid-cols-2" />;',
-      tailwindDependencyLock
+      `import 'tailwindcss'; export default () => <div className="p-4 bg-red-500 md:grid-cols-2" />;`
     );
-    expect(result.generated_css).toBe('');
+    expect(result.candidates).toEqual(
+      expect.arrayContaining(['p-4', 'bg-red-500', 'md:grid-cols-2'])
+    );
+    expect(result.utility_css).toContain('.p-4');
+    expect(result.utility_css.length).toBeLessThan(20_000);
+    expect(result.assets).toHaveLength(2);
   });
 
-  test('ordinary compilation uses the exact persisted dependency and compiler locks', async () => {
-    const result = await compileLockedNativeReactExecutableStyle({
-      sourceCode:
-        'import \'tailwindcss\'; export default () => <div className="p-4" />;',
-      dependencyLock: tailwindDependencyLock,
-      tailwindToolchainLock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-      compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
-    });
-    expect(result.dependency_lock).toEqual(tailwindDependencyLock);
-    expect(result.generated_css).toBe('');
-    expect(result.compiler_identity).toEqual(
-      NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+  test('uses a CSS identity independent from ordinary JavaScript edits', async () => {
+    const first = await compileNativeReactExecutableStyle(
+      `import 'tailwindcss'; const count = 1; export default () => <div className="p-4" />;`
     );
+    const second = await compileNativeReactExecutableStyle(
+      `import 'tailwindcss'; const count = 2; export default () => <div className="p-4" />;`
+    );
+    expect(second.candidate_identity).toBe(first.candidate_identity);
+    expect(second.utility_css_sha256).toBe(first.utility_css_sha256);
   });
 
-  test('unknown locked compiler target fails closed', async () => {
+  test('does not create styles without the compile-time capability import', async () => {
+    const result = await compileNativeReactExecutableStyle(
+      `export default () => <div className="p-4" />;`
+    );
+    expect(result.assets).toEqual([]);
+  });
+
+  test('rejects an unbounded dynamic class before emitting incomplete CSS', async () => {
     await expect(
-      compileLockedNativeReactExecutableStyle({
-        sourceCode: 'export default () => null;',
-        dependencyLock: [],
-        tailwindToolchainLock: {
-          package: 'tailwindcss',
-          version: '3.4.0',
-          mode: 'utilities'
-        },
-        compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
-      })
-    ).rejects.toThrow(/no executable tailwind compiler/iu);
-  });
-
-  test('AC-011 rejects legacy, incomplete, and digest-mismatched rows', () => {
-    const ready = {
-      source_code: 'export default null;',
-      source_sha256:
-        '6fcd1d591edc5697a4972c2cb3e83808f0656dbb077fd89eea085d0221601ee7',
-      dependency_lock: [],
-      tailwind_toolchain_lock: { package: 'tailwindcss' },
-      generated_css: '',
-      generated_css_sha256:
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      compiler_identity: { name: 'tailwindcss' },
-      executable_state: 'ready' as const
-    };
-    expect(() =>
-      readLockedNativeReactExecutableStyle({
-        ...ready,
-        executable_state: 'legacy'
-      })
-    ).toThrow(/legacy or incomplete/u);
-    expect(() =>
-      readLockedNativeReactExecutableStyle({
-        ...ready,
-        generated_css_sha256: '0'.repeat(64)
-      })
-    ).toThrow(/generated_css_sha256/u);
+      compileNativeReactExecutableStyle(
+        `import 'tailwindcss'; export default () => <div className={remoteClass} />;`
+      )
+    ).rejects.toThrow('finite set of local literals');
   });
 });

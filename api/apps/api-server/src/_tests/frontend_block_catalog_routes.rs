@@ -469,9 +469,8 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
         r#"
         insert into frontstage_block_codes (
             id, workspace_id, page_id, code_ref, code, source_sha256,
-            dependency_lock, tailwind_toolchain_lock, generated_css,
-            generated_css_sha256, compiler_identity, created_by, updated_by
-        ) values ($1, $2, $3, 'retained-asset-fixture', $4, $5, $6, $7, '', $8, $9, $10, $10)
+            dependency_lock, created_by, updated_by
+        ) values ($1, $2, $3, 'retained-asset-fixture', $4, $5, $6, $7, $7)
         "#,
     )
     .bind(Uuid::now_v7())
@@ -491,9 +490,6 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
         }],
         "exports": ["Button"]
     }]))
-    .bind(json!({"package": "tailwindcss", "version": "4.3.3", "mode": "block-preset"}))
-    .bind("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-    .bind(json!({"name": "fixture", "contract": "retained-asset-v1"}))
     .bind(actor_id)
     .execute(&pool)
     .await

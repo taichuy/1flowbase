@@ -3,12 +3,12 @@
   "version": "0.3.5",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./dist/index.d.ts",
+  "main": "./src/compiler.ts",
+  "types": "./dist/compiler.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/compiler.d.ts",
+      "default": "./src/compiler.ts"
     },
     "./inventory": {
       "types": "./dist/inventory.d.ts",
@@ -18,19 +18,10 @@
       "types": "./dist/compiler.d.ts",
       "default": "./src/compiler.ts"
     },
-    "./executable-contract": {
-      "types": "./dist/executable-contract.d.ts",
-      "default": "./src/executable-contract.ts"
-    },
     "./legacy-inventory.css": "./src/legacy-inventory.css"
   },
   "dependencies": {
-    "@1flowbase/page-runtime": "workspace:*",
-    "sucrase": "3.35.1",
     "tailwindcss": "4.3.3"
-  },
-  "bin": {
-    "1flowbase-tailwind-compiler-4.3.3": "./bin/compiler-4.3.3.mjs"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

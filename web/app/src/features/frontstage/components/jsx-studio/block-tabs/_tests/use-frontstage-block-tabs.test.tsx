@@ -8,10 +8,6 @@ import {
   resetAuthStore,
   useAuthStore
 } from '../../../../../../state/auth-store';
-import {
-  NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-  NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK
-} from '../../../../../../shared/code-block/native-react-executable-style';
 import type { FrontstageBlockNode } from '../../../../api/block-tree';
 import {
   useFrontstageBlockTabs,
@@ -61,12 +57,7 @@ function executableCode(blockId: string, source = `source:${blockId}`) {
     page_id: 'page-1',
     source_code: source,
     source_sha256: sha256Text(source),
-    dependency_lock: [],
-    tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-    generated_css: '',
-    generated_css_sha256: sha256Text(''),
-    compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-    executable_state: 'ready' as const
+    dependency_lock: []
   };
 }
 
@@ -191,11 +182,8 @@ describe('useFrontstageBlockTabs', () => {
       'root',
       {
         source_code: savedSource,
-        dependency_lock: [],
-        tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-        generated_css: '',
-        generated_css_sha256: sha256Text(''),
-        compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
+        expected_source_revision: sha256Text('source:root'),
+        dependency_lock: []
       },
       'csrf-123'
     );
@@ -302,7 +290,7 @@ describe('useFrontstageBlockTabs', () => {
     expect(legacy.useFrontstageBlockCode).not.toHaveBeenCalled();
   });
 
-  test('ordinary ready save preserves the persisted lock and sends the complete compiled payload', async () => {
+  test('source save removes the compile-only Tailwind module from runtime dependencies', async () => {
     const persistedDependencyLock = [
       {
         module_source: 'react',
@@ -349,28 +337,15 @@ describe('useFrontstageBlockTabs', () => {
       expect.objectContaining({
         source_code:
           'import \'tailwindcss\'; export default () => <div className="p-4" />;',
-        dependency_lock: persistedDependencyLock,
-        tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
-        compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-        generated_css: '',
-        generated_css_sha256: sha256Text('')
+        expected_source_revision: sha256Text('source:root'),
+        dependency_lock: [persistedDependencyLock[0]]
       }),
       'csrf-123'
     );
   });
 
   test.each([
-    ['malformed dependency lock', { dependency_lock: [{ bad: true }] }],
-    [
-      'unknown locked toolchain',
-      {
-        tailwind_toolchain_lock: {
-          package: 'tailwindcss',
-          version: '3.4.0',
-          mode: 'utilities'
-        }
-      }
-    ]
+    ['malformed dependency lock', { dependency_lock: [{ bad: true }] }]
   ])('fails closed on %s without invoking save', async (_label, override) => {
     api.fetchFrontstageBlockNodeCode.mockResolvedValueOnce({
       ...executableCode('root'),
@@ -387,7 +362,7 @@ describe('useFrontstageBlockTabs', () => {
     expect(view.result.current.activeTab?.error).toBeInstanceOf(Error);
   });
 
-  test('AC-007/011 fails closed on an invalid ready digest without invoking save', async () => {
+  test('passes the loaded source revision so the backend can reject a stale save', async () => {
     api.fetchFrontstageBlockNodeCode.mockResolvedValueOnce({
       ...executableCode('root'),
       source_sha256: '0'.repeat(64)
@@ -397,9 +372,15 @@ describe('useFrontstageBlockTabs', () => {
       expect(view.result.current.activeTab?.loading).toBe(false)
     );
 
-    await expect(view.result.current.saveActiveDraft()).rejects.toThrow(
-      'source_sha256 does not match source_code'
+    await act(async () => {
+      await view.result.current.saveActiveDraft();
+    });
+    expect(api.saveFrontstageBlockNodeCode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'root',
+      expect.objectContaining({ expected_source_revision: '0'.repeat(64) }),
+      'csrf-123'
     );
-    expect(api.saveFrontstageBlockNodeCode).not.toHaveBeenCalled();
   });
 });

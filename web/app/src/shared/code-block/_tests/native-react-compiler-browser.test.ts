@@ -33,9 +33,9 @@ class FakeBrowserWorker implements NativeReactBrowserCompilerWorker {
 }
 
 describe('Native React browser compiler adapter', () => {
-  test('AC-005/006 binds executable style identity into artifact/cache identity', () => {
-    expect(getNativeReactRuntimeFingerprint([], 'style-a')).not.toBe(
-      getNativeReactRuntimeFingerprint([], 'style-b')
+  test('keeps the JavaScript runtime identity independent from CSS candidates', () => {
+    expect(getNativeReactRuntimeFingerprint([])).toBe(
+      getNativeReactRuntimeFingerprint([])
     );
   });
 

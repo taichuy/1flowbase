@@ -127,7 +127,8 @@ pub struct SaveFrontstageBlockCodeCommand {
     pub workspace_id: Uuid,
     pub page_id: Uuid,
     pub code_ref: String,
-    pub executable: crate::ports::FrontstageBlockExecutableInput,
+    pub expected_source_revision: Option<String>,
+    pub code: crate::ports::FrontstageBlockCodeInput,
 }
 
 const RESERVED_FRONTSTAGE_SLUGS: &[&str] = &[
@@ -784,7 +785,10 @@ where
                 workspace_id: command.workspace_id,
                 page_id: command.page_id,
                 code_ref,
-                executable: block_tree::validate_executable(command.executable)?,
+                expected_source_revision: block_tree::validate_source_revision(
+                    command.expected_source_revision,
+                )?,
+                code: block_tree::validate_code(command.code)?,
             })
             .await?;
 

@@ -66,15 +66,10 @@ describe('console-frontstage client', () => {
       code_ref: 'hero',
       source_code: 'export default 1;',
       source_sha256: null,
-      dependency_lock: null,
-      tailwind_toolchain_lock: null,
-      generated_css: null,
-      generated_css_sha256: null,
-      compiler_identity: null,
-      executable_state: 'legacy'
+      dependency_lock: null
     } satisfies ConsoleFrontstageBlockCode;
 
-    expect(blockCode.executable_state).toBe('legacy');
+    expect(blockCode.source_code).toContain('export default');
     expect(blockCode.source_sha256).toBeNull();
   });
 
@@ -547,11 +542,7 @@ describe('console-frontstage client', () => {
             payload: { version: 1, blocks: [{ id: 'hero-1' }] },
             code_ref: 'hero-1-code',
             source_code: 'export default function Hero() {}',
-            dependency_lock: [],
-            tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
-            generated_css: '',
-            generated_css_sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-            compiler_identity: { name: 'tailwindcss', abi: 'v1' }
+            dependency_lock: []
           },
           'csrf-123'
         ),
@@ -575,11 +566,7 @@ describe('console-frontstage client', () => {
           'hero',
           {
             source_code: 'export default function Hero() {}',
-            dependency_lock: [],
-            tailwind_toolchain_lock: { package: 'tailwindcss', version: '4.3.3' },
-            generated_css: '',
-            generated_css_sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-            compiler_identity: { name: 'tailwindcss', abi: 'v1' }
+            dependency_lock: []
           },
           'csrf-123'
         ),

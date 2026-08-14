@@ -164,37 +164,23 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     assert_eq!(layers[0]["presentation"], json!("page"));
     assert_eq!(layers[1]["presentation"], json!("drawer"));
     assert_eq!(layers[2]["presentation"], json!("modal"));
-    assert_eq!(layers[0]["source_code"], json!(root_source));
-    assert_eq!(layers[1]["source_code"], json!(child_source));
-    assert_eq!(layers[2]["source_code"], json!(target_source));
+    assert!(layers.iter().all(|layer| layer["code_ref"].is_string()));
     assert_eq!(
-        layers[0]["source_sha256"],
+        layers[0]["source_revision"],
         json!(source_sha256(root_source))
     );
     assert_eq!(
-        layers[1]["source_sha256"],
+        layers[1]["source_revision"],
         json!(source_sha256(child_source))
     );
     assert_eq!(
-        layers[2]["source_sha256"],
+        layers[2]["source_revision"],
         json!(source_sha256(target_source))
     );
     assert!(layers.iter().all(|layer| layer["tab_id"] == json!(tab_id)));
     assert_eq!(layers[2]["runtime_descriptor"]["fixture"], json!("Modal"));
     assert_eq!(layers[2]["input_mapping"]["input"], json!("Modal.input"));
     assert_eq!(layers[2]["output_mapping"]["output"], json!("Modal.output"));
-    assert!(layers
-        .iter()
-        .all(|layer| layer["executable_state"] == json!("ready")));
-    assert_eq!(
-        layers[2]["tailwind_toolchain_lock"],
-        ready_executable_payload(target_source)["tailwind_toolchain_lock"]
-    );
-    assert_eq!(
-        layers[2]["compiler_identity"],
-        ready_executable_payload(target_source)["compiler_identity"]
-    );
-
     let expected_layer_fields = BTreeSet::from([
         "block_id",
         "tab_id",
@@ -205,14 +191,8 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
         "input_mapping",
         "output_mapping",
         "runtime_descriptor",
-        "source_code",
-        "source_sha256",
-        "dependency_lock",
-        "tailwind_toolchain_lock",
-        "generated_css",
-        "generated_css_sha256",
-        "compiler_identity",
-        "executable_state",
+        "code_ref",
+        "source_revision",
     ]);
     for layer in layers {
         assert_eq!(
@@ -228,7 +208,6 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
             "id",
             "workspace_id",
             "page_id",
-            "code_ref",
             "model_code",
             "dataModelCode",
             "physical_table_name",
