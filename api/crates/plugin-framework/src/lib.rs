@@ -7,6 +7,7 @@ pub mod data_model_template_contract;
 pub mod data_source_contract;
 pub mod data_source_package;
 pub mod error;
+pub mod extension_bus;
 pub mod frontend_module_asset;
 pub mod host_contract;
 pub mod host_extension_contribution;
