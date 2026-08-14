@@ -65,6 +65,11 @@ export type FrontstageNativeTrustedBlockRuntimeErrorHandler = (
   context: FrontstageNativeTrustedBlockRuntimeErrorContext
 ) => void;
 
+const sharedModuleStyleSheets = new WeakMap<
+  Document,
+  Map<string, CSSStyleSheet>
+>();
+
 export interface FrontstageNativeTrustedBlockPortalHostProps {
   root: Element;
   renderEpoch: string;
@@ -119,20 +124,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
 
   useLayoutEffect(() => {
     if (!surface) return;
-    const styles = moduleAssets
-      .filter((asset) => asset.role === 'shadow_style')
-      .map((asset) => {
-        const element =
-          surface.mountElement.ownerDocument.createElement('style');
-        element.dataset.moduleSource = asset.module_source;
-        element.dataset.assetSha256 = asset.sha256;
-        element.textContent = new TextDecoder('utf-8', { fatal: true }).decode(
-          asset.bytes
-        );
-        surface.shadowRoot.prepend(element);
-        return element;
-      });
-    return () => styles.forEach((style) => style.remove());
+    return attachModuleStyleAssets(surface, moduleAssets);
   }, [moduleAssets, surface]);
 
   if (!surface || !styleCache || !portalContainment) return null;
@@ -169,6 +161,61 @@ export function FrontstageNativeTrustedBlockPortalHost({
     surface.mountElement,
     renderEpoch
   );
+}
+
+function attachModuleStyleAssets(
+  surface: NativeTrustedBlockPortalSurface,
+  moduleAssets: readonly NativeReactResolvedModuleAsset[]
+): () => void {
+  const styleAssets = moduleAssets.filter(
+    (asset) => asset.role === 'shadow_style'
+  );
+  const ownerDocument = surface.mountElement.ownerDocument;
+  const StyleSheet = ownerDocument.defaultView?.CSSStyleSheet;
+  if (
+    StyleSheet &&
+    typeof StyleSheet.prototype.replaceSync === 'function' &&
+    'adoptedStyleSheets' in surface.shadowRoot
+  ) {
+    let documentSheets = sharedModuleStyleSheets.get(ownerDocument);
+    if (!documentSheets) {
+      documentSheets = new Map();
+      sharedModuleStyleSheets.set(ownerDocument, documentSheets);
+    }
+    const adopted = styleAssets.map((asset) => {
+      let sheet = documentSheets.get(asset.sha256);
+      if (!sheet) {
+        sheet = new StyleSheet();
+        sheet.replaceSync(decodeModuleStyle(asset));
+        documentSheets.set(asset.sha256, sheet);
+      }
+      return sheet;
+    });
+    surface.shadowRoot.adoptedStyleSheets = [
+      ...surface.shadowRoot.adoptedStyleSheets,
+      ...adopted
+    ];
+    return () => {
+      surface.shadowRoot.adoptedStyleSheets =
+        surface.shadowRoot.adoptedStyleSheets.filter(
+          (sheet) => !adopted.includes(sheet)
+        );
+    };
+  }
+
+  const styles = styleAssets.map((asset) => {
+    const element = ownerDocument.createElement('style');
+    element.dataset.moduleSource = asset.module_source;
+    element.dataset.assetSha256 = asset.sha256;
+    element.textContent = decodeModuleStyle(asset);
+    surface.shadowRoot.prepend(element);
+    return element;
+  });
+  return () => styles.forEach((style) => style.remove());
+}
+
+function decodeModuleStyle(asset: NativeReactResolvedModuleAsset): string {
+  return new TextDecoder('utf-8', { fatal: true }).decode(asset.bytes);
 }
 
 export function createFrontstageUnavailableBlockContext(

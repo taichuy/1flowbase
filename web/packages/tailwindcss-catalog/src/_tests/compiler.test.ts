@@ -1,22 +1,28 @@
-import { describe, expect, test } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { describe, expect, test } from 'vitest';
 
 import {
-  compileTailwindUtilities,
-  extractStaticTailwindCandidates
+  compileTailwindBlockPreset,
+  sourceImportsTailwind,
+  TAILWIND_BLOCK_PRESET_VARIANTS
 } from '../compiler';
 import {
+  TAILWIND_PREFLIGHT_CSS,
   TAILWIND_STYLESHEET_SHA256,
   TAILWIND_THEME_CSS,
   TAILWIND_UTILITIES_CSS
 } from '../stylesheet-contract';
 
-describe('Native React Tailwind compiler contract', () => {
+describe('Native React Tailwind block preset contract', () => {
   const stylesheets = {
     themeCss: readFileSync(
+      new URL('../../../../node_modules/tailwindcss/theme.css', import.meta.url),
+      'utf8'
+    ),
+    preflightCss: readFileSync(
       new URL(
-        '../../../../node_modules/tailwindcss/theme.css',
+        '../../../../node_modules/tailwindcss/preflight.css',
         import.meta.url
       ),
       'utf8'
@@ -30,101 +36,40 @@ describe('Native React Tailwind compiler contract', () => {
     )
   };
 
-  test('AC-001 freezes the same deterministic stylesheet contract in every runtime', () => {
+  test('AC-001 freezes Tailwind theme, preflight and utility inputs', () => {
     expect(TAILWIND_THEME_CSS).toBe(stylesheets.themeCss);
+    expect(TAILWIND_PREFLIGHT_CSS).toBe(stylesheets.preflightCss);
     expect(TAILWIND_UTILITIES_CSS).toBe(stylesheets.utilitiesCss);
     expect(TAILWIND_STYLESHEET_SHA256).toBe(
       createHash('sha256')
-        .update(`${stylesheets.themeCss}\n${stylesheets.utilitiesCss}`)
+        .update(
+          `${stylesheets.themeCss}\n${stylesheets.preflightCss}\n${stylesheets.utilitiesCss}`
+        )
         .digest('hex')
     );
   });
 
-  test('AC-001 compiles standard static variants and arbitrary values without a private inventory', async () => {
-    const source = [
-      "import 'tailwindcss';",
-      'export default function Block() {',
-      '  return (',
-      '    <div className="grid grid-cols-[200px_1fr] bg-[#00ab73] md:grid-cols-2 hover:[&>span]:opacity-80">',
-      '      <span>content</span>',
-      '    </div>',
-      '  );',
-      '}'
-    ].join('\n');
+  test('AC-001 builds one source-independent default preset with standard variants', async () => {
+    const preset = await compileTailwindBlockPreset();
 
-    const candidates = extractStaticTailwindCandidates(source);
-    const result = await compileTailwindUtilities(candidates, stylesheets);
-
-    expect(candidates).toEqual(
-      expect.arrayContaining([
-        'grid',
-        'grid-cols-[200px_1fr]',
-        'bg-[#00ab73]',
-        'md:grid-cols-2',
-        'hover:[&>span]:opacity-80'
-      ])
+    expect(preset.baseCandidates).toBeGreaterThan(20_000);
+    expect(preset.candidates).toBe(
+      preset.baseCandidates * (TAILWIND_BLOCK_PRESET_VARIANTS.length + 1)
     );
-    expect(result.css).toContain('200px 1fr');
-    expect(result.css).toContain('#00ab73');
-    expect(result.css).toContain('@media');
-    expect(result.css).toContain('span');
-    expect(result.css).not.toContain('button,input');
-    expect(result.css).not.toContain('@layer base');
-    expect(result.css).not.toMatch(/\.ant-/u);
+    expect(preset.css).toContain('.grid');
+    expect(preset.css).toContain('.bg-red-500');
+    expect(preset.css).toContain('.hover\\:bg-red-500');
+    expect(preset.css).toContain('.focus-visible\\:ring-2');
+    expect(preset.css).toContain('.disabled\\:opacity-50');
+    expect(preset.css).toContain('.md\\:grid-cols-2');
+    expect(preset.css).toContain('@media');
+    expect(preset.css).toMatch(/(?:^|\})\s*\*,\s*::after,/u);
+    expect(preset.css).not.toMatch(/\.ant-/u);
   });
 
-  test('AC-002 ignores authored CSS class names while compiling valid Tailwind candidates', async () => {
-    const source = [
-      "import 'tailwindcss';",
-      "const CSS = '.hero { color: red; }';",
-      'export default () => <section className="hero mt-3" />;'
-    ].join('\n');
-
-    const result = await compileTailwindUtilities(
-      extractStaticTailwindCandidates(source),
-      stylesheets
-    );
-
-    expect(result.acceptedCandidates).toContain('mt-3');
-    expect(result.acceptedCandidates).not.toContain('hero');
-    expect(result.css).toContain('margin-top');
-  });
-
-  test('AC-003 is deterministic and excludes computed dynamic classes from frozen-source output', async () => {
-    const source = [
-      "import 'tailwindcss';",
-      'export default ({ ctx }) => (',
-      '  <div className={`bg-${ctx.input.color}`} data-mixed="custom-class" />',
-      ');'
-    ].join('\n');
-    const candidates = extractStaticTailwindCandidates(source);
-    const first = await compileTailwindUtilities(candidates, stylesheets);
-    const second = await compileTailwindUtilities(
-      [...candidates].reverse(),
-      stylesheets
-    );
-
-    expect(first).toEqual(second);
-    expect(first.css).not.toContain('.bg-red-500');
-    expect(first.css).not.toContain('.custom-class');
-    expect(first.css).not.toMatch(
-      /(?:^|\})\s*(?:\*|button|input|h[1-6])(?:,|\{)/u
-    );
-  });
-
-  test('AC-005 compiles the 68-class false-positive boundary from source without an inventory', async () => {
-    const boundaryClasses = Array.from(
-      { length: 68 },
-      (_, index) => `mt-[${index + 1}px]`
-    );
-    const source = `import 'tailwindcss';\nexport default () => <div className="${boundaryClasses.join(' ')}" />;`;
-    const result = await compileTailwindUtilities(
-      extractStaticTailwindCandidates(source),
-      stylesheets
-    );
-
-    expect(result.acceptedCandidates).toHaveLength(68);
-    expect(result.css).toMatch(/margin-top:\s*1px/u);
-    expect(result.css).toMatch(/margin-top:\s*68px/u);
+  test('AC-001 keeps import recognition independent from authored candidates', () => {
+    expect(sourceImportsTailwind("import 'tailwindcss';\nexport default 1;"))
+      .toBe(true);
+    expect(sourceImportsTailwind('export default 1;')).toBe(false);
   });
 });

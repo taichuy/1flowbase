@@ -114,19 +114,25 @@ block_contributions:
         exports: [default]
         binding: fetched
         assets:
+          - path: "browser-assets/tailwindcss-catalog.css"
+            role: shadow_style
+            media_type: "text/css; charset=utf-8"
+            sha256: "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
           - path: "browser-assets/tailwindcss-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "12654dc6a0c23428c81678e417b5b7a456fb9049ce279cfe4390007ef7ee11de"
+            sha256: "717942a84a795ffb7b988968c16dcacd3aa08d01a41f34a1c867508c083e1857"
         type_declarations: |
           declare module 'tailwindcss' {
+            interface TailwindCompiler { build(candidates: string[]): string; }
+            export function compile(css: string): Promise<TailwindCompiler>;
             const tailwindcss: Readonly<{
               name: 'tailwindcss';
               version: '4.3.3';
-              mode: 'theme-and-utilities';
+              mode: 'block-preset';
               compiler: Readonly<{
                 name: '@1flowbase/tailwindcss-catalog';
-                contract: 'source-driven-utilities-v1';
+                contract: 'block-preset-v1';
                 tailwind_version: '4.3.3';
               }>;
             }>;
@@ -300,7 +306,7 @@ block_contributions:
           - path: "browser-assets/charts.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "9e9f060861bab4465dd4a7504c78463b47fb320df969568cdf52eebd8a7e21ca"
+            sha256: "b4df3cc6116a254e1dd7451e99c5d01a48cd23bd4a6f35df10f97dba2e888338"
         type_declarations: |
           declare module '@1flowbase/charts' {
             import type { ComponentType, CSSProperties } from 'react';

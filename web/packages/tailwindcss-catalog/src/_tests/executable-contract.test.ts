@@ -6,6 +6,7 @@ import {
   compileTailwindExecutableArtifact,
   TAILWIND_4_3_3_ARTIFACT_IDENTITY,
   TAILWIND_4_3_3_ARTIFACT_SHA256,
+  TAILWIND_BLOCK_PRESET_ASSET,
   TAILWIND_4_3_3_STYLESHEET_IDENTITY,
   type TailwindExecutableCompilerResult
 } from '../executable-contract';
@@ -23,9 +24,9 @@ describe('versioned executable Tailwind compiler contract', () => {
     expect(TAILWIND_4_3_3_STYLESHEET_IDENTITY).toEqual(
       expect.objectContaining({
         version: '4.3.3',
-        mode: 'theme-and-utilities',
+        mode: 'block-preset',
         sha256:
-          '14dcde35d39129464213fc7736ea90d719ecee5953c5cf836f6c89baa9a3fd10'
+          '41e1b1cefc721fa2889683134f896f1bafa9907d9057800343b2b7376f7d36a1'
       })
     );
   });
@@ -60,6 +61,15 @@ describe('versioned executable Tailwind compiler contract', () => {
       expect(browserResult.source_sha256).toBe(
         createHash('sha256').update(request.source_code).digest('hex')
       );
+      const tailwind = browserResult.dependency_lock.find(
+        (entry) => entry.module_source === 'tailwindcss'
+      );
+      if (tailwind) {
+        const { path: _path, ...presetAsset } = TAILWIND_BLOCK_PRESET_ASSET;
+        expect(tailwind.assets).toContainEqual(
+          expect.objectContaining(presetAsset)
+        );
+      }
     }
   );
 

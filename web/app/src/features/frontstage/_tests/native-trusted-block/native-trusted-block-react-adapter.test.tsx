@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
@@ -17,6 +17,8 @@ const providerRecords = vi.hoisted(() => ({
   configs: [] as Array<Record<string, unknown>>,
   styles: [] as Array<Record<string, unknown>>
 }));
+
+afterEach(() => vi.unstubAllGlobals());
 
 vi.mock('@ant-design/cssinjs', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
@@ -360,6 +362,59 @@ describe('frontstage native trusted block declarative portal host', () => {
     view.unmount();
     expect(firstRoot.shadowRoot?.childNodes).toHaveLength(0);
     expect(secondRoot.shadowRoot?.childNodes).toHaveLength(0);
+  });
+
+  test('AC-003 shares one constructable stylesheet by asset digest across ShadowRoots', async () => {
+    const replaceSync = vi.fn();
+    class SharedStyleSheet {
+      replaceSync = replaceSync;
+    }
+    vi.stubGlobal('CSSStyleSheet', SharedStyleSheet);
+    const firstRoot = createBlockRoot();
+    const secondRoot = createBlockRoot();
+    Object.defineProperty(firstRoot.shadowRoot, 'adoptedStyleSheets', {
+      configurable: true,
+      value: [],
+      writable: true
+    });
+    Object.defineProperty(secondRoot.shadowRoot, 'adoptedStyleSheets', {
+      configurable: true,
+      value: [],
+      writable: true
+    });
+    const sharedStyle = moduleStyle('c', '.shared { display: grid; }');
+    const view = render(
+      <>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={firstRoot}
+          renderEpoch="shared:first"
+          plan={createPlan({ blockId: 'shared-first' })}
+          component={() => <output>First shared</output>}
+          ctx={createContext()}
+          moduleAssets={[sharedStyle]}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={secondRoot}
+          renderEpoch="shared:second"
+          plan={createPlan({ blockId: 'shared-second' })}
+          component={() => <output>Second shared</output>}
+          ctx={createContext()}
+          moduleAssets={[sharedStyle]}
+        />
+      </>
+    );
+
+    await shadowQueries(firstRoot).findByText('First shared');
+    await shadowQueries(secondRoot).findByText('Second shared');
+    expect(replaceSync).toHaveBeenCalledTimes(1);
+    expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(1);
+    expect(secondRoot.shadowRoot?.adoptedStyleSheets[0]).toBe(
+      firstRoot.shadowRoot?.adoptedStyleSheets[0]
+    );
+
+    view.unmount();
+    expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
+    expect(secondRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
   });
 
   test('D3R-AC-008 surface unmount cleans portal DOM and host-owned scope', async () => {
