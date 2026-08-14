@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["src"],
-  "exclude": ["src/_tests"]
+  "exclude": ["src/_tests", "src/catalog-module.d.ts"]
 }
