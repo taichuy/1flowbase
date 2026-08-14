@@ -230,6 +230,14 @@ fn console_health_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 }
 
 pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    migrated_core_console_route_assembly_with_interface_operations(None)
+}
+
+pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
+    interface_operations: Option<
+        &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
+    >,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
@@ -247,7 +255,11 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
         .merge(super::files::route_assembly())
         .merge(super::file_storages::route_assembly())
         .merge(super::file_tables::route_assembly())
-        .merge(super::host_infrastructure::route_assembly())
+        .merge(
+            super::host_infrastructure::route_assembly_with_interface_operations(
+                interface_operations,
+            ),
+        )
         .merge(super::runtime_i18n_catalog::route_assembly())
         .merge(super::i18n_catalog::route_assembly())
         .merge(super::mcp_management::route_assembly())
@@ -854,15 +866,24 @@ pub(crate) fn compile_migrated_console_operation_registry(
     let registrations = CORE_CONSOLE_OPERATION_SPECS
         .iter()
         .enumerate()
-        .map(|(order, spec)| ConsoleOperationRegistration {
-            operation_id: spec.operation_id.to_string(),
-            authorization_profile_id: None,
-            owner: core_owner.clone(),
-            lifecycle: SettingsFeatureLifecycle::Active,
-            policy_group: policy_group_for_spec(spec),
-            order: order as i32,
-            routes: routes_for_core_operation_spec(spec, bindings),
-            authorization: authorization_for_spec(spec),
+        .filter_map(|(order, spec)| {
+            let routes = routes_for_core_operation_spec(spec, bindings);
+            if spec.operation_id
+                == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+                && routes.is_empty()
+            {
+                return None;
+            }
+            Some(ConsoleOperationRegistration {
+                operation_id: spec.operation_id.to_string(),
+                authorization_profile_id: None,
+                owner: core_owner.clone(),
+                lifecycle: SettingsFeatureLifecycle::Active,
+                policy_group: policy_group_for_spec(spec),
+                order: order as i32,
+                routes,
+                authorization: authorization_for_spec(spec),
+            })
         })
         .collect::<Vec<_>>();
     let mut registrations = expand_core_interface_registrations(registrations)?;

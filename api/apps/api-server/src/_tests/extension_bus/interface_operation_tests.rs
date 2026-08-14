@@ -12,13 +12,15 @@ use plugin_framework::{
 };
 
 use crate::{
-    app_state::compile_core_console_operation_registry,
     extension_bus::{
         assemble_extension_graph_input, ExtensionBootSnapshot, ModuleActivationFact,
         DEFAULT_PLUGIN_SET_PATH,
     },
     routes::{
-        console_route_assembly::migrated_core_console_route_assembly,
+        console_route_assembly::{
+            compile_migrated_core_console_operation_registry,
+            migrated_core_console_route_assembly_with_interface_operations,
+        },
         host_infrastructure::interface_operation::{
             HostInfrastructureProvidersViewInputSchema,
             HostInfrastructureProvidersViewOutputSchema, InterfaceOperationBinding,
@@ -248,8 +250,17 @@ fn binding_matches_core_console_operation_auth_and_route_without_second_literal_
         ExtensionBootSnapshot::compile(Arc::new(assembly.compile_graph().unwrap()), &descriptors)
             .unwrap();
     let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
-    let registry = compile_core_console_operation_registry(&settings).unwrap();
     let binding = snapshot.interface_operations().unwrap().providers_view();
+    let absent_assembly = migrated_core_console_route_assembly_with_interface_operations(None);
+    assert!(!absent_assembly.bindings().iter().any(|route| {
+        route.route.method == "GET" && route.route.path == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
+    }));
+    let activated_assembly = migrated_core_console_route_assembly_with_interface_operations(
+        snapshot.interface_operations(),
+    );
+    let registry =
+        compile_migrated_core_console_operation_registry(&settings, activated_assembly.bindings())
+            .unwrap();
     binding.validate_console_registry(&registry).unwrap();
 
     let access = registry
@@ -264,19 +275,21 @@ fn binding_matches_core_console_operation_auth_and_route_without_second_literal_
         access.policy_group,
         &ConsolePolicyGroup::SettingsFeature("system.host-infrastructure".to_string())
     );
-    assert!(migrated_core_console_route_assembly()
-        .bindings()
-        .iter()
-        .any(|route| {
-            route.route.method == "GET"
-                && route.route.path == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
-        }));
+    assert!(activated_assembly.bindings().iter().any(|route| {
+        route.route.method == "GET" && route.route.path == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
+    }));
 
     let route_source = include_str!("../../routes/settings/host_infrastructure.rs");
     let binding_source =
         include_str!("../../routes/settings/host_infrastructure/interface_operation.rs");
+    let mcp_catalog_source =
+        include_str!("../../routes/settings/mcp_management/interface_catalog.rs");
+    let mcp_dispatch_source = include_str!("../../routes/settings/mcp_management/debug_execute.rs");
     assert!(!route_source.contains("host_infrastructure.providers.view"));
     assert!(!binding_source.contains("serde_json"));
+    assert!(!mcp_catalog_source.contains("parse_host_extension"));
+    assert!(!mcp_dispatch_source.contains("parse_host_extension"));
+    assert!(!mcp_dispatch_source.contains("HostInfrastructureProvidersView"));
 }
 
 fn _binding_type_is_statically_tied_to_existing_dto(

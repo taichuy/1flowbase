@@ -70,11 +70,6 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "host_infrastructure.cache.domain.clear"
             ),
             (
-                "GET",
-                "/api/console/settings/host-infrastructure/providers",
-                "host_infrastructure.providers.view"
-            ),
-            (
                 "PUT",
                 "/api/console/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
                 "host_infrastructure.providers.configure"

@@ -64,7 +64,7 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::{Config as SwaggerUiConfig, SwaggerUi};
 
 use crate::{
-    app_state::{build_official_i18n_catalog_update_service, compile_console_boot_plan, ApiState},
+    app_state::{build_official_i18n_catalog_update_service, ApiState},
     config::{ApiConfig, ApiEnvironment},
     host_extension_loader::{
         activate_prepared_host_extensions, prepare_host_extensions_at_startup,
@@ -199,11 +199,13 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
 }
 
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
-    console_router_with_assembly(
-        state,
-        include_openapi,
-        routes::console_route_assembly::migrated_core_console_route_assembly(),
-    )
+    let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.interface_operations()),
+    );
+    console_router_with_assembly(state, include_openapi, assembly)
 }
 
 fn console_router_with_assembly(
@@ -247,11 +249,13 @@ fn console_router_with_assembly(
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
-    app_with_state_and_config_and_console_route_assembly(
-        state,
-        config,
-        routes::console_route_assembly::migrated_core_console_route_assembly(),
-    )
+    let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.interface_operations()),
+    );
+    app_with_state_and_config_and_console_route_assembly(state, config, assembly)
 }
 
 fn app_with_state_and_config_and_console_route_assembly(
@@ -519,7 +523,10 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let authenticator_registry = Arc::new(
         control_plane::auth::AuthenticatorRegistry::from_host_extensions(&host_extension_registry)?,
     );
-    let compiled_console_plan = compile_console_boot_plan(console_host_extensions)?;
+    let compiled_console_plan = app_state::compile_console_boot_plan_with_interface_operations(
+        console_host_extensions,
+        extension_boot_snapshot.interface_operations(),
+    )?;
     extension_boot_snapshot
         .interface_operations()
         .ok_or_else(|| anyhow::anyhow!("interface operation catalog is absent at production boot"))?

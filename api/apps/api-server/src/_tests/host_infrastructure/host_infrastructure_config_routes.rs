@@ -103,7 +103,7 @@ migrations: []
 
 #[tokio::test]
 async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pending_restart() {
-    let (state, _database_url) = test_api_state_with_database_url().await;
+    let (mut state, _database_url) = test_api_state_with_database_url().await;
     let root = AuthRepository::find_user_for_password_login(
         &state.store,
         domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
@@ -169,11 +169,25 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         Vec::new(),
     )
     .unwrap();
-    let extension_snapshot = crate::extension_bus::ExtensionBootSnapshot::compile(
-        Arc::new(extension_assembly.compile_graph().unwrap()),
-        extension_assembly.interface_operations(),
-    )
-    .unwrap();
+    let extension_snapshot = Arc::new(
+        crate::extension_bus::ExtensionBootSnapshot::compile(
+            Arc::new(extension_assembly.compile_graph().unwrap()),
+            extension_assembly.interface_operations(),
+        )
+        .unwrap(),
+    );
+    let activated_route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        extension_snapshot.interface_operations(),
+    );
+    let activated_registry =
+        crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
+            &state.settings_feature_registry,
+            activated_route_assembly.bindings(),
+        )
+        .unwrap();
+    let mutable_state = Arc::get_mut(&mut state).unwrap();
+    mutable_state.extension_boot_snapshot = Some(Arc::clone(&extension_snapshot));
+    mutable_state.console_operation_registry = Arc::new(activated_registry);
     let typed_payload = serde_json::to_value(
         extension_snapshot
             .interface_operations()

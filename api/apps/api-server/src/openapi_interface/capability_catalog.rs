@@ -13,6 +13,7 @@ use super::{catalog_entry_from_operation, OpenApiInterfaceCatalogEntry};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenApiCapabilitySource {
     StaticApiDocs,
+    ActivatedInterfaceOperation,
     BuiltinDataModelCrud,
     WorkspaceDataModelCrud,
 }
@@ -20,10 +21,25 @@ pub enum OpenApiCapabilitySource {
 impl OpenApiCapabilitySource {
     pub fn adapter_id(self) -> &'static str {
         match self {
-            Self::StaticApiDocs => "console_openapi",
+            Self::StaticApiDocs | Self::ActivatedInterfaceOperation => "console_openapi",
             Self::BuiltinDataModelCrud | Self::WorkspaceDataModelCrud => "runtime_data_model",
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivatedInterfaceOperationProjection {
+    pub operation_id: String,
+    pub input_contract_id: String,
+    pub input_contract_version: String,
+    pub output_contract_id: String,
+    pub output_contract_version: String,
+    pub required_core_permission: String,
+    pub auth_policy: plugin_framework::HostExtensionInterfaceOperationAuthPolicy,
+    pub audit_policy: plugin_framework::HostExtensionInterfaceOperationAuditPolicy,
+    pub error_policy: plugin_framework::HostExtensionInterfaceOperationErrorPolicy,
+    pub graph_fingerprint: String,
+    pub provenance: plugin_framework::extension_bus::Provenance,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +49,7 @@ pub struct OpenApiCapabilityCatalogEntry {
     pub risk_level: &'static str,
     pub bindable: bool,
     pub disabled_reason: Option<&'static str>,
+    pub activated_operation: Option<ActivatedInterfaceOperationProjection>,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +234,11 @@ pub async fn build_openapi_capability_catalog(
         })
         .collect::<BTreeMap<_, _>>();
     let mut documented_console_routes = BTreeSet::new();
+    let providers_view_binding = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_operations())
+        .map(|catalog| catalog.providers_view());
 
     for category in &state.api_docs.catalog().categories {
         let Some(operations) = state.api_docs.category_operations(&category.id) else {
@@ -230,6 +252,17 @@ pub async fn build_openapi_capability_catalog(
                 continue;
             };
             let route = route_identity(&operation.method, &operation.path);
+            if interface.operation_id
+                == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+            {
+                let Some(binding) = providers_view_binding else {
+                    continue;
+                };
+                let projected = activated_providers_view_entry(binding, interface)?;
+                documented_console_routes.insert(route);
+                entries.push(projected);
+                continue;
+            }
             if compiled_interfaces.contains_key(&route) {
                 documented_console_routes.insert(route);
             }
@@ -240,6 +273,7 @@ pub async fn build_openapi_capability_catalog(
                 source: OpenApiCapabilitySource::StaticApiDocs,
                 bindable: disabled_reason.is_none(),
                 disabled_reason,
+                activated_operation: None,
             });
         }
     }
@@ -248,6 +282,10 @@ pub async fn build_openapi_capability_catalog(
         compiled_interfaces
             .into_iter()
             .filter(|(route, _)| !documented_console_routes.contains(route))
+            .filter(|(_, interface)| {
+                interface.interface_id
+                    != crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+            })
             .map(|(_, interface)| missing_openapi_entry(interface)),
     );
 
@@ -288,6 +326,7 @@ pub async fn build_openapi_capability_catalog(
             source,
             bindable: true,
             disabled_reason: None,
+            activated_operation: None,
         });
     }
 
@@ -367,7 +406,49 @@ fn missing_openapi_entry(
         source: OpenApiCapabilitySource::StaticApiDocs,
         bindable: false,
         disabled_reason: Some("missing_openapi_contract"),
+        activated_operation: None,
     }
+}
+
+fn activated_providers_view_entry(
+    binding: &crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewBinding,
+    mut interface: OpenApiInterfaceCatalogEntry,
+) -> Result<OpenApiCapabilityCatalogEntry, ApiError> {
+    let descriptor = binding.definition().descriptor();
+    if interface.operation_id != descriptor.operation_id
+        || !interface
+            .method
+            .eq_ignore_ascii_case(descriptor.method.as_str())
+        || interface.path != descriptor.path
+    {
+        return Err(anyhow::anyhow!(
+            "activated interface operation disagrees with the generated OpenAPI contract"
+        )
+        .into());
+    }
+    interface.operation_id = descriptor.operation_id.clone();
+    interface.method = descriptor.method.as_str().to_string();
+    interface.path = descriptor.path.clone();
+    Ok(OpenApiCapabilityCatalogEntry {
+        risk_level: operation_risk_level(&interface.method),
+        interface,
+        source: OpenApiCapabilitySource::ActivatedInterfaceOperation,
+        bindable: true,
+        disabled_reason: None,
+        activated_operation: Some(ActivatedInterfaceOperationProjection {
+            operation_id: descriptor.operation_id.clone(),
+            input_contract_id: descriptor.input.contract_id.clone(),
+            input_contract_version: descriptor.input.contract_version.clone(),
+            output_contract_id: descriptor.output.contract_id.clone(),
+            output_contract_version: descriptor.output.contract_version.clone(),
+            required_core_permission: descriptor.required_core_permission.clone(),
+            auth_policy: descriptor.auth_policy,
+            audit_policy: descriptor.audit_policy,
+            error_policy: descriptor.error_policy,
+            graph_fingerprint: binding.graph_fingerprint().to_string(),
+            provenance: binding.provenance().clone(),
+        }),
+    })
 }
 
 fn route_identity(method: &str, path: &str) -> (String, String) {
@@ -385,6 +466,74 @@ fn route_identity(method: &str, path: &str) -> (String, String) {
             .collect::<Vec<_>>()
             .join("/"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        extension_bus::{
+            assemble_extension_graph_input, ExtensionBootSnapshot, DEFAULT_PLUGIN_SET_PATH,
+        },
+        routes::host_infrastructure::interface_operation::{
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID,
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH,
+        },
+    };
+
+    #[test]
+    fn activated_projection_keeps_openapi_schema_and_uses_binding_identity() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let assembly =
+            assemble_extension_graph_input(root, DEFAULT_PLUGIN_SET_PATH, Vec::new()).unwrap();
+        let snapshot = ExtensionBootSnapshot::compile(
+            Arc::new(assembly.compile_graph().unwrap()),
+            assembly.interface_operations(),
+        )
+        .unwrap();
+        let binding = snapshot.interface_operations().unwrap().providers_view();
+        let request_schema = json!({"type": "object", "properties": {}});
+        let response_schema = json!({"type": "array", "items": {"type": "object"}});
+        let projected = activated_providers_view_entry(
+            binding,
+            OpenApiInterfaceCatalogEntry {
+                operation_id: HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),
+                method: "GET".to_string(),
+                path: HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH.to_string(),
+                name: "providers".to_string(),
+                description: "providers".to_string(),
+                parameter_descriptors: Vec::new(),
+                request_schema: request_schema.clone(),
+                response_schema: response_schema.clone(),
+                request_media_type: None,
+                response_media_type: Some("application/json".to_string()),
+                security: json!([{"cookie_auth": []}]),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            projected.source,
+            OpenApiCapabilitySource::ActivatedInterfaceOperation
+        );
+        assert_eq!(projected.interface.request_schema, request_schema);
+        assert_eq!(projected.interface.response_schema, response_schema);
+        let activated = projected.activated_operation.unwrap();
+        let descriptor = binding.definition().descriptor();
+        assert_eq!(activated.operation_id, descriptor.operation_id);
+        assert_eq!(activated.input_contract_id, descriptor.input.contract_id);
+        assert_eq!(activated.output_contract_id, descriptor.output.contract_id);
+        assert_eq!(activated.auth_policy, descriptor.auth_policy);
+        assert_eq!(activated.audit_policy, descriptor.audit_policy);
+        assert_eq!(activated.error_policy, descriptor.error_policy);
+        assert_eq!(activated.graph_fingerprint, binding.graph_fingerprint());
+        assert_eq!(activated.provenance, *binding.provenance());
+        assert!(Arc::ptr_eq(binding.graph_arc(), snapshot.graph_arc()));
+    }
 }
 
 fn canonical_openapi_path(path: &str) -> String {

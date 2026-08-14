@@ -214,13 +214,22 @@ pub(crate) struct CompiledConsoleBootPlan {
 pub(crate) fn compile_console_boot_plan(
     host_extensions: impl IntoIterator<Item = ResolvedHostExtensionConsoleContribution>,
 ) -> anyhow::Result<CompiledConsoleBootPlan> {
+    compile_console_boot_plan_with_interface_operations(host_extensions, None)
+}
+
+pub(crate) fn compile_console_boot_plan_with_interface_operations(
+    host_extensions: impl IntoIterator<Item = ResolvedHostExtensionConsoleContribution>,
+    interface_operations: Option<
+        &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
+    >,
+) -> anyhow::Result<CompiledConsoleBootPlan> {
     let host_extensions = host_extensions.into_iter().collect::<Vec<_>>();
     let host_contributions = host_extensions
         .iter()
         .map(|host| host.contribution.clone())
         .collect::<Vec<_>>();
     let settings_feature_registry = compile_settings_feature_registry(&host_contributions)?;
-    let mut route_assembly = migrated_core_console_route_assembly();
+    let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(interface_operations);
     for host in host_extensions {
         if let Some(host_assembly) = host.route_assembly {
             validate_linked_host_console_route_assembly(&host.contribution, &host_assembly)?;

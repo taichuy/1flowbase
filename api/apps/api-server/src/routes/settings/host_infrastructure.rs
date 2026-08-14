@@ -349,9 +349,15 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    route_assembly_with_interface_operations(None)
+}
+
+pub(crate) fn route_assembly_with_interface_operations(
+    interface_operations: Option<&interface_operation::InterfaceOperationCatalog>,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
-    ConsoleRouteAssembly::new()
+    let assembly = ConsoleRouteAssembly::new()
         .route(
             "/settings/host-infrastructure/memory",
             console_get(
@@ -435,8 +441,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 clear_host_infrastructure_cache_domain,
                 ConsoleOperation("host_infrastructure.cache.domain.clear".to_string()),
             ),
-        )
-        .route(
+        );
+    let assembly = if interface_operations.is_some() {
+        assembly.route(
             interface_operation::host_infrastructure_providers_view_console_path(),
             console_get(
                 list_host_infrastructure_providers,
@@ -446,13 +453,16 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ),
             ),
         )
-        .route(
-            "/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
-            console_put(
-                save_host_infrastructure_provider_config,
-                ConsoleOperation("host_infrastructure.providers.configure".to_string()),
-            ),
-        )
+    } else {
+        assembly
+    };
+    assembly.route(
+        "/settings/host-infrastructure/providers/:installation_id/:provider_code/config",
+        console_put(
+            save_host_infrastructure_provider_config,
+            ConsoleOperation("host_infrastructure.providers.configure".to_string()),
+        ),
+    )
 }
 
 #[utoipa::path(
@@ -918,12 +928,25 @@ pub async fn list_host_infrastructure_providers(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
     require_session(&state, &headers).await?;
-    let providers = list_host_infrastructure_providers_typed(state.as_ref()).await?;
+    let binding = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_operations())
+        .map(|catalog| catalog.providers_view())
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "interface_operation",
+        ))?;
+    let providers = binding
+        .dispatch(
+            Arc::clone(&state),
+            interface_operation::HostInfrastructureProvidersViewInput,
+        )
+        .await?;
 
     Ok(Json(ApiSuccess::new(providers)))
 }
 
-pub(crate) async fn list_host_infrastructure_providers_typed(
+async fn list_host_infrastructure_providers_typed(
     state: &ApiState,
 ) -> Result<Vec<HostInfrastructureProviderConfigResponse>, ApiError> {
     Ok(

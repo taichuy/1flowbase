@@ -51,13 +51,21 @@ pub(super) fn mcp_interface_entry_from_capability(
     entry: OpenApiCapabilityCatalogEntry,
 ) -> domain::McpInterfaceCatalogEntry {
     let source = match entry.source {
-        OpenApiCapabilitySource::StaticApiDocs => domain::McpInterfaceCatalogSource::StaticApi,
+        OpenApiCapabilitySource::StaticApiDocs
+        | OpenApiCapabilitySource::ActivatedInterfaceOperation => {
+            domain::McpInterfaceCatalogSource::StaticApi
+        }
         OpenApiCapabilitySource::BuiltinDataModelCrud => {
             domain::McpInterfaceCatalogSource::BuiltinDataModelCrud
         }
         OpenApiCapabilitySource::WorkspaceDataModelCrud => {
             domain::McpInterfaceCatalogSource::WorkspaceDataModelCrud
         }
+    };
+    let permission_code = if entry.activated_operation.is_some() {
+        Some(access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION.to_string())
+    } else {
+        operation_permission_code(&entry.interface.method, &entry.interface.path)
     };
     let interface = entry.interface;
     domain::McpInterfaceCatalogEntry {
@@ -91,7 +99,7 @@ pub(super) fn mcp_interface_entry_from_capability(
             .collect(),
         parameter_schema: interface.request_schema,
         result_schema: interface.response_schema,
-        permission_code: operation_permission_code(&interface.method, &interface.path),
+        permission_code,
         security: interface.security,
         risk_level: mcp_risk_level(entry.risk_level),
         bindable: entry.bindable,
@@ -317,4 +325,79 @@ pub(super) fn operation_permission_code(method: &str, path: &str) -> Option<Stri
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        extension_bus::{
+            assemble_extension_graph_input, ExtensionBootSnapshot, DEFAULT_PLUGIN_SET_PATH,
+        },
+        openapi_interface::{ActivatedInterfaceOperationProjection, OpenApiInterfaceCatalogEntry},
+    };
+
+    #[test]
+    fn activated_openapi_projection_becomes_the_same_mcp_interface_contract() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let assembly =
+            assemble_extension_graph_input(root, DEFAULT_PLUGIN_SET_PATH, Vec::new()).unwrap();
+        let snapshot = ExtensionBootSnapshot::compile(
+            Arc::new(assembly.compile_graph().unwrap()),
+            assembly.interface_operations(),
+        )
+        .unwrap();
+        let binding = snapshot.interface_operations().unwrap().providers_view();
+        let descriptor = binding.definition().descriptor();
+        let parameter_schema = json!({"type": "object", "properties": {}});
+        let result_schema = json!({"type": "array", "items": {"type": "object"}});
+        let entry = OpenApiCapabilityCatalogEntry {
+            interface: OpenApiInterfaceCatalogEntry {
+                operation_id: descriptor.operation_id.clone(),
+                method: descriptor.method.as_str().to_string(),
+                path: descriptor.path.clone(),
+                name: "providers".to_string(),
+                description: "providers".to_string(),
+                parameter_descriptors: Vec::new(),
+                request_schema: parameter_schema.clone(),
+                response_schema: result_schema.clone(),
+                request_media_type: None,
+                response_media_type: Some("application/json".to_string()),
+                security: json!([{"cookie_auth": []}]),
+            },
+            source: OpenApiCapabilitySource::ActivatedInterfaceOperation,
+            risk_level: "low",
+            bindable: true,
+            disabled_reason: None,
+            activated_operation: Some(ActivatedInterfaceOperationProjection {
+                operation_id: descriptor.operation_id.clone(),
+                input_contract_id: descriptor.input.contract_id.clone(),
+                input_contract_version: descriptor.input.contract_version.clone(),
+                output_contract_id: descriptor.output.contract_id.clone(),
+                output_contract_version: descriptor.output.contract_version.clone(),
+                required_core_permission: descriptor.required_core_permission.clone(),
+                auth_policy: descriptor.auth_policy,
+                audit_policy: descriptor.audit_policy,
+                error_policy: descriptor.error_policy,
+                graph_fingerprint: binding.graph_fingerprint().to_string(),
+                provenance: binding.provenance().clone(),
+            }),
+        };
+
+        let mcp = mcp_interface_entry_from_capability(entry);
+        assert_eq!(mcp.interface_id, descriptor.operation_id);
+        assert_eq!(mcp.method, descriptor.method.as_str());
+        assert_eq!(mcp.path, descriptor.path);
+        assert_eq!(mcp.parameter_schema, parameter_schema);
+        assert_eq!(mcp.result_schema, result_schema);
+        assert_eq!(
+            mcp.permission_code.as_deref(),
+            Some(access_control::SYSTEM_HOST_INFRASTRUCTURE_SETTINGS_FEATURE_PERMISSION)
+        );
+        assert_eq!(mcp.source, domain::McpInterfaceCatalogSource::StaticApi);
+    }
 }
