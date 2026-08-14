@@ -1,4 +1,4 @@
-import { __unstable__loadDesignSystem, compile } from 'tailwindcss';
+import * as tailwindcss from 'tailwindcss';
 
 import {
   TAILWIND_PREFLIGHT_CSS,
@@ -22,6 +22,16 @@ export const TAILWIND_BLOCK_PRESET_VARIANTS = Object.freeze([
 let blockPresetFlight:
   | Promise<{ css: string; baseCandidates: number; candidates: number }>
   | undefined;
+
+interface TailwindDesignSystem {
+  getClassList(): Array<readonly [string, unknown]>;
+}
+
+const loadDesignSystem = (
+  tailwindcss as unknown as {
+    __unstable__loadDesignSystem(css: string): Promise<TailwindDesignSystem>;
+  }
+).__unstable__loadDesignSystem;
 
 /**
  * Builds the source-independent stylesheet attached by `import 'tailwindcss'`.
@@ -47,7 +57,7 @@ async function buildTailwindBlockPreset(): Promise<{
     TAILWIND_PREFLIGHT_CSS,
     TAILWIND_UTILITIES_CSS
   ].join('\n');
-  const designSystem = await __unstable__loadDesignSystem(stylesheet);
+  const designSystem = await loadDesignSystem(stylesheet);
   const baseCandidates = designSystem
     .getClassList()
     .map(([candidate]) => candidate)
@@ -58,7 +68,7 @@ async function buildTailwindBlockPreset(): Promise<{
       baseCandidates.map((candidate) => `${variant}:${candidate}`)
     )
   ];
-  const compiler = await compile(stylesheet);
+  const compiler = await tailwindcss.compile(stylesheet);
   return {
     css: compiler.build(candidates),
     baseCandidates: baseCandidates.length,
@@ -97,7 +107,7 @@ export async function compileTailwindUtilities(
     utilitiesCss: TAILWIND_UTILITIES_CSS
   }
 ): Promise<TailwindCompilation> {
-  const compiler = await compile(
+  const compiler = await tailwindcss.compile(
     `${stylesheets.themeCss}\n${stylesheets.utilitiesCss}`
   );
   let previousCss = compiler.build([]);
