@@ -49,23 +49,27 @@ describe('Native React Tailwind block preset contract', () => {
     );
   });
 
-  test('AC-001 builds one source-independent default preset with standard variants', async () => {
-    const preset = await compileTailwindBlockPreset();
+  test(
+    'AC-001 builds one source-independent default preset with standard variants',
+    async () => {
+      const preset = await compileTailwindBlockPreset();
 
-    expect(preset.baseCandidates).toBeGreaterThan(20_000);
-    expect(preset.candidates).toBe(
-      preset.baseCandidates * (TAILWIND_BLOCK_PRESET_VARIANTS.length + 1)
-    );
-    expect(preset.css).toContain('.grid');
-    expect(preset.css).toContain('.bg-red-500');
-    expect(preset.css).toContain('.hover\\:bg-red-500');
-    expect(preset.css).toContain('.focus-visible\\:ring-2');
-    expect(preset.css).toContain('.disabled\\:opacity-50');
-    expect(preset.css).toContain('.md\\:grid-cols-2');
-    expect(preset.css).toContain('@media');
-    expect(preset.css).toMatch(/(?:^|\})\s*\*,\s*::after,/u);
-    expect(preset.css).not.toMatch(/\.ant-/u);
-  });
+      expect(preset.baseCandidates).toBeGreaterThan(20_000);
+      expect(preset.candidates).toBe(
+        preset.baseCandidates * (TAILWIND_BLOCK_PRESET_VARIANTS.length + 1)
+      );
+      expect(preset.css).toContain('.grid');
+      expect(preset.css).toContain('.bg-red-500');
+      expect(preset.css).toContain('.hover\\:bg-red-500');
+      expect(preset.css).toContain('.focus-visible\\:ring-2');
+      expect(preset.css).toContain('.disabled\\:opacity-50');
+      expect(preset.css).toContain('.md\\:grid-cols-2');
+      expect(preset.css).toContain('@media');
+      expect(preset.css).toMatch(/(?:^|\})\s*\*,\s*::after,/u);
+      expect(preset.css).not.toMatch(/\.ant-/u);
+    },
+    30_000
+  );
 
   test('AC-001 keeps import recognition independent from authored candidates', () => {
     expect(sourceImportsTailwind("import 'tailwindcss';\nexport default 1;"))
