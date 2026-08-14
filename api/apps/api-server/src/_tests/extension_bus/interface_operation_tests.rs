@@ -5,16 +5,14 @@ use plugin_framework::{
     extension_bus::{
         Cardinality, ContractVersion, ContributionDescriptor, ContributionId, ContributionMode,
         ContributionOrdering, DeliverySemantics, ExtensionPointId, ExtensionPointKind,
-        FailureSemantics, LifecycleSemantics, ModuleDisableReason, ModuleId, ModuleKind,
-        PermissionCode,
+        FailureSemantics, LifecycleSemantics, ModuleId, ModuleKind, PermissionCode,
     },
     HostExtensionInterfaceOperationAuthPolicy, HostExtensionInterfaceOperationMethod,
 };
 
 use crate::{
     extension_bus::{
-        assemble_extension_graph_input, ExtensionBootSnapshot, ModuleActivationFact,
-        DEFAULT_PLUGIN_SET_PATH,
+        assemble_extension_graph_input, ExtensionBootSnapshot, DEFAULT_PLUGIN_SET_PATH,
     },
     routes::{
         console_route_assembly::{
@@ -160,20 +158,23 @@ fn missing_disabled_or_wrong_owner_interface_operation_fails_closed() {
             .is_err()
     );
 
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let disabled = assemble_extension_graph_input(
-        root,
-        DEFAULT_PLUGIN_SET_PATH,
-        vec![ModuleActivationFact::disabled(
-            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
-            ModuleDisableReason::DeploymentPolicy,
+    let mut modules_without_interface_operation = assembly.module_descriptors().to_vec();
+    modules_without_interface_operation
+        .iter_mut()
+        .find(|module| {
+            module.module_id.as_str() == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID
+        })
+        .unwrap()
+        .contributions
+        .retain(|contribution| contribution.point_id.as_str() != INTERFACE_OPERATION_POINT_ID);
+    let disabled_graph = Arc::new(
+        plugin_framework::extension_bus::compile_extension_graph(
+            modules_without_interface_operation,
         )
-        .unwrap()],
-    )
-    .unwrap();
-    let disabled_graph = Arc::new(disabled.compile_graph().unwrap());
+        .unwrap(),
+    );
     assert!(
-        ExtensionBootSnapshot::compile(disabled_graph, disabled.interface_operations(),).is_err()
+        ExtensionBootSnapshot::compile(disabled_graph, assembly.interface_operations(),).is_err()
     );
 
     let mut modules = assembly.module_descriptors().to_vec();
