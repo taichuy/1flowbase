@@ -268,11 +268,31 @@ async fn test_state_with_runtime_profile_state(
     let runtime_event_stream = infrastructure
         .runtime_event_stream()
         .expect("local test infrastructure must provide runtime event stream");
-    let settings_feature_registry = crate::app_state::compile_core_settings_feature_registry()
-        .expect("core settings feature registry should compile");
-    let console_operation_registry =
-        crate::app_state::compile_core_console_operation_registry(&settings_feature_registry)
-            .expect("core console operation registry should compile");
+    let extension_assembly = crate::extension_bus::assemble_extension_graph_input(
+        crate::api_workspace_root().expect("test API workspace root should resolve"),
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .expect("test extension graph input should assemble");
+    let extension_boot_snapshot = Arc::new(
+        crate::extension_bus::ExtensionBootSnapshot::compile(
+            Arc::new(
+                extension_assembly
+                    .compile_graph()
+                    .expect("test extension graph should compile"),
+            ),
+            extension_assembly.interface_operations(),
+        )
+        .expect("test extension boot snapshot should compile"),
+    );
+    let console_boot_plan = crate::app_state::compile_console_boot_plan_with_interface_operations(
+        Vec::new(),
+        extension_boot_snapshot.interface_operations(),
+    )
+    .expect("test console boot plan should compile with interface operations");
+    let settings_feature_registry = console_boot_plan.settings_feature_registry;
+    let console_operation_registry = console_boot_plan.console_operation_registry;
+    let console_surface_registry = console_boot_plan.console_surface_registry;
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = Some(Arc::new(
         crate::system_backup::SystemBackupRuntime::open_with_postgres_toolchain(
@@ -305,10 +325,8 @@ async fn test_state_with_runtime_profile_state(
             settings_feature_registry,
             console_operation_registry,
             infrastructure,
-            extension_boot_snapshot: None,
-            console_surface_registry: Arc::new(
-                crate::console_surface_registry::ConsoleSurfaceRegistry::default(),
-            ),
+            extension_boot_snapshot: Some(extension_boot_snapshot),
+            console_surface_registry,
             file_storage_registry,
             runtime_engine,
             provider_runtime,
