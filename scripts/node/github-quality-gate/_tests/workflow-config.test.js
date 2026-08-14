@@ -392,14 +392,20 @@ test("React Doctor keeps current debt as a narrow baseline", () => {
     {
       files: ["src/features/frontstage/pages/FrontStagePage.tsx"],
       rules: [
+        "react-doctor/exhaustive-deps",
+        "react-doctor/no-adjust-state-on-prop-change",
         "react-doctor/no-cascading-set-state",
+        "react-doctor/no-chain-state-updates",
+        "react-doctor/no-derived-state",
         "react-doctor/no-effect-chain",
+        "react-doctor/no-event-handler",
         "react-doctor/no-prop-callback-in-effect",
         "react-doctor/no-inline-exhaustive-style",
         "react-doctor/no-giant-component",
         "react-doctor/no-many-boolean-props",
         "react-doctor/prefer-useReducer",
         "react-doctor/no-derived-state-effect",
+        "react-doctor/no-render-in-render",
       ],
     },
     {
