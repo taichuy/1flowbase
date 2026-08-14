@@ -370,6 +370,14 @@ describe('frontstage native trusted block declarative portal host', () => {
       replaceSync = replaceSync;
     }
     vi.stubGlobal('CSSStyleSheet', SharedStyleSheet);
+    const previousStyleSheetDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      'CSSStyleSheet'
+    );
+    Object.defineProperty(window, 'CSSStyleSheet', {
+      configurable: true,
+      value: SharedStyleSheet
+    });
     const adoptedSheets = new WeakMap<ShadowRoot, CSSStyleSheet[]>();
     const previousDescriptor = Object.getOwnPropertyDescriptor(
       ShadowRoot.prototype,
@@ -421,6 +429,15 @@ describe('frontstage native trusted block declarative portal host', () => {
       expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
       expect(secondRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
     } finally {
+      if (previousStyleSheetDescriptor) {
+        Object.defineProperty(
+          window,
+          'CSSStyleSheet',
+          previousStyleSheetDescriptor
+        );
+      } else {
+        Reflect.deleteProperty(window, 'CSSStyleSheet');
+      }
       if (previousDescriptor) {
         Object.defineProperty(
           ShadowRoot.prototype,
