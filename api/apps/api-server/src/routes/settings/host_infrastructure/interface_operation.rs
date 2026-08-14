@@ -185,10 +185,16 @@ impl InterfaceOperationCatalog {
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[HostExtensionInterfaceOperationManifest],
     ) -> Result<Self> {
-        if descriptors.len() != 1 {
-            bail!("interface operation catalog requires exactly one contributed operation");
+        let mut providers_view_descriptors = descriptors.iter().filter(|descriptor| {
+            descriptor.operation_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+        });
+        let descriptor = providers_view_descriptors.next().cloned().ok_or_else(|| {
+            anyhow::anyhow!("host infrastructure providers view descriptor is absent")
+        })?;
+        if providers_view_descriptors.next().is_some() {
+            bail!("host infrastructure providers view descriptor is not unique");
         }
-        let providers_view = bind_providers_view(graph, descriptors[0].clone())?;
+        let providers_view = bind_providers_view(graph, descriptor)?;
         Ok(Self { providers_view })
     }
 
@@ -267,13 +273,20 @@ fn bind_providers_view(
         || point_descriptor.delivery != DeliverySemantics::Synchronous
         || point_descriptor.lifecycle != LifecycleSemantics::BootSnapshot
         || point_descriptor.override_policy != OverridePolicy::Sealed
-        || allowed_permission != [HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION]
+        || !allowed_permission.contains(&HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION)
     {
         bail!("interface operation extension point contract mismatch");
     }
-    let [contribution] = point.contributions() else {
-        bail!("host infrastructure providers view contribution is not uniquely active");
-    };
+    let mut target_contributions = point.contributions().iter().filter(|contribution| {
+        contribution.descriptor().contribution_id.as_str()
+            == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID
+    });
+    let contribution = target_contributions.next().ok_or_else(|| {
+        anyhow::anyhow!("host infrastructure providers view contribution is not active")
+    })?;
+    if target_contributions.next().is_some() {
+        bail!("host infrastructure providers view contribution is not unique");
+    }
     let required_permission = contribution
         .descriptor()
         .required_permissions

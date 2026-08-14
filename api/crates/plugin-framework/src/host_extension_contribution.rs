@@ -114,7 +114,6 @@ pub struct HostExtensionInterfaceOperationContractManifest {
 #[serde(rename_all = "snake_case")]
 pub enum HostExtensionInterfaceOperationAuthPolicy {
     CoreConsoleOperation,
-    ContributorManaged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -128,7 +127,6 @@ pub enum HostExtensionInterfaceOperationAuditPolicy {
 #[serde(rename_all = "snake_case")]
 pub enum HostExtensionInterfaceOperationErrorPolicy {
     CoreApiError,
-    ContributorDefined,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

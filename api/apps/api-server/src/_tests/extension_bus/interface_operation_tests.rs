@@ -1,10 +1,12 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use access_control::{ConsoleAuthorization, ConsolePolicyGroup};
 use plugin_framework::{
     extension_bus::{
-        Cardinality, DeliverySemantics, ExtensionPointKind, FailureSemantics, LifecycleSemantics,
-        ModuleDisableReason, ModuleId, ModuleKind,
+        Cardinality, ContractVersion, ContributionDescriptor, ContributionId, ContributionMode,
+        ContributionOrdering, DeliverySemantics, ExtensionPointId, ExtensionPointKind,
+        FailureSemantics, LifecycleSemantics, ModuleDisableReason, ModuleId, ModuleKind,
+        PermissionCode,
     },
     HostExtensionInterfaceOperationAuthPolicy, HostExtensionInterfaceOperationMethod,
 };
@@ -79,10 +81,82 @@ fn manifest_descriptor_graph_and_boot_snapshot_compile_one_typed_binding() {
 }
 
 #[test]
+fn unrelated_future_module_and_operation_do_not_block_the_known_binding() {
+    let assembly = assembly();
+    let mut descriptors = assembly.interface_operations().to_vec();
+    let mut future_descriptor = descriptors[0].clone();
+    future_descriptor.operation_id = "identity.sessions.view".to_string();
+    future_descriptor.path = "/api/console/identity/sessions".to_string();
+    future_descriptor.output.contract_id = "identity-session-list".to_string();
+    future_descriptor.required_core_permission =
+        "core.interface-operation.identity-sessions-view".to_string();
+    descriptors.push(future_descriptor);
+
+    let mut modules = assembly.module_descriptors().to_vec();
+    let future_permission =
+        PermissionCode::new("core.interface-operation.identity-sessions-view").unwrap();
+    modules
+        .iter_mut()
+        .flat_map(|module| module.extension_points.iter_mut())
+        .find(|point| point.point_id.as_str() == INTERFACE_OPERATION_POINT_ID)
+        .unwrap()
+        .allowed_permissions
+        .insert(future_permission.clone());
+    let future_module = modules
+        .iter_mut()
+        .find(|module| module.module_id.as_str() == "official.identity-host")
+        .unwrap();
+    future_module
+        .granted_permissions
+        .insert(future_permission.clone());
+    future_module.contributions.push(ContributionDescriptor {
+        contribution_id: ContributionId::new(
+            "official.identity-host.interface-operation.identity.sessions.view",
+        )
+        .unwrap(),
+        contributor_module_id: future_module.module_id.clone(),
+        point_id: ExtensionPointId::new(INTERFACE_OPERATION_POINT_ID).unwrap(),
+        contract_version: ContractVersion::new("1").unwrap(),
+        required_permissions: BTreeSet::from([future_permission]),
+        mode: ContributionMode::Append,
+        ordering: ContributionOrdering::default(),
+    });
+
+    let graph =
+        Arc::new(plugin_framework::extension_bus::compile_extension_graph(modules).unwrap());
+    let snapshot = ExtensionBootSnapshot::compile(Arc::clone(&graph), &descriptors).unwrap();
+    assert_eq!(
+        snapshot
+            .interface_operations()
+            .unwrap()
+            .providers_view()
+            .definition()
+            .descriptor()
+            .operation_id,
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+    );
+    assert_eq!(
+        graph
+            .points()
+            .iter()
+            .find(|point| point.descriptor().point_id.as_str() == INTERFACE_OPERATION_POINT_ID)
+            .unwrap()
+            .contributions()
+            .len(),
+        2
+    );
+}
+
+#[test]
 fn missing_disabled_or_wrong_owner_interface_operation_fails_closed() {
     let assembly = assembly();
     let graph = Arc::new(assembly.compile_graph().unwrap());
     assert!(ExtensionBootSnapshot::compile(Arc::clone(&graph), &[]).is_err());
+    let duplicate = assembly.interface_operations()[0].clone();
+    assert!(
+        ExtensionBootSnapshot::compile(Arc::clone(&graph), &[duplicate.clone(), duplicate],)
+            .is_err()
+    );
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let disabled = assemble_extension_graph_input(

@@ -1074,6 +1074,47 @@ migrations: []
         .contains("operation_id must be unique"));
 }
 
+#[test]
+fn interface_operation_manifest_rejects_contributor_managed_auth_and_errors() {
+    for (field, unsupported) in [
+        ("auth_policy", "contributor_managed"),
+        ("error_policy", "contributor_defined"),
+    ] {
+        let mut contribution = r#"
+interface_operations:
+  - operation_id: operation.view
+    method: get
+    path: /api/console/providers
+    input: { contract_id: none, contract_version: "1" }
+    output: { contract_id: providers, contract_version: "1" }
+    required_core_permission: core.providers.view
+    auth_policy: core_console_operation
+    audit_policy: read_only
+    error_policy: core_api_error
+routes: []
+workers: []
+migrations: []
+"#
+        .to_string();
+        contribution = contribution.replace(
+            &format!(
+                "{field}: {}",
+                if field == "auth_policy" {
+                    "core_console_operation"
+                } else {
+                    "core_api_error"
+                }
+            ),
+            &format!("{field}: {unsupported}"),
+        );
+        let error = parse_host_extension_contribution_manifest(&host_extension_manifest_with(
+            &contribution,
+        ))
+        .unwrap_err();
+        assert!(error.to_string().contains(unsupported));
+    }
+}
+
 fn host_extension_manifest_with(contributions: &str) -> String {
     format!(
         r#"
