@@ -641,7 +641,25 @@ pub(super) fn validate_executable(
     }
     let imports_tailwind = executable.source_code.contains("import 'tailwindcss'")
         || executable.source_code.contains("import \"tailwindcss\"");
-    if imports_tailwind != !executable.generated_css.is_empty() {
+    let has_tailwind_shadow_style = executable
+        .dependency_lock
+        .as_array()
+        .is_some_and(|entries| {
+            entries.iter().any(|entry| {
+                entry.get("module_source").and_then(Value::as_str) == Some("tailwindcss")
+                    && entry
+                        .get("assets")
+                        .and_then(Value::as_array)
+                        .is_some_and(|assets| {
+                            assets.iter().any(|asset| {
+                                asset.get("role").and_then(Value::as_str) == Some("shadow_style")
+                            })
+                        })
+            })
+        });
+    let has_tailwind_style_payload =
+        !executable.generated_css.is_empty() || has_tailwind_shadow_style;
+    if imports_tailwind != has_tailwind_style_payload {
         return Err(ControlPlaneError::InvalidInput("tailwind_style_payload").into());
     }
     Ok(executable)
@@ -811,11 +829,49 @@ mod executable_state_tests {
         }
     }
 
+    fn block_preset_executable() -> FrontstageBlockExecutableInput {
+        FrontstageBlockExecutableInput {
+            source_code: "import 'tailwindcss'; export default () => null;".to_owned(),
+            dependency_lock: serde_json::json!([{
+                "module_source": "tailwindcss",
+                "module_version": "4.3.3",
+                "binding": "fetched",
+                "assets": [{
+                    "role": "shadow_style",
+                    "media_type": "text/css; charset=utf-8",
+                    "sha256": "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36",
+                    "url": "/api/console/frontstage/workspace/component-module-assets/77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
+                }],
+                "exports": ["default"]
+            }]),
+            tailwind_toolchain_lock: serde_json::json!({
+                "package": "tailwindcss",
+                "version": "4.3.3",
+                "mode": "block-preset"
+            }),
+            generated_css: String::new(),
+            generated_css_sha256:
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_owned(),
+            compiler_identity: serde_json::json!({
+                "name": "@1flowbase/tailwindcss-catalog",
+                "contract": "block-preset-v1",
+                "tailwind_version": "4.3.3"
+            }),
+        }
+    }
+
     #[test]
     fn ac_005_006_preserves_a_deterministic_locked_executable_payload() {
         let validated = validate_executable(executable()).expect("fixture must be valid");
         assert_eq!(validated.generated_css, "a{}");
         assert_eq!(validated.tailwind_toolchain_lock["version"], "4.3.3");
+    }
+
+    #[test]
+    fn ac_block_preset_accepts_shadow_style_with_empty_per_block_css() {
+        let validated = validate_executable(block_preset_executable())
+            .expect("the versioned ShadowRoot preset is the Tailwind style payload");
+        assert!(validated.generated_css.is_empty());
     }
 
     #[test]
