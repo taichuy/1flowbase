@@ -17,6 +17,8 @@ pub(super) struct LlmInvocationDebugContext {
     effective_max_output_tokens: Option<u64>,
     max_output_tokens_source: &'static str,
     context_epoch: Value,
+    provider_input_pipeline_receipt:
+        Option<crate::provider_input_pipeline::PipelineExecutionReceipt>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -43,6 +45,7 @@ impl LlmInvocationDebugContext {
             effective_max_output_tokens: model_parameters.effective_max_output_tokens,
             max_output_tokens_source: model_parameters.max_output_tokens_source,
             context_epoch,
+            provider_input_pipeline_receipt: None,
         }
     }
 
@@ -88,6 +91,12 @@ impl LlmInvocationDebugContext {
             Value::String(self.max_output_tokens_source.to_string()),
         );
         payload.insert("context_epoch".to_string(), self.context_epoch.clone());
+        if let Some(receipt) = &self.provider_input_pipeline_receipt {
+            payload.insert(
+                "provider_input_pipeline".to_string(),
+                serde_json::to_value(receipt).unwrap_or(Value::Null),
+            );
+        }
         Value::Object(payload)
     }
 }
@@ -183,7 +192,7 @@ where
     let protocol_context =
         resolve_protocol_context(node, variable_pool, runtime_context, invoker).await?;
     let context_epoch = client_context_epoch(protocol_context.as_ref())?;
-    let debug_context = LlmInvocationDebugContext::from_provider_context(
+    let mut debug_context = LlmInvocationDebugContext::from_provider_context(
         context_policy,
         previous_response_id.clone(),
         &provider_context,
@@ -229,6 +238,9 @@ where
         trace_context,
         run_context,
     };
+    if input.operation == ProviderWireOperation::Generate {
+        inject_visible_internal_llm_tool_media_content_blocks(&mut input, variable_pool).await;
+    }
     input
         .synchronize_required_capabilities()
         .map_err(|message| {
@@ -237,6 +249,56 @@ where
                 "message": message,
             })
         })?;
+
+    let expected_identity = (
+        input.operation,
+        input.profile,
+        input.provider_instance_id.clone(),
+        input.provider_code.clone(),
+        input.protocol.clone(),
+        input.model.clone(),
+    );
+    let pipelined = invoker
+        .pipeline_provider_input(input)
+        .await
+        .map_err(|error| {
+            json!({
+                "error_code": "provider_input_pipeline_failed",
+                "message": "provider input pipeline failed closed",
+                "pipeline_error": error.code,
+                "pipeline_receipt": error.receipt,
+            })
+        })?;
+    let mut input = pipelined.input;
+    let pipeline_receipt = pipelined.receipt;
+    if expected_identity
+        != (
+            input.operation,
+            input.profile,
+            input.provider_instance_id.clone(),
+            input.provider_code.clone(),
+            input.protocol.clone(),
+            input.model.clone(),
+        )
+    {
+        return Err(json!({
+            "error_code": "provider_input_pipeline_identity_mismatch",
+            "message": "provider input pipeline changed provider routing identity",
+            "pipeline_receipt": &pipeline_receipt,
+        }));
+    }
+    input
+        .synchronize_required_capabilities()
+        .map_err(|message| {
+            json!({
+                "error_code": "invalid_pipelined_message_block",
+                "message": message,
+                "pipeline_receipt": pipeline_receipt.clone(),
+            })
+        })?;
+    debug_context.provider_input_pipeline_receipt = pipeline_receipt;
+    debug_context.effective_system = input.system.clone();
+    debug_context.provider_messages = prompt_messages_from_provider_messages(&input.messages);
 
     Ok(BuiltProviderInvocation {
         input,

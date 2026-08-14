@@ -474,8 +474,6 @@ where
                 }
             }
         };
-        inject_visible_internal_llm_tool_media_content_blocks(&mut invocation.input, variable_pool)
-            .await;
         let reasoning_effort = invocation
             .input
             .model_parameters

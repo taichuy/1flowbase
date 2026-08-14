@@ -61,6 +61,8 @@ pub struct ApiRuntimeServices {
     data_model_template_catalog:
         runtime_core::data_model_template_registry::DataModelTemplateCatalog,
     model_provider_slot_resolver: Option<ModelProviderSlotResolver>,
+    provider_input_pipeline:
+        Option<Arc<orchestration_runtime::provider_input_pipeline::ProviderInputPipeline>>,
 }
 
 impl ApiRuntimeServices {
@@ -68,20 +70,23 @@ impl ApiRuntimeServices {
         provider_host: Arc<RwLock<ProviderHost>>,
         capability_host: Arc<RwLock<CapabilityHost>>,
         data_source_host: Arc<RwLock<DataSourceHost>>,
-        model_provider_extension_graph: Arc<
-            plugin_framework::extension_bus::EffectiveExtensionGraph,
-        >,
-    ) -> Self {
-        Self {
+        extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+    ) -> anyhow::Result<Self> {
+        let provider_input_pipeline = Arc::new(
+            orchestration_runtime::provider_input_pipeline::ProviderInputPipeline::from_graph(
+                Arc::clone(&extension_graph),
+                Vec::new(),
+            )?,
+        );
+        Ok(Self {
             provider_host,
             capability_host,
             data_source_host,
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
-            model_provider_slot_resolver: Some(ModelProviderSlotResolver::new(
-                model_provider_extension_graph,
-            )),
-        }
+            model_provider_slot_resolver: Some(ModelProviderSlotResolver::new(extension_graph)),
+            provider_input_pipeline: Some(provider_input_pipeline),
+        })
     }
 
     /// Explicit escape hatch for lightweight and legacy test states.
@@ -99,6 +104,7 @@ impl ApiRuntimeServices {
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: None,
+            provider_input_pipeline: None,
         }
     }
 
@@ -241,6 +247,23 @@ struct DataSourceRuntimeTarget {
 
 #[async_trait]
 impl ProviderRuntimePort for ApiProviderRuntime {
+    async fn pipeline_provider_input(
+        &self,
+        input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        orchestration_runtime::provider_input_pipeline::ProviderInputPipelineOutput,
+        orchestration_runtime::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        match self.services.provider_input_pipeline.as_ref() {
+            Some(pipeline) => pipeline.execute(input).await,
+            None => Ok(
+                orchestration_runtime::provider_input_pipeline::ProviderInputPipelineOutput::unchanged(
+                    input,
+                ),
+            ),
+        }
+    }
+
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

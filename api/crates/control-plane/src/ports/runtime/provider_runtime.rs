@@ -14,6 +14,20 @@ pub struct ProviderLiveEventSenders {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    async fn pipeline_provider_input(
+        &self,
+        input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        orchestration_runtime::provider_input_pipeline::ProviderInputPipelineOutput,
+        orchestration_runtime::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        Ok(
+            orchestration_runtime::provider_input_pipeline::ProviderInputPipelineOutput::unchanged(
+                input,
+            ),
+        )
+    }
+
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

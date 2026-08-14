@@ -145,6 +145,16 @@ impl ResolvedProviderRoute {
 
 #[async_trait]
 pub trait ProviderInvoker: Send + Sync {
+    async fn pipeline_provider_input(
+        &self,
+        input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        crate::provider_input_pipeline::ProviderInputPipelineOutput,
+        crate::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        Ok(crate::provider_input_pipeline::ProviderInputPipelineOutput::unchanged(input))
+    }
+
     async fn resolve_main_llm_routing(
         &self,
         _runtime: &CompiledLlmRuntime,

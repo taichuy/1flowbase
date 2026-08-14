@@ -1,5 +1,237 @@
 use super::*;
 
+struct FailClosedPipelineInvoker {
+    provider_invocations: Arc<Mutex<usize>>,
+}
+
+struct ReceiptPipelineInvoker {
+    provider: StubProviderInvoker,
+}
+
+#[async_trait]
+impl ProviderInvoker for ReceiptPipelineInvoker {
+    async fn pipeline_provider_input(
+        &self,
+        mut input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        crate::provider_input_pipeline::ProviderInputPipelineOutput,
+        crate::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        input
+            .model_parameters
+            .insert("pipeline_marker".to_string(), json!(true));
+        Ok(
+            crate::provider_input_pipeline::ProviderInputPipelineOutput {
+                input,
+                receipt: Some(crate::provider_input_pipeline::PipelineExecutionReceipt {
+                    graph_fingerprint: "sha256:fixture-graph".to_string(),
+                    point_id: crate::provider_input_pipeline::PROVIDER_INPUT_PIPELINE_POINT_ID
+                        .to_string(),
+                    before_digest: "sha256:before".to_string(),
+                    after_digest: "sha256:after".to_string(),
+                    receipt_digest: "sha256:receipt".to_string(),
+                    contributions: vec![
+                    crate::provider_input_pipeline::PipelineContributionReceipt {
+                        contribution_id: "fixture.success".to_string(),
+                        order: 0,
+                        before_digest: "sha256:before".to_string(),
+                        after_digest: "sha256:after".to_string(),
+                        changed_fields: vec!["model_parameters".to_string()],
+                        duration_micros: 1,
+                        status:
+                            crate::provider_input_pipeline::PipelineContributionStatus::Succeeded,
+                        error: None,
+                    },
+                ],
+                }),
+            },
+        )
+    }
+
+    async fn invoke_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        self.provider.invoke_llm(runtime, input).await
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for ReceiptPipelineInvoker {
+    async fn invoke_capability_node(
+        &self,
+        runtime: &CompiledPluginRuntime,
+        config_payload: Value,
+        input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        self.provider
+            .invoke_capability_node(runtime, config_payload, input_payload)
+            .await
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for ReceiptPipelineInvoker {
+    async fn invoke_code_node(
+        &self,
+        runtime: &CompiledCodeRuntime,
+        config_payload: Value,
+        input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        self.provider
+            .invoke_code_node(runtime, config_payload, input_payload)
+            .await
+    }
+}
+
+#[async_trait]
+impl ProviderInvoker for FailClosedPipelineInvoker {
+    async fn pipeline_provider_input(
+        &self,
+        _input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        crate::provider_input_pipeline::ProviderInputPipelineOutput,
+        crate::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        Err(crate::provider_input_pipeline::ProviderInputPipelineError {
+            code: "contribution_error",
+            receipt: crate::provider_input_pipeline::PipelineExecutionReceipt {
+                graph_fingerprint: "sha256:fixture-graph".to_string(),
+                point_id: crate::provider_input_pipeline::PROVIDER_INPUT_PIPELINE_POINT_ID
+                    .to_string(),
+                before_digest: "sha256:before".to_string(),
+                after_digest: "sha256:before".to_string(),
+                receipt_digest: "sha256:receipt".to_string(),
+                contributions: vec![
+                    crate::provider_input_pipeline::PipelineContributionReceipt {
+                        contribution_id: "fixture.fail-closed".to_string(),
+                        order: 0,
+                        before_digest: "sha256:before".to_string(),
+                        after_digest: "sha256:before".to_string(),
+                        changed_fields: Vec::new(),
+                        duration_micros: 1,
+                        status: crate::provider_input_pipeline::PipelineContributionStatus::Failed,
+                        error: Some("contribution_error".to_string()),
+                    },
+                ],
+            },
+        })
+    }
+
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        *self
+            .provider_invocations
+            .lock()
+            .expect("provider invocation counter mutex poisoned") += 1;
+        unreachable!("fail-closed pipeline must stop before provider invocation")
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for FailClosedPipelineInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("fixture has no capability nodes")
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for FailClosedPipelineInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        unreachable!("fixture has no code nodes")
+    }
+}
+
+#[tokio::test]
+async fn provider_input_pipeline_failure_stops_before_provider_invocation() {
+    let provider_invocations = Arc::new(Mutex::new(0));
+    let outcome = start_flow_debug_run(
+        &base_plan(),
+        &json!({ "node-start": { "query": "fail closed" } }),
+        &FailClosedPipelineInvoker {
+            provider_invocations: Arc::clone(&provider_invocations),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        *provider_invocations
+            .lock()
+            .expect("provider invocation counter mutex poisoned"),
+        0
+    );
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(ref failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("provider_input_pipeline_failed")
+            );
+            assert_eq!(
+                failure.error_payload["pipeline_error"],
+                json!("contribution_error")
+            );
+            assert_eq!(
+                failure.error_payload["pipeline_receipt"]["contributions"][0]["status"],
+                json!("failed")
+            );
+        }
+        other => panic!("pipeline failure must fail the LLM node, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn successful_pipeline_receipt_and_rewritten_input_share_the_llm_invocation() {
+    let captured_input = Arc::new(Mutex::new(None));
+    let outcome = start_flow_debug_run(
+        &base_plan(),
+        &json!({ "node-start": { "query": "pipeline success" } }),
+        &ReceiptPipelineInvoker {
+            provider: StubProviderInvoker {
+                fail: false,
+                captured_input: Arc::clone(&captured_input),
+                final_content: "ok".to_string(),
+            },
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        captured_input
+            .lock()
+            .expect("captured input mutex poisoned")
+            .as_ref()
+            .unwrap()
+            .model_parameters["pipeline_marker"],
+        json!(true)
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["provider_input_pipeline"]
+            ["receipt_digest"],
+        json!("sha256:receipt")
+    );
+    assert_eq!(
+        outcome.node_traces[1].debug_payload["llm_context"]["provider_input_pipeline"]
+            ["contributions"][0]["changed_fields"],
+        json!(["model_parameters"])
+    );
+}
+
 #[tokio::test]
 async fn provider_failure_preserves_the_runtime_error_message() {
     let outcome = start_flow_debug_run(

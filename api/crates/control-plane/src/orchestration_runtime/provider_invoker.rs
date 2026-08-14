@@ -64,6 +64,16 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn pipeline_provider_input(
+        &self,
+        input: ProviderInvocationInput,
+    ) -> std::result::Result<
+        orchestration_runtime::provider_input_pipeline::ProviderInputPipelineOutput,
+        orchestration_runtime::provider_input_pipeline::ProviderInputPipelineError,
+    > {
+        self.runtime.pipeline_provider_input(input).await
+    }
+
     async fn compact(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,

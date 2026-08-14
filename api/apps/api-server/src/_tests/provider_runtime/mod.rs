@@ -642,21 +642,33 @@ fn checked_data_source_model_operation_input(
     }
 }
 
-#[test]
-fn strict_model_provider_resolver_uses_the_boot_snapshot_graph_arc() {
+#[tokio::test]
+async fn strict_runtime_uses_one_boot_graph_for_model_provider_and_empty_input_pipeline() {
     let graph = model_provider_extension_graph();
     let services = ApiRuntimeServices::new(
         Arc::new(RwLock::new(ProviderHost::default())),
         Arc::new(RwLock::new(CapabilityHost::default())),
         Arc::new(RwLock::new(DataSourceHost::default())),
         Arc::clone(&graph),
-    );
+    )
+    .unwrap();
     let snapshot = crate::extension_bus::ExtensionBootSnapshot::new(Arc::clone(&graph));
     let resolver_graph = services.model_provider_extension_graph().unwrap();
 
     assert!(Arc::ptr_eq(resolver_graph, snapshot.graph_arc()));
     assert_eq!(
         resolver_graph.fingerprint().as_str(),
+        snapshot.fingerprint()
+    );
+    let pipeline_output = ProviderRuntimePort::pipeline_provider_input(
+        &ApiProviderRuntime::new(Arc::new(services.clone())),
+        ProviderInvocationInput::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(pipeline_output.input, ProviderInvocationInput::default());
+    assert_eq!(
+        pipeline_output.receipt.unwrap().graph_fingerprint,
         snapshot.fingerprint()
     );
 
@@ -676,12 +688,15 @@ async fn strict_model_provider_binding_loads_the_stateful_lifecycle_host() {
     let installation = strict_fixture_installation(&package);
     let graph = model_provider_extension_graph();
     let provider_host = Arc::new(RwLock::new(ProviderHost::default()));
-    let services = Arc::new(ApiRuntimeServices::new(
-        Arc::clone(&provider_host),
-        Arc::new(RwLock::new(CapabilityHost::default())),
-        Arc::new(RwLock::new(DataSourceHost::default())),
-        Arc::clone(&graph),
-    ));
+    let services = Arc::new(
+        ApiRuntimeServices::new(
+            Arc::clone(&provider_host),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+            Arc::clone(&graph),
+        )
+        .unwrap(),
+    );
     let runtime = ApiProviderRuntime::new(services);
 
     let output = ProviderRuntimePort::validate_provider(&runtime, &installation, json!({}))
@@ -719,12 +734,15 @@ async fn strict_model_provider_binding_rejects_invalid_dynamic_facts_before_spaw
     let spawn_marker = package.path().join("spawned");
     write_stateful_slot_provider_package(&package, &spawn_marker);
     let graph = model_provider_extension_graph();
-    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
-        Arc::new(RwLock::new(ProviderHost::default())),
-        Arc::new(RwLock::new(CapabilityHost::default())),
-        Arc::new(RwLock::new(DataSourceHost::default())),
-        graph,
-    )));
+    let runtime = ApiProviderRuntime::new(Arc::new(
+        ApiRuntimeServices::new(
+            Arc::new(RwLock::new(ProviderHost::default())),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+            graph,
+        )
+        .unwrap(),
+    ));
     let valid = strict_fixture_installation(&package);
     let mut cases = Vec::new();
 
@@ -818,12 +836,15 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
     let spawn_marker = package.path().join("spawned");
     write_stateful_slot_provider_package(&package, &spawn_marker);
     let installation = strict_fixture_installation(&package);
-    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
-        Arc::new(RwLock::new(ProviderHost::default())),
-        Arc::new(RwLock::new(CapabilityHost::default())),
-        Arc::new(RwLock::new(DataSourceHost::default())),
-        model_provider_extension_graph(),
-    )));
+    let runtime = ApiProviderRuntime::new(Arc::new(
+        ApiRuntimeServices::new(
+            Arc::new(RwLock::new(ProviderHost::default())),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+            model_provider_extension_graph(),
+        )
+        .unwrap(),
+    ));
     let wrong_provider = ProviderInvocationInput {
         provider_code: "another_provider".to_string(),
         ..ProviderInvocationInput::default()
@@ -833,19 +854,14 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
         .await
         .is_err());
 
-    let missing_point_runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(
-        Arc::new(RwLock::new(ProviderHost::default())),
-        Arc::new(RwLock::new(CapabilityHost::default())),
-        Arc::new(RwLock::new(DataSourceHost::default())),
+    let missing_point_error = crate::provider_runtime::ModelProviderSlotResolver::new(
         graph_without_model_provider_point(),
-    )));
-    assert!(ProviderRuntimePort::validate_provider(
-        &missing_point_runtime,
-        &installation,
-        json!({})
     )
-    .await
-    .is_err());
+    .resolve(&installation)
+    .unwrap_err();
+    assert!(missing_point_error
+        .to_string()
+        .contains("model provider extension point is unavailable"));
     assert!(!spawn_marker.exists());
 }
 

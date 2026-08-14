@@ -12,7 +12,8 @@ use plugin_framework::{
         DeliverySemantics, DeploymentPluginSet, EffectiveExtensionGraph, ExtensionBusVersion,
         ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind, FailureSemantics,
         LifecycleSemantics, ModuleActivationDeclaration, ModuleDescriptor, ModuleDisableReason,
-        ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy, ScopeSemantics,
+        ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy, PermissionCode,
+        ScopeSemantics,
     },
     parse_host_extension_contribution_manifest, parse_plugin_manifest,
     HostExtensionContributionManifest, PluginConsumptionKind, PluginManifestV1,
@@ -27,6 +28,10 @@ pub const MODEL_PROVIDER_EXTENSION_POINT_ID: &str = "1flowbase.runtime.model-pro
 pub const MODEL_PROVIDER_CONTRACT_ID: &str = "model-provider";
 pub const MODEL_PROVIDER_CONTRACT_VERSION: &str =
     plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
+pub use orchestration_runtime::provider_input_pipeline::{
+    PROVIDER_INPUT_PIPELINE_CONTRACT_ID, PROVIDER_INPUT_PIPELINE_CONTRACT_VERSION,
+    PROVIDER_INPUT_PIPELINE_POINT_ID,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleActivationFact {
@@ -195,8 +200,43 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
         extension_points: vec![
             cache_store_extension_point()?,
             model_provider_extension_point()?,
+            provider_input_pipeline_extension_point()?,
         ],
         contributions: Vec::new(),
+    })
+}
+
+fn provider_input_pipeline_extension_point() -> Result<ExtensionPointDescriptor> {
+    use orchestration_runtime::provider_input_pipeline::{
+        REWRITE_MESSAGES_PERMISSION, REWRITE_MODEL_PARAMETERS_PERMISSION,
+        REWRITE_RESPONSE_FORMAT_PERMISSION, REWRITE_SYSTEM_PERMISSION, REWRITE_TOOLS_PERMISSION,
+    };
+
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(PROVIDER_INPUT_PIPELINE_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Pipeline,
+        contract: ContractDescriptor::new(
+            PROVIDER_INPUT_PIPELINE_CONTRACT_ID,
+            PROVIDER_INPUT_PIPELINE_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::Global,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Dependency,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: [
+            REWRITE_MESSAGES_PERMISSION,
+            REWRITE_SYSTEM_PERMISSION,
+            REWRITE_TOOLS_PERMISSION,
+            REWRITE_RESPONSE_FORMAT_PERMISSION,
+            REWRITE_MODEL_PARAMETERS_PERMISSION,
+        ]
+        .into_iter()
+        .map(PermissionCode::new)
+        .collect::<std::result::Result<_, _>>()?,
+        override_policy: OverridePolicy::Sealed,
     })
 }
 

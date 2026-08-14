@@ -6,7 +6,8 @@ use api_server::extension_bus::{
 use plugin_framework::extension_bus::{
     parse_deployment_plugin_set, Cardinality, CompilationError, DeliverySemantics,
     ExtensionPointKind, FailureSemantics, LifecycleSemantics, ModuleDisableReason,
-    ModuleInactivityReason, ModuleResolutionStatus, ScopeSemantics,
+    ModuleInactivityReason, ModuleResolutionStatus, OrderingSemantics, OverridePolicy,
+    ScopeSemantics,
 };
 
 #[test]
@@ -106,6 +107,51 @@ fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
         LifecycleSemantics::RuntimeWorker
     );
     assert!(model_provider.contributions().is_empty());
+
+    let provider_input_pipeline = graph
+        .points()
+        .iter()
+        .find(|point| {
+            point.descriptor().point_id.as_str()
+                == api_server::extension_bus::PROVIDER_INPUT_PIPELINE_POINT_ID
+        })
+        .unwrap();
+    let descriptor = provider_input_pipeline.descriptor();
+    assert_eq!(
+        descriptor.owner_module_id.as_str(),
+        api_server::extension_bus::BOOT_CORE_MODULE_ID
+    );
+    assert_eq!(descriptor.point_kind, ExtensionPointKind::Pipeline);
+    assert_eq!(descriptor.cardinality, Cardinality::Many);
+    assert_eq!(descriptor.scope, ScopeSemantics::Global);
+    assert_eq!(descriptor.ordering, OrderingSemantics::Dependency);
+    assert_eq!(descriptor.failure, FailureSemantics::FailClosed);
+    assert_eq!(descriptor.delivery, DeliverySemantics::Synchronous);
+    assert_eq!(descriptor.lifecycle, LifecycleSemantics::Invocation);
+    assert_eq!(descriptor.override_policy, OverridePolicy::Sealed);
+    assert_eq!(
+        descriptor.contract.contract_id.as_str(),
+        api_server::extension_bus::PROVIDER_INPUT_PIPELINE_CONTRACT_ID
+    );
+    assert_eq!(
+        descriptor.contract.contract_version.as_str(),
+        api_server::extension_bus::PROVIDER_INPUT_PIPELINE_CONTRACT_VERSION
+    );
+    assert_eq!(
+        descriptor
+            .allowed_permissions
+            .iter()
+            .map(|permission| permission.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "provider-input.messages.write",
+            "provider-input.model-parameters.write",
+            "provider-input.response-format.write",
+            "provider-input.system.write",
+            "provider-input.tools.write",
+        ]
+    );
+    assert!(provider_input_pipeline.contributions().is_empty());
 }
 
 // Root #1688 AC-001/AC-002: set declaration order is not graph resolution order.

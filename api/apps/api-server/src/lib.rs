@@ -382,7 +382,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             plugin_runner::data_source_host::DataSourceHost::default(),
         )),
         Arc::clone(&extension_graph),
-    ));
+    )?);
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
