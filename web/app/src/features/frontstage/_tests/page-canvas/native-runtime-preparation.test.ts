@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
+import { i18nText } from '../../../../shared/i18n/text';
+
 import {
   FrontstageNativePreparationScheduler,
   FrontstagePageNativeModuleRegistryCache,
@@ -44,7 +46,9 @@ describe('Frontstage Native React preparation demand', () => {
         },
         'workspace-1'
       )
-    ).toThrowError('Trusted frontend contribution binding is unavailable.');
+    ).toThrowError(
+      i18nText('frontstage', 'auto.runtime_preview_unavailable')
+    );
   });
 
   test('D3-AC-001 keeps 0/1 mount intent, 2 preload, 3 dormant and stable priority/slot order', () => {

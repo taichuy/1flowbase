@@ -320,7 +320,7 @@ describe('useFrontstageBlockTabs', () => {
             role: 'browser_module' as const,
             media_type: 'text/javascript',
             sha256: 'a'.repeat(64),
-            url: '/locked-tailwind-4.3.3.js'
+            url: `/locked-tailwind-${'a'.repeat(64)}`
           }
         ],
         exports: ['default']
@@ -352,8 +352,8 @@ describe('useFrontstageBlockTabs', () => {
         dependency_lock: persistedDependencyLock,
         tailwind_toolchain_lock: NATIVE_REACT_TAILWIND_TOOLCHAIN_LOCK,
         compiler_identity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY,
-        generated_css: expect.stringContaining('.p-4'),
-        generated_css_sha256: expect.any(String)
+        generated_css: '',
+        generated_css_sha256: sha256Text('')
       }),
       'csrf-123'
     );

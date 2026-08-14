@@ -22,8 +22,7 @@ use crate::{
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     host_infrastructure::HostInfrastructureRegistry,
     routes::console_route_assembly::{
-        compile_migrated_console_operation_registry, migrated_core_console_route_assembly,
-        ConsoleRouteAssembly,
+        compile_migrated_console_operation_registry, ConsoleRouteAssembly,
     },
 };
 use crate::{
@@ -138,10 +137,10 @@ fn compile_settings_feature_registry(
 pub fn compile_core_console_operation_registry(
     settings_features: &access_control::SettingsFeatureRegistry,
 ) -> anyhow::Result<Arc<access_control::ConsoleOperationRegistry>> {
-    let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly();
+    let bindings = crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
     crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
         settings_features,
-        assembly.bindings(),
+        &bindings,
     )
     .map(Arc::new)
 }
@@ -156,12 +155,10 @@ pub struct CoreConsoleOperationInventorySnapshot {
 pub fn compile_core_console_operation_inventory_snapshot(
 ) -> anyhow::Result<CoreConsoleOperationInventorySnapshot> {
     let settings_features = compile_core_settings_feature_registry()?;
-    let route_assembly = migrated_core_console_route_assembly();
-    let registry = compile_migrated_console_operation_registry(
-        &settings_features,
-        route_assembly.bindings(),
-        &[],
-    )?;
+    let contract_bindings =
+        crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
+    let registry =
+        compile_migrated_console_operation_registry(&settings_features, &contract_bindings, &[])?;
     let inventory = registry.inventory();
     let locale_catalog = inventory
         .locale_catalog
@@ -199,7 +196,7 @@ pub fn compile_core_console_operation_inventory_snapshot(
 
     Ok(CoreConsoleOperationInventorySnapshot {
         compiled_inventory: inventory.clone(),
-        route_assembly: route_assembly.bindings().to_vec(),
+        route_assembly: contract_bindings,
         locales,
     })
 }

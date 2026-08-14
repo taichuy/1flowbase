@@ -147,7 +147,6 @@ export async function createIsolatedFrontendBlockSrcdoc(
     "base-uri 'none'",
     "form-action 'none'",
     "frame-src 'none'",
-    "frame-ancestors 'none'",
     "worker-src 'none'",
     "child-src 'none'"
   ].join('; ');

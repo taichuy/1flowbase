@@ -7,6 +7,8 @@ import {
   type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
 
+import { i18nText } from '../../../../shared/i18n/text';
+
 import {
   createFrontstageRuntimeDemandCandidates,
   resolveFrontstageRuntimePreparationKind,
@@ -78,7 +80,9 @@ export function prepareFrontstageNativeContribution(
       entry.contributionCode === request.contributionCode
   );
   if (!catalogEntry) {
-    throw new Error('Trusted frontend contribution binding is unavailable.');
+    throw new Error(
+      i18nText('frontstage', 'auto.runtime_preview_unavailable')
+    );
   }
   return discoverTrustedFrontendContribution(catalogEntry.raw, {
     workspaceId,

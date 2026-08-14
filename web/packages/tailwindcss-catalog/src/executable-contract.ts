@@ -179,7 +179,7 @@ export async function compileTailwindExecutableArtifact(
       generated_css: compiled.generatedCss,
       generated_css_sha256: await sha256Text(compiled.generatedCss),
       source_sha256: await sha256Text(typedRequest.source_code),
-      dependency_lock: dependencyLock,
+      dependency_lock: canonicalDependencyLock,
       compiler_identity: version.compiler_identity,
       toolchain_lock: version.toolchain_lock,
       stylesheet_identity: version.stylesheet_identity,

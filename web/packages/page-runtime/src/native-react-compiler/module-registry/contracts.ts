@@ -9,6 +9,7 @@ export interface NativeReactModuleAssetLock {
   media_type: string;
   sha256: string;
   url: string;
+  integrity?: 'verified_sha256';
 }
 
 export interface NativeReactCatalogModuleLock {
@@ -113,7 +114,10 @@ function canonicalIdentityEntry(module: NativeReactCatalogModuleLock) {
       .map((asset) => ({
         role: asset.role,
         media_type: asset.media_type,
-        sha256: asset.sha256
+        sha256: asset.sha256,
+        ...(asset.integrity === 'verified_sha256'
+          ? { integrity: asset.integrity }
+          : {})
       }))
   };
 }
@@ -123,21 +127,28 @@ function readAssets(value: unknown[]): NativeReactModuleAssetLock[] | null {
   const identities = new Set<string>();
   for (const item of value) {
     if (!isRecord(item)) return null;
-    const { role, media_type: mediaType, sha256, url } = item;
+    const { role, media_type: mediaType, sha256, url, integrity } = item;
     if (
       (role !== 'browser_module' &&
         role !== 'shadow_style' &&
         role !== 'support') ||
       !isNonEmptyString(mediaType) ||
       !isSha256(sha256) ||
-      !isNonEmptyString(url)
+      !isNonEmptyString(url) ||
+      (integrity !== undefined && integrity !== 'verified_sha256')
     ) {
       return null;
     }
     const identity = `${role}:${sha256}`;
     if (identities.has(identity)) return null;
     identities.add(identity);
-    assets.push({ role, media_type: mediaType, sha256, url });
+    assets.push({
+      role,
+      media_type: mediaType,
+      sha256,
+      url,
+      ...(integrity === 'verified_sha256' ? { integrity } : {})
+    });
   }
   return assets;
 }

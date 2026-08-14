@@ -233,6 +233,29 @@ pub fn migrated_core_console_route_assembly() -> ConsoleRouteAssembly<Arc<ApiSta
     migrated_core_console_route_assembly_with_interface_operations(None)
 }
 
+/// Returns the complete Core authorization contract, including routes whose executable
+/// binding is supplied by the compiled Extension Bus graph at boot.
+///
+/// This is intentionally separate from `migrated_core_console_route_assembly`: callers that
+/// build a runtime router must still provide the typed interface-operation catalog and fail
+/// closed when it is unavailable.
+pub fn migrated_core_console_contract_bindings() -> Vec<ConsoleRouteAssemblyBinding> {
+    let assembly = migrated_core_console_route_assembly();
+    let mut bindings = assembly.bindings().to_vec();
+    bindings.push(ConsoleRouteAssemblyBinding {
+        route: ConsoleRouteBinding {
+            method: "GET".to_string(),
+            path: crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
+                .to_string(),
+        },
+        ownership: ConsoleRouteOwnership::ConsoleOperation(
+            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+                .to_string(),
+        ),
+    });
+    bindings
+}
+
 pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
     interface_operations: Option<
         &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,

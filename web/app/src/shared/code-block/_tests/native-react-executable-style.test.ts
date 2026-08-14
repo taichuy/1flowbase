@@ -18,7 +18,7 @@ const tailwindDependencyLock = [
         role: 'browser_module' as const,
         media_type: 'text/javascript',
         sha256: 'a'.repeat(64),
-        url: '/tailwindcss.js'
+        url: `/tailwindcss-${'a'.repeat(64)}`
       }
     ],
     exports: ['default']
@@ -26,13 +26,12 @@ const tailwindDependencyLock = [
 ];
 
 describe('Native React executable style', () => {
-  test('AC-001/002 compiles static Tailwind without a private inventory gate', async () => {
+  test('AC-001/002 validates Tailwind source while the locked preset owns styles', async () => {
     const result = await compileNativeReactExecutableStyle(
       'import \'tailwindcss\'; export default () => <div className="hero bg-[#00ab73] md:grid-cols-2" />;',
       tailwindDependencyLock
     );
-    expect(result.generated_css).toContain('#00ab73');
-    expect(result.generated_css).toContain('@media');
+    expect(result.generated_css).toBe('');
   });
 
   test('ordinary compilation uses the exact persisted dependency and compiler locks', async () => {
@@ -44,7 +43,7 @@ describe('Native React executable style', () => {
       compilerIdentity: NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
     });
     expect(result.dependency_lock).toEqual(tailwindDependencyLock);
-    expect(result.generated_css).toContain('.p-4');
+    expect(result.generated_css).toBe('');
     expect(result.compiler_identity).toEqual(
       NATIVE_REACT_TAILWIND_COMPILER_IDENTITY
     );

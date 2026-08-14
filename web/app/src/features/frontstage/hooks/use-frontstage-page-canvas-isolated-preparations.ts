@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { i18nText } from '../../../shared/i18n/text';
+
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 import {
   prepareFrontstageIsolatedContribution,
@@ -134,9 +136,7 @@ export function useFrontstagePageCanvasIsolatedPreparations({
               entry.contributionCode === request.contributionCode
           );
           if (!catalogEntry) {
-            throw new Error(
-              'Isolated frontend contribution binding is unavailable.'
-            );
+            throw runtimePreviewUnavailableError();
           }
           const preparation = await prepareFrontstageIsolatedContribution(
             catalogEntry.raw,
@@ -146,7 +146,11 @@ export function useFrontstagePageCanvasIsolatedPreparations({
           );
           return { status: 'prepared', request, preparation } as const;
         } catch (error) {
-          return { status: 'failed', request, error: toError(error) } as const;
+          return {
+            status: 'failed',
+            request,
+            error: runtimePreviewUnavailableError(error)
+          } as const;
         }
       })
     ).then((outcomes) => {
@@ -211,9 +215,7 @@ function createIsolatedIdentityErrors(
         ? [
             [
               item.blockId,
-              new Error(
-                'Isolated frontend contribution identity is unavailable.'
-              )
+              runtimePreviewUnavailableError()
             ]
           ]
         : []
@@ -232,8 +234,9 @@ function fetchIsolatedAsset(
   return globalThis.fetch(input, init);
 }
 
-function toError(error: unknown): Error {
-  return error instanceof Error
-    ? error
-    : new Error('Isolated frontend contribution preparation failed.');
+function runtimePreviewUnavailableError(cause?: unknown): Error {
+  return new Error(
+    i18nText('frontstage', 'auto.runtime_preview_unavailable'),
+    cause === undefined ? undefined : { cause }
+  );
 }

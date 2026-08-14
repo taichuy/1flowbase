@@ -229,7 +229,10 @@ export function resolveFrontstageNativeDependencyLock({
         role: asset.role,
         media_type: asset.media_type,
         sha256: asset.sha256,
-        url: asset.url
+        url: asset.url,
+        ...(asset.integrity === 'verified_sha256'
+          ? { integrity: asset.integrity }
+          : {})
       })),
       exports: codeModule.exports
     }))

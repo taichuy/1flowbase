@@ -5,6 +5,8 @@ import { describe, expect, test, vi } from 'vitest';
 
 import { sha256Text } from '@1flowbase/page-runtime';
 
+import { i18nText } from '../../../../shared/i18n/text';
+
 import type { FrontstageBlockCatalogEntry } from '../../api/block-catalog';
 import {
   createFrontstageIsolatedPreparationRequests,
@@ -69,7 +71,7 @@ describe('FrontStagePage isolated contribution preparation', () => {
     );
     await waitFor(() =>
       expect(missing.result.current.errorsByBlockId['isolated-a']).toEqual(
-        new Error('Isolated frontend contribution binding is unavailable.')
+        new Error(i18nText('frontstage', 'auto.runtime_preview_unavailable'))
       )
     );
 

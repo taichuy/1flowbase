@@ -28,6 +28,8 @@ import {
   type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
 
+import { i18nText } from '../../../shared/i18n/text';
+
 import type {
   PreparedTrustedFrontendContribution,
   TrustedFrontendContributionHandle
@@ -135,7 +137,9 @@ export function FrontstageNativeTrustedBlockPortalHost({
     const mountedSurface =
       nextSurface as NativeTrustedBlockPortalSurface | null;
     if (!mountedSurface) {
-      throw new Error('Native trusted block surface mount failed.');
+      throw new Error(
+        i18nText('frontstage', 'auto.runtime_preview_unavailable')
+      );
     }
     mountedRenderInput.current = renderInput;
     setSurface(mountedSurface);

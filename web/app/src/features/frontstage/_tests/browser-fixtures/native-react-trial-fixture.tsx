@@ -862,14 +862,7 @@ function fixtureModuleStyle(
 }
 
 function readIsolatedTick(payload: unknown): number {
-  if (
-    typeof payload === 'object' &&
-    payload !== null &&
-    'tick' in payload &&
-    typeof payload.tick === 'number'
-  ) {
-    return payload.tick;
-  }
+  if (typeof payload === 'number') return payload;
   throw new Error('Isolated fixture tick payload is invalid.');
 }
 

@@ -23,7 +23,7 @@ const tailwindDependencyLock = [
         role: 'browser_module' as const,
         media_type: 'text/javascript',
         sha256: 'a'.repeat(64),
-        url: '/tailwindcss.js'
+        url: `/tailwindcss-${'a'.repeat(64)}`
       }
     ],
     exports: ['default']
