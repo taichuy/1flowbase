@@ -369,13 +369,36 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    let page_id: Uuid = sqlx::query_scalar(
-        "select id from frontstage_pages where workspace_id = $1 order by created_at asc limit 1",
+    let page_id = Uuid::now_v7();
+    let tab_id = Uuid::now_v7();
+    let mut transaction = pool.begin().await.unwrap();
+    sqlx::query(
+        r#"
+        insert into frontstage_pages (
+            id, workspace_id, kind, title, rank
+        ) values ($1, $2, 'page', 'Retained asset fixture', 'a')
+        "#,
     )
+    .bind(page_id)
     .bind(workspace_id)
-    .fetch_one(&pool)
+    .execute(&mut *transaction)
     .await
     .unwrap();
+    sqlx::query(
+        r#"
+        insert into frontstage_page_tabs (
+            id, workspace_id, page_id, title, rank, is_default, document_root_uid
+        ) values ($1, $2, $3, 'Default', 'a', true, $4)
+        "#,
+    )
+    .bind(tab_id)
+    .bind(workspace_id)
+    .bind(page_id)
+    .bind(format!("frontstage.tab.{tab_id}.root"))
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
     let actor_id: Uuid = sqlx::query_scalar("select id from users where account = 'root' limit 1")
         .fetch_one(&pool)
         .await
@@ -601,8 +624,19 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         .unwrap();
     assert_eq!(tailwind_module["version"], "4.3.3");
     assert_eq!(tailwind_module["exports"], json!(["default"]));
-    assert_eq!(tailwind_module["assets"].as_array().unwrap().len(), 1);
-    assert_eq!(tailwind_module["assets"][0]["role"], "browser_module");
+    let tailwind_assets = tailwind_module["assets"].as_array().unwrap();
+    assert_eq!(tailwind_assets.len(), 2);
+    assert!(tailwind_assets
+        .iter()
+        .any(|asset| asset["role"] == "browser_module"));
+    let tailwind_shadow_style = tailwind_assets
+        .iter()
+        .find(|asset| asset["role"] == "shadow_style")
+        .unwrap();
+    assert_eq!(
+        tailwind_shadow_style["sha256"],
+        "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
+    );
     let rich_text_module = jsx_block["code_modules"]
         .as_array()
         .unwrap()
