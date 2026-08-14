@@ -267,6 +267,21 @@ where
     let node_contributions = build_node_contribution_sync_input(&installation, manifest);
     let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
     let frontend_blocks = build_frontend_block_sync_input(&installation, manifest);
+    let mut retained_frontend_module_assets = Vec::new();
+    let package_root = Path::new(&installation.installed_path);
+    for block in &manifest.block_contributions {
+        for module in &block.code_modules {
+            for asset in &module.assets {
+                retained_frontend_module_assets.push(RetainedFrontendModuleAssetInput {
+                    module_source: module.source.clone(),
+                    sha256: asset.sha256.clone(),
+                    media_type: asset.media_type.clone(),
+                    bytes: plugin_framework::load_frontend_module_asset(package_root, asset)
+                        .map_err(map_framework_error)?,
+                });
+            }
+        }
+    }
     let root = UpsertPluginInstallationInput {
         installation_id: installation.installation_id,
         category,
@@ -297,6 +312,7 @@ where
             node_contributions,
             js_dependencies,
             frontend_blocks,
+            retained_frontend_module_assets,
         })
         .await
 }

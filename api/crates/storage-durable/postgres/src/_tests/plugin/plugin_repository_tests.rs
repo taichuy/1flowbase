@@ -766,6 +766,7 @@ fn installation_commit_input(
                 ui_capabilities: Vec::new(),
             }],
         },
+        retained_frontend_module_assets: Vec::new(),
     }
 }
 

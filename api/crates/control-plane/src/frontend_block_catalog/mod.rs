@@ -233,6 +233,17 @@ where
         &self,
         query: GetFrontendModuleAssetQuery,
     ) -> Result<Option<FrontendComponentModuleAsset>> {
+        if let Some(asset) = self
+            .repository
+            .get_retained_frontend_module_asset(query.workspace_id, &query.sha256)
+            .await?
+        {
+            return Ok(Some(FrontendComponentModuleAsset {
+                sha256: asset.sha256,
+                media_type: asset.media_type,
+                bytes: asset.bytes,
+            }));
+        }
         let blocks = self
             .repository
             .list_workspace_frontend_blocks(&self.node_id, query.workspace_id)
