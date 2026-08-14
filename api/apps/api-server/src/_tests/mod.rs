@@ -10,6 +10,7 @@ mod core_console_display_i18n_routes;
 mod data_sources_routes;
 mod dynamic_backend_consumer_inventory;
 mod error_response_tests;
+mod extension_bus;
 mod file_management_routes;
 mod frontend_block_catalog_routes;
 mod frontstage_data_capability_routes;

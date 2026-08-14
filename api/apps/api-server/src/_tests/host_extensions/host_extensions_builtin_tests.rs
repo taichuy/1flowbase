@@ -1,26 +1,7 @@
 use std::{fs, path::PathBuf};
 
-use api_server::host_extensions::builtin::{
-    builtin_host_extension_manifest_paths, load_builtin_host_extension_manifests,
-};
+use api_server::host_extensions::builtin::load_builtin_host_extension_manifests;
 use plugin_framework::HostExtensionBootstrapPhase;
-
-#[test]
-fn builtin_manifest_paths_point_to_plugin_workspace_sources() {
-    let paths = builtin_host_extension_manifest_paths();
-
-    assert_eq!(
-        paths,
-        vec![
-            "plugins/host-extensions/official.identity-host/manifest.yaml",
-            "plugins/host-extensions/official.workspace-host/manifest.yaml",
-            "plugins/host-extensions/official.plugin-host/manifest.yaml",
-            "plugins/host-extensions/official.local-infra-host/manifest.yaml",
-            "plugins/host-extensions/official.file-management-host/manifest.yaml",
-            "plugins/host-extensions/official.runtime-orchestration-host/manifest.yaml",
-        ]
-    );
-}
 
 #[test]
 fn builtin_source_does_not_embed_full_yaml_manifest_strings() {
@@ -29,6 +10,7 @@ fn builtin_source_does_not_embed_full_yaml_manifest_strings() {
     let source = fs::read_to_string(source_path).expect("builtin source should be readable");
 
     assert!(!source.contains("const IDENTITY_HOST"));
+    assert!(!source.contains("official.identity-host/manifest.yaml"));
     assert!(!source.contains("manifest_version: 1\nextension_id:"));
     assert!(!source.contains("provides_contracts:"));
 }
@@ -115,8 +97,8 @@ fn missing_builtin_manifest_path_reports_clear_load_error() {
         .expect_err("missing workspace root should fail");
     let message = format!("{error:#}");
 
-    assert!(message.contains("failed to read builtin host extension manifest"));
-    assert!(message.contains("plugins/host-extensions/official.identity-host/manifest.yaml"));
+    assert!(message.contains("failed to read plugin set"));
+    assert!(message.contains("plugins/sets/default.yaml"));
 }
 
 fn api_workspace_root() -> PathBuf {
