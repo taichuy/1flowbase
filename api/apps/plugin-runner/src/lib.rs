@@ -325,6 +325,7 @@ async fn reload_provider(
 ) -> Result<Json<LoadedProviderSummary>, (StatusCode, Json<ErrorResponse>)> {
     let mut host = state.provider_host.write().await;
     host.reload(&request.plugin_id)
+        .await
         .map(Json)
         .map_err(map_framework_error)
 }

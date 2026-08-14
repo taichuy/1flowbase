@@ -1,6 +1,7 @@
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -13,13 +14,45 @@ use plugin_framework::{
     },
     PluginRuntimeLimits,
 };
+use serde::Serialize;
 use serde_json::Value;
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines},
     process::{Child, ChildStdin, ChildStdout, Command},
+    sync::Mutex,
 };
 
 pub const DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS: u64 = 300_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderWorkerLifecycleState {
+    Activating,
+    Active,
+    Quiescing,
+    Inactive,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderWorkerCleanupReason {
+    Drained,
+    DeadlineExceeded,
+    RuntimeFailure,
+    Restarted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProviderWorkerCleanupReceipt {
+    pub generation: u64,
+    pub prior_pid: Option<u32>,
+    pub kill_sent: bool,
+    pub exited: bool,
+    pub final_state: ProviderWorkerLifecycleState,
+    pub reason: ProviderWorkerCleanupReason,
+    pub cleanup_error: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamingProviderOutput {
@@ -49,13 +82,28 @@ pub struct ProviderWorker {
     executable_path: PathBuf,
     limits: PluginRuntimeLimits,
     process: Option<ProviderWorkerProcess>,
+    last_cleanup_receipt: Option<ProviderWorkerCleanupReceipt>,
 }
 
 #[derive(Debug)]
 struct ProviderWorkerProcess {
-    child: Child,
+    control: ProviderWorkerProcessControl,
     stdin: ChildStdin,
     stdout: Lines<BufReader<ChildStdout>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProviderWorkerProcessControl {
+    child: Arc<Mutex<Child>>,
+    pid: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProviderWorkerTerminationEvidence {
+    prior_pid: Option<u32>,
+    kill_sent: bool,
+    exited: bool,
+    cleanup_error: Option<String>,
 }
 
 impl ProviderWorker {
@@ -64,7 +112,34 @@ impl ProviderWorker {
             executable_path,
             limits,
             process: None,
+            last_cleanup_receipt: None,
         }
+    }
+
+    pub fn activate(&mut self) -> FrameworkResult<Option<u32>> {
+        if self.process.is_some() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "provider worker process is already active",
+            ));
+        }
+        self.last_cleanup_receipt = None;
+        self.process = Some(spawn_worker_process(&self.executable_path, &self.limits)?);
+        Ok(self
+            .process
+            .as_ref()
+            .and_then(|process| process.control.pid))
+    }
+
+    pub(crate) fn process_control(&self) -> Option<ProviderWorkerProcessControl> {
+        self.process.as_ref().map(|process| process.control.clone())
+    }
+
+    pub fn last_cleanup_receipt(&self) -> Option<&ProviderWorkerCleanupReceipt> {
+        self.last_cleanup_receipt.as_ref()
+    }
+
+    pub(crate) fn take_last_cleanup_receipt(&mut self) -> Option<ProviderWorkerCleanupReceipt> {
+        self.last_cleanup_receipt.take()
     }
 
     pub async fn call(&mut self, request: &ProviderStdioRequest) -> FrameworkResult<Value> {
@@ -86,11 +161,25 @@ impl ProviderWorker {
         {
             Ok(Ok(output)) => Ok(output),
             Ok(Err(error)) => {
-                self.stop().await;
+                let receipt = self
+                    .stop_with_reason(
+                        0,
+                        ProviderWorkerCleanupReason::RuntimeFailure,
+                        ProviderWorkerLifecycleState::Failed,
+                    )
+                    .await;
+                self.last_cleanup_receipt = Some(receipt);
                 Err(error)
             }
             Err(_) => {
-                self.stop().await;
+                let receipt = self
+                    .stop_with_reason(
+                        0,
+                        ProviderWorkerCleanupReason::RuntimeFailure,
+                        ProviderWorkerLifecycleState::Failed,
+                    )
+                    .await;
+                self.last_cleanup_receipt = Some(receipt);
                 Err(provider_timeout_error(
                     ProviderTimeoutKind::WallClock,
                     timeout_ms,
@@ -140,11 +229,25 @@ impl ProviderWorker {
         {
             Ok(Ok(output)) => Ok(output),
             Ok(Err(error)) => {
-                self.stop().await;
+                let receipt = self
+                    .stop_with_reason(
+                        0,
+                        ProviderWorkerCleanupReason::RuntimeFailure,
+                        ProviderWorkerLifecycleState::Failed,
+                    )
+                    .await;
+                self.last_cleanup_receipt = Some(receipt);
                 Err(error)
             }
             Err(_) => {
-                self.stop().await;
+                let receipt = self
+                    .stop_with_reason(
+                        0,
+                        ProviderWorkerCleanupReason::RuntimeFailure,
+                        ProviderWorkerLifecycleState::Failed,
+                    )
+                    .await;
+                self.last_cleanup_receipt = Some(receipt);
                 Err(provider_timeout_error(
                     ProviderTimeoutKind::WallClock,
                     timeout_ms,
@@ -153,9 +256,50 @@ impl ProviderWorker {
         }
     }
 
-    pub async fn stop(&mut self) {
-        if let Some(mut process) = self.process.take() {
-            let _ = process.child.kill().await;
+    pub async fn stop(&mut self) -> ProviderWorkerCleanupReceipt {
+        self.stop_with_reason(
+            0,
+            ProviderWorkerCleanupReason::Drained,
+            ProviderWorkerLifecycleState::Inactive,
+        )
+        .await
+    }
+
+    pub(crate) async fn stop_with_reason(
+        &mut self,
+        generation: u64,
+        reason: ProviderWorkerCleanupReason,
+        final_state: ProviderWorkerLifecycleState,
+    ) -> ProviderWorkerCleanupReceipt {
+        self.stop_with_evidence(generation, reason, final_state, None)
+            .await
+    }
+
+    pub(crate) async fn stop_with_evidence(
+        &mut self,
+        generation: u64,
+        reason: ProviderWorkerCleanupReason,
+        final_state: ProviderWorkerLifecycleState,
+        evidence: Option<ProviderWorkerTerminationEvidence>,
+    ) -> ProviderWorkerCleanupReceipt {
+        let evidence = match (self.process.take(), evidence) {
+            (_, Some(evidence)) => evidence,
+            (Some(process), None) => process.control.terminate().await,
+            (None, None) => ProviderWorkerTerminationEvidence {
+                prior_pid: None,
+                kill_sent: false,
+                exited: true,
+                cleanup_error: None,
+            },
+        };
+        ProviderWorkerCleanupReceipt {
+            generation,
+            prior_pid: evidence.prior_pid,
+            kill_sent: evidence.kill_sent,
+            exited: evidence.exited,
+            final_state,
+            reason,
+            cleanup_error: evidence.cleanup_error,
         }
     }
 
@@ -166,7 +310,7 @@ impl ProviderWorker {
     ) -> FrameworkResult<Value> {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
-        let process = self.ensure_process()?;
+        let process = self.ensure_process().await?;
         write_worker_request(&executable_path, &mut process.stdin, request).await?;
 
         let mut timeout_state = ProviderStreamTimeoutState::new();
@@ -198,7 +342,7 @@ impl ProviderWorker {
     ) -> FrameworkResult<StreamingProviderOutput> {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
-        let process = self.ensure_process()?;
+        let process = self.ensure_process().await?;
         write_worker_request(&executable_path, &mut process.stdin, request).await?;
 
         let mut events = Vec::new();
@@ -253,24 +397,62 @@ impl ProviderWorker {
         Ok(StreamingProviderOutput { events, result })
     }
 
-    fn ensure_process(&mut self) -> FrameworkResult<&mut ProviderWorkerProcess> {
-        let should_start = match self.process.as_mut() {
-            Some(process) => process
-                .child
-                .try_wait()
-                .map_err(|error| {
-                    PluginFrameworkError::io(Some(&self.executable_path), error.to_string())
-                })?
-                .is_some(),
-            None => true,
-        };
-        if should_start {
-            self.process = Some(spawn_worker_process(&self.executable_path, &self.limits)?);
+    async fn ensure_process(&mut self) -> FrameworkResult<&mut ProviderWorkerProcess> {
+        if self.process.is_none() {
+            self.activate()?;
         }
-        Ok(self
-            .process
-            .as_mut()
-            .expect("worker process is initialized"))
+        let process = self.process.as_mut().ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package("provider worker is not active")
+        })?;
+        let exited = process
+            .control
+            .child
+            .lock()
+            .await
+            .try_wait()
+            .map_err(|error| {
+                PluginFrameworkError::io(Some(&self.executable_path), error.to_string())
+            })?
+            .is_some();
+        if exited {
+            return Err(worker_exited_error());
+        }
+        Ok(process)
+    }
+}
+
+impl ProviderWorkerProcessControl {
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+
+    pub(crate) async fn terminate(&self) -> ProviderWorkerTerminationEvidence {
+        let mut child = self.child.lock().await;
+        let mut kill_sent = false;
+        let mut cleanup_error = None;
+        let exited = match child.try_wait() {
+            Ok(Some(_)) => true,
+            Ok(None) => {
+                kill_sent = true;
+                match child.kill().await {
+                    Ok(()) => true,
+                    Err(error) => {
+                        cleanup_error = Some(error.to_string());
+                        child.try_wait().ok().flatten().is_some()
+                    }
+                }
+            }
+            Err(error) => {
+                cleanup_error = Some(error.to_string());
+                false
+            }
+        };
+        ProviderWorkerTerminationEvidence {
+            prior_pid: self.pid,
+            kill_sent,
+            exited,
+            cleanup_error,
+        }
     }
 }
 
@@ -493,8 +675,12 @@ fn spawn_worker_process(
         ))
     })?;
 
+    let pid = child.id();
     Ok(ProviderWorkerProcess {
-        child,
+        control: ProviderWorkerProcessControl {
+            child: Arc::new(Mutex::new(child)),
+            pid,
+        },
         stdin,
         stdout: BufReader::new(stdout).lines(),
     })
@@ -670,6 +856,14 @@ fn worker_ended_without_output_error() -> PluginFrameworkError {
     PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
         "provider_runtime",
         "provider worker ended without response line",
+        None,
+    ))
+}
+
+fn worker_exited_error() -> PluginFrameworkError {
+    PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
+        "provider_runtime",
+        "provider worker process exited",
         None,
     ))
 }

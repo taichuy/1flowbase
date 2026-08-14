@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 
 use crate::package_loader::PackageLoader;
+use crate::stdio_runtime::ProviderWorkerLifecycleState;
 
 struct TempProviderPackage {
     root: PathBuf,
@@ -323,6 +324,22 @@ done
             fs::set_permissions(path, permissions).unwrap();
         }
     }
+
+    fn write_lifecycle_worker_runtime(&self) {
+        self.write(
+            "bin/fixture_provider",
+            include_str!("../../tests/_fixtures/provider_stdio/lifecycle_worker.sh"),
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = self.path().join("bin/fixture_provider");
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+    }
 }
 
 impl Drop for TempProviderPackage {
@@ -595,6 +612,7 @@ async fn ac_002_legacy_provider_abi_is_rejected_before_spawn_side_effect() {
     assert!(host.active_stream_snapshot().await.streams.is_empty());
     assert!(lock_provider_worker_registry(&host.provider_workers)
         .expect("provider worker registry should be available")
+        .workers
         .is_empty());
 }
 
@@ -918,4 +936,67 @@ async fn stateful_worker_registry_does_not_serialize_different_plugins() {
     })
     .await
     .expect("different stateful provider workers should not be serialized by the registry lock");
+}
+
+#[tokio::test]
+async fn failed_stateful_worker_is_replaced_on_next_handle_acquisition() {
+    let package = TempProviderPackage::new();
+    package.write_stateful_provider_package(
+        "fixture_provider",
+        "fixture_provider",
+        "Fixture Provider",
+    );
+    package.write_lifecycle_worker_runtime();
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    assert!(host
+        .validate(&plugin_id, json!({ "mode": "crash" }))
+        .await
+        .is_err());
+    let failed = host.provider_worker_snapshot(&plugin_id).unwrap().unwrap();
+    let failed_receipt = host
+        .provider_worker_cleanup_receipt(&plugin_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(failed.state, ProviderWorkerLifecycleState::Failed);
+    assert_eq!(failed.generation, 1);
+    assert_eq!(failed_receipt.prior_pid, failed.pid);
+
+    let output = host
+        .validate(&plugin_id, json!({ "mode": "normal" }))
+        .await
+        .expect("the request after a crash should activate a replacement generation");
+    let replacement = host.provider_worker_snapshot(&plugin_id).unwrap().unwrap();
+    let retained_receipt = host
+        .provider_worker_cleanup_receipt(&plugin_id)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(replacement.state, ProviderWorkerLifecycleState::Active);
+    assert_eq!(replacement.generation, 2);
+    assert_ne!(replacement.pid, failed.pid);
+    assert_eq!(output.output["pid"], json!(replacement.pid.unwrap()));
+    assert_eq!(retained_receipt, failed_receipt);
+}
+
+#[test]
+fn every_stateful_runtime_dispatch_uses_the_supervisor_admission_gate() {
+    let source = include_str!("../provider_host.rs");
+
+    assert_eq!(
+        source
+            .matches("PluginExecutionMode::StatefulProviderWorker")
+            .count(),
+        2,
+        "non-streaming and streaming are the only stateful dispatch boundaries"
+    );
+    assert!(source.contains("worker.call(&request).await"));
+    assert!(source.contains("worker\n                    .call_streaming_with_limits"));
+    assert!(!source.contains("let mut worker = worker.lock().await"));
+    assert!(source.contains("call_executable("));
+    assert!(source.contains("call_executable_streaming("));
 }

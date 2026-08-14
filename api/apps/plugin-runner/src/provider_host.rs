@@ -32,13 +32,25 @@ use plugin_framework::provider_contract::ProviderCountTokensMethod;
 
 use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
-    call_executable, call_executable_streaming, ProviderWorker,
-    DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
+    call_executable, call_executable_streaming, ProviderWorkerCleanupReason,
+    ProviderWorkerCleanupReceipt, DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
 };
 
-type ProviderWorkerHandle = Arc<Mutex<ProviderWorker>>;
-type ProviderWorkerRegistry = Arc<StdMutex<HashMap<String, ProviderWorkerHandle>>>;
+use self::supervisor::ProviderWorkerSupervisor;
+pub use self::supervisor::ProviderWorkerSupervisorSnapshot;
+
+type ProviderWorkerHandle = Arc<ProviderWorkerSupervisor>;
+type ProviderWorkerRegistry = Arc<StdMutex<ProviderWorkerRegistryState>>;
 type ProviderLiveEvents = Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>;
+
+const PROVIDER_WORKER_QUIESCE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+
+#[derive(Debug, Default)]
+struct ProviderWorkerRegistryState {
+    workers: HashMap<String, ProviderWorkerHandle>,
+    next_generation: HashMap<String, u64>,
+    cleanup_receipts: HashMap<String, ProviderWorkerCleanupReceipt>,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedProviderSummary {
@@ -229,7 +241,7 @@ impl Default for ProviderHost {
             loaded_packages: HashMap::new(),
             loaded_sources: HashMap::new(),
             legacy_manifest_eligibilities: HashMap::new(),
-            provider_workers: Arc::new(StdMutex::new(HashMap::new())),
+            provider_workers: Arc::new(StdMutex::new(ProviderWorkerRegistryState::default())),
             active_streams: Arc::new(Mutex::new(HashMap::new())),
             active_invocation_leases: Arc::new(Mutex::new(HashMap::new())),
             next_invocation_sequence: AtomicU64::new(1),
@@ -272,6 +284,7 @@ impl ProviderHost {
                 )));
             }
         }
+        self.retire_provider_worker_in_background(&summary.plugin_id)?;
         self.loaded_packages
             .insert(summary.plugin_id.clone(), loaded);
         self.loaded_sources
@@ -286,7 +299,6 @@ impl ProviderHost {
                     .remove(&summary.plugin_id);
             }
         }
-        self.remove_provider_worker(&summary.plugin_id)?;
         Ok(summary)
     }
 
@@ -331,7 +343,7 @@ impl ProviderHost {
             .map(|_| ())
     }
 
-    pub fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedProviderSummary> {
+    pub async fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedProviderSummary> {
         let source = match self.loaded_sources.get(plugin_id).cloned() {
             Some(source) => source,
             None => {
@@ -357,6 +369,7 @@ impl ProviderHost {
             )));
         }
         let legacy_eligibility = self.legacy_manifest_eligibilities.get(plugin_id).cloned();
+        self.quiesce_provider_worker(plugin_id).await?;
         self.load_source(source, Some(plugin_id), legacy_eligibility.as_ref())
     }
 
@@ -715,6 +728,20 @@ impl ProviderHost {
         ProviderActiveStreamsOutput { streams }
     }
 
+    pub fn provider_worker_snapshot(
+        &self,
+        plugin_id: &str,
+    ) -> FrameworkResult<Option<ProviderWorkerSupervisorSnapshot>> {
+        provider_worker_supervisor_snapshot(&self.provider_workers, plugin_id)
+    }
+
+    pub fn provider_worker_cleanup_receipt(
+        &self,
+        plugin_id: &str,
+    ) -> FrameworkResult<Option<ProviderWorkerCleanupReceipt>> {
+        provider_worker_cleanup_receipt(&self.provider_workers, plugin_id)
+    }
+
     async fn register_active_stream(
         active_streams: &Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
         invocation_id: String,
@@ -782,9 +809,48 @@ impl ProviderHost {
         })
     }
 
-    fn remove_provider_worker(&mut self, plugin_id: &str) -> FrameworkResult<()> {
-        let mut workers = lock_provider_worker_registry(&self.provider_workers)?;
-        workers.remove(plugin_id);
+    async fn quiesce_provider_worker(
+        &self,
+        plugin_id: &str,
+    ) -> FrameworkResult<Option<ProviderWorkerCleanupReceipt>> {
+        let supervisor = take_provider_worker_for_quiesce(&self.provider_workers, plugin_id)?;
+        let Some(supervisor) = supervisor else {
+            return Ok(None);
+        };
+        let receipt = supervisor
+            .finish_quiesce(
+                PROVIDER_WORKER_QUIESCE_DEADLINE,
+                ProviderWorkerCleanupReason::Restarted,
+            )
+            .await?;
+        record_provider_worker_cleanup(&self.provider_workers, plugin_id, receipt.clone())?;
+        Ok(Some(receipt))
+    }
+
+    fn retire_provider_worker_in_background(&self, plugin_id: &str) -> FrameworkResult<()> {
+        let supervisor = take_provider_worker_for_quiesce(&self.provider_workers, plugin_id)?;
+        let Some(supervisor) = supervisor else {
+            return Ok(());
+        };
+        let provider_workers = Arc::clone(&self.provider_workers);
+        let plugin_id = plugin_id.to_string();
+        tokio::runtime::Handle::try_current()
+            .map_err(|_| {
+                PluginFrameworkError::invalid_provider_package(
+                    "provider worker cleanup requires an async runtime",
+                )
+            })?
+            .spawn(async move {
+                if let Ok(receipt) = supervisor
+                    .finish_quiesce(
+                        PROVIDER_WORKER_QUIESCE_DEADLINE,
+                        ProviderWorkerCleanupReason::Restarted,
+                    )
+                    .await
+                {
+                    let _ = record_provider_worker_cleanup(&provider_workers, &plugin_id, receipt);
+                }
+            });
         Ok(())
     }
 
@@ -815,7 +881,6 @@ impl ProviderHost {
             PluginExecutionMode::StatefulProviderWorker => {
                 let plugin_id = loaded.package.identifier();
                 let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
-                let mut worker = worker.lock().await;
                 worker.call(&request).await
             }
             _ => Err(PluginFrameworkError::invalid_provider_package(
@@ -871,7 +936,6 @@ impl ProviderHost {
             }
             PluginExecutionMode::StatefulProviderWorker => {
                 let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
-                let mut worker = worker.lock().await;
                 worker
                     .call_streaming_with_limits(
                         &request,
@@ -1002,11 +1066,14 @@ fn compact_framework_error(error: PluginFrameworkError) -> ProviderCompactError 
 }
 
 mod operations;
+mod supervisor;
 
 use operations::{
     elapsed_milliseconds, format_timestamp, lock_provider_worker_registry, merge_models,
     normalize_balance, normalize_models, provider_invocation_limits, provider_pool_key,
-    provider_stream_transport, provider_worker_handle,
+    provider_stream_transport, provider_worker_cleanup_receipt, provider_worker_handle,
+    provider_worker_supervisor_snapshot, record_provider_worker_cleanup,
+    take_provider_worker_for_quiesce,
 };
 
 #[cfg(test)]

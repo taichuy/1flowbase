@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn lock_provider_worker_registry(
     provider_workers: &ProviderWorkerRegistry,
-) -> FrameworkResult<std::sync::MutexGuard<'_, HashMap<String, ProviderWorkerHandle>>> {
+) -> FrameworkResult<std::sync::MutexGuard<'_, ProviderWorkerRegistryState>> {
     provider_workers.lock().map_err(|_| {
         PluginFrameworkError::invalid_provider_package("provider worker registry is unavailable")
     })
@@ -13,16 +13,86 @@ pub(super) fn provider_worker_handle(
     plugin_id: String,
     loaded: &LoadedProviderPackage,
 ) -> FrameworkResult<ProviderWorkerHandle> {
-    let mut workers = lock_provider_worker_registry(provider_workers)?;
-    Ok(workers
-        .entry(plugin_id)
-        .or_insert_with(|| {
-            Arc::new(Mutex::new(ProviderWorker::new(
-                loaded.runtime_executable.clone(),
-                loaded.package.manifest.runtime.limits.clone(),
-            )))
-        })
-        .clone())
+    let mut registry = lock_provider_worker_registry(provider_workers)?;
+    if let Some(worker) = registry.workers.get(&plugin_id).cloned() {
+        if worker.snapshot()?.state != ProviderWorkerLifecycleState::Failed {
+            return Ok(worker);
+        }
+        if let Some(receipt) = worker.last_cleanup_receipt()? {
+            registry.cleanup_receipts.insert(plugin_id.clone(), receipt);
+        }
+        registry.workers.remove(&plugin_id);
+    }
+    let generation = *registry
+        .next_generation
+        .entry(plugin_id.clone())
+        .or_insert(1);
+    let supervisor = ProviderWorkerSupervisor::activate(
+        loaded.runtime_executable.clone(),
+        loaded.package.manifest.runtime.limits.clone(),
+        generation,
+    )?;
+    registry
+        .next_generation
+        .insert(plugin_id.clone(), generation.saturating_add(1));
+    registry.workers.insert(plugin_id, Arc::clone(&supervisor));
+    Ok(supervisor)
+}
+
+pub(super) fn take_provider_worker_for_quiesce(
+    provider_workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+) -> FrameworkResult<Option<ProviderWorkerHandle>> {
+    let mut registry = lock_provider_worker_registry(provider_workers)?;
+    let Some(supervisor) = registry.workers.get(plugin_id).cloned() else {
+        return Ok(None);
+    };
+    supervisor.begin_quiesce()?;
+    registry.workers.remove(plugin_id);
+    Ok(Some(supervisor))
+}
+
+pub(super) fn record_provider_worker_cleanup(
+    provider_workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+    receipt: ProviderWorkerCleanupReceipt,
+) -> FrameworkResult<()> {
+    lock_provider_worker_registry(provider_workers)?
+        .cleanup_receipts
+        .insert(plugin_id.to_string(), receipt);
+    Ok(())
+}
+
+pub(super) fn provider_worker_supervisor_snapshot(
+    provider_workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+) -> FrameworkResult<Option<ProviderWorkerSupervisorSnapshot>> {
+    let supervisor = lock_provider_worker_registry(provider_workers)?
+        .workers
+        .get(plugin_id)
+        .cloned();
+    supervisor
+        .map(|supervisor| supervisor.snapshot())
+        .transpose()
+}
+
+pub(super) fn provider_worker_cleanup_receipt(
+    provider_workers: &ProviderWorkerRegistry,
+    plugin_id: &str,
+) -> FrameworkResult<Option<ProviderWorkerCleanupReceipt>> {
+    let (supervisor, receipt) = {
+        let registry = lock_provider_worker_registry(provider_workers)?;
+        (
+            registry.workers.get(plugin_id).cloned(),
+            registry.cleanup_receipts.get(plugin_id).cloned(),
+        )
+    };
+    match supervisor {
+        Some(supervisor) => supervisor
+            .last_cleanup_receipt()
+            .map(|current| current.or(receipt)),
+        None => Ok(receipt),
+    }
 }
 
 pub(super) fn provider_invocation_limits(limits: &PluginRuntimeLimits) -> PluginRuntimeLimits {

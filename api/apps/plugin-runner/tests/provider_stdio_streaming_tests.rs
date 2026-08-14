@@ -115,3 +115,22 @@ async fn provider_worker_stdio_reuses_process_across_streaming_invocations() {
     assert_eq!(first.result.final_content.as_deref(), Some("turn-1"));
     assert_eq!(second.result.final_content.as_deref(), Some("turn-2"));
 }
+
+#[tokio::test]
+async fn provider_worker_direct_api_cleans_child_after_runtime_failure() {
+    let script = fixture_script("lifecycle_worker.sh");
+    let mut worker = plugin_runner::stdio_runtime::ProviderWorker::new(script, limits());
+    let request = ProviderStdioRequest {
+        method: plugin_framework::provider_contract::ProviderStdioMethod::Validate,
+        input: serde_json::json!({ "mode": "crash" }),
+    };
+
+    assert!(worker.call(&request).await.is_err());
+    let receipt = worker.last_cleanup_receipt().unwrap();
+    assert!(receipt.prior_pid.is_some());
+    assert!(receipt.exited);
+    assert_eq!(
+        receipt.final_state,
+        plugin_runner::stdio_runtime::ProviderWorkerLifecycleState::Failed
+    );
+}
