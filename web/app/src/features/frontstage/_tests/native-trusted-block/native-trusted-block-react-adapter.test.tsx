@@ -370,51 +370,67 @@ describe('frontstage native trusted block declarative portal host', () => {
       replaceSync = replaceSync;
     }
     vi.stubGlobal('CSSStyleSheet', SharedStyleSheet);
+    const adoptedSheets = new WeakMap<ShadowRoot, CSSStyleSheet[]>();
+    const previousDescriptor = Object.getOwnPropertyDescriptor(
+      ShadowRoot.prototype,
+      'adoptedStyleSheets'
+    );
+    Object.defineProperty(ShadowRoot.prototype, 'adoptedStyleSheets', {
+      configurable: true,
+      get(this: ShadowRoot) {
+        return adoptedSheets.get(this) ?? [];
+      },
+      set(this: ShadowRoot, sheets: CSSStyleSheet[]) {
+        adoptedSheets.set(this, sheets);
+      }
+    });
     const firstRoot = createBlockRoot();
     const secondRoot = createBlockRoot();
-    Object.defineProperty(firstRoot.shadowRoot, 'adoptedStyleSheets', {
-      configurable: true,
-      value: [],
-      writable: true
-    });
-    Object.defineProperty(secondRoot.shadowRoot, 'adoptedStyleSheets', {
-      configurable: true,
-      value: [],
-      writable: true
-    });
     const sharedStyle = moduleStyle('c', '.shared { display: grid; }');
-    const view = render(
-      <>
-        <FrontstageNativeTrustedBlockPortalHost
-          root={firstRoot}
-          renderEpoch="shared:first"
-          plan={createPlan({ blockId: 'shared-first' })}
-          component={() => <output>First shared</output>}
-          ctx={createContext()}
-          moduleAssets={[sharedStyle]}
-        />
-        <FrontstageNativeTrustedBlockPortalHost
-          root={secondRoot}
-          renderEpoch="shared:second"
-          plan={createPlan({ blockId: 'shared-second' })}
-          component={() => <output>Second shared</output>}
-          ctx={createContext()}
-          moduleAssets={[sharedStyle]}
-        />
-      </>
-    );
+    try {
+      const view = render(
+        <>
+          <FrontstageNativeTrustedBlockPortalHost
+            root={firstRoot}
+            renderEpoch="shared:first"
+            plan={createPlan({ blockId: 'shared-first' })}
+            component={() => <output>First shared</output>}
+            ctx={createContext()}
+            moduleAssets={[sharedStyle]}
+          />
+          <FrontstageNativeTrustedBlockPortalHost
+            root={secondRoot}
+            renderEpoch="shared:second"
+            plan={createPlan({ blockId: 'shared-second' })}
+            component={() => <output>Second shared</output>}
+            ctx={createContext()}
+            moduleAssets={[sharedStyle]}
+          />
+        </>
+      );
 
-    await shadowQueries(firstRoot).findByText('First shared');
-    await shadowQueries(secondRoot).findByText('Second shared');
-    expect(replaceSync).toHaveBeenCalledTimes(1);
-    expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(1);
-    expect(secondRoot.shadowRoot?.adoptedStyleSheets[0]).toBe(
-      firstRoot.shadowRoot?.adoptedStyleSheets[0]
-    );
+      await shadowQueries(firstRoot).findByText('First shared');
+      await shadowQueries(secondRoot).findByText('Second shared');
+      expect(replaceSync).toHaveBeenCalledTimes(1);
+      expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(1);
+      expect(secondRoot.shadowRoot?.adoptedStyleSheets[0]).toBe(
+        firstRoot.shadowRoot?.adoptedStyleSheets[0]
+      );
 
-    view.unmount();
-    expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
-    expect(secondRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
+      view.unmount();
+      expect(firstRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
+      expect(secondRoot.shadowRoot?.adoptedStyleSheets).toHaveLength(0);
+    } finally {
+      if (previousDescriptor) {
+        Object.defineProperty(
+          ShadowRoot.prototype,
+          'adoptedStyleSheets',
+          previousDescriptor
+        );
+      } else {
+        Reflect.deleteProperty(ShadowRoot.prototype, 'adoptedStyleSheets');
+      }
+    }
   });
 
   test('D3R-AC-008 surface unmount cleans portal DOM and host-owned scope', async () => {
