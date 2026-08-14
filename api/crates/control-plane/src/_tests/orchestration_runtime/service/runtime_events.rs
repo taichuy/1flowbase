@@ -29,6 +29,7 @@ use std::{
 enum AfterCommitBehavior {
     Success,
     Error,
+    ErrorOnce,
     Timeout,
 }
 
@@ -40,13 +41,18 @@ struct RecordingAfterCommitSubscriber {
 #[async_trait::async_trait]
 impl RuntimeEventAfterCommitSubscriber for RecordingAfterCommitSubscriber {
     async fn deliver(&self, delivery: RuntimeEventAfterCommitDelivery) -> anyhow::Result<()> {
-        self.calls
-            .lock()
-            .expect("after-commit calls lock poisoned")
-            .push(delivery.idempotency_key);
+        let call_number = {
+            let mut calls = self.calls.lock().expect("after-commit calls lock poisoned");
+            calls.push(delivery.idempotency_key);
+            calls.len()
+        };
         match self.behavior {
             AfterCommitBehavior::Success => Ok(()),
             AfterCommitBehavior::Error => anyhow::bail!("subscriber details stay private"),
+            AfterCommitBehavior::ErrorOnce if call_number == 1 => {
+                anyhow::bail!("subscriber details stay private")
+            }
+            AfterCommitBehavior::ErrorOnce => Ok(()),
             AfterCommitBehavior::Timeout => {
                 tokio::time::sleep(Duration::from_millis(20)).await;
                 Ok(())
@@ -301,6 +307,56 @@ async fn after_commit_timeout_and_error_retries_are_finite_and_do_not_rollback_a
             1
         );
     }
+}
+
+#[tokio::test]
+async fn failed_after_commit_claim_is_released_for_replay_and_completed_claim_is_suppressed() {
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run_id = Uuid::now_v7();
+    let event = durable_lane_event(run_id, 9);
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let lane = after_commit_lane(
+        AfterCommitBehavior::ErrorOnce,
+        Arc::clone(&calls),
+        Duration::from_secs(1),
+        1,
+    );
+
+    let first = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event.clone()],
+        &lane,
+    )
+    .await
+    .unwrap();
+    let replay = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event.clone()],
+        &lane,
+    )
+    .await
+    .unwrap();
+    let completed_duplicate = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event],
+        &lane,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        first[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::Failed
+    );
+    assert_eq!(
+        replay[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::Delivered
+    );
+    assert_eq!(
+        completed_duplicate[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::DuplicateSuppressed
+    );
+    assert_eq!(calls.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]

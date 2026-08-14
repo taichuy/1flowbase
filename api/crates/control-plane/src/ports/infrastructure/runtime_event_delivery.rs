@@ -273,11 +273,19 @@ pub struct RuntimeEventAfterCommitReceipt {
     pub subscribers: Vec<RuntimeEventAfterCommitSubscriberReceipt>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeEventAfterCommitClaimState {
+    InFlight,
+    Completed,
+}
+
 #[derive(Clone)]
 pub struct RuntimeEventAfterCommitLane {
     graph_fingerprint: Option<String>,
     subscribers: Vec<OrderedAfterCommitSubscriber>,
-    claimed: Arc<Mutex<BTreeSet<RuntimeEventAfterCommitIdempotencyKey>>>,
+    claims: Arc<
+        Mutex<BTreeMap<RuntimeEventAfterCommitIdempotencyKey, RuntimeEventAfterCommitClaimState>>,
+    >,
 }
 
 impl Default for RuntimeEventAfterCommitLane {
@@ -285,7 +293,7 @@ impl Default for RuntimeEventAfterCommitLane {
         Self {
             graph_fingerprint: None,
             subscribers: Vec::new(),
-            claimed: Arc::new(Mutex::new(BTreeSet::new())),
+            claims: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 }
@@ -366,7 +374,7 @@ impl RuntimeEventAfterCommitLane {
         Ok(Self {
             graph_fingerprint: Some(graph.fingerprint().as_str().to_string()),
             subscribers,
-            claimed: Arc::new(Mutex::new(BTreeSet::new())),
+            claims: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
 
@@ -391,7 +399,15 @@ impl RuntimeEventAfterCommitLane {
                 sequence: event.sequence,
                 subscriber_id: subscriber.registration.subscriber_id.clone(),
             };
-            let claimed = self.claimed.lock().await.insert(key.clone());
+            let claimed = {
+                let mut claims = self.claims.lock().await;
+                if claims.contains_key(&key) {
+                    false
+                } else {
+                    claims.insert(key.clone(), RuntimeEventAfterCommitClaimState::InFlight);
+                    true
+                }
+            };
             if !claimed {
                 receipts.push(RuntimeEventAfterCommitSubscriberReceipt {
                     contribution_id: subscriber.contribution_id.clone(),
@@ -428,6 +444,14 @@ impl RuntimeEventAfterCommitLane {
                         failure_reason = Some(RuntimeEventAfterCommitFailureReason::SubscriberError)
                     }
                     Err(_) => failure_reason = Some(RuntimeEventAfterCommitFailureReason::Timeout),
+                }
+            }
+            {
+                let mut claims = self.claims.lock().await;
+                if failure_reason.is_none() {
+                    claims.insert(key.clone(), RuntimeEventAfterCommitClaimState::Completed);
+                } else if claims.get(&key) == Some(&RuntimeEventAfterCommitClaimState::InFlight) {
+                    claims.remove(&key);
                 }
             }
             receipts.push(RuntimeEventAfterCommitSubscriberReceipt {
