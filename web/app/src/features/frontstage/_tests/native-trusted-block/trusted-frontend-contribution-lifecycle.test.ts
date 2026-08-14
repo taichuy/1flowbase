@@ -4,16 +4,21 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { FrontstageBlockCatalogEntry } from '../../api/block-catalog';
 import {
+  discoverTrustedFrontendContribution,
   prepareTrustedFrontendContribution,
   TrustedFrontendContributionLifecycleError
 } from '../../lib/native-trusted-block-contribution-lifecycle';
 
 describe('trusted frontend contribution lifecycle', () => {
-  test('D5-P2 accepts the exact graph-backed trusted UiMount binding and follows Prepared → Mounted → Disposed', () => {
-    const contribution = prepareTrustedFrontendContribution(
+  test('D5-P2 exposes catalog discovery before preparing the exact graph-backed trusted UiMount binding', () => {
+    const discovered = discoverTrustedFrontendContribution(
       catalogEntry(),
       expectation()
     );
+    expect(discovered.state).toBe('discovered');
+
+    const contribution = discovered.prepare();
+    expect(contribution.state).toBe('prepared');
     const handle = contribution.createHandle();
     const mount = vi.fn();
     const dispose = vi.fn();
@@ -22,6 +27,7 @@ describe('trusted frontend contribution lifecycle', () => {
     handle.mount({ mount, dispose });
     expect(handle.state).toBe('mounted');
     handle.update();
+    expect(handle.state).toBe('updated');
     expect(mount).toHaveBeenCalledOnce();
 
     handle.dispose();
@@ -39,39 +45,70 @@ describe('trusted frontend contribution lifecycle', () => {
     });
   });
 
-  test('D5-P2 rejects double mount and update/dispose after disposal deterministically', () => {
+  test('D5-P2 accepts repeated updates while mounted or updated without remounting', () => {
     const handle = prepareTrustedFrontendContribution(
       catalogEntry(),
       expectation()
     ).createHandle();
-    handle.mount({ mount: vi.fn(), dispose: vi.fn() });
+    const mount = vi.fn();
+    const dispose = vi.fn();
+    handle.mount({ mount, dispose });
 
-    expect(() => handle.mount({ mount: vi.fn(), dispose: vi.fn() })).toThrow(
-      TrustedFrontendContributionLifecycleError
-    );
-    handle.dispose();
-    expect(() => handle.update()).toThrowError(/lifecycle is disposed/u);
-    expect(() => handle.dispose()).toThrowError(/lifecycle is disposed/u);
+    handle.update();
+    handle.update();
+    handle.update();
+
+    expect(handle.state).toBe('updated');
+    expect(mount).toHaveBeenCalledOnce();
+    expect(dispose).not.toHaveBeenCalled();
   });
 
-  test('D5-P2 recovers a failed mount exactly once and closes the handle', () => {
+  test('D5-P2 makes dispose idempotent while keeping other invalid transitions deterministic', () => {
     const handle = prepareTrustedFrontendContribution(
       catalogEntry(),
       expectation()
     ).createHandle();
     const dispose = vi.fn();
+    handle.mount({ mount: vi.fn(), dispose });
 
-    expect(() =>
+    expect(() => handle.mount({ mount: vi.fn(), dispose: vi.fn() })).toThrow(
+      TrustedFrontendContributionLifecycleError
+    );
+    handle.dispose();
+    expect(handle.state).toBe('disposed');
+    expect(() => handle.update()).toThrowError(/lifecycle is disposed/u);
+    expect(() => handle.dispose()).not.toThrow();
+    expect(() => handle.dispose()).not.toThrow();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  test('D5-P2 retains failed state, attempts cleanup, and preserves the original mount error', () => {
+    const handle = prepareTrustedFrontendContribution(
+      catalogEntry(),
+      expectation()
+    ).createHandle();
+    const mountError = new Error('controlled mount failure');
+    const dispose = vi.fn(() => {
+      throw new Error('controlled disposer failure');
+    });
+    let caught: unknown;
+
+    try {
       handle.mount({
         mount: () => {
-          throw new Error('controlled mount failure');
+          throw mountError;
         },
         dispose
-      })
-    ).toThrowError('controlled mount failure');
-    expect(handle.state).toBe('disposed');
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(mountError);
+    expect(handle.state).toBe('failed');
     expect(dispose).toHaveBeenCalledOnce();
-    expect(() => handle.dispose()).toThrowError(/lifecycle is disposed/u);
+    expect(() => handle.dispose()).not.toThrow();
+    expect(handle.state).toBe('failed');
     expect(dispose).toHaveBeenCalledOnce();
   });
 

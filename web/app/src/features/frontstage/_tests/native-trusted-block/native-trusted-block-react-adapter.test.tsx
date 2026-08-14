@@ -523,6 +523,7 @@ function moduleStyle(digestCharacter: string, css: string) {
 
 function preparedContribution(): PreparedTrustedFrontendContribution {
   const contribution: PreparedTrustedFrontendContribution = {
+    state: 'prepared',
     contributionId: 'frontend-block.installation-1.hero',
     blockId: 'installation-1:hero',
     blockVersion: '1.0.0',

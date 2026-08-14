@@ -19,7 +19,7 @@ import type {
   FrontstageRuntimeObservationContext
 } from './runtime-observation';
 import type { PreparedTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
-import { prepareTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
+import { discoverTrustedFrontendContribution } from '../native-trusted-block-contribution-lifecycle';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
 import type { FrontstagePageCanvasBlockCodeReadRequest } from './runtime-source';
 
@@ -80,14 +80,14 @@ export function prepareFrontstageNativeContribution(
   if (!catalogEntry) {
     throw new Error('Trusted frontend contribution binding is unavailable.');
   }
-  return prepareTrustedFrontendContribution(catalogEntry.raw, {
+  return discoverTrustedFrontendContribution(catalogEntry.raw, {
     workspaceId,
     installationId: request.installationId ?? '',
     providerCode: request.providerCode ?? '',
     pluginId: request.pluginId ?? '',
     pluginVersion: request.pluginVersion ?? '',
     contributionCode: request.contributionCode
-  });
+  }).prepare();
 }
 
 interface FrontstageNativePreparationSnapshotBase {

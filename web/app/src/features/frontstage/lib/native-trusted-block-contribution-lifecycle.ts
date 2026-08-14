@@ -4,9 +4,17 @@ export const TRUSTED_FRONTEND_UI_MOUNT_PERMISSION =
   'frontend-block.ui-mount.trusted-host';
 
 export type TrustedFrontendContributionLifecycleState =
+  | 'discovered'
   | 'prepared'
   | 'mounted'
+  | 'updated'
+  | 'failed'
   | 'disposed';
+
+export type TrustedFrontendContributionHandleState = Exclude<
+  TrustedFrontendContributionLifecycleState,
+  'discovered'
+>;
 
 export type TrustedFrontendContributionLifecycleErrorCode =
   | 'binding_rejected'
@@ -28,6 +36,7 @@ export interface TrustedFrontendContributionMountOwner {
 }
 
 export interface PreparedTrustedFrontendContribution {
+  readonly state: 'prepared';
   readonly contributionId: string;
   readonly blockId: string;
   readonly blockVersion: string;
@@ -39,6 +48,12 @@ export interface PreparedTrustedFrontendContribution {
   readonly isolationRequirement: 'trusted_host_realm';
   readonly lifecycleKind: 'workspace_assignment';
   createHandle(): TrustedFrontendContributionHandle;
+}
+
+/** Catalog selection is observable as discovery; trusted gate validation prepares it. */
+export interface DiscoveredTrustedFrontendContribution {
+  readonly state: 'discovered';
+  prepare(): PreparedTrustedFrontendContribution;
 }
 
 export interface TrustedFrontendContributionExpectation {
@@ -55,13 +70,12 @@ export interface TrustedFrontendContributionExpectation {
  * it does not unload an evaluated JavaScript module or provide a security realm.
  */
 export class TrustedFrontendContributionHandle {
-  private lifecycleState: TrustedFrontendContributionLifecycleState =
-    'prepared';
+  private lifecycleState: TrustedFrontendContributionHandleState = 'prepared';
   private mountOwner: TrustedFrontendContributionMountOwner | null = null;
 
   constructor(readonly contribution: PreparedTrustedFrontendContribution) {}
 
-  get state(): TrustedFrontendContributionLifecycleState {
+  get state(): TrustedFrontendContributionHandleState {
     return this.lifecycleState;
   }
 
@@ -72,19 +86,38 @@ export class TrustedFrontendContributionHandle {
       owner.mount();
       this.lifecycleState = 'mounted';
     } catch (error) {
-      this.lifecycleState = 'disposed';
+      this.lifecycleState = 'failed';
       this.mountOwner = null;
-      owner.dispose();
+      try {
+        owner.dispose();
+      } catch {
+        // The original mount error defines the failed lifecycle receipt.
+      }
       throw error;
     }
   }
 
   update(): void {
-    this.requireState('mounted', 'update');
+    if (
+      this.lifecycleState !== 'mounted' &&
+      this.lifecycleState !== 'updated'
+    ) {
+      this.invalidTransition('update');
+    }
+    this.lifecycleState = 'updated';
   }
 
   dispose(): void {
-    this.requireState('mounted', 'dispose');
+    if (
+      this.lifecycleState === 'disposed' ||
+      this.lifecycleState === 'failed'
+    ) {
+      return;
+    }
+    if (this.lifecycleState === 'prepared') {
+      this.lifecycleState = 'disposed';
+      return;
+    }
     const owner = this.mountOwner;
     this.mountOwner = null;
     this.lifecycleState = 'disposed';
@@ -92,19 +125,40 @@ export class TrustedFrontendContributionHandle {
   }
 
   private requireState(
-    expected: TrustedFrontendContributionLifecycleState,
+    expected: TrustedFrontendContributionHandleState,
     operation: 'mount' | 'update' | 'dispose'
   ): void {
     if (this.lifecycleState !== expected) {
-      throw new TrustedFrontendContributionLifecycleError(
-        'invalid_transition',
-        `Cannot ${operation} trusted frontend contribution ${this.contribution.contributionId} while lifecycle is ${this.lifecycleState}.`
-      );
+      this.invalidTransition(operation);
     }
+  }
+
+  private invalidTransition(operation: 'mount' | 'update' | 'dispose'): never {
+    throw new TrustedFrontendContributionLifecycleError(
+      'invalid_transition',
+      `Cannot ${operation} trusted frontend contribution ${this.contribution.contributionId} while lifecycle is ${this.lifecycleState}.`
+    );
   }
 }
 
+export function discoverTrustedFrontendContribution(
+  entry: FrontstageBlockCatalogEntry,
+  expected: TrustedFrontendContributionExpectation
+): DiscoveredTrustedFrontendContribution {
+  return Object.freeze({
+    state: 'discovered' as const,
+    prepare: () => prepareDiscoveredTrustedFrontendContribution(entry, expected)
+  });
+}
+
 export function prepareTrustedFrontendContribution(
+  entry: FrontstageBlockCatalogEntry,
+  expected: TrustedFrontendContributionExpectation
+): PreparedTrustedFrontendContribution {
+  return discoverTrustedFrontendContribution(entry, expected).prepare();
+}
+
+function prepareDiscoveredTrustedFrontendContribution(
   entry: FrontstageBlockCatalogEntry,
   expected: TrustedFrontendContributionExpectation
 ): PreparedTrustedFrontendContribution {
@@ -175,6 +229,7 @@ export function prepareTrustedFrontendContribution(
   }
 
   const contribution: PreparedTrustedFrontendContribution = Object.freeze({
+    state: 'prepared' as const,
     contributionId: entry.frontend_contribution_id,
     blockId: entry.frontend_block_id,
     blockVersion: entry.frontend_block_version,
