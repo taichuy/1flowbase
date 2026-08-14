@@ -19,25 +19,9 @@ RUN --mount=type=cache,id=1flowbase-cargo-registry,sharing=locked,target=/usr/lo
     --mount=type=cache,id=1flowbase-cargo-git,sharing=locked,target=/usr/local/cargo/git \
     --mount=type=cache,id=1flowbase-rust-target-${TARGETOS}-${TARGETARCH},sharing=locked,target=/workspace/api/target-cache \
     CARGO_TARGET_DIR=/workspace/api/target-cache \
-      cargo build --release -p api-server --bin api-server --bin system_recovery --bin frontstage_executable_upgrade \
+      cargo build --release -p api-server --bin api-server --bin system_recovery \
     && cp /workspace/api/target-cache/release/api-server /workspace/api/api-server \
-    && cp /workspace/api/target-cache/release/system_recovery /workspace/api/system_recovery \
-    && cp /workspace/api/target-cache/release/frontstage_executable_upgrade /workspace/api/frontstage_executable_upgrade
-
-FROM node:24-bookworm-slim AS frontstage-executable-compiler
-
-WORKDIR /workspace/web
-
-RUN npm install --global pnpm@11.5.0
-
-COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
-COPY web/packages ./packages
-
-RUN pnpm install --frozen-lockfile --prod --filter @1flowbase/tailwindcss-catalog... \
-  && test "$(sha256sum packages/tailwindcss-catalog/bin/compiler-4.3.3.mjs | cut -d' ' -f1)" = "603eb3ed18b81b7de3ce3f0e1f6f599dc1c6d58e246b6f567bad59e2a4d0a704" \
-  && node packages/tailwindcss-catalog/bin/compiler-4.3.3.mjs <<'EOF' | grep -q '"artifact_sha256":"db8e4ecacf25ed2a926cbd5e8dfb4d5abeaf9db6bfe7025cd5a8fdaabed7efaf"'
-{"source_code":"export default () => null;","dependency_lock":[],"compiler_identity":{"name":"@1flowbase/tailwindcss-catalog","contract":"source-driven-utilities-v1","tailwind_version":"4.3.3"},"toolchain_lock":{"package":"tailwindcss","version":"4.3.3","mode":"theme-and-utilities"}}
-EOF
+    && cp /workspace/api/target-cache/release/system_recovery /workspace/api/system_recovery
 
 FROM alpine:3.22 AS default-extension
 
@@ -79,11 +63,6 @@ ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
 
 COPY api/plugins /app/api/plugins
 COPY --from=default-extension /default-extensions /app/api/plugins/bootstrap
-COPY --from=frontstage-executable-compiler /workspace/web/node_modules /app/frontstage-executable-compiler/node_modules
-COPY --from=frontstage-executable-compiler /workspace/web/packages/tailwindcss-catalog /app/frontstage-executable-compiler/packages/tailwindcss-catalog
-COPY --from=frontstage-executable-compiler /workspace/web/packages/page-runtime /app/frontstage-executable-compiler/packages/page-runtime
-COPY --from=frontstage-executable-compiler /workspace/web/packages/page-protocol /app/frontstage-executable-compiler/packages/page-protocol
-
 RUN mkdir -p \
     /app/api/storage \
     /app/api/plugins/packages \
@@ -101,7 +80,6 @@ FROM runtime-base AS runtime
 
 COPY --from=builder /workspace/api/api-server /usr/local/bin/api-server
 COPY --from=builder /workspace/api/system_recovery /usr/local/bin/system_recovery
-COPY --from=builder /workspace/api/frontstage_executable_upgrade /usr/local/bin/frontstage_executable_upgrade
 
 FROM runtime-base AS runtime-prebuilt
 
@@ -109,4 +87,3 @@ ARG TARGETARCH
 
 COPY --from=api_server_binaries /${TARGETARCH}/api-server /usr/local/bin/api-server
 COPY --from=api_server_binaries /${TARGETARCH}/system_recovery /usr/local/bin/system_recovery
-COPY --from=api_server_binaries /${TARGETARCH}/frontstage_executable_upgrade /usr/local/bin/frontstage_executable_upgrade

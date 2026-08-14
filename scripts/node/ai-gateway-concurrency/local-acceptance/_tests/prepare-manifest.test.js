@@ -17,11 +17,9 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sealed-local-acceptance-'));
   try {
     const apiServer = path.join(root, 'api/target/release/api-server');
-    const frontstageExecutableUpgrade = path.join(root, 'api/target/release/frontstage_executable_upgrade');
     const pluginRunner = path.join(root, 'api/target/release/plugin-runner');
     fs.mkdirSync(path.dirname(apiServer), { recursive: true });
     fs.writeFileSync(apiServer, 'api-candidate');
-    fs.writeFileSync(frontstageExecutableUpgrade, 'frontstage-upgrade-candidate');
     fs.writeFileSync(pluginRunner, 'runner-candidate');
     const source = path.join(root, 'manifest.json');
     const sourceText = `${JSON.stringify({
@@ -32,7 +30,6 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
       },
       artifacts: {
         apiServer: { path: apiServer, sha256: '0'.repeat(64) },
-        frontstageExecutableUpgrade: { path: frontstageExecutableUpgrade, sha256: '0'.repeat(64) },
         pluginRunner: { path: pluginRunner, sha256: '0'.repeat(64) },
       },
     }, null, 2)}\n`;
@@ -42,7 +39,6 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
     const sealed = prepareManifest({ source, output });
 
     assert.equal(sealed.artifacts.apiServer.sha256, digest('api-candidate'));
-    assert.equal(sealed.artifacts.frontstageExecutableUpgrade.sha256, digest('frontstage-upgrade-candidate'));
     assert.equal(sealed.artifacts.pluginRunner.sha256, digest('runner-candidate'));
     assert.equal(fs.readFileSync(source, 'utf8'), sourceText);
     assert.deepEqual(JSON.parse(fs.readFileSync(output, 'utf8')), sealed);

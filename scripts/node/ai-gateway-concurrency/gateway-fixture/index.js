@@ -1,7 +1,6 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,38 +18,8 @@ const {
 const { persistServiceLogs, redactServiceLog } = require('./service-logs');
 const { assertNoArtifactSecrets } = require('../cli-smoke/artifact-scan');
 
-const MAX_UPGRADE_OUTPUT_BYTES = 16 * 1024;
-
 function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
-}
-
-function upgradeOutput(result) {
-  const output = `${result.stdout || ''}${result.stderr || ''}`;
-  return output.length <= MAX_UPGRADE_OUTPUT_BYTES
-    ? output.trim()
-    : output.slice(-MAX_UPGRADE_OUTPUT_BYTES).trim();
-}
-
-function runFrontstageExecutableUpgrade(binary, env, { cwd }) {
-  const result = spawnSync(binary, [], {
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    maxBuffer: MAX_UPGRADE_OUTPUT_BYTES,
-    windowsHide: true,
-  });
-  const output = upgradeOutput(result);
-  if (result.error) {
-    throw new Error(`frontstage executable upgrade could not start: ${result.error.message}`);
-  }
-  if (result.signal) {
-    throw new Error(`frontstage executable upgrade terminated by ${result.signal}${output ? `: ${output}` : ''}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(`frontstage executable upgrade exited with ${result.status}${output ? `: ${output}` : ''}`);
-  }
 }
 
 function providerTarget(baseUrl, pluginRunnerBaseUrl, client, provider) {
@@ -106,7 +75,6 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
   const reservePort = dependencies.reserveLoopbackPort || reserveLoopbackPort;
   const assertPortAvailable = dependencies.assertLoopbackPortAvailable || assertLoopbackPortAvailable;
   const spawnProcess = dependencies.spawnOwned || spawnOwned;
-  const runUpgrade = dependencies.runFrontstageExecutableUpgrade || runFrontstageExecutableUpgrade;
   const health = dependencies.waitForHealth || waitForHealth;
   const stopProcess = dependencies.stopOwned || stopOwned;
   const persistLogs = dependencies.persistServiceLogs || persistServiceLogs;
@@ -208,11 +176,8 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       BOOTSTRAP_ROOT_PASSWORD: rootPassword,
       BOOTSTRAP_ROOT_NAME: 'Gateway Fixture Root',
       BOOTSTRAP_ROOT_NICKNAME: 'Gateway Fixture',
-      API_FRONTSTAGE_EXECUTABLE_COMPILER_ROOT: options.frontstageCompilerRoot,
-      API_FRONTSTAGE_EXECUTABLE_NODE_PATH: process.execPath,
       RUST_LOG: process.env.RUST_LOG || 'info',
     };
-    await runUpgrade(options.frontstageExecutableUpgradeBin, apiEnvironment, { cwd: scratchRoot });
     apiProcess = spawnProcess(options.apiServerBin, apiEnvironment, { cwd: scratchRoot });
     await health(gatewayBaseUrl, 'api-server', { processHandle: apiProcess });
 
@@ -300,6 +265,5 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
 module.exports = {
   createGatewayFixture,
   providerTarget,
-  runFrontstageExecutableUpgrade,
   sha256File,
 };

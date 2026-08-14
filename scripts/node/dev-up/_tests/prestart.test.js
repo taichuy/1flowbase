@@ -12,7 +12,7 @@ const {
   runServicePrestartCommands,
 } = require('../core.js');
 
-test('AC-001 runs the local frontstage executable upgrade before resetting the api root password', () => {
+test('AC-001 resets the api root password without invoking the removed frontstage upgrade', () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-prestart-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const envExamplePath = path.join(apiServerDir, '.env.example');
@@ -38,12 +38,6 @@ test('AC-001 runs the local frontstage executable upgrade before resetting the a
     })),
     [
       {
-        description: 'api-server development frontstage executable upgrade',
-        command: 'cargo',
-        args: ['run', '-p', 'api-server', '--bin', 'frontstage_executable_upgrade'],
-        cwd: path.join(tempRepoRoot, 'api'),
-      },
-      {
         description: 'api-server development root password reset',
         command: 'cargo',
         args: ['run', '-p', 'api-server', '--bin', 'reset_root_password'],
@@ -52,11 +46,6 @@ test('AC-001 runs the local frontstage executable upgrade before resetting the a
     ]
   );
   assert.equal(commands[0].env.API_ENV, 'development');
-  assert.equal(
-    commands[0].env.API_FRONTSTAGE_EXECUTABLE_COMPILER_ROOT,
-    path.join(tempRepoRoot, 'web')
-  );
-  assert.equal(commands[0].env.API_FRONTSTAGE_EXECUTABLE_NODE_PATH, process.execPath);
 });
 
 test('getServicePrestartCommands checks frontend dependencies with visible pnpm prompts', () => {
@@ -105,7 +94,7 @@ test('getServicePrestartCommands skips api root reset in production mode', () =>
   assert.deepEqual(getServicePrestartCommands(apiService, {}), []);
 });
 
-test('AC-003 blocks later api pre-start steps when the frontstage upgrade fails', () => {
+test('AC-003 surfaces a failed api root password reset', () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-recover-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const dockerDir = path.join(tempRepoRoot, 'docker');
@@ -168,14 +157,14 @@ test('AC-003 blocks later api pre-start steps when the frontstage upgrade fails'
             };
           }
         }),
-      /api-server development frontstage executable upgrade failed with exit code 1/u
+      /api-server development root password reset failed with exit code 1/u
     );
   } finally {
     process.stderr.write = originalStderrWrite;
   }
 
   assert.equal(commandCalls.length, 1);
-  assert.equal(commandCalls[0].args.at(-1), 'frontstage_executable_upgrade');
+  assert.equal(commandCalls[0].args.at(-1), 'reset_root_password');
   assert.equal(commandCalls[0].options.captureOutput, true);
   assert.deepEqual(composeCalls, []);
   assert.equal(
@@ -261,7 +250,7 @@ test('AC-001 repairs the known local migration checksum drift without rebuilding
     },
   });
 
-  assert.equal(commandCalls.length, 3);
+  assert.equal(commandCalls.length, 2);
   assert.equal(composeCalls.length, 1);
   assert.equal(composeCalls[0].repoRoot, tempRepoRoot);
   assert.deepEqual(composeCalls[0].args.slice(0, 8), [
@@ -354,7 +343,7 @@ test('AC-002 refuses the known repair when the database checksum does not match'
           };
         },
       }),
-    /api-server development frontstage executable upgrade failed with exit code 1/u
+    /api-server development root password reset failed with exit code 1/u
   );
 
   assert.equal(composeCalls.length, 1);
@@ -419,7 +408,7 @@ test('runServicePrestartCommands rebuilds local postgres db only with explicit r
     },
   });
 
-  assert.equal(commandCalls.length, 3);
+  assert.equal(commandCalls.length, 2);
   assert.ok(commandCalls.every((entry) => entry.options.captureOutput === true));
   assert.deepEqual(
     composeCalls.map((entry) => entry.args),
@@ -547,7 +536,7 @@ test('runServicePrestartCommands rebuilds local postgres db after missing resolv
     },
   });
 
-  assert.equal(commandCalls.length, 3);
+  assert.equal(commandCalls.length, 2);
   assert.ok(commandCalls.every((entry) => entry.options.captureOutput === true));
   assert.deepEqual(
     composeCalls.map((entry) => entry.args),

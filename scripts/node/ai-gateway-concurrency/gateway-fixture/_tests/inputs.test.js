@@ -51,11 +51,9 @@ test('normalization requires executable binaries and exact package files', () =>
       return target;
     };
     const apiServerBin = file('api-server', 0o700);
-    file('frontstage_executable_upgrade', 0o700);
     const options = normalizeOptions({
       databaseUrl: 'postgres://fixture@127.0.0.1/fixture_db',
       apiServerBin,
-      frontstageCompilerRoot: root,
       pluginRunnerBin: file('plugin-runner', 0o700),
       openaiPackage: file('openai.1flowbasepkg'),
       anthropicPackage: file('anthropic.1flowbasepkg'),
@@ -64,8 +62,6 @@ test('normalization requires executable binaries and exact package files', () =>
     });
     assert.equal(options.upstreamBaseUrl, 'http://127.0.0.1:9123');
     assert.equal(options.apiPort, null);
-    assert.equal(path.basename(options.frontstageExecutableUpgradeBin), 'frontstage_executable_upgrade');
-    assert.equal(options.frontstageCompilerRoot, root);
 
     const explicitPort = normalizeOptions({
       ...options,

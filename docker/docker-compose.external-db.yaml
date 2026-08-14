@@ -10,13 +10,6 @@ services:
     expose:
       - "7801"
 
-  frontstage-executable-upgrade:
-    profiles: ["upgrade"]
-    image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
-    entrypoint: ["/usr/local/bin/frontstage_executable_upgrade"]
-    environment:
-      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL is required for external database compose}
-
   api:
     image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
     restart: unless-stopped

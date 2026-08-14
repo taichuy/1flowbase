@@ -490,8 +490,6 @@ async function runQualityGate(rawOptions) {
       "api-server",
       "--bin",
       "api-server",
-      "--bin",
-      "frontstage_executable_upgrade",
     ]);
     attempt("gateway-plugin-runner-build", "cargo", [
       "build",

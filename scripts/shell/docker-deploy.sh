@@ -1108,14 +1108,8 @@ fi
 
 if [ "$START_CONTAINERS" = "yes" ]; then
   if [ "$NEW_DATABASE_MODE" = "external" ]; then
-    echo "Running required frontstage executable upgrade against external PostgreSQL."
-    compose -f docker-compose.external-db.yaml run --rm frontstage-executable-upgrade
     compose -f docker-compose.external-db.yaml up -d
   else
-    echo "Starting the owned PostgreSQL service for the required frontstage executable upgrade."
-    compose up -d db
-    echo "Running required frontstage executable upgrade."
-    compose run --rm frontstage-executable-upgrade
     compose up -d
   fi
 else
