@@ -7,15 +7,13 @@ use std::{
 use anyhow::{bail, Context, Result};
 use plugin_framework::{
     extension_bus::{
-        compile_extension_graph, EffectiveExtensionGraph, ExtensionBusVersion,
-        ModuleActivationDeclaration, ModuleDescriptor, ModuleDisableReason, ModuleId, ModuleKind,
-        ModuleVersion,
+        compile_extension_graph, parse_deployment_plugin_set, DeploymentPluginSet,
+        EffectiveExtensionGraph, ExtensionBusVersion, ModuleActivationDeclaration,
+        ModuleDescriptor, ModuleDisableReason, ModuleId, ModuleKind, ModuleVersion,
     },
     parse_host_extension_contribution_manifest, parse_plugin_manifest,
     HostExtensionContributionManifest, PluginConsumptionKind, PluginManifestV1,
 };
-
-use super::{parse_deployment_plugin_set, DeploymentPluginSet};
 
 pub const DEFAULT_PLUGIN_SET_PATH: &str = "plugins/sets/default.yaml";
 pub const BOOT_CORE_MODULE_ID: &str = "1flowbase.boot-core";

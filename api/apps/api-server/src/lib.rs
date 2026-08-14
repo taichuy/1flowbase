@@ -9,6 +9,7 @@ pub mod console_policy_migration;
 pub mod console_surface_registry;
 pub mod error_response;
 pub mod extension_bootstrap;
+pub mod extension_bus;
 pub mod frontstage_executable_upgrade;
 pub mod host_extension_boot;
 pub mod host_extension_loader;

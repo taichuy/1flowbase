@@ -1,11 +1,11 @@
 use std::{fs, path::PathBuf};
 
-use api_server::host_extensions::builtin::extension_bus::{
-    assemble_extension_graph_input, parse_deployment_plugin_set, DeploymentPluginSetCatalog,
-    ModuleActivationFact, DEFAULT_PLUGIN_SET_PATH,
+use api_server::extension_bus::{
+    assemble_extension_graph_input, ModuleActivationFact, DEFAULT_PLUGIN_SET_PATH,
 };
 use plugin_framework::extension_bus::{
-    ModuleDisableReason, ModuleInactivityReason, ModuleResolutionStatus,
+    parse_deployment_plugin_set, ModuleDisableReason, ModuleInactivityReason,
+    ModuleResolutionStatus,
 };
 
 #[test]
@@ -75,15 +75,6 @@ fn missing_package_and_identity_mismatch_fail_input_assembly() {
         assemble_extension_graph_input(mismatch.root(), "plugins/sets/default.yaml", vec![])
             .unwrap_err();
     assert!(format!("{error:#}").contains("identity mismatch"));
-}
-
-#[test]
-fn duplicate_plugin_set_id_is_rejected_before_selection() {
-    let first = parse_deployment_plugin_set(&plugin_set_yaml("same", &["fixture.alpha"])).unwrap();
-    let second = parse_deployment_plugin_set(&plugin_set_yaml("same", &["fixture.beta"])).unwrap();
-
-    let error = DeploymentPluginSetCatalog::new(vec![first, second]).unwrap_err();
-    assert!(format!("{error:#}").contains("duplicate plugin set id same"));
 }
 
 // Root #1688 AC-010: deployment, desired-state, and assignment facts remain typed receipts.
