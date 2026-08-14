@@ -29,6 +29,10 @@ const mutations = vi.hoisted(() => ({
   saveCode: { isPending: false, mutateAsync: vi.fn() }
 }));
 
+const executableStyle = vi.hoisted(() => ({
+  compileNativeReactExecutableStyle: vi.fn()
+}));
+
 vi.mock('../../../api/block-tree', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../api/block-tree')>()),
   ...api
@@ -37,6 +41,10 @@ vi.mock('../../../api/block-tree', async (importOriginal) => ({
 vi.mock('../../../hooks/use-frontstage-block-tree-mutations', () => ({
   useFrontstageBlockTreeMutations: () => mutations
 }));
+
+vi.mock('../../../../../shared/code-block/native-react-executable-style', () =>
+  executableStyle
+);
 
 function summary(
   block_id: string,
@@ -120,6 +128,21 @@ describe('BlockSchemaTreePanel', () => {
     mutations.deleteLeaf.mutateAsync.mockResolvedValue(undefined);
     mutations.deleteSubtree.mutateAsync.mockResolvedValue({ deleted_count: 2 });
     mutations.move.mutateAsync.mockResolvedValue(detail(child));
+    executableStyle.compileNativeReactExecutableStyle.mockResolvedValue({
+      dependency_lock: [],
+      tailwind_toolchain_lock: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'utilities'
+      },
+      generated_css: '.generated { display: block; }',
+      generated_css_sha256: 'generated-css-sha256',
+      compiler_identity: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'utilities'
+      }
+    });
   });
 
   test('AC-004 keeps search above the lazy tree and selects the current real root', async () => {
@@ -248,9 +271,25 @@ describe('BlockSchemaTreePanel', () => {
         parent_block_id: 'root-page',
         before_block_id: null,
         after_block_id: null,
-        code: 'export default function Block() { return null; }\n',
+        source_code: 'export default function Block() { return null; }\n',
+        dependency_lock: [],
+        tailwind_toolchain_lock: {
+          package: 'tailwindcss',
+          version: '4.3.3',
+          mode: 'utilities'
+        },
+        generated_css: '.generated { display: block; }',
+        generated_css_sha256: 'generated-css-sha256',
+        compiler_identity: {
+          package: 'tailwindcss',
+          version: '4.3.3',
+          mode: 'utilities'
+        },
         runtime_descriptor: null
       });
+      expect(executableStyle.compileNativeReactExecutableStyle).toHaveBeenCalledWith(
+        'export default function Block() { return null; }\n'
+      );
       expect(onOpenBlock).toHaveBeenCalledWith('child-page');
     });
   });

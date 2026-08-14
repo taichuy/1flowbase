@@ -934,6 +934,46 @@
     "schema_migrations": {
       "reason": "sqlx internal migration ledger, not application-managed user data",
       "skip": ["id", "created_at", "updated_at", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "flow_run_recovery_history": {
+      "kind": "immutable_flow_recovery_history",
+      "reason": "immutable recovery history is addressed by flow run sequence and never by a scope chronology scan",
+      "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+    },
+    "flow_run_resume_claims": {
+      "kind": "flow_owned_resume_claims",
+      "reason": "resume claims are addressed by flow run target and status rather than a scope chronology scan",
+      "skip": ["managed-table-scope-time-index"]
+    },
+    "frontstage_executable_upgrade_markers": {
+      "kind": "system_upgrade_marker",
+      "reason": "global executable upgrade markers use the marker as identity and are not workspace routed application data",
+      "skip": ["managed-table-id", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "frontstage_executable_upgrade_runs": {
+      "kind": "global_upgrade_attempt_history",
+      "reason": "global upgrade attempts are bounded by their marker and run id instead of workspace row routing",
+      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "runtime_canonical_contents": {
+      "kind": "immutable_application_content",
+      "reason": "canonical content is immutable and addressed by application plus content hash rather than a scope chronology scan",
+      "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+    },
+    "runtime_invocation_context_bindings": {
+      "kind": "immutable_invocation_binding",
+      "reason": "one immutable binding uses invocation span as identity and is read through the owning flow runtime",
+      "skip": ["managed-table-id", "managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+    },
+    "runtime_legacy_shadow_batches": {
+      "kind": "global_migration_operation",
+      "reason": "conversion shadow batches are global operational migration state rather than workspace owned application data",
+      "skip": ["managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "runtime_legacy_shadow_rows": {
+      "kind": "immutable_conversion_evidence",
+      "reason": "conversion shadow rows are immutable evidence addressed by batch or flow rather than a scope chronology scan",
+      "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
     }
   }
 }

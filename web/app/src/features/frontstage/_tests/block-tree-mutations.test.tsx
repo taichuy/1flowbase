@@ -110,7 +110,21 @@ describe('frontstage block tree feature mutations', () => {
       parent_block_id: 'parent-new',
       before_block_id: null,
       after_block_id: null,
-      code: 'export default Created',
+      source_code: 'export default Created',
+      dependency_lock: [],
+      tailwind_toolchain_lock: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'utilities'
+      },
+      generated_css: '',
+      generated_css_sha256:
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      compiler_identity: {
+        package: 'tailwindcss',
+        version: '4.3.3',
+        mode: 'utilities'
+      },
       runtime_descriptor: null
     };
 

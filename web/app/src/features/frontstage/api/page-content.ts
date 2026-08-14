@@ -3,7 +3,8 @@ import {
   getFrontstagePageTabDetail,
   saveFrontstageTabDocument,
   type ConsoleFrontstagePageDetail,
-  type ConsoleFrontstagePageNode
+  type ConsoleFrontstagePageNode,
+  type CreateFrontstageBlockInput as CreateFrontstageBlockRequest
 } from '@1flowbase/api-client';
 
 import { getFrontstageApiBaseUrl } from './page-tree';
@@ -44,11 +45,7 @@ export interface SaveFrontstageTabDocumentInput {
   payload: unknown;
 }
 
-export interface CreateFrontstageBlockInput {
-  payload: unknown;
-  code_ref: string;
-  code: string;
-}
+export type CreateFrontstageBlockInput = CreateFrontstageBlockRequest;
 
 type FrontstagePageDetailDto = ConsoleFrontstagePageDetail;
 
