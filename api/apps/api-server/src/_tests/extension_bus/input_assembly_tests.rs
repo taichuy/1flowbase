@@ -152,6 +152,53 @@ fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
         ]
     );
     assert!(provider_input_pipeline.contributions().is_empty());
+
+    for (point_id, contract_id, delivery, failure) in [
+        (
+            api_server::extension_bus::RUNTIME_EVENT_REQUIRED_POINT_ID,
+            api_server::extension_bus::RUNTIME_EVENT_REQUIRED_CONTRACT_ID,
+            DeliverySemantics::RequiredStream,
+            FailureSemantics::FailClosed,
+        ),
+        (
+            api_server::extension_bus::RUNTIME_EVENT_DIAGNOSTIC_POINT_ID,
+            api_server::extension_bus::RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID,
+            DeliverySemantics::DiagnosticBestEffort,
+            FailureSemantics::BestEffort,
+        ),
+        (
+            api_server::extension_bus::RUNTIME_EVENT_AFTER_COMMIT_POINT_ID,
+            api_server::extension_bus::RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID,
+            DeliverySemantics::AfterCommitDurable,
+            FailureSemantics::IsolateContribution,
+        ),
+    ] {
+        let lane = graph
+            .points()
+            .iter()
+            .find(|point| point.descriptor().point_id.as_str() == point_id)
+            .unwrap();
+        let descriptor = lane.descriptor();
+        assert_eq!(
+            descriptor.owner_module_id.as_str(),
+            api_server::extension_bus::BOOT_CORE_MODULE_ID
+        );
+        assert_eq!(descriptor.point_kind, ExtensionPointKind::EventStream);
+        assert_eq!(descriptor.contract.contract_id.as_str(), contract_id);
+        assert_eq!(
+            descriptor.contract.contract_version.as_str(),
+            api_server::extension_bus::RUNTIME_EVENT_LANE_CONTRACT_VERSION
+        );
+        assert_eq!(descriptor.scope, ScopeSemantics::Global);
+        assert_eq!(descriptor.cardinality, Cardinality::Many);
+        assert_eq!(descriptor.ordering, OrderingSemantics::Dependency);
+        assert_eq!(descriptor.failure, failure);
+        assert_eq!(descriptor.delivery, delivery);
+        assert_eq!(descriptor.lifecycle, LifecycleSemantics::Invocation);
+        assert_eq!(descriptor.override_policy, OverridePolicy::Sealed);
+        assert!(descriptor.allowed_permissions.is_empty());
+        assert!(lane.contributions().is_empty());
+    }
 }
 
 // Root #1688 AC-001/AC-002: set declaration order is not graph resolution order.

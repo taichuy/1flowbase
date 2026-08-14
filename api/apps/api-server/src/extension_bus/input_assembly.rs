@@ -28,6 +28,12 @@ pub const MODEL_PROVIDER_EXTENSION_POINT_ID: &str = "1flowbase.runtime.model-pro
 pub const MODEL_PROVIDER_CONTRACT_ID: &str = "model-provider";
 pub const MODEL_PROVIDER_CONTRACT_VERSION: &str =
     plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
+pub use control_plane::ports::{
+    RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID, RUNTIME_EVENT_AFTER_COMMIT_POINT_ID,
+    RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID, RUNTIME_EVENT_DIAGNOSTIC_POINT_ID,
+    RUNTIME_EVENT_LANE_CONTRACT_VERSION, RUNTIME_EVENT_REQUIRED_CONTRACT_ID,
+    RUNTIME_EVENT_REQUIRED_POINT_ID,
+};
 pub use orchestration_runtime::provider_input_pipeline::{
     PROVIDER_INPUT_PIPELINE_CONTRACT_ID, PROVIDER_INPUT_PIPELINE_CONTRACT_VERSION,
     PROVIDER_INPUT_PIPELINE_POINT_ID,
@@ -201,8 +207,71 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             cache_store_extension_point()?,
             model_provider_extension_point()?,
             provider_input_pipeline_extension_point()?,
+            runtime_event_required_extension_point()?,
+            runtime_event_diagnostic_extension_point()?,
+            runtime_event_after_commit_extension_point()?,
         ],
         contributions: Vec::new(),
+    })
+}
+
+fn runtime_event_required_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(RUNTIME_EVENT_REQUIRED_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::EventStream,
+        contract: ContractDescriptor::new(
+            RUNTIME_EVENT_REQUIRED_CONTRACT_ID,
+            RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::Global,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Dependency,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::RequiredStream,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
+    })
+}
+
+fn runtime_event_diagnostic_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(RUNTIME_EVENT_DIAGNOSTIC_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::EventStream,
+        contract: ContractDescriptor::new(
+            RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID,
+            RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::Global,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Dependency,
+        failure: FailureSemantics::BestEffort,
+        delivery: DeliverySemantics::DiagnosticBestEffort,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
+    })
+}
+
+fn runtime_event_after_commit_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(RUNTIME_EVENT_AFTER_COMMIT_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::EventStream,
+        contract: ContractDescriptor::new(
+            RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID,
+            RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::Global,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Dependency,
+        failure: FailureSemantics::IsolateContribution,
+        delivery: DeliverySemantics::AfterCommitDurable,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
     })
 }
 

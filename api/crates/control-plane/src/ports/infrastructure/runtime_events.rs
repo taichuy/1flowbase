@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,6 +174,7 @@ pub struct RuntimeEventSubscription {
 pub struct RuntimeEventReceiver {
     required: RuntimeEventRequiredReceiver,
     diagnostic: mpsc::Receiver<RuntimeEventEnvelope>,
+    diagnostic_counters: Arc<RuntimeEventDiagnosticDeliveryCounters>,
     required_open: bool,
     diagnostic_open: bool,
 }
@@ -198,9 +201,34 @@ impl RuntimeEventReceiver {
         Self {
             required: RuntimeEventRequiredReceiver::Bounded(required),
             diagnostic,
+            diagnostic_counters: Arc::new(RuntimeEventDiagnosticDeliveryCounters::default()),
             required_open: true,
             diagnostic_open: true,
         }
+    }
+
+    pub fn bounded_lanes(
+        capacity: usize,
+    ) -> (
+        RuntimeEventRequiredLane,
+        RuntimeEventDiagnosticLane,
+        RuntimeEventReceiver,
+    ) {
+        let capacity = capacity.max(1);
+        let (required_sender, required) = mpsc::channel(capacity);
+        let (diagnostic_sender, diagnostic) = mpsc::channel(capacity);
+        let diagnostic_counters = Arc::new(RuntimeEventDiagnosticDeliveryCounters::default());
+        (
+            RuntimeEventRequiredLane::new(required_sender),
+            RuntimeEventDiagnosticLane::new(diagnostic_sender, Arc::clone(&diagnostic_counters)),
+            Self {
+                required: RuntimeEventRequiredReceiver::Bounded(required),
+                diagnostic,
+                diagnostic_counters,
+                required_open: true,
+                diagnostic_open: true,
+            },
+        )
     }
 
     pub fn from_unbounded(required: mpsc::UnboundedReceiver<RuntimeEventEnvelope>) -> Self {
@@ -208,9 +236,14 @@ impl RuntimeEventReceiver {
         Self {
             required: RuntimeEventRequiredReceiver::Unbounded(required),
             diagnostic,
+            diagnostic_counters: Arc::new(RuntimeEventDiagnosticDeliveryCounters::default()),
             required_open: true,
             diagnostic_open: false,
         }
+    }
+
+    pub fn diagnostic_delivery_snapshot(&self) -> RuntimeEventDiagnosticDeliverySnapshot {
+        self.diagnostic_counters.snapshot()
     }
 
     pub async fn recv(&mut self) -> Option<RuntimeEventEnvelope> {

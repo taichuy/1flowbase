@@ -7,8 +7,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::ports::{
-    AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventCloseReason,
-    RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
+    AppendRuntimeEventInput, OrchestrationRuntimeRepository, RuntimeEventAfterCommitDeliveryStatus,
+    RuntimeEventAfterCommitLane, RuntimeEventAfterCommitReceipt, RuntimeEventCloseReason,
+    RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventStream,
 };
 
 const RUNTIME_EVENT_BATCH_MAX_BYTES: usize = 64 * 1024;
@@ -56,8 +57,23 @@ pub async fn persist_runtime_event_payload<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    let lane = RuntimeEventAfterCommitLane::empty();
+    persist_runtime_event_payload_with_after_commit(repository, flow_run_id, event, &lane)
+        .await
+        .map(|_| ())
+}
+
+pub async fn persist_runtime_event_payload_with_after_commit<R>(
+    repository: &R,
+    flow_run_id: Uuid,
+    event: &RuntimeEventPayload,
+    after_commit: &RuntimeEventAfterCommitLane,
+) -> Result<Vec<RuntimeEventAfterCommitReceipt>>
+where
+    R: OrchestrationRuntimeRepository,
+{
     if !event.persist_required {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let node_run_id = event
         .payload
@@ -71,8 +87,12 @@ where
         event.source,
         event.payload.clone(),
     );
-    repository.append_runtime_event(&input).await?;
-    Ok(())
+    let record = repository.append_runtime_event(&input).await?;
+    if event.durability == RuntimeEventDurability::Ephemeral {
+        return Ok(Vec::new());
+    }
+    let envelope = RuntimeEventEnvelope::new(flow_run_id, record.sequence, event.clone());
+    Ok(vec![after_commit.deliver_after_commit(envelope).await])
 }
 
 pub async fn persist_runtime_debug_stream_events<R>(
@@ -82,6 +102,27 @@ pub async fn persist_runtime_debug_stream_events<R>(
 where
     R: OrchestrationRuntimeRepository,
 {
+    let lane = RuntimeEventAfterCommitLane::empty();
+    persist_runtime_debug_stream_events_with_after_commit(repository, events, &lane)
+        .await
+        .map(|_| ())
+}
+
+pub async fn persist_runtime_debug_stream_events_with_after_commit<R>(
+    repository: &R,
+    events: Vec<RuntimeEventEnvelope>,
+    after_commit: &RuntimeEventAfterCommitLane,
+) -> Result<Vec<RuntimeEventAfterCommitReceipt>>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    let after_commit_events = events
+        .iter()
+        .filter(|event| {
+            event.persist_required && event.durability != RuntimeEventDurability::Ephemeral
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     let mut runtime_events = Vec::new();
     let mut pending_delta: Option<PendingStreamDelta> = None;
 
@@ -153,7 +194,11 @@ where
         repository.append_runtime_events(&runtime_events).await?;
     }
 
-    Ok(())
+    let mut receipts = Vec::new();
+    for event in after_commit_events {
+        receipts.push(after_commit.deliver_after_commit(event).await);
+    }
+    Ok(receipts)
 }
 
 pub async fn project_runtime_event_stream_terminal(
@@ -208,6 +253,23 @@ pub fn spawn_runtime_debug_event_persister<R>(
 where
     R: OrchestrationRuntimeRepository + Send + Sync + 'static,
 {
+    spawn_runtime_debug_event_persister_with_after_commit(
+        repository,
+        stream,
+        run_id,
+        RuntimeEventAfterCommitLane::empty(),
+    )
+}
+
+pub fn spawn_runtime_debug_event_persister_with_after_commit<R>(
+    repository: R,
+    stream: Arc<dyn RuntimeEventStream>,
+    run_id: Uuid,
+    after_commit: RuntimeEventAfterCommitLane,
+) -> JoinHandle<()>
+where
+    R: OrchestrationRuntimeRepository + Send + Sync + 'static,
+{
     tokio::spawn(async move {
         let Ok(mut subscription) = stream.subscribe(run_id, Some(0)).await else {
             warn!(
@@ -219,7 +281,15 @@ where
 
         let mut batch = RuntimeEventPersistenceBatch::default();
         for event in subscription.replay {
-            if push_debug_event_for_persistence(&repository, &mut batch, run_id, event).await {
+            if push_debug_event_for_persistence(
+                &repository,
+                &after_commit,
+                &mut batch,
+                run_id,
+                event,
+            )
+            .await
+            {
                 return;
             }
         }
@@ -230,15 +300,31 @@ where
             tokio::select! {
                 maybe_event = subscription.live_events.recv() => {
                     let Some(event) = maybe_event else {
-                        let _ = flush_debug_event_batch(&repository, &mut batch, run_id).await;
+                        let _ = flush_debug_event_batch(
+                            &repository,
+                            &after_commit,
+                            &mut batch,
+                            run_id,
+                        ).await;
                         return;
                     };
-                    if push_debug_event_for_persistence(&repository, &mut batch, run_id, event).await {
+                    if push_debug_event_for_persistence(
+                        &repository,
+                        &after_commit,
+                        &mut batch,
+                        run_id,
+                        event,
+                    ).await {
                         return;
                     }
                 }
                 _ = flush_interval.tick(), if !batch.is_empty() => {
-                    if flush_debug_event_batch(&repository, &mut batch, run_id).await {
+                    if flush_debug_event_batch(
+                        &repository,
+                        &after_commit,
+                        &mut batch,
+                        run_id,
+                    ).await {
                         return;
                     }
                 }
@@ -274,6 +360,7 @@ pub async fn wait_for_runtime_debug_event_persister(
 
 async fn push_debug_event_for_persistence<R>(
     repository: &R,
+    after_commit: &RuntimeEventAfterCommitLane,
     batch: &mut RuntimeEventPersistenceBatch,
     run_id: Uuid,
     event: RuntimeEventEnvelope,
@@ -284,13 +371,15 @@ where
     let is_terminal = is_terminal_runtime_event(&event.event_type);
     batch.push(event);
     if is_terminal || batch.reached_byte_limit() {
-        return flush_debug_event_batch(repository, batch, run_id).await || is_terminal;
+        return flush_debug_event_batch(repository, after_commit, batch, run_id).await
+            || is_terminal;
     }
     false
 }
 
 async fn flush_debug_event_batch<R>(
     repository: &R,
+    after_commit: &RuntimeEventAfterCommitLane,
     batch: &mut RuntimeEventPersistenceBatch,
     run_id: Uuid,
 ) -> bool
@@ -303,12 +392,34 @@ where
 
     let has_terminal = batch.contains_terminal();
     let events = batch.take();
-    if let Err(error) = persist_runtime_debug_stream_events(repository, events).await {
-        warn!(
-            flow_run_id = %run_id,
-            error = %error,
-            "failed to persist runtime debug stream events"
-        );
+    match persist_runtime_debug_stream_events_with_after_commit(repository, events, after_commit)
+        .await
+    {
+        Ok(receipts) => {
+            for subscriber in receipts
+                .iter()
+                .flat_map(|receipt| &receipt.subscribers)
+                .filter(|subscriber| {
+                    subscriber.status == RuntimeEventAfterCommitDeliveryStatus::Failed
+                })
+            {
+                warn!(
+                    flow_run_id = %run_id,
+                    subscriber_id = %subscriber.subscriber_id.as_str(),
+                    contribution_id = %subscriber.contribution_id,
+                    attempts = subscriber.attempts,
+                    failure_reason = ?subscriber.failure_reason,
+                    "runtime event after-commit subscriber exhausted its delivery policy"
+                );
+            }
+        }
+        Err(error) => {
+            warn!(
+                flow_run_id = %run_id,
+                error = %error,
+                "failed to persist runtime debug stream events"
+            );
+        }
     }
 
     has_terminal

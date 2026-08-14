@@ -1082,7 +1082,7 @@ impl InMemoryOrchestrationRuntimeRepository {
         flow_run.run_mode = run_mode;
     }
 
-    pub(super) fn fail_next_runtime_event_append(&self) {
+    pub(crate) fn fail_next_runtime_event_append(&self) {
         self.inner
             .lock()
             .expect("runtime repo mutex poisoned")

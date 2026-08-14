@@ -274,9 +274,43 @@ where
     runtime_event_persister::persist_runtime_debug_stream_events(repository, events).await
 }
 
+pub async fn persist_runtime_debug_stream_events_with_after_commit<R>(
+    repository: &R,
+    events: Vec<RuntimeEventEnvelope>,
+    after_commit: &crate::ports::RuntimeEventAfterCommitLane,
+) -> Result<Vec<crate::ports::RuntimeEventAfterCommitReceipt>>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    runtime_event_persister::persist_runtime_debug_stream_events_with_after_commit(
+        repository,
+        events,
+        after_commit,
+    )
+    .await
+}
+
+pub async fn persist_runtime_event_payload_with_after_commit<R>(
+    repository: &R,
+    flow_run_id: Uuid,
+    event: &crate::ports::RuntimeEventPayload,
+    after_commit: &crate::ports::RuntimeEventAfterCommitLane,
+) -> Result<Vec<crate::ports::RuntimeEventAfterCommitReceipt>>
+where
+    R: OrchestrationRuntimeRepository,
+{
+    runtime_event_persister::persist_runtime_event_payload_with_after_commit(
+        repository,
+        flow_run_id,
+        event,
+        after_commit,
+    )
+    .await
+}
+
 pub use runtime_event_persister::{
     project_runtime_event_stream_terminal, spawn_runtime_debug_event_persister,
-    wait_for_runtime_debug_event_persister,
+    spawn_runtime_debug_event_persister_with_after_commit, wait_for_runtime_debug_event_persister,
 };
 
 #[derive(Clone)]

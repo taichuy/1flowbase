@@ -11,12 +11,13 @@ use control_plane::ports::{
     ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes,
     AppendTerminalIfMissingAndCloseOutcome, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
     EphemeralInspectionCapabilities, EphemeralValueRevealMode, RuntimeEventCloseReason,
-    RuntimeEventClosure, RuntimeEventDurability, RuntimeEventEnvelope,
-    RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventReceiver, RuntimeEventStream,
-    RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
+    RuntimeEventClosure, RuntimeEventDiagnosticLane, RuntimeEventDurability, RuntimeEventEnvelope,
+    RuntimeEventOverflowBehavior, RuntimeEventPayload, RuntimeEventReceiver,
+    RuntimeEventRequiredLane, RuntimeEventStream, RuntimeEventStreamPolicy,
+    RuntimeEventSubscription, RuntimeEventTrimPolicy,
 };
 use time::{Duration as TimeDuration, OffsetDateTime};
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
 const DEFAULT_BROADCAST_CAPACITY: usize = 1024;
@@ -333,8 +334,8 @@ fn is_required_delivery_event(event: &RuntimeEventEnvelope) -> bool {
 
 async fn send_retained_after_sequence(
     run: &LocalRunEventStream,
-    required: &mpsc::Sender<RuntimeEventEnvelope>,
-    diagnostic: &mpsc::Sender<RuntimeEventEnvelope>,
+    required: &RuntimeEventRequiredLane,
+    diagnostic: &RuntimeEventDiagnosticLane,
     last_sent_sequence: &mut i64,
 ) -> bool {
     for event in run.events_after_sequence(*last_sent_sequence, usize::MAX) {
@@ -344,10 +345,7 @@ async fn send_retained_after_sequence(
                 return false;
             }
         } else {
-            match diagnostic.try_send(event) {
-                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
-                Err(mpsc::error::TrySendError::Closed(_)) => return false,
-            }
+            let _ = diagnostic.try_send(event);
         }
         *last_sent_sequence = sequence;
     }
@@ -496,9 +494,8 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
             .last()
             .map(|event| event.sequence)
             .unwrap_or_else(|| from_sequence.unwrap_or(0));
-        let (required_sender, required_events) = mpsc::channel(self.broadcast_capacity);
-        let (diagnostic_sender, diagnostic_events) = mpsc::channel(self.broadcast_capacity);
-        let live_events = RuntimeEventReceiver::new(required_events, diagnostic_events);
+        let (required_sender, diagnostic_sender, live_events) =
+            RuntimeEventReceiver::bounded_lanes(self.broadcast_capacity);
 
         if closure.borrow().is_some() {
             drop(required_sender);
@@ -557,10 +554,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
                                         break;
                                     }
                                 } else {
-                                    match diagnostic_sender.try_send(event) {
-                                        Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
-                                        Err(mpsc::error::TrySendError::Closed(_)) => break,
-                                    }
+                                    let _ = diagnostic_sender.try_send(event);
                                 }
                                 last_sent_sequence = sequence;
                             }

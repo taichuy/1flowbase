@@ -1,8 +1,10 @@
 use std::time::Duration;
 
 use control_plane::ports::{
-    RuntimeEventCloseReason, RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource,
-    RuntimeEventStream, RuntimeEventStreamPolicy, RuntimeEventTrimPolicy,
+    RuntimeEventCloseReason, RuntimeEventDiagnosticDeliveryStatus,
+    RuntimeEventDiagnosticDropReason, RuntimeEventDurability, RuntimeEventEnvelope,
+    RuntimeEventPayload, RuntimeEventReceiver, RuntimeEventSource, RuntimeEventStream,
+    RuntimeEventStreamPolicy, RuntimeEventTrimPolicy,
 };
 use serde_json::json;
 use time::{Duration as TimeDuration, OffsetDateTime};
@@ -351,6 +353,57 @@ async fn local_runtime_event_stream_required_lane_preserves_duplicates_at_capaci
 }
 
 #[tokio::test]
+async fn required_lane_applies_backpressure_at_capacity_without_dropping() {
+    let run_id = Uuid::now_v7();
+    let (required, _diagnostic, mut receiver) = RuntimeEventReceiver::bounded_lanes(1);
+    let first = RuntimeEventEnvelope::new(run_id, 1, required_text_delta(1));
+    let second = RuntimeEventEnvelope::new(run_id, 2, required_text_delta(2));
+
+    required.send(first).await.unwrap();
+    let blocked = required.send(second);
+    tokio::pin!(blocked);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), &mut blocked)
+            .await
+            .is_err()
+    );
+
+    assert_eq!(receiver.recv().await.unwrap().sequence, 1);
+    blocked.await.unwrap();
+    assert_eq!(receiver.recv().await.unwrap().sequence, 2);
+}
+
+#[tokio::test]
+async fn diagnostic_lane_reports_full_and_closed_drops_without_waiting() {
+    let run_id = Uuid::now_v7();
+    let (_required, diagnostic, receiver) = RuntimeEventReceiver::bounded_lanes(1);
+    let delivered = diagnostic.try_send(RuntimeEventEnvelope::new(run_id, 1, heartbeat()));
+    let full = diagnostic.try_send(RuntimeEventEnvelope::new(run_id, 2, heartbeat()));
+
+    assert_eq!(
+        delivered.status,
+        RuntimeEventDiagnosticDeliveryStatus::Delivered
+    );
+    assert_eq!(
+        full.status,
+        RuntimeEventDiagnosticDeliveryStatus::Dropped(
+            RuntimeEventDiagnosticDropReason::ReceiverFull
+        )
+    );
+    assert_eq!(full.dropped_total, 1);
+
+    drop(receiver);
+    let closed = diagnostic.try_send(RuntimeEventEnvelope::new(run_id, 3, heartbeat()));
+    assert_eq!(
+        closed.status,
+        RuntimeEventDiagnosticDeliveryStatus::Dropped(
+            RuntimeEventDiagnosticDropReason::ReceiverClosed
+        )
+    );
+    assert_eq!(closed.dropped_total, 2);
+}
+
+#[tokio::test]
 async fn local_runtime_event_stream_diagnostic_saturation_does_not_block_required_lane() {
     let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
     let run_id = Uuid::now_v7();
@@ -367,6 +420,13 @@ async fn local_runtime_event_stream_diagnostic_saturation_does_not_block_require
     let required = subscription.live_events.recv().await.unwrap();
     assert_eq!(required.event_type, "text_delta");
     assert_eq!(required.sequence, 3);
+    assert_eq!(
+        subscription
+            .live_events
+            .diagnostic_delivery_snapshot()
+            .dropped_total,
+        1
+    );
 }
 
 #[tokio::test]

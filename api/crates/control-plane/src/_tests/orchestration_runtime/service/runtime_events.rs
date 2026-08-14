@@ -1,10 +1,344 @@
 use super::*;
 use crate::orchestration_runtime::debug_stream_events;
 use control_plane::ports::{
-    AppendTerminalIfMissingAndCloseOutcome, RuntimeEventClosure, RuntimeEventStreamPolicy,
-    RuntimeEventSubscription, RuntimeEventTrimPolicy,
+    AppendTerminalIfMissingAndCloseOutcome, RuntimeEventAfterCommitDelivery,
+    RuntimeEventAfterCommitDeliveryStatus, RuntimeEventAfterCommitFailureReason,
+    RuntimeEventAfterCommitIdempotencyKey, RuntimeEventAfterCommitLane,
+    RuntimeEventAfterCommitSubscriber, RuntimeEventAfterCommitSubscriberId, RuntimeEventClosure,
+    RuntimeEventDiagnosticDeliveryStatus, RuntimeEventDiagnosticDropReason, RuntimeEventReceiver,
+    RuntimeEventStreamPolicy, RuntimeEventSubscription, RuntimeEventTrimPolicy,
+    TrustedRuntimeEventAfterCommitRegistration, RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID,
+    RUNTIME_EVENT_AFTER_COMMIT_POINT_ID, RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+    RUNTIME_EVENT_LANE_OWNER_MODULE_ID,
 };
-use std::sync::{Arc, Mutex};
+use plugin_framework::extension_bus::{
+    compile_extension_graph, Cardinality, ContractDescriptor, ContractVersion,
+    ContributionDescriptor, ContributionId, ContributionMode, ContributionOrdering,
+    DeliverySemantics, ExtensionBusVersion, ExtensionPointDescriptor, ExtensionPointId,
+    ExtensionPointKind, FailureSemantics, LifecycleSemantics, ModuleActivationDeclaration,
+    ModuleDescriptor, ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy,
+    ScopeSemantics,
+};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+#[derive(Clone, Copy)]
+enum AfterCommitBehavior {
+    Success,
+    Error,
+    Timeout,
+}
+
+struct RecordingAfterCommitSubscriber {
+    behavior: AfterCommitBehavior,
+    calls: Arc<Mutex<Vec<RuntimeEventAfterCommitIdempotencyKey>>>,
+}
+
+#[async_trait::async_trait]
+impl RuntimeEventAfterCommitSubscriber for RecordingAfterCommitSubscriber {
+    async fn deliver(&self, delivery: RuntimeEventAfterCommitDelivery) -> anyhow::Result<()> {
+        self.calls
+            .lock()
+            .expect("after-commit calls lock poisoned")
+            .push(delivery.idempotency_key);
+        match self.behavior {
+            AfterCommitBehavior::Success => Ok(()),
+            AfterCommitBehavior::Error => anyhow::bail!("subscriber details stay private"),
+            AfterCommitBehavior::Timeout => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                Ok(())
+            }
+        }
+    }
+}
+
+fn after_commit_graph() -> Arc<plugin_framework::extension_bus::EffectiveExtensionGraph> {
+    let core = ModuleDescriptor {
+        bus_version: ExtensionBusVersion::V1,
+        module_id: ModuleId::new(RUNTIME_EVENT_LANE_OWNER_MODULE_ID).unwrap(),
+        module_version: ModuleVersion::new("1").unwrap(),
+        module_kind: ModuleKind::BootCore,
+        activation: ModuleActivationDeclaration::Active,
+        dependencies: BTreeSet::new(),
+        granted_permissions: BTreeSet::new(),
+        extension_points: vec![ExtensionPointDescriptor {
+            point_id: ExtensionPointId::new(RUNTIME_EVENT_AFTER_COMMIT_POINT_ID).unwrap(),
+            owner_module_id: ModuleId::new(RUNTIME_EVENT_LANE_OWNER_MODULE_ID).unwrap(),
+            point_kind: ExtensionPointKind::EventStream,
+            contract: ContractDescriptor::new(
+                RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID,
+                RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+            )
+            .unwrap(),
+            scope: ScopeSemantics::Global,
+            cardinality: Cardinality::Many,
+            ordering: OrderingSemantics::Dependency,
+            failure: FailureSemantics::IsolateContribution,
+            delivery: DeliverySemantics::AfterCommitDurable,
+            lifecycle: LifecycleSemantics::Invocation,
+            allowed_permissions: BTreeSet::new(),
+            override_policy: OverridePolicy::Sealed,
+        }],
+        contributions: Vec::new(),
+    };
+    let subscriber = ModuleDescriptor {
+        bus_version: ExtensionBusVersion::V1,
+        module_id: ModuleId::new("fixture.runtime-event-subscriber").unwrap(),
+        module_version: ModuleVersion::new("1").unwrap(),
+        module_kind: ModuleKind::TrustedHost,
+        activation: ModuleActivationDeclaration::Active,
+        dependencies: BTreeSet::new(),
+        granted_permissions: BTreeSet::new(),
+        extension_points: Vec::new(),
+        contributions: vec![ContributionDescriptor {
+            contribution_id: ContributionId::new("fixture.runtime-event.after-commit").unwrap(),
+            contributor_module_id: ModuleId::new("fixture.runtime-event-subscriber").unwrap(),
+            point_id: ExtensionPointId::new(RUNTIME_EVENT_AFTER_COMMIT_POINT_ID).unwrap(),
+            contract_version: ContractVersion::new(RUNTIME_EVENT_LANE_CONTRACT_VERSION).unwrap(),
+            required_permissions: BTreeSet::new(),
+            mode: ContributionMode::Append,
+            ordering: ContributionOrdering::default(),
+        }],
+    };
+    Arc::new(compile_extension_graph(vec![core, subscriber]).unwrap())
+}
+
+fn after_commit_lane(
+    behavior: AfterCommitBehavior,
+    calls: Arc<Mutex<Vec<RuntimeEventAfterCommitIdempotencyKey>>>,
+    timeout: Duration,
+    max_attempts: u32,
+) -> RuntimeEventAfterCommitLane {
+    RuntimeEventAfterCommitLane::from_graph(
+        after_commit_graph(),
+        vec![TrustedRuntimeEventAfterCommitRegistration {
+            contribution_id: "fixture.runtime-event.after-commit".to_string(),
+            subscriber_id: RuntimeEventAfterCommitSubscriberId::new("fixture.subscriber").unwrap(),
+            timeout,
+            max_attempts,
+            subscriber: Arc::new(RecordingAfterCommitSubscriber { behavior, calls }),
+        }],
+    )
+    .unwrap()
+}
+
+fn durable_lane_event(run_id: Uuid, sequence: i64) -> RuntimeEventEnvelope {
+    RuntimeEventEnvelope::new(
+        run_id,
+        sequence,
+        RuntimeEventPayload {
+            event_type: "node_finished".to_string(),
+            source: RuntimeEventSource::Runtime,
+            durability: RuntimeEventDurability::DurableRequired,
+            persist_required: true,
+            trace_visible: true,
+            payload: json!({ "type": "node_finished" }),
+        },
+    )
+}
+
+#[tokio::test]
+async fn one_flow_uses_required_diagnostic_and_after_commit_lanes_with_distinct_semantics() {
+    let run_id = Uuid::now_v7();
+    let (required, diagnostic, mut receiver) = RuntimeEventReceiver::bounded_lanes(1);
+    required.send(durable_lane_event(run_id, 1)).await.unwrap();
+    let blocked_required = required.send(durable_lane_event(run_id, 2));
+    tokio::pin!(blocked_required);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), &mut blocked_required)
+            .await
+            .is_err()
+    );
+
+    assert_eq!(receiver.recv().await.unwrap().sequence, 1);
+    blocked_required.await.unwrap();
+    assert_eq!(receiver.recv().await.unwrap().sequence, 2);
+
+    assert_eq!(
+        diagnostic
+            .try_send(RuntimeEventEnvelope::new(
+                run_id,
+                3,
+                debug_stream_events::heartbeat()
+            ))
+            .status,
+        RuntimeEventDiagnosticDeliveryStatus::Delivered
+    );
+    let dropped = diagnostic.try_send(RuntimeEventEnvelope::new(
+        run_id,
+        4,
+        debug_stream_events::heartbeat(),
+    ));
+    assert_eq!(
+        dropped.status,
+        RuntimeEventDiagnosticDeliveryStatus::Dropped(
+            RuntimeEventDiagnosticDropReason::ReceiverFull
+        )
+    );
+
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let lane = after_commit_lane(
+        AfterCommitBehavior::Success,
+        Arc::clone(&calls),
+        Duration::from_secs(1),
+        1,
+    );
+    let receipts = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![durable_lane_event(run_id, 5)],
+        &lane,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        receipts[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::Delivered
+    );
+    assert_eq!(calls.lock().unwrap().len(), 1);
+    assert_eq!(
+        repository
+            .list_runtime_events(run_id, 0)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn after_commit_runs_only_after_durable_append_and_suppresses_duplicate_keys() {
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run_id = Uuid::now_v7();
+    let event = durable_lane_event(run_id, 7);
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let lane = after_commit_lane(
+        AfterCommitBehavior::Success,
+        Arc::clone(&calls),
+        Duration::from_secs(1),
+        1,
+    );
+
+    repository.fail_next_runtime_event_append();
+    assert!(control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event.clone()],
+        &lane,
+    )
+    .await
+    .is_err());
+    assert!(calls.lock().unwrap().is_empty());
+
+    let first = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event.clone()],
+        &lane,
+    )
+    .await
+    .unwrap();
+    let duplicate = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event],
+        &lane,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        first[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::Delivered
+    );
+    assert_eq!(
+        duplicate[0].subscribers[0].status,
+        RuntimeEventAfterCommitDeliveryStatus::DuplicateSuppressed
+    );
+    assert_eq!(calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn after_commit_timeout_and_error_retries_are_finite_and_do_not_rollback_append() {
+    for (behavior, expected_reason) in [
+        (
+            AfterCommitBehavior::Timeout,
+            RuntimeEventAfterCommitFailureReason::Timeout,
+        ),
+        (
+            AfterCommitBehavior::Error,
+            RuntimeEventAfterCommitFailureReason::SubscriberError,
+        ),
+    ] {
+        let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+        let run_id = Uuid::now_v7();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let lane = after_commit_lane(behavior, Arc::clone(&calls), Duration::from_millis(1), 2);
+
+        let receipts = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+            &repository,
+            vec![durable_lane_event(run_id, 1)],
+            &lane,
+        )
+        .await
+        .unwrap();
+        let receipt = &receipts[0].subscribers[0];
+
+        assert_eq!(
+            receipt.status,
+            RuntimeEventAfterCommitDeliveryStatus::Failed
+        );
+        assert_eq!(receipt.attempts, 2);
+        assert_eq!(receipt.failure_reason, Some(expected_reason));
+        assert_eq!(calls.lock().unwrap().len(), 2);
+        assert_eq!(
+            repository
+                .list_runtime_events(run_id, 0)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn ephemeral_persisted_history_does_not_enter_after_commit_lane() {
+    let repository = crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run_id = Uuid::now_v7();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let lane = after_commit_lane(
+        AfterCommitBehavior::Success,
+        Arc::clone(&calls),
+        Duration::from_secs(1),
+        1,
+    );
+    let event = RuntimeEventEnvelope::new(
+        run_id,
+        1,
+        debug_stream_events::text_delta("node-llm", Uuid::now_v7(), "history".into()),
+    );
+
+    let receipts = control_plane::orchestration_runtime::persist_runtime_debug_stream_events_with_after_commit(
+        &repository,
+        vec![event],
+        &lane,
+    )
+    .await
+    .unwrap();
+
+    assert!(receipts.is_empty());
+    assert!(calls.lock().unwrap().is_empty());
+    assert_eq!(
+        repository
+            .list_runtime_events(run_id, 0)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
 
 #[test]
 fn streaming_deltas_request_history_without_requiring_ephemeral_delivery() {
