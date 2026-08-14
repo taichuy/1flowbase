@@ -120,7 +120,7 @@ pub fn compile_extension_graph(
 ) -> Result<EffectiveExtensionGraph, CompilationError> {
     let modules = index_modules(modules)?;
     let module_order = compile_module_order(&modules)?;
-    let module_provenance = module_order
+    let module_provenances = module_order
         .iter()
         .map(|module_id| module_provenance(&modules[module_id]))
         .collect::<Vec<_>>();
@@ -141,7 +141,7 @@ pub fn compile_extension_graph(
     let fingerprint = fingerprint(
         ExtensionBusVersion::V1,
         &module_order,
-        &module_provenance,
+        &module_provenances,
         &module_receipts,
         &effective_points,
         &contribution_receipts,
@@ -150,7 +150,7 @@ pub fn compile_extension_graph(
     Ok(EffectiveExtensionGraph::new(
         ExtensionBusVersion::V1,
         module_order,
-        module_provenance,
+        module_provenances,
         module_receipts,
         effective_points,
         contribution_receipts,

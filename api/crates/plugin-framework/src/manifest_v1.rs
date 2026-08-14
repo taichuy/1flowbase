@@ -735,6 +735,12 @@ fn validate_frontend_block_contributions(
             }
             (None, None, None) => {}
         }
+        validate_allowed(
+            &contribution.runtime,
+            "block_contributions[].runtime",
+            FRONTEND_BLOCK_ALLOWED_RUNTIMES,
+        )?;
+        validate_isolated_frontend_block_runtime(contribution)?;
         let mut contribution_component_codes = HashSet::new();
         for code_module in &contribution.code_modules {
             validate_non_empty(
@@ -775,11 +781,6 @@ fn validate_frontend_block_contributions(
                 }
             }
         }
-        validate_allowed(
-            &contribution.runtime,
-            "block_contributions[].runtime",
-            FRONTEND_BLOCK_ALLOWED_RUNTIMES,
-        )?;
         validate_frontend_block_permissions(&contribution.permissions)?;
         for primitive in &contribution.context_contract.primitives {
             validate_allowed(
@@ -802,6 +803,41 @@ fn validate_frontend_block_contributions(
         }
     }
 
+    Ok(())
+}
+
+fn validate_isolated_frontend_block_runtime(
+    contribution: &FrontendBlockContributionManifest,
+) -> FrameworkResult<()> {
+    if contribution.runtime != "isolated_iframe" {
+        return Ok(());
+    }
+    if contribution.code_modules.len() != 1 {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "isolated_iframe block contributions require exactly one entry code module",
+        ));
+    }
+    let entry_module = &contribution.code_modules[0];
+    if entry_module.binding != FrontendModuleBindingManifest::Fetched {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "isolated_iframe entry code module must use fetched binding",
+        ));
+    }
+    if entry_module.source != contribution.entry {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "isolated_iframe entry must match its fetched code module source",
+        ));
+    }
+    let browser_module_count = entry_module
+        .assets
+        .iter()
+        .filter(|asset| asset.role == FrontendModuleAssetRoleManifest::BrowserModule)
+        .count();
+    if browser_module_count != 1 {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "isolated_iframe entry code module requires exactly one browser_module asset",
+        ));
+    }
     Ok(())
 }
 

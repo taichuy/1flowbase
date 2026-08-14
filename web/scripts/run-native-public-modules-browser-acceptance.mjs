@@ -203,6 +203,24 @@ async function verifyFixture(browserInstance, fixture) {
     });
     assertNativeEvidence(fixture.name, nativeEvidence);
 
+    const isolatedEvidence = await waitForIsolatedReady(page, 0);
+    assertIsolatedEvidence(fixture.name, isolatedEvidence);
+    await page.getByRole('button', { name: 'hidden page' }).click();
+    await waitForIsolatedIframeCount(page, 0);
+    const isolatedHiddenCleanup = await assertIsolatedCountersStopped(
+      page,
+      `${fixture.name} hidden`
+    );
+    await page.getByRole('button', { name: 'hidden page' }).click();
+    const isolatedRestoredEvidence = await waitForIsolatedReady(
+      page,
+      isolatedHiddenCleanup.after.messages
+    );
+    assertIsolatedEvidence(
+      `${fixture.name} restored`,
+      isolatedRestoredEvidence
+    );
+
     const stats = page.locator('[data-testid=native-frontstage-stats]');
     await page.waitForFunction(async () => {
       const element = document.querySelector(
@@ -243,8 +261,17 @@ async function verifyFixture(browserInstance, fixture) {
       path: resolve(output, `native-${fixture.name}.png`),
       fullPage: true
     });
+    const isolatedMessagesBeforeExit = Number(
+      await stats.getAttribute('data-isolated-messages')
+    );
     await page.getByRole('button', { name: 'exit page' }).click();
     await waitForPortalCleanup(page);
+    await waitForIsolatedIframeCount(page, 0);
+    const isolatedExitCleanup = await assertIsolatedCountersStopped(
+      page,
+      `${fixture.name} exit`,
+      isolatedMessagesBeforeExit
+    );
     const nativeCleanup = await readCleanup(page);
     assertCleanup(fixture.name, nativeCleanup);
     assertNetworkAndConsole(
@@ -283,6 +310,10 @@ async function verifyFixture(browserInstance, fixture) {
     return {
       fixture: fixture.name,
       nativeEvidence,
+      isolatedEvidence,
+      isolatedHiddenCleanup,
+      isolatedRestoredEvidence,
+      isolatedExitCleanup,
       nativeCleanup,
       authCleanup,
       authEditorDebugSurface: false,
@@ -297,6 +328,103 @@ async function verifyFixture(browserInstance, fixture) {
   } finally {
     await context.close();
   }
+}
+
+async function waitForIsolatedReady(page, minimumMessages) {
+  await page.waitForFunction(
+    ({ minimum }) => {
+      const stats = document.querySelector(
+        '[data-testid=native-frontstage-stats]'
+      );
+      const root = document.querySelector(
+        '[data-testid=frontstage-isolated-block-root-isolated]'
+      );
+      const messages = Number(stats?.getAttribute('data-isolated-messages'));
+      return (
+        root?.querySelectorAll('iframe').length === 1 &&
+        stats?.getAttribute('data-isolated-ready-signal') === 'settled' &&
+        messages > minimum
+      );
+    },
+    { minimum: minimumMessages }
+  );
+  return readIsolatedEvidence(page);
+}
+
+async function readIsolatedEvidence(page) {
+  return page.evaluate(() => {
+    const stats = document.querySelector(
+      '[data-testid=native-frontstage-stats]'
+    );
+    const root = document.querySelector(
+      '[data-testid=frontstage-isolated-block-root-isolated]'
+    );
+    const iframe = root?.querySelector('iframe');
+    return {
+      iframeCount: root?.querySelectorAll('iframe').length ?? 0,
+      sandbox: iframe?.getAttribute('sandbox') ?? null,
+      allowsSameOrigin: iframe?.sandbox.contains('allow-same-origin') ?? null,
+      readySignal: stats?.getAttribute('data-isolated-ready-signal') ?? null,
+      messages: Number(stats?.getAttribute('data-isolated-messages')),
+      lastTick: Number(stats?.getAttribute('data-isolated-last-tick'))
+    };
+  });
+}
+
+function assertIsolatedEvidence(name, evidence) {
+  if (
+    evidence.iframeCount !== 1 ||
+    evidence.sandbox !== 'allow-scripts' ||
+    evidence.allowsSameOrigin !== false ||
+    evidence.readySignal !== 'settled' ||
+    !Number.isFinite(evidence.messages) ||
+    evidence.messages < 1 ||
+    !Number.isFinite(evidence.lastTick) ||
+    evidence.lastTick < 1
+  ) {
+    throw new Error(
+      `${name} isolated iframe evidence failed: ${JSON.stringify(evidence)}`
+    );
+  }
+}
+
+async function waitForIsolatedIframeCount(page, expectedCount) {
+  await page.waitForFunction(
+    ({ expected }) =>
+      document.querySelectorAll(
+        '[data-testid=frontstage-isolated-block-root-isolated] iframe'
+      ).length === expected,
+    { expected: expectedCount }
+  );
+}
+
+async function assertIsolatedCountersStopped(page, name, minimumMessages = 0) {
+  await page.waitForTimeout(100);
+  const before = await readIsolatedCounters(page);
+  await page.waitForTimeout(150);
+  const after = await readIsolatedCounters(page);
+  if (
+    before.messages < minimumMessages ||
+    after.messages !== before.messages ||
+    after.lastTick !== before.lastTick
+  ) {
+    throw new Error(
+      `${name} isolated cleanup failed: ${JSON.stringify({ before, after })}`
+    );
+  }
+  return { iframeCount: 0, before, after };
+}
+
+async function readIsolatedCounters(page) {
+  return page.evaluate(() => {
+    const stats = document.querySelector(
+      '[data-testid=native-frontstage-stats]'
+    );
+    return {
+      messages: Number(stats?.getAttribute('data-isolated-messages')),
+      lastTick: Number(stats?.getAttribute('data-isolated-last-tick'))
+    };
+  });
 }
 
 async function assertNoEditorDebugSurface(page, name) {

@@ -517,8 +517,25 @@ block_contributions:
 
 #[test]
 fn d5_p3_accepts_only_registered_native_and_isolated_frontend_runtimes() {
-    let isolated = parse_plugin_manifest(
-        r#"
+    let isolated = parse_plugin_manifest(VALID_ISOLATED_FRONTEND_MANIFEST).unwrap();
+
+    assert_eq!(isolated.block_contributions[0].runtime, "isolated_iframe");
+}
+
+const VALID_ISOLATED_CODE_MODULES: &str = r#"    code_modules:
+      - source: "@acme/isolated-chart"
+        version: "1.0.0"
+        exports: [default]
+        binding: fetched
+        assets:
+          - path: "assets/isolated-chart.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        type_declarations: "declare const block: unknown; export default block;"
+"#;
+
+const VALID_ISOLATED_FRONTEND_MANIFEST: &str = r#"
 manifest_version: 1
 plugin_id: isolated_frontend_block@0.1.0
 version: 0.1.0
@@ -550,6 +567,17 @@ block_contributions:
     title: Isolated Chart
     runtime: isolated_iframe
     entry: "@acme/isolated-chart"
+    code_modules:
+      - source: "@acme/isolated-chart"
+        version: "1.0.0"
+        exports: [default]
+        binding: fetched
+        assets:
+          - path: "assets/isolated-chart.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        type_declarations: "declare const block: unknown; export default block;"
     context_contract:
       primitives: [data_record]
       input_schema: { type: object }
@@ -558,11 +586,84 @@ block_contributions:
       storage: none
       secrets: none
     ui_capabilities: [responsive]
-"#,
-    )
-    .unwrap();
+"#;
 
-    assert_eq!(isolated.block_contributions[0].runtime, "isolated_iframe");
+#[test]
+fn d5_p3_isolated_runtime_requires_its_exact_fetched_entry_module() {
+    let missing_module = VALID_ISOLATED_FRONTEND_MANIFEST.replace(VALID_ISOLATED_CODE_MODULES, "");
+    assert!(parse_plugin_manifest(&missing_module)
+        .unwrap_err()
+        .to_string()
+        .contains("isolated_iframe block contributions require exactly one entry code module"));
+
+    let multiple_modules = VALID_ISOLATED_FRONTEND_MANIFEST.replace(
+        "        type_declarations: \"declare const block: unknown; export default block;\"\n",
+        r#"        type_declarations: "declare const block: unknown; export default block;"
+      - source: "@acme/isolated-chart-support"
+        version: "1.0.0"
+        exports: [default]
+        binding: fetched
+        assets:
+          - path: "assets/isolated-chart-support.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        type_declarations: "declare const support: unknown; export default support;"
+"#,
+    );
+    assert!(parse_plugin_manifest(&multiple_modules)
+        .unwrap_err()
+        .to_string()
+        .contains("isolated_iframe block contributions require exactly one entry code module"));
+
+    let host_bound = VALID_ISOLATED_FRONTEND_MANIFEST
+        .replace("@acme/isolated-chart", "react")
+        .replace("binding: fetched", "binding: host");
+    assert!(parse_plugin_manifest(&host_bound)
+        .unwrap_err()
+        .to_string()
+        .contains("isolated_iframe entry code module must use fetched binding"));
+
+    let mismatched_entry = VALID_ISOLATED_FRONTEND_MANIFEST.replace(
+        "entry: \"@acme/isolated-chart\"",
+        "entry: \"@acme/other-chart\"",
+    );
+    assert!(parse_plugin_manifest(&mismatched_entry)
+        .unwrap_err()
+        .to_string()
+        .contains("isolated_iframe entry must match its fetched code module source"));
+}
+
+#[test]
+fn d5_p3_isolated_runtime_requires_one_verified_browser_module_asset() {
+    let missing_asset = VALID_ISOLATED_FRONTEND_MANIFEST.replace(
+        r#"        assets:
+          - path: "assets/isolated-chart.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#,
+        "        assets: []\n",
+    );
+    assert!(parse_plugin_manifest(&missing_asset)
+        .unwrap_err()
+        .to_string()
+        .contains("isolated_iframe entry code module requires exactly one browser_module asset"));
+
+    let multiple_assets = VALID_ISOLATED_FRONTEND_MANIFEST.replace(
+        r#"            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#,
+        r#"            sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          - path: "assets/isolated-chart-copy.js"
+            role: browser_module
+            media_type: "text/javascript; charset=utf-8"
+            sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+"#,
+    );
+    assert!(parse_plugin_manifest(&multiple_assets)
+        .unwrap_err()
+        .to_string()
+        .contains("isolated_iframe entry code module requires exactly one browser_module asset"));
 }
 
 #[test]
