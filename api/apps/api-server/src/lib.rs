@@ -287,14 +287,20 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .with_runtime_table_name_policy(config.runtime_table_name_policy.clone());
     frontstage_executable_upgrade::require_cutover(&store).await?;
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
-    let builtin_host_extensions =
-        host_extensions::builtin::load_builtin_host_extension_manifests(api_workspace_root()?)?;
+    let extension_assembly = extension_bus::assemble_extension_graph_input(
+        api_workspace_root()?,
+        extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )?;
+    let extension_graph = extension_assembly.compile_graph()?;
+    let builtin_host_extensions = extension_assembly.into_host_extension_manifests();
     let mut host_extension_registry =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &builtin_host_extensions,
         )?;
     let infrastructure = Arc::new(build_local_host_infrastructure_from_host_extensions(
         &host_extension_registry,
+        &extension_graph,
     )?);
     let session_store = infrastructure
         .session_store()

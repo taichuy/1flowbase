@@ -38,12 +38,17 @@ fn local_infra_host_default_provider_source_matches_builtin_extension_id() {
     );
 }
 
-#[test]
-fn local_infra_host_can_be_built_from_builtin_host_extension_contributions() {
+#[tokio::test]
+async fn compiled_cache_winner_activates_factory_and_publishes_trait_service() {
     let workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let manifests =
-        crate::host_extensions::builtin::load_builtin_host_extension_manifests(workspace_root)
-            .unwrap();
+    let assembly = crate::extension_bus::assemble_extension_graph_input(
+        workspace_root,
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap();
+    let graph = assembly.compile_graph().unwrap();
+    let manifests = assembly.into_host_extension_manifests();
     let host_extensions =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
             &manifests,
@@ -52,6 +57,7 @@ fn local_infra_host_can_be_built_from_builtin_host_extension_contributions() {
     let registry =
         crate::host_infrastructure::build_local_host_infrastructure_from_host_extensions(
             &host_extensions,
+            &graph,
         )
         .unwrap();
 
@@ -62,6 +68,62 @@ fn local_infra_host_can_be_built_from_builtin_host_extension_contributions() {
     );
     assert!(registry.session_store().is_some());
     assert!(registry.runtime_event_stream().is_some());
+    let cache: std::sync::Arc<dyn crate::host_infrastructure::CacheStore> = registry.cache_store();
+    cache
+        .set_json(
+            "extension-bus-factory",
+            serde_json::json!({ "activated": true }),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        cache.get_json("extension-bus-factory").await.unwrap(),
+        Some(serde_json::json!({ "activated": true }))
+    );
+}
+
+#[test]
+fn missing_cache_factory_fails_before_registry_is_returned() {
+    let workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let assembly = crate::extension_bus::assemble_extension_graph_input(
+        workspace_root,
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap();
+    let graph = assembly.compile_graph().unwrap();
+    let manifests = assembly.into_host_extension_manifests();
+    let host_extensions =
+        control_plane::host_extension_boot::register_builtin_host_extension_contributions(
+            &manifests,
+        )
+        .unwrap();
+    let factories = crate::host_infrastructure::CacheStoreActivationFactoryRegistry::default();
+
+    let error = crate::host_infrastructure::build_local_host_infrastructure_from_host_extensions_with_cache_factories(
+        &host_extensions,
+        &graph,
+        &factories,
+    )
+    .err()
+    .unwrap();
+
+    assert!(error
+        .to_string()
+        .contains("no cache-store activation factory registered for winner"));
+}
+
+#[test]
+fn host_infrastructure_consumer_does_not_branch_on_local_or_moka_types() {
+    let source = include_str!("../../host_infrastructure/mod.rs");
+    let consumer = source
+        .split_once("impl HostInfrastructureRegistry")
+        .unwrap()
+        .1;
+
+    assert!(!consumer.contains("MokaCacheStore"));
+    assert!(!consumer.contains("\"local\""));
 }
 
 #[test]

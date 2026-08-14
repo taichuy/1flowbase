@@ -7,9 +7,12 @@ use std::{
 use anyhow::{bail, Context, Result};
 use plugin_framework::{
     extension_bus::{
-        compile_extension_graph, parse_deployment_plugin_set, DeploymentPluginSet,
-        EffectiveExtensionGraph, ExtensionBusVersion, ModuleActivationDeclaration,
-        ModuleDescriptor, ModuleDisableReason, ModuleId, ModuleKind, ModuleVersion,
+        compile_extension_graph, parse_deployment_plugin_set, Cardinality, ContractDescriptor,
+        ContributionDescriptor, ContributionId, ContributionMode, ContributionOrdering,
+        DeliverySemantics, DeploymentPluginSet, EffectiveExtensionGraph, ExtensionBusVersion,
+        ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind, FailureSemantics,
+        LifecycleSemantics, ModuleActivationDeclaration, ModuleDescriptor, ModuleDisableReason,
+        ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy, ScopeSemantics,
     },
     parse_host_extension_contribution_manifest, parse_plugin_manifest,
     HostExtensionContributionManifest, PluginConsumptionKind, PluginManifestV1,
@@ -17,6 +20,9 @@ use plugin_framework::{
 
 pub const DEFAULT_PLUGIN_SET_PATH: &str = "plugins/sets/default.yaml";
 pub const BOOT_CORE_MODULE_ID: &str = "1flowbase.boot-core";
+pub const CACHE_STORE_EXTENSION_POINT_ID: &str = "1flowbase.boot.cache-store";
+pub const CACHE_STORE_CONTRACT_ID: &str = "cache-store";
+pub const CACHE_STORE_CONTRACT_VERSION: &str = "1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleActivationFact {
@@ -101,9 +107,9 @@ pub fn assemble_extension_graph_input(
         )?;
         let contribution = load_host_contribution(api_workspace_root, module_id, &manifest)?;
         let activation = take_activation(&mut activations, module_id)?;
-        module_descriptors.push(derive_module_descriptor(
+        module_descriptors.push(derive_host_module_descriptor(
             &manifest,
-            ModuleKind::TrustedHost,
+            &contribution,
             activation,
         )?);
         host_extension_manifests.push((manifest, contribution));
@@ -182,9 +188,67 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
         activation: ModuleActivationDeclaration::Active,
         dependencies: BTreeSet::new(),
         granted_permissions: BTreeSet::new(),
-        extension_points: Vec::new(),
+        extension_points: vec![cache_store_extension_point()?],
         contributions: Vec::new(),
     })
+}
+
+fn cache_store_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(CACHE_STORE_EXTENSION_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Slot,
+        contract: ContractDescriptor::new(CACHE_STORE_CONTRACT_ID, CACHE_STORE_CONTRACT_VERSION)?,
+        scope: ScopeSemantics::System,
+        cardinality: Cardinality::ExactlyOne,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::BootSnapshot,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
+    })
+}
+
+fn derive_host_module_descriptor(
+    manifest: &PluginManifestV1,
+    contribution: &HostExtensionContributionManifest,
+    activation: ModuleActivationDeclaration,
+) -> Result<ModuleDescriptor> {
+    let mut descriptor = derive_module_descriptor(manifest, ModuleKind::TrustedHost, activation)?;
+    descriptor.contributions = contribution
+        .infrastructure_providers
+        .iter()
+        .filter(|provider| provider.contract == CACHE_STORE_CONTRACT_ID)
+        .map(|provider| {
+            Ok(ContributionDescriptor {
+                contribution_id: infrastructure_provider_contribution_id(
+                    &contribution.extension_id,
+                    &provider.contract,
+                    &provider.provider_code,
+                )?,
+                contributor_module_id: ModuleId::new(contribution.extension_id.as_str())?,
+                point_id: ExtensionPointId::new(CACHE_STORE_EXTENSION_POINT_ID)?,
+                contract_version: plugin_framework::extension_bus::ContractVersion::new(
+                    CACHE_STORE_CONTRACT_VERSION,
+                )?,
+                required_permissions: BTreeSet::new(),
+                mode: ContributionMode::Append,
+                ordering: ContributionOrdering::default(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(descriptor)
+}
+
+pub(crate) fn infrastructure_provider_contribution_id(
+    extension_id: &str,
+    contract: &str,
+    provider_code: &str,
+) -> Result<ContributionId> {
+    Ok(ContributionId::new(format!(
+        "{extension_id}.infrastructure.{contract}.{provider_code}"
+    ))?)
 }
 
 fn derive_module_descriptor(

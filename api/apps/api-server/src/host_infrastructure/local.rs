@@ -2,21 +2,24 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
-use plugin_framework::HostExtensionRegistry;
+use plugin_framework::{extension_bus::EffectiveExtensionGraph, HostExtensionRegistry};
 use storage_ephemeral::{
     MemoryDistributedLock, MemoryEventBus, MemoryProviderTransportStore, MemoryTaskQueue,
-    MokaCacheStore, MokaRateLimitStore, MokaSessionStore,
+    MokaRateLimitStore, MokaSessionStore,
 };
 use time::Duration;
 
+use crate::extension_bus::CACHE_STORE_CONTRACT_ID;
+
 use super::{
-    CacheStore, DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
+    cache_store_activation::{
+        build_local_cache_store, builtin_cache_store_activation_factories,
+        CacheStoreActivationFactoryRegistry, LOCAL_PROVIDER_CODE, LOCAL_PROVIDER_SOURCE,
+    },
+    DistributedLock, EventBus, HostInfrastructureRegistry, LocalRuntimeEventStream,
     ProviderTransportStore, RateLimitStore, RuntimeEventStream, TaskQueue, SESSION_STORE_NAMESPACE,
 };
 
-const LOCAL_PROVIDER_CODE: &str = "local";
-const LOCAL_PROVIDER_SOURCE: &str = "official.local-infra-host";
-const CACHE_STORE_NAMESPACE: &str = "flowbase:cache";
 const RATE_LIMIT_STORE_NAMESPACE: &str = "flowbase:rate-limit";
 const LOCK_NAMESPACE: &str = "flowbase:lock";
 const TASK_QUEUE_NAMESPACE: &str = "flowbase:task";
@@ -45,15 +48,33 @@ pub fn build_local_host_infrastructure() -> HostInfrastructureRegistry {
             .expect("local provider registration should be unique");
     }
 
-    install_local_infrastructure_services(&mut registry);
+    install_compatibility_local_infrastructure_services(&mut registry);
     registry
 }
 
 pub fn build_local_host_infrastructure_from_host_extensions(
     host_extensions: &HostExtensionRegistry,
+    graph: &EffectiveExtensionGraph,
 ) -> Result<HostInfrastructureRegistry> {
+    let factories = builtin_cache_store_activation_factories()?;
+    build_local_host_infrastructure_from_host_extensions_with_cache_factories(
+        host_extensions,
+        graph,
+        &factories,
+    )
+}
+
+pub(crate) fn build_local_host_infrastructure_from_host_extensions_with_cache_factories(
+    host_extensions: &HostExtensionRegistry,
+    graph: &EffectiveExtensionGraph,
+    cache_store_factories: &CacheStoreActivationFactoryRegistry,
+) -> Result<HostInfrastructureRegistry> {
+    let activated_cache_store = cache_store_factories.activate(graph, host_extensions)?;
     let mut registry = HostInfrastructureRegistry::default();
     for contract in LOCAL_INFRASTRUCTURE_CONTRACTS {
+        if *contract == CACHE_STORE_CONTRACT_ID {
+            continue;
+        }
         let provider = host_extensions
             .infrastructure_provider(contract, LOCAL_PROVIDER_CODE)
             .ok_or_else(|| {
@@ -70,19 +91,26 @@ pub fn build_local_host_infrastructure_from_host_extensions(
         )?;
     }
 
-    install_local_infrastructure_services(&mut registry);
+    install_legacy_local_infrastructure_services(&mut registry);
+    registry.register_default_provider(
+        activated_cache_store.contract,
+        activated_cache_store.provider_code,
+        activated_cache_store.source,
+    )?;
+    registry.set_cache_store(activated_cache_store.service);
     Ok(registry)
 }
 
-fn install_local_infrastructure_services(registry: &mut HostInfrastructureRegistry) {
+fn install_compatibility_local_infrastructure_services(registry: &mut HostInfrastructureRegistry) {
+    install_legacy_local_infrastructure_services(registry);
+    registry.set_cache_store(build_local_cache_store());
+}
+
+fn install_legacy_local_infrastructure_services(registry: &mut HostInfrastructureRegistry) {
     registry.set_session_store(Arc::new(MokaSessionStore::new(
         SESSION_STORE_NAMESPACE,
         LOCAL_CACHE_MAX_CAPACITY,
     )) as Arc<dyn SessionStore>);
-    registry.set_cache_store(Arc::new(MokaCacheStore::new(
-        CACHE_STORE_NAMESPACE,
-        LOCAL_CACHE_MAX_CAPACITY,
-    )) as Arc<dyn CacheStore>);
     registry.set_provider_transport_store(Arc::new(MemoryProviderTransportStore::new(
         PROVIDER_TRANSPORT_RETENTION,
         PROVIDER_TRANSPORT_MAX_PAYLOAD_BYTES,

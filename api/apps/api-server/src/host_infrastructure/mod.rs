@@ -1,3 +1,4 @@
+mod cache_store_activation;
 mod contracts;
 mod local;
 mod local_runtime_event_stream;
@@ -7,10 +8,12 @@ use std::{collections::BTreeMap, sync::Arc};
 use anyhow::{anyhow, Result};
 use control_plane::ports::SessionStore;
 
+pub(crate) use cache_store_activation::CacheStoreActivationFactoryRegistry;
 pub use contracts::{
     CacheStore, ClaimedTask, DistributedLock, EventBus, ProviderTransportStore, RateLimitDecision,
     RateLimitStore, RuntimeEventStream, TaskQueue,
 };
+pub(crate) use local::build_local_host_infrastructure_from_host_extensions_with_cache_factories;
 pub use local::{
     build_local_host_infrastructure, build_local_host_infrastructure_from_host_extensions,
 };

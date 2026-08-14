@@ -4,8 +4,9 @@ use api_server::extension_bus::{
     assemble_extension_graph_input, ModuleActivationFact, DEFAULT_PLUGIN_SET_PATH,
 };
 use plugin_framework::extension_bus::{
-    parse_deployment_plugin_set, ModuleDisableReason, ModuleInactivityReason,
-    ModuleResolutionStatus,
+    parse_deployment_plugin_set, Cardinality, CompilationError, DeliverySemantics,
+    ExtensionPointKind, FailureSemantics, LifecycleSemantics, ModuleDisableReason,
+    ModuleInactivityReason, ModuleResolutionStatus, ScopeSemantics,
 };
 
 #[test]
@@ -22,13 +23,56 @@ fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
         .module_descriptors()
         .iter()
         .any(|module| { module.module_id.as_str() == "official.runtime-orchestration-host" }));
+
+    let graph = assembly.compile_graph().unwrap();
+    let cache_store = graph
+        .points()
+        .iter()
+        .find(|point| {
+            point.descriptor().point_id.as_str()
+                == api_server::extension_bus::CACHE_STORE_EXTENSION_POINT_ID
+        })
+        .unwrap();
+    assert_eq!(
+        cache_store.descriptor().cardinality,
+        Cardinality::ExactlyOne
+    );
+    assert_eq!(
+        cache_store.descriptor().point_kind,
+        ExtensionPointKind::Slot
+    );
+    assert_eq!(cache_store.descriptor().scope, ScopeSemantics::System);
+    assert_eq!(
+        cache_store.descriptor().failure,
+        FailureSemantics::FailClosed
+    );
+    assert_eq!(
+        cache_store.descriptor().contract.contract_id.as_str(),
+        api_server::extension_bus::CACHE_STORE_CONTRACT_ID
+    );
+    assert_eq!(
+        cache_store.descriptor().delivery,
+        DeliverySemantics::Synchronous
+    );
+    assert_eq!(
+        cache_store.descriptor().lifecycle,
+        LifecycleSemantics::BootSnapshot
+    );
+    assert_eq!(cache_store.contributions().len(), 1);
+    assert_eq!(
+        cache_store.contributions()[0]
+            .descriptor()
+            .contribution_id
+            .as_str(),
+        "official.local-infra-host.infrastructure.cache-store.local"
+    );
 }
 
 // Root #1688 AC-001/AC-002: set declaration order is not graph resolution order.
 #[test]
 fn plugin_set_permutation_compiles_the_same_graph() {
     let fixture = FixtureWorkspace::new("permutation");
-    fixture.add_host_extension("fixture.alpha", "fixture.alpha");
+    fixture.add_cache_host_extension("fixture.alpha", "fixture.alpha");
     fixture.add_host_extension("fixture.beta", "fixture.beta");
     fixture.write_set(
         "forward.yaml",
@@ -55,6 +99,47 @@ fn plugin_set_permutation_compiles_the_same_graph() {
     assert_eq!(forward, reverse);
 }
 
+#[test]
+fn cache_store_slot_fails_closed_without_or_with_disabled_winner() {
+    let missing = FixtureWorkspace::new("missing-cache-winner");
+    missing.add_host_extension("fixture.host", "fixture.host");
+    missing.write_set("default.yaml", "default", &["fixture.host"]);
+    let missing_error =
+        assemble_extension_graph_input(missing.root(), "plugins/sets/default.yaml", vec![])
+            .unwrap()
+            .compile_graph()
+            .unwrap_err();
+    assert!(matches!(
+        missing_error.downcast_ref::<CompilationError>(),
+        Some(CompilationError::CardinalityConflict {
+            cardinality: Cardinality::ExactlyOne,
+            actual: 0,
+            ..
+        })
+    ));
+
+    let disabled = assemble_extension_graph_input(
+        api_workspace_root(),
+        DEFAULT_PLUGIN_SET_PATH,
+        vec![ModuleActivationFact::disabled(
+            "official.local-infra-host",
+            ModuleDisableReason::DesiredState,
+        )
+        .unwrap()],
+    )
+    .unwrap()
+    .compile_graph()
+    .unwrap_err();
+    assert!(matches!(
+        disabled.downcast_ref::<CompilationError>(),
+        Some(CompilationError::CardinalityConflict {
+            cardinality: Cardinality::ExactlyOne,
+            actual: 0,
+            ..
+        })
+    ));
+}
+
 // Root #1688 AC-003: all set/package identity failures stop before a graph can be published.
 #[test]
 fn missing_package_and_identity_mismatch_fail_input_assembly() {
@@ -69,6 +154,7 @@ fn missing_package_and_identity_mismatch_fail_input_assembly() {
         "fixture.listed",
         "fixture.listed",
         "fixture.other",
+        false,
     );
     mismatch.write_set("default.yaml", "default", &["fixture.listed"]);
     let error =
@@ -160,7 +246,11 @@ impl FixtureWorkspace {
     }
 
     fn add_host_extension(&self, directory_id: &str, manifest_id: &str) {
-        self.add_host_extension_with_contribution(directory_id, manifest_id, manifest_id);
+        self.add_host_extension_with_contribution(directory_id, manifest_id, manifest_id, false);
+    }
+
+    fn add_cache_host_extension(&self, directory_id: &str, manifest_id: &str) {
+        self.add_host_extension_with_contribution(directory_id, manifest_id, manifest_id, true);
     }
 
     fn add_host_extension_with_contribution(
@@ -168,6 +258,7 @@ impl FixtureWorkspace {
         directory_id: &str,
         manifest_id: &str,
         contribution_id: &str,
+        provides_cache_store: bool,
     ) {
         let package = self.root.join("plugins/host-extensions").join(directory_id);
         fs::create_dir_all(&package).unwrap();
@@ -178,7 +269,7 @@ impl FixtureWorkspace {
         .unwrap();
         fs::write(
             package.join("host-extension.yaml"),
-            host_contribution_yaml(contribution_id),
+            host_contribution_yaml(contribution_id, provides_cache_store),
         )
         .unwrap();
     }
@@ -241,7 +332,17 @@ runtime:
     )
 }
 
-fn host_contribution_yaml(module_id: &str) -> String {
+fn host_contribution_yaml(module_id: &str, provides_cache_store: bool) -> String {
+    let infrastructure_providers = if provides_cache_store {
+        r#"infrastructure_providers:
+  - contract: cache-store
+    provider_code: local
+    display_name: Local
+    config_ref: secret://system/fixture/config
+    config_schema: []"#
+    } else {
+        "infrastructure_providers: []"
+    };
     format!(
         r#"schema_version: 1flowbase.host-extension/v1
 extension_id: {module_id}
@@ -253,7 +354,7 @@ native:
   entry_symbol: fixture_host
 owned_resources: []
 extends_resources: []
-infrastructure_providers: []
+{infrastructure_providers}
 routes: []
 workers: []
 migrations: []
