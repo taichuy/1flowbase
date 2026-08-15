@@ -156,7 +156,7 @@ impl FrontendContributionDisabledReceipt {
 
 #[derive(Debug, Clone)]
 pub enum FrontendContributionResolution {
-    Active(FrontendContributionBinding),
+    Active(Box<FrontendContributionBinding>),
     Disabled(FrontendContributionDisabledReceipt),
 }
 
@@ -286,7 +286,7 @@ impl FrontendContributionResolver {
             "{}:{}",
             candidate.installation.id, candidate.catalog_entry.contribution_code
         );
-        FrontendContributionResolution::Active(FrontendContributionBinding {
+        FrontendContributionResolution::Active(Box::new(FrontendContributionBinding {
             contribution_id,
             block_id,
             block_version: candidate.catalog_entry.plugin_version.clone(),
@@ -303,7 +303,7 @@ impl FrontendContributionResolver {
             disable_reason: None,
             catalog_entry: candidate.catalog_entry,
             graph: Arc::clone(&self.graph),
-        })
+        }))
     }
 
     fn disabled_receipt(

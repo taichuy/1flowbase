@@ -467,7 +467,7 @@ where
         candidates
             .into_iter()
             .filter_map(|candidate| match resolver.resolve(candidate) {
-                FrontendContributionResolution::Active(binding) => Some(binding),
+                FrontendContributionResolution::Active(binding) => Some(*binding),
                 FrontendContributionResolution::Disabled(_) => None,
             })
             .collect()
