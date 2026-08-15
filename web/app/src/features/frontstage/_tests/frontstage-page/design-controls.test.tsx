@@ -910,7 +910,7 @@ describe('FrontStagePage - design controls', () => {
                 media_type: 'text/javascript; charset=utf-8',
                 sha256:
                   'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
               }
             ],
             exports: ['Surface']
@@ -1067,18 +1067,7 @@ describe('FrontStagePage - design controls', () => {
         payload: createInput.payload,
         code_ref: block.codeRef,
         source_code: selectedTemplate,
-        dependency_lock: [],
-        generated_css: '',
-        generated_css_sha256:
-          'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-        tailwind_toolchain_lock: expect.objectContaining({
-          package: 'tailwindcss',
-          version: '4.3.3'
-        }),
-        compiler_identity: expect.objectContaining({
-          name: '@1flowbase/tailwindcss-catalog',
-          tailwind_version: '4.3.3'
-        })
+        dependency_lock: []
       })
     );
   });

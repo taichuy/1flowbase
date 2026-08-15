@@ -181,6 +181,7 @@ async fn issue_1566_ac_003_all_installation_references_target_the_unified_root()
         "plugin_package_catalog_projection",
         "plugin_tasks",
         "plugin_worker_leases",
+        "retained_frontend_module_assets",
     ]
     .into_iter()
     .map(str::to_string)

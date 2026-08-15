@@ -177,9 +177,8 @@ fn data_model_docs_and_data_source_routes_compile_exact_operations() {
         .all(|binding| { binding.ownership != ConsoleRouteOwnership::Authenticated }));
 
     let settings = compile_core_settings_feature_registry().unwrap();
-    let migrated = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, migrated.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
     let resource = registry
         .inventory()
         .resources

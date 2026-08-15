@@ -206,7 +206,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     ['non-builtin password', { is_builtin: false }],
     ['non-password', { is_builtin: true, auth_type: 'qr-code' }]
   ])(
-    'AC-003 shows the escape form when a %s authenticator source is rejected before preparation',
+    'AC-003 shows the escape form after a %s authenticator source fails twice',
     async (_case, overrides) => {
       const nativeCompiler = vi.fn().mockResolvedValue({
         ok: false,
@@ -223,7 +223,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(
         await screen.findByTestId('builtin-password-sign-in')
       ).toBeVisible();
-      expect(nativeCompiler).not.toHaveBeenCalled();
+      expect(nativeCompiler).toHaveBeenCalledTimes(2);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     }
   );
@@ -349,7 +349,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       })
     );
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(session));
-    expect(nativeCompiler).not.toHaveBeenCalled();
+    expect(nativeCompiler).toHaveBeenCalledTimes(2);
   });
 
   test('D4-AC-001/003/004 accepts only a canonical session response and keeps local state while the API is pending', async () => {

@@ -50,6 +50,7 @@
     "model_failover_queue_snapshots",
     "model_provider_request_logs",
     "node_runs",
+    "retained_frontend_module_assets",
     "runtime_artifacts",
     "runtime_audit_hashes",
     "runtime_context_projections",
@@ -62,6 +63,7 @@
     "ui_component_contract_revisions"
   ],
   "systemScopeTables": [
+    "retained_frontend_module_assets",
     "ui_code_template_defaults",
     "ui_code_template_revisions",
     "ui_code_templates",
@@ -709,6 +711,11 @@
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]
+    },
+    "retained_frontend_module_assets": {
+      "kind": "bounded_projection",
+      "reason": "immutable module assets are bounded by one system extension installation and composite content identity",
+      "skip": ["managed-table-id"]
     },
     "mcp_extension_bundle_imports": {
       "kind": "bounded_workspace_import",

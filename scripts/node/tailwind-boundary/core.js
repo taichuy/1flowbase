@@ -6,6 +6,13 @@ const SCANNED_ROOTS = [
   'web/packages/ui',
 ];
 
+const TAILWIND_STYLE_DIRECTIVE =
+  /@(?:apply|tailwind|theme|source|utility|variant|custom-variant)\b/u;
+
+function hasTailwindCssUsage(source) {
+  return /tailwindcss/u.test(source) || TAILWIND_STYLE_DIRECTIVE.test(source);
+}
+
 function readLegacyBoundaryUtilityClassNames(repoRoot) {
   const inventoryPath = path.join(
     repoRoot,
@@ -53,7 +60,7 @@ function collectTailwindBoundaryViolations(
       normalizedPath.startsWith('web/app/src/styles/') ||
       normalizedPath.startsWith('web/packages/ui/')
     ) {
-      if (/tailwindcss|@apply\b/u.test(source)) {
+      if (hasTailwindCssUsage(source)) {
         violations.push({
           path: normalizedPath,
           code: 'global-tailwind-entry',
@@ -79,7 +86,7 @@ function collectTailwindBoundaryViolations(
           });
         }
         if (
-          /tailwindcss|@apply\b/u.test(source) &&
+          hasTailwindCssUsage(source) &&
           !styleBoundaryImpactFiles.has(normalizedPath)
         ) {
           violations.push({
@@ -88,7 +95,7 @@ function collectTailwindBoundaryViolations(
             message: 'Tailwind CSS Modules must be mapped to an owning component/page style-boundary scene.'
           });
         }
-      } else if (/tailwindcss|@apply\b/u.test(source)) {
+      } else if (TAILWIND_STYLE_DIRECTIVE.test(source)) {
         violations.push({
           path: normalizedPath,
           code: 'tailwind-owner-required',

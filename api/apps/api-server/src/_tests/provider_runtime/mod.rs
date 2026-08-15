@@ -685,7 +685,8 @@ async fn strict_model_provider_binding_loads_the_stateful_lifecycle_host() {
     let package = TempProviderPackage::new();
     let spawn_marker = package.path().join("spawned");
     write_stateful_slot_provider_package(&package, &spawn_marker);
-    let installation = strict_fixture_installation(&package);
+    let mut installation = strict_fixture_installation(&package);
+    installation.artifact.availability_status = PluginAvailabilityStatus::InstallIncomplete;
     let graph = model_provider_extension_graph();
     let provider_host = Arc::new(RwLock::new(ProviderHost::default()));
     let services = Arc::new(
@@ -855,7 +856,7 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
     .unwrap_err();
     assert!(missing_point_error
         .to_string()
-        .contains("model provider extension point is unavailable"));
+        .contains("model_provider_extension_slot_unavailable"));
     assert!(!spawn_marker.exists());
 }
 

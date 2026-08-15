@@ -293,10 +293,12 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Import 'dayjs' is not allowed by the executable compiler contract\./u
+        /Import source 'dayjs' is not allowed\. Optional External npm Pack is unavailable\./u
       )
     ).toBeInTheDocument();
-    expect(compiler).not.toHaveBeenCalled();
+    expect(compiler).toHaveBeenCalledWith(
+      expect.objectContaining({ dependencyLock: [] })
+    );
   });
 
   test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {

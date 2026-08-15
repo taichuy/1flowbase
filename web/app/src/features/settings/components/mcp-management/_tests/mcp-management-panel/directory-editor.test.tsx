@@ -7,7 +7,15 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  type Mock,
+  vi
+} from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 import type { CSSProperties, ReactNode } from 'react';
 
@@ -126,12 +134,13 @@ const vditorMock = vi.hoisted(() => ({
   instances: [] as Array<{
     options: {
       mode?: string;
+      value?: string;
       after?: () => void;
       input?: (value: string) => void;
     };
-    setValue: ReturnType<typeof vi.fn>;
-    getValue: ReturnType<typeof vi.fn>;
-    destroy: ReturnType<typeof vi.fn>;
+    setValue: Mock<(value: string, emitUpdate?: boolean) => void>;
+    getValue: Mock<() => string>;
+    destroy: Mock<() => void>;
   }>,
   constructor: vi.fn(function VditorMock(
     this: unknown,
@@ -146,11 +155,11 @@ const vditorMock = vi.hoisted(() => ({
     let currentValue = options.value ?? '';
     const instance = {
       options,
-      setValue: vi.fn((value: string) => {
+      setValue: vi.fn<(value: string, emitUpdate?: boolean) => void>((value) => {
         currentValue = value;
       }),
-      getValue: vi.fn(() => currentValue),
-      destroy: vi.fn()
+      getValue: vi.fn<() => string>(() => currentValue),
+      destroy: vi.fn<() => void>()
     };
     vditorMock.instances.push(instance);
 
@@ -195,6 +204,91 @@ vi.mock('vditor', () => {
   };
 });
 vi.mock('vditor/dist/index.css', () => ({}));
+vi.mock('@1flowbase/rich-text', async () => {
+  const React = await import('react');
+
+  type EditorProps = {
+    ariaLabel?: string;
+    className?: string;
+    onChange: (value: string) => void;
+    value: string;
+  };
+  type EditorInstance = (typeof vditorMock.instances)[number];
+  type EditorOptions = EditorInstance['options'];
+  const createEditor = vditorMock.constructor as unknown as (
+    target: HTMLElement,
+    options: EditorOptions
+  ) => EditorInstance;
+
+  return {
+    VditorEditor({
+      ariaLabel = 'vditor_editor',
+      className,
+      onChange,
+      value
+    }: EditorProps) {
+      const mountRef = React.useRef<HTMLDivElement>(null);
+      const editorRef = React.useRef<EditorInstance | null>(null);
+      const readyRef = React.useRef(false);
+      const valueRef = React.useRef(value);
+      const onChangeRef = React.useRef(onChange);
+
+      React.useEffect(() => {
+        onChangeRef.current = onChange;
+      }, [onChange]);
+
+      React.useEffect(() => {
+        valueRef.current = value;
+        const editor = editorRef.current;
+        if (editor && readyRef.current && editor.getValue() !== value) {
+          editor.setValue(value);
+        }
+      }, [value]);
+
+      React.useEffect(() => {
+        const mount = mountRef.current;
+        if (!mount) return undefined;
+
+        let disposed = false;
+        queueMicrotask(() => {
+          if (disposed) return;
+          const editor = createEditor(mount, {
+            mode: 'ir',
+            value: valueRef.current,
+            after: () => {
+              if (disposed) return;
+              readyRef.current = true;
+              if (editor.getValue() !== valueRef.current) {
+                editor.setValue(valueRef.current, true);
+              }
+            },
+            input: (nextValue) => {
+              valueRef.current = nextValue;
+              onChangeRef.current(nextValue);
+            }
+          });
+          editorRef.current = editor;
+        });
+
+        return () => {
+          disposed = true;
+          readyRef.current = false;
+          const editor = editorRef.current;
+          editorRef.current = null;
+          editor?.destroy();
+        };
+      }, []);
+
+      return React.createElement('div', {
+        ref: mountRef,
+        'aria-label': ariaLabel,
+        className: ['oneflow-markdown-editor', className]
+          .filter(Boolean)
+          .join(' ')
+      });
+    }
+  };
+});
 vi.mock('@monaco-editor/react', () => ({
   __esModule: true,
   default: ({

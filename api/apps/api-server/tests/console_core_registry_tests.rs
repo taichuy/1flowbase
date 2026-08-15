@@ -8,7 +8,8 @@ use api_server::{
     app,
     app_state::compile_core_settings_feature_registry,
     routes::console_route_assembly::{
-        compile_migrated_core_console_operation_registry, migrated_core_console_route_assembly,
+        compile_migrated_core_console_operation_registry, migrated_core_console_contract_bindings,
+        migrated_core_console_route_assembly,
     },
 };
 use axum::{
@@ -69,7 +70,7 @@ async fn ac_002_console_health_is_compiled_and_not_exposed_by_the_base_router() 
 #[test]
 fn ac_003_unknown_core_operation_metadata_fails_instead_of_becoming_other() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let mut bindings = migrated_core_console_route_assembly().bindings().to_vec();
+    let mut bindings = migrated_core_console_contract_bindings();
     bindings.push(assembled_route(
         "GET",
         "/api/console/unknown-core-operation",
@@ -87,12 +88,11 @@ fn ac_003_unknown_core_operation_metadata_fails_instead_of_becoming_other() {
 #[test]
 fn ac_003_every_console_route_is_owned_by_a_compiled_authorization_operation() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
     let mut expected_operation_ids = BTreeSet::new();
 
-    for binding in assembly.bindings() {
+    for binding in &bindings {
         match &binding.ownership {
             ConsoleRouteOwnership::Authenticated => {
                 expected_operation_ids.insert("core.authenticated");
@@ -115,13 +115,12 @@ fn ac_003_every_console_route_is_owned_by_a_compiled_authorization_operation() {
 #[test]
 fn ac_003_005_all_console_routes_have_distinct_static_english_interface_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
 
     assert_eq!(
         registry.inventory().interfaces.len(),
-        assembly.bindings().len(),
+        bindings.len(),
         "every assembled /api/console route must have one interface metadata entry"
     );
     assert!(registry.inventory().interfaces.iter().all(|interface| {
@@ -164,9 +163,8 @@ fn ac_003_005_all_console_routes_have_distinct_static_english_interface_metadata
 #[test]
 fn ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_locales() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
     let catalog = registry
         .inventory()
         .locale_catalog
@@ -230,9 +228,8 @@ fn ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_
 #[test]
 fn ac_002_009_operation_semantics_are_explicit_before_legacy_mapping() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
 
     for (method, path) in [
         ("GET", "/api/console/workspace"),
@@ -346,9 +343,8 @@ fn ac_002_009_operation_semantics_are_explicit_before_legacy_mapping() {
 #[test]
 fn ac_013_role_console_policy_workers_have_explicit_interface_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
 
     for (operation_id, method, path) in [
         (

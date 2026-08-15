@@ -17,7 +17,7 @@ test('AC-006 reads the legacy snapshot only for host boundary detection', () => 
   assert.equal(utilityClassNames.has('grid-cols-[200px_1fr]'), false);
 });
 
-test('AC-006 allows only the source-driven compiler owner outside UI authoring', () => {
+test('AC-006 allows Tailwind package references outside CSS authoring', () => {
   const files = [
     {
       path: 'web/app/src/shared/code-block/native-react-executable-style.ts',
@@ -28,13 +28,23 @@ test('AC-006 allows only the source-driven compiler owner outside UI authoring',
       content: "export const source = \"import 'tailwindcss'\";"
     }
   ];
-  assert.deepEqual(
-    collectTailwindBoundaryViolations(files, utilities).map(({ path, code }) => ({
-      path,
-      code
-    })),
-    [{ path: files[1].path, code: 'tailwind-owner-required' }]
-  );
+  assert.deepEqual(collectTailwindBoundaryViolations(files, utilities), []);
+});
+
+test('AC-006 allows Tailwind package references that do not author styles', () => {
+  const files = [
+    {
+      path: 'web/app/src/features/frontstage/editor-projection.ts',
+      content: "const source = 'tailwindcss';"
+    },
+    {
+      path: 'web/app/src/shared/code-block/native-react-style-compiler.worker.ts',
+      content:
+        "import { compileTailwindUtilities } from '@1flowbase/tailwindcss-catalog/compiler';"
+    }
+  ];
+
+  assert.deepEqual(collectTailwindBoundaryViolations(files, utilities), []);
 });
 
 test('AC-006 rejects host-global Tailwind and non-module @apply authoring', () => {

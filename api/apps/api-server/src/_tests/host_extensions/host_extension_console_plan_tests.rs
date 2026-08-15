@@ -5,7 +5,9 @@ use axum::http::StatusCode;
 use plugin_framework::parse_host_extension_contribution_manifest;
 
 use crate::{
-    app_state::{compile_console_boot_plan, ApiState},
+    app_state::{
+        compile_console_boot_plan, compile_console_boot_plan_with_interface_operations, ApiState,
+    },
     host_extensions::console::{
         resolve_linked_host_extension_console_contribution, LinkedHostConsoleRouteSource,
     },
@@ -24,8 +26,26 @@ fn ac_001_active_linked_host_console_contribution_is_compiled_and_mounted() {
 
     let host = resolve_linked_host_extension_console_contribution(contribution, &[source])
         .expect("active linked HostExtension contribution should resolve");
-    let plan = compile_console_boot_plan([host])
-        .expect("Core and active linked HostExtension should compile as one console plan");
+    let extension_assembly = crate::extension_bus::assemble_extension_graph_input(
+        crate::api_workspace_root().expect("test API workspace root should resolve"),
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .expect("test extension graph input should assemble");
+    let extension_boot_snapshot = crate::extension_bus::ExtensionBootSnapshot::compile(
+        Arc::new(
+            extension_assembly
+                .compile_graph()
+                .expect("test extension graph should compile"),
+        ),
+        extension_assembly.interface_operations(),
+    )
+    .expect("test extension boot snapshot should compile");
+    let plan = compile_console_boot_plan_with_interface_operations(
+        [host],
+        extension_boot_snapshot.interface_operations(),
+    )
+    .expect("Core and active linked HostExtension should compile as one console plan");
 
     let access = plan
         .console_operation_registry
