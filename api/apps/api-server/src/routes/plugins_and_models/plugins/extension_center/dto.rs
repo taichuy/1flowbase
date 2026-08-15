@@ -66,6 +66,8 @@ pub struct LocalExtensionInventoryEntryResponse {
     pub signing_key_id: Option<String>,
     pub status: String,
     pub is_current: bool,
+    pub desired_state: Option<String>,
+    pub availability_status: Option<String>,
     pub application_action: String,
     pub application_status: String,
     pub created_by: String,

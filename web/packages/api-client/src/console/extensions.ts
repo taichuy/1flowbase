@@ -1,5 +1,6 @@
 import { ApiClientError } from '../errors';
 import { apiFetch } from '../transport';
+import type { ConsolePluginTask } from '../console-plugins';
 import type {
   ConsoleMcpBundleImportReport,
   ConsoleMcpBundlePreview
@@ -83,6 +84,8 @@ export interface ConsoleInstalledExtension {
   signing_key_id: string | null;
   status: string;
   is_current: boolean;
+  desired_state: string | null;
+  availability_status: string | null;
   application_action: ConsoleExtensionApplicationAction;
   application_status: ConsoleExtensionApplicationStatus;
   created_by: string;
@@ -259,6 +262,28 @@ export function selectConsoleInstalledExtension(
 ) {
   return apiFetch<ConsoleInstalledExtension>({
     path: `${BASE}/installed/${encodeURIComponent(installationId)}/select`,
+    method: 'POST',
+    csrfToken
+  });
+}
+
+export function enableConsoleInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsolePluginTask>({
+    path: `${BASE}/installed/${encodeURIComponent(installationId)}/enable`,
+    method: 'POST',
+    csrfToken
+  });
+}
+
+export function disableConsoleInstalledExtension(
+  installationId: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsolePluginTask>({
+    path: `${BASE}/installed/${encodeURIComponent(installationId)}/disable`,
     method: 'POST',
     csrfToken
   });

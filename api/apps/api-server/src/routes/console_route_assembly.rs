@@ -686,6 +686,8 @@ fn expand_core_interface_registrations(
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
         "extension_center.installed.delete" => Some("Delete an installed extension version"),
+        "extension_center.installed.disable" => Some("Disable an installed executable extension"),
+        "extension_center.installed.enable" => Some("Enable an installed executable extension"),
         "extension_center.installed.select" => Some("Select an installed extension version"),
         "mcp.bundle_library.current.switch" => Some("Switch MCP bundle library release"),
         "mcp.bundle_library.import" => Some("Import MCP bundle library release"),

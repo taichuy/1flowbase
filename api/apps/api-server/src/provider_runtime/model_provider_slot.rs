@@ -172,12 +172,6 @@ fn validate_dynamic_installation(
     if installation.verification_status != domain::PluginVerificationStatus::Valid
         || installation.desired_state != domain::PluginDesiredState::ActiveRequested
         || installation.artifact.artifact_status != domain::PluginArtifactInstanceStatus::Ready
-        || !installation.artifact.is_current
-        || !matches!(
-            installation.availability_status(),
-            domain::PluginAvailabilityStatus::InstallIncomplete
-                | domain::PluginAvailabilityStatus::Available
-        )
         || !matches!(
             installation.runtime_status(),
             domain::PluginRuntimeStatus::Inactive | domain::PluginRuntimeStatus::Active

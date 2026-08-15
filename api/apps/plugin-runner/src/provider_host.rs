@@ -374,6 +374,14 @@ impl ProviderHost {
         self.load_source(source, Some(plugin_id), legacy_eligibility.as_ref())
     }
 
+    pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
+        self.quiesce_provider_worker(plugin_id).await?;
+        self.loaded_packages.remove(plugin_id);
+        self.loaded_sources.remove(plugin_id);
+        self.legacy_manifest_eligibilities.remove(plugin_id);
+        Ok(())
+    }
+
     pub async fn validate(
         &self,
         plugin_id: &str,

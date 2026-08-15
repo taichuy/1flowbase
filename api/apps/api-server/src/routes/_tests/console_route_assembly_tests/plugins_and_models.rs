@@ -138,6 +138,16 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
                 "extension_center.installed.select"
             ),
             (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/enable",
+                "extension_center.installed.enable"
+            ),
+            (
+                "POST",
+                "/api/console/settings/extension-center/installed/:installation_id/disable",
+                "extension_center.installed.disable"
+            ),
+            (
                 "DELETE",
                 "/api/console/settings/extension-center/installed/:installation_id",
                 "extension_center.installed.delete"

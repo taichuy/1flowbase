@@ -14,6 +14,7 @@ import {
   Input,
   Modal,
   Space,
+  Switch,
   Tabs,
   Tag,
   Tooltip,
@@ -24,7 +25,6 @@ import { useTranslation } from 'react-i18next';
 import '../../../../shared/ui/structured-list/structured-list.css';
 
 import { useAuthStore } from '../../../../state/auth-store';
-import { McpTemplateLibrary } from '../../components/mcp-management/bundle/McpTemplateLibrary';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -34,6 +34,8 @@ import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-t
 import {
   checkSettingsExtensionUpdates,
   deleteSettingsInstalledExtension,
+  disableSettingsInstalledExtension,
+  enableSettingsInstalledExtension,
   fetchSettingsExtensionCatalog,
   fetchSettingsExtensionCatalogEntry,
   fetchSettingsInstalledExtensions,
@@ -135,7 +137,8 @@ function extensionKey(row: ExtensionRow) {
 }
 
 function extensionOperationErrorKey(error: unknown) {
-  if (!(error instanceof ApiClientError)) return 'auto.extension_operation_failed';
+  if (!(error instanceof ApiClientError))
+    return 'auto.extension_operation_failed';
   switch (error.code) {
     case 'extension_artifact_not_published':
       return 'auto.extension_artifact_not_published';
@@ -174,50 +177,11 @@ function extensionRiskWarningText(
   return key ? t(key) : message;
 }
 
-function McpExtensionCenterSection() {
-  const { t } = useTranslation('settings');
-  const navigate = useNavigate();
-
-  return (
-    <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16}>
-        <Tabs
-          activeKey="mcp"
-          tabBarExtraContent={
-            <Typography.Link href="/settings/mcp-management?tab=instances">
-              {t('auto.go_to_mcp_management')}
-            </Typography.Link>
-          }
-          onChange={(key) => {
-            void navigate({
-              to: '/settings/extension-center/$category',
-              params: { category: key },
-              search: { q: undefined, cursor: undefined }
-            });
-          }}
-          items={[
-            { key: 'installed', label: t('auto.installed_extensions') },
-            ...CATEGORIES.map((category) => ({
-              key: category,
-              label: category
-            }))
-          ]}
-        />
-        <McpTemplateLibrary variant="compact" />
-      </Flex>
-    </SettingsSectionSurface>
-  );
-}
-
 export function SettingsExtensionCenterSection(props: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
   q?: string;
 }) {
-  if (props.category === 'mcp') {
-    return <McpExtensionCenterSection />;
-  }
-
   return <GenericExtensionCenterSection {...props} />;
 }
 
@@ -455,12 +419,7 @@ function GenericExtensionCenterSection({
         };
       }
     },
-    onSuccess: async ({
-      challenge,
-      operation,
-      result,
-      i18nActivation
-    }) => {
+    onSuccess: async ({ challenge, operation, result, i18nActivation }) => {
       if (challenge) {
         const acknowledgedWarnings = challenge.warnings
           .filter((warning) => warning.overridable)
@@ -513,7 +472,9 @@ function GenericExtensionCenterSection({
 
       try {
         if (i18nActivation === 'failed') {
-          message.error(t('auto.translation_catalog_activation_failed_after_install'));
+          message.error(
+            t('auto.translation_catalog_activation_failed_after_install')
+          );
         } else if (i18nActivation === 'activated') {
           message.success(t('auto.translation_catalog_activated'));
         } else {
@@ -561,6 +522,29 @@ function GenericExtensionCenterSection({
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
+  const activationMutation = useMutation({
+    mutationFn: async ({
+      installationId,
+      enabled
+    }: {
+      installationId: string;
+      enabled: boolean;
+    }) => {
+      if (!csrfToken) throw new Error('csrf token required');
+      return enabled
+        ? enableSettingsInstalledExtension(installationId, csrfToken)
+        : disableSettingsInstalledExtension(installationId, csrfToken);
+    },
+    onSuccess: async () => {
+      message.success(t('auto.extension_operation_completed'));
+      await invalidateExtensionApplicationState();
+    },
+    onError: () => message.error(t('auto.extension_operation_failed'))
+  });
+  const toggleInstalledExtensionActivation = activationMutation.mutate;
+  const activatingInstallationId = activationMutation.isPending
+    ? activationMutation.variables?.installationId
+    : null;
   const runOperation = operationMutation.mutate;
 
   const submitOperation = useCallback(
@@ -652,13 +636,61 @@ function GenericExtensionCenterSection({
           <Space size={4} wrap>
             <Tag>{extensionInstallationStatus(row)}</Tag>
             {isInstalledRow(row) ? (
-              <Tag>
-                {extensionApplicationStatusLabel(row.application_status, t)}
-              </Tag>
+              <>
+                <Tag>{row.desired_state ?? '—'}</Tag>
+                <Tag>{row.availability_status ?? '—'}</Tag>
+                <Tag>
+                  {extensionApplicationStatusLabel(row.application_status, t)}
+                </Tag>
+              </>
             ) : null}
           </Space>
         )
       },
+      ...(activeTab === 'installed'
+        ? [
+            {
+              title: t('auto.enabled'),
+              key: 'enabled',
+              width: 100,
+              align: 'center' as const,
+              render: (_: unknown, row: ExtensionRow) => {
+                if (
+                  !isInstalledRow(row) ||
+                  ![
+                    'runtime-extensions',
+                    'capability-plugins',
+                    'host-extensions'
+                  ].includes(row.category)
+                ) {
+                  return '—';
+                }
+                const control = (
+                  <Switch
+                    aria-label={`${extensionName(row)} ${t('auto.enabled')}`}
+                    checked={row.desired_state !== 'disabled'}
+                    loading={activatingInstallationId === row.id}
+                    onChange={(enabled) =>
+                      toggleInstalledExtensionActivation({
+                        installationId: row.id,
+                        enabled
+                      })
+                    }
+                  />
+                );
+                return row.category === 'host-extensions' ? (
+                  <Tooltip
+                    title={t('auto.extension_activation_requires_restart')}
+                  >
+                    {control}
+                  </Tooltip>
+                ) : (
+                  control
+                );
+              }
+            }
+          ]
+        : []),
       {
         title: t('auto.source'),
         key: 'source',
@@ -808,9 +840,11 @@ function GenericExtensionCenterSection({
     [
       activeOperationKey,
       activeTab,
+      activatingInstallationId,
       resolveInstalledUpdate,
       requestOperation,
       t,
+      toggleInstalledExtensionActivation,
       updateStates
     ]
   );

@@ -193,6 +193,14 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "extension_center.installed.delete",
         "system.extension-center",
     ),
+    settings(
+        "extension_center.installed.enable",
+        "system.extension-center",
+    ),
+    settings(
+        "extension_center.installed.disable",
+        "system.extension-center",
+    ),
     settings("extension_center.catalog.view", "system.extension-center"),
     settings("extension_center.catalog.detail", "system.extension-center"),
     settings("extension_center.update_check", "system.extension-center"),

@@ -537,9 +537,6 @@ where
             let local_artifact = self
                 .refresh_current_node_artifact_snapshot(&installation)
                 .await?;
-            if !is_model_provider_installation(&installation) {
-                continue;
-            }
             if !local_artifact.artifact_status.is_ready() {
                 continue;
             }
@@ -551,42 +548,45 @@ where
                 artifact: local_artifact,
             };
 
-            match crate::installed_provider_package::load_installed_provider_package(
-                &local_installation,
-            ) {
-                Ok(package) => {
-                    refresh_provider_package_catalog_projection(
-                        &self.repository,
-                        &installation,
-                        &package,
-                    )
-                    .await?;
-                    if installation.desired_state == domain::PluginDesiredState::ActiveRequested
-                        && assigned_installation_ids.contains(&installation.id)
-                    {
-                        match self.runtime.ensure_loaded(&local_installation).await {
-                            Ok(()) => {
-                                self.mark_current_node_runtime_status(
-                                    &installation,
-                                    domain::PluginRuntimeStatus::Active,
-                                    None,
-                                )
-                                .await?;
-                            }
-                            Err(error) => {
-                                self.mark_current_node_runtime_status(
-                                    &installation,
-                                    domain::PluginRuntimeStatus::LoadFailed,
-                                    Some(error.to_string()),
-                                )
-                                .await?;
-                            }
-                        }
+            if is_model_provider_installation(&installation) {
+                match crate::installed_provider_package::load_installed_provider_package(
+                    &local_installation,
+                ) {
+                    Ok(package) => {
+                        refresh_provider_package_catalog_projection(
+                            &self.repository,
+                            &installation,
+                            &package,
+                        )
+                        .await?;
+                    }
+                    Err(error) => {
+                        record_failed_catalog_projection(&self.repository, &installation, &error)
+                            .await?;
+                        continue;
                     }
                 }
-                Err(error) => {
-                    record_failed_catalog_projection(&self.repository, &installation, &error)
+            }
+            if installation.desired_state == domain::PluginDesiredState::ActiveRequested
+                && assigned_installation_ids.contains(&installation.id)
+            {
+                match self.runtime.activate_plugin(&local_installation).await {
+                    Ok(()) => {
+                        self.mark_current_node_runtime_status(
+                            &installation,
+                            domain::PluginRuntimeStatus::Active,
+                            None,
+                        )
                         .await?;
+                    }
+                    Err(error) => {
+                        self.mark_current_node_runtime_status(
+                            &installation,
+                            domain::PluginRuntimeStatus::LoadFailed,
+                            Some(error.to_string()),
+                        )
+                        .await?;
+                    }
                 }
             }
         }
@@ -647,17 +647,41 @@ where
             return Err(ControlPlaneError::InvalidInput("extension_catalog_category").into());
         }
         route_plugin_package(&intake.manifest)?;
-        self.install_intake_result(
-            command.actor_user_id,
-            intake,
-            Some(command.package_bytes),
-            json!({
-                "install_kind": "extension_inventory_node_registration",
-                "file_name": command.file_name,
-                "category": command.category.as_str(),
-            }),
-        )
-        .await
+        let install = self
+            .install_intake_result(
+                command.actor_user_id,
+                intake,
+                Some(command.package_bytes),
+                json!({
+                    "install_kind": "extension_inventory_node_registration",
+                    "file_name": command.file_name,
+                    "category": command.category.as_str(),
+                }),
+            )
+            .await?;
+        if is_host_extension_installation(&install.installation) {
+            return Ok(install);
+        }
+        self.enable_plugin(EnablePluginCommand {
+            actor_user_id: command.actor_user_id,
+            installation_id: install.installation.id,
+        })
+        .await?;
+        let installation = self
+            .repository
+            .get_installation(install.installation.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        let local_artifact = self
+            .repository
+            .get_artifact_instance(&self.node_id, installation.id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_artifact_instance"))?;
+        Ok(InstallPluginResult {
+            installation,
+            local_artifact,
+            task: install.task,
+        })
     }
 
     pub async fn install_official_plugin(

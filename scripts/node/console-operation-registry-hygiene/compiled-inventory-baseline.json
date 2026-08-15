@@ -213,6 +213,26 @@
         "authorization_operation_id": "extension_center.installed.delete"
       },
       {
+        "interface_id": "extension_center.installed.disable",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/settings/extension-center/installed/:installation_id/disable"
+        },
+        "summary": "Disable an installed executable extension",
+        "description": "Disable an installed executable extension in the system backend.",
+        "authorization_operation_id": "extension_center.installed.disable"
+      },
+      {
+        "interface_id": "extension_center.installed.enable",
+        "route": {
+          "method": "POST",
+          "path": "/api/console/settings/extension-center/installed/:installation_id/enable"
+        },
+        "summary": "Enable an installed executable extension",
+        "description": "Enable an installed executable extension in the system backend.",
+        "authorization_operation_id": "extension_center.installed.enable"
+      },
+      {
         "interface_id": "file_storages.delete",
         "route": {
           "method": "DELETE",
@@ -4956,6 +4976,52 @@
           {
             "method": "DELETE",
             "path": "/api/console/settings/extension-center/installed/:installation_id"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "extension_center.installed.disable",
+        "authorization_profile_id": "extension_center.installed.disable",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.extension-center"
+        },
+        "order": 62,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/settings/extension-center/installed/:installation_id/disable"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "operation_id": "extension_center.installed.enable",
+        "authorization_profile_id": "extension_center.installed.enable",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.3.4"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.extension-center"
+        },
+        "order": 61,
+        "routes": [
+          {
+            "method": "POST",
+            "path": "/api/console/settings/extension-center/installed/:installation_id/enable"
           }
         ],
         "authorization": {
@@ -13873,6 +13939,26 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "extension_center.installed.select"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/installed/:installation_id/enable"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.installed.enable"
+      }
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/api/console/settings/extension-center/installed/:installation_id/disable"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "extension_center.installed.disable"
       }
     },
     {
