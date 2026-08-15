@@ -1438,7 +1438,7 @@ async fn install_or_update_official_extension(
                 })
                 .await?;
         } else if supports_assignment
-            && current.as_ref().map_or(true, |assignment| {
+            && current.as_ref().is_none_or(|assignment| {
                 assignment.installation_id != installed.installation.id
             })
         {

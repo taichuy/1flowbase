@@ -183,6 +183,11 @@ test("AC-005/012 foundation contracts keep PR fast and full AI evidence nightly/
   assert.doesNotMatch(trigger, /pull_request:/u);
   assert.doesNotMatch(trigger, /push:/u);
   assert.match(trigger, /target_ref:[\s\S]*base_ref:[\s\S]*foundation:[\s\S]*lane:/u);
+  assert.match(
+    fastWorkflow,
+    /concurrency:\n\s+group: foundation-contract-evidence-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/u,
+    "independent caller lanes must not cancel each other's foundation receipts",
+  );
   assert.match(fastWorkflow, /foundation-contracts/u);
   assert.match(fastWorkflow, /name: test-governance-foundation-contracts-/u);
   assert.match(fastWorkflow, /timeout-minutes: 40/u);
@@ -559,6 +564,22 @@ test("React Doctor keeps current debt as a narrow baseline", () => {
         "react-doctor/no-giant-component",
         "react-doctor/prefer-useReducer",
         "react-doctor/rerender-state-only-in-handlers",
+      ],
+    },
+    {
+      files: [
+        "src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
+      ],
+      rules: [
+        "react-doctor/async-defer-await",
+        "react-doctor/js-combine-iterations",
+        "react-doctor/jsx-no-jsx-as-prop",
+        "react-doctor/no-adjust-state-on-prop-change",
+        "react-doctor/no-cascading-set-state",
+        "react-doctor/no-derived-state",
+        "react-doctor/no-giant-component",
+        "react-doctor/prefer-useReducer",
+        "react-doctor/query-mutation-missing-invalidation",
       ],
     },
     {

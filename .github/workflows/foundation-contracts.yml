@@ -61,7 +61,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: foundation-contract-evidence-${{ github.ref }}
+  group: foundation-contract-evidence-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
