@@ -22,9 +22,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::{
-    api_provider_runtime, assistant_preference_for_target, launch_assistant_execution,
-    prepare_assistant_execution, ApiError, ApiState, AssistantClientToolBridge,
-    AssistantClientToolId, RequestContext, StartAssistantRunBody,
+    abort_assistant_execution, api_provider_runtime, assistant_preference_for_target,
+    launch_assistant_execution, prepare_assistant_execution, ApiError, ApiState,
+    AssistantClientToolBridge, AssistantClientToolId, RequestContext, StartAssistantRunBody,
 };
 use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
@@ -606,6 +606,19 @@ async fn cancel_run(
     authorization: &AssistantWebSocketAuthorization,
     run_id: Uuid,
 ) -> Result<(), ApiError> {
+    let run = state
+        .store
+        .get_flow_run(authorization.application_id, run_id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "flow_run",
+        ))?;
+    if run.created_by != authorization.context.user.id {
+        return Err(
+            control_plane::errors::ControlPlaneError::PermissionDenied("assistant_run").into(),
+        );
+    }
+    abort_assistant_execution(state, run_id);
     let runtime = OrchestrationRuntimeService::new(
         state.store.clone(),
         api_provider_runtime(state),

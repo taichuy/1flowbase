@@ -331,6 +331,17 @@ pub fn ensure_node_run_transition(
                 domain::NodeRunStatus::Retrying,
                 domain::NodeRunStatus::Failed
             )
+            | (
+                domain::NodeRunStatus::Pending
+                    | domain::NodeRunStatus::Ready
+                    | domain::NodeRunStatus::Running
+                    | domain::NodeRunStatus::Streaming
+                    | domain::NodeRunStatus::WaitingTool
+                    | domain::NodeRunStatus::WaitingCallback
+                    | domain::NodeRunStatus::WaitingHuman
+                    | domain::NodeRunStatus::Retrying,
+                domain::NodeRunStatus::Cancelled
+            )
     );
 
     if allowed {

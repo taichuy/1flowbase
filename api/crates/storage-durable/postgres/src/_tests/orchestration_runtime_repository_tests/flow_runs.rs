@@ -367,6 +367,148 @@ async fn update_flow_run_if_status_does_not_overwrite_cancelled_run() {
     assert_eq!(stored.output_payload, json!({}));
 }
 
+/// BE-001 AC-004: the cancellation terminal owns unfinished node finalization, preserves completed
+/// traces, and fences late node creation/completion against the terminal flow row.
+#[tokio::test]
+async fn cancelled_terminal_finalizes_unfinished_nodes_and_fences_late_writes() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        OffsetDateTime::now_utc(),
+        FlowRunMode::AssistantExecution,
+        None,
+    )
+    .await;
+    let completed_tool = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_node_run(
+        &store,
+        &CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "tool".to_string(),
+            node_type: "tool".to_string(),
+            node_alias: "Tool".to_string(),
+            status: NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({ "call_id": "kept" }),
+            started_at: OffsetDateTime::now_utc(),
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_node_run(
+        &store,
+        &CompleteNodeRunInput {
+            node_run_id: completed_tool.id,
+            status: NodeRunStatus::Succeeded,
+            output_payload: json!({ "result": "kept" }),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({ "call_id": "kept" }),
+            finished_at: OffsetDateTime::now_utc(),
+        },
+    )
+    .await
+    .unwrap();
+    let running_llm = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_node_run(
+        &store,
+        &CreateNodeRunInput {
+            flow_run_id: run.id,
+            node_id: "llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "LLM".to_string(),
+            status: NodeRunStatus::Streaming,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: OffsetDateTime::now_utc(),
+        },
+    )
+    .await
+    .unwrap();
+
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+        &store,
+        &CommitFlowRunTerminalInput {
+            flow_run_id: run.id,
+            expected_status: FlowRunStatus::Running,
+            result: CommitFlowRunTerminalResult::Cancelled {
+                output_payload: json!({ "answer": "partial" }),
+                error_payload: None,
+            },
+            flow_run_event_payload: json!({ "reason": "manual_stop" }),
+            terminal_event_payload: json!({ "type": "flow_cancelled", "status": "cancelled" }),
+            finished_at: OffsetDateTime::now_utc(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let detail =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+            &store,
+            seeded.application_id,
+            run.id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        detail
+            .node_runs
+            .iter()
+            .find(|node| node.id == completed_tool.id)
+            .unwrap()
+            .status,
+        NodeRunStatus::Succeeded
+    );
+    assert_eq!(
+        detail
+            .node_runs
+            .iter()
+            .find(|node| node.id == running_llm.id)
+            .unwrap()
+            .status,
+        NodeRunStatus::Cancelled
+    );
+    assert!(
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_node_run(
+            &store,
+            &CreateNodeRunInput {
+                flow_run_id: run.id,
+                node_id: "late".to_string(),
+                node_type: "tool".to_string(),
+                node_alias: "Late".to_string(),
+                status: NodeRunStatus::Running,
+                input_payload: json!({}),
+                debug_payload: json!({}),
+                started_at: OffsetDateTime::now_utc(),
+            },
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_node_run(
+            &store,
+            &CompleteNodeRunInput {
+                node_run_id: running_llm.id,
+                status: NodeRunStatus::Succeeded,
+                output_payload: json!({ "answer": "late" }),
+                error_payload: None,
+                metrics_payload: json!({}),
+                debug_payload: json!({}),
+                finished_at: OffsetDateTime::now_utc(),
+            },
+        )
+        .await
+        .is_err()
+    );
+}
+
 #[tokio::test]
 async fn update_flow_run_if_status_returns_not_found_for_missing_run() {
     let pool = isolated_database().await.connect().await.unwrap();

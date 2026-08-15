@@ -67,6 +67,7 @@ pub struct AssistantConversationMessage {
     pub flow_run_id: Uuid,
     pub role: String,
     pub content: String,
+    pub status: String,
     pub page_references: Vec<super::AssistantPageReference>,
     pub created_at: OffsetDateTime,
 }

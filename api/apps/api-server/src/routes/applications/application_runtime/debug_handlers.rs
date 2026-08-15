@@ -531,6 +531,13 @@ pub async fn cancel_flow_run(
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let application =
+        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
+            .await?;
+    state.store.get_flow_run(id, run_id).await?.ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("flow_run"),
+    )?;
+    crate::routes::assistant::abort_assistant_execution(&state, run_id);
 
     let runtime_service = OrchestrationRuntimeService::new(
         state.store.clone(),
@@ -554,9 +561,6 @@ pub async fn cancel_flow_run(
             flow_run_id: run_id,
         })
         .await?;
-    let application =
-        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
-            .await?;
     let detail = offload_application_run_detail_artifacts(
         state.clone(),
         context.actor.current_workspace_id,

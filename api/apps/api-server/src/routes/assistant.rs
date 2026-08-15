@@ -32,13 +32,15 @@ use control_plane::{
 use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 mod client_tools;
 pub mod conversation_events;
 pub(crate) mod websocket;
+#[cfg(test)]
+mod _tests;
 
 use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
 use conversation_events::{
@@ -236,6 +238,7 @@ pub struct AssistantConversationMessageResponse {
     pub flow_run_id: Uuid,
     pub role: String,
     pub content: String,
+    pub status: String,
     pub page_references: Vec<AssistantPageReferenceBody>,
     pub created_at: String,
 }
@@ -419,6 +422,7 @@ fn assistant_conversation_message_response(
         flow_run_id: message.flow_run_id,
         role: message.role,
         content: message.content,
+        status: message.status,
         page_references: message
             .page_references
             .into_iter()
@@ -736,8 +740,13 @@ async fn launch_assistant_execution(
         mcp_runtime_invoker,
         client_tool_bridge,
     ));
-    let background_state = state;
-    tokio::spawn(async move {
+    let background_state = state.clone();
+    let execution_registry = state.assistant_executions.clone();
+    let (start_sender, start_receiver) = oneshot::channel();
+    let execution_handle = tokio::spawn(async move {
+        if start_receiver.await.is_err() {
+            return;
+        }
         let runtime = OrchestrationRuntimeService::new(
             background_state.store.clone(),
             api_provider_runtime(&background_state),
@@ -816,8 +825,40 @@ async fn launch_assistant_execution(
             }
         }
         wait_for_runtime_debug_event_persister(persister_handle, application_id, run_id).await;
+        execution_registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&run_id);
     });
+    state
+        .assistant_executions
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(run_id, execution_handle.abort_handle());
+    // The task cannot enter the Provider/runtime boundary until its abort handle is visible to
+    // every cancellation entry point.
+    let _ = start_sender.send(());
     Ok(run_id)
+}
+
+pub(super) fn abort_assistant_execution(state: &ApiState, run_id: Uuid) -> bool {
+    let handle = abort_registered_assistant_execution(&state.assistant_executions, run_id);
+    if let Some(handle) = handle {
+        handle.abort();
+        true
+    } else {
+        false
+    }
+}
+
+fn abort_registered_assistant_execution(
+    executions: &std::sync::Mutex<std::collections::HashMap<Uuid, tokio::task::AbortHandle>>,
+    run_id: Uuid,
+) -> Option<tokio::task::AbortHandle> {
+    executions
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&run_id)
 }
 
 async fn prepare_assistant_execution(
@@ -1386,4 +1427,5 @@ mod tests {
             .get("path_regex")
             .is_none());
     }
+
 }

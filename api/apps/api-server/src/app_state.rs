@@ -1,6 +1,6 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    collections::{BTreeMap, BTreeSet, HashMap},
+    sync::{Arc, Mutex},
 };
 
 use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
@@ -30,8 +30,8 @@ use crate::{
     official_i18n_catalog_source::ApiOfficialI18nCatalogSource,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::ApiRuntimeServices,
-    runtime_activity::ApplicationRuntimeActivityTracker,
     routes::assistant::conversation_events::AssistantConversationEventHub,
+    runtime_activity::ApplicationRuntimeActivityTracker,
     runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
 };
 
@@ -309,6 +309,9 @@ pub struct ApiState {
     pub process_started_at: OffsetDateTime,
     pub runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     pub assistant_conversation_events: Arc<AssistantConversationEventHub>,
+    /// Process-local owner for detached embedded Assistant executions. Durable run state remains
+    /// owned by the runtime repository.
+    pub assistant_executions: Arc<Mutex<HashMap<uuid::Uuid, tokio::task::AbortHandle>>>,
     pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     pub plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
