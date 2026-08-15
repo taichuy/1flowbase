@@ -695,19 +695,19 @@ impl PgControlPlaneStore {
               and node_runs.flow_run_id = locked_flow.id
               and node_runs.status <> 'cancelled'
             returning
-                id,
-                flow_run_id,
-                node_id,
-                node_type,
-                node_alias,
-                status,
-                input_payload,
-                output_payload,
-                error_payload,
-                metrics_payload,
-                debug_payload,
-                started_at,
-                finished_at
+                node_runs.id,
+                node_runs.flow_run_id,
+                node_runs.node_id,
+                node_runs.node_type,
+                node_runs.node_alias,
+                node_runs.status,
+                node_runs.input_payload,
+                node_runs.output_payload,
+                node_runs.error_payload,
+                node_runs.metrics_payload,
+                node_runs.debug_payload,
+                node_runs.started_at,
+                node_runs.finished_at
             "#,
         )
         .bind(input.node_run_id)
