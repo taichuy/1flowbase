@@ -115,6 +115,8 @@ function getStyleBoundaryCommonResponse(
         ],
         enabled_mcp_instances: [{ instance_id: 'catalog', name: 'Catalog' }],
         page_reference_max_bytes: 65536,
+        page_reference_max_count: 5,
+        page_reference_max_total_bytes: 65536,
         run_capabilities: {
           model_selection_enabled: false,
           reasoning_effort_enabled: false,

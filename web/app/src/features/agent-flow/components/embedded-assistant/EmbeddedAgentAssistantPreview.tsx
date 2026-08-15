@@ -160,15 +160,36 @@ export function EmbeddedAgentAssistantPreview({
   );
   const pageReferenceSelection = useAssistantPageReferenceSelection({
     active: open,
+    duplicateMessage: i18nText(
+      'appShell',
+      'auto.assistant_page_reference_duplicate'
+    ),
     maxBytes: settings?.page_reference_max_bytes ?? 0,
+    maxCount: settings?.page_reference_max_count ?? 0,
+    maxTotalBytes: settings?.page_reference_max_total_bytes ?? 0,
     pageKey: `${workspaceId ?? ''}:${pageKey}`,
     selectionHint: i18nText(
       'appShell',
       'auto.assistant_page_reference_selection_hint'
     ),
+    tooManyMessage: useCallback(
+      (maxCount: number) =>
+        i18nText('appShell', 'auto.assistant_page_reference_too_many', {
+          value1: maxCount
+        }),
+      []
+    ),
     tooLargeMessage: useCallback(
       (actualBytes: number, maxBytes: number) =>
         i18nText('appShell', 'auto.assistant_page_reference_too_large', {
+          value1: actualBytes,
+          value2: maxBytes
+        }),
+      []
+    ),
+    totalTooLargeMessage: useCallback(
+      (actualBytes: number, maxBytes: number) =>
+        i18nText('appShell', 'auto.assistant_page_reference_total_too_large', {
           value1: actualBytes,
           value2: maxBytes
         }),
@@ -238,6 +259,8 @@ export function EmbeddedAgentAssistantPreview({
             published_agent_flows: [],
             enabled_mcp_instances: [],
             page_reference_max_bytes: 0,
+            page_reference_max_count: 0,
+            page_reference_max_total_bytes: 0,
             run_capabilities: {
               model_selection_enabled: false,
               reasoning_effort_enabled: false,
@@ -790,22 +813,33 @@ export function EmbeddedAgentAssistantPreview({
               <AgentFlowDebugConsole
                 clearDisabled={!session.canChangeConversation}
                 composerHeader={
-                  pageReferenceSelection.reference ? (
-                    <PageReferenceDraftRow
-                      reference={pageReferenceSelection.reference}
-                      removeLabel={i18nText(
-                        'appShell',
-                        'auto.assistant_remove_page_reference'
+                  pageReferenceSelection.references.length > 0 ||
+                  pageReferenceSelection.error ? (
+                    <div>
+                      {pageReferenceSelection.references.map(
+                        (reference, index) => (
+                          <PageReferenceDraftRow
+                            key={`${reference.page_url}:${reference.outer_html}`}
+                            reference={reference}
+                            removeLabel={i18nText(
+                              'appShell',
+                              'auto.assistant_remove_page_reference'
+                            )}
+                            onRemove={() =>
+                              pageReferenceSelection.removeReference(index)
+                            }
+                          />
+                        )
                       )}
-                      onRemove={pageReferenceSelection.clearReference}
-                    />
-                  ) : pageReferenceSelection.error ? (
-                    <div
-                      className="embedded-agent-assistant-preview__page-reference-error"
-                      role="alert"
-                    >
-                      <WarningOutlined />
-                      <span>{pageReferenceSelection.error}</span>
+                      {pageReferenceSelection.error ? (
+                        <div
+                          className="embedded-agent-assistant-preview__page-reference-error"
+                          role="alert"
+                        >
+                          <WarningOutlined />
+                          <span>{pageReferenceSelection.error}</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : undefined
                 }
@@ -1022,10 +1056,8 @@ export function EmbeddedAgentAssistantPreview({
                   void session.stopRun();
                 }}
                 onSubmitPrompt={(prompt) => {
-                  const pageReferences = pageReferenceSelection.reference
-                    ? [pageReferenceSelection.reference]
-                    : [];
-                  pageReferenceSelection.clearReference();
+                  const pageReferences = pageReferenceSelection.references;
+                  pageReferenceSelection.clearReferences();
                   void session.submitPrompt(prompt, pageReferences);
                 }}
               />

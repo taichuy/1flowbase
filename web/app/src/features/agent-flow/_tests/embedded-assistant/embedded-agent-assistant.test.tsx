@@ -110,6 +110,8 @@ describe('EmbeddedAgentAssistant', () => {
       ],
       enabled_mcp_instances: [],
       page_reference_max_bytes: 65_536,
+      page_reference_max_count: 5,
+      page_reference_max_total_bytes: 65_536,
       run_capabilities: {
         model_selection_enabled: true,
         reasoning_effort_enabled: true,
@@ -1145,7 +1147,7 @@ describe('EmbeddedAgentAssistant', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('AC-001 through AC-004 selects the actual element and keeps a removable draft above the input', async () => {
+  test('AC-001 through AC-008 selects, removes, and submits multiple page references', async () => {
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -1166,6 +1168,7 @@ describe('EmbeddedAgentAssistant', () => {
       <AppProviders>
         <div id="reference-target" data-testid="reference-target">
           <span data-testid="reference-target-child">退款失败</span>
+          <button data-testid="reference-target-action">重试</button>
         </div>
         <EmbeddedAgentAssistant />
       </AppProviders>
@@ -1191,6 +1194,13 @@ describe('EmbeddedAgentAssistant', () => {
     ).toBeInTheDocument();
     fireEvent.click(child);
 
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_select_page_content')
+      })
+    );
+    fireEvent.click(screen.getByTestId('reference-target-action'));
+
     const assistantWindow = screen.getByTestId(
       'embedded-agent-assistant-preview'
     );
@@ -1198,21 +1208,21 @@ describe('EmbeddedAgentAssistant', () => {
     const composer = screen.getByPlaceholderText(
       i18nText('agentFlow', 'auto.chat_with_bots')
     );
-    const draftReference = screen.getByTestId(
+    const draftReferences = screen.getAllByTestId(
       'assistant-page-reference-draft'
     );
     expect(
-      draftReference.compareDocumentPosition(composer) &
+      draftReferences[0].compareDocumentPosition(composer) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', {
+      screen.getAllByRole('button', {
         name: i18nText('appShell', 'auto.assistant_remove_page_reference')
-      })
+      })[0]
     );
     expect(
-      screen.queryByTestId('assistant-page-reference-draft')
-    ).not.toBeInTheDocument();
+      screen.getAllByTestId('assistant-page-reference-draft')
+    ).toHaveLength(1);
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -1234,6 +1244,10 @@ describe('EmbeddedAgentAssistant', () => {
         expect.objectContaining({
           query: '为什么这个区域显示失败？',
           page_references: [
+            expect.objectContaining({
+              outer_html:
+                '<button data-testid="reference-target-action">重试</button>'
+            }),
             expect.objectContaining({
               outer_html:
                 '<span data-testid="reference-target-child">退款失败</span>'
