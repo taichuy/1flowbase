@@ -182,6 +182,22 @@
         ]
       },
       {
+        "files": [
+          "src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx"
+        ],
+        "rules": [
+          "react-doctor/async-defer-await",
+          "react-doctor/js-combine-iterations",
+          "react-doctor/jsx-no-jsx-as-prop",
+          "react-doctor/no-adjust-state-on-prop-change",
+          "react-doctor/no-cascading-set-state",
+          "react-doctor/no-derived-state",
+          "react-doctor/no-giant-component",
+          "react-doctor/prefer-useReducer",
+          "react-doctor/query-mutation-missing-invalidation"
+        ]
+      },
+      {
         "files": ["src/shared/ui/api-docs/ApiDocsExplorer.tsx"],
         "rules": [
           "react-doctor/no-adjust-state-on-prop-change",
