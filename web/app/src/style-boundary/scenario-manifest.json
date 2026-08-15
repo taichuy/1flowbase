@@ -1195,7 +1195,7 @@
         "propertyAssertions": [
           {
             "property": "display",
-            "expected": "flex"
+            "expected": "grid"
           }
         ]
       },

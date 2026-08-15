@@ -65,6 +65,11 @@ pub struct DataSourceHost {
 }
 
 impl DataSourceHost {
+    pub fn unload(&mut self, plugin_id: &str) {
+        self.loaded_packages.remove(plugin_id);
+        self.legacy_manifest_eligibilities.remove(plugin_id);
+    }
+
     pub fn load(
         &mut self,
         package_root: impl AsRef<std::path::Path>,

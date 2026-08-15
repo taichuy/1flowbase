@@ -523,7 +523,7 @@ fn strict_fixture_installation(
 ) -> domain::LocalPluginInstallationRecord {
     let mut installation = fixture_installation(package);
     installation.artifact.runtime_status = PluginRuntimeStatus::Inactive;
-    installation.artifact.is_current = true;
+    installation.artifact.availability_status = PluginAvailabilityStatus::InstallIncomplete;
     installation
 }
 
@@ -758,18 +758,12 @@ async fn strict_model_provider_binding_rejects_invalid_dynamic_facts_before_spaw
     let mut artifact_mismatched = valid.clone();
     artifact_mismatched.artifact.artifact_status = domain::PluginArtifactInstanceStatus::Mismatched;
     cases.push(artifact_mismatched);
-    let mut stale_artifact = valid.clone();
-    stale_artifact.artifact.is_current = false;
-    cases.push(stale_artifact);
     let mut load_failed = valid.clone();
     load_failed.artifact.runtime_status = PluginRuntimeStatus::LoadFailed;
     cases.push(load_failed);
     let mut verification_pending = valid.clone();
     verification_pending.installation.verification_status = PluginVerificationStatus::Pending;
     cases.push(verification_pending);
-    let mut unavailable = valid.clone();
-    unavailable.artifact.availability_status = PluginAvailabilityStatus::ArtifactMissing;
-    cases.push(unavailable);
     let mut wrong_contract = valid.clone();
     wrong_contract.installation.contract_version = "1flowbase.data_source/v1".to_string();
     cases.push(wrong_contract);

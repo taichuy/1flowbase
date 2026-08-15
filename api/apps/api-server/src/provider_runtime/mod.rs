@@ -247,6 +247,54 @@ struct DataSourceRuntimeTarget {
 
 #[async_trait]
 impl ProviderRuntimePort for ApiProviderRuntime {
+    async fn activate_plugin(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        match installation.contract_version.as_str() {
+            plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => {
+                let binding = self.resolve_model_provider_binding(installation)?;
+                self.ensure_provider_loaded(&binding).await
+            }
+            "1flowbase.data_source/v1" => self.ensure_data_source_loaded(installation).await,
+            "1flowbase.capability/v1" => self.ensure_capability_loaded(installation).await,
+            _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
+        }
+    }
+
+    async fn deactivate_plugin(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        match installation.contract_version.as_str() {
+            plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => self
+                .services
+                .provider_host
+                .write()
+                .await
+                .unload(&installation.plugin_id)
+                .await
+                .map_err(map_provider_framework_error),
+            "1flowbase.data_source/v1" => {
+                self.services
+                    .data_source_host
+                    .write()
+                    .await
+                    .unload(&installation.plugin_id);
+                Ok(())
+            }
+            "1flowbase.capability/v1" => {
+                self.services
+                    .capability_host
+                    .write()
+                    .await
+                    .unload(&installation.plugin_id);
+                Ok(())
+            }
+            _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
+        }
+    }
+
     async fn pipeline_provider_input(
         &self,
         input: ProviderInvocationInput,

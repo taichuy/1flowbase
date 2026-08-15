@@ -217,7 +217,11 @@ async function openProviderInstancesModal() {
   );
   fireEvent.click(within(catalogRow).getByRole('button', { name: '管理' }));
 
-  return screen.findByRole('dialog', { name: /OpenAI Compatible 实例/ });
+  const dialog = await screen.findByRole('dialog');
+  expect(
+    within(dialog).getByText('OpenAI Compatible 实例')
+  ).toBeInTheDocument();
+  return dialog;
 }
 
 async function openSourceManagementTab(modal: HTMLElement) {

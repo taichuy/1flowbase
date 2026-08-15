@@ -662,6 +662,7 @@
     "service_status": "Service status",
     "cache_domain": "cache domain",
     "enabled": "enable",
+    "extension_activation_requires_restart": "Host Extension activation changes take effect after restart",
     "save_permissions": "save permissions",
     "import_all": "Import all",
     "delete_supplier": "Delete supplier",

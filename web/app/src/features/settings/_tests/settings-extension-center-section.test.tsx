@@ -40,6 +40,8 @@ const extensionsApi = vi.hoisted(() => ({
   fetchSettingsExtensionCatalogEntry: vi.fn(),
   checkSettingsExtensionUpdates: vi.fn(),
   installSettingsExtension: vi.fn(),
+  enableSettingsInstalledExtension: vi.fn(),
+  disableSettingsInstalledExtension: vi.fn(),
   deleteSettingsInstalledExtension: vi.fn(),
   getSettingsExtensionRiskChallenge: vi.fn(),
   previewSettingsInstalledMcpExtension: vi.fn(),
@@ -77,11 +79,6 @@ vi.mock('../api/extensions', () => extensionsApi);
 vi.mock('../api/i18n-catalog', () => i18nCatalogApi);
 vi.mock('../../applications/api/applications', () => applicationsApi);
 vi.mock('../api/mcp-management', () => mcpManagementApi);
-vi.mock('../components/mcp-management/bundle/McpTemplateLibrary', () => ({
-  McpTemplateLibrary: ({ variant }: { variant?: string }) => (
-    <div data-testid="mcp-template-library" data-variant={variant} />
-  )
-}));
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => routerApi.navigate
 }));
@@ -109,6 +106,8 @@ const installedEntry = {
   signing_key_id: 'official-key',
   status: 'installed',
   is_current: true,
+  desired_state: 'active_requested',
+  availability_status: 'available',
   application_action: 'configure_model_provider' as const,
   application_status: 'available' as const,
   created_by: 'user-1',
@@ -305,6 +304,16 @@ describe('SettingsExtensionCenterSection', () => {
       application_status: 'available'
     });
     extensionsApi.deleteSettingsInstalledExtension.mockResolvedValue(undefined);
+    extensionsApi.enableSettingsInstalledExtension.mockResolvedValue({
+      ...installedEntry,
+      desired_state: 'active_requested',
+      availability_status: 'available'
+    });
+    extensionsApi.disableSettingsInstalledExtension.mockResolvedValue({
+      ...installedEntry,
+      desired_state: 'disabled',
+      availability_status: 'disabled'
+    });
     extensionsApi.getSettingsExtensionRiskChallenge.mockReturnValue(null);
     extensionsApi.getSettingsInstalledMcpExtensionConflict.mockReturnValue(
       null
@@ -611,16 +620,34 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       await screen.findByRole('link', { name: '前往 MCP 管理' })
     ).toHaveAttribute('href', '/settings/mcp-management?tab=instances');
-    expect(screen.getByTestId('mcp-template-library')).toHaveAttribute(
-      'data-variant',
-      'compact'
-    );
-    expect(extensionsApi.fetchSettingsExtensionCatalog).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'mcp',
+        { q: undefined, slot_code: undefined, cursor: undefined }
+      );
+    });
 
     view.rerender(<SettingsExtensionCenterSection category="i18n" />);
     expect(
       await screen.findByRole('link', { name: '前往多语言管理' })
     ).toHaveAttribute('href', '/settings/i18n');
+  });
+
+  test('Root-AC-003 manages executable plugin activation from the installed table', async () => {
+    renderSection('installed');
+
+    const row = await screen.findByRole('row', { name: /openai/ });
+    const activation = within(row).getByRole('switch', {
+      name: 'openai 启用'
+    });
+    expect(activation).toBeChecked();
+
+    fireEvent.click(activation);
+    await waitFor(() => {
+      expect(
+        extensionsApi.disableSettingsInstalledExtension
+      ).toHaveBeenCalledWith('extension-installation-1', 'csrf-123');
+    });
   });
 
   test('D4-AC-013 renders one family row and keeps every installed version in the view drawer', async () => {
@@ -743,12 +770,14 @@ describe('SettingsExtensionCenterSection', () => {
     });
     extensionsApi.checkSettingsExtensionUpdates.mockResolvedValue({
       category: 'i18n',
-      items: [{
-        catalog_id: 'i18n:taichuy/platform',
-        current_version: '2.0.1',
-        latest_version: '2.0.4',
-        status: 'update_available'
-      }]
+      items: [
+        {
+          catalog_id: 'i18n:taichuy/platform',
+          current_version: '2.0.1',
+          latest_version: '2.0.4',
+          status: 'update_available'
+        }
+      ]
     });
     extensionsApi.installSettingsExtension.mockResolvedValue({
       installation: i18nInstallation,
@@ -771,7 +800,9 @@ describe('SettingsExtensionCenterSection', () => {
     );
 
     renderSection('i18n');
-    const row = await screen.findByRole('row', { name: /Platform translations/ });
+    const row = await screen.findByRole('row', {
+      name: /Platform translations/
+    });
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     const dialog = (await screen.findByText('更新多语言目录')).closest(
@@ -780,10 +811,16 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       within(dialog).getByRole('button', { name: /取\s*消/ })
     ).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: '仅安装新版本' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: '安装并激活' })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: '仅安装新版本' })
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: '安装并激活' })
+    ).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '仅安装新版本' }));
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '仅安装新版本' })
+    );
     await waitFor(() => {
       expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
         i18nCatalogEntry,
@@ -814,9 +851,7 @@ describe('SettingsExtensionCenterSection', () => {
       );
     });
     expect(
-      await screen.findByText(
-        '新版本已安装，但激活失败；当前激活版本未改变'
-      )
+      await screen.findByText('新版本已安装，但激活失败；当前激活版本未改变')
     ).toBeInTheDocument();
   });
 
@@ -1023,11 +1058,7 @@ describe('SettingsExtensionCenterSection', () => {
     }
 
     view.rerender(<SettingsExtensionCenterSection category="mcp" />);
-    expect(screen.getByTestId('mcp-template-library')).toHaveAttribute(
-      'data-variant',
-      'compact'
-    );
-    expect(screen.queryByText('mcp Extension')).not.toBeInTheDocument();
+    expect(await screen.findByText('mcp Extension')).toBeInTheDocument();
   });
 
   test('AC-001 loads only the generic catalog row being installed and disables the other row', async () => {

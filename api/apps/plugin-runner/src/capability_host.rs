@@ -44,6 +44,10 @@ pub struct CapabilityHost {
 }
 
 impl CapabilityHost {
+    pub fn unload(&mut self, plugin_id: &str) {
+        self.loaded_packages.remove(plugin_id);
+    }
+
     pub fn load(
         &mut self,
         package_root: impl AsRef<std::path::Path>,

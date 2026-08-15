@@ -662,6 +662,7 @@
     "service_status": "服务状态",
     "cache_domain": "缓存域",
     "enabled": "启用",
+    "extension_activation_requires_restart": "Host Extension 的启停将在重启后生效",
     "save_permissions": "保存权限",
     "import_all": "全部导入",
     "delete_supplier": "删除供应商",

@@ -10,6 +10,11 @@ pub struct EnablePluginCommand {
     pub installation_id: Uuid,
 }
 
+pub struct DisablePluginCommand {
+    pub actor_user_id: Uuid,
+    pub installation_id: Uuid,
+}
+
 pub struct AssignPluginCommand {
     pub actor_user_id: Uuid,
     pub installation_id: Uuid,
@@ -66,9 +71,7 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         self.ensure_model_provider_target(&installation)?;
-        if is_host_extension_installation(&installation) {
-            return Err(ControlPlaneError::Conflict("plugin_installation_requires_restart").into());
-        }
+        let requires_restart = is_host_extension_installation(&installation);
         let local_installation = self
             .ready_current_node_installation(command.installation_id)
             .await?;
@@ -102,7 +105,11 @@ where
                 .repository
                 .update_desired_state(&UpdatePluginDesiredStateInput {
                     installation_id: command.installation_id,
-                    desired_state: domain::PluginDesiredState::ActiveRequested,
+                    desired_state: if requires_restart {
+                        domain::PluginDesiredState::PendingRestart
+                    } else {
+                        domain::PluginDesiredState::ActiveRequested
+                    },
                     actor_user_id: command.actor_user_id,
                 })
                 .await?;
@@ -110,24 +117,28 @@ where
                 installation: updated,
                 artifact: local_installation.artifact,
             };
-            let loaded = match self.runtime.ensure_loaded(&runtime_installation).await {
-                Ok(()) => {
-                    self.mark_current_node_runtime_status(
-                        &runtime_installation,
-                        domain::PluginRuntimeStatus::Active,
-                        None,
-                    )
-                    .await?;
-                    runtime_installation.installation.clone()
-                }
-                Err(error) => {
-                    self.mark_current_node_runtime_status(
-                        &runtime_installation,
-                        domain::PluginRuntimeStatus::LoadFailed,
-                        Some(error.to_string()),
-                    )
-                    .await?;
-                    return Err(error);
+            let loaded = if requires_restart {
+                runtime_installation.installation.clone()
+            } else {
+                match self.runtime.activate_plugin(&runtime_installation).await {
+                    Ok(()) => {
+                        self.mark_current_node_runtime_status(
+                            &runtime_installation,
+                            domain::PluginRuntimeStatus::Active,
+                            None,
+                        )
+                        .await?;
+                        runtime_installation.installation.clone()
+                    }
+                    Err(error) => {
+                        self.mark_current_node_runtime_status(
+                            &runtime_installation,
+                            domain::PluginRuntimeStatus::LoadFailed,
+                            Some(error.to_string()),
+                        )
+                        .await?;
+                        return Err(error);
+                    }
                 }
             };
             self.repository
@@ -173,6 +184,102 @@ where
                         json!({
                             "installation_id": command.installation_id,
                         }),
+                    )
+                    .await;
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn disable_plugin(
+        &self,
+        command: DisablePluginCommand,
+    ) -> Result<domain::PluginTaskRecord> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
+            .await?;
+        let installation = self
+            .repository
+            .get_installation(command.installation_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        self.ensure_model_provider_target(&installation)?;
+        let requires_restart = is_host_extension_installation(&installation);
+        let local_installation = self
+            .ready_current_node_installation(command.installation_id)
+            .await?;
+        let task = self
+            .repository
+            .create_task(&CreatePluginTaskInput {
+                task_id: Uuid::now_v7(),
+                installation_id: Some(command.installation_id),
+                workspace_id: None,
+                provider_code: installation.provider_code.clone(),
+                task_kind: domain::PluginTaskKind::Disable,
+                status: domain::PluginTaskStatus::Queued,
+                status_message: Some("pending".to_string()),
+                detail_json: json!({}),
+                actor_user_id: Some(command.actor_user_id),
+            })
+            .await?;
+        let running_task = self
+            .transition_task(
+                &task,
+                domain::PluginTaskStatus::Running,
+                Some("running".to_string()),
+                json!({}),
+            )
+            .await?;
+        let disabled = async {
+            let updated = self
+                .repository
+                .update_desired_state(&UpdatePluginDesiredStateInput {
+                    installation_id: command.installation_id,
+                    desired_state: domain::PluginDesiredState::Disabled,
+                    actor_user_id: command.actor_user_id,
+                })
+                .await?;
+            if !requires_restart {
+                self.runtime.deactivate_plugin(&local_installation).await?;
+                self.mark_current_node_runtime_status(
+                    &updated,
+                    domain::PluginRuntimeStatus::Inactive,
+                    None,
+                )
+                .await?;
+            }
+            self.repository
+                .append_audit_log(&audit_log(
+                    Some(actor.current_workspace_id),
+                    Some(command.actor_user_id),
+                    "plugin_installation",
+                    Some(updated.id),
+                    "plugin.disabled",
+                    json!({ "provider_code": updated.provider_code }),
+                ))
+                .await?;
+            Ok::<_, anyhow::Error>(updated)
+        }
+        .await;
+        match disabled {
+            Ok(updated) => {
+                self.invalidate_model_routing_catalog(actor.current_workspace_id)
+                    .await;
+                self.transition_task(
+                    &running_task,
+                    domain::PluginTaskStatus::Succeeded,
+                    Some("disabled".to_string()),
+                    json!({ "installation_id": updated.id, "enabled": false }),
+                )
+                .await
+            }
+            Err(error) => {
+                let _ = self
+                    .transition_task(
+                        &running_task,
+                        domain::PluginTaskStatus::Failed,
+                        Some(error.to_string()),
+                        json!({ "installation_id": command.installation_id }),
                     )
                     .await;
                 Err(error)
@@ -739,7 +846,9 @@ where
     }
 }
 
-fn supports_workspace_assignment(installation: &domain::PluginInstallationRecord) -> bool {
+pub(super) fn supports_workspace_assignment(
+    installation: &domain::PluginInstallationRecord,
+) -> bool {
     matches!(
         installation.contract_version.as_str(),
         CURRENT_PROVIDER_CONTRACT | "1flowbase.data_source/v1" | "1flowbase.capability/v1"

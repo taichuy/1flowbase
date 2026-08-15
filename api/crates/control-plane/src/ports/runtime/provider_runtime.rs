@@ -14,6 +14,20 @@ pub struct ProviderLiveEventSenders {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    async fn activate_plugin(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        self.ensure_loaded(installation).await
+    }
+
+    async fn deactivate_plugin(
+        &self,
+        _installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     async fn pipeline_provider_input(
         &self,
         input: ProviderInvocationInput,

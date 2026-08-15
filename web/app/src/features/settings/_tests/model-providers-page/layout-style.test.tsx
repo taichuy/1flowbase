@@ -477,7 +477,7 @@ describe('ModelProvidersPage - layout and style', () => {
     );
   });
 
-  test('keeps fixed-height ownership out of the model provider panel stylesheet', () => {
+  test('AC-002 keeps horizontal overflow inside the catalog and stacks by container width', () => {
     const cssSource = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -492,8 +492,27 @@ describe('ModelProvidersPage - layout and style', () => {
     );
     expect(cssSource).not.toContain('overflow: hidden !important');
     expect(cssSource).toContain('height: calc(100% - 24px);');
-    expect(cssSource).not.toContain('@media (max-width: 1380px)');
-    expect(cssSource).toContain('@media (max-width: 768px)');
+    expect(cssSource).toContain('container-type: inline-size;');
+    expect(cssSource).toMatch(
+      /\.model-provider-panel__main\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(320px, 360px\);[^}]*grid-template-rows:\s*minmax\(0, 1fr\);[^}]*overflow:\s*hidden;/s
+    );
+    expect(cssSource).toMatch(
+      /\.model-provider-panel__left\s*\{[^}]*flex:\s*none;[^}]*width:\s*100%\s*!important;/s
+    );
+    expect(cssSource).toContain('@container (max-width: 1280px)');
+    expect(cssSource).toMatch(
+      /@container \(max-width: 1280px\)[\s\S]*?\.model-provider-panel__main\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*grid-template-rows:\s*max-content max-content;[^}]*height:\s*max-content;[^}]*align-self:\s*start;/u
+    );
+    const containerQuerySource = cssSource.slice(
+      cssSource.indexOf('@container (max-width: 1280px)'),
+      cssSource.indexOf('@media (max-width: 768px)')
+    );
+    expect(containerQuerySource).toMatch(
+      /\.model-provider-panel__catalog,\s*\.model-provider-panel__official\s*\{[^}]*height:\s*auto;[^}]*overflow-y:\s*visible;/u
+    );
+    expect(cssSource).toMatch(
+      /\.model-provider-panel__catalog-table \.ant-table-content\s*\{[^}]*overflow-x:\s*auto !important;/s
+    );
   });
 
   test('keeps model provider tab bodies filling their available height', () => {

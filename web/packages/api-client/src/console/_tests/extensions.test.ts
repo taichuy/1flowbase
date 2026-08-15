@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import * as transport from '../../transport';
 import {
   deleteConsoleInstalledExtension,
+  disableConsoleInstalledExtension,
   checkConsoleExtensionUpdates,
   getConsoleExtensionCatalogEntry,
   getConsoleExtensionRiskChallenge,
   installConsoleExtension,
+  enableConsoleInstalledExtension,
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
   selectConsoleInstalledExtension,
@@ -57,6 +59,8 @@ describe('extension center client contract', () => {
           signing_key_id: null,
           status: 'installed',
           is_current: true,
+          desired_state: 'active_requested',
+          availability_status: 'available',
           application_action: 'none',
           application_status: 'not_required',
           created_by: 'user-1',
@@ -105,6 +109,23 @@ describe('extension center client contract', () => {
     ).resolves.toMatchObject({
       path: '/api/console/settings/extension-center/installed/installation%20old',
       method: 'DELETE',
+      csrfToken: 'csrf'
+    });
+  });
+
+  test('Root-AC-003 enables and disables one installation through extension center', async () => {
+    await expect(
+      enableConsoleInstalledExtension('installation current', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/extension-center/installed/installation%20current/enable',
+      method: 'POST',
+      csrfToken: 'csrf'
+    });
+    await expect(
+      disableConsoleInstalledExtension('installation current', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/extension-center/installed/installation%20current/disable',
+      method: 'POST',
       csrfToken: 'csrf'
     });
   });

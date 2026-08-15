@@ -14,7 +14,8 @@ use axum::{
     Json,
 };
 use control_plane::plugin_management::{
-    group_installed_extension_families, ExtensionArtifactInstallOutcome, ExtensionCatalogCategory,
+    group_installed_extension_families, AssignPluginCommand, DisablePluginCommand,
+    EnablePluginCommand, ExtensionArtifactInstallOutcome, ExtensionCatalogCategory,
     ExtensionInstallationService, ExtensionRiskOverride, InstallExtensionArtifactCommand,
     InstallExtensionNodePluginCommand, InstalledExtensionFamily, PluginManagementService,
     SwitchPluginVersionCommand,
@@ -41,8 +42,9 @@ use crate::{
 };
 
 use super::{
-    base_service, enforce_plugin_upload_limit, format_time, PluginCompatibilityOverrideBody,
-    PluginRiskOverrideBody, MAX_PLUGIN_UPLOAD_BYTES,
+    base_service, enforce_plugin_upload_limit, format_time, to_task_response,
+    PluginCompatibilityOverrideBody, PluginRiskOverrideBody, PluginTaskResponse,
+    MAX_PLUGIN_UPLOAD_BYTES,
 };
 
 mod dto;
@@ -63,6 +65,20 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(
                 select_local_extension_installation,
                 ConsoleOperation("extension_center.installed.select".to_string()),
+            ),
+        )
+        .route(
+            "/settings/extension-center/installed/:installation_id/enable",
+            console_post(
+                enable_installed_plugin,
+                ConsoleOperation("extension_center.installed.enable".to_string()),
+            ),
+        )
+        .route(
+            "/settings/extension-center/installed/:installation_id/disable",
+            console_post(
+                disable_installed_plugin,
+                ConsoleOperation("extension_center.installed.disable".to_string()),
             ),
         )
         .route(
@@ -193,6 +209,8 @@ fn to_local_inventory_family(
         signing_key_id: entry.signing_key_id,
         status: entry.status.as_str().to_string(),
         is_current: entry.is_current,
+        desired_state: None,
+        availability_status: None,
         application_action: entry.application_action.as_str().to_string(),
         application_status: default_application_status(entry.application_action).to_string(),
         created_by: entry.created_by.to_string(),
@@ -287,6 +305,24 @@ pub async fn list_local_extension_inventory(
         )
         .await?;
         let mut response = to_local_inventory_family_entry(family);
+        if let Some(installation) = control_plane::ports::PluginRepository::get_installation(
+            &state.store,
+            Uuid::parse_str(&response.id).map_err(|_| {
+                control_plane::errors::ControlPlaneError::InvalidInput("extension_installation_id")
+            })?,
+        )
+        .await?
+        {
+            response.desired_state = Some(installation.desired_state.as_str().to_string());
+            response.availability_status =
+                control_plane::ports::PluginRepository::get_artifact_instance(
+                    &state.store,
+                    &state.api_node_id,
+                    installation.id,
+                )
+                .await?
+                .map(|artifact| artifact.availability_status.as_str().to_string());
+        }
         for version in &mut response.installed_versions {
             if let Some(decision) =
                 control_plane::ports::ExtensionInstallationRepository::extension_deletion_decision(
@@ -313,6 +349,52 @@ pub async fn list_local_extension_inventory(
         next_cursor,
         entries,
     })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/extension-center/installed/{installation_id}/enable",
+    operation_id = "extension_center_enable_installed_plugin",
+    summary = "Enable an installed executable extension",
+    responses((status = 200, body = PluginTaskResponse), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn enable_installed_plugin(
+    State(state): State<Arc<ApiState>>,
+    Path(installation_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let task = service(&state, &context.actor, "extension_center.installed.enable")
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: context.user.id,
+            installation_id,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(to_task_response(task))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/extension-center/installed/{installation_id}/disable",
+    operation_id = "extension_center_disable_installed_plugin",
+    summary = "Disable an installed executable extension",
+    responses((status = 200, body = PluginTaskResponse), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn disable_installed_plugin(
+    State(state): State<Arc<ApiState>>,
+    Path(installation_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let task = service(&state, &context.actor, "extension_center.installed.disable")
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: context.user.id,
+            installation_id,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
 #[utoipa::path(
@@ -1323,32 +1405,49 @@ async fn install_or_update_official_extension(
                 source_kind: source_kind.to_string(),
             })
             .await?;
-        if operation_id == "extension_center.update"
-            && installed
-                .installation
-                .metadata_json
-                .get("plugin_type")
-                .and_then(serde_json::Value::as_str)
-                == Some("model_provider")
+        let current = control_plane::ports::PluginRepository::list_assignments(
+            &state.store,
+            context.actor.current_workspace_id,
+        )
+        .await?
+        .into_iter()
+        .find(|assignment| assignment.provider_code == installed.installation.provider_code);
+        let is_model_provider = installed
+            .installation
+            .metadata_json
+            .get("plugin_type")
+            .and_then(serde_json::Value::as_str)
+            == Some("model_provider");
+        let supports_assignment = matches!(
+            installed.installation.contract_version.as_str(),
+            plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT
+                | "1flowbase.data_source/v1"
+                | "1flowbase.capability/v1"
+        );
+        let requires_model_provider_switch = operation_id == "extension_center.update"
+            && is_model_provider
+            && current
+                .as_ref()
+                .is_some_and(|assignment| assignment.installation_id != installed.installation.id);
+        if requires_model_provider_switch {
+            service(state, &context.actor, operation_id)
+                .switch_version(SwitchPluginVersionCommand {
+                    actor_user_id: context.user.id,
+                    provider_code: installed.installation.provider_code.clone(),
+                    target_installation_id: installed.installation.id,
+                })
+                .await?;
+        } else if supports_assignment
+            && current.as_ref().map_or(true, |assignment| {
+                assignment.installation_id != installed.installation.id
+            })
         {
-            let current = control_plane::ports::PluginRepository::list_assignments(
-                &state.store,
-                context.actor.current_workspace_id,
-            )
-            .await?
-            .into_iter()
-            .find(|assignment| assignment.provider_code == installed.installation.provider_code);
-            if current
-                .is_some_and(|assignment| assignment.installation_id != installed.installation.id)
-            {
-                service(state, &context.actor, operation_id)
-                    .switch_version(SwitchPluginVersionCommand {
-                        actor_user_id: context.user.id,
-                        provider_code: installed.installation.provider_code.clone(),
-                        target_installation_id: installed.installation.id,
-                    })
-                    .await?;
-            }
+            service(state, &context.actor, operation_id)
+                .assign_plugin(AssignPluginCommand {
+                    actor_user_id: context.user.id,
+                    installation_id: installed.installation.id,
+                })
+                .await?;
         }
         let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
             &state.store,
