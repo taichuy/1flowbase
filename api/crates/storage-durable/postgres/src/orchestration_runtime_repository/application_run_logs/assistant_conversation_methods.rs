@@ -191,7 +191,7 @@ impl PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             with visible_runs as (
-                select seed.id, 0 as source_order
+                select seed.id, seed.input_payload, 0 as source_order
                 from assistant_conversations conversations
                 join flow_runs seed
                   on seed.id = conversations.seed_legacy_flow_run_id
@@ -207,7 +207,7 @@ impl PgControlPlaneStore {
                   and seed.compatibility_mode = 'embedded_assistant'
                   and seed.assistant_conversation_id is null
                 union all
-                select runs.id, 1 as source_order
+                select runs.id, runs.input_payload, 1 as source_order
                 from flow_runs runs
                 join assistant_conversations conversations
                   on conversations.conversation_id = runs.assistant_conversation_id
@@ -224,6 +224,7 @@ impl PgControlPlaneStore {
                     items.answer,
                     items.started_at,
                     items.updated_at,
+                    visible_runs.input_payload,
                     visible_runs.source_order
                 from application_run_conversation_message_items items
                 join visible_runs on visible_runs.id = items.flow_run_id
@@ -236,6 +237,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'user'::text as role,
                     query as content,
+                    input_payload,
                     coalesce(started_at, updated_at) as created_at,
                     0 as message_order,
                     source_order
@@ -247,6 +249,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'assistant'::text as role,
                     answer as content,
+                    input_payload,
                     coalesce(updated_at, started_at) as created_at,
                     1 as message_order,
                     source_order
@@ -277,7 +280,7 @@ impl PgControlPlaneStore {
         let rows = sqlx::query(
             r#"
             with visible_run as (
-                select runs.id
+                select runs.id, runs.input_payload
                 from flow_runs runs
                 join applications on applications.id = runs.application_id
                 where runs.id = $1
@@ -293,7 +296,8 @@ impl PgControlPlaneStore {
                     items.query,
                     items.answer,
                     items.started_at,
-                    items.updated_at
+                    items.updated_at,
+                    visible_run.input_payload
                 from application_run_conversation_message_items items
                 join visible_run on visible_run.id = items.flow_run_id
                 where items.is_current
@@ -305,6 +309,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'user'::text as role,
                     query as content,
+                    input_payload,
                     coalesce(started_at, updated_at) as created_at,
                     0 as message_order
                 from message_row
@@ -315,6 +320,7 @@ impl PgControlPlaneStore {
                     flow_run_id,
                     'assistant'::text as role,
                     answer as content,
+                    input_payload,
                     coalesce(updated_at, started_at) as created_at,
                     1 as message_order
                 from message_row
@@ -352,12 +358,24 @@ fn assistant_conversation_messages_from_rows(
 ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>> {
     rows.into_iter()
         .map(|row| {
+            let role: String = row.try_get("role")?;
+            let input_payload: serde_json::Value = row.try_get("input_payload")?;
+            let page_references = if role == "user" {
+                control_plane::application_public_api::run_service::embedded_assistant_user_message(
+                    &input_payload,
+                )
+                .map(|message| message.page_references().to_vec())
+                .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             Ok(
                 control_plane::application_public_api::run_service::AssistantConversationMessage {
                     id: row.try_get("id")?,
                     flow_run_id: row.try_get("flow_run_id")?,
-                    role: row.try_get("role")?,
+                    role,
                     content: row.try_get("content")?,
+                    page_references,
                     created_at: row.try_get("created_at")?,
                 },
             )

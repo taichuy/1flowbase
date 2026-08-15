@@ -7,6 +7,7 @@ import {
   startConsoleAssistantRunStream,
   type ConsoleAssistantConversationMessage,
   type ConsoleAssistantClientTools,
+  type ConsoleAssistantPageReference,
   type ConsoleAssistantWebSocketControl,
   type ConsoleContextSnapshot,
   type ConsoleFlowDebugStreamEvent,
@@ -118,6 +119,7 @@ function restoredMessages(
     id: item.id,
     role: item.role,
     content: item.content,
+    pageReferences: item.page_references ?? [],
     status: 'completed',
     runId: item.flow_run_id,
     detailRunId: item.flow_run_id,
@@ -392,7 +394,10 @@ export function useEmbeddedAssistantSession(
   );
 
   const submitPrompt = useCallback(
-    async (prompt: string) => {
+    async (
+      prompt: string,
+      pageReferences: ConsoleAssistantPageReference[] = []
+    ) => {
       const query = prompt.trim();
       if (
         !applicationId ||
@@ -455,7 +460,7 @@ export function useEmbeddedAssistantSession(
       }));
       setMessages((current) => [
         ...current,
-        createUserMessage(query),
+        createUserMessage(query, pageReferences),
         runningMessage
       ]);
 
@@ -532,7 +537,10 @@ export function useEmbeddedAssistantSession(
               application_id: applicationId,
               conversation_id: targetConversationId,
               query,
-              history
+              history,
+              ...(pageReferences.length > 0
+                ? { page_references: pageReferences }
+                : {})
             },
             csrfToken,
             handlers,
@@ -556,7 +564,10 @@ export function useEmbeddedAssistantSession(
               application_id: applicationId,
               conversation_id: targetConversationId,
               query,
-              history
+              history,
+              ...(pageReferences.length > 0
+                ? { page_references: pageReferences }
+                : {})
             },
             csrfToken,
             handlers

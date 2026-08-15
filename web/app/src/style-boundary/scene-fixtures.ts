@@ -114,6 +114,7 @@ function getStyleBoundaryCommonResponse(
           { application_id: 'flow-1', name: 'Support Agent' }
         ],
         enabled_mcp_instances: [{ instance_id: 'catalog', name: 'Catalog' }],
+        page_reference_max_bytes: 65536,
         run_capabilities: {
           model_selection_enabled: false,
           reasoning_effort_enabled: false,

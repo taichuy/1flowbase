@@ -6,9 +6,11 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { EmbeddedAgentAssistantPreview } from './EmbeddedAgentAssistantPreview';
 
 export function EmbeddedAgentAssistant({
-  clientTools
+  clientTools,
+  pageKey = typeof window === 'undefined' ? '/' : window.location.pathname
 }: {
   clientTools?: ConsoleAssistantClientTools;
+  pageKey?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [previewMounted, setPreviewMounted] = useState(false);
@@ -57,6 +59,7 @@ export function EmbeddedAgentAssistant({
         <EmbeddedAgentAssistantPreview
           clientTools={clientTools}
           open={open}
+          pageKey={pageKey}
           onClose={() => setOpen(false)}
         />
       ) : null}

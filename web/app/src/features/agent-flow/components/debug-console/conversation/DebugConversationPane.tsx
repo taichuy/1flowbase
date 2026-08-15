@@ -1,5 +1,5 @@
 import { Bubble } from '@ant-design/x';
-import { Empty, Typography } from 'antd';
+import { Empty, Flex, Typography } from 'antd';
 import {
   useCallback,
   useLayoutEffect,
@@ -18,6 +18,7 @@ import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runt
 import { DebugAssistantMessage } from './DebugAssistantMessage';
 import { DebugComposer } from './DebugComposer';
 import { DebugMarkdownContent } from './DebugMarkdownContent';
+import { PageReferenceTag } from './PageReferenceTag';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 const HISTORY_LOAD_SCROLL_THRESHOLD_PX = 96;
@@ -170,9 +171,17 @@ export function DebugConversationPane({
         placement: 'end' as const,
         shape: 'corner' as const,
         contentRender: (message: AgentFlowDebugMessage) => (
-          <Typography.Paragraph className="agent-flow-editor__debug-message-content">
-            {message.content}
-          </Typography.Paragraph>
+          <Flex align="end" gap={4} vertical>
+            <Typography.Paragraph className="agent-flow-editor__debug-message-content">
+              {message.content}
+            </Typography.Paragraph>
+            {message.pageReferences?.map((reference) => (
+              <PageReferenceTag
+                key={`${reference.page_url}:${reference.outer_html}`}
+                reference={reference}
+              />
+            ))}
+          </Flex>
         )
       }
     }),

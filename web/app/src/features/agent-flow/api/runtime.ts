@@ -112,6 +112,7 @@ export interface AgentFlowDebugMessage {
   id: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  pageReferences?: AgentFlowPageReference[];
   status: AgentFlowDebugMessageStatus;
   runId: string | null;
   detailRunId?: string | null;
@@ -121,6 +122,12 @@ export interface AgentFlowDebugMessage {
   rawOutput: Record<string, unknown> | null;
   statistics?: AgentFlowRunStatistics;
   traceSummary: AgentFlowTraceItem[];
+}
+
+export interface AgentFlowPageReference {
+  page_url: string;
+  page_title: string;
+  outer_html: string;
 }
 
 export interface AgentFlowRunContextField {

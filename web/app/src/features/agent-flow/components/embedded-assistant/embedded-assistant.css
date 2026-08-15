@@ -236,6 +236,62 @@
   color: var(--text-primary);
 }
 
+.embedded-agent-assistant-preview__composer-actions {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-flow-page-reference-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 13rem;
+  margin-inline-end: 0;
+}
+
+.agent-flow-page-reference-tag > span:not(.anticon) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-flow-page-reference-tag button {
+  width: 1.25rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+}
+
+.embedded-agent-assistant-preview__page-reference-error {
+  color: var(--color-error);
+}
+
+.embedded-agent-assistant-page-reference-outline {
+  position: fixed;
+  z-index: 2000;
+  border: 2px solid var(--color-primary);
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  pointer-events: none;
+}
+
+.embedded-agent-assistant-page-reference-hint {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  z-index: 2001;
+  max-width: min(32rem, calc(100vw - 2rem));
+  transform: translateX(-50%);
+  border: 1px solid var(--border-default);
+  border-radius: 0.375rem;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+  padding: 0.5rem 0.75rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
 @media (max-width: 640px) {
   .embedded-agent-assistant-preview {
     inset: 0;
