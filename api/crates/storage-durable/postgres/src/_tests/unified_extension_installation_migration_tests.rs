@@ -287,13 +287,12 @@ async fn root_ac_005_pre_034_upgrade_keeps_current_assignment_enabled_and_histor
 
     through_unified_migrator().run(&pool).await.unwrap();
 
-    let pre_lifecycle_upgrade_state: String = sqlx::query_scalar(
-        "select desired_state from extension_installations where id = $1",
-    )
-    .bind(current_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let pre_lifecycle_upgrade_state: String =
+        sqlx::query_scalar("select desired_state from extension_installations where id = $1")
+            .bind(current_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(pre_lifecycle_upgrade_state, "disabled");
 
     run_migrations(&pool).await.unwrap();
