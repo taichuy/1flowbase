@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, expectTypeOf, test, vi } from 'vitest';
 
 import {
   attachConsoleAssistantRunWebSocket,
@@ -10,7 +10,8 @@ import {
   startConsoleAssistantRun,
   startConsoleAssistantRunStream,
   startConsoleAssistantRunWebSocket,
-  updateConsoleAssistantSettings
+  updateConsoleAssistantSettings,
+  type ConsoleAssistantConversationMessage
 } from '../console-assistant';
 import * as transport from '../transport';
 
@@ -92,6 +93,15 @@ describe('console assistant client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/assistant/legacy-runs/run-1/messages?application_id=application-1'
     });
+  });
+
+  test('AC-005 exposes the backend run status on restored conversation messages', () => {
+    expectTypeOf<ConsoleAssistantConversationMessage>().toMatchTypeOf<{
+      flow_run_id: string;
+      role: 'user' | 'assistant';
+      content: string;
+      status: string;
+    }>();
   });
 
   test('AC-003 starts Preview-compatible assistant streaming through the session route', async () => {

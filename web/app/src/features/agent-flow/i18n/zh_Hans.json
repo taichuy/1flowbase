@@ -511,7 +511,7 @@
     "select_variable_left_view_details": "选择左侧变量查看详情",
     "template_output_conversion": "模板输出转换。",
     "binding_refers_output_connected_upstream_link": "当前 binding 引用了未接入上游链路的输出。",
-    "stopped": "已停止运行。",
+    "stopped": "运行已取消，未产生输出。",
     "reduce_canvas": "缩小画布",
     "add_new_variable": "新增变量",
     "error": "错误",

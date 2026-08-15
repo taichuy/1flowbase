@@ -183,6 +183,20 @@ function assistantRunStatusIndicator(status: string | null) {
       </Tooltip>
     );
   }
+  if (status === 'cancelled') {
+    const label = i18nText('appShell', 'auto.assistant_status_cancelled');
+    return (
+      <Tooltip title={label}>
+        <span
+          {...commonProps}
+          aria-label={label}
+          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--cancelled"
+        >
+          <CloseOutlined />
+        </span>
+      </Tooltip>
+    );
+  }
   return null;
 }
 

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DebugAssistantMessage } from '../../components/debug-console/conversation/DebugAssistantMessage';
 import type { AgentFlowDebugMessage } from '../../api/runtime';
 import { AppProviders } from '../../../../app/AppProviders';
+import { i18nText } from '../../../../shared/i18n/text';
 
 vi.mock('copy-to-clipboard', () => ({
   default: vi.fn()
@@ -571,6 +572,25 @@ describe('DebugAssistantMessage', () => {
     expect(
       screen.queryByText('先分析用户问题，再整理退款政策。')
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-005 shows the cancelled-without-output message when only reasoning was received', () => {
+    const message: AgentFlowDebugMessage = {
+      id: 'assistant-cancelled-reasoning',
+      role: 'assistant',
+      status: 'cancelled',
+      runId: 'run-cancelled',
+      content: '<think>临时推理状态</think>',
+      rawOutput: null,
+      traceSummary: []
+    };
+
+    render(<DebugAssistantMessage message={message} />);
+
+    expect(
+      screen.getByText(i18nText('agentFlow', 'auto.stopped'))
+    ).toBeInTheDocument();
+    expect(screen.queryByText('临时推理状态')).not.toBeInTheDocument();
   });
 
   test('copies answer content through App message context without static message warning', async () => {

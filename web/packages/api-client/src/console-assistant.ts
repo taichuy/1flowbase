@@ -108,6 +108,7 @@ export interface ConsoleAssistantConversationMessage {
   flow_run_id: string;
   role: 'user' | 'assistant';
   content: string;
+  status: string;
   page_references: ConsoleAssistantPageReference[];
   created_at: string;
 }

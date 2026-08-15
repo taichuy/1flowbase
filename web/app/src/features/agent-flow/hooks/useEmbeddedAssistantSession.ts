@@ -27,7 +27,10 @@ import {
   applyDebugStreamEventToTrace,
   reconcileSnapshotTraceWithLiveEvents
 } from '../lib/debug-console/stream-events';
-import { mapRunDetailToTrace } from '../lib/debug-console/run-detail-mapper';
+import {
+  mapRunDetailToConversation,
+  mapRunDetailToTrace
+} from '../lib/debug-console/run-detail-mapper';
 import { i18nText } from '../../../shared/i18n/text';
 import { useAuthStore } from '../../../state/auth-store';
 import type { AgentFlowDebugSessionStatus } from './runtime/useAgentFlowDebugSession';
@@ -96,6 +99,10 @@ function sessionStatusFromTerminalFlowRun(
   status: string
 ): AgentFlowDebugMessage['status'] {
   switch (status) {
+    case 'waiting_callback':
+      return 'waiting_callback';
+    case 'waiting_human':
+      return 'waiting_human';
     case 'succeeded':
     case 'completed':
     case 'incomplete':
@@ -146,7 +153,10 @@ function restoredMessages(
     role: item.role,
     content: item.content,
     pageReferences: item.page_references ?? [],
-    status: 'completed',
+    status:
+      item.role === 'assistant'
+        ? sessionStatusFromTerminalFlowRun(item.status)
+        : 'completed',
     runId: item.flow_run_id,
     detailRunId: item.flow_run_id,
     canOpenDetail: true,
@@ -331,11 +341,21 @@ export function useEmbeddedAssistantSession(
           const nextStatus = sessionStatusFromTerminalFlowRun(
             detail.flow_run.status
           );
+          const snapshotMessage =
+            nextStatus === 'cancelled'
+              ? mapRunDetailToConversation(detail)
+              : null;
           setStatus(nextStatus);
           setMessages((current) =>
             current.map((message) =>
               message.role === 'assistant' && message.runId === runId
-                ? { ...message, status: nextStatus, traceSummary: traceItems }
+                ? {
+                    ...message,
+                    status: nextStatus,
+                    content: snapshotMessage?.content || message.content,
+                    rawOutput: snapshotMessage?.rawOutput ?? message.rawOutput,
+                    traceSummary: traceItems
+                  }
                 : message
             )
           );
@@ -514,6 +534,22 @@ export function useEmbeddedAssistantSession(
             runningMessageId = runningMessage.id;
             nextMessages.push(runningMessage);
           }
+        } else if (
+          nextStatus === 'cancelled' &&
+          target.latestFlowRunId &&
+          !nextMessages.some(
+            (message) =>
+              message.role === 'assistant' &&
+              message.runId === target.latestFlowRunId
+          )
+        ) {
+          nextMessages.push({
+            ...createRunningAssistantMessage(),
+            runId: target.latestFlowRunId,
+            detailRunId: target.latestFlowRunId,
+            canOpenDetail: true,
+            status: 'cancelled'
+          });
         }
         activeRunIdRef.current = activeRunId;
         activeApplicationIdRef.current = activeRunId ? applicationId : null;

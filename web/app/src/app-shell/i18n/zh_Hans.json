@@ -20,6 +20,7 @@
     "assistant_run_failed": "本次助手运行失败，请查看应用运行日志。",
     "assistant_settings": "助手设置",
     "assistant_status_failed": "运行失败",
+    "assistant_status_cancelled": "运行已取消",
     "assistant_status_running": "运行中",
     "assistant_status_waiting": "等待操作",
     "assistant_new_conversation": "新对话",

@@ -215,6 +215,68 @@ describe('run detail mapper', () => {
     );
   });
 
+  test('AC-005 restores a cancelled run from its materialized public partial answer', () => {
+    const detail = baseDetail();
+    detail.flow_run.status = 'cancelled';
+    detail.flow_run.output_payload = { answer: '已生成的公开回答片段' };
+    detail.events = [
+      {
+        id: 'event-reasoning',
+        flow_run_id: 'flow-run-1',
+        node_run_id: 'node-run-llm',
+        sequence: 1,
+        event_type: 'reasoning_delta',
+        payload: { text: '临时推理状态' },
+        created_at: '2026-04-26T10:00:00Z'
+      },
+      {
+        id: 'event-node-delta',
+        flow_run_id: 'flow-run-1',
+        node_run_id: 'node-run-llm',
+        sequence: 2,
+        event_type: 'text_delta',
+        payload: { text: '未物化的生成态文本' },
+        created_at: '2026-04-26T10:00:01Z'
+      }
+    ];
+
+    expect(mapRunDetailToConversation(detail)).toEqual(
+      expect.objectContaining({
+        status: 'cancelled',
+        content: '已生成的公开回答片段'
+      })
+    );
+  });
+
+  test('AC-005 does not promote cancelled reasoning or transient deltas to a final answer', () => {
+    const detail = baseDetail();
+    detail.flow_run.status = 'cancelled';
+    detail.events = [
+      {
+        id: 'event-reasoning',
+        flow_run_id: 'flow-run-1',
+        node_run_id: 'node-run-llm',
+        sequence: 1,
+        event_type: 'reasoning_delta',
+        payload: { text: '临时推理状态' },
+        created_at: '2026-04-26T10:00:00Z'
+      },
+      {
+        id: 'event-node-delta',
+        flow_run_id: 'flow-run-1',
+        node_run_id: 'node-run-llm',
+        sequence: 2,
+        event_type: 'text_delta',
+        payload: { text: '未公开的生成态文本' },
+        created_at: '2026-04-26T10:00:01Z'
+      }
+    ];
+
+    expect(mapRunDetailToConversation(detail)).toEqual(
+      expect.objectContaining({ status: 'cancelled', content: '' })
+    );
+  });
+
   test('maps trace debug payload separately from public output and metrics', () => {
     const detail = baseDetail();
     detail.node_runs = [

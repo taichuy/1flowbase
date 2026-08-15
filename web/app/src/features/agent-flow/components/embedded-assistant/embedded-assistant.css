@@ -215,6 +215,10 @@
   color: var(--color-error);
 }
 
+.embedded-agent-assistant-preview__history-item-status--cancelled {
+  color: var(--text-tertiary);
+}
+
 .embedded-agent-assistant-preview__history-body .ant-conversations-item-group {
   background: var(--bg-elevated);
 }
