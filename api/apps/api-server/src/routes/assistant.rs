@@ -17,6 +17,7 @@ use control_plane::{
             ApplicationPublishedRunService, AssistantPageReference,
             CreateAssistantConversationInput, CreateAssistantRunCommand,
             ListAssistantConversationsInput, ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
+            ASSISTANT_PAGE_REFERENCE_MAX_COUNT, ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         },
     },
     mcp_management::McpManagementService,
@@ -142,6 +143,8 @@ pub struct AssistantSettingsResponse {
     pub published_agent_flows: Vec<AssistantPublishedFlowOption>,
     pub enabled_mcp_instances: Vec<AssistantMcpInstanceOption>,
     pub page_reference_max_bytes: usize,
+    pub page_reference_max_count: usize,
+    pub page_reference_max_total_bytes: usize,
     pub run_capabilities: AssistantRunCapabilities,
 }
 
@@ -526,6 +529,8 @@ pub async fn get_settings(
         published_agent_flows,
         enabled_mcp_instances,
         page_reference_max_bytes: ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
+        page_reference_max_count: ASSISTANT_PAGE_REFERENCE_MAX_COUNT,
+        page_reference_max_total_bytes: ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         run_capabilities,
     })))
 }
@@ -585,6 +590,8 @@ pub async fn update_settings(
         published_agent_flows,
         enabled_mcp_instances,
         page_reference_max_bytes: ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
+        page_reference_max_count: ASSISTANT_PAGE_REFERENCE_MAX_COUNT,
+        page_reference_max_total_bytes: ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         run_capabilities,
     })))
 }
@@ -817,7 +824,18 @@ async fn prepare_assistant_execution(
     if body.query.trim().is_empty() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("query").into());
     }
-    if body.page_references.len() > 1 {
+    let page_reference_total_bytes = body
+        .page_references
+        .iter()
+        .try_fold(0_usize, |total, reference| {
+            total.checked_add(reference.outer_html.len())
+        })
+        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+            "page_references",
+        ))?;
+    if body.page_references.len() > ASSISTANT_PAGE_REFERENCE_MAX_COUNT
+        || page_reference_total_bytes > ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES
+    {
         return Err(
             control_plane::errors::ControlPlaneError::InvalidInput("page_references").into(),
         );

@@ -6,30 +6,47 @@ import { pageReferenceByteLength } from '../../components/debug-console/conversa
 
 function SelectionHarness({
   maxBytes = 65_536,
+  maxCount = 5,
+  maxTotalBytes = 65_536,
   pageKey = '/logs'
 }: {
   maxBytes?: number;
+  maxCount?: number;
+  maxTotalBytes?: number;
   pageKey?: string;
 }) {
   const selection = useAssistantPageReferenceSelection({
     active: true,
+    duplicateMessage: '该元素已引用',
     maxBytes,
+    maxCount,
+    maxTotalBytes,
     pageKey,
     selectionHint: '选择页面区域',
+    tooManyMessage: (max) => `count > ${max}`,
     tooLargeMessage: (actual, max) => `${actual} > ${max}`,
+    totalTooLargeMessage: (actual, max) => `total ${actual} > ${max}`,
     unsupportedIsolatedFrameMessage: '隔离区块暂不支持内部元素引用'
   });
   return (
     <div>
       <div data-testid="outer-div">
         <span data-testid="inner-span">内容</span>
+        <button data-testid="second-element">重试</button>
       </div>
       <div data-assistant-page-reference-chrome="true">
         <button onClick={selection.startSelection}>开始选择</button>
       </div>
-      <span data-testid="selected-html">
-        {selection.reference?.outer_html ?? ''}
-      </span>
+      <div data-testid="selected-html">
+        {selection.references.map((reference, index) => (
+          <div key={reference.outer_html}>
+            <span>{reference.outer_html}</span>
+            <button onClick={() => selection.removeReference(index)}>
+              删除 {index + 1}
+            </button>
+          </div>
+        ))}
+      </div>
       <span data-testid="selection-error">{selection.error ?? ''}</span>
     </div>
   );
@@ -115,5 +132,62 @@ describe('assistant page reference selection', () => {
       document.querySelector('[data-testid="assistant-page-reference-outline"]')
     ).not.toBeInTheDocument();
     iframe.remove();
+  });
+
+  test('AC-007 appends references in selection order, rejects duplicates, and removes one draft', () => {
+    render(<SelectionHarness />);
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(screen.getByTestId('inner-span'));
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(screen.getByTestId('second-element'));
+
+    expect(screen.getByTestId('selected-html')).toHaveTextContent(
+      '<span data-testid="inner-span">内容</span>'
+    );
+    expect(screen.getByTestId('selected-html')).toHaveTextContent(
+      '<button data-testid="second-element">重试</button>'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(screen.getByTestId('second-element'));
+    expect(screen.getByTestId('selection-error')).toHaveTextContent(
+      '该元素已引用'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '删除 1' }));
+    expect(screen.getByTestId('selected-html')).not.toHaveTextContent(
+      '<span data-testid="inner-span">内容</span>'
+    );
+    expect(screen.getByTestId('selected-html')).toHaveTextContent(
+      '<button data-testid="second-element">重试</button>'
+    );
+  });
+
+  test('AC-008 enforces the settings count and total byte limits', () => {
+    const { rerender } = render(<SelectionHarness maxCount={1} />);
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(screen.getByTestId('inner-span'));
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    expect(screen.getByTestId('selection-error')).toHaveTextContent(
+      'count > 1'
+    );
+
+    rerender(
+      <SelectionHarness
+        maxCount={5}
+        maxTotalBytes={pageReferenceByteLength(
+          '<span data-testid="inner-span">内容</span>'
+        )}
+        pageKey="/monitoring"
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(screen.getByTestId('inner-span'));
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(screen.getByTestId('second-element'));
+    expect(screen.getByTestId('selection-error')).toHaveTextContent(/total/);
+    expect(screen.getByTestId('selected-html')).not.toHaveTextContent(
+      '<button data-testid="second-element">重试</button>'
+    );
   });
 });

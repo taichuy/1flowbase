@@ -10,48 +10,78 @@ function byteLength(value: string) {
 
 export function useAssistantPageReferenceSelection({
   active,
+  duplicateMessage,
   maxBytes,
+  maxCount,
+  maxTotalBytes,
   pageKey,
   selectionHint,
+  tooManyMessage,
   tooLargeMessage,
+  totalTooLargeMessage,
   unsupportedIsolatedFrameMessage
 }: {
   active: boolean;
+  duplicateMessage: string;
   maxBytes: number;
+  maxCount: number;
+  maxTotalBytes: number;
   pageKey: string;
   selectionHint: string;
+  tooManyMessage: (maxCount: number) => string;
   tooLargeMessage: (actualBytes: number, maxBytes: number) => string;
+  totalTooLargeMessage: (actualBytes: number, maxBytes: number) => string;
   unsupportedIsolatedFrameMessage: string;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [reference, setReference] =
-    useState<ConsoleAssistantPageReference | null>(null);
+  const [references, setReferences] = useState<ConsoleAssistantPageReference[]>(
+    []
+  );
   const [selecting, setSelecting] = useState(false);
   const previousPageKeyRef = useRef(pageKey);
 
   const cancelSelection = useCallback(() => setSelecting(false), []);
-  const clearReference = useCallback(() => {
+  const clearReferences = useCallback(() => {
     setError(null);
-    setReference(null);
+    setReferences([]);
+  }, []);
+  const removeReference = useCallback((index: number) => {
+    setError(null);
+    setReferences((current) =>
+      current.filter((_reference, referenceIndex) => referenceIndex !== index)
+    );
   }, []);
   const startSelection = useCallback(() => {
-    if (!active || maxBytes <= 0) return;
+    if (!active || maxBytes <= 0 || maxCount <= 0 || maxTotalBytes <= 0) {
+      return;
+    }
+    if (references.length >= maxCount) {
+      setError(tooManyMessage(maxCount));
+      return;
+    }
     setError(null);
     setSelecting(true);
-  }, [active, maxBytes]);
+  }, [
+    active,
+    maxBytes,
+    maxCount,
+    maxTotalBytes,
+    references.length,
+    tooManyMessage
+  ]);
 
   useEffect(() => {
     if (previousPageKeyRef.current === pageKey) return;
     previousPageKeyRef.current = pageKey;
     setSelecting(false);
-    clearReference();
-  }, [clearReference, pageKey]);
+    clearReferences();
+  }, [clearReferences, pageKey]);
 
   useEffect(() => {
     if (active) return;
     setSelecting(false);
-    clearReference();
-  }, [active, clearReference]);
+    clearReferences();
+  }, [active, clearReferences]);
 
   useEffect(() => {
     if (!selecting) return;
@@ -156,11 +186,38 @@ export function useAssistantPageReferenceSelection({
         setSelecting(false);
         return;
       }
-      setReference({
+      const nextReference = {
         page_url: window.location.href,
         page_title: document.title,
         outer_html: outerHtml
-      });
+      };
+      if (
+        references.some(
+          (reference) =>
+            reference.page_url === nextReference.page_url &&
+            reference.outer_html === nextReference.outer_html
+        )
+      ) {
+        setError(duplicateMessage);
+        setSelecting(false);
+        return;
+      }
+      if (references.length >= maxCount) {
+        setError(tooManyMessage(maxCount));
+        setSelecting(false);
+        return;
+      }
+      const totalBytes = references.reduce(
+        (total, reference) => total + byteLength(reference.outer_html),
+        actualBytes
+      );
+      if (totalBytes > maxTotalBytes) {
+        setError(totalTooLargeMessage(totalBytes, maxTotalBytes));
+        setSelecting(false);
+        return;
+      }
+      setError(null);
+      setReferences([...references, nextReference]);
       setSelecting(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -184,18 +241,25 @@ export function useAssistantPageReferenceSelection({
       document.body.style.userSelect = previousUserSelect;
     };
   }, [
+    duplicateMessage,
     maxBytes,
+    maxCount,
+    maxTotalBytes,
+    references,
     selecting,
     selectionHint,
+    tooManyMessage,
     tooLargeMessage,
+    totalTooLargeMessage,
     unsupportedIsolatedFrameMessage
   ]);
 
   return {
     cancelSelection,
-    clearReference,
+    clearReferences,
     error,
-    reference,
+    references,
+    removeReference,
     selecting,
     startSelection
   };

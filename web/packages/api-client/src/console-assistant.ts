@@ -54,6 +54,8 @@ export interface ConsoleAssistantSettings {
   published_agent_flows: Array<{ application_id: string; name: string }>;
   enabled_mcp_instances: Array<{ instance_id: string; name: string }>;
   page_reference_max_bytes: number;
+  page_reference_max_count: number;
+  page_reference_max_total_bytes: number;
   run_capabilities: ConsoleAssistantRunCapabilities;
 }
 

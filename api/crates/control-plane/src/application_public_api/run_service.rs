@@ -62,6 +62,8 @@ const EMBEDDED_ASSISTANT_USER_MESSAGE_PAYLOAD_KEY: &str = "__embedded_assistant_
 const ASSISTANT_PAGE_REFERENCE_URL_MAX_BYTES: usize = 2_048;
 const ASSISTANT_PAGE_REFERENCE_TITLE_MAX_BYTES: usize = 512;
 pub const ASSISTANT_PAGE_REFERENCE_MAX_BYTES: usize = 65_536;
+pub const ASSISTANT_PAGE_REFERENCE_MAX_COUNT: usize = 5;
+pub const ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssistantPageReference {
