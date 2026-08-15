@@ -269,11 +269,11 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(list_conversations, Authenticated).post(create_conversation, Authenticated),
         )
         .route(
-            "/assistant/conversations/{conversation_id}/messages",
+            "/assistant/conversations/:conversation_id/messages",
             console_get(get_conversation_messages, Authenticated),
         )
         .route(
-            "/assistant/legacy-runs/{flow_run_id}/messages",
+            "/assistant/legacy-runs/:flow_run_id/messages",
             console_get(get_legacy_snapshot_messages, Authenticated),
         )
         .route("/assistant/runs", console_post(start_run, Authenticated))
