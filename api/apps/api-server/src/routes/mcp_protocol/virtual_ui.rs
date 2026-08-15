@@ -477,7 +477,7 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
         json!({
             "name": MCP_RESULT,
             "title": "Continue MCP result detail",
-            "description": "Read a cached page of result detail. Missing detail never authorizes retrying the original operation.",
+            "description": "Read a cached page of result detail after mcp_call returns continuation_available. Reuse result_ref and next_cursor until next_cursor is null; string_chunk entries are reassembled by path and char_offset. Missing detail never authorizes retrying the original operation.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -711,11 +711,11 @@ async fn result(
         return Ok(VirtualToolOutcome::invalid("Invalid result_ref"));
     };
     let cursor = match arguments.get("cursor") {
-        Some(Value::String(value)) => match value.parse::<usize>() {
-            Ok(cursor) => cursor,
-            Err(_) => return Ok(VirtualToolOutcome::invalid("Invalid cursor")),
+        Some(Value::String(value)) => match result_delivery::ContinuationCursor::parse(value) {
+            Some(cursor) => cursor,
+            None => return Ok(VirtualToolOutcome::invalid("Invalid cursor")),
         },
-        None => 0,
+        None => result_delivery::ContinuationCursor::default(),
         Some(_) => return Ok(VirtualToolOutcome::invalid("Invalid cursor")),
     };
     let inline_chars = match result_delivery::inline_limit(arguments) {

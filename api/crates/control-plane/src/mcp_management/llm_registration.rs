@@ -176,7 +176,7 @@ fn provider_tool(name: &str, operation: McpLlmOperation) -> Value {
             }),
         ),
         McpLlmOperation::Result => (
-            "Read a cached page of MCP result detail.",
+            "Read a cached page after a call returns continuation_available. Reuse result_ref and next_cursor until next_cursor is null; reassemble string_chunk entries by path and char_offset. Never retry the original operation to recover missing detail.",
             json!({
                 "type": "object",
                 "properties": {

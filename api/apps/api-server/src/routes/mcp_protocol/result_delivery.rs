@@ -120,7 +120,7 @@ pub(crate) async fn read_continuation(
     state: &ApiState,
     actor: &ActorContext,
     result_ref: Uuid,
-    cursor: usize,
+    cursor: ContinuationCursor,
     inline_chars: usize,
 ) -> Value {
     let receipt = state
@@ -168,7 +168,7 @@ pub(crate) async fn read_continuation(
     };
 
     let leaves = json_leaves(&detail);
-    if cursor > leaves.len() {
+    if !cursor.is_valid_for(&leaves) {
         return tool_result(json!({
             "result_ref": result_ref,
             "detail_status": "invalid_cursor",
@@ -188,7 +188,7 @@ pub(crate) async fn read_continuation(
         "result_ref": result_ref,
         "detail_status": "available",
         "entries": entries,
-        "next_cursor": next_cursor.map(|cursor| cursor.to_string()),
+        "next_cursor": next_cursor.map(ContinuationCursor::encode),
         "retry_original": false
     });
     if let Some(receipt) = receipt {
@@ -236,14 +236,6 @@ async fn cache_detail(
     };
     if bytes.len() > EPHEMERAL_VALUE_MAX_BYTES {
         return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
-    }
-    if json_leaves(detail).iter().any(|leaf| {
-        serialized(&json!({ "path": leaf.path, "value": leaf.value }))
-            .chars()
-            .count()
-            > MAX_INLINE_CHARS.saturating_sub(PAGE_ENVELOPE_RESERVE_CHARS)
-    }) {
-        return DetailCacheStatus::Unavailable("indivisible_detail_exceeds_budget");
     }
     match state
         .infrastructure
@@ -311,6 +303,49 @@ struct JsonLeaf {
     value: Value,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ContinuationCursor {
+    leaf_index: usize,
+    char_offset: usize,
+}
+
+impl ContinuationCursor {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        if let Some(encoded) = value.strip_prefix("v2:") {
+            let (leaf_index, char_offset) = encoded.split_once(':')?;
+            return Some(Self {
+                leaf_index: leaf_index.parse().ok()?,
+                char_offset: char_offset.parse().ok()?,
+            });
+        }
+        Some(Self {
+            leaf_index: value.parse().ok()?,
+            char_offset: 0,
+        })
+    }
+
+    fn encode(self) -> String {
+        if self.char_offset == 0 {
+            self.leaf_index.to_string()
+        } else {
+            format!("v2:{}:{}", self.leaf_index, self.char_offset)
+        }
+    }
+
+    fn is_valid_for(self, leaves: &[JsonLeaf]) -> bool {
+        if self.leaf_index == leaves.len() {
+            return self.char_offset == 0;
+        }
+        let Some(leaf) = leaves.get(self.leaf_index) else {
+            return false;
+        };
+        match &leaf.value {
+            Value::String(value) => self.char_offset < value.chars().count(),
+            _ => self.char_offset == 0,
+        }
+    }
+}
+
 fn json_leaves(value: &Value) -> Vec<JsonLeaf> {
     let mut leaves = Vec::new();
     collect_json_leaves(value, String::new(), &mut leaves);
@@ -348,30 +383,100 @@ fn escape_json_pointer(segment: &str) -> String {
 
 fn page_leaves(
     leaves: &[JsonLeaf],
-    cursor: usize,
+    cursor: ContinuationCursor,
     inline_chars: usize,
-) -> Option<(Vec<Value>, Option<usize>)> {
-    if cursor == leaves.len() {
+) -> Option<(Vec<Value>, Option<ContinuationCursor>)> {
+    if cursor.leaf_index == leaves.len() {
         return Some((Vec::new(), None));
     }
     let entry_budget = inline_chars.saturating_sub(PAGE_ENVELOPE_RESERVE_CHARS);
     let mut entries = Vec::new();
     let mut used = 2;
     let mut next = cursor;
-    while let Some(leaf) = leaves.get(next) {
+    while let Some(leaf) = leaves.get(next.leaf_index) {
         let entry = json!({ "path": leaf.path, "value": leaf.value });
         let entry_chars = serialized(&entry).chars().count() + usize::from(!entries.is_empty());
-        if used + entry_chars > entry_budget {
+        if next.char_offset == 0 && used + entry_chars <= entry_budget {
+            used += entry_chars;
+            entries.push(entry);
+            next.leaf_index += 1;
+            continue;
+        }
+
+        let largest_regular_entry = entry_budget.saturating_sub(2);
+        if next.char_offset == 0 && serialized(&entry).chars().count() <= largest_regular_entry {
             break;
         }
-        used += entry_chars;
-        entries.push(entry);
-        next += 1;
+
+        let Value::String(value) = &leaf.value else {
+            break;
+        };
+        let separator_chars = usize::from(!entries.is_empty());
+        let available = entry_budget.saturating_sub(used + separator_chars);
+        let Some((chunk, chunk_chars)) =
+            fitting_string_chunk(leaf, value, next.char_offset, available)
+        else {
+            break;
+        };
+        used += serialized(&chunk).chars().count() + separator_chars;
+        entries.push(chunk);
+        next.char_offset += chunk_chars;
+        if next.char_offset == value.chars().count() {
+            next.leaf_index += 1;
+            next.char_offset = 0;
+        }
     }
     if entries.is_empty() {
         return None;
     }
-    Some((entries, (next < leaves.len()).then_some(next)))
+    Some((entries, (next.leaf_index < leaves.len()).then_some(next)))
+}
+
+fn fitting_string_chunk(
+    leaf: &JsonLeaf,
+    value: &str,
+    char_offset: usize,
+    available_chars: usize,
+) -> Option<(Value, usize)> {
+    let total_chars = value.chars().count();
+    let remaining_chars = total_chars.checked_sub(char_offset)?;
+    let mut low = 1;
+    let mut high = remaining_chars;
+    let mut best = None;
+    while low <= high {
+        let candidate_chars = low + (high - low) / 2;
+        let candidate = string_chunk_entry(leaf, value, char_offset, candidate_chars, total_chars);
+        if serialized(&candidate).chars().count() <= available_chars {
+            best = Some((candidate, candidate_chars));
+            low = candidate_chars + 1;
+        } else {
+            high = candidate_chars.saturating_sub(1);
+        }
+    }
+    best
+}
+
+fn string_chunk_entry(
+    leaf: &JsonLeaf,
+    value: &str,
+    char_offset: usize,
+    char_count: usize,
+    total_chars: usize,
+) -> Value {
+    let chunk = value
+        .chars()
+        .skip(char_offset)
+        .take(char_count)
+        .collect::<String>();
+    json!({
+        "path": leaf.path,
+        "value_type": "string_chunk",
+        "value": chunk,
+        "char_offset": char_offset,
+        "char_count": char_count,
+        "total_chars": total_chars,
+        "complete": char_offset + char_count == total_chars
+    })
 }
 
 fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
@@ -423,7 +528,8 @@ mod assistant_mcp_tests {
             "gamma": "c".repeat(700)
         });
         let leaves = json_leaves(&detail);
-        let (first, next) = page_leaves(&leaves, 0, 1_600).expect("first page must fit");
+        let (first, next) = page_leaves(&leaves, ContinuationCursor::default(), 1_600)
+            .expect("first page must fit");
         let next = next.expect("detail must require continuation");
         let (second, final_cursor) =
             page_leaves(&leaves, next, MAX_INLINE_CHARS).expect("remaining page must fit");
@@ -432,5 +538,68 @@ mod assistant_mcp_tests {
         assert!(!second.is_empty());
         assert_eq!(first.len() + second.len(), leaves.len());
         assert_eq!(final_cursor, None);
+    }
+
+    #[test]
+    fn issue_1733_ac_001_ac_003_large_unicode_leaf_is_pageable() {
+        let source_code = "界".repeat(17_416);
+        let detail = json!({"source_code": &source_code});
+        let leaves = json_leaves(&detail);
+
+        let mut cursor = ContinuationCursor::default();
+        let mut reconstructed = String::new();
+        let mut pages = 0;
+        loop {
+            let (page, next_cursor) = page_leaves(&leaves, cursor, MAX_INLINE_CHARS)
+                .expect("a large string leaf must produce a continuation page");
+            pages += 1;
+            for chunk in &page {
+                assert_eq!(chunk["path"], json!("/source_code"));
+                assert_eq!(chunk["value_type"], json!("string_chunk"));
+                assert_eq!(chunk["char_offset"], json!(reconstructed.chars().count()));
+                assert_eq!(chunk["total_chars"], json!(17_416));
+                reconstructed.push_str(chunk["value"].as_str().expect("chunk value"));
+            }
+            let Some(next_cursor) = next_cursor else {
+                break;
+            };
+            assert!(next_cursor.encode().starts_with("v2:"));
+            cursor = next_cursor;
+        }
+
+        let first_chunk = page_leaves(&leaves, ContinuationCursor::default(), MAX_INLINE_CHARS)
+            .expect("first page")
+            .0
+            .remove(0);
+
+        assert_eq!(first_chunk["path"], json!("/source_code"));
+        assert_eq!(first_chunk["value_type"], json!("string_chunk"));
+        assert_eq!(first_chunk["char_offset"], json!(0));
+        assert_eq!(first_chunk["total_chars"], json!(17_416));
+        assert_eq!(first_chunk["complete"], json!(false));
+        assert!(first_chunk["value"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert!(pages > 1);
+        assert_eq!(reconstructed, source_code);
+    }
+
+    #[test]
+    fn issue_1733_ac_002_cursor_accepts_legacy_leaf_index_and_opaque_v2_offset() {
+        assert_eq!(
+            ContinuationCursor::parse("3"),
+            Some(ContinuationCursor {
+                leaf_index: 3,
+                char_offset: 0,
+            })
+        );
+        assert_eq!(
+            ContinuationCursor::parse("v2:3:12000"),
+            Some(ContinuationCursor {
+                leaf_index: 3,
+                char_offset: 12_000,
+            })
+        );
+        assert_eq!(ContinuationCursor::parse("v2:bad:cursor"), None);
     }
 }

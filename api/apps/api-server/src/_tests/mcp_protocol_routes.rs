@@ -1484,6 +1484,88 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
 }
 
 #[tokio::test]
+async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continuation() {
+    use crate::routes::mcp_protocol::result_delivery::{
+        deliver_oversized_result, read_continuation, CompletedOperation, ContinuationCursor,
+        MAX_INLINE_CHARS,
+    };
+    use sha2::{Digest, Sha256};
+
+    let (state, _) = test_api_state_with_database_url().await;
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
+    let source_code = "界".repeat(17_416);
+    let source_sha256 = format!("{:x}", Sha256::digest(source_code.as_bytes()));
+    let delivered = deliver_oversized_result(
+        state.as_ref(),
+        &actor,
+        CompletedOperation::Read {
+            operation_id: "get_frontstage_block_code",
+        },
+        json!({
+            "page_id": "019f51cf-4423-7ff0-93aa-6b0b1b8020bf",
+            "code_ref": "frontstage-js-block-a3f0ffb2-ee70-4d48-88ac-23f0f810c0d7-code",
+            "source_code": &source_code,
+            "source_sha256": &source_sha256,
+            "dependency_lock": [{"name": "react", "version": "19"}]
+        }),
+    )
+    .await;
+    let compact = &delivered["structuredContent"];
+    assert_eq!(compact["outcome"], json!("succeeded"));
+    assert_eq!(compact["detail"]["status"], json!("continuation_available"));
+    assert_eq!(compact["retry_original"], json!(false));
+    let result_ref = uuid::Uuid::parse_str(
+        compact["detail"]["result_ref"]
+            .as_str()
+            .expect("large source must expose result_ref"),
+    )
+    .unwrap();
+
+    let mut cursor = ContinuationCursor::default();
+    let mut reconstructed = String::new();
+    for _ in 0..16 {
+        let page =
+            read_continuation(state.as_ref(), &actor, result_ref, cursor, MAX_INLINE_CHARS).await;
+        let detail = &page["structuredContent"];
+        assert_eq!(detail["detail_status"], json!("available"), "{detail}");
+        assert_eq!(detail["retry_original"], json!(false));
+        assert!(serde_json::to_string(detail).unwrap().chars().count() <= MAX_INLINE_CHARS);
+        for entry in detail["entries"].as_array().unwrap() {
+            if entry["path"] == json!("/source_code") {
+                assert_eq!(entry["value_type"], json!("string_chunk"));
+                assert_eq!(entry["char_offset"], json!(reconstructed.chars().count()));
+                reconstructed.push_str(entry["value"].as_str().unwrap());
+            }
+        }
+        let Some(next_cursor) = detail["next_cursor"].as_str() else {
+            break;
+        };
+        cursor = ContinuationCursor::parse(next_cursor).expect("server cursor must be valid");
+    }
+    assert_eq!(reconstructed.chars().count(), 17_416);
+    assert_eq!(reconstructed, source_code);
+    assert_eq!(
+        format!("{:x}", Sha256::digest(reconstructed.as_bytes())),
+        source_sha256
+    );
+
+    let invalid = read_continuation(
+        state.as_ref(),
+        &actor,
+        result_ref,
+        ContinuationCursor::parse("v2:0:999999").unwrap(),
+        MAX_INLINE_CHARS,
+    )
+    .await;
+    assert_eq!(
+        invalid["structuredContent"]["detail_status"],
+        json!("invalid_cursor")
+    );
+    assert_eq!(invalid["structuredContent"]["retry_original"], json!(false));
+}
+
+#[tokio::test]
 async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without_retry() {
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state(state.clone());
@@ -1761,8 +1843,14 @@ async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_du
         ))
         .await
         .unwrap();
-    let expired =
-        read_continuation(state.as_ref(), &actor, receipt_id, 0, DEFAULT_INLINE_CHARS).await;
+    let expired = read_continuation(
+        state.as_ref(),
+        &actor,
+        receipt_id,
+        Default::default(),
+        DEFAULT_INLINE_CHARS,
+    )
+    .await;
     assert_eq!(
         expired["structuredContent"]["detail_status"],
         json!("detail_unavailable")
