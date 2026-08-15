@@ -167,6 +167,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       API_DATABASE_POOL_MAX_CONNECTIONS: '5',
       API_PLUGIN_RUNNER_INTERNAL_BASE_URL: pluginRunnerBaseUrl,
       API_PROVIDER_INSTALL_ROOT: path.join(scratchRoot, 'providers'),
+      API_DEFAULT_EXTENSION_BOOTSTRAP_ENABLED: 'false',
       API_COOKIE_NAME: `gateway_fixture_${crypto.randomBytes(5).toString('hex')}`,
       API_COOKIE_SECURE: 'false',
       API_PROVIDER_SECRET_MASTER_KEY: providerSecretMasterKey,

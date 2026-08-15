@@ -50,6 +50,7 @@ pub struct ApiConfig {
     pub system_build_identity: String,
     pub allow_unverified_filesystem_dropins: bool,
     pub allow_uploaded_host_extensions: bool,
+    pub default_extension_bootstrap_enabled: bool,
     pub official_plugin_repository: String,
     pub official_plugin_default_registry_url: String,
     pub official_plugin_mirror_registry_url: Option<String>,
@@ -199,6 +200,11 @@ impl ApiConfig {
             "API_PLUGIN_ALLOW_UPLOADED_HOST_EXTENSIONS",
             map.get("API_PLUGIN_ALLOW_UPLOADED_HOST_EXTENSIONS"),
             false,
+        )?;
+        let default_extension_bootstrap_enabled = parse_bool_flag(
+            "API_DEFAULT_EXTENSION_BOOTSTRAP_ENABLED",
+            map.get("API_DEFAULT_EXTENSION_BOOTSTRAP_ENABLED"),
+            true,
         )?;
         let official_plugin_repository = map
             .get("API_OFFICIAL_PLUGIN_REPOSITORY")
@@ -363,6 +369,7 @@ impl ApiConfig {
             system_build_identity,
             allow_unverified_filesystem_dropins,
             allow_uploaded_host_extensions,
+            default_extension_bootstrap_enabled,
             official_plugin_repository,
             official_plugin_default_registry_url,
             official_plugin_mirror_registry_url,
