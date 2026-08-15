@@ -68,7 +68,10 @@ function AppShellFrameContent({
           <span className="app-shell-secondary-actions">
             <span className="app-shell-mode-actions">
               <FrontstageDesignModeAction />
-              <EmbeddedAgentAssistant clientTools={assistantClientTools} />
+              <EmbeddedAgentAssistant
+                clientTools={assistantClientTools}
+                pageKey={pathname}
+              />
             </span>
             {secondaryActions.map((route) => (
               <span key={route.id}>

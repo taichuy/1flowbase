@@ -152,7 +152,13 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundaryCommonFetch();
     seedStyleBoundaryAuth();
 
-    return <EmbeddedAgentAssistantPreview open onClose={() => undefined} />;
+    return (
+      <EmbeddedAgentAssistantPreview
+        open
+        pageKey="/style-boundary/embedded-agent-assistant-preview"
+        onClose={() => undefined}
+      />
+    );
   },
   'component.account-popup': () => (
     <div className="app-shell-account-popup">

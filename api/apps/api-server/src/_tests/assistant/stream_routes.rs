@@ -8,12 +8,12 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tower::ServiceExt;
 
-async fn response_json(response: axum::response::Response) -> Value {
+pub(super) async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
 }
 
-async fn create_published_agent_flow(app: &Router, cookie: &str, csrf: &str) -> String {
+pub(super) async fn create_published_agent_flow(app: &Router, cookie: &str, csrf: &str) -> String {
     let created = app
         .clone()
         .oneshot(
@@ -85,7 +85,7 @@ async fn create_published_agent_flow(app: &Router, cookie: &str, csrf: &str) -> 
     application_id
 }
 
-async fn select_assistant_application(
+pub(super) async fn select_assistant_application(
     app: &Router,
     cookie: &str,
     csrf: &str,

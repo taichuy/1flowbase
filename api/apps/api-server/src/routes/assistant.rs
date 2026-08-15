@@ -14,8 +14,9 @@ use control_plane::{
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::{
             native_result_from_run_detail, ApplicationPublishedFlowRunRepository,
-            ApplicationPublishedRunService, CreateAssistantConversationInput,
-            CreateAssistantRunCommand, ListAssistantConversationsInput,
+            ApplicationPublishedRunService, AssistantPageReference,
+            CreateAssistantConversationInput, CreateAssistantRunCommand,
+            ListAssistantConversationsInput, ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
         },
     },
     mcp_management::McpManagementService,
@@ -140,7 +141,25 @@ pub struct AssistantSettingsResponse {
     pub preference: AssistantPreferenceBody,
     pub published_agent_flows: Vec<AssistantPublishedFlowOption>,
     pub enabled_mcp_instances: Vec<AssistantMcpInstanceOption>,
+    pub page_reference_max_bytes: usize,
     pub run_capabilities: AssistantRunCapabilities,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct AssistantPageReferenceBody {
+    pub page_url: String,
+    pub page_title: String,
+    pub outer_html: String,
+}
+
+impl AssistantPageReferenceBody {
+    fn from_reference(reference: AssistantPageReference) -> Self {
+        Self {
+            page_url: reference.page_url().to_string(),
+            page_title: reference.page_title().to_string(),
+            outer_html: reference.outer_html().to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -151,6 +170,8 @@ pub struct StartAssistantRunBody {
     pub query: String,
     #[serde(default)]
     pub history: Vec<Value>,
+    #[serde(default)]
+    pub page_references: Vec<AssistantPageReferenceBody>,
     #[serde(default)]
     pub title: Option<String>,
 }
@@ -217,6 +238,7 @@ pub struct AssistantConversationMessageResponse {
     pub flow_run_id: Uuid,
     pub role: String,
     pub content: String,
+    pub page_references: Vec<AssistantPageReferenceBody>,
     pub created_at: String,
 }
 
@@ -389,6 +411,11 @@ fn assistant_conversation_message_response(
         flow_run_id: message.flow_run_id,
         role: message.role,
         content: message.content,
+        page_references: message
+            .page_references
+            .into_iter()
+            .map(AssistantPageReferenceBody::from_reference)
+            .collect(),
         created_at: rfc3339(message.created_at),
     }
 }
@@ -498,6 +525,7 @@ pub async fn get_settings(
         preference,
         published_agent_flows,
         enabled_mcp_instances,
+        page_reference_max_bytes: ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
         run_capabilities,
     })))
 }
@@ -556,6 +584,7 @@ pub async fn update_settings(
         preference,
         published_agent_flows,
         enabled_mcp_instances,
+        page_reference_max_bytes: ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
         run_capabilities,
     })))
 }
@@ -788,6 +817,25 @@ async fn prepare_assistant_execution(
     if body.query.trim().is_empty() {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("query").into());
     }
+    if body.page_references.len() > 1 {
+        return Err(
+            control_plane::errors::ControlPlaneError::InvalidInput("page_references").into(),
+        );
+    }
+    let page_references = body
+        .page_references
+        .into_iter()
+        .map(|reference| {
+            AssistantPageReference::try_new(
+                reference.page_url,
+                reference.page_title,
+                reference.outer_html,
+            )
+            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                "page_references",
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let application_id = body.application_id;
     let preference = assistant_preference_for_target(state, context, application_id).await?;
     let assistant_conversation_id = match body.conversation_id {
@@ -832,6 +880,7 @@ async fn prepare_assistant_execution(
             workspace_id: context.actor.current_workspace_id,
             application_id,
             assistant_conversation_id: Some(assistant_conversation_id),
+            page_references,
             request: NativeRunRequest {
                 query: body.query,
                 system: Vec::new(),

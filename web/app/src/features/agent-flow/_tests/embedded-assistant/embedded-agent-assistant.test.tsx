@@ -109,6 +109,7 @@ describe('EmbeddedAgentAssistant', () => {
         { application_id: 'flow-1', name: 'Support Flow' }
       ],
       enabled_mcp_instances: [],
+      page_reference_max_bytes: 65_536,
       run_capabilities: {
         model_selection_enabled: true,
         reasoning_effort_enabled: true,
@@ -240,6 +241,22 @@ describe('EmbeddedAgentAssistant', () => {
   });
 
   test('AC-005 opens Conversations history, restores a selection, and creates a new conversation', async () => {
+    getConsoleAssistantConversationMessages.mockResolvedValueOnce([
+      {
+        id: 'run-1:user',
+        flow_run_id: 'run-1',
+        role: 'user',
+        content: 'Why did this fail?',
+        page_references: [
+          {
+            page_url: 'http://console.test/logs',
+            page_title: 'Logs',
+            outer_html: '<div id="failed-run">Failed</div>'
+          }
+        ],
+        created_at: '2026-08-07T00:00:00Z'
+      }
+    ]);
     render(
       <AppProviders>
         <EmbeddedAgentAssistant />
@@ -268,6 +285,9 @@ describe('EmbeddedAgentAssistant', () => {
         'conversation-1'
       )
     );
+    expect(
+      screen.getByTestId('embedded-agent-assistant-preview')
+    ).toHaveTextContent('div#failed-run');
 
     fireEvent.click(history);
     fireEvent.click(
@@ -1123,5 +1143,87 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       screen.queryByTestId('embedded-agent-assistant-preview')
     ).not.toBeInTheDocument();
+  });
+
+  test('AC-001 through AC-004 selects the nearest div and sends it as one visible page reference', async () => {
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-page-reference',
+          status: 'queued'
+        });
+        handlers.onEvent({
+          type: 'flow_finished',
+          run_id: 'run-page-reference',
+          status: 'succeeded',
+          output: { answer: '已分析引用区域' }
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <div id="reference-target" data-testid="reference-target">
+          <span data-testid="reference-target-child">退款失败</span>
+        </div>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_select_page_content')
+      })
+    );
+
+    const child = screen.getByTestId('reference-target-child');
+    fireEvent.mouseMove(child);
+    expect(
+      document.querySelector('[data-testid="assistant-page-reference-outline"]')
+    ).toBeInTheDocument();
+    fireEvent.click(child);
+
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    );
+    expect(assistantWindow).toHaveTextContent('div#reference-target');
+    const composer = screen.getByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    fireEvent.change(composer, {
+      target: { value: '为什么这个区域显示失败？' }
+    });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('agentFlow', 'auto.send_debug_message')
+      })
+    );
+
+    await waitFor(() =>
+      expect(startConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: '为什么这个区域显示失败？',
+          page_references: [
+            expect.objectContaining({
+              outer_html:
+                '<div id="reference-target" data-testid="reference-target"><span data-testid="reference-target-child">退款失败</span></div>'
+            })
+          ]
+        }),
+        'csrf-token',
+        expect.any(Object),
+        expect.any(Object)
+      )
+    );
+    expect(assistantWindow).toHaveTextContent('div#reference-target');
+    expect(assistantWindow).not.toHaveTextContent('<div id="reference-target"');
   });
 });

@@ -11,13 +11,16 @@ import {
   CloseOutlined,
   HistoryOutlined,
   PlusOutlined,
-  SettingOutlined
+  SelectOutlined,
+  SettingOutlined,
+  WarningOutlined
 } from '@ant-design/icons';
 import { Conversations, Sender } from '@ant-design/x';
 import {
   Button,
   Checkbox,
   Dropdown,
+  Flex,
   Form,
   Modal,
   Progress,
@@ -46,7 +49,9 @@ import { getWindowWorkspaceViewport } from '../../../../shared/ui/window-workspa
 import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole';
+import { PageReferenceTag } from '../debug-console/conversation/PageReferenceTag';
 import { formatLlmTokenCount } from '../../lib/model-options';
+import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
 import '../editor/styles/shell.css';
 import './embedded-assistant.css';
 
@@ -105,10 +110,12 @@ function initialAssistantWindowRect(): WindowWorkspaceRect {
 
 export function EmbeddedAgentAssistantPreview({
   open,
+  pageKey,
   onClose,
   clientTools
 }: {
   open: boolean;
+  pageKey: string;
   onClose: () => void;
   clientTools?: import('@1flowbase/api-client').ConsoleAssistantClientTools;
 }) {
@@ -151,6 +158,23 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.application_id ?? null,
     clientTools
   );
+  const pageReferenceSelection = useAssistantPageReferenceSelection({
+    active: open,
+    maxBytes: settings?.page_reference_max_bytes ?? 0,
+    pageKey: `${workspaceId ?? ''}:${pageKey}`,
+    selectionHint: i18nText(
+      'appShell',
+      'auto.assistant_page_reference_selection_hint'
+    ),
+    tooLargeMessage: useCallback(
+      (actualBytes: number, maxBytes: number) =>
+        i18nText('appShell', 'auto.assistant_page_reference_too_large', {
+          value1: actualBytes,
+          value2: maxBytes
+        }),
+      []
+    )
+  });
 
   useEffect(() => {
     setSettings(null);
@@ -209,6 +233,7 @@ export function EmbeddedAgentAssistantPreview({
             },
             published_agent_flows: [],
             enabled_mcp_instances: [],
+            page_reference_max_bytes: 0,
             run_capabilities: {
               model_selection_enabled: false,
               reasoning_effort_enabled: false,
@@ -761,122 +786,180 @@ export function EmbeddedAgentAssistantPreview({
               <AgentFlowDebugConsole
                 clearDisabled={!session.canChangeConversation}
                 composerFooterActions={
-                  settings?.run_capabilities.model_selection_enabled ? (
-                    <>
-                      {contextWindow ? (
-                        <Tooltip
-                          color="#ffffff"
-                          styles={{
-                            container: {
-                              border: '1px solid var(--border-subtle)',
-                              borderRadius: '0.5rem',
-                              boxShadow: 'var(--shadow-float)',
-                              padding: '0.5rem 0.625rem'
-                            }
-                          }}
-                          title={
-                            <span className="embedded-agent-assistant-preview__context-tooltip">
-                              <span>
-                                {i18nText(
-                                  'appShell',
-                                  'auto.assistant_context_remaining_percent',
-                                  {
-                                    value1: remainingContextPercent
-                                  }
-                                )}
-                              </span>
-                              <span className="embedded-agent-assistant-preview__context-tooltip-total">
-                                {i18nText(
-                                  'appShell',
-                                  'auto.assistant_context_total',
-                                  {
-                                    value2:
-                                      formatLlmTokenCount(contextWindow) ?? '0',
-                                    value1:
-                                      formatLlmTokenCount(contextTokenUsage) ??
-                                      '0'
-                                  }
-                                )}
-                              </span>
-                            </span>
+                  <Flex
+                    align="center"
+                    className="embedded-agent-assistant-preview__composer-actions"
+                    gap={8}
+                    justify="space-between"
+                  >
+                    <Flex align="center" gap={4}>
+                      <Tooltip
+                        title={i18nText(
+                          'appShell',
+                          'auto.assistant_select_page_content'
+                        )}
+                      >
+                        <Button
+                          aria-label={i18nText(
+                            'appShell',
+                            'auto.assistant_select_page_content'
+                          )}
+                          disabled={!settings || !session.canChangeConversation}
+                          icon={<SelectOutlined />}
+                          size="small"
+                          type={
+                            pageReferenceSelection.selecting
+                              ? 'primary'
+                              : 'text'
                           }
-                        >
-                          <span className="embedded-agent-assistant-preview__context-progress">
-                            <Progress
-                              percent={contextVisualPercent}
-                              showInfo={false}
-                              size={18}
-                              trailColor="var(--border-default)"
-                              type="circle"
-                            />
-                          </span>
+                          onClick={
+                            pageReferenceSelection.selecting
+                              ? pageReferenceSelection.cancelSelection
+                              : pageReferenceSelection.startSelection
+                          }
+                        />
+                      </Tooltip>
+                      {pageReferenceSelection.reference ? (
+                        <PageReferenceTag
+                          reference={pageReferenceSelection.reference}
+                          removeLabel={i18nText(
+                            'appShell',
+                            'auto.assistant_remove_page_reference'
+                          )}
+                          onRemove={pageReferenceSelection.clearReference}
+                        />
+                      ) : null}
+                      {pageReferenceSelection.error ? (
+                        <Tooltip title={pageReferenceSelection.error}>
+                          <WarningOutlined
+                            aria-label={pageReferenceSelection.error}
+                            className="embedded-agent-assistant-preview__page-reference-error"
+                          />
                         </Tooltip>
                       ) : null}
-                      <Dropdown
-                        overlayStyle={{ zIndex: 1100 + windowEntry.z_index }}
-                        placement="topLeft"
-                        trigger={['click']}
-                        menu={{
-                          items: runtimePreferenceMenuItems,
-                          onClick: ({ key }) => {
-                            const selection = String(key);
-                            if (selection === 'reset-defaults') {
-                              void updateRuntimePreference({
-                                model: null,
-                                reasoning_effort: null
-                              });
-                              return;
-                            }
-                            if (selection.startsWith('model:')) {
-                              const modelId = selection.slice('model:'.length);
-                              const model =
-                                settings.run_capabilities.models.find(
-                                  (candidate) => candidate.id === modelId
-                                );
-                              if (model) {
-                                void updateRuntimePreference({
-                                  model: model.id,
-                                  reasoning_effort:
-                                    model.default_reasoning_effort ?? null
-                                });
+                    </Flex>
+                    {settings?.run_capabilities.model_selection_enabled ? (
+                      <Flex align="center" gap={8}>
+                        {contextWindow ? (
+                          <Tooltip
+                            color="#ffffff"
+                            styles={{
+                              container: {
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: '0.5rem',
+                                boxShadow: 'var(--shadow-float)',
+                                padding: '0.5rem 0.625rem'
                               }
-                              return;
+                            }}
+                            title={
+                              <span className="embedded-agent-assistant-preview__context-tooltip">
+                                <span>
+                                  {i18nText(
+                                    'appShell',
+                                    'auto.assistant_context_remaining_percent',
+                                    {
+                                      value1: remainingContextPercent
+                                    }
+                                  )}
+                                </span>
+                                <span className="embedded-agent-assistant-preview__context-tooltip-total">
+                                  {i18nText(
+                                    'appShell',
+                                    'auto.assistant_context_total',
+                                    {
+                                      value2:
+                                        formatLlmTokenCount(contextWindow) ??
+                                        '0',
+                                      value1:
+                                        formatLlmTokenCount(
+                                          contextTokenUsage
+                                        ) ?? '0'
+                                    }
+                                  )}
+                                </span>
+                              </span>
                             }
-                            if (selection.startsWith('reasoning-effort:')) {
-                              const reasoning_effort = selection.slice(
-                                'reasoning-effort:'.length
-                              );
-                              if (
-                                selectedModel?.reasoning_efforts.includes(
-                                  reasoning_effort
-                                )
-                              ) {
-                                void updateRuntimePreference({
-                                  model: selectedModel.id,
-                                  reasoning_effort
-                                });
-                              }
-                            }
-                          }
-                        }}
-                      >
-                        <Sender.Switch
-                          rootClassName="embedded-agent-assistant-preview__runtime-preferences"
-                          value={false}
-                        >
-                          <span>
-                            {selectedModel?.name ?? selectedModel?.id ?? '-'}
-                          </span>
-                          {settings.run_capabilities.reasoning_effort_enabled &&
-                          selectedReasoningEffort ? (
-                            <span className="embedded-agent-assistant-preview__runtime-preferences-effort">
-                              {selectedReasoningEffort}
+                          >
+                            <span className="embedded-agent-assistant-preview__context-progress">
+                              <Progress
+                                percent={contextVisualPercent}
+                                showInfo={false}
+                                size={18}
+                                trailColor="var(--border-default)"
+                                type="circle"
+                              />
                             </span>
-                          ) : null}
-                        </Sender.Switch>
-                      </Dropdown>
-                    </>
-                  ) : null
+                          </Tooltip>
+                        ) : null}
+                        <Dropdown
+                          overlayStyle={{ zIndex: 1100 + windowEntry.z_index }}
+                          placement="topLeft"
+                          trigger={['click']}
+                          menu={{
+                            items: runtimePreferenceMenuItems,
+                            onClick: ({ key }) => {
+                              const selection = String(key);
+                              if (selection === 'reset-defaults') {
+                                void updateRuntimePreference({
+                                  model: null,
+                                  reasoning_effort: null
+                                });
+                                return;
+                              }
+                              if (selection.startsWith('model:')) {
+                                const modelId = selection.slice(
+                                  'model:'.length
+                                );
+                                const model =
+                                  settings.run_capabilities.models.find(
+                                    (candidate) => candidate.id === modelId
+                                  );
+                                if (model) {
+                                  void updateRuntimePreference({
+                                    model: model.id,
+                                    reasoning_effort:
+                                      model.default_reasoning_effort ?? null
+                                  });
+                                }
+                                return;
+                              }
+                              if (selection.startsWith('reasoning-effort:')) {
+                                const reasoning_effort = selection.slice(
+                                  'reasoning-effort:'.length
+                                );
+                                if (
+                                  selectedModel?.reasoning_efforts.includes(
+                                    reasoning_effort
+                                  )
+                                ) {
+                                  void updateRuntimePreference({
+                                    model: selectedModel.id,
+                                    reasoning_effort
+                                  });
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          <Sender.Switch
+                            rootClassName="embedded-agent-assistant-preview__runtime-preferences"
+                            value={false}
+                          >
+                            <span>
+                              {selectedModel?.name ?? selectedModel?.id ?? '-'}
+                            </span>
+                            {settings.run_capabilities
+                              .reasoning_effort_enabled &&
+                            selectedReasoningEffort ? (
+                              <span className="embedded-agent-assistant-preview__runtime-preferences-effort">
+                                {selectedReasoningEffort}
+                              </span>
+                            ) : null}
+                          </Sender.Switch>
+                        </Dropdown>
+                      </Flex>
+                    ) : null}
+                  </Flex>
                 }
                 headerActions={
                   <>
@@ -933,7 +1016,11 @@ export function EmbeddedAgentAssistantPreview({
                   void session.stopRun();
                 }}
                 onSubmitPrompt={(prompt) => {
-                  void session.submitPrompt(prompt);
+                  const pageReferences = pageReferenceSelection.reference
+                    ? [pageReferenceSelection.reference]
+                    : [];
+                  pageReferenceSelection.clearReference();
+                  void session.submitPrompt(prompt, pageReferences);
                 }}
               />
             </div>

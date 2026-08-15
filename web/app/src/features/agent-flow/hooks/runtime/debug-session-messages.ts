@@ -1,5 +1,6 @@
 import type {
   AgentFlowDebugMessage,
+  AgentFlowPageReference,
   AgentFlowRunContext,
   FlowDebugRunDetail,
   FlowDebugRunStreamEvent
@@ -7,11 +8,15 @@ import type {
 
 let debugMessageIdSequence = 0;
 
-export function createUserMessage(prompt: string): AgentFlowDebugMessage {
+export function createUserMessage(
+  prompt: string,
+  pageReferences?: AgentFlowPageReference[]
+): AgentFlowDebugMessage {
   return {
     id: createDebugMessageId('user'),
     role: 'user',
     content: prompt,
+    pageReferences,
     status: 'completed',
     runId: null,
     rawOutput: null,

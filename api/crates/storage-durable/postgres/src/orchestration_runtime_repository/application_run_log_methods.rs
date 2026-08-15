@@ -802,6 +802,11 @@ fn application_conversation_system_text(payload: &serde_json::Value) -> Option<S
 }
 
 fn application_conversation_user_text(payload: &serde_json::Value) -> Option<String> {
+    if let Some(message) =
+        control_plane::application_public_api::run_service::embedded_assistant_user_message(payload)
+    {
+        return trimmed_text(message.content());
+    }
     for source in [payload, application_conversation_start_payload(payload)] {
         for key in APPLICATION_CONVERSATION_INPUT_KEYS {
             if let Some(value) = string_field_value(source, key) {

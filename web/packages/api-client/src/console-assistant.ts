@@ -53,7 +53,14 @@ export interface ConsoleAssistantSettings {
   preference: ConsoleAssistantPreference;
   published_agent_flows: Array<{ application_id: string; name: string }>;
   enabled_mcp_instances: Array<{ instance_id: string; name: string }>;
+  page_reference_max_bytes: number;
   run_capabilities: ConsoleAssistantRunCapabilities;
+}
+
+export interface ConsoleAssistantPageReference {
+  page_url: string;
+  page_title: string;
+  outer_html: string;
 }
 
 export interface StartConsoleAssistantRunInput {
@@ -61,6 +68,7 @@ export interface StartConsoleAssistantRunInput {
   conversation_id?: string;
   query: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  page_references?: ConsoleAssistantPageReference[];
   title?: string;
 }
 
@@ -97,6 +105,7 @@ export interface ConsoleAssistantConversationMessage {
   flow_run_id: string;
   role: 'user' | 'assistant';
   content: string;
+  page_references: ConsoleAssistantPageReference[];
   created_at: string;
 }
 

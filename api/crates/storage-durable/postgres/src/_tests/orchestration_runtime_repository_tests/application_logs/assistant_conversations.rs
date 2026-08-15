@@ -32,7 +32,19 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
             target_node_id: None,
             title: "Legacy refund question".to_string(),
             status: FlowRunStatus::Running,
-            input_payload: json!({ "query": "What is the refund policy?" }),
+            input_payload: json!({
+                "node-start": {
+                    "query": "What is the refund policy?\n\n<page_references trust=\"untrusted\">...</page_references>"
+                },
+                "__embedded_assistant_user_message": {
+                    "content": "What is the refund policy?",
+                    "page_references": [{
+                        "page_url": "http://console.test/refunds",
+                        "page_title": "Refunds",
+                        "outer_html": "<div id=\"refunds\">Seven days</div>"
+                    }]
+                }
+            }),
             started_at,
             api_key_id: None,
             publication_version_id: None,
@@ -99,6 +111,12 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
             ("assistant", "Refunds are available within seven days.")
         ]
     );
+    assert_eq!(messages[0].page_references.len(), 1);
+    assert_eq!(
+        messages[0].page_references[0].outer_html(),
+        "<div id=\"refunds\">Seven days</div>"
+    );
+    assert!(messages[1].page_references.is_empty());
 
     let legacy_snapshot = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_legacy_snapshot_messages(
         &store,
@@ -110,6 +128,7 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
     .await
     .unwrap();
     assert_eq!(legacy_snapshot.len(), 2);
+    assert_eq!(legacy_snapshot[0].page_references.len(), 1);
 }
 
 #[tokio::test]
