@@ -534,6 +534,9 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await?;
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
+    let assistant_conversation_events = Arc::new(
+        routes::assistant::conversation_events::AssistantConversationEventHub::default(),
+    );
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = resolve_system_backup_startup(
         system_backup::SystemBackupRuntime::open(
@@ -570,6 +573,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         provider_runtime,
         process_started_at,
         runtime_activity,
+        assistant_conversation_events,
         api_runtime_profile,
         plugin_runner_system: Arc::new(HttpPluginRunnerSystemClient::new(
             config.plugin_runner_internal_base_url.clone(),

@@ -183,6 +183,69 @@ impl PgControlPlaneStore {
         )
     }
 
+    async fn get_assistant_conversation_summary(
+        &self,
+        workspace_id: uuid::Uuid,
+        application_id: uuid::Uuid,
+        actor_user_id: uuid::Uuid,
+        conversation_id: uuid::Uuid,
+    ) -> Result<
+        Option<control_plane::application_public_api::run_service::AssistantConversationSummary>,
+    > {
+        let row = sqlx::query(
+            r#"
+            select
+                conversations.conversation_id,
+                null::uuid as legacy_flow_run_id,
+                latest.id as latest_flow_run_id,
+                latest.status as latest_flow_run_status,
+                nullif(btrim(coalesce(latest.title, seed.title)), '') as title,
+                conversations.created_at,
+                greatest(
+                    conversations.updated_at,
+                    coalesce(latest.updated_at, conversations.updated_at)
+                ) as updated_at
+            from assistant_conversations conversations
+            left join flow_runs seed
+              on seed.id = conversations.seed_legacy_flow_run_id
+            left join lateral (
+                select id, status, title, updated_at
+                from flow_runs runs
+                where runs.assistant_conversation_id = conversations.conversation_id
+                  and runs.run_mode = 'assistant_execution'
+                  and runs.compatibility_mode = 'embedded_assistant'
+                order by runs.updated_at desc, runs.id desc
+                limit 1
+            ) latest on true
+            where conversations.conversation_id = $1
+              and conversations.scope_id = $2
+              and conversations.application_id = $3
+              and conversations.created_by = $4
+            "#,
+        )
+        .bind(conversation_id)
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(actor_user_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(|row| {
+            Ok(
+                control_plane::application_public_api::run_service::AssistantConversationSummary {
+                    conversation_id: row.try_get("conversation_id")?,
+                    legacy_flow_run_id: row.try_get("legacy_flow_run_id")?,
+                    latest_flow_run_id: row.try_get("latest_flow_run_id")?,
+                    latest_flow_run_status: row.try_get("latest_flow_run_status")?,
+                    title: row.try_get("title")?,
+                    created_at: row.try_get("created_at")?,
+                    updated_at: row.try_get("updated_at")?,
+                },
+            )
+        })
+        .transpose()
+    }
+
     async fn has_active_assistant_conversation_run(
         &self,
         conversation_id: Uuid,

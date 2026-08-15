@@ -220,6 +220,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             runtime_activity: std::sync::Arc::new(
                 api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
+            assistant_conversation_events: Default::default(),
             api_runtime_profile: std::sync::Arc::new(
                 HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
             ),

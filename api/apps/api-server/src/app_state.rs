@@ -31,6 +31,7 @@ use crate::{
     official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::ApiRuntimeServices,
     runtime_activity::ApplicationRuntimeActivityTracker,
+    routes::assistant::conversation_events::AssistantConversationEventHub,
     runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
 };
 
@@ -307,6 +308,7 @@ pub struct ApiState {
     pub provider_runtime: Arc<ApiRuntimeServices>,
     pub process_started_at: OffsetDateTime,
     pub runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    pub assistant_conversation_events: Arc<AssistantConversationEventHub>,
     pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     pub plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,

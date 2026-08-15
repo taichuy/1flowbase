@@ -14,7 +14,7 @@ use control_plane::{
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::{
             native_result_from_run_detail, ApplicationPublishedFlowRunRepository,
-            ApplicationPublishedRunService, AssistantPageReference,
+            ApplicationPublishedRunService, AssistantConversationSummary, AssistantPageReference,
             CreateAssistantConversationInput, CreateAssistantRunCommand,
             ListAssistantConversationsInput, ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
             ASSISTANT_PAGE_REFERENCE_MAX_COUNT, ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
@@ -37,9 +37,14 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 mod client_tools;
+pub mod conversation_events;
 pub(crate) mod websocket;
 
 use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
+use conversation_events::{
+    AssistantConversationEventKind, AssistantConversationEventScope,
+    AssistantConversationSummaryResponse,
+};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
@@ -213,17 +218,6 @@ pub struct ListAssistantConversationsQuery {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct AssistantConversationSummaryResponse {
-    pub conversation_id: Option<Uuid>,
-    pub legacy_flow_run_id: Option<Uuid>,
-    pub latest_flow_run_id: Option<Uuid>,
-    pub latest_flow_run_status: Option<String>,
-    pub title: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct AssistantConversationPageResponse {
     pub items: Vec<AssistantConversationSummaryResponse>,
     pub total: i64,
@@ -342,6 +336,23 @@ pub async fn create_conversation(
             seed_legacy_flow_run_id: body.seed_legacy_flow_run_id,
         })
         .await?;
+    state.assistant_conversation_events.publish(
+        AssistantConversationEventScope {
+            workspace_id: context.actor.current_workspace_id,
+            application_id: body.application_id,
+            actor_user_id: context.user.id,
+        },
+        AssistantConversationEventKind::Created,
+        AssistantConversationSummaryResponse::from(AssistantConversationSummary {
+            conversation_id: Some(conversation.conversation_id),
+            legacy_flow_run_id: None,
+            latest_flow_run_id: None,
+            latest_flow_run_status: None,
+            title: None,
+            created_at: conversation.created_at,
+            updated_at: conversation.updated_at,
+        }),
+    );
     Ok((
         axum::http::StatusCode::CREATED,
         Json(ApiSuccess::new(assistant_conversation_response(
@@ -381,15 +392,7 @@ pub async fn list_conversations(
         items: page
             .items
             .into_iter()
-            .map(|item| AssistantConversationSummaryResponse {
-                conversation_id: item.conversation_id,
-                legacy_flow_run_id: item.legacy_flow_run_id,
-                latest_flow_run_id: item.latest_flow_run_id,
-                latest_flow_run_status: item.latest_flow_run_status,
-                title: item.title,
-                created_at: rfc3339(item.created_at),
-                updated_at: rfc3339(item.updated_at),
-            })
+            .map(AssistantConversationSummaryResponse::from)
             .collect(),
         total: page.total,
         page: page.page,

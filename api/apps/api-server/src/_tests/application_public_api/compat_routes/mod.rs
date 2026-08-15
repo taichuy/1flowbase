@@ -674,6 +674,7 @@ pub(super) async fn test_app_with_runtime_event_stream(
         provider_runtime: base_state.provider_runtime.clone(),
         process_started_at: base_state.process_started_at,
         runtime_activity: base_state.runtime_activity.clone(),
+        assistant_conversation_events: base_state.assistant_conversation_events.clone(),
         api_runtime_profile: base_state.api_runtime_profile.clone(),
         plugin_runner_system: base_state.plugin_runner_system.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),

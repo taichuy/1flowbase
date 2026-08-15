@@ -117,6 +117,17 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
         anyhow::bail!("list_assistant_conversations not implemented")
     }
 
+    async fn get_assistant_conversation_summary(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Option<AssistantConversationSummary>> {
+        let _ = (workspace_id, application_id, actor_user_id, conversation_id);
+        anyhow::bail!("get_assistant_conversation_summary not implemented")
+    }
+
     async fn has_active_assistant_conversation_run(&self, conversation_id: Uuid) -> Result<bool> {
         let _ = conversation_id;
         anyhow::bail!("has_active_assistant_conversation_run not implemented")

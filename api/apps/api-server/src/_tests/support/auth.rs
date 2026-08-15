@@ -334,6 +334,7 @@ async fn test_state_with_runtime_profile_state(
             runtime_activity: Arc::new(
                 crate::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
+            assistant_conversation_events: Default::default(),
             api_runtime_profile,
             plugin_runner_system,
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
