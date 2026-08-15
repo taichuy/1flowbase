@@ -9,6 +9,7 @@ export function DebugComposer({
   disabled,
   submitting,
   stopping,
+  header,
   footerActions,
   onChange,
   onStop,
@@ -18,6 +19,7 @@ export function DebugComposer({
   disabled: boolean;
   submitting: boolean;
   stopping: boolean;
+  header?: ReactNode;
   footerActions?: ReactNode;
   onChange: (value: string) => void;
   onStop: () => void;
@@ -39,6 +41,7 @@ export function DebugComposer({
       <Sender
         autoSize={{ minRows: 3, maxRows: 6 }}
         disabled={disabled}
+        header={header || false}
         footer={(_, { components: { LoadingButton, SendButton } }) => (
           <Flex align="center" justify="end" style={{ width: '100%' }}>
             <Flex align="center" gap="small" style={{ width: '100%' }}>

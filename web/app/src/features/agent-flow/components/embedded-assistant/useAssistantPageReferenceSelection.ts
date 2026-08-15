@@ -69,7 +69,7 @@ export function useAssistantPageReferenceSelection({
     document.body.style.cursor = 'crosshair';
     document.body.style.userSelect = 'none';
 
-    const selectedDiv = (event: MouseEvent) => {
+    const selectedElement = (event: MouseEvent) => {
       const target = event.target;
       if (
         !(target instanceof Element) ||
@@ -77,15 +77,15 @@ export function useAssistantPageReferenceSelection({
       ) {
         return null;
       }
-      return target.closest('div');
+      return target;
     };
     const handleMove = (event: MouseEvent) => {
-      const container = selectedDiv(event);
-      if (!container) {
+      const element = selectedElement(event);
+      if (!element) {
         outline.hidden = true;
         return;
       }
-      const rect = container.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
       outline.hidden = false;
       Object.assign(outline.style, {
         height: `${rect.height}px`,
@@ -95,11 +95,11 @@ export function useAssistantPageReferenceSelection({
       });
     };
     const handleClick = (event: MouseEvent) => {
-      const container = selectedDiv(event);
-      if (!container) return;
+      const element = selectedElement(event);
+      if (!element) return;
       event.preventDefault();
       event.stopPropagation();
-      const outerHtml = container.outerHTML;
+      const outerHtml = element.outerHTML;
       const actualBytes = byteLength(outerHtml);
       if (actualBytes > maxBytes) {
         setError(tooLargeMessage(actualBytes, maxBytes));

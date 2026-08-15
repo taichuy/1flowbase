@@ -255,14 +255,35 @@
   white-space: nowrap;
 }
 
-.agent-flow-page-reference-tag button {
-  width: 1.25rem;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0;
+.agent-flow-page-reference-draft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.agent-flow-page-reference-draft__element {
+  flex: none;
+  font-family: var(--font-family-mono);
+}
+
+.agent-flow-page-reference-draft__source {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-flow-page-reference-draft button {
+  flex: none;
 }
 
 .embedded-agent-assistant-preview__page-reference-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--color-error);
 }
 
