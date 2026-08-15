@@ -641,7 +641,6 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
         vec![
             "react",
             "antd",
-            "tailwindcss",
             "@1flowbase/block-sdk",
             "@1flowbase/native-components",
             "@ant-design/icons",

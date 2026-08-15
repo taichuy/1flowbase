@@ -861,7 +861,7 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
     .unwrap_err();
     assert!(missing_point_error
         .to_string()
-        .contains("model provider extension point is unavailable"));
+        .contains("model_provider_extension_slot_unavailable"));
     assert!(!spawn_marker.exists());
 }
 
