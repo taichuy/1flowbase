@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  attachConsoleAssistantRunWebSocket,
   createConsoleAssistantConversation,
   getConsoleAssistantConversationMessages,
   getConsoleAssistantSettings,
@@ -295,6 +296,69 @@ describe('console assistant client', () => {
         .filter((event) => event.type === 'text_delta')
         .map((event) => event.text)
     ).toEqual(['Hel', 'lo']);
+    vi.unstubAllGlobals();
+  });
+
+  test('AC-003 attaches a historical active run without creating another run', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce({
+      ticket: 'ticket-attach',
+      protocol: '1flowbase.assistant.v1',
+      expires_in_seconds: 60
+    } as never);
+
+    class AttachWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = AttachWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      send(value: string) {
+        const command = JSON.parse(value) as Record<string, unknown>;
+        sent.push(command);
+        if (command.type !== 'run.attach') {
+          return;
+        }
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'flow_finished',
+              event_type: 'flow_finished',
+              event_id: 'run-active:9',
+              run_id: 'run-active',
+              sequence: 9,
+              payload: { status: 'succeeded', output: { answer: 'done' } }
+            })
+          } as MessageEvent)
+        );
+      }
+
+      close() {}
+    }
+
+    vi.stubGlobal('WebSocket', AttachWebSocket);
+    await attachConsoleAssistantRunWebSocket(
+      'application-1',
+      'run-active',
+      'csrf-token',
+      { onEvent: vi.fn() },
+      { baseUrl: 'http://127.0.0.1:3100' }
+    );
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: 'run.attach',
+        run_id: 'run-active',
+        after_event_id: null
+      })
+    );
+    expect(sent.some((command) => command.type === 'run.create')).toBe(false);
     vi.unstubAllGlobals();
   });
 

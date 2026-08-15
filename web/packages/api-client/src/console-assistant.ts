@@ -90,6 +90,7 @@ export interface ConsoleAssistantConversationSummary {
   conversation_id: string | null;
   legacy_flow_run_id: string | null;
   latest_flow_run_id: string | null;
+  latest_flow_run_status: string | null;
   title: string | null;
   created_at: string;
   updated_at: string;
@@ -237,17 +238,64 @@ export async function startConsoleAssistantRunStream(
   await consumeConsoleRuntimeEventStream(response, handlers);
 }
 
-export async function startConsoleAssistantRunWebSocket(
+interface ConsoleAssistantWebSocketOptions {
+  baseUrl?: string;
+  handshakeTimeoutMs?: number;
+  onControl?: (control: ConsoleAssistantWebSocketControl) => void;
+  maxReconnects?: number;
+  clientTools?: ConsoleAssistantClientTools;
+}
+
+type ConsoleAssistantWebSocketCommand =
+  | { kind: 'create'; body: StartConsoleAssistantRunInput }
+  | {
+      kind: 'attach';
+      applicationId: string;
+      runId: string;
+      afterEventId?: string | null;
+    };
+
+export function startConsoleAssistantRunWebSocket(
   body: StartConsoleAssistantRunInput,
   csrfToken: string,
   handlers: ConsoleFlowDebugStreamHandlers,
-  options?: {
-    baseUrl?: string;
-    handshakeTimeoutMs?: number;
-    onControl?: (control: ConsoleAssistantWebSocketControl) => void;
-    maxReconnects?: number;
-    clientTools?: ConsoleAssistantClientTools;
+  options?: ConsoleAssistantWebSocketOptions
+) {
+  return runConsoleAssistantWebSocket(
+    { kind: 'create', body },
+    csrfToken,
+    handlers,
+    options
+  );
+}
+
+export function attachConsoleAssistantRunWebSocket(
+  applicationId: string,
+  runId: string,
+  csrfToken: string,
+  handlers: ConsoleFlowDebugStreamHandlers,
+  options?: Omit<ConsoleAssistantWebSocketOptions, 'clientTools'> & {
+    afterEventId?: string | null;
   }
+) {
+  return runConsoleAssistantWebSocket(
+    {
+      kind: 'attach',
+      applicationId,
+      runId,
+      afterEventId: options?.afterEventId
+    },
+    csrfToken,
+    handlers,
+    options
+  );
+}
+
+async function runConsoleAssistantWebSocket(
+  command: ConsoleAssistantWebSocketCommand,
+  csrfToken: string,
+  handlers: ConsoleFlowDebugStreamHandlers,
+  options?: ConsoleAssistantWebSocketOptions
 ) {
   const baseUrl = options?.baseUrl ?? getDefaultApiBaseUrl();
   const handshakeTimeoutMs = options?.handshakeTimeoutMs ?? 10_000;
@@ -257,8 +305,10 @@ export async function startConsoleAssistantRunWebSocket(
 
   await new Promise<void>((resolve, reject) => {
     let socket: WebSocket | null = null;
-    let activeRunId: string | null = null;
-    let lastEventId: string | null = null;
+    let activeRunId: string | null =
+      command.kind === 'attach' ? command.runId : null;
+    let lastEventId: string | null =
+      command.kind === 'attach' ? (command.afterEventId ?? null) : null;
     let terminal = false;
     let reconnectCount = 0;
     let settled = false;
@@ -321,7 +371,12 @@ export async function startConsoleAssistantRunWebSocket(
         const ticket = await apiFetch<ConsoleAssistantWebSocketTicket>({
           path: '/api/console/assistant/runs/websocket-ticket',
           method: 'POST',
-          body: { application_id: body.application_id },
+          body: {
+            application_id:
+              command.kind === 'create'
+                ? command.body.application_id
+                : command.applicationId
+          },
           csrfToken,
           baseUrl
         });
@@ -351,12 +406,16 @@ export async function startConsoleAssistantRunWebSocket(
             );
             return;
           }
+          if (command.kind !== 'create') {
+            finish(new Error('Assistant run attach is missing a run ID'));
+            return;
+          }
           current.send(
             JSON.stringify({
               type: 'run.create',
               request_id: `create-${requestSequence++}`,
               client_tool_ids: options?.clientTools?.toolIds ?? [],
-              request: body
+              request: command.body
             })
           );
         };
@@ -491,6 +550,6 @@ export async function startConsoleAssistantRunWebSocket(
       }
     };
 
-    void connect(false);
+    void connect(command.kind === 'attach');
   });
 }

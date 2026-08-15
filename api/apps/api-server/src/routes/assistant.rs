@@ -217,6 +217,7 @@ pub struct AssistantConversationSummaryResponse {
     pub conversation_id: Option<Uuid>,
     pub legacy_flow_run_id: Option<Uuid>,
     pub latest_flow_run_id: Option<Uuid>,
+    pub latest_flow_run_status: Option<String>,
     pub title: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -384,6 +385,7 @@ pub async fn list_conversations(
                 conversation_id: item.conversation_id,
                 legacy_flow_run_id: item.legacy_flow_run_id,
                 latest_flow_run_id: item.latest_flow_run_id,
+                latest_flow_run_status: item.latest_flow_run_status,
                 title: item.title,
                 created_at: rfc3339(item.created_at),
                 updated_at: rfc3339(item.updated_at),
@@ -871,6 +873,16 @@ async fn prepare_assistant_execution(
             {
                 return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
                     "assistant_conversation",
+                )
+                .into());
+            }
+            if state
+                .store
+                .has_active_assistant_conversation_run(conversation_id)
+                .await?
+            {
+                return Err(control_plane::errors::ControlPlaneError::Conflict(
+                    "assistant_conversation_active",
                 )
                 .into());
             }

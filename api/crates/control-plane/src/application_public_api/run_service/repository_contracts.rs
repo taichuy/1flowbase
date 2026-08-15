@@ -47,6 +47,7 @@ pub struct AssistantConversationSummary {
     pub conversation_id: Option<Uuid>,
     pub legacy_flow_run_id: Option<Uuid>,
     pub latest_flow_run_id: Option<Uuid>,
+    pub latest_flow_run_status: Option<String>,
     pub title: Option<String>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -114,6 +115,11 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
     ) -> Result<AssistantConversationPage> {
         let _ = input;
         anyhow::bail!("list_assistant_conversations not implemented")
+    }
+
+    async fn has_active_assistant_conversation_run(&self, conversation_id: Uuid) -> Result<bool> {
+        let _ = conversation_id;
+        anyhow::bail!("has_active_assistant_conversation_run not implemented")
     }
 
     async fn list_assistant_conversation_messages(

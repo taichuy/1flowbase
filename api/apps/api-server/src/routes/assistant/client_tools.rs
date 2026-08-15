@@ -1,4 +1,11 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -29,6 +36,7 @@ pub(super) struct AssistantClientToolBridge {
     enabled_tools: Vec<AssistantClientToolId>,
     outbound: mpsc::Sender<String>,
     pending: Arc<Mutex<PendingClientToolCalls>>,
+    connected: Arc<AtomicBool>,
 }
 
 impl AssistantClientToolBridge {
@@ -39,6 +47,7 @@ impl AssistantClientToolBridge {
                 enabled_tools: Vec::new(),
                 outbound,
                 pending: Arc::new(Mutex::new(BTreeMap::new())),
+                connected: Arc::new(AtomicBool::new(true)),
             },
             frames,
         )
@@ -49,6 +58,7 @@ impl AssistantClientToolBridge {
             enabled_tools,
             outbound: self.outbound.clone(),
             pending: self.pending.clone(),
+            connected: self.connected.clone(),
         }
     }
 
@@ -65,6 +75,7 @@ impl AssistantClientToolBridge {
     }
 
     pub(super) async fn close(&self) {
+        self.connected.store(false, Ordering::Release);
         let pending = std::mem::take(&mut *self.pending.lock().await);
         for (_, sender) in pending {
             let _ = sender.send(Err("assistant client connection closed".to_string()));
@@ -114,6 +125,9 @@ impl AssistantClientToolBridge {
         provider_name: &str,
         arguments: Value,
     ) -> Result<(Uuid, ClientToolResult)> {
+        if !self.connected.load(Ordering::Acquire) {
+            return Err(anyhow!("assistant client connection is unavailable"));
+        }
         let call_id = Uuid::now_v7();
         let (sender, receiver) = oneshot::channel();
         self.pending.lock().await.insert(call_id, sender);
@@ -163,9 +177,28 @@ impl RuntimeInternalToolInvoker for AssistantClientToolBridge {
         registration: &RuntimeInternalToolRegistration,
         arguments: Value,
     ) -> Result<RuntimeInternalToolOutput> {
-        let (call_id, result) = self
+        let (call_id, result) = match self
             .call_client_tool(&registration.provider_name, arguments)
-            .await?;
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(RuntimeInternalToolOutput {
+                    content: json!({
+                        "status": "unavailable",
+                        "code": "client_unavailable"
+                    }),
+                    is_error: true,
+                    event: json!({
+                        "event_type":"assistant_client_tool_call_unavailable",
+                        "node_id":node.node_id,
+                        "provider_name":registration.provider_name,
+                        "owner":registration.owner,
+                        "reason":error.to_string(),
+                    }),
+                });
+            }
+        };
         Ok(RuntimeInternalToolOutput {
             content: result.result,
             is_error: result.is_error,
@@ -232,24 +265,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ac_005_closing_the_socket_releases_pending_client_tool_calls() {
+    async fn ac_005_closing_the_socket_returns_client_unavailable_without_a_side_effect() {
         let (bridge, mut frames) = AssistantClientToolBridge::new();
+        let registration =
+            AssistantClientToolBridge::registration(AssistantClientToolId::RefreshClientView);
+        let node = CompiledNode {
+            node_id: "assistant".to_string(),
+            node_type: "llm".to_string(),
+            alias: "Assistant".to_string(),
+            container_id: None,
+            dependency_node_ids: Vec::new(),
+            downstream_node_ids: Vec::new(),
+            bindings: BTreeMap::new(),
+            outputs: Vec::new(),
+            config: json!({}),
+            plugin_runtime: None,
+            llm_runtime: None,
+            code_runtime: None,
+        };
         let invocation = {
             let bridge = bridge.clone();
+            let registration = registration.clone();
+            let node = node.clone();
             tokio::spawn(async move {
                 bridge
-                    .call_client_tool("refresh_client_view", json!({}))
+                    .invoke_runtime_internal_tool(&node, &registration, json!({}))
                     .await
             })
         };
         let _ = frames.recv().await.unwrap();
         bridge.close().await;
-        assert!(invocation
+        let output = invocation.await.unwrap().unwrap();
+        assert!(output.is_error);
+        assert_eq!(output.content["code"], json!("client_unavailable"));
+        let disconnected = bridge
+            .invoke_runtime_internal_tool(&node, &registration, json!({}))
             .await
-            .unwrap()
-            .unwrap_err()
-            .to_string()
-            .contains("connection closed"));
+            .unwrap();
+        assert_eq!(disconnected.content["code"], json!("client_unavailable"));
+        assert!(frames.try_recv().is_err());
     }
 }
 

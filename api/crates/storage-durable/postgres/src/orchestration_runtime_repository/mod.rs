@@ -985,6 +985,10 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         PgControlPlaneStore::list_assistant_conversations(self, input).await
     }
 
+    async fn has_active_assistant_conversation_run(&self, conversation_id: Uuid) -> Result<bool> {
+        PgControlPlaneStore::has_active_assistant_conversation_run(self, conversation_id).await
+    }
+
     async fn list_assistant_conversation_messages(
         &self,
         workspace_id: Uuid,

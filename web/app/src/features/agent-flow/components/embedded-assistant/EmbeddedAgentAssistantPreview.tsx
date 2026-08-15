@@ -145,6 +145,7 @@ export function EmbeddedAgentAssistantPreview({
   const historyLayoutRef = useRef<HTMLDivElement | null>(null);
   const historyWidthRef = useRef(historyWidth);
   const assistantWindowRectRef = useRef<WindowWorkspaceRect | null>(null);
+  const assistantOpenRef = useRef(open);
   const [form] = Form.useForm<ConsoleAssistantPreference>();
   const {
     activate,
@@ -158,6 +159,19 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.application_id ?? null,
     clientTools
   );
+
+  useEffect(() => {
+    const wasOpen = assistantOpenRef.current;
+    assistantOpenRef.current = open;
+    if (wasOpen === open) {
+      return;
+    }
+    if (open) {
+      session.resumeActiveRun();
+    } else {
+      session.disconnectSession();
+    }
+  }, [open, session.disconnectSession, session.resumeActiveRun]);
   const pageReferenceSelection = useAssistantPageReferenceSelection({
     active: open,
     duplicateMessage: i18nText(
@@ -722,8 +736,7 @@ export function EmbeddedAgentAssistantPreview({
                       }}
                       groupable
                       items={historyPage?.items.map((item) => ({
-                        disabled:
-                          !session.canChangeConversation || historyLoading,
+                        disabled: historyLoading || session.restoringHistory,
                         group: assistantConversationGroup(item.updated_at),
                         key: assistantConversationKey(item),
                         label:
@@ -749,7 +762,9 @@ export function EmbeddedAgentAssistantPreview({
                         void session
                           .restoreConversation({
                             conversationId: item.conversation_id,
-                            legacyFlowRunId: item.legacy_flow_run_id
+                            legacyFlowRunId: item.legacy_flow_run_id,
+                            latestFlowRunId: item.latest_flow_run_id,
+                            latestFlowRunStatus: item.latest_flow_run_status
                           })
                           .then((restored) => {
                             if (restored && item.conversation_id) {
@@ -811,7 +826,7 @@ export function EmbeddedAgentAssistantPreview({
               hidden={(mobile || historyFullView) && historyOpen}
             >
               <AgentFlowDebugConsole
-                clearDisabled={!session.canChangeConversation}
+                clearDisabled={!session.canEditCurrentConversation}
                 composerHeader={
                   pageReferenceSelection.references.length > 0 ||
                   pageReferenceSelection.error ? (
@@ -862,7 +877,9 @@ export function EmbeddedAgentAssistantPreview({
                             'appShell',
                             'auto.assistant_select_page_content'
                           )}
-                          disabled={!settings || !session.canChangeConversation}
+                          disabled={
+                            !settings || !session.canEditCurrentConversation
+                          }
                           icon={<SelectOutlined />}
                           size="small"
                           type={
@@ -1037,7 +1054,6 @@ export function EmbeddedAgentAssistantPreview({
                 onChangeRunContextValue={session.setRunContextValue}
                 onClearSession={session.clearSession}
                 onClose={() => {
-                  void session.closeSession();
                   onClose();
                 }}
                 onLoadArtifact={

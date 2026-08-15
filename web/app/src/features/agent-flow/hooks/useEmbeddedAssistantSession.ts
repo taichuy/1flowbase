@@ -1,4 +1,5 @@
 import {
+  attachConsoleAssistantRunWebSocket,
   cancelConsoleFlowRun,
   createConsoleAssistantConversation,
   getConsoleAssistantConversationMessages,
@@ -112,6 +113,31 @@ function hasActiveAssistantRun(status: AgentFlowDebugSessionStatus) {
   return ['running', 'waiting_callback', 'waiting_human'].includes(status);
 }
 
+function sessionStatusFromFlowRun(
+  status: string | null | undefined
+): AgentFlowDebugSessionStatus {
+  switch (status) {
+    case 'waiting_callback':
+      return 'waiting_callback';
+    case 'waiting_human':
+      return 'waiting_human';
+    case 'succeeded':
+    case 'completed':
+    case 'incomplete':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    case 'queued':
+    case 'running':
+    case 'paused':
+      return 'running';
+    default:
+      return 'idle';
+  }
+}
+
 function restoredMessages(
   items: ConsoleAssistantConversationMessage[]
 ): AgentFlowDebugMessage[] {
@@ -215,66 +241,9 @@ export function useEmbeddedAssistantSession(
     resetSession();
   }, [resetSession, status]);
 
-  const restoreConversation = useCallback(
-    async (target: {
-      conversationId?: string | null;
-      legacyFlowRunId?: string | null;
-    }) => {
-      if (
-        !applicationId ||
-        hasActiveAssistantRun(status) ||
-        (!target.conversationId && !target.legacyFlowRunId)
-      ) {
-        return false;
-      }
-
-      cancelActiveStream();
-      const generation = streamGenerationRef.current;
-      setRestoringHistory(true);
-      try {
-        const history = target.conversationId
-          ? await getConsoleAssistantConversationMessages(
-              applicationId,
-              target.conversationId
-            )
-          : await getConsoleAssistantLegacySnapshotMessages(
-              applicationId,
-              target.legacyFlowRunId as string
-            );
-        if (streamGenerationRef.current !== generation) {
-          return false;
-        }
-        activeRunIdRef.current = null;
-        activeApplicationIdRef.current = null;
-        setActiveRunId(null);
-        setCurrentConversation(target.conversationId ?? null);
-        setCurrentLegacySnapshot(target.legacyFlowRunId ?? null);
-        setStatus('idle');
-        setStopping(false);
-        setMessages(restoredMessages(history));
-        setTraceItems([]);
-        liveTraceItemsRef.current = [];
-        setContextSnapshot(null);
-        setRunContext(createRunContext(applicationId));
-        return true;
-      } finally {
-        if (streamGenerationRef.current === generation) {
-          setRestoringHistory(false);
-        }
-      }
-    },
-    [
-      applicationId,
-      cancelActiveStream,
-      setCurrentConversation,
-      setCurrentLegacySnapshot,
-      status
-    ]
-  );
-
   const startNewConversation = useCallback(
     async (seedLegacyFlowRunId?: string) => {
-      if (!applicationId || !csrfToken || hasActiveAssistantRun(status)) {
+      if (!applicationId || !csrfToken || restoringHistory) {
         return false;
       }
 
@@ -321,7 +290,7 @@ export function useEmbeddedAssistantSession(
       csrfToken,
       setCurrentConversation,
       setCurrentLegacySnapshot,
-      status
+      restoringHistory
     ]
   );
 
@@ -377,6 +346,228 @@ export function useEmbeddedAssistantSession(
     },
     []
   );
+
+  const attachActiveRun = useCallback(
+    (runApplicationId: string, runId: string, runningMessageId: string) => {
+      if (!csrfToken) {
+        return;
+      }
+      cancelActiveStream();
+      const streamGeneration = streamGenerationRef.current;
+      let streamAssistantMessage: AgentFlowDebugMessage = {
+        ...createRunningAssistantMessage(),
+        id: runningMessageId,
+        runId,
+        detailRunId: runId,
+        canOpenDetail: true
+      };
+      let receivedTerminal = false;
+      const seenEventKeys = new Set<string>();
+
+      const handlers: ConsoleFlowDebugStreamHandlers = {
+        getAbortController: (abortController) => {
+          if (streamGenerationRef.current !== streamGeneration) {
+            abortController.abort();
+            return;
+          }
+          streamAbortControllerRef.current = abortController;
+        },
+        onEvent: (event) => {
+          if (streamGenerationRef.current !== streamGeneration) {
+            return;
+          }
+          const eventKeys = buildStreamEventDedupKeys(event);
+          if (eventKeys.some((key) => seenEventKeys.has(key))) {
+            return;
+          }
+          eventKeys.forEach((key) => seenEventKeys.add(key));
+          if (isTraceEvent(event)) {
+            liveTraceItemsRef.current = applyDebugStreamEventToTrace(
+              liveTraceItemsRef.current,
+              event
+            );
+            setTraceItems(liveTraceItemsRef.current);
+          }
+          if (event.type === 'context_snapshot') {
+            setContextSnapshot(event);
+          }
+          streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
+            streamAssistantMessage,
+            event,
+            liveTraceItemsRef.current
+          );
+          if (isTerminalEvent(event)) {
+            receivedTerminal = true;
+          }
+          setStatus(streamAssistantMessage.status);
+          setMessages((current) =>
+            replaceAssistantMessage(
+              current,
+              streamAssistantMessage,
+              runningMessageId
+            )
+          );
+          if (isTerminalEvent(event) && event.run_id) {
+            void reconcileRunSnapshot(
+              runApplicationId,
+              event.run_id,
+              streamGeneration
+            );
+          }
+        }
+      };
+
+      void attachConsoleAssistantRunWebSocket(
+        runApplicationId,
+        runId,
+        csrfToken,
+        handlers,
+        {
+          onControl: (control) => {
+            websocketControlRef.current = control;
+          }
+        }
+      )
+        .then(() => {
+          if (
+            streamGenerationRef.current === streamGeneration &&
+            !receivedTerminal
+          ) {
+            return reconcileRunSnapshot(
+              runApplicationId,
+              runId,
+              streamGeneration
+            );
+          }
+        })
+        .catch(() => {
+          if (streamGenerationRef.current === streamGeneration) {
+            return reconcileRunSnapshot(
+              runApplicationId,
+              runId,
+              streamGeneration
+            );
+          }
+        })
+        .finally(() => {
+          if (streamGenerationRef.current === streamGeneration) {
+            streamAbortControllerRef.current = null;
+            websocketControlRef.current = null;
+          }
+        });
+    },
+    [cancelActiveStream, csrfToken, reconcileRunSnapshot]
+  );
+
+  const restoreConversation = useCallback(
+    async (target: {
+      conversationId?: string | null;
+      legacyFlowRunId?: string | null;
+      latestFlowRunId?: string | null;
+      latestFlowRunStatus?: string | null;
+    }) => {
+      if (
+        !applicationId ||
+        restoringHistory ||
+        (!target.conversationId && !target.legacyFlowRunId)
+      ) {
+        return false;
+      }
+
+      cancelActiveStream();
+      const generation = streamGenerationRef.current;
+      setRestoringHistory(true);
+      try {
+        const history = target.conversationId
+          ? await getConsoleAssistantConversationMessages(
+              applicationId,
+              target.conversationId
+            )
+          : await getConsoleAssistantLegacySnapshotMessages(
+              applicationId,
+              target.legacyFlowRunId as string
+            );
+        if (streamGenerationRef.current !== generation) {
+          return false;
+        }
+        const nextStatus = sessionStatusFromFlowRun(target.latestFlowRunStatus);
+        const activeRunId = hasActiveAssistantRun(nextStatus)
+          ? (target.latestFlowRunId ?? null)
+          : null;
+        const nextMessages = restoredMessages(history);
+        let runningMessageId: string | null = null;
+        if (activeRunId) {
+          const restoredAssistant = nextMessages.find(
+            (message) =>
+              message.role === 'assistant' && message.runId === activeRunId
+          );
+          if (restoredAssistant) {
+            restoredAssistant.status = 'running';
+            runningMessageId = restoredAssistant.id;
+          } else {
+            const runningMessage = {
+              ...createRunningAssistantMessage(),
+              runId: activeRunId,
+              detailRunId: activeRunId,
+              canOpenDetail: true
+            };
+            runningMessageId = runningMessage.id;
+            nextMessages.push(runningMessage);
+          }
+        }
+        activeRunIdRef.current = activeRunId;
+        activeApplicationIdRef.current = activeRunId ? applicationId : null;
+        setActiveRunId(activeRunId);
+        setCurrentConversation(target.conversationId ?? null);
+        setCurrentLegacySnapshot(target.legacyFlowRunId ?? null);
+        setStatus(nextStatus);
+        setStopping(false);
+        setMessages(nextMessages);
+        setTraceItems([]);
+        liveTraceItemsRef.current = [];
+        setContextSnapshot(null);
+        setRunContext(createRunContext(applicationId));
+        if (activeRunId && runningMessageId) {
+          queueMicrotask(() => {
+            if (streamGenerationRef.current === generation) {
+              attachActiveRun(applicationId, activeRunId, runningMessageId);
+            }
+          });
+        }
+        return true;
+      } finally {
+        if (streamGenerationRef.current === generation) {
+          setRestoringHistory(false);
+        }
+      }
+    },
+    [
+      applicationId,
+      attachActiveRun,
+      cancelActiveStream,
+      restoringHistory,
+      setCurrentConversation,
+      setCurrentLegacySnapshot
+    ]
+  );
+
+  const disconnectSession = useCallback(() => {
+    cancelActiveStream();
+  }, [cancelActiveStream]);
+
+  const resumeActiveRun = useCallback(() => {
+    const runId = activeRunIdRef.current;
+    const runApplicationId = activeApplicationIdRef.current;
+    if (!runId || !runApplicationId || !hasActiveAssistantRun(status)) {
+      return;
+    }
+    const runningMessage = messages.find(
+      (message) => message.role === 'assistant' && message.runId === runId
+    );
+    if (runningMessage) {
+      attachActiveRun(runApplicationId, runId, runningMessage.id);
+    }
+  }, [attachActiveRun, messages, status]);
 
   const setRunContextValue = useCallback(
     (nodeId: string, key: string, value: unknown) => {
@@ -670,42 +861,6 @@ export function useEmbeddedAssistantSession(
     }
   }, [cancelActiveStream, csrfToken, status]);
 
-  const closeSession = useCallback(async () => {
-    const runId = activeRunIdRef.current;
-    const runApplicationId = activeApplicationIdRef.current;
-    const shouldCancel = [
-      'running',
-      'waiting_callback',
-      'waiting_human'
-    ].includes(status);
-
-    cancelActiveStream();
-    activeRunIdRef.current = null;
-    activeApplicationIdRef.current = null;
-    setActiveRunId(null);
-    setStopping(false);
-
-    if (shouldCancel) {
-      setStatus('cancelled');
-      setMessages((current) =>
-        current.map((message) =>
-          message.role === 'assistant' && message.status === 'running'
-            ? { ...message, status: 'cancelled' }
-            : message
-        )
-      );
-    }
-
-    if (shouldCancel && csrfToken && runId && runApplicationId) {
-      try {
-        await cancelConsoleFlowRun(runApplicationId, runId, csrfToken);
-      } catch {
-        // Closing the local Assistant session remains authoritative even when
-        // the best-effort durable cancellation cannot be confirmed.
-      }
-    }
-  }, [cancelActiveStream, csrfToken, status]);
-
   return {
     status,
     stopping,
@@ -717,10 +872,12 @@ export function useEmbeddedAssistantSession(
     conversationId,
     legacyFlowRunId,
     restoringHistory,
-    canChangeConversation: !hasActiveAssistantRun(status),
+    canChangeConversation: !restoringHistory,
+    canEditCurrentConversation: !hasActiveAssistantRun(status),
     clearSession,
-    closeSession,
+    disconnectSession,
     restoreConversation,
+    resumeActiveRun,
     setRunContextValue,
     startNewConversation,
     submitPrompt,

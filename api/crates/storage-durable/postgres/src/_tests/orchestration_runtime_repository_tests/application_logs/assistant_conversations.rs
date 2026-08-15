@@ -239,6 +239,44 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
     )
     .await
     .unwrap();
+    let active_run_input = CreateFlowRunInput {
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        flow_id: seeded.flow_id,
+        flow_draft_id: seeded.draft_id,
+        compiled_plan_id: compiled.id,
+        debug_session_id: "conversation-active".to_string(),
+        flow_schema_version: compiled.schema_version.clone(),
+        document_hash: compiled.document_hash.clone(),
+        run_mode: FlowRunMode::AssistantExecution,
+        target_node_id: None,
+        title: "Active conversation run".to_string(),
+        status: FlowRunStatus::Queued,
+        input_payload: json!({ "query": "active" }),
+        started_at: started_at + Duration::milliseconds(500),
+        api_key_id: None,
+        publication_version_id: None,
+        assistant_conversation_id: Some(own_conversation.conversation_id),
+        external_user: None,
+        external_conversation_id: None,
+        external_trace_id: None,
+        compatibility_mode: Some("embedded_assistant".to_string()),
+        idempotency_key: None,
+    };
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
+        &store,
+        &active_run_input,
+    )
+    .await
+    .unwrap();
+    assert!(
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
+            &store,
+            &active_run_input,
+        )
+        .await
+        .is_err()
+    );
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
         &store,
         &CreateFlowRunInput {
@@ -285,10 +323,21 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
     assert!(page.items.iter().any(|item| {
         item.conversation_id == Some(own_conversation.conversation_id)
             && item.legacy_flow_run_id.is_none()
+            && item.latest_flow_run_status.as_deref() == Some("queued")
     }));
     assert!(page.items.iter().any(|item| {
-        item.conversation_id.is_none() && item.legacy_flow_run_id == Some(legacy_run.id)
+        item.conversation_id.is_none()
+            && item.legacy_flow_run_id == Some(legacy_run.id)
+            && item.latest_flow_run_status.as_deref() == Some("running")
     }));
+    assert!(
+        <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::has_active_assistant_conversation_run(
+            &store,
+            own_conversation.conversation_id,
+        )
+        .await
+        .unwrap()
+    );
 
     let foreign_user_access =
         <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::get_assistant_conversation(

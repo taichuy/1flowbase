@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
+  attachConsoleAssistantRunWebSocket,
   cancelConsoleFlowRun,
   createConsoleAssistantConversation,
   getConsoleAssistantConversationMessages,
@@ -18,6 +19,7 @@ const {
   startConsoleAssistantRunStream,
   updateConsoleAssistantSettings
 } = vi.hoisted(() => ({
+  attachConsoleAssistantRunWebSocket: vi.fn(),
   cancelConsoleFlowRun: vi.fn(),
   createConsoleAssistantConversation: vi.fn(),
   getConsoleAssistantConversationMessages: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
   return {
     ...actual,
+    attachConsoleAssistantRunWebSocket,
     cancelConsoleFlowRun,
     createConsoleAssistantConversation,
     getConsoleAssistantConversationMessages,
@@ -153,6 +156,7 @@ describe('EmbeddedAgentAssistant', () => {
           conversation_id: 'conversation-1',
           legacy_flow_run_id: null,
           latest_flow_run_id: 'run-1',
+          latest_flow_run_status: 'succeeded',
           title: 'First conversation',
           created_at: '2026-08-07T00:00:00Z',
           updated_at: '2026-08-07T00:00:00Z'
@@ -164,6 +168,8 @@ describe('EmbeddedAgentAssistant', () => {
     });
     cancelConsoleFlowRun.mockReset();
     cancelConsoleFlowRun.mockResolvedValue(undefined);
+    attachConsoleAssistantRunWebSocket.mockReset();
+    attachConsoleAssistantRunWebSocket.mockResolvedValue(undefined);
     startConsoleAssistantRunWebSocket.mockReset();
     startConsoleAssistantRunStream.mockReset();
   });
@@ -280,7 +286,7 @@ describe('EmbeddedAgentAssistant', () => {
       pageSize: 20
     });
 
-    fireEvent.click(screen.getByText('First conversation'));
+    fireEvent.click(await screen.findByText('First conversation'));
     await waitFor(() =>
       expect(getConsoleAssistantConversationMessages).toHaveBeenCalledWith(
         'flow-1',
@@ -306,6 +312,65 @@ describe('EmbeddedAgentAssistant', () => {
         'csrf-token'
       )
     );
+  });
+
+  test('AC-003 restores and attaches a historical conversation whose latest run is active', async () => {
+    listConsoleAssistantConversations.mockResolvedValueOnce({
+      items: [
+        {
+          conversation_id: 'conversation-active',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-active',
+          latest_flow_run_status: 'running',
+          title: 'Active conversation',
+          created_at: '2026-08-07T00:00:00Z',
+          updated_at: '2026-08-07T00:00:00Z'
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    getConsoleAssistantConversationMessages.mockResolvedValueOnce([
+      {
+        id: 'run-active:user',
+        flow_run_id: 'run-active',
+        role: 'user',
+        content: 'Continue in the background',
+        page_references: [],
+        created_at: '2026-08-07T00:00:00Z'
+      }
+    ]);
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+    fireEvent.click(await screen.findByText('Active conversation'));
+
+    await waitFor(() =>
+      expect(attachConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
+        'flow-1',
+        'run-active',
+        'csrf-token',
+        expect.any(Object),
+        expect.objectContaining({ onControl: expect.any(Function) })
+      )
+    );
+    expect(
+      await screen.findByText('Continue in the background')
+    ).toBeInTheDocument();
   });
 
   test('AC-005 keeps history in a collapsible left sidebar inside the assistant window', async () => {
@@ -449,6 +514,7 @@ describe('EmbeddedAgentAssistant', () => {
           conversation_id: null,
           legacy_flow_run_id: 'legacy-run',
           latest_flow_run_id: 'legacy-run',
+          latest_flow_run_status: 'succeeded',
           title: 'Legacy snapshot',
           created_at: '2026-08-06T00:00:00Z',
           updated_at: '2026-08-06T00:00:00Z'
@@ -500,7 +566,7 @@ describe('EmbeddedAgentAssistant', () => {
     );
   });
 
-  test('AC-006 prevents a live run from switching or clearing the current conversation', async () => {
+  test('AC-006 keeps a live run in the background while another conversation is selected', async () => {
     let finishWebSocket: (() => void) | null = null;
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
@@ -557,18 +623,14 @@ describe('EmbeddedAgentAssistant', () => {
         name: i18nText('appShell', 'auto.assistant_history')
       })
     );
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: new RegExp(
-          i18nText('appShell', 'auto.assistant_new_conversation'),
-          'u'
-        )
-      })
+    fireEvent.click(await screen.findByText('First conversation'));
+    await waitFor(() =>
+      expect(getConsoleAssistantConversationMessages).toHaveBeenCalledWith(
+        'flow-1',
+        'conversation-1'
+      )
     );
-    expect(createConsoleAssistantConversation).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByText('First conversation'));
-    expect(getConsoleAssistantConversationMessages).not.toHaveBeenCalled();
+    expect(cancelConsoleFlowRun).not.toHaveBeenCalled();
 
     await act(async () => {
       finishWebSocket?.();
@@ -1084,7 +1146,7 @@ describe('EmbeddedAgentAssistant', () => {
     await waitFor(() => expect(composer).toBeEnabled());
   });
 
-  test('issue 1601 closes the transport and cancels an accepted run', async () => {
+  test('AC-001 closes only the transport and reattaches the accepted run when reopened', async () => {
     const abort = vi.fn();
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) =>
@@ -1135,16 +1197,25 @@ describe('EmbeddedAgentAssistant', () => {
     );
 
     await waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
-    await waitFor(() =>
-      expect(cancelConsoleFlowRun).toHaveBeenCalledWith(
-        'flow-1',
-        'run-close',
-        'csrf-token'
-      )
-    );
+    expect(cancelConsoleFlowRun).not.toHaveBeenCalled();
     expect(
       screen.queryByTestId('embedded-agent-assistant-preview')
     ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    await waitFor(() =>
+      expect(attachConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
+        'flow-1',
+        'run-close',
+        'csrf-token',
+        expect.any(Object),
+        expect.objectContaining({ onControl: expect.any(Function) })
+      )
+    );
   });
 
   test('AC-001 through AC-008 selects, removes, and submits multiple page references', async () => {

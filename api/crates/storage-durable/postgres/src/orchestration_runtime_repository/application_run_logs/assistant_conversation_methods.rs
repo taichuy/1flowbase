@@ -98,6 +98,7 @@ impl PgControlPlaneStore {
                     conversations.conversation_id,
                     null::uuid as legacy_flow_run_id,
                     latest.id as latest_flow_run_id,
+                    latest.status as latest_flow_run_status,
                     nullif(btrim(coalesce(latest.title, seed.title)), '') as title,
                     conversations.created_at,
                     greatest(
@@ -108,7 +109,7 @@ impl PgControlPlaneStore {
                 left join flow_runs seed
                   on seed.id = conversations.seed_legacy_flow_run_id
                 left join lateral (
-                    select id, title, updated_at
+                    select id, status, title, updated_at
                     from flow_runs runs
                     where runs.assistant_conversation_id = conversations.conversation_id
                       and runs.run_mode = 'assistant_execution'
@@ -124,6 +125,7 @@ impl PgControlPlaneStore {
                     null::uuid as conversation_id,
                     runs.id as legacy_flow_run_id,
                     runs.id as latest_flow_run_id,
+                    runs.status as latest_flow_run_status,
                     nullif(btrim(runs.title), '') as title,
                     runs.created_at,
                     runs.updated_at
@@ -162,6 +164,7 @@ impl PgControlPlaneStore {
                         conversation_id: row.try_get("conversation_id")?,
                         legacy_flow_run_id: row.try_get("legacy_flow_run_id")?,
                         latest_flow_run_id: row.try_get("latest_flow_run_id")?,
+                        latest_flow_run_status: row.try_get("latest_flow_run_status")?,
                         title: row.try_get("title")?,
                         created_at: row.try_get("created_at")?,
                         updated_at: row.try_get("updated_at")?,
@@ -178,6 +181,34 @@ impl PgControlPlaneStore {
                 page_size,
             },
         )
+    }
+
+    async fn has_active_assistant_conversation_run(
+        &self,
+        conversation_id: Uuid,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            r#"
+            select exists (
+                select 1
+                from flow_runs
+                where assistant_conversation_id = $1
+                  and run_mode = 'assistant_execution'
+                  and compatibility_mode = 'embedded_assistant'
+                  and status in (
+                      'queued',
+                      'running',
+                      'waiting_callback',
+                      'waiting_human',
+                      'paused'
+                  )
+            )
+            "#,
+        )
+        .bind(conversation_id)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
     }
 
     async fn list_assistant_conversation_messages(
