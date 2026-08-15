@@ -228,7 +228,6 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     ), ['anthropic-instance-1', 'anthropic-instance-2']);
     assert.equal(fake.spawned[0].env.OPENAI_API_KEY, '');
     assert.equal(fake.spawned[1].env.ANTHROPIC_API_KEY, '');
-    assert.equal(fake.spawned[1].env.API_DEFAULT_EXTENSION_BOOTSTRAP_ENABLED, 'false');
     const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
     assert.ok(fs.existsSync(path.dirname(installRoot)));
 

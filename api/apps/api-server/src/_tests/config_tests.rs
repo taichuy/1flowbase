@@ -587,7 +587,6 @@ fn api_config_defaults_host_extension_settings() {
     );
     assert!(config.allow_unverified_filesystem_dropins);
     assert!(!config.allow_uploaded_host_extensions);
-    assert!(config.default_extension_bootstrap_enabled);
 }
 
 #[test]
@@ -601,7 +600,6 @@ fn api_config_reads_host_extension_overrides() {
         ("API_HOST_EXTENSION_DROPIN_ROOT", "/opt/host-dropins"),
         ("API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS", "false"),
         ("API_PLUGIN_ALLOW_UPLOADED_HOST_EXTENSIONS", "true"),
-        ("API_DEFAULT_EXTENSION_BOOTSTRAP_ENABLED", "false"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
         ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
@@ -612,7 +610,6 @@ fn api_config_reads_host_extension_overrides() {
     assert_eq!(config.host_extension_dropin_root, "/opt/host-dropins");
     assert!(!config.allow_unverified_filesystem_dropins);
     assert!(config.allow_uploaded_host_extensions);
-    assert!(!config.default_extension_bootstrap_enabled);
 }
 
 #[test]
