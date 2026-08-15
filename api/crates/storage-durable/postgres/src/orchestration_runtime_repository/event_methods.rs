@@ -4,6 +4,7 @@ impl PgControlPlaneStore {
         input: &AppendRunEventInput,
     ) -> Result<domain::RunEventRecord> {
         let mut tx = self.pool().begin().await?;
+        lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
         let scope_id = flow_run_scope_id_for_update(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_event_sequence(&mut tx, input.flow_run_id).await?;
@@ -65,6 +66,7 @@ impl PgControlPlaneStore {
         }
 
         let mut tx = self.pool().begin().await?;
+        lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let scope_id = flow_run_scope_id_for_update(&mut tx, inputs[0].flow_run_id).await?;
@@ -180,6 +182,7 @@ impl PgControlPlaneStore {
         input: &AppendRuntimeEventInput,
     ) -> Result<domain::RuntimeEventRecord> {
         let mut tx = self.pool().begin().await?;
+        lock_open_flow_run_for_event_append(&mut tx, input.flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, input.flow_run_id).await?;
         let next_sequence = next_runtime_event_sequence(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
@@ -261,6 +264,7 @@ impl PgControlPlaneStore {
         }
 
         let mut tx = self.pool().begin().await?;
+        lock_open_flow_run_for_event_append(&mut tx, inputs[0].flow_run_id).await?;
         lock_flow_run_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let first_sequence = next_runtime_event_sequence(&mut tx, inputs[0].flow_run_id).await?;
         let mut builder = QueryBuilder::<Postgres>::new(
@@ -446,6 +450,25 @@ impl PgControlPlaneStore {
 
         Ok(map_context_projection_record(row))
     }
+}
+
+async fn lock_open_flow_run_for_event_append(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow_run_id: Uuid,
+) -> Result<()> {
+    let status =
+        sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1 for update")
+            .bind(flow_run_id)
+            .fetch_optional(&mut **tx)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+    if matches!(
+        status.as_str(),
+        "succeeded" | "incomplete" | "failed" | "cancelled"
+    ) {
+        return Err(ControlPlaneError::Conflict("flow_run_terminal").into());
+    }
+    Ok(())
 }
 
 fn resume_timeline_description(payload: &serde_json::Value) -> Option<&str> {

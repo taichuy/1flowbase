@@ -264,6 +264,7 @@ pub enum NodeRunStatus {
     Retrying,
     Succeeded,
     Failed,
+    Cancelled,
     Skipped,
 }
 
@@ -280,6 +281,7 @@ impl NodeRunStatus {
             Self::Retrying => "retrying",
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
             Self::Skipped => "skipped",
         }
     }

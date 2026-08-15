@@ -3,7 +3,7 @@ use control_plane::orchestration_runtime::{
     CancelFlowRunCommand, ContinueFlowDebugRunCommand, OrchestrationRuntimeService,
     StartFlowDebugRunCommand,
 };
-use control_plane::ports::RuntimeEventCloseReason;
+use control_plane::ports::{RuntimeEventCloseReason, RuntimeEventStream};
 use domain::FlowRunStatus;
 use serde_json::json;
 use std::sync::Arc;
@@ -87,6 +87,139 @@ async fn cancel_flow_run_emits_cancelled_runtime_terminal_event_and_closes_strea
         stream.close_calls(),
         vec![(started.flow_run.id, RuntimeEventCloseReason::Cancelled)]
     );
+}
+
+/// BE-001 AC-003: only public Answer Presentation text published before cancellation becomes the
+/// canonical partial answer; reasoning and ordinary node text remain excluded.
+#[tokio::test]
+async fn cancel_flow_run_persists_public_partial_answer_without_reasoning() {
+    let stream = Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service =
+        OrchestrationRuntimeService::for_tests().with_runtime_event_stream(stream.clone());
+    let seeded = service.seed_application_with_flow("Support Agent").await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "cancel me" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    service
+        .force_flow_run_status(started.flow_run.id, FlowRunStatus::Running)
+        .await;
+    stream
+        .append(
+            started.flow_run.id,
+            control_plane::orchestration_runtime::debug_stream_events::answer_reasoning_delta(
+                "answer",
+                "private thought".to_string(),
+                0,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+    stream
+        .append(
+            started.flow_run.id,
+            control_plane::orchestration_runtime::debug_stream_events::answer_text_delta(
+                "answer",
+                "partial ".to_string(),
+                0,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+    stream
+        .append(
+            started.flow_run.id,
+            control_plane::orchestration_runtime::debug_stream_events::answer_text_delta(
+                "answer",
+                "reply".to_string(),
+                0,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+
+    let detail = service
+        .cancel_flow_run(CancelFlowRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(detail.flow_run.status, FlowRunStatus::Cancelled);
+    assert_eq!(detail.flow_run.output_payload["answer"], "partial reply");
+    assert_eq!(
+        detail.flow_run.output_payload["__canonical_answer_presentation"],
+        true
+    );
+    assert!(!detail
+        .flow_run
+        .output_payload
+        .to_string()
+        .contains("private thought"));
+}
+
+/// BE-001 AC-003: cancellation without public answer text keeps the output empty.
+#[tokio::test]
+async fn cancel_flow_run_does_not_materialize_reasoning_as_answer() {
+    let stream = Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+    let service =
+        OrchestrationRuntimeService::for_tests().with_runtime_event_stream(stream.clone());
+    let seeded = service.seed_application_with_flow("Support Agent").await;
+    let started = service
+        .start_flow_debug_run(StartFlowDebugRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            input_payload: json!({ "node-start": { "query": "cancel me" } }),
+            document_snapshot: None,
+            debug_session_id: None,
+        })
+        .await
+        .unwrap();
+    service
+        .force_flow_run_status(started.flow_run.id, FlowRunStatus::Running)
+        .await;
+    stream
+        .append(
+            started.flow_run.id,
+            control_plane::orchestration_runtime::debug_stream_events::answer_reasoning_delta(
+                "answer",
+                "private thought".to_string(),
+                0,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+
+    let detail = service
+        .cancel_flow_run(CancelFlowRunCommand {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            flow_run_id: started.flow_run.id,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(detail.flow_run.output_payload, json!({}));
 }
 
 #[tokio::test]

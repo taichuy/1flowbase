@@ -370,10 +370,13 @@ export function mapRunDetailToTrace(
 }
 
 export function extractAssistantOutputText(detail: FlowDebugRunDetail): string {
+  if (detail.flow_run.status === 'cancelled') {
+    return findPreferredOutputText(detail.flow_run.output_payload) ?? '';
+  }
+
   if (
     detail.flow_run.status === 'waiting_human' ||
-    detail.flow_run.status === 'waiting_callback' ||
-    detail.flow_run.status === 'cancelled'
+    detail.flow_run.status === 'waiting_callback'
   ) {
     return '';
   }
@@ -405,6 +408,10 @@ export function extractAssistantOutputText(detail: FlowDebugRunDetail): string {
 }
 
 function extractAssistantContent(detail: FlowDebugRunDetail): string {
+  if (detail.flow_run.status === 'cancelled') {
+    return extractAssistantOutputText(detail);
+  }
+
   const orderedStreamContent = collectOrderedAssistantContentEvents(detail);
 
   if (orderedStreamContent) {

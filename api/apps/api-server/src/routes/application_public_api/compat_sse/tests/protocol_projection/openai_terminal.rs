@@ -119,6 +119,7 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
         process_started_at: base_state.process_started_at,
         runtime_activity: base_state.runtime_activity.clone(),
         assistant_conversation_events: base_state.assistant_conversation_events.clone(),
+        assistant_executions: base_state.assistant_executions.clone(),
         api_runtime_profile: base_state.api_runtime_profile.clone(),
         plugin_runner_system: base_state.plugin_runner_system.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),

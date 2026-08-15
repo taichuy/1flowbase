@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::*;
 
 #[tokio::test]
@@ -117,7 +119,8 @@ async fn application_runtime_routes_start_debug_run_and_resume_waiting_human() {
 
 #[tokio::test]
 async fn application_runtime_routes_cancel_waiting_flow_run() {
-    let app = test_app().await;
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
     let application_id =
@@ -157,6 +160,20 @@ async fn application_runtime_routes_cancel_waiting_flow_run() {
         waiting_detail["flow_run"]["status"].as_str(),
         Some("waiting_human")
     );
+    let run_uuid = Uuid::parse_str(run_id).unwrap();
+    let crossed_execution_gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let execution_gate = Arc::new(tokio::sync::Notify::new());
+    let crossed = crossed_execution_gate.clone();
+    let task_gate = execution_gate.clone();
+    let detached_execution = tokio::spawn(async move {
+        task_gate.notified().await;
+        crossed.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    state
+        .assistant_executions
+        .lock()
+        .unwrap()
+        .insert(run_uuid, detached_execution.abort_handle());
 
     let cancel = app
         .clone()
@@ -186,4 +203,7 @@ async fn application_runtime_routes_cancel_waiting_flow_run() {
         .unwrap()
         .iter()
         .any(|event| event["event_type"].as_str() == Some("flow_run_cancelled")));
+    execution_gate.notify_waiters();
+    let _ = detached_execution.await;
+    assert!(!crossed_execution_gate.load(std::sync::atomic::Ordering::SeqCst));
 }

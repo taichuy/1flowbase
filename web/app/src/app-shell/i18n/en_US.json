@@ -20,6 +20,7 @@
     "assistant_run_failed": "The assistant run failed. Check the application run logs.",
     "assistant_settings": "Assistant settings",
     "assistant_status_failed": "Run failed",
+    "assistant_status_cancelled": "Run cancelled",
     "assistant_status_running": "Running",
     "assistant_status_waiting": "Waiting for action",
     "assistant_new_conversation": "New conversation",

@@ -33,8 +33,9 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         conversation_id: Uuid,
-    ) -> Result<Option<control_plane::application_public_api::run_service::AssistantConversationRecord>>
-    {
+    ) -> Result<
+        Option<control_plane::application_public_api::run_service::AssistantConversationRecord>,
+    > {
         let row = sqlx::query(
             r#"
             select conversation_id, scope_id, application_id, created_by, created_at, updated_at
@@ -246,10 +247,7 @@ impl PgControlPlaneStore {
         .transpose()
     }
 
-    async fn has_active_assistant_conversation_run(
-        &self,
-        conversation_id: Uuid,
-    ) -> Result<bool> {
+    async fn has_active_assistant_conversation_run(&self, conversation_id: Uuid) -> Result<bool> {
         sqlx::query_scalar(
             r#"
             select exists (
@@ -316,6 +314,7 @@ impl PgControlPlaneStore {
                     items.flow_run_id,
                     items.query,
                     items.answer,
+                    items.status,
                     items.started_at,
                     items.updated_at,
                     visible_runs.input_payload,
@@ -332,6 +331,7 @@ impl PgControlPlaneStore {
                     'user'::text as role,
                     query as content,
                     input_payload,
+                    status,
                     coalesce(started_at, updated_at) as created_at,
                     0 as message_order,
                     source_order
@@ -344,6 +344,7 @@ impl PgControlPlaneStore {
                     'assistant'::text as role,
                     answer as content,
                     input_payload,
+                    status,
                     coalesce(updated_at, started_at) as created_at,
                     1 as message_order,
                     source_order
@@ -389,6 +390,7 @@ impl PgControlPlaneStore {
                     items.flow_run_id,
                     items.query,
                     items.answer,
+                    items.status,
                     items.started_at,
                     items.updated_at,
                     visible_run.input_payload
@@ -404,6 +406,7 @@ impl PgControlPlaneStore {
                     'user'::text as role,
                     query as content,
                     input_payload,
+                    status,
                     coalesce(started_at, updated_at) as created_at,
                     0 as message_order
                 from message_row
@@ -415,6 +418,7 @@ impl PgControlPlaneStore {
                     'assistant'::text as role,
                     answer as content,
                     input_payload,
+                    status,
                     coalesce(updated_at, started_at) as created_at,
                     1 as message_order
                 from message_row
@@ -469,6 +473,7 @@ fn assistant_conversation_messages_from_rows(
                     flow_run_id: row.try_get("flow_run_id")?,
                     role,
                     content: row.try_get("content")?,
+                    status: row.try_get("status")?,
                     page_references,
                     created_at: row.try_get("created_at")?,
                 },

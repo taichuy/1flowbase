@@ -117,6 +117,7 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
         "<div id=\"refunds\">Seven days</div>"
     );
     assert!(messages[1].page_references.is_empty());
+    assert!(messages.iter().all(|message| message.status == "succeeded"));
 
     let legacy_snapshot = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_legacy_snapshot_messages(
         &store,
@@ -129,6 +130,100 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
     .unwrap();
     assert_eq!(legacy_snapshot.len(), 2);
     assert_eq!(legacy_snapshot[0].page_references.len(), 1);
+}
+
+/// BE-001 AC-003: a cancelled Assistant run exposes its canonical partial answer as one cancelled
+/// assistant message; an empty cancellation output does not manufacture an assistant message.
+#[tokio::test]
+async fn assistant_conversation_projects_cancelled_partial_answer_status() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let conversation = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_assistant_conversation(
+        &store,
+        &CreateAssistantConversationInput {
+            conversation_id: Uuid::now_v7(),
+            workspace_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            actor_user_id: seeded.actor_user_id,
+            seed_legacy_flow_run_id: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    for (index, output_payload) in [
+        json!({ "answer": "partial answer", "__canonical_answer_presentation": true }),
+        json!({}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
+            &store,
+            &CreateFlowRunInput {
+                actor_user_id: seeded.actor_user_id,
+                application_id: seeded.application_id,
+                flow_id: seeded.flow_id,
+                flow_draft_id: seeded.draft_id,
+                compiled_plan_id: compiled.id,
+                debug_session_id: format!("cancelled-assistant-{index}"),
+                flow_schema_version: compiled.schema_version.clone(),
+                document_hash: compiled.document_hash.clone(),
+                run_mode: FlowRunMode::AssistantExecution,
+                target_node_id: None,
+                title: format!("question {index}"),
+                status: FlowRunStatus::Running,
+                input_payload: json!({ "node-start": { "query": format!("question {index}") } }),
+                started_at: OffsetDateTime::now_utc(),
+                api_key_id: None,
+                publication_version_id: None,
+                assistant_conversation_id: Some(conversation.conversation_id),
+                external_user: None,
+                external_conversation_id: None,
+                external_trace_id: None,
+                compatibility_mode: Some("embedded_assistant".to_string()),
+                idempotency_key: None,
+            },
+        )
+        .await
+        .unwrap();
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+            &store,
+            &CommitFlowRunTerminalInput {
+                flow_run_id: run.id,
+                expected_status: FlowRunStatus::Running,
+                result: CommitFlowRunTerminalResult::Cancelled {
+                    output_payload,
+                    error_payload: None,
+                },
+                flow_run_event_payload: json!({ "reason": "manual_stop" }),
+                terminal_event_payload: json!({ "type": "flow_cancelled", "status": "cancelled" }),
+                finished_at: OffsetDateTime::now_utc(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    let messages = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_conversation_messages(
+        &store,
+        seeded.workspace_id,
+        seeded.application_id,
+        seeded.actor_user_id,
+        conversation.conversation_id,
+    )
+    .await
+    .unwrap();
+    let assistant_messages = messages
+        .iter()
+        .filter(|message| message.role == "assistant")
+        .collect::<Vec<_>>();
+    assert_eq!(assistant_messages.len(), 1);
+    assert_eq!(assistant_messages[0].content, "partial answer");
+    assert_eq!(assistant_messages[0].status, "cancelled");
 }
 
 #[tokio::test]

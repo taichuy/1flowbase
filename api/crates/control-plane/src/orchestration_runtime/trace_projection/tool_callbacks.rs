@@ -576,7 +576,7 @@ pub(super) fn callback_task_trace_node_status(task: &domain::CallbackTaskRecord)
     match task.status {
         domain::CallbackTaskStatus::Pending => domain::NodeRunStatus::WaitingCallback,
         domain::CallbackTaskStatus::Completed => domain::NodeRunStatus::Succeeded,
-        domain::CallbackTaskStatus::Cancelled => domain::NodeRunStatus::Failed,
+        domain::CallbackTaskStatus::Cancelled => domain::NodeRunStatus::Cancelled,
     }
     .as_str()
     .to_string()
@@ -594,7 +594,7 @@ pub(super) fn tool_group_status(tool_tasks: &[&domain::CallbackTaskRecord]) -> S
         .iter()
         .any(|task| task.status == domain::CallbackTaskStatus::Cancelled)
     {
-        return domain::NodeRunStatus::Failed.as_str().to_string();
+        return domain::NodeRunStatus::Cancelled.as_str().to_string();
     }
 
     domain::NodeRunStatus::Succeeded.as_str().to_string()

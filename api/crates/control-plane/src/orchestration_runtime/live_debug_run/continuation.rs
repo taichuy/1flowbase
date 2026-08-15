@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use serde_json::json;
+use serde_json::{json, Value};
 use time::OffsetDateTime;
 
 use crate::{
@@ -182,13 +182,14 @@ where
         "cancel_flow_run",
     )?;
     let terminal_event = debug_stream_events::flow_cancelled(flow_run.id);
+    let output_payload = cancellation_output_payload(service, &flow_run).await;
     let receipt = service
         .repository
         .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
             flow_run_id: flow_run.id,
             expected_status: flow_run.status,
             result: CommitFlowRunTerminalResult::Cancelled {
-                output_payload: flow_run.output_payload.clone(),
+                output_payload,
                 error_payload: flow_run.error_payload.clone(),
             },
             flow_run_event_payload: json!({ "reason": "manual_stop" }),
@@ -211,4 +212,60 @@ where
     project_committed_terminal(service, &flow_run).await;
 
     load_run_detail(&service.repository, command.application_id, flow_run.id).await
+}
+
+async fn cancellation_output_payload<R, H>(
+    service: &OrchestrationRuntimeService<R, H>,
+    flow_run: &domain::FlowRunRecord,
+) -> Value
+where
+    R: crate::ports::ApplicationRepository
+        + crate::ports::FlowRepository
+        + OrchestrationRuntimeRepository
+        + crate::ports::ModelDefinitionRepository
+        + crate::ports::ModelProviderRepository
+        + crate::ports::NodeContributionRepository
+        + crate::ports::PluginRepository
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    H: crate::ports::ProviderRuntimePort
+        + crate::capability_plugin_runtime::CapabilityPluginRuntimePort
+        + Clone,
+{
+    let empty_or_existing = || {
+        if flow_run.run_mode == domain::FlowRunMode::AssistantExecution {
+            json!({})
+        } else {
+            flow_run.output_payload.clone()
+        }
+    };
+    let Some(stream) = &service.runtime_event_stream else {
+        return empty_or_existing();
+    };
+    let Ok(events) = stream.replay(flow_run.id, None, usize::MAX).await else {
+        return empty_or_existing();
+    };
+    let answer = events
+        .iter()
+        .filter(|event| event.event_type == "text_delta")
+        .filter(|event| debug_stream_events::is_answer_presentation_delta_payload(&event.payload))
+        .filter_map(|event| event.payload.get("text").and_then(Value::as_str))
+        .collect::<String>();
+    if answer.is_empty() {
+        return empty_or_existing();
+    }
+
+    let mut output_payload = flow_run.output_payload.clone();
+    if !output_payload.is_object() {
+        output_payload = json!({});
+    }
+    super::super::answer_presentation::mark_canonical_answer_presentation_output(
+        &mut output_payload,
+    );
+    if let Some(output) = output_payload.as_object_mut() {
+        output.insert("answer".to_string(), Value::String(answer));
+    }
+    output_payload
 }

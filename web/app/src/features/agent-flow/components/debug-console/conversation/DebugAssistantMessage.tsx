@@ -81,7 +81,7 @@ export function DebugAssistantMessage({
           onLoadArtifact={onLoadArtifact}
           onLoadArtifacts={onLoadArtifacts}
         />
-        {hasAnswer || !hasReasoning ? (
+        {hasAnswer || !hasReasoning || message.status === 'cancelled' ? (
           <DebugMarkdownContent
             className="agent-flow-editor__debug-message-content"
             content={

@@ -611,6 +611,14 @@ impl PgControlPlaneStore {
     async fn create_node_run(&self, input: &CreateNodeRunInput) -> Result<domain::NodeRunRecord> {
         let row = sqlx::query(
             r#"
+            with locked_flow as (
+                select flow_runs.id, applications.workspace_id
+                from flow_runs
+                join applications on applications.id = flow_runs.application_id
+                where flow_runs.id = $2
+                  and flow_runs.status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
+                for update of flow_runs
+            )
             insert into node_runs (
                 id,
                 scope_id,
@@ -622,16 +630,9 @@ impl PgControlPlaneStore {
                 input_payload,
                 debug_payload,
                 started_at
-            ) values (
-                $1,
-                (
-                    select applications.workspace_id
-                    from flow_runs
-                    join applications on applications.id = flow_runs.application_id
-                    where flow_runs.id = $2
-                ),
-                $2, $3, $4, $5, $6, $7, $8, $9
             )
+            select $1, workspace_id, id, $3, $4, $5, $6, $7, $8, $9
+            from locked_flow
             returning
                 id,
                 flow_run_id,
@@ -657,16 +658,25 @@ impl PgControlPlaneStore {
         .bind(&input.input_payload)
         .bind(&input.debug_payload)
         .bind(input.started_at)
-        .fetch_one(self.pool())
+        .fetch_optional(self.pool())
         .await?;
-
-        map_node_run_record(row)
+        row.map(map_node_run_record)
+            .transpose()?
+            .ok_or_else(|| ControlPlaneError::Conflict("flow_run_terminal").into())
     }
 
     async fn update_node_run(&self, input: &UpdateNodeRunInput) -> Result<domain::NodeRunRecord> {
         let mut tx = self.pool().begin().await?;
         let row = sqlx::query(
             r#"
+            with locked_flow as (
+                select flow_runs.id
+                from flow_runs
+                join node_runs candidate on candidate.flow_run_id = flow_runs.id
+                where candidate.id = $1
+                  and flow_runs.status not in ('succeeded', 'incomplete', 'failed', 'cancelled')
+                for update of flow_runs
+            )
             update node_runs
             set status = $2,
                 output_payload = $3,
@@ -680,21 +690,24 @@ impl PgControlPlaneStore {
                 metrics_payload = $5,
                 debug_payload = $6,
                 finished_at = $7
-            where id = $1
+            from locked_flow
+            where node_runs.id = $1
+              and node_runs.flow_run_id = locked_flow.id
+              and node_runs.status <> 'cancelled'
             returning
-                id,
-                flow_run_id,
-                node_id,
-                node_type,
-                node_alias,
-                status,
-                input_payload,
-                output_payload,
-                error_payload,
-                metrics_payload,
-                debug_payload,
-                started_at,
-                finished_at
+                node_runs.id,
+                node_runs.flow_run_id,
+                node_runs.node_id,
+                node_runs.node_type,
+                node_runs.node_alias,
+                node_runs.status,
+                node_runs.input_payload,
+                node_runs.output_payload,
+                node_runs.error_payload,
+                node_runs.metrics_payload,
+                node_runs.debug_payload,
+                node_runs.started_at,
+                node_runs.finished_at
             "#,
         )
         .bind(input.node_run_id)
@@ -704,9 +717,12 @@ impl PgControlPlaneStore {
         .bind(&input.metrics_payload)
         .bind(&input.debug_payload)
         .bind(input.finished_at)
-        .fetch_one(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
-
+        let Some(row) = row else {
+            tx.rollback().await?;
+            return Err(ControlPlaneError::Conflict("flow_run_terminal").into());
+        };
         let node_run = map_node_run_record(row)?;
         sqlx::query(
             r#"
@@ -985,6 +1001,21 @@ impl PgControlPlaneStore {
         };
 
         let flow_run = map_flow_run_record(row)?;
+        if flow_run.status == domain::FlowRunStatus::Cancelled {
+            sqlx::query(
+                r#"
+                update node_runs
+                set status = 'cancelled',
+                    finished_at = coalesce(finished_at, $2)
+                where flow_run_id = $1
+                  and status not in ('succeeded', 'failed', 'cancelled', 'skipped')
+                "#,
+            )
+            .bind(flow_run.id)
+            .bind(input.finished_at)
+            .execute(&mut *tx)
+            .await?;
+        }
         Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
             .await?;
         Self::replace_application_run_conversation_message_items_projection(&mut tx, &flow_run)

@@ -337,6 +337,126 @@ describe('EmbeddedAgentAssistant', () => {
     );
   });
 
+  test('AC-005 restores a cancelled conversation with its backend partial answer and status', async () => {
+    listConsoleAssistantConversations.mockResolvedValueOnce({
+      items: [
+        {
+          conversation_id: 'conversation-cancelled',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-cancelled',
+          latest_flow_run_status: 'cancelled',
+          title: 'Cancelled conversation',
+          created_at: '2026-08-07T00:00:00Z',
+          updated_at: '2026-08-07T00:00:00Z'
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    getConsoleAssistantConversationMessages.mockResolvedValueOnce([
+      {
+        id: 'run-cancelled:user',
+        flow_run_id: 'run-cancelled',
+        role: 'user',
+        content: 'Summarize this',
+        status: 'cancelled',
+        page_references: [],
+        created_at: '2026-08-07T00:00:00Z'
+      },
+      {
+        id: 'run-cancelled:assistant',
+        flow_run_id: 'run-cancelled',
+        role: 'assistant',
+        content: 'Public partial answer',
+        status: 'cancelled',
+        page_references: [],
+        created_at: '2026-08-07T00:00:01Z'
+      }
+    ]);
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+
+    expect(
+      await screen.findByLabelText(
+        i18nText('appShell', 'auto.assistant_status_cancelled')
+      )
+    ).toHaveAttribute('data-assistant-run-status', 'cancelled');
+    fireEvent.click(await screen.findByText('Cancelled conversation'));
+
+    expect(
+      await screen.findByText('Public partial answer')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(i18nText('agentFlow', 'auto.stopped'))
+    ).not.toBeInTheDocument();
+  });
+
+  test('AC-005 shows cancelled-without-output only when history has no assistant partial', async () => {
+    listConsoleAssistantConversations.mockResolvedValueOnce({
+      items: [
+        {
+          conversation_id: 'conversation-cancelled-empty',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-cancelled-empty',
+          latest_flow_run_status: 'cancelled',
+          title: 'Cancelled without output',
+          created_at: '2026-08-07T00:00:00Z',
+          updated_at: '2026-08-07T00:00:00Z'
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    getConsoleAssistantConversationMessages.mockResolvedValueOnce([
+      {
+        id: 'run-cancelled-empty:user',
+        flow_run_id: 'run-cancelled-empty',
+        role: 'user',
+        content: 'Stop before answering',
+        status: 'cancelled',
+        page_references: [],
+        created_at: '2026-08-07T00:00:00Z'
+      }
+    ]);
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+    fireEvent.click(await screen.findByText('Cancelled without output'));
+
+    expect(
+      await screen.findByText(i18nText('agentFlow', 'auto.stopped'))
+    ).toBeInTheDocument();
+  });
+
   test('AC-003 restores and attaches a historical conversation whose latest run is active', async () => {
     listConsoleAssistantConversations.mockResolvedValueOnce({
       items: [
@@ -928,6 +1048,77 @@ describe('EmbeddedAgentAssistant', () => {
     });
     expect(startConsoleAssistantRunStream).not.toHaveBeenCalled();
     expect(await screen.findByText('Assistant reply')).toBeInTheDocument();
+  });
+
+  test('AC-002 AC-003 keeps the streamed public partial answer when the run is cancelled', async () => {
+    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockRejectedValue(
+      new Error('terminal snapshot is intentionally unavailable')
+    );
+    startConsoleAssistantRunWebSocket.mockImplementation(
+      async (_input, _csrfToken, handlers) => {
+        handlers.onEvent({
+          type: 'flow_accepted',
+          run_id: 'run-cancelled-live',
+          status: 'queued'
+        });
+        handlers.onEvent({
+          type: 'reasoning_delta',
+          run_id: 'run-cancelled-live',
+          node_id: 'node-answer',
+          text: 'Temporary reasoning',
+          presentation: {
+            kind: 'answer',
+            answer_node_id: 'node-answer',
+            segment_index: 0
+          }
+        });
+        handlers.onEvent({
+          type: 'text_delta',
+          run_id: 'run-cancelled-live',
+          node_id: 'node-answer',
+          text: 'Public partial answer',
+          presentation: {
+            kind: 'answer',
+            answer_node_id: 'node-answer',
+            segment_index: 0
+          }
+        });
+        handlers.onEvent({
+          type: 'flow_cancelled',
+          run_id: 'run-cancelled-live',
+          status: 'cancelled'
+        });
+      }
+    );
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const composer = await screen.findByPlaceholderText(
+      i18nText('agentFlow', 'auto.chat_with_bots')
+    );
+    const sendButton = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.send_debug_message')
+    });
+    await waitFor(() => expect(sendButton).toBeEnabled());
+    fireEvent.change(composer, { target: { value: 'Start then cancel' } });
+    fireEvent.click(sendButton);
+
+    expect(
+      await screen.findByText('Public partial answer')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Temporary reasoning')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(i18nText('agentFlow', 'auto.stopped'))
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(composer).toBeEnabled());
   });
 
   test('AC-006 loads a truncated workflow payload from the selected assistant flow', async () => {

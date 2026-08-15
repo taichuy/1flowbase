@@ -822,6 +822,7 @@ pub fn parse_node_run_status(value: &str) -> Result<domain::NodeRunStatus> {
         "retrying" => Ok(domain::NodeRunStatus::Retrying),
         "succeeded" => Ok(domain::NodeRunStatus::Succeeded),
         "failed" => Ok(domain::NodeRunStatus::Failed),
+        "cancelled" => Ok(domain::NodeRunStatus::Cancelled),
         "skipped" => Ok(domain::NodeRunStatus::Skipped),
         _ => Err(anyhow!("unknown node run status: {value}")),
     }

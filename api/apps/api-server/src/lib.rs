@@ -573,6 +573,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         process_started_at,
         runtime_activity,
         assistant_conversation_events,
+        assistant_executions: Default::default(),
         api_runtime_profile,
         plugin_runner_system: Arc::new(HttpPluginRunnerSystemClient::new(
             config.plugin_runner_internal_base_url.clone(),

@@ -511,7 +511,7 @@
     "select_variable_left_view_details": "Select the variable on the left to view details",
     "template_output_conversion": "Template output conversion.",
     "binding_refers_output_connected_upstream_link": "The current binding refers to an output that is not connected to the upstream link.",
-    "stopped": "Stopped.",
+    "stopped": "Run cancelled without output.",
     "reduce_canvas": "Reduce canvas",
     "add_new_variable": "Add new variable",
     "error": "Error",
