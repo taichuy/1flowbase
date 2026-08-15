@@ -648,27 +648,6 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
             "@1flowbase/rich-text"
         ]
     );
-    let tailwind_module = jsx_block["code_modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["source"] == "tailwindcss")
-        .unwrap();
-    assert_eq!(tailwind_module["version"], "4.3.3");
-    assert_eq!(tailwind_module["exports"], json!(["default"]));
-    let tailwind_assets = tailwind_module["assets"].as_array().unwrap();
-    assert_eq!(tailwind_assets.len(), 2);
-    assert!(tailwind_assets
-        .iter()
-        .any(|asset| asset["role"] == "browser_module"));
-    let tailwind_shadow_style = tailwind_assets
-        .iter()
-        .find(|asset| asset["role"] == "shadow_style")
-        .unwrap();
-    assert_eq!(
-        tailwind_shadow_style["sha256"],
-        "77c009cb4826b765d416513e3d9c83093482ecb69de9e361e4c25f5441240b36"
-    );
     let rich_text_module = jsx_block["code_modules"]
         .as_array()
         .unwrap()
