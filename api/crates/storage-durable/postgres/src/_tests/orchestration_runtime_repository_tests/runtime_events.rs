@@ -19,6 +19,24 @@ async fn append_event(
     .unwrap()
 }
 
+fn runtime_event_input(flow_run_id: Uuid, event_type: &str) -> AppendRuntimeEventInput {
+    AppendRuntimeEventInput {
+        flow_run_id,
+        node_run_id: None,
+        span_id: None,
+        parent_span_id: None,
+        event_type: event_type.to_string(),
+        layer: domain::RuntimeEventLayer::AgentTransition,
+        source: domain::RuntimeEventSource::Host,
+        trust_level: domain::RuntimeTrustLevel::HostFact,
+        item_id: None,
+        ledger_ref: None,
+        payload: json!({ "type": event_type }),
+        visibility: domain::RuntimeEventVisibility::Workspace,
+        durability: domain::RuntimeEventDurability::Durable,
+    }
+}
+
 #[tokio::test]
 async fn orchestration_runtime_repository_persists_compiled_plan_runs_and_events() {
     let pool = isolated_database().await.connect().await.unwrap();
@@ -128,6 +146,126 @@ async fn orchestration_runtime_repository_batch_appends_run_and_runtime_events()
             .collect::<Vec<_>>(),
         vec![(1, "text_delta"), (2, "finish")]
     );
+}
+
+/// FIX-BE-002: ordinary event writers retain pre-terminal tool evidence but cannot append after
+/// the terminal CAS has committed its canonical flow and runtime terminal events.
+#[tokio::test]
+async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let run = seed_flow_run(
+        &store,
+        &seeded,
+        &compiled,
+        datetime!(2026-08-16 09:00:00 UTC),
+    )
+    .await;
+
+    append_event(&store, &run, None, "tool_call_completed").await;
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_event(
+        &store,
+        &runtime_event_input(run.id, "tool_call_commit"),
+    )
+    .await
+    .unwrap();
+
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+        &store,
+        &CommitFlowRunTerminalInput {
+            flow_run_id: run.id,
+            expected_status: FlowRunStatus::Running,
+            result: CommitFlowRunTerminalResult::Cancelled {
+                output_payload: json!({}),
+                error_payload: None,
+            },
+            flow_run_event_payload: json!({ "reason": "manual_stop" }),
+            terminal_event_payload: json!({
+                "type": "flow_cancelled",
+                "run_id": run.id,
+                "status": "cancelled"
+            }),
+            finished_at: datetime!(2026-08-16 09:00:01 UTC),
+        },
+    )
+    .await
+    .unwrap();
+
+    let late_run_event = <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_run_event(
+        &store,
+        &AppendRunEventInput {
+            flow_run_id: run.id,
+            node_run_id: None,
+            event_type: "late_run_event".to_string(),
+            payload: json!({}),
+        },
+    )
+    .await
+    .unwrap_err();
+    let late_runtime_event =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_event(
+            &store,
+            &runtime_event_input(run.id, "late_runtime_event"),
+        )
+        .await
+        .unwrap_err();
+    let late_runtime_batch =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_events(
+            &store,
+            &[
+                runtime_event_input(run.id, "late_runtime_batch_1"),
+                runtime_event_input(run.id, "late_runtime_batch_2"),
+            ],
+        )
+        .await
+        .unwrap_err();
+    for error in [late_run_event, late_runtime_event, late_runtime_batch] {
+        assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::Conflict("flow_run_terminal"))
+        ));
+    }
+
+    let detail =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+            &store,
+            run.application_id,
+            run.id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(detail
+        .events
+        .iter()
+        .any(|event| event.event_type == "tool_call_completed"));
+    assert!(detail
+        .events
+        .iter()
+        .any(|event| event.event_type == "flow_run_cancelled"));
+    assert!(!detail
+        .events
+        .iter()
+        .any(|event| event.event_type == "late_run_event"));
+
+    let runtime_events =
+        <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_runtime_events(
+            &store, run.id, 0,
+        )
+        .await
+        .unwrap();
+    assert!(runtime_events
+        .iter()
+        .any(|event| event.event_type == "tool_call_commit"));
+    assert!(runtime_events
+        .iter()
+        .any(|event| event.event_type == "flow_cancelled"));
+    assert!(!runtime_events
+        .iter()
+        .any(|event| event.event_type.starts_with("late_runtime")));
 }
 
 #[tokio::test]
