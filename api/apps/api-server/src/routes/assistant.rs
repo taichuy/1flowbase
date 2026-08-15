@@ -36,17 +36,15 @@ use tokio::sync::{mpsc, oneshot};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[cfg(test)]
+mod _tests;
 mod client_tools;
 pub mod conversation_events;
 pub(crate) mod websocket;
-#[cfg(test)]
-mod _tests;
 
 use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
-use conversation_events::{
-    AssistantConversationEventKind, AssistantConversationEventScope,
-    AssistantConversationSummaryResponse,
-};
+pub use conversation_events::AssistantConversationSummaryResponse;
+use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
@@ -1427,5 +1425,4 @@ mod tests {
             .get("path_regex")
             .is_none());
     }
-
 }
