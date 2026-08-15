@@ -373,6 +373,173 @@ describe('EmbeddedAgentAssistant', () => {
     ).toBeInTheDocument();
   });
 
+  test('AC-001 shows conversation-scoped run status in the history sidebar', async () => {
+    listConsoleAssistantConversations.mockResolvedValueOnce({
+      items: [
+        {
+          conversation_id: 'conversation-running',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-running',
+          latest_flow_run_status: 'running',
+          title: 'Running conversation',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:00Z'
+        },
+        {
+          conversation_id: 'conversation-waiting',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-waiting',
+          latest_flow_run_status: 'waiting_human',
+          title: 'Waiting conversation',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:00Z'
+        },
+        {
+          conversation_id: 'conversation-failed',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-failed',
+          latest_flow_run_status: 'failed',
+          title: 'Failed conversation',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:00Z'
+        },
+        {
+          conversation_id: 'conversation-completed',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-completed',
+          latest_flow_run_status: 'succeeded',
+          title: 'Completed conversation',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:00Z'
+        }
+      ],
+      total: 4,
+      page: 1,
+      page_size: 20
+    });
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+
+    expect(await screen.findByLabelText('运行中')).toBeInTheDocument();
+    expect(screen.getByLabelText('等待操作')).toBeInTheDocument();
+    expect(screen.getByLabelText('运行失败')).toBeInTheDocument();
+    expect(
+      screen
+        .getByText('Completed conversation')
+        .closest('.ant-conversations-item')
+        ?.querySelector('[data-assistant-run-status]')
+    ).toBeNull();
+  });
+
+  test('AC-002 follows background run status over WebSocket and aborts on history close', async () => {
+    const abortControllers = new Map<string, AbortController>();
+    let emitFinished: (() => void) | undefined;
+    attachConsoleAssistantRunWebSocket.mockImplementation(
+      async (_applicationId, runId, _csrfToken, handlers) =>
+        new Promise<void>((resolve) => {
+          const controller = new AbortController();
+          abortControllers.set(runId, controller);
+          handlers.getAbortController?.(controller);
+          if (runId === 'run-background') {
+            emitFinished = () => {
+              handlers.onEvent({
+                type: 'flow_finished',
+                event_id: `${runId}:2`,
+                event_type: 'flow_finished',
+                run_id: runId,
+                status: 'succeeded',
+                output: {}
+              });
+            };
+          }
+          controller.signal.addEventListener('abort', () => resolve(), {
+            once: true
+          });
+        })
+    );
+    const setIntervalSpy = vi.spyOn(window, 'setInterval');
+    listConsoleAssistantConversations.mockResolvedValueOnce({
+      items: [
+        {
+          conversation_id: 'conversation-background',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-background',
+          latest_flow_run_status: 'running',
+          title: 'Background conversation',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:00Z'
+        },
+        {
+          conversation_id: 'conversation-waiting',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-waiting',
+          latest_flow_run_status: 'waiting_human',
+          title: 'Waiting conversation',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:00Z'
+        }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20
+    });
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const history = await screen.findByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_history')
+    });
+    fireEvent.click(history);
+
+    expect(await screen.findByLabelText('运行中')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(attachConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
+        'flow-1',
+        'run-background',
+        'csrf-token',
+        expect.objectContaining({
+          getAbortController: expect.any(Function),
+          onEvent: expect.any(Function)
+        }),
+        expect.objectContaining({ maxReconnects: 2 })
+      )
+    );
+    expect(setIntervalSpy).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      3_000
+    );
+
+    await act(async () => emitFinished?.());
+    await waitFor(() =>
+      expect(screen.queryByLabelText('运行中')).not.toBeInTheDocument()
+    );
+    expect(abortControllers.get('run-waiting')?.signal.aborted).toBe(false);
+    fireEvent.click(history);
+    expect(abortControllers.get('run-waiting')?.signal.aborted).toBe(true);
+  });
+
   test('AC-005 keeps history in a collapsible left sidebar inside the assistant window', async () => {
     render(
       <AppProviders>

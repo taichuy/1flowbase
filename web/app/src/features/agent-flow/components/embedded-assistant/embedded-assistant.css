@@ -181,6 +181,40 @@
   white-space: nowrap;
 }
 
+.embedded-agent-assistant-preview__history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.embedded-agent-assistant-preview__history-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-agent-assistant-preview__history-item-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-inline-start: auto;
+}
+
+.embedded-agent-assistant-preview__history-item-status--running {
+  color: var(--color-primary);
+}
+
+.embedded-agent-assistant-preview__history-item-status--waiting {
+  color: var(--color-warning);
+}
+
+.embedded-agent-assistant-preview__history-item-status--failed {
+  color: var(--color-error);
+}
+
 .embedded-agent-assistant-preview__history-body .ant-conversations-item-group {
   background: var(--bg-elevated);
 }

@@ -1,15 +1,20 @@
 import {
+  attachConsoleAssistantRunWebSocket,
   getConsoleAssistantSettings,
   listConsoleAssistantConversations,
   updateConsoleAssistantSettings,
   type ConsoleAssistantConversationPage,
   type ConsoleAssistantPreference,
-  type ConsoleAssistantSettings
+  type ConsoleAssistantSettings,
+  type ConsoleFlowDebugStreamEvent
 } from '@1flowbase/api-client';
 import {
   CheckOutlined,
+  ClockCircleOutlined,
   CloseOutlined,
+  ExclamationCircleOutlined,
   HistoryOutlined,
+  LoadingOutlined,
   PlusOutlined,
   SelectOutlined,
   SettingOutlined,
@@ -97,6 +102,90 @@ function assistantConversationGroup(updatedAt: string) {
       }).format(date);
 }
 
+function isObservableAssistantRunStatus(status: string | null) {
+  return [
+    'queued',
+    'running',
+    'waiting_callback',
+    'waiting_human',
+    'paused'
+  ].includes(status ?? '');
+}
+
+function assistantRunStatusFromEvent(
+  event: ConsoleFlowDebugStreamEvent
+): string | null {
+  switch (event.type) {
+    case 'flow_accepted':
+      return event.status;
+    case 'flow_started':
+      return event.status || 'running';
+    case 'flow_finished':
+      return event.status || 'succeeded';
+    case 'flow_incomplete':
+      return 'incomplete';
+    case 'flow_failed':
+      return 'failed';
+    case 'flow_cancelled':
+      return 'cancelled';
+    case 'waiting_human':
+      return 'waiting_human';
+    case 'waiting_callback':
+      return 'waiting_callback';
+    default:
+      return null;
+  }
+}
+
+function assistantRunStatusIndicator(status: string | null) {
+  const commonProps = {
+    'data-assistant-run-status': status ?? undefined
+  };
+  if (['queued', 'running', 'waiting_callback'].includes(status ?? '')) {
+    const label = i18nText('appShell', 'auto.assistant_status_running');
+    return (
+      <Tooltip title={label}>
+        <span
+          {...commonProps}
+          aria-label={label}
+          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--running"
+        >
+          <LoadingOutlined spin />
+        </span>
+      </Tooltip>
+    );
+  }
+  if (['waiting_human', 'paused'].includes(status ?? '')) {
+    const label = i18nText('appShell', 'auto.assistant_status_waiting');
+    return (
+      <Tooltip title={label}>
+        <span
+          {...commonProps}
+          aria-label={label}
+          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--waiting"
+        >
+          <ClockCircleOutlined />
+        </span>
+      </Tooltip>
+    );
+  }
+  if (['failed', 'incomplete'].includes(status ?? '')) {
+    const label = i18nText('appShell', 'auto.assistant_status_failed');
+    return (
+      <Tooltip title={label}>
+        <span
+          {...commonProps}
+          aria-label={label}
+          className="embedded-agent-assistant-preview__history-item-status embedded-agent-assistant-preview__history-item-status--failed"
+        >
+          <ExclamationCircleOutlined />
+        </span>
+      </Tooltip>
+    );
+  }
+  return null;
+}
+
 function initialAssistantWindowRect(): WindowWorkspaceRect {
   const viewport = getWindowWorkspaceViewport();
   const width = Math.min(560, Math.max(400, viewport.width - 32));
@@ -139,6 +228,9 @@ export function EmbeddedAgentAssistantPreview({
   const [isResizingHistory, setIsResizingHistory] = useState(false);
   const [historyFullView, setHistoryFullView] = useState(false);
   const historyResizeCleanupRef = useRef<(() => void) | null>(null);
+  const historyRunObserversRef = useRef(
+    new Map<string, { controller: AbortController | null }>()
+  );
   const historyExpansionSideRef = useRef<AssistantHistoryExpansionSide | null>(
     null
   );
@@ -331,6 +423,92 @@ export function EmbeddedAgentAssistantPreview({
       void loadHistory();
     }
   }, [historyOpen, loadHistory]);
+
+  useEffect(() => {
+    const observers = historyRunObserversRef.current;
+    if (!historyOpen || !applicationId || !csrfToken || !historyPage) {
+      observers.forEach(({ controller }) => controller?.abort());
+      observers.clear();
+      return;
+    }
+
+    const observableRunIds = new Set(
+      historyPage.items.flatMap((item) =>
+        item.latest_flow_run_id &&
+        item.latest_flow_run_id !== session.activeRunId &&
+        isObservableAssistantRunStatus(item.latest_flow_run_status)
+          ? [item.latest_flow_run_id]
+          : []
+      )
+    );
+    observers.forEach(({ controller }, runId) => {
+      if (!observableRunIds.has(runId)) {
+        controller?.abort();
+        observers.delete(runId);
+      }
+    });
+
+    observableRunIds.forEach((runId) => {
+      if (observers.has(runId)) {
+        return;
+      }
+      const observer = { controller: null as AbortController | null };
+      observers.set(runId, observer);
+      void attachConsoleAssistantRunWebSocket(
+        applicationId,
+        runId,
+        csrfToken,
+        {
+          getAbortController: (controller) => {
+            if (historyRunObserversRef.current.get(runId) !== observer) {
+              controller.abort();
+              return;
+            }
+            observer.controller = controller;
+          },
+          onEvent: (event) => {
+            const nextStatus = assistantRunStatusFromEvent(event);
+            if (!nextStatus) {
+              return;
+            }
+            setHistoryPage((current) =>
+              current
+                ? {
+                    ...current,
+                    items: current.items.map((item) =>
+                      item.latest_flow_run_id === runId
+                        ? { ...item, latest_flow_run_status: nextStatus }
+                        : item
+                    )
+                  }
+                : current
+            );
+          }
+        },
+        { maxReconnects: 2 }
+      ).catch(() => {
+        if (historyRunObserversRef.current.get(runId) === observer) {
+          historyRunObserversRef.current.delete(runId);
+        }
+      });
+    });
+  }, [
+    applicationId,
+    csrfToken,
+    historyOpen,
+    historyPage,
+    session.activeRunId
+  ]);
+
+  useEffect(
+    () => () => {
+      historyRunObserversRef.current.forEach(({ controller }) =>
+        controller?.abort()
+      );
+      historyRunObserversRef.current.clear();
+    },
+    []
+  );
   const selectedModel =
     settings?.run_capabilities.models.find(
       (model) => model.id === settings.preference.model
@@ -739,17 +917,27 @@ export function EmbeddedAgentAssistantPreview({
                         disabled: historyLoading || session.restoringHistory,
                         group: assistantConversationGroup(item.updated_at),
                         key: assistantConversationKey(item),
-                        label:
-                          item.title ??
-                          (item.conversation_id
-                            ? i18nText(
-                                'appShell',
-                                'auto.assistant_new_conversation'
-                              )
-                            : i18nText(
-                                'appShell',
-                                'auto.assistant_legacy_snapshot'
-                              ))
+                        label: (
+                          <span className="embedded-agent-assistant-preview__history-item">
+                            <span className="embedded-agent-assistant-preview__history-item-title">
+                              {item.title ??
+                                (item.conversation_id
+                                  ? i18nText(
+                                      'appShell',
+                                      'auto.assistant_new_conversation'
+                                    )
+                                  : i18nText(
+                                      'appShell',
+                                      'auto.assistant_legacy_snapshot'
+                                    ))}
+                            </span>
+                            {assistantRunStatusIndicator(
+                              session.activeRunId === item.latest_flow_run_id
+                                ? session.status
+                                : item.latest_flow_run_status
+                            )}
+                          </span>
+                        )
                       }))}
                       onActiveChange={(key) => {
                         const item = historyPage?.items.find(
