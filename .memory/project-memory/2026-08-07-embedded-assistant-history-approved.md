@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置助手历史会话与持久化恢复已批准
-summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 在独立侧栏回放，主聊天只保留公开回答。
+summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 投影为主聊天有序行为叙事，侧栏恢复完整节点卡片。
 keywords:
   - embedded assistant
   - conversation history
@@ -13,8 +13,8 @@ match_when:
   - 处理助手会话恢复、分页、旧运行或会话权限
   - 开始 GitHub issue 1608
 created_at: 2026-08-07 11
-updated_at: 2026-08-16 01
-last_verified_at: 2026-08-16 01
+updated_at: 2026-08-16 07
+last_verified_at: 2026-08-16 07
 decision_policy: verify_before_decision
 status: implemented_pending_user_acceptance
 integration_commit: d845e4a61
@@ -82,10 +82,10 @@ scope:
 - Assistant history message DTO 继续使用领域原名 `content + status`，不新增展示别名 `answer`；live、reconnect、history 与 run detail 消费同一合同。
 - 合并提交 `d845e4a61` 已进入本地 `dev`；集中后端 34/34、前端 50/50、api-client 定向 12/12（额外整包 233/233）与 style-boundary 均通过，等待用户人工验收真实 Stop 与历史恢复路径。
 
-## 2026-08-16 单次运行活动侧栏
+## 2026-08-16 单次运行活动分离（用户纠正后）
 
-- 用户确认采用平衡方向：主聊天区只显示用户消息与最终公开回答；消息及标题栏“运行过程”入口打开单次 `flow_run` 的侧栏，不把整块节点工作流继续内联到聊天。
+- 用户明确纠正此前理解：主聊天区不能只显示最终公开回答，必须按 durable `sequence` 展示 reasoning、工具调用/结果、阶段输出，再继续 reasoning、工具和输出的真实交错顺序。
+- 消息及标题栏“运行过程”入口仍打开单次 `flow_run` 侧栏；侧栏恢复修改前的完整工作流与全部节点卡片，只是不在节点卡片内显示 reasoning。不得把侧栏降级为单个当前/最后节点摘要。
 - 后端新增 assistant-owned 只读活动查询，按 durable stream `sequence` 返回事件，并强制限定当前 Cookie 用户、workspace、application、`assistant_execution` 与 `embedded_assistant`；外部运行返回 404。
-- 实时事件与历史恢复使用同一活动投影：默认叙事按顺序展示 reasoning、工具调用/结果与输出；工具原始 payload 按需展开；节点只表示当前或最后位置与状态。
-- 桌面使用聊天 + 运行过程双栏；窄屏运行过程独占助手窗口。真实运行态已验证内联工作流计数为 0，并覆盖桌面与 390px 视口。
-- `e39e1e2b1` 已 fast-forward 到本地 `dev`；集中后端顺序/权限测试、前端 23/23、API client 234/234、生产构建、style-boundary 与 i18n 0 error 均通过，等待用户人工验收。
+- 实时事件与历史恢复复用同一事件模型形成两个投影：主聊天是有序行为叙事；侧栏是完整节点状态与详情。通用 Agent Flow Debug Console 保持原行为，仅内置助手的 answer presentation 使用新主内容投影。
+- 桌面仍使用聊天 + 运行过程双栏；窄屏运行过程独占助手窗口。修正实现完成定向 42/42、生产构建与 style-boundary，等待合并后用户人工验收。

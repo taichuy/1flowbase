@@ -5,6 +5,7 @@ import {
   HistoryOutlined
 } from '@ant-design/icons';
 import { App, Button, Space, Tooltip } from 'antd';
+import type { ReactNode } from 'react';
 
 import type { AgentFlowDebugMessage } from '../../../api/runtime';
 import type { RuntimeDebugArtifactBatchLoader } from '../../detail/last-run/runtime-debug-payload';
@@ -41,12 +42,14 @@ function fallbackContent(message: AgentFlowDebugMessage) {
 
 export function DebugAssistantMessage({
   message,
+  messageMain,
   onLoadArtifact,
   onLoadArtifacts,
   onOpenLog,
   onOpenResumeTimeline
 }: {
   message: AgentFlowDebugMessage;
+  messageMain?: ReactNode;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
   onOpenLog?: (message: AgentFlowDebugMessage) => void;
@@ -79,24 +82,30 @@ export function DebugAssistantMessage({
   return (
     <article className="agent-flow-editor__debug-message agent-flow-editor__debug-message--assistant">
       <div className="agent-flow-editor__debug-message-main">
-        {message.presentation !== 'answer' ? (
-          <DebugWorkflowProcess
-            items={message.traceSummary}
-            reasoning={parsedContent.reasoningText}
-            reasoningStreaming={message.status === 'running'}
-            onLoadArtifact={onLoadArtifact}
-            onLoadArtifacts={onLoadArtifacts}
-          />
-        ) : null}
-        {hasAnswer || !hasReasoning || message.status === 'cancelled' ? (
-          <DebugMarkdownContent
-            className="agent-flow-editor__debug-message-content"
-            content={
-              hasAnswer ? parsedContent.answerText : fallbackContent(message)
-            }
-            streaming={message.status === 'running'}
-          />
-        ) : null}
+        {messageMain ?? (
+          <>
+            {message.presentation !== 'answer' ? (
+              <DebugWorkflowProcess
+                items={message.traceSummary}
+                reasoning={parsedContent.reasoningText}
+                reasoningStreaming={message.status === 'running'}
+                onLoadArtifact={onLoadArtifact}
+                onLoadArtifacts={onLoadArtifacts}
+              />
+            ) : null}
+            {hasAnswer || !hasReasoning || message.status === 'cancelled' ? (
+              <DebugMarkdownContent
+                className="agent-flow-editor__debug-message-content"
+                content={
+                  hasAnswer
+                    ? parsedContent.answerText
+                    : fallbackContent(message)
+                }
+                streaming={message.status === 'running'}
+              />
+            ) : null}
+          </>
+        )}
       </div>
       <fieldset
         aria-label={i18nText('agentFlow', 'auto.output_action')}

@@ -1124,14 +1124,20 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       await screen.findByText('Public partial answer')
     ).toBeInTheDocument();
-    expect(screen.queryByText('Temporary reasoning')).not.toBeInTheDocument();
+    const temporaryReasoning = screen.getByText('Temporary reasoning');
+    expect(temporaryReasoning).toBeInTheDocument();
+    expect(
+      temporaryReasoning.compareDocumentPosition(
+        screen.getByText('Public partial answer')
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(
       screen.queryByText(i18nText('agentFlow', 'auto.stopped'))
     ).not.toBeInTheDocument();
     await waitFor(() => expect(composer).toBeEnabled());
   });
 
-  test('AC-006 moves ordered reasoning, tools, and output into a run activity sidebar', async () => {
+  test('AC-006 keeps ordered assistant activity inline and restores every node card in the sidebar', async () => {
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -1189,7 +1195,7 @@ describe('EmbeddedAgentAssistant', () => {
           type: 'text_delta',
           run_id: 'run-activity',
           node_id: 'node-answer',
-          text: '最终结果',
+          text: '阶段结果一',
           event_id: 'run-activity:6',
           sequence: 6,
           presentation: {
@@ -1199,21 +1205,87 @@ describe('EmbeddedAgentAssistant', () => {
           }
         });
         handlers.onEvent({
+          type: 'reasoning_delta',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          text: '继续检查数据',
+          event_id: 'run-activity:7',
+          sequence: 7,
+          presentation: {
+            kind: 'answer',
+            answer_node_id: 'node-answer',
+            segment_index: 1
+          }
+        });
+        handlers.onEvent({
+          type: 'assistant_tool_call_started',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          tool_call: { id: 'call-2', name: 'get_item' },
+          event_id: 'run-activity:8',
+          sequence: 8
+        });
+        handlers.onEvent({
+          type: 'assistant_tool_call_finished',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          tool_call: { id: 'call-2', name: 'get_item' },
+          tool_result: { id: 'item-1' },
+          duration_ms: 3,
+          event_id: 'run-activity:9',
+          sequence: 9
+        });
+        handlers.onEvent({
+          type: 'text_delta',
+          run_id: 'run-activity',
+          node_id: 'node-answer',
+          text: '阶段结果二',
+          event_id: 'run-activity:10',
+          sequence: 10,
+          presentation: {
+            kind: 'answer',
+            answer_node_id: 'node-answer',
+            segment_index: 1
+          }
+        });
+        handlers.onEvent({
           type: 'node_finished',
           run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
           status: 'succeeded',
-          event_id: 'run-activity:7',
-          sequence: 7
+          event_id: 'run-activity:11',
+          sequence: 11
+        });
+        handlers.onEvent({
+          type: 'node_started',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-answer',
+          node_id: 'node-answer',
+          node_type: 'answer',
+          title: 'Answer node',
+          event_id: 'run-activity:12',
+          sequence: 12
+        });
+        handlers.onEvent({
+          type: 'node_finished',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-answer',
+          node_id: 'node-answer',
+          status: 'succeeded',
+          event_id: 'run-activity:13',
+          sequence: 13
         });
         handlers.onEvent({
           type: 'flow_finished',
           run_id: 'run-activity',
           status: 'succeeded',
-          output: { answer: '最终结果' },
-          event_id: 'run-activity:8',
-          sequence: 8
+          output: { answer: '阶段结果一阶段结果二' },
+          event_id: 'run-activity:14',
+          sequence: 14
         });
       }
     );
@@ -1239,7 +1311,27 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.change(composer, { target: { value: 'Inspect activity order' } });
     fireEvent.click(sendButton);
 
-    expect(await screen.findByText('最终结果')).toBeInTheDocument();
+    const firstReasoning = await screen.findByText('先检查配置');
+    const firstTool = screen.getByText('list_items');
+    const firstOutput = screen.getByText('阶段结果一');
+    const secondReasoning = screen.getByText('继续检查数据');
+    const secondTool = screen.getByText('get_item');
+    const secondOutput = screen.getByText('阶段结果二');
+    expect(firstReasoning.compareDocumentPosition(firstTool)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(firstTool.compareDocumentPosition(firstOutput)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(firstOutput.compareDocumentPosition(secondReasoning)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(secondReasoning.compareDocumentPosition(secondTool)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(secondTool.compareDocumentPosition(secondOutput)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
     expect(
       screen.queryByLabelText(i18nText('agentFlow', 'auto.workflow'))
     ).not.toBeInTheDocument();
@@ -1257,15 +1349,14 @@ describe('EmbeddedAgentAssistant', () => {
       i18nText('appShell', 'auto.assistant_activity')
     );
     expect(within(sidebar).getByText('Research node')).toBeInTheDocument();
-    const reasoning = within(sidebar).getByText('先检查配置');
-    const tool = within(sidebar).getByText('list_items');
-    const output = within(sidebar).getByText('最终结果');
-    expect(reasoning.compareDocumentPosition(tool)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    );
-    expect(tool.compareDocumentPosition(output)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    );
+    expect(
+      within(sidebar).getByText(i18nText('agentFlow', 'auto.reply_directly'))
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByLabelText(i18nText('agentFlow', 'auto.workflow'))
+    ).toBeInTheDocument();
+    expect(within(sidebar).queryByText('先检查配置')).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText('继续检查数据')).not.toBeInTheDocument();
   });
 
   test('AC-007 replays the same run activity projection for restored history', async () => {
@@ -1279,8 +1370,24 @@ describe('EmbeddedAgentAssistant', () => {
         created_at: '2026-08-15T00:00:00Z'
       }
     ]);
-    getConsoleAssistantRunActivity.mockResolvedValueOnce({
+    getConsoleAssistantRunActivity.mockResolvedValue({
       items: [
+        {
+          event_id: 'run-history:1',
+          run_id: 'run-history',
+          node_run_id: 'node-run-history',
+          event_type: 'node_started',
+          sequence: 1,
+          created_at: '2026-08-15T00:00:00Z',
+          payload: {
+            node_id: 'node-history',
+            node_type: 'llm',
+            title: 'History node'
+          },
+          delta_index: null,
+          content_type: null,
+          text: null
+        },
         {
           event_id: 'run-history:3',
           run_id: 'run-history',
@@ -1300,6 +1407,41 @@ describe('EmbeddedAgentAssistant', () => {
           delta_index: 3,
           content_type: 'reasoning',
           text: '历史思考'
+        },
+        {
+          event_id: 'run-history:4',
+          run_id: 'run-history',
+          node_run_id: 'node-run-history',
+          event_type: 'text_delta',
+          sequence: 4,
+          created_at: '2026-08-15T00:00:02Z',
+          payload: {
+            node_id: 'node-answer',
+            text: '历史最终回答',
+            presentation: {
+              kind: 'answer',
+              answer_node_id: 'node-answer',
+              segment_index: 0
+            }
+          },
+          delta_index: 4,
+          content_type: 'text',
+          text: '历史最终回答'
+        },
+        {
+          event_id: 'run-history:5',
+          run_id: 'run-history',
+          node_run_id: 'node-run-history',
+          event_type: 'node_finished',
+          sequence: 5,
+          created_at: '2026-08-15T00:00:03Z',
+          payload: {
+            node_id: 'node-history',
+            status: 'succeeded'
+          },
+          delta_index: null,
+          content_type: null,
+          text: null
         }
       ],
       has_more: false,
@@ -1322,14 +1464,22 @@ describe('EmbeddedAgentAssistant', () => {
       })
     );
     fireEvent.click(await screen.findByText('First conversation'));
-    expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
+    const historyReasoning = await screen.findByText('历史思考');
+    const historyOutput = screen.getByText('历史最终回答');
+    expect(historyReasoning.compareDocumentPosition(historyOutput)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
 
     const activityButtons = screen.getAllByRole('button', {
       name: i18nText('appShell', 'auto.assistant_activity')
     });
     fireEvent.click(activityButtons.at(-1) as HTMLElement);
 
-    expect(await screen.findByText('历史思考')).toBeInTheDocument();
+    const sidebar = await screen.findByTestId(
+      'embedded-agent-assistant-history'
+    );
+    expect(within(sidebar).getByText('History node')).toBeInTheDocument();
+    expect(within(sidebar).queryByText('历史思考')).not.toBeInTheDocument();
     expect(getConsoleAssistantRunActivity).toHaveBeenCalledWith(
       'flow-1',
       'run-history',

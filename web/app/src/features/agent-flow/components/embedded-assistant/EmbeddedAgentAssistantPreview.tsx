@@ -46,7 +46,8 @@ import { createPortal } from 'react-dom';
 import { useEmbeddedAssistantSession } from '../../hooks/useEmbeddedAssistantSession';
 import {
   fetchRuntimeDebugArtifact,
-  fetchRuntimeDebugArtifacts
+  fetchRuntimeDebugArtifacts,
+  type AgentFlowDebugMessage
 } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -58,7 +59,10 @@ import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole';
 import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferenceTag';
 import { formatLlmTokenCount } from '../../lib/model-options';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
-import { AssistantRunActivityPanel } from './AssistantRunActivityPanel';
+import {
+  AssistantRunNodePanel,
+  AssistantRunTimeline
+} from './AssistantRunActivityPanel';
 import '../editor/styles/shell.css';
 import './embedded-assistant.css';
 
@@ -416,6 +420,13 @@ export function EmbeddedAgentAssistantPreview({
     (flow) => flow.application_id === settings.preference.application_id
   );
   const applicationId = settings?.preference.application_id ?? null;
+  const renderAssistantMessageMain = useCallback(
+    (message: AgentFlowDebugMessage) =>
+      applicationId && message.presentation === 'answer' ? (
+        <AssistantRunTimeline applicationId={applicationId} message={message} />
+      ) : undefined,
+    [applicationId]
+  );
 
   const loadHistory = useCallback(
     async (page = 1) => {
@@ -899,7 +910,7 @@ export function EmbeddedAgentAssistantPreview({
                   </div>
                   <div className="embedded-agent-assistant-preview__history-body">
                     {activityMessage && applicationId ? (
-                      <AssistantRunActivityPanel
+                      <AssistantRunNodePanel
                         applicationId={applicationId}
                         message={activityMessage}
                       />
@@ -1036,6 +1047,7 @@ export function EmbeddedAgentAssistantPreview({
               hidden={(mobile || historyFullView) && sidePanelOpen}
             >
               <AgentFlowDebugConsole
+                assistantMessageMainRender={renderAssistantMessageMain}
                 clearDisabled={!session.canEditCurrentConversation}
                 composerHeader={
                   pageReferenceSelection.references.length > 0 ||

@@ -51,6 +51,7 @@ function bubbleMessageStatus(
 }
 
 export function DebugConversationPane({
+  assistantMessageMainRender,
   composerUiOnly = false,
   composerHeader,
   composerFooterActions,
@@ -69,6 +70,7 @@ export function DebugConversationPane({
   onSubmitPrompt,
   showComposer = true
 }: {
+  assistantMessageMainRender?: (message: AgentFlowDebugMessage) => ReactNode;
   status: AgentFlowDebugSessionStatus;
   stopping: boolean;
   runContext: AgentFlowRunContext;
@@ -147,6 +149,7 @@ export function DebugConversationPane({
         contentRender: (message: AgentFlowDebugMessage) => (
           <DebugAssistantMessage
             message={message}
+            messageMain={assistantMessageMainRender?.(message)}
             onLoadArtifact={onLoadArtifact}
             onLoadArtifacts={onLoadArtifacts}
             onOpenLog={
@@ -189,6 +192,7 @@ export function DebugConversationPane({
     }),
     [
       logActionRunId,
+      assistantMessageMainRender,
       onLoadArtifact,
       onLoadArtifacts,
       onOpenMessageLog,

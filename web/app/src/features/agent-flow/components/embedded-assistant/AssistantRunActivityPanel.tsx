@@ -1,12 +1,7 @@
 import { Think, ThoughtChain } from '@ant-design/x';
 import type { ThoughtChainItemType } from '@ant-design/x';
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  LoadingOutlined,
-  ToolOutlined
-} from '@ant-design/icons';
-import { Alert, Empty, Spin, Typography } from 'antd';
+import { ToolOutlined } from '@ant-design/icons';
+import { Alert, Empty, Spin } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
   getConsoleAssistantRunActivity,
@@ -14,9 +9,18 @@ import {
   type ConsoleFlowDebugStreamEvent
 } from '@1flowbase/api-client';
 
-import type { AgentFlowDebugMessage } from '../../api/runtime';
+import type {
+  AgentFlowDebugMessage,
+  AgentFlowTraceItem
+} from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
+import { parseAssistantContent } from '../../lib/debug-console/assistant-content';
+import {
+  applyDebugStreamEventToTrace,
+  reconcileSnapshotTraceWithLiveEvents
+} from '../../lib/debug-console/stream-events';
 import { DebugMarkdownContent } from '../debug-console/conversation/DebugMarkdownContent';
+import { DebugWorkflowProcess } from '../debug-console/conversation/DebugWorkflowProcess';
 
 interface ActivityEntry {
   key: string;
@@ -28,13 +32,6 @@ interface ActivityEntry {
   status: ThoughtChainItemType['status'];
   loading?: boolean;
   toolCallId?: string | null;
-}
-
-interface NodeProgress {
-  key: string;
-  title: string;
-  status: string;
-  sequence: number;
 }
 
 function eventSequence(event: ConsoleFlowDebugStreamEvent, fallback: number) {
@@ -64,34 +61,16 @@ function toolCallName(toolCall: Record<string, unknown>) {
   return direct ?? nested ?? i18nText('agentFlow', 'auto.tool_call');
 }
 
-function projectActivity(events: ConsoleFlowDebugStreamEvent[]) {
+function projectActivity(
+  events: ConsoleFlowDebugStreamEvent[],
+  fallbackAnswer: string
+) {
   const ordered = events
     .map((event, index) => ({ event, sequence: eventSequence(event, index) }))
     .sort((left, right) => left.sequence - right.sequence);
   const entries: ActivityEntry[] = [];
-  const nodes = new Map<string, NodeProgress>();
 
   ordered.forEach(({ event, sequence }, index) => {
-    if (event.type === 'node_started') {
-      nodes.set(event.node_run_id || event.node_id, {
-        key: event.node_run_id || event.node_id,
-        title: event.title || event.node_id,
-        status: 'running',
-        sequence
-      });
-      return;
-    }
-    if (event.type === 'node_finished') {
-      const key = event.node_run_id || event.node_id;
-      const current = nodes.get(key);
-      nodes.set(key, {
-        key,
-        title: current?.title ?? event.node_id,
-        status: event.status,
-        sequence
-      });
-      return;
-    }
     if (event.type === 'reasoning_delta' && event.text) {
       const previous = entries.at(-1);
       if (previous?.kind === 'reasoning') {
@@ -186,14 +165,27 @@ function projectActivity(events: ConsoleFlowDebugStreamEvent[]) {
     }
   });
 
-  const nodeProgress = [...nodes.values()].sort(
-    (left, right) => left.sequence - right.sequence
-  );
-  const currentNode =
-    [...nodeProgress].reverse().find((node) => node.status === 'running') ??
-    nodeProgress.at(-1) ??
-    null;
-  return { currentNode, entries };
+  const projectedOutput = entries
+    .filter((entry) => entry.kind === 'output')
+    .map((entry) => entry.text ?? '')
+    .join('');
+  const missingOutput = fallbackAnswer.startsWith(projectedOutput)
+    ? fallbackAnswer.slice(projectedOutput.length)
+    : projectedOutput
+      ? ''
+      : fallbackAnswer;
+  if (missingOutput) {
+    entries.push({
+      key: `output-fallback-${ordered.at(-1)?.sequence ?? 0}`,
+      kind: 'output',
+      sequence: (ordered.at(-1)?.sequence ?? 0) + 1,
+      title: i18nText('appShell', 'auto.assistant_activity_output'),
+      text: missingOutput,
+      status: 'success'
+    });
+  }
+
+  return entries;
 }
 
 async function loadDurableActivity(applicationId: string, runId: string) {
@@ -218,7 +210,7 @@ async function loadDurableActivity(applicationId: string, runId: string) {
   }
 }
 
-export function AssistantRunActivityPanel({
+function useAssistantRunEvents({
   applicationId,
   message
 }: {
@@ -279,10 +271,29 @@ export function AssistantRunActivityPanel({
     });
     return [...byKey.values()];
   }, [durableEvents, message.activityEvents, runId]);
-  const activity = useMemo(() => projectActivity(events), [events]);
+
+  return { events, failed, loading };
+}
+
+export function AssistantRunTimeline({
+  applicationId,
+  message
+}: {
+  applicationId: string;
+  message: AgentFlowDebugMessage;
+}) {
+  const { events, failed, loading } = useAssistantRunEvents({
+    applicationId,
+    message
+  });
+  const answer = parseAssistantContent(message.content).answerText;
+  const activity = useMemo(
+    () => projectActivity(events, answer),
+    [answer, events]
+  );
   const thoughtItems = useMemo<ThoughtChainItemType[]>(
     () =>
-      activity.entries.map((entry) => ({
+      activity.map((entry) => ({
         key: entry.key,
         icon: entry.kind === 'tool' ? <ToolOutlined /> : undefined,
         title: entry.title,
@@ -304,34 +315,11 @@ export function AssistantRunActivityPanel({
             <DebugMarkdownContent content={entry.text ?? ''} />
           )
       })),
-    [activity.entries]
+    [activity]
   );
 
   return (
     <div className="embedded-agent-assistant-activity">
-      {activity.currentNode ? (
-        <section className="embedded-agent-assistant-activity__current-node">
-          <span className="embedded-agent-assistant-activity__node-icon">
-            {activity.currentNode.status === 'running' ? (
-              <LoadingOutlined spin />
-            ) : activity.currentNode.status === 'failed' ? (
-              <CloseCircleFilled />
-            ) : (
-              <CheckCircleFilled />
-            )}
-          </span>
-          <span>
-            <Typography.Text type="secondary">
-              {activity.currentNode.status === 'running'
-                ? i18nText('appShell', 'auto.assistant_activity_current_node')
-                : i18nText('appShell', 'auto.assistant_activity_last_node')}
-            </Typography.Text>
-            <Typography.Text strong>
-              {activity.currentNode.title}
-            </Typography.Text>
-          </span>
-        </section>
-      ) : null}
       {failed ? (
         <Alert
           showIcon
@@ -351,6 +339,53 @@ export function AssistantRunActivityPanel({
           line
           rootClassName="embedded-agent-assistant-activity__timeline"
         />
+      )}
+    </div>
+  );
+}
+
+function projectNodeTrace(events: ConsoleFlowDebugStreamEvent[]) {
+  return events.reduce<AgentFlowTraceItem[]>(
+    (items, event) => applyDebugStreamEventToTrace(items, event),
+    []
+  );
+}
+
+export function AssistantRunNodePanel({
+  applicationId,
+  message
+}: {
+  applicationId: string;
+  message: AgentFlowDebugMessage;
+}) {
+  const { events, failed, loading } = useAssistantRunEvents({
+    applicationId,
+    message
+  });
+  const durableTrace = useMemo(() => projectNodeTrace(events), [events]);
+  const traceItems = useMemo(
+    () =>
+      reconcileSnapshotTraceWithLiveEvents(durableTrace, message.traceSummary),
+    [durableTrace, message.traceSummary]
+  );
+
+  return (
+    <div className="embedded-agent-assistant-node-panel">
+      {failed ? (
+        <Alert
+          showIcon
+          type="error"
+          title={i18nText('appShell', 'auto.assistant_activity_load_failed')}
+        />
+      ) : null}
+      {loading && traceItems.length === 0 ? <Spin /> : null}
+      {!loading && traceItems.length === 0 ? (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={i18nText('appShell', 'auto.assistant_activity_empty')}
+        />
+      ) : (
+        <DebugWorkflowProcess items={traceItems} />
       )}
     </div>
   );
