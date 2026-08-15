@@ -468,6 +468,22 @@ fn route_identity(method: &str, path: &str) -> (String, String) {
     )
 }
 
+fn canonical_openapi_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            segment
+                .strip_prefix(':')
+                .map(|name| format!("{{{name}}}"))
+                .unwrap_or_else(|| segment.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn escape_pointer(token: &str) -> String {
+    token.replace('~', "~0").replace('/', "~1")
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -534,20 +550,4 @@ mod tests {
         assert_eq!(activated.provenance, *binding.provenance());
         assert!(Arc::ptr_eq(binding.graph_arc(), snapshot.graph_arc()));
     }
-}
-
-fn canonical_openapi_path(path: &str) -> String {
-    path.split('/')
-        .map(|segment| {
-            segment
-                .strip_prefix(':')
-                .map(|name| format!("{{{name}}}"))
-                .unwrap_or_else(|| segment.to_string())
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn escape_pointer(token: &str) -> String {
-    token.replace('~', "~0").replace('/', "~1")
 }

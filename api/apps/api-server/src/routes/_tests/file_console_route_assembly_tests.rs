@@ -10,7 +10,8 @@ use access_control::{
 use crate::{
     app_state::compile_core_settings_feature_registry,
     routes::console_route_assembly::{
-        compile_migrated_core_console_operation_registry, migrated_core_console_route_assembly,
+        compile_migrated_core_console_operation_registry, migrated_core_console_contract_bindings,
+        migrated_core_console_route_assembly,
     },
 };
 
@@ -92,8 +93,8 @@ fn file_owner_routes_compile_from_exact_assemblies() {
 fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
 
     for binding in assembly.bindings().iter().filter(|binding| {
         binding.route.path.starts_with("/api/console/files/")

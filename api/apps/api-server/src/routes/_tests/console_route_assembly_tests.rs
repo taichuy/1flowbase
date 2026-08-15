@@ -7,8 +7,8 @@ use access_control::{
 use crate::{
     app_state::compile_core_settings_feature_registry,
     routes::console_route_assembly::{
-        compile_migrated_core_console_operation_registry, migrated_core_console_route_assembly,
-        ConsoleRouteAssembly,
+        compile_migrated_core_console_operation_registry, migrated_core_console_contract_bindings,
+        migrated_core_console_route_assembly, ConsoleRouteAssembly,
     },
 };
 
@@ -92,9 +92,9 @@ fn console_route_assembly_duplicate_ownership_fails_coverage() {
 #[test]
 fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     let settings = compile_core_settings_feature_registry().unwrap();
-    let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let runtime_assembly = migrated_core_console_route_assembly();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
 
     let compiled_routes = registry
         .inventory()
@@ -120,7 +120,7 @@ fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     registry
         .validate_console_route_coverage(compiled_routes)
         .unwrap();
-    assert!(assembly.bindings().iter().any(|binding| {
+    assert!(runtime_assembly.bindings().iter().any(|binding| {
         binding.route.path == "/api/console/settings/applications"
             && binding.ownership
                 == ConsoleRouteOwnership::ConsoleOperation(
@@ -133,8 +133,8 @@ fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
 fn applications_routes_compile_exact_operations_and_resource_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, assembly.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
     let application_bindings = assembly
         .bindings()
         .iter()
@@ -265,6 +265,7 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
 fn applications_closed_set_rejects_duplicate_or_missing_binding() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
+    let contract_bindings = migrated_core_console_contract_bindings();
     let application_bindings = assembly
         .bindings()
         .iter()
@@ -272,14 +273,14 @@ fn applications_closed_set_rejects_duplicate_or_missing_binding() {
         .cloned()
         .collect::<Vec<_>>();
 
-    let mut duplicate = assembly.bindings().to_vec();
+    let mut duplicate = contract_bindings.clone();
     duplicate.push(application_bindings[0].clone());
     let duplicate_error =
         compile_migrated_core_console_operation_registry(&settings, &duplicate).unwrap_err();
     assert!(duplicate_error.to_string().contains("duplicate"));
 
-    let missing = assembly
-        .bindings()
+    let missing = contract_bindings
+        .iter()
         .iter()
         .filter(|binding| {
             binding.ownership
@@ -628,9 +629,8 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
     );
 
     let settings = compile_core_settings_feature_registry().unwrap();
-    let migrated = migrated_core_console_route_assembly();
-    let registry =
-        compile_migrated_core_console_operation_registry(&settings, migrated.bindings()).unwrap();
+    let bindings = migrated_core_console_contract_bindings();
+    let registry = compile_migrated_core_console_operation_registry(&settings, &bindings).unwrap();
 
     for authorization_profile_id in [
         "applications.publish",

@@ -1017,8 +1017,8 @@ pub(crate) fn compile_migrated_console_operation_registry(
 pub fn validate_migrated_core_console_route_coverage(
     settings_features: &SettingsFeatureRegistry,
 ) -> anyhow::Result<()> {
-    let assembly = migrated_core_console_route_assembly();
-    compile_migrated_core_console_operation_registry(settings_features, assembly.bindings())?;
+    let bindings = migrated_core_console_contract_bindings();
+    compile_migrated_core_console_operation_registry(settings_features, &bindings)?;
     Ok(())
 }
 
