@@ -1,12 +1,12 @@
 import {
-  attachConsoleAssistantRunWebSocket,
   getConsoleAssistantSettings,
   listConsoleAssistantConversations,
+  subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings,
   type ConsoleAssistantConversationPage,
+  type ConsoleAssistantConversationSummary,
   type ConsoleAssistantPreference,
-  type ConsoleAssistantSettings,
-  type ConsoleFlowDebugStreamEvent
+  type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
 import {
   CheckOutlined,
@@ -102,39 +102,36 @@ function assistantConversationGroup(updatedAt: string) {
       }).format(date);
 }
 
-function isObservableAssistantRunStatus(status: string | null) {
-  return [
-    'queued',
-    'running',
-    'waiting_callback',
-    'waiting_human',
-    'paused'
-  ].includes(status ?? '');
-}
-
-function assistantRunStatusFromEvent(
-  event: ConsoleFlowDebugStreamEvent
-): string | null {
-  switch (event.type) {
-    case 'flow_accepted':
-      return event.status;
-    case 'flow_started':
-      return event.status || 'running';
-    case 'flow_finished':
-      return event.status || 'succeeded';
-    case 'flow_incomplete':
-      return 'incomplete';
-    case 'flow_failed':
-      return 'failed';
-    case 'flow_cancelled':
-      return 'cancelled';
-    case 'waiting_human':
-      return 'waiting_human';
-    case 'waiting_callback':
-      return 'waiting_callback';
-    default:
-      return null;
-  }
+function upsertAssistantConversation(
+  page: ConsoleAssistantConversationPage,
+  item: ConsoleAssistantConversationSummary,
+  eventType: 'conversation.created' | 'conversation.updated'
+): ConsoleAssistantConversationPage {
+  const itemKey = assistantConversationKey(item);
+  const exists = page.items.some(
+    (candidate) => assistantConversationKey(candidate) === itemKey
+  );
+  const items = [
+    item,
+    ...page.items.filter(
+      (candidate) => assistantConversationKey(candidate) !== itemKey
+    )
+  ].sort((left, right) => {
+    const updatedAtOrder = right.updated_at.localeCompare(left.updated_at);
+    return updatedAtOrder !== 0
+      ? updatedAtOrder
+      : assistantConversationKey(right).localeCompare(
+          assistantConversationKey(left)
+        );
+  });
+  return {
+    ...page,
+    items,
+    total:
+      !exists && eventType === 'conversation.created'
+        ? page.total + 1
+        : page.total
+  };
 }
 
 function assistantRunStatusIndicator(status: string | null) {
@@ -228,9 +225,7 @@ export function EmbeddedAgentAssistantPreview({
   const [isResizingHistory, setIsResizingHistory] = useState(false);
   const [historyFullView, setHistoryFullView] = useState(false);
   const historyResizeCleanupRef = useRef<(() => void) | null>(null);
-  const historyRunObserversRef = useRef(
-    new Map<string, { controller: AbortController | null }>()
-  );
+  const historySubscriptionRef = useRef<AbortController | null>(null);
   const historyExpansionSideRef = useRef<AssistantHistoryExpansionSide | null>(
     null
   );
@@ -419,96 +414,53 @@ export function EmbeddedAgentAssistantPreview({
   );
 
   useEffect(() => {
-    if (historyOpen) {
-      void loadHistory();
-    }
-  }, [historyOpen, loadHistory]);
-
-  useEffect(() => {
-    const observers = historyRunObserversRef.current;
-    if (!historyOpen || !applicationId || !csrfToken || !historyPage) {
-      observers.forEach(({ controller }) => controller?.abort());
-      observers.clear();
+    historySubscriptionRef.current?.abort();
+    historySubscriptionRef.current = null;
+    if (!historyOpen || !applicationId || !csrfToken) {
       return;
     }
-
-    const observableRunIds = new Set(
-      historyPage.items.flatMap((item) =>
-        item.latest_flow_run_id &&
-        item.latest_flow_run_id !== session.activeRunId &&
-        isObservableAssistantRunStatus(item.latest_flow_run_status)
-          ? [item.latest_flow_run_id]
-          : []
-      )
-    );
-    observers.forEach(({ controller }, runId) => {
-      if (!observableRunIds.has(runId)) {
-        controller?.abort();
-        observers.delete(runId);
-      }
-    });
-
-    observableRunIds.forEach((runId) => {
-      if (observers.has(runId)) {
-        return;
-      }
-      const observer = { controller: null as AbortController | null };
-      observers.set(runId, observer);
-      void attachConsoleAssistantRunWebSocket(
-        applicationId,
-        runId,
-        csrfToken,
-        {
-          getAbortController: (controller) => {
-            if (historyRunObserversRef.current.get(runId) !== observer) {
-              controller.abort();
-              return;
-            }
-            observer.controller = controller;
-          },
-          onEvent: (event) => {
-            const nextStatus = assistantRunStatusFromEvent(event);
-            if (!nextStatus) {
-              return;
-            }
+    setHistoryPage(null);
+    setHistoryLoading(true);
+    let disposed = false;
+    void subscribeConsoleAssistantConversationsWebSocket(
+      applicationId,
+      csrfToken,
+      {
+        getAbortController: (controller) => {
+          if (disposed) {
+            controller.abort();
+            return;
+          }
+          historySubscriptionRef.current = controller;
+        },
+        onSnapshot: (page) => {
+          if (!disposed) {
+            setHistoryPage(page);
+            setHistoryLoading(false);
+          }
+        },
+        onConversation: (item, eventType) => {
+          if (!disposed) {
             setHistoryPage((current) =>
               current
-                ? {
-                    ...current,
-                    items: current.items.map((item) =>
-                      item.latest_flow_run_id === runId
-                        ? { ...item, latest_flow_run_status: nextStatus }
-                        : item
-                    )
-                  }
+                ? upsertAssistantConversation(current, item, eventType)
                 : current
             );
           }
-        },
-        { maxReconnects: 2 }
-      ).catch(() => {
-        if (historyRunObserversRef.current.get(runId) === observer) {
-          historyRunObserversRef.current.delete(runId);
         }
-      });
+      }
+    ).catch(() => {
+      if (!disposed) {
+        setHistoryLoading(false);
+        void loadHistory(1);
+      }
     });
-  }, [
-    applicationId,
-    csrfToken,
-    historyOpen,
-    historyPage,
-    session.activeRunId
-  ]);
-
-  useEffect(
-    () => () => {
-      historyRunObserversRef.current.forEach(({ controller }) =>
-        controller?.abort()
-      );
-      historyRunObserversRef.current.clear();
-    },
-    []
-  );
+    return () => {
+      disposed = true;
+      historySubscriptionRef.current?.abort();
+      historySubscriptionRef.current = null;
+    };
+  }, [applicationId, csrfToken, historyOpen, loadHistory]);
   const selectedModel =
     settings?.run_capabilities.models.find(
       (model) => model.id === settings.preference.model
@@ -932,9 +884,7 @@ export function EmbeddedAgentAssistantPreview({
                                     ))}
                             </span>
                             {assistantRunStatusIndicator(
-                              session.activeRunId === item.latest_flow_run_id
-                                ? session.status
-                                : item.latest_flow_run_status
+                              item.latest_flow_run_status
                             )}
                           </span>
                         )

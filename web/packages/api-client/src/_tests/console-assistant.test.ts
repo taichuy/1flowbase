@@ -10,6 +10,7 @@ import {
   startConsoleAssistantRun,
   startConsoleAssistantRunStream,
   startConsoleAssistantRunWebSocket,
+  subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings
 } from '../console-assistant';
 import * as transport from '../transport';
@@ -605,6 +606,97 @@ describe('console assistant client', () => {
     await rejection;
     expect(close).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  test('AC-001 subscribes to authoritative conversation snapshots and updates', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const onSnapshot = vi.fn();
+    const onConversation = vi.fn();
+    let abortController: AbortController | undefined;
+    vi.mocked(transport.apiFetch).mockResolvedValueOnce({
+      ticket: 'ticket-conversations',
+      protocol: '1flowbase.assistant.v1',
+      expires_in_seconds: 60
+    } as never);
+
+    class ConversationWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = ConversationWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      send(value: string) {
+        const command = JSON.parse(value) as Record<string, unknown>;
+        sent.push(command);
+        queueMicrotask(() => {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'conversation.snapshot',
+              data: {
+                items: [],
+                total: 0,
+                page: 1,
+                page_size: 20
+              }
+            })
+          } as MessageEvent);
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'conversation.updated',
+              item: {
+                conversation_id: 'conversation-live',
+                legacy_flow_run_id: null,
+                latest_flow_run_id: 'run-live',
+                latest_flow_run_status: 'running',
+                title: 'Live conversation',
+                created_at: '2026-08-15T00:00:00Z',
+                updated_at: '2026-08-15T00:00:01Z'
+              }
+            })
+          } as MessageEvent);
+        });
+      }
+
+      close() {
+        this.onclose?.();
+      }
+    }
+
+    vi.stubGlobal('WebSocket', ConversationWebSocket);
+    onConversation.mockImplementation(() => abortController?.abort());
+    await subscribeConsoleAssistantConversationsWebSocket(
+      'application-1',
+      'csrf-token',
+      {
+        getAbortController: (controller) => {
+          abortController = controller;
+        },
+        onSnapshot,
+        onConversation
+      },
+      { baseUrl: 'http://127.0.0.1:3100' }
+    );
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({ type: 'conversation.subscribe' })
+    );
+    expect(onSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ items: [], total: 0 })
+    );
+    expect(onConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversation_id: 'conversation-live',
+        latest_flow_run_status: 'running'
+      }),
+      'conversation.updated'
+    );
     vi.unstubAllGlobals();
   });
 });

@@ -103,6 +103,15 @@ export interface ConsoleAssistantConversationPage {
   page_size: number;
 }
 
+export interface ConsoleAssistantConversationStreamHandlers {
+  onSnapshot(page: ConsoleAssistantConversationPage): void;
+  onConversation(
+    item: ConsoleAssistantConversationSummary,
+    eventType: 'conversation.created' | 'conversation.updated'
+  ): void;
+  getAbortController?(abortController: AbortController): void;
+}
+
 export interface ConsoleAssistantConversationMessage {
   id: string;
   flow_run_id: string;
@@ -244,6 +253,213 @@ interface ConsoleAssistantWebSocketOptions {
   onControl?: (control: ConsoleAssistantWebSocketControl) => void;
   maxReconnects?: number;
   clientTools?: ConsoleAssistantClientTools;
+}
+
+interface ConsoleAssistantConversationWebSocketOptions {
+  baseUrl?: string;
+  handshakeTimeoutMs?: number;
+  maxReconnects?: number;
+}
+
+export async function subscribeConsoleAssistantConversationsWebSocket(
+  applicationId: string,
+  csrfToken: string,
+  handlers: ConsoleAssistantConversationStreamHandlers,
+  options?: ConsoleAssistantConversationWebSocketOptions
+) {
+  const baseUrl = options?.baseUrl ?? getDefaultApiBaseUrl();
+  const handshakeTimeoutMs = options?.handshakeTimeoutMs ?? 10_000;
+  const maxReconnects = options?.maxReconnects ?? 5;
+  const abortController = new AbortController();
+  handlers.getAbortController?.(abortController);
+
+  await new Promise<void>((resolve, reject) => {
+    let socket: WebSocket | null = null;
+    let reconnectCount = 0;
+    let settled = false;
+    let requestSequence = 1;
+    let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimers = () => {
+      if (handshakeTimer !== null) {
+        clearTimeout(handshakeTimer);
+        handshakeTimer = null;
+      }
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+    const finish = (error?: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimers();
+      socket?.close();
+      error ? reject(error) : resolve();
+    };
+
+    abortController.signal.addEventListener('abort', () => finish(), {
+      once: true
+    });
+
+    const connect = async () => {
+      if (settled) {
+        return;
+      }
+      handshakeTimer = setTimeout(
+        () =>
+          finish(
+            new Error('Assistant conversation WebSocket handshake timed out')
+          ),
+        handshakeTimeoutMs
+      );
+      try {
+        const ticket = await apiFetch<ConsoleAssistantWebSocketTicket>({
+          path: '/api/console/assistant/runs/websocket-ticket',
+          method: 'POST',
+          body: { application_id: applicationId },
+          csrfToken,
+          baseUrl
+        });
+        if (settled) {
+          return;
+        }
+        const url = new URL(
+          '/api/console/assistant/runs/websocket',
+          baseUrl || getDefaultApiBaseUrl()
+        );
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        const current = new WebSocket(url, [
+          ticket.protocol,
+          `1flowbase.assistant.ticket.${ticket.ticket}`
+        ]);
+        socket = current;
+        current.onopen = () => {
+          current.send(
+            JSON.stringify({
+              type: 'conversation.subscribe',
+              request_id: `conversation-subscribe-${requestSequence++}`
+            })
+          );
+        };
+        current.onmessage = (message) => {
+          let raw: unknown;
+          try {
+            raw = JSON.parse(String(message.data));
+          } catch {
+            finish(new Error('Invalid Assistant conversation WebSocket event'));
+            return;
+          }
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+            return;
+          }
+          const frame = raw as Record<string, unknown>;
+          if (frame.type === 'error') {
+            const error = frame.error as { message?: unknown } | undefined;
+            finish(
+              new Error(
+                typeof error?.message === 'string'
+                  ? error.message
+                  : 'Assistant conversation WebSocket command failed'
+              )
+            );
+            return;
+          }
+          if (frame.type === 'conversation.snapshot') {
+            if (!isConsoleAssistantConversationPage(frame.data)) {
+              finish(new Error('Invalid Assistant conversation snapshot'));
+              return;
+            }
+            if (handshakeTimer !== null) {
+              clearTimeout(handshakeTimer);
+              handshakeTimer = null;
+            }
+            reconnectCount = 0;
+            handlers.onSnapshot(frame.data);
+            return;
+          }
+          if (
+            frame.type === 'conversation.created' ||
+            frame.type === 'conversation.updated'
+          ) {
+            if (!isConsoleAssistantConversationSummary(frame.item)) {
+              finish(new Error('Invalid Assistant conversation update'));
+              return;
+            }
+            handlers.onConversation(frame.item, frame.type);
+          }
+        };
+        current.onerror = () => current.close();
+        current.onclose = () => {
+          if (settled) {
+            return;
+          }
+          if (handshakeTimer !== null) {
+            clearTimeout(handshakeTimer);
+            handshakeTimer = null;
+          }
+          if (reconnectCount >= maxReconnects) {
+            finish(
+              new Error(
+                'Assistant conversation WebSocket connection interrupted'
+              )
+            );
+            return;
+          }
+          reconnectCount += 1;
+          reconnectTimer = setTimeout(
+            () => void connect(),
+            Math.min(250 * 2 ** (reconnectCount - 1), 2_000)
+          );
+        };
+      } catch (error) {
+        finish(error);
+      }
+    };
+
+    void connect();
+  });
+}
+
+function isConsoleAssistantConversationSummary(
+  value: unknown
+): value is ConsoleAssistantConversationSummary {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const item = value as Record<string, unknown>;
+  return (
+    (typeof item.conversation_id === 'string' ||
+      item.conversation_id === null) &&
+    (typeof item.legacy_flow_run_id === 'string' ||
+      item.legacy_flow_run_id === null) &&
+    (typeof item.latest_flow_run_id === 'string' ||
+      item.latest_flow_run_id === null) &&
+    (typeof item.latest_flow_run_status === 'string' ||
+      item.latest_flow_run_status === null) &&
+    (typeof item.title === 'string' || item.title === null) &&
+    typeof item.created_at === 'string' &&
+    typeof item.updated_at === 'string'
+  );
+}
+
+function isConsoleAssistantConversationPage(
+  value: unknown
+): value is ConsoleAssistantConversationPage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const page = value as Record<string, unknown>;
+  return (
+    Array.isArray(page.items) &&
+    page.items.every(isConsoleAssistantConversationSummary) &&
+    typeof page.total === 'number' &&
+    typeof page.page === 'number' &&
+    typeof page.page_size === 'number'
+  );
 }
 
 type ConsoleAssistantWebSocketCommand =

@@ -339,6 +339,23 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
         .unwrap()
     );
 
+    let summary = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::get_assistant_conversation_summary(
+        &store,
+        seeded.workspace_id,
+        seeded.application_id,
+        seeded.actor_user_id,
+        own_conversation.conversation_id,
+    )
+    .await
+    .unwrap()
+    .expect("owned conversation summary");
+    assert_eq!(
+        summary.conversation_id,
+        Some(own_conversation.conversation_id)
+    );
+    assert_eq!(summary.latest_flow_run_status.as_deref(), Some("queued"));
+    assert_eq!(summary.title.as_deref(), Some("Active conversation run"));
+
     let foreign_user_access =
         <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::get_assistant_conversation(
             &store,
@@ -350,4 +367,14 @@ async fn assistant_conversation_list_filters_user_workspace_application_and_run_
         .await
         .unwrap();
     assert!(foreign_user_access.is_none());
+    let foreign_user_summary = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::get_assistant_conversation_summary(
+        &store,
+        seeded.workspace_id,
+        seeded.application_id,
+        seeded.actor_user_id,
+        foreign_user_conversation.conversation_id,
+    )
+    .await
+    .unwrap();
+    assert!(foreign_user_summary.is_none());
 }

@@ -83,9 +83,7 @@ impl AssistantConversationEventHub {
         let mut channels = self.lock_channels();
         channels
             .entry(scope)
-            .or_insert_with(|| {
-                broadcast::channel(ASSISTANT_CONVERSATION_EVENT_CAPACITY).0
-            })
+            .or_insert_with(|| broadcast::channel(ASSISTANT_CONVERSATION_EVENT_CAPACITY).0)
             .subscribe()
     }
 
@@ -99,9 +97,7 @@ impl AssistantConversationEventHub {
             let mut channels = self.lock_channels();
             channels
                 .entry(scope)
-                .or_insert_with(|| {
-                    broadcast::channel(ASSISTANT_CONVERSATION_EVENT_CAPACITY).0
-                })
+                .or_insert_with(|| broadcast::channel(ASSISTANT_CONVERSATION_EVENT_CAPACITY).0)
                 .clone()
         };
         let sequence = self.next_sequence.fetch_add(1, Ordering::Relaxed) + 1;

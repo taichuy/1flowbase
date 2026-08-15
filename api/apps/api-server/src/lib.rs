@@ -534,9 +534,8 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await?;
     let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
-    let assistant_conversation_events = Arc::new(
-        routes::assistant::conversation_events::AssistantConversationEventHub::default(),
-    );
+    let assistant_conversation_events =
+        Arc::new(routes::assistant::conversation_events::AssistantConversationEventHub::default());
     let system_maintenance = Arc::new(control_plane::system_recovery::SystemMaintenance::default());
     let system_backup = resolve_system_backup_startup(
         system_backup::SystemBackupRuntime::open(

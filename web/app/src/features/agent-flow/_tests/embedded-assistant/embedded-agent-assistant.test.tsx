@@ -17,6 +17,7 @@ const {
   listConsoleAssistantConversations,
   startConsoleAssistantRunWebSocket,
   startConsoleAssistantRunStream,
+  subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings
 } = vi.hoisted(() => ({
   attachConsoleAssistantRunWebSocket: vi.fn(),
@@ -28,6 +29,7 @@ const {
   listConsoleAssistantConversations: vi.fn(),
   startConsoleAssistantRunWebSocket: vi.fn(),
   startConsoleAssistantRunStream: vi.fn(),
+  subscribeConsoleAssistantConversationsWebSocket: vi.fn(),
   updateConsoleAssistantSettings: vi.fn()
 }));
 
@@ -44,6 +46,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
     listConsoleAssistantConversations,
     startConsoleAssistantRunWebSocket,
     startConsoleAssistantRunStream,
+    subscribeConsoleAssistantConversationsWebSocket,
     updateConsoleAssistantSettings
   };
 });
@@ -172,6 +175,19 @@ describe('EmbeddedAgentAssistant', () => {
     attachConsoleAssistantRunWebSocket.mockResolvedValue(undefined);
     startConsoleAssistantRunWebSocket.mockReset();
     startConsoleAssistantRunStream.mockReset();
+    subscribeConsoleAssistantConversationsWebSocket.mockReset();
+    subscribeConsoleAssistantConversationsWebSocket.mockImplementation(
+      async (applicationId, _csrfToken, handlers) => {
+        const controller = new AbortController();
+        handlers.getAbortController?.(controller);
+        handlers.onSnapshot(
+          await listConsoleAssistantConversations(applicationId, {
+            page: 1,
+            pageSize: 20
+          })
+        );
+      }
+    );
   });
 
   afterEach(() => {
@@ -281,10 +297,17 @@ describe('EmbeddedAgentAssistant', () => {
     });
     fireEvent.click(history);
     expect(await screen.findByText('First conversation')).toBeInTheDocument();
-    expect(listConsoleAssistantConversations).toHaveBeenCalledWith('flow-1', {
-      page: 1,
-      pageSize: 20
-    });
+    expect(
+      subscribeConsoleAssistantConversationsWebSocket
+    ).toHaveBeenCalledWith(
+      'flow-1',
+      'csrf-token',
+      expect.objectContaining({
+        getAbortController: expect.any(Function),
+        onConversation: expect.any(Function),
+        onSnapshot: expect.any(Function)
+      })
+    );
 
     fireEvent.click(await screen.findByText('First conversation'));
     await waitFor(() =>
@@ -445,58 +468,35 @@ describe('EmbeddedAgentAssistant', () => {
     ).toBeNull();
   });
 
-  test('AC-002 follows background run status over WebSocket and aborts on history close', async () => {
-    const abortControllers = new Map<string, AbortController>();
-    let emitFinished: (() => void) | undefined;
-    attachConsoleAssistantRunWebSocket.mockImplementation(
-      async (_applicationId, runId, _csrfToken, handlers) =>
-        new Promise<void>((resolve) => {
-          const controller = new AbortController();
-          abortControllers.set(runId, controller);
-          handlers.getAbortController?.(controller);
-          if (runId === 'run-background') {
-            emitFinished = () => {
-              handlers.onEvent({
-                type: 'flow_finished',
-                event_id: `${runId}:2`,
-                event_type: 'flow_finished',
-                run_id: runId,
-                status: 'succeeded',
-                output: {}
-              });
-            };
-          }
-          controller.signal.addEventListener('abort', () => resolve(), {
-            once: true
-          });
-        })
+  test('AC-002 follows application conversation events and aborts on history close', async () => {
+    const controller = new AbortController();
+    let emitConversation:
+      | ((
+          item: {
+            conversation_id: string;
+            legacy_flow_run_id: null;
+            latest_flow_run_id: string;
+            latest_flow_run_status: string;
+            title: string;
+            created_at: string;
+            updated_at: string;
+          },
+          eventType: 'conversation.created' | 'conversation.updated'
+        ) => void)
+      | undefined;
+    subscribeConsoleAssistantConversationsWebSocket.mockImplementation(
+      async (_applicationId, _csrfToken, handlers) => {
+        handlers.getAbortController?.(controller);
+        handlers.onSnapshot({
+          items: [],
+          total: 0,
+          page: 1,
+          page_size: 20
+        });
+        emitConversation = handlers.onConversation;
+      }
     );
     const setIntervalSpy = vi.spyOn(window, 'setInterval');
-    listConsoleAssistantConversations.mockResolvedValueOnce({
-      items: [
-        {
-          conversation_id: 'conversation-background',
-          legacy_flow_run_id: null,
-          latest_flow_run_id: 'run-background',
-          latest_flow_run_status: 'running',
-          title: 'Background conversation',
-          created_at: '2026-08-15T00:00:00Z',
-          updated_at: '2026-08-15T00:00:00Z'
-        },
-        {
-          conversation_id: 'conversation-waiting',
-          legacy_flow_run_id: null,
-          latest_flow_run_id: 'run-waiting',
-          latest_flow_run_status: 'waiting_human',
-          title: 'Waiting conversation',
-          created_at: '2026-08-15T00:00:00Z',
-          updated_at: '2026-08-15T00:00:00Z'
-        }
-      ],
-      total: 2,
-      page: 1,
-      page_size: 20
-    });
 
     render(
       <AppProviders>
@@ -513,31 +513,52 @@ describe('EmbeddedAgentAssistant', () => {
     });
     fireEvent.click(history);
 
-    expect(await screen.findByLabelText('运行中')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(attachConsoleAssistantRunWebSocket).toHaveBeenCalledWith(
-        'flow-1',
-        'run-background',
-        'csrf-token',
-        expect.objectContaining({
-          getAbortController: expect.any(Function),
-          onEvent: expect.any(Function)
-        }),
-        expect.objectContaining({ maxReconnects: 2 })
+    await waitFor(() => expect(emitConversation).toBeDefined());
+    await act(async () =>
+      emitConversation?.(
+        {
+          conversation_id: 'conversation-background',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-background',
+          latest_flow_run_status: 'running',
+          title: 'Server generated title',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:01Z'
+        },
+        'conversation.created'
       )
     );
+    expect(
+      await screen.findByText('Server generated title')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('运行中')).toBeInTheDocument();
+    expect(attachConsoleAssistantRunWebSocket).not.toHaveBeenCalled();
     expect(setIntervalSpy).not.toHaveBeenCalledWith(
       expect.any(Function),
       3_000
     );
 
-    await act(async () => emitFinished?.());
+    await act(async () =>
+      emitConversation?.(
+        {
+          conversation_id: 'conversation-background',
+          legacy_flow_run_id: null,
+          latest_flow_run_id: 'run-background',
+          latest_flow_run_status: 'succeeded',
+          title: 'Final server title',
+          created_at: '2026-08-15T00:00:00Z',
+          updated_at: '2026-08-15T00:00:02Z'
+        },
+        'conversation.updated'
+      )
+    );
     await waitFor(() =>
       expect(screen.queryByLabelText('运行中')).not.toBeInTheDocument()
     );
-    expect(abortControllers.get('run-waiting')?.signal.aborted).toBe(false);
+    expect(screen.getByText('Final server title')).toBeInTheDocument();
+    expect(controller.signal.aborted).toBe(false);
     fireEvent.click(history);
-    expect(abortControllers.get('run-waiting')?.signal.aborted).toBe(true);
+    expect(controller.signal.aborted).toBe(true);
   });
 
   test('AC-005 keeps history in a collapsible left sidebar inside the assistant window', async () => {

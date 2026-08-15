@@ -8,6 +8,9 @@ use axum::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
+    application_public_api::run_service::{
+        ApplicationPublishedFlowRunRepository, ListAssistantConversationsInput,
+    },
     auth::hash_api_key_token,
     orchestration_runtime::{CancelFlowRunCommand, OrchestrationRuntimeService},
     ports::{CacheStore, OrchestrationRuntimeRepository},
@@ -17,14 +20,18 @@ use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use time::Duration;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::broadcast, sync::mpsc, task::JoinHandle};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::conversation_events::{
+    AssistantConversationEventScope, AssistantConversationSummaryResponse,
+};
 use super::{
     api_provider_runtime, assistant_preference_for_target, launch_assistant_execution,
     prepare_assistant_execution, ApiError, ApiState, AssistantClientToolBridge,
-    AssistantClientToolId, RequestContext, StartAssistantRunBody,
+    AssistantClientToolId, AssistantConversationPageResponse, RequestContext,
+    StartAssistantRunBody,
 };
 use crate::{
     middleware::{require_csrf::require_csrf, require_session::require_session},
@@ -263,6 +270,8 @@ fn ticket_from_protocols(headers: &HeaderMap) -> Result<String, ApiError> {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum AssistantWebSocketCommand {
+    #[serde(rename = "conversation.subscribe")]
+    SubscribeConversations { request_id: String },
     #[serde(rename = "run.create")]
     Create {
         request_id: String,
@@ -292,7 +301,8 @@ enum AssistantWebSocketCommand {
 impl AssistantWebSocketCommand {
     fn request_id(&self) -> &str {
         match self {
-            Self::Create { request_id, .. }
+            Self::SubscribeConversations { request_id }
+            | Self::Create { request_id, .. }
             | Self::Cancel { request_id, .. }
             | Self::Attach { request_id, .. }
             | Self::ClientToolResult { request_id, .. } => request_id,
@@ -502,6 +512,14 @@ async fn execute_command(
     frames: mpsc::Sender<String>,
     client_tool_bridge: AssistantClientToolBridge,
 ) -> Result<(), ApiError> {
+    let command = match command {
+        AssistantWebSocketCommand::SubscribeConversations { request_id } => {
+            return execute_conversation_subscription(state, authorization, request_id, frames)
+                .await;
+        }
+        command => command,
+    };
+
     let (request_id, run_id, from_sequence) = match command {
         AssistantWebSocketCommand::Create {
             request_id,
@@ -570,6 +588,11 @@ async fn execute_command(
                 control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
             )
         }
+        AssistantWebSocketCommand::SubscribeConversations { .. } => {
+            return Err(
+                control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
+            )
+        }
     };
     let (event_sender, mut events) = mpsc::channel::<Value>(32);
     tokio::spawn(debug_run_stream::send_runtime_event_websocket_stream(
@@ -599,6 +622,78 @@ async fn execute_command(
         }
     }
     Ok(())
+}
+
+async fn execute_conversation_subscription(
+    state: Arc<ApiState>,
+    authorization: Arc<AssistantWebSocketAuthorization>,
+    request_id: String,
+    frames: mpsc::Sender<String>,
+) -> Result<(), ApiError> {
+    let scope = AssistantConversationEventScope {
+        workspace_id: authorization.context.actor.current_workspace_id,
+        application_id: authorization.application_id,
+        actor_user_id: authorization.context.user.id,
+    };
+    let mut events = state.assistant_conversation_events.subscribe(scope);
+    send_conversation_snapshot(&state, scope, &request_id, &frames).await?;
+
+    loop {
+        match events.recv().await {
+            Ok(event) => {
+                let mut frame = serde_json::to_value(event)?;
+                frame["request_id"] = Value::String(request_id.clone());
+                frames.send(frame.to_string()).await.map_err(|_| {
+                    control_plane::errors::ControlPlaneError::Conflict("assistant_websocket")
+                })?;
+            }
+            Err(broadcast::error::RecvError::Lagged(_)) => {
+                send_conversation_snapshot(&state, scope, &request_id, &frames).await?;
+            }
+            Err(broadcast::error::RecvError::Closed) => return Ok(()),
+        }
+    }
+}
+
+async fn send_conversation_snapshot(
+    state: &ApiState,
+    scope: AssistantConversationEventScope,
+    request_id: &str,
+    frames: &mpsc::Sender<String>,
+) -> Result<(), ApiError> {
+    let page = state
+        .store
+        .list_assistant_conversations(&ListAssistantConversationsInput {
+            workspace_id: scope.workspace_id,
+            application_id: scope.application_id,
+            actor_user_id: scope.actor_user_id,
+            page: 1,
+            page_size: 20,
+        })
+        .await?;
+    let snapshot = AssistantConversationPageResponse {
+        items: page
+            .items
+            .into_iter()
+            .map(AssistantConversationSummaryResponse::from)
+            .collect(),
+        total: page.total,
+        page: page.page,
+        page_size: page.page_size,
+    };
+    frames
+        .send(
+            json!({
+                "type": "conversation.snapshot",
+                "request_id": request_id,
+                "data": snapshot,
+            })
+            .to_string(),
+        )
+        .await
+        .map_err(|_| {
+            control_plane::errors::ControlPlaneError::Conflict("assistant_websocket").into()
+        })
 }
 
 async fn cancel_run(
@@ -645,6 +740,20 @@ fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String
 mod tests {
     use super::*;
     use storage_ephemeral::MokaCacheStore;
+
+    #[test]
+    fn ac_001_parses_application_conversation_subscription() {
+        let command: AssistantWebSocketCommand = serde_json::from_value(json!({
+            "type": "conversation.subscribe",
+            "request_id": "conversation-subscribe-1"
+        }))
+        .unwrap();
+
+        let AssistantWebSocketCommand::SubscribeConversations { request_id } = command else {
+            panic!("expected conversation.subscribe");
+        };
+        assert_eq!(request_id, "conversation-subscribe-1");
+    }
 
     #[test]
     fn ac_002_run_create_declares_only_supported_client_tool_ids() {

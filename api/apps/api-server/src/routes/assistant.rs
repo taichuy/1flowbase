@@ -26,7 +26,7 @@ use control_plane::{
         spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{OrchestrationRuntimeRepository, RuntimeEventStreamPolicy},
+    ports::{OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventStreamPolicy},
     profile::{ProfileService, UpdateMeMetaCommand},
 };
 use domain::mcp_management::McpInstanceStatus;
@@ -41,10 +41,8 @@ pub mod conversation_events;
 pub(crate) mod websocket;
 
 use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
-use conversation_events::{
-    AssistantConversationEventKind, AssistantConversationEventScope,
-    AssistantConversationSummaryResponse,
-};
+pub use conversation_events::AssistantConversationSummaryResponse;
+use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
@@ -647,6 +645,17 @@ pub async fn start_run(
             provider_transport_slot: None,
         })
         .await?;
+    publish_assistant_conversation_summary(
+        &state,
+        AssistantConversationEventScope {
+            workspace_id: context.actor.current_workspace_id,
+            application_id: execution.application_id,
+            actor_user_id: context.user.id,
+        },
+        execution.conversation_id,
+        AssistantConversationEventKind::Updated,
+    )
+    .await;
     let native_result = native_result_from_run_detail(&detail, json!({}));
     Ok(Json(ApiSuccess::new(AssistantRunResponse {
         id: detail.flow_run.id,
@@ -720,6 +729,17 @@ async fn launch_assistant_execution(
         .runtime_event_stream
         .append(run_id, debug_stream_events::heartbeat())
         .await?;
+
+    spawn_assistant_conversation_projection(
+        state.clone(),
+        AssistantConversationEventScope {
+            workspace_id: execution.actor.current_workspace_id,
+            application_id,
+            actor_user_id: execution.actor.user_id,
+        },
+        execution.conversation_id,
+        run_id,
+    );
 
     let mcp_runtime_invoker: Arc<
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
@@ -818,6 +838,108 @@ async fn launch_assistant_execution(
         wait_for_runtime_debug_event_persister(persister_handle, application_id, run_id).await;
     });
     Ok(run_id)
+}
+
+fn spawn_assistant_conversation_projection(
+    state: Arc<ApiState>,
+    scope: AssistantConversationEventScope,
+    conversation_id: Uuid,
+    run_id: Uuid,
+) {
+    tokio::spawn(async move {
+        let Ok(mut subscription) = state.runtime_event_stream.subscribe(run_id, Some(0)).await
+        else {
+            tracing::warn!(
+                application_id = %scope.application_id,
+                flow_run_id = %run_id,
+                "assistant conversation projection could not subscribe to runtime events"
+            );
+            return;
+        };
+
+        for event in subscription.replay {
+            let terminal =
+                RuntimeEventCloseReason::from_terminal_event_type(&event.event_type).is_some();
+            if should_publish_assistant_conversation_event(&event.event_type) {
+                publish_assistant_conversation_summary(
+                    &state,
+                    scope,
+                    conversation_id,
+                    AssistantConversationEventKind::Updated,
+                )
+                .await;
+            }
+            if terminal {
+                return;
+            }
+        }
+
+        while let Some(event) = subscription.live_events.recv().await {
+            let terminal =
+                RuntimeEventCloseReason::from_terminal_event_type(&event.event_type).is_some();
+            if should_publish_assistant_conversation_event(&event.event_type) {
+                publish_assistant_conversation_summary(
+                    &state,
+                    scope,
+                    conversation_id,
+                    AssistantConversationEventKind::Updated,
+                )
+                .await;
+            }
+            if terminal {
+                return;
+            }
+        }
+    });
+}
+
+fn should_publish_assistant_conversation_event(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "flow_accepted"
+            | "flow_started"
+            | "flow_finished"
+            | "flow_incomplete"
+            | "flow_failed"
+            | "flow_cancelled"
+            | "waiting_human"
+            | "waiting_callback"
+    )
+}
+
+async fn publish_assistant_conversation_summary(
+    state: &ApiState,
+    scope: AssistantConversationEventScope,
+    conversation_id: Uuid,
+    kind: AssistantConversationEventKind,
+) {
+    match state
+        .store
+        .get_assistant_conversation_summary(
+            scope.workspace_id,
+            scope.application_id,
+            scope.actor_user_id,
+            conversation_id,
+        )
+        .await
+    {
+        Ok(Some(summary)) => state.assistant_conversation_events.publish(
+            scope,
+            kind,
+            AssistantConversationSummaryResponse::from(summary),
+        ),
+        Ok(None) => tracing::warn!(
+            application_id = %scope.application_id,
+            conversation_id = %conversation_id,
+            "assistant conversation projection could not find its durable summary"
+        ),
+        Err(error) => tracing::warn!(
+            application_id = %scope.application_id,
+            conversation_id = %conversation_id,
+            error = %error,
+            "assistant conversation projection could not load its durable summary"
+        ),
+    }
 }
 
 async fn prepare_assistant_execution(
