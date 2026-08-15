@@ -281,7 +281,6 @@ fn applications_closed_set_rejects_duplicate_or_missing_binding() {
 
     let missing = contract_bindings
         .iter()
-        .iter()
         .filter(|binding| {
             binding.ownership
                 != ConsoleRouteOwnership::ConsoleOperation(
