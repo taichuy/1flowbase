@@ -13,11 +13,12 @@ match_when:
   - 处理助手会话恢复、分页、旧运行或会话权限
   - 开始 GitHub issue 1608
 created_at: 2026-08-07 11
-updated_at: 2026-08-15 17
-last_verified_at: 2026-08-15 17
+updated_at: 2026-08-15 22
+last_verified_at: 2026-08-15 22
 decision_policy: verify_before_decision
 status: implemented_pending_user_acceptance
 integration_commit: f9b9e76db
+route_fix_commit: 07706dbae
 scope:
   - https://github.com/taichuy/1flowbase/issues/1608
   - web/app/src/features/agent-flow/components/embedded-assistant
@@ -64,3 +65,9 @@ scope:
 - 浏览器注入工具只属于创建运行时的当前 WebSocket capability；断连后不执行页面副作用、不自动补执行，并立即返回 `client_unavailable` 工具错误供 Agent 继续处理。
 - 本轮不承诺 api-server 进程重启后的任务恢复；该能力仍属于独立 durable scheduler 范围。
 - `f9b9e76db` 已 fast-forward 到 `dev`，集中 Dev Acceptance 通过；等待用户人工验收真实窗口关闭、历史切换和长任务完成路径。
+
+## 2026-08-15 历史消息路由修复
+
+- Axum 0.7 运行时动态路径必须使用 `:conversation_id` / `:flow_run_id`；Utoipa OpenAPI 文档继续使用 `{conversation_id}` / `{flow_run_id}`。
+- `07706dbae` 修复 conversation 与 legacy snapshot 消息路由，并增加完整认证 Router 回归测试。
+- API 重启后，用户报告的 conversation messages URL 已返回 `200` 和两条完整历史消息；功能仍等待用户界面验收。
