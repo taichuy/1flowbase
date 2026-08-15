@@ -217,7 +217,9 @@ pub enum ModuleDisableReason {
 pub enum ModuleActivationDeclaration {
     #[default]
     Active,
-    Disabled { reason: ModuleDisableReason },
+    Disabled {
+        reason: ModuleDisableReason,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
