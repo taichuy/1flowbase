@@ -7,7 +7,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, type Mock, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
@@ -93,9 +93,9 @@ const vditorMock = vi.hoisted(() => ({
       after?: () => void;
       input?: (value: string) => void;
     };
-    setValue: ReturnType<typeof vi.fn>;
-    getValue: ReturnType<typeof vi.fn>;
-    destroy: ReturnType<typeof vi.fn>;
+    setValue: Mock<(value: string, emitUpdate?: boolean) => void>;
+    getValue: Mock<() => string>;
+    destroy: Mock<() => void>;
   }>,
   constructor: vi.fn(function VditorMock(
     this: unknown,
@@ -110,11 +110,11 @@ const vditorMock = vi.hoisted(() => ({
     let currentValue = options.value ?? '';
     const instance = {
       options,
-      setValue: vi.fn((value: string) => {
+      setValue: vi.fn<(value: string, emitUpdate?: boolean) => void>((value) => {
         currentValue = value;
       }),
-      getValue: vi.fn(() => currentValue),
-      destroy: vi.fn()
+      getValue: vi.fn<() => string>(() => currentValue),
+      destroy: vi.fn<() => void>()
     };
     vditorMock.instances.push(instance);
 
