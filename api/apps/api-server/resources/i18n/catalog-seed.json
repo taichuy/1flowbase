@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.7",
+    "catalog_version": "2.0.8",
     "files": [
       {
         "keys": [
@@ -192,12 +192,16 @@
           "Delete roles in the system backend.",
           "Delete system backups",
           "Delete system backups in the system backend.",
+          "Disable an installed executable extension",
+          "Disable an installed executable extension in the system backend.",
           "Disable members",
           "Disable members in the system backend.",
           "Discover data sources",
           "Discover data sources in the system backend.",
           "Discover MCP upstream connections",
           "Discover MCP upstream connections in the system backend.",
+          "Enable an installed executable extension",
+          "Enable an installed executable extension in the system backend.",
           "Enable auth center authenticators",
           "Enable auth center authenticators in the system backend.",
           "Enable members",
@@ -679,7 +683,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:f58b48084f64d6eac6bb234d250feaaa7bb07a578d54ab2308e5a60e3afca1ac"
+        "sha256": "sha256:013cf13427a4a48563691fbd3f2d7e0bad81d6a0401f3f35d6244346687448d8"
       },
       {
         "keys": [
@@ -809,12 +813,16 @@
           "Delete roles in the system backend.",
           "Delete system backups",
           "Delete system backups in the system backend.",
+          "Disable an installed executable extension",
+          "Disable an installed executable extension in the system backend.",
           "Disable members",
           "Disable members in the system backend.",
           "Discover data sources",
           "Discover data sources in the system backend.",
           "Discover MCP upstream connections",
           "Discover MCP upstream connections in the system backend.",
+          "Enable an installed executable extension",
+          "Enable an installed executable extension in the system backend.",
           "Enable auth center authenticators",
           "Enable auth center authenticators in the system backend.",
           "Enable members",
@@ -1296,7 +1304,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:9e336fc478719cea5acd7bda184d7b8d86c2a40fa8af8b54c0d35ac6362225e7"
+        "sha256": "sha256:60ec5e391a282858bf1df67d66eed204faadc68487efd2c4ec3b9303246d8c29"
       },
       {
         "keys": [
@@ -1629,13 +1637,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-08-14T04:04:29.000Z",
+    "generated_at": "2026-08-15T00:00:00.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:c40e26230e12ca11d63704f5e101b620f872f0c277a0590db59af6e49f4886b0",
+    "semantic_sha256": "sha256:d8ae35721539ee7acd34a2a722b405d786851d9ec679dc53f5b5889da225e7a9",
     "source_locale": "en_US"
   },
   "messages": [
@@ -2823,6 +2831,20 @@
       }
     },
     {
+      "key": "Disable an installed executable extension",
+      "translations": {
+        "en_US": "Disable an installed executable extension",
+        "zh_Hans": "禁用已安装的可执行扩展"
+      }
+    },
+    {
+      "key": "Disable an installed executable extension in the system backend.",
+      "translations": {
+        "en_US": "Disable an installed executable extension in the system backend.",
+        "zh_Hans": "禁用已安装的可执行扩展（系统后端）"
+      }
+    },
+    {
       "key": "Disable members",
       "translations": {
         "en_US": "Disable members",
@@ -2904,6 +2926,20 @@
       "translations": {
         "en_US": "Email Login",
         "zh_Hans": "邮箱登录"
+      }
+    },
+    {
+      "key": "Enable an installed executable extension",
+      "translations": {
+        "en_US": "Enable an installed executable extension",
+        "zh_Hans": "启用已安装的可执行扩展"
+      }
+    },
+    {
+      "key": "Enable an installed executable extension in the system backend.",
+      "translations": {
+        "en_US": "Enable an installed executable extension in the system backend.",
+        "zh_Hans": "启用已安装的可执行扩展（系统后端）"
       }
     },
     {
