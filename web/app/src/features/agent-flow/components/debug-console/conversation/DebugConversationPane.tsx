@@ -52,6 +52,7 @@ function bubbleMessageStatus(
 
 export function DebugConversationPane({
   composerUiOnly = false,
+  composerHeader,
   composerFooterActions,
   logActionRunId,
   status,
@@ -81,6 +82,7 @@ export function DebugConversationPane({
   onStopRun: () => void;
   onSubmitPrompt: (prompt: string) => void;
   composerUiOnly?: boolean;
+  composerHeader?: ReactNode;
   composerFooterActions?: ReactNode;
   logActionRunId?: string | null;
   showComposer?: boolean;
@@ -362,6 +364,7 @@ export function DebugConversationPane({
       {showComposer ? (
         <DebugComposer
           disabled={composerUiOnly ? false : composerDisabled}
+          header={composerHeader}
           footerActions={composerFooterActions}
           submitting={composerUiOnly ? false : stopAvailable}
           stopping={composerUiOnly ? false : stopping}

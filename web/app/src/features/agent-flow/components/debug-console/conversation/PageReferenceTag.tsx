@@ -1,5 +1,5 @@
 import { CloseOutlined, CodeOutlined } from '@ant-design/icons';
-import { Button, Tag, Tooltip } from 'antd';
+import { Button, Tag, Tooltip, Typography } from 'antd';
 
 import type { AgentFlowPageReference } from '../../../api/runtime';
 
@@ -49,5 +49,42 @@ export function PageReferenceTag({
         ) : null}
       </Tag>
     </Tooltip>
+  );
+}
+
+export function PageReferenceDraftRow({
+  reference,
+  removeLabel,
+  onRemove
+}: {
+  reference: AgentFlowPageReference;
+  removeLabel: string;
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      className="agent-flow-page-reference-draft"
+      data-testid="assistant-page-reference-draft"
+    >
+      <CodeOutlined />
+      <Typography.Text className="agent-flow-page-reference-draft__element">
+        {pageReferenceElementLabel(reference)}
+      </Typography.Text>
+      <Typography.Text
+        className="agent-flow-page-reference-draft__source"
+        ellipsis
+        type="secondary"
+      >
+        {reference.page_title || reference.page_url} ·{' '}
+        {pageReferenceByteLength(reference.outer_html)} B
+      </Typography.Text>
+      <Button
+        aria-label={removeLabel}
+        icon={<CloseOutlined />}
+        size="small"
+        type="text"
+        onClick={onRemove}
+      />
+    </div>
   );
 }

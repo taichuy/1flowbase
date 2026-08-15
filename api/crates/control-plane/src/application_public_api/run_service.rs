@@ -73,15 +73,11 @@ pub struct AssistantPageReference {
 impl AssistantPageReference {
     pub fn try_new(page_url: String, page_title: String, outer_html: String) -> Option<Self> {
         let trimmed_html = outer_html.trim();
-        let div_open = trimmed_html
-            .strip_prefix("<div")
-            .is_some_and(|rest| rest.starts_with('>') || rest.starts_with(char::is_whitespace));
         if page_url.is_empty()
             || page_url.len() > ASSISTANT_PAGE_REFERENCE_URL_MAX_BYTES
             || page_title.len() > ASSISTANT_PAGE_REFERENCE_TITLE_MAX_BYTES
             || outer_html.len() > ASSISTANT_PAGE_REFERENCE_MAX_BYTES
-            || !div_open
-            || !trimmed_html.ends_with("</div>")
+            || !is_complete_html_element(trimmed_html)
         {
             return None;
         }
@@ -103,6 +99,54 @@ impl AssistantPageReference {
     pub fn outer_html(&self) -> &str {
         &self.outer_html
     }
+}
+
+fn is_complete_html_element(html: &str) -> bool {
+    let Some(after_open) = html.strip_prefix('<') else {
+        return false;
+    };
+    let tag_name_len = after_open
+        .char_indices()
+        .take_while(|(_, character)| {
+            character.is_ascii_alphanumeric() || matches!(character, ':' | '-')
+        })
+        .map(|(index, character)| index + character.len_utf8())
+        .last()
+        .unwrap_or_default();
+    if tag_name_len == 0
+        || !after_open
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic)
+    {
+        return false;
+    }
+    let tag_name = &after_open[..tag_name_len];
+    let Some(open_end) = html.find('>') else {
+        return false;
+    };
+    if open_end + 1 == html.len() {
+        return matches!(
+            tag_name.to_ascii_lowercase().as_str(),
+            "area"
+                | "base"
+                | "br"
+                | "col"
+                | "embed"
+                | "hr"
+                | "img"
+                | "input"
+                | "link"
+                | "meta"
+                | "param"
+                | "source"
+                | "track"
+                | "wbr"
+        );
+    }
+    let closing_tag = format!("</{tag_name}>");
+    html.len() >= closing_tag.len()
+        && html[html.len() - closing_tag.len()..].eq_ignore_ascii_case(&closing_tag)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -808,6 +852,17 @@ mod tests {
     use serde_json::json;
     use time::OffsetDateTime;
     use uuid::Uuid;
+
+    #[test]
+    fn assistant_page_reference_accepts_a_complete_non_div_element() {
+        let reference = AssistantPageReference::try_new(
+            "http://console.test/page".to_string(),
+            "页面".to_string(),
+            "<span data-field=\"status\">失败</span>".to_string(),
+        );
+
+        assert!(reference.is_some());
+    }
 
     #[test]
     fn native_result_from_run_detail_aggregates_node_usage_when_flow_output_has_none() {

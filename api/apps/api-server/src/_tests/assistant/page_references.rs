@@ -37,7 +37,7 @@ async fn assistant_page_reference_keeps_display_content_separate_from_model_cont
     let page_reference = json!({
         "page_url": "http://console.test/applications/app-1/logs",
         "page_title": "运行日志",
-        "outer_html": "<div id=\"selected-run\"><span>退款失败</span></div>"
+        "outer_html": "<span id=\"selected-run\">退款失败</span>"
     });
     let response = app
         .clone()
@@ -101,7 +101,7 @@ async fn assistant_page_reference_keeps_display_content_separate_from_model_cont
     let model_query = input_payload["node-start"]["query"].as_str().unwrap();
     assert!(model_query.starts_with("为什么这条运行失败？"));
     assert!(model_query.contains("untrusted"));
-    assert!(model_query.contains("<div id=\\\"selected-run\\\">"));
+    assert!(model_query.contains("<span id=\\\"selected-run\\\">"));
 }
 
 #[tokio::test]

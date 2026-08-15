@@ -49,7 +49,7 @@ import { getWindowWorkspaceViewport } from '../../../../shared/ui/window-workspa
 import { useWindowWorkspace } from '../../../../shared/ui/window-workspace/WindowWorkspaceProvider';
 import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace/window-workspace-state';
 import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole';
-import { PageReferenceTag } from '../debug-console/conversation/PageReferenceTag';
+import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferenceTag';
 import { formatLlmTokenCount } from '../../lib/model-options';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
 import '../editor/styles/shell.css';
@@ -785,6 +785,26 @@ export function EmbeddedAgentAssistantPreview({
             >
               <AgentFlowDebugConsole
                 clearDisabled={!session.canChangeConversation}
+                composerHeader={
+                  pageReferenceSelection.reference ? (
+                    <PageReferenceDraftRow
+                      reference={pageReferenceSelection.reference}
+                      removeLabel={i18nText(
+                        'appShell',
+                        'auto.assistant_remove_page_reference'
+                      )}
+                      onRemove={pageReferenceSelection.clearReference}
+                    />
+                  ) : pageReferenceSelection.error ? (
+                    <div
+                      className="embedded-agent-assistant-preview__page-reference-error"
+                      role="alert"
+                    >
+                      <WarningOutlined />
+                      <span>{pageReferenceSelection.error}</span>
+                    </div>
+                  ) : undefined
+                }
                 composerFooterActions={
                   <Flex
                     align="center"
@@ -819,24 +839,6 @@ export function EmbeddedAgentAssistantPreview({
                           }
                         />
                       </Tooltip>
-                      {pageReferenceSelection.reference ? (
-                        <PageReferenceTag
-                          reference={pageReferenceSelection.reference}
-                          removeLabel={i18nText(
-                            'appShell',
-                            'auto.assistant_remove_page_reference'
-                          )}
-                          onRemove={pageReferenceSelection.clearReference}
-                        />
-                      ) : null}
-                      {pageReferenceSelection.error ? (
-                        <Tooltip title={pageReferenceSelection.error}>
-                          <WarningOutlined
-                            aria-label={pageReferenceSelection.error}
-                            className="embedded-agent-assistant-preview__page-reference-error"
-                          />
-                        </Tooltip>
-                      ) : null}
                     </Flex>
                     {settings?.run_capabilities.model_selection_enabled ? (
                       <Flex align="center" gap={8}>

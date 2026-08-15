@@ -17,6 +17,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 export function AgentFlowDebugConsole({
   ariaLabel,
   closeLabel,
+  composerHeader,
   composerFooterActions,
   composerUiOnly = false,
   clearDisabled = false,
@@ -43,6 +44,7 @@ export function AgentFlowDebugConsole({
 }: {
   ariaLabel?: string;
   closeLabel?: string;
+  composerHeader?: ReactNode;
   composerFooterActions?: ReactNode;
   composerUiOnly?: boolean;
   clearDisabled?: boolean;
@@ -122,6 +124,7 @@ export function AgentFlowDebugConsole({
       >
         <DebugConversationPane
           composerUiOnly={composerUiOnly}
+          composerHeader={composerHeader}
           composerFooterActions={composerFooterActions}
           logActionRunId={logActionRunId}
           messages={messages}

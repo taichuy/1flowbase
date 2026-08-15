@@ -1145,7 +1145,7 @@ describe('EmbeddedAgentAssistant', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('AC-001 through AC-004 selects the nearest div and sends it as one visible page reference', async () => {
+  test('AC-001 through AC-004 selects the actual element and keeps a removable draft above the input', async () => {
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -1194,10 +1194,32 @@ describe('EmbeddedAgentAssistant', () => {
     const assistantWindow = screen.getByTestId(
       'embedded-agent-assistant-preview'
     );
-    expect(assistantWindow).toHaveTextContent('div#reference-target');
+    expect(assistantWindow).toHaveTextContent('span');
     const composer = screen.getByPlaceholderText(
       i18nText('agentFlow', 'auto.chat_with_bots')
     );
+    const draftReference = screen.getByTestId(
+      'assistant-page-reference-draft'
+    );
+    expect(
+      draftReference.compareDocumentPosition(composer) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_remove_page_reference')
+      })
+    );
+    expect(
+      screen.queryByTestId('assistant-page-reference-draft')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_select_page_content')
+      })
+    );
+    fireEvent.click(child);
     fireEvent.change(composer, {
       target: { value: '为什么这个区域显示失败？' }
     });
@@ -1214,7 +1236,7 @@ describe('EmbeddedAgentAssistant', () => {
           page_references: [
             expect.objectContaining({
               outer_html:
-                '<div id="reference-target" data-testid="reference-target"><span data-testid="reference-target-child">退款失败</span></div>'
+                '<span data-testid="reference-target-child">退款失败</span>'
             })
           ]
         }),
@@ -1223,7 +1245,9 @@ describe('EmbeddedAgentAssistant', () => {
         expect.any(Object)
       )
     );
-    expect(assistantWindow).toHaveTextContent('div#reference-target');
-    expect(assistantWindow).not.toHaveTextContent('<div id="reference-target"');
+    expect(assistantWindow).toHaveTextContent('span');
+    expect(assistantWindow).not.toHaveTextContent(
+      '<span data-testid="reference-target-child"'
+    );
   });
 });

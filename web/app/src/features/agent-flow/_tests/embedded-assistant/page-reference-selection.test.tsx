@@ -39,7 +39,7 @@ describe('assistant page reference selection', () => {
     expect(pageReferenceByteLength('<div>中文</div>')).toBe(17);
   });
 
-  test('AC-001 selects the nearest div and Escape cancels without selecting assistant chrome', () => {
+  test('AC-001 selects the actual rendered element and Escape cancels without selecting assistant chrome', () => {
     render(<SelectionHarness />);
     fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
     expect(
@@ -56,7 +56,7 @@ describe('assistant page reference selection', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
     fireEvent.click(screen.getByTestId('inner-span'));
     expect(screen.getByTestId('selected-html')).toHaveTextContent(
-      '<div data-testid="outer-div"><span data-testid="inner-span">内容</span></div>'
+      '<span data-testid="inner-span">内容</span>'
     );
   });
 
