@@ -684,9 +684,9 @@ export function useEmbeddedAssistantSession(
         }
         return entries;
       }, []);
-      const runningMessage = {
+      const runningMessage: AgentFlowDebugMessage = {
         ...createRunningAssistantMessage(),
-        presentation: 'answer' as const
+        presentation: 'answer'
       };
       let streamAssistantMessage = runningMessage;
       let receivedTerminal = false;

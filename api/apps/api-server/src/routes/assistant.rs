@@ -355,7 +355,9 @@ pub async fn get_run_activity(
     let mut events = OrchestrationRuntimeRepository::list_runtime_event_backfill_page(
         &state.store,
         flow_run_id,
-        query.after_sequence.unwrap_or(0),
+        // An omitted cursor must include sequence zero when a runtime stream
+        // implementation persisted one, rather than silently skipping it.
+        query.after_sequence.unwrap_or(-1),
         page_size + 1,
     )
     .await?;

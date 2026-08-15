@@ -29,6 +29,12 @@
   min-height: 0;
 }
 
+/* This element has an explicit flex display above, so the browser's default
+ * [hidden] rule is not strong enough to remove it in the mobile/full view. */
+.embedded-agent-assistant-preview__conversation[hidden] {
+  display: none;
+}
+
 /* Keep the assistant visually aligned with the console's warm emerald theme
  * without changing the reusable Agent Flow debug console. */
 .embedded-agent-assistant-preview .agent-flow-editor__dock-panel {

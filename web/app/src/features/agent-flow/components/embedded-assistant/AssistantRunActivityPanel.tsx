@@ -288,7 +288,9 @@ export function AssistantRunActivityPanel({
         title: entry.title,
         status: entry.status,
         blink: entry.loading,
-        collapsible: true,
+        // Reasoning and final output form the default narrative. Only the raw
+        // tool payload is secondary detail that should start collapsed.
+        collapsible: entry.kind === 'tool',
         content:
           entry.kind === 'reasoning' ? (
             <Think title={entry.title} loading={entry.loading} defaultExpanded>

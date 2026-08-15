@@ -264,7 +264,7 @@ async fn assistant_run_activity_replays_owned_durable_events_in_stream_order() {
         page = response_json(activity).await;
         if page["data"]["items"]
             .as_array()
-            .is_some_and(|items| !items.is_empty())
+            .is_some_and(|items| items.len() >= 2)
         {
             break;
         }
@@ -274,8 +274,13 @@ async fn assistant_run_activity_replays_owned_durable_events_in_stream_order() {
     let items = page["data"]["items"]
         .as_array()
         .expect("activity response has items");
-    assert!(!items.is_empty(), "durable activity should become visible");
-    assert_eq!(items[0]["event_type"], "flow_accepted");
+    assert!(
+        items.len() >= 2,
+        "multiple durable activity events should become visible"
+    );
+    assert!(items
+        .iter()
+        .any(|item| item["event_type"] == "flow_started"));
     assert!(items
         .windows(2)
         .all(|pair| pair[0]["sequence"].as_i64() <= pair[1]["sequence"].as_i64()));
