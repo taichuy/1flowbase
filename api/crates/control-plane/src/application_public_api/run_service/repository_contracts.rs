@@ -155,6 +155,17 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
         let _ = (workspace_id, application_id, actor_user_id, flow_run_id);
         anyhow::bail!("list_assistant_legacy_snapshot_messages not implemented")
     }
+
+    async fn is_assistant_run_visible(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<bool> {
+        let _ = (workspace_id, application_id, actor_user_id, flow_run_id);
+        anyhow::bail!("is_assistant_run_visible not implemented")
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -205,6 +205,100 @@ async fn assistant_stream_starts_a_published_session_run_and_emits_flow_accepted
 }
 
 #[tokio::test]
+async fn assistant_run_activity_replays_owned_durable_events_in_stream_order() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let application_id = create_published_agent_flow(&app, &cookie, &csrf).await;
+    select_assistant_application(&app, &cookie, &csrf, &application_id).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/assistant/runs/stream")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("accept", "text/event-stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "application_id": application_id,
+                        "query": "按顺序展示运行过程",
+                        "history": []
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let frame = read_first_sse_frame(response).await;
+    let envelope: Value = serde_json::from_str(
+        frame
+            .lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .expect("flow_accepted SSE frame has data"),
+    )
+    .unwrap();
+    let run_id = envelope["run_id"].as_str().unwrap();
+
+    let mut page = Value::Null;
+    for _ in 0..40 {
+        let activity = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/console/assistant/runs/{run_id}/activity?application_id={application_id}&page_size=10"
+                    ))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(activity.status(), StatusCode::OK);
+        page = response_json(activity).await;
+        if page["data"]["items"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    let items = page["data"]["items"]
+        .as_array()
+        .expect("activity response has items");
+    assert!(!items.is_empty(), "durable activity should become visible");
+    assert_eq!(items[0]["event_type"], "flow_accepted");
+    assert!(items
+        .windows(2)
+        .all(|pair| pair[0]["sequence"].as_i64() <= pair[1]["sequence"].as_i64()));
+
+    let foreign = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/console/assistant/runs/{}/activity?application_id={application_id}",
+                    uuid::Uuid::now_v7()
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn issue_1608_assistant_conversations_are_stable_and_listed_for_the_session_principal() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

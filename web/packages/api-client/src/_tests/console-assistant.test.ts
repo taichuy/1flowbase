@@ -6,6 +6,7 @@ import {
   getConsoleAssistantConversationMessages,
   getConsoleAssistantSettings,
   getConsoleAssistantLegacySnapshotMessages,
+  getConsoleAssistantRunActivity,
   listConsoleAssistantConversations,
   startConsoleAssistantRun,
   startConsoleAssistantRunStream,
@@ -103,6 +104,17 @@ describe('console assistant client', () => {
       content: string;
       status: string;
     }>();
+  });
+
+  test('AC-004 reads one assistant run activity page in durable stream order', async () => {
+    await expect(
+      getConsoleAssistantRunActivity('application-1', 'run-1', {
+        afterSequence: 20,
+        pageSize: 100
+      })
+    ).resolves.toMatchObject({
+      path: '/api/console/assistant/runs/run-1/activity?application_id=application-1&after_sequence=20&page_size=100'
+    });
   });
 
   test('AC-003 starts Preview-compatible assistant streaming through the session route', async () => {

@@ -241,6 +241,20 @@ pub struct AssistantConversationMessageResponse {
     pub created_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AssistantRunActivityQuery {
+    pub application_id: Uuid,
+    pub after_sequence: Option<i64>,
+    pub page_size: Option<usize>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssistantRunActivityPageResponse {
+    pub items: Vec<debug_run_stream::RuntimeEventStreamEnvelopeResponse>,
+    pub has_more: bool,
+    pub next_sequence: Option<i64>,
+}
+
 struct PreparedAssistantExecution {
     application_id: Uuid,
     conversation_id: Uuid,
@@ -271,6 +285,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/assistant/legacy-runs/:flow_run_id/messages",
             console_get(get_legacy_snapshot_messages, Authenticated),
         )
+        .route(
+            "/assistant/runs/:flow_run_id/activity",
+            console_get(get_run_activity, Authenticated),
+        )
         .route("/assistant/runs", console_post(start_run, Authenticated))
         .route(
             "/assistant/runs/stream",
@@ -284,6 +302,78 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/assistant/runs/websocket",
             console_get(websocket::upgrade, Authenticated),
         )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/assistant/runs/{flow_run_id}/activity",
+    operation_id = "assistant_get_run_activity",
+    summary = "Read an embedded assistant run activity timeline",
+    description = "Reads durable runtime events in stream order after verifying that the run belongs to the current Cookie session user and selected Agent Flow application.",
+    params(
+        ("flow_run_id" = Uuid, Path),
+        ("application_id" = Uuid, Query),
+        ("after_sequence" = Option<i64>, Query),
+        ("page_size" = Option<usize>, Query)
+    ),
+    responses(
+        (status = 200, body = AssistantRunActivityPageResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_run_activity(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(flow_run_id): Path<Uuid>,
+    Query(query): Query<AssistantRunActivityQuery>,
+) -> Result<Json<ApiSuccess<AssistantRunActivityPageResponse>>, ApiError> {
+    const DEFAULT_PAGE_SIZE: usize = 200;
+    const MAX_PAGE_SIZE: usize = 500;
+
+    let context = require_session(&state, &headers).await?;
+    context.cookie_session()?;
+    assistant_preference_for_target(&state, &context, query.application_id).await?;
+    if !state
+        .store
+        .is_assistant_run_visible(
+            context.actor.current_workspace_id,
+            query.application_id,
+            context.user.id,
+            flow_run_id,
+        )
+        .await?
+    {
+        return Err(control_plane::errors::ControlPlaneError::NotFound("flow_run").into());
+    }
+
+    let page_size = query
+        .page_size
+        .unwrap_or(DEFAULT_PAGE_SIZE)
+        .clamp(1, MAX_PAGE_SIZE);
+    let mut events = OrchestrationRuntimeRepository::list_runtime_event_backfill_page(
+        &state.store,
+        flow_run_id,
+        query.after_sequence.unwrap_or(0),
+        page_size + 1,
+    )
+    .await?;
+    let has_more = events.len() > page_size;
+    events.truncate(page_size);
+    let items = events
+        .into_iter()
+        .map(debug_run_stream::to_runtime_event_record_response)
+        .collect::<Vec<_>>();
+    let next_sequence = has_more
+        .then(|| items.last().map(|item| item.sequence))
+        .flatten();
+
+    Ok(Json(ApiSuccess::new(AssistantRunActivityPageResponse {
+        items,
+        has_more,
+        next_sequence,
+    })))
 }
 
 #[utoipa::path(

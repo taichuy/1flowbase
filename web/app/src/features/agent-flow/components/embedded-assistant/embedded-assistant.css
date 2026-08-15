@@ -223,6 +223,61 @@
   background: var(--bg-elevated);
 }
 
+.embedded-agent-assistant-activity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.embedded-agent-assistant-activity__current-node {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  background: var(--bg-page);
+}
+
+.embedded-agent-assistant-activity__current-node > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.embedded-agent-assistant-activity__current-node .ant-typography {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-agent-assistant-activity__node-icon {
+  color: var(--color-primary);
+}
+
+.embedded-agent-assistant-activity__timeline {
+  min-width: 0;
+}
+
+.embedded-agent-assistant-activity__payload {
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.625rem;
+  border-radius: 0.5rem;
+  background: var(--bg-page);
+  color: var(--text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .embedded-agent-assistant-preview__runtime-menu-row,
 .embedded-agent-assistant-preview__runtime-menu-option {
   display: flex;

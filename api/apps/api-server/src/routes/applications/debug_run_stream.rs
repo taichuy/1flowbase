@@ -204,7 +204,7 @@ pub(crate) fn durable_event_stream_sequence(event: &domain::RuntimeEventRecord) 
         .unwrap_or(event.sequence)
 }
 
-fn to_runtime_event_record_response(
+pub(crate) fn to_runtime_event_record_response(
     event: domain::RuntimeEventRecord,
 ) -> RuntimeEventStreamEnvelopeResponse {
     let sequence = durable_event_stream_sequence(&event);

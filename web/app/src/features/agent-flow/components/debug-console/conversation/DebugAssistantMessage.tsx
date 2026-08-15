@@ -1,4 +1,5 @@
 import {
+  BranchesOutlined,
   CopyOutlined,
   FileTextOutlined,
   HistoryOutlined
@@ -57,6 +58,10 @@ export function DebugAssistantMessage({
   const hasReasoning = Boolean(parsedContent.reasoningText.trim());
   const hasAnswer = Boolean(parsedContent.answerText.trim());
   const canOpenLog = message.canOpenDetail !== false;
+  const openLogLabel =
+    message.presentation === 'answer'
+      ? i18nText('appShell', 'auto.assistant_activity')
+      : i18nText('agentFlow', 'auto.view_conversation_log');
 
   async function handleCopyOutput() {
     if (!parsedFullContent.answerText) {
@@ -74,13 +79,15 @@ export function DebugAssistantMessage({
   return (
     <article className="agent-flow-editor__debug-message agent-flow-editor__debug-message--assistant">
       <div className="agent-flow-editor__debug-message-main">
-        <DebugWorkflowProcess
-          items={message.traceSummary}
-          reasoning={parsedContent.reasoningText}
-          reasoningStreaming={message.status === 'running'}
-          onLoadArtifact={onLoadArtifact}
-          onLoadArtifacts={onLoadArtifacts}
-        />
+        {message.presentation !== 'answer' ? (
+          <DebugWorkflowProcess
+            items={message.traceSummary}
+            reasoning={parsedContent.reasoningText}
+            reasoningStreaming={message.status === 'running'}
+            onLoadArtifact={onLoadArtifact}
+            onLoadArtifacts={onLoadArtifacts}
+          />
+        ) : null}
         {hasAnswer || !hasReasoning || message.status === 'cancelled' ? (
           <DebugMarkdownContent
             className="agent-flow-editor__debug-message-content"
@@ -112,12 +119,16 @@ export function DebugAssistantMessage({
             />
           </Tooltip>
           {onOpenLog && canOpenLog ? (
-            <Tooltip
-              title={i18nText('agentFlow', 'auto.view_conversation_log')}
-            >
+            <Tooltip title={openLogLabel}>
               <Button
-                aria-label={i18nText('agentFlow', 'auto.view_conversation_log')}
-                icon={<FileTextOutlined />}
+                aria-label={openLogLabel}
+                icon={
+                  message.presentation === 'answer' ? (
+                    <BranchesOutlined />
+                  ) : (
+                    <FileTextOutlined />
+                  )
+                }
                 size="small"
                 onClick={() => onOpenLog(message)}
               />

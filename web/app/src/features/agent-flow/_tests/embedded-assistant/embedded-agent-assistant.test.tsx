@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -13,6 +14,7 @@ const {
   createConsoleAssistantConversation,
   getConsoleAssistantConversationMessages,
   getConsoleAssistantLegacySnapshotMessages,
+  getConsoleAssistantRunActivity,
   getConsoleAssistantSettings,
   listConsoleAssistantConversations,
   startConsoleAssistantRunWebSocket,
@@ -25,6 +27,7 @@ const {
   createConsoleAssistantConversation: vi.fn(),
   getConsoleAssistantConversationMessages: vi.fn(),
   getConsoleAssistantLegacySnapshotMessages: vi.fn(),
+  getConsoleAssistantRunActivity: vi.fn(),
   getConsoleAssistantSettings: vi.fn(),
   listConsoleAssistantConversations: vi.fn(),
   startConsoleAssistantRunWebSocket: vi.fn(),
@@ -42,6 +45,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
     createConsoleAssistantConversation,
     getConsoleAssistantConversationMessages,
     getConsoleAssistantLegacySnapshotMessages,
+    getConsoleAssistantRunActivity,
     getConsoleAssistantSettings,
     listConsoleAssistantConversations,
     startConsoleAssistantRunWebSocket,
@@ -152,6 +156,12 @@ describe('EmbeddedAgentAssistant', () => {
         created_at: '2026-08-06T00:00:00Z'
       }
     ]);
+    getConsoleAssistantRunActivity.mockReset();
+    getConsoleAssistantRunActivity.mockResolvedValue({
+      items: [],
+      has_more: false,
+      next_sequence: null
+    });
     listConsoleAssistantConversations.mockReset();
     listConsoleAssistantConversations.mockResolvedValue({
       items: [
@@ -1121,68 +1131,89 @@ describe('EmbeddedAgentAssistant', () => {
     await waitFor(() => expect(composer).toBeEnabled());
   });
 
-  test('AC-006 loads a truncated workflow payload from the selected assistant flow', async () => {
-    const loadArtifacts = vi
-      .spyOn(runtimeApi, 'fetchRuntimeDebugArtifacts')
-      .mockResolvedValue({
-        artifacts: [
-          {
-            artifact_ref: 'artifact-input',
-            content_type: 'application/json',
-            value: { tools: [{ name: 'full tool definition' }] }
-          }
-        ]
-      });
+  test('AC-006 moves ordered reasoning, tools, and output into a run activity sidebar', async () => {
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
           type: 'flow_accepted',
-          run_id: 'run-artifact',
-          status: 'queued'
+          run_id: 'run-activity',
+          status: 'queued',
+          event_id: 'run-activity:1',
+          sequence: 1
         });
         handlers.onEvent({
           type: 'node_started',
-          run_id: 'run-artifact',
+          run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
           node_type: 'llm',
-          title: 'LLM',
-          input_payload: {
-            tools: {
-              __runtime_debug_artifact: true,
-              is_truncated: true,
-              original_size_bytes: 8192,
-              preview_size_bytes: 256,
-              content_type: 'application/json',
-              artifact_ref: 'artifact-input',
-              preview: '[{"name":"preview tool"}]'
-            }
+          title: 'Research node',
+          event_id: 'run-activity:2',
+          sequence: 2
+        });
+        handlers.onEvent({
+          type: 'reasoning_delta',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          text: '先检查配置',
+          event_id: 'run-activity:3',
+          sequence: 3,
+          presentation: {
+            kind: 'answer',
+            answer_node_id: 'node-answer',
+            segment_index: 0
+          }
+        });
+        handlers.onEvent({
+          type: 'assistant_tool_call_started',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          tool_call: { id: 'call-1', name: 'list_items' },
+          event_id: 'run-activity:4',
+          sequence: 4
+        });
+        handlers.onEvent({
+          type: 'assistant_tool_call_finished',
+          run_id: 'run-activity',
+          node_run_id: 'node-run-llm',
+          node_id: 'node-llm',
+          tool_call: { id: 'call-1', name: 'list_items' },
+          tool_result: { count: 2 },
+          duration_ms: 4,
+          event_id: 'run-activity:5',
+          sequence: 5
+        });
+        handlers.onEvent({
+          type: 'text_delta',
+          run_id: 'run-activity',
+          node_id: 'node-answer',
+          text: '最终结果',
+          event_id: 'run-activity:6',
+          sequence: 6,
+          presentation: {
+            kind: 'answer',
+            answer_node_id: 'node-answer',
+            segment_index: 0
           }
         });
         handlers.onEvent({
           type: 'node_finished',
-          run_id: 'run-artifact',
+          run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
           status: 'succeeded',
-          debug_payload: {
-            llm_rounds: [
-              {
-                round_index: 0,
-                assistant: {
-                  tool_calls: [
-                    { id: 'call-tools', name: 'list_available_tools' }
-                  ]
-                }
-              }
-            ]
-          }
+          event_id: 'run-activity:7',
+          sequence: 7
         });
         handlers.onEvent({
           type: 'flow_finished',
-          run_id: 'run-artifact',
+          run_id: 'run-activity',
           status: 'succeeded',
-          output: { answer: 'Tool list ready' }
+          output: { answer: '最终结果' },
+          event_id: 'run-activity:8',
+          sequence: 8
         });
       }
     );
@@ -1205,27 +1236,104 @@ describe('EmbeddedAgentAssistant', () => {
       name: i18nText('agentFlow', 'auto.send_debug_message')
     });
     await waitFor(() => expect(sendButton).toBeEnabled());
-    fireEvent.change(composer, { target: { value: 'List available tools' } });
+    fireEvent.change(composer, { target: { value: 'Inspect activity order' } });
     fireEvent.click(sendButton);
 
-    const inputPayload = await screen.findByRole('button', {
-      name: i18nText('agentFlow', 'auto.input')
-    });
-    fireEvent.click(inputPayload);
+    expect(await screen.findByText('最终结果')).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(i18nText('agentFlow', 'auto.workflow'))
+    ).not.toBeInTheDocument();
 
-    const loadFullValue = screen.getByRole('button', {
-      name: i18nText('agentFlow', 'auto.load_full_value')
+    const activityButtons = screen.getAllByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_activity')
     });
-    expect(loadFullValue).toBeEnabled();
-    fireEvent.click(loadFullValue);
+    fireEvent.click(activityButtons.at(-1) as HTMLElement);
 
-    await waitFor(() =>
-      expect(loadArtifacts).toHaveBeenCalledWith('flow-1', ['artifact-input'])
+    const sidebar = await screen.findByTestId(
+      'embedded-agent-assistant-history'
     );
-    await waitFor(() =>
-      expect(screen.getByLabelText('输入 JSON')).toHaveTextContent(
-        'full tool definition'
-      )
+    expect(sidebar).toHaveAttribute(
+      'aria-label',
+      i18nText('appShell', 'auto.assistant_activity')
+    );
+    expect(within(sidebar).getByText('Research node')).toBeInTheDocument();
+    const reasoning = within(sidebar).getByText('先检查配置');
+    const tool = within(sidebar).getByText('list_items');
+    const output = within(sidebar).getByText('最终结果');
+    expect(reasoning.compareDocumentPosition(tool)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(tool.compareDocumentPosition(output)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  test('AC-007 replays the same run activity projection for restored history', async () => {
+    getConsoleAssistantConversationMessages.mockResolvedValueOnce([
+      {
+        id: 'run-history:assistant',
+        flow_run_id: 'run-history',
+        role: 'assistant',
+        content: '历史最终回答',
+        page_references: [],
+        created_at: '2026-08-15T00:00:00Z'
+      }
+    ]);
+    getConsoleAssistantRunActivity.mockResolvedValueOnce({
+      items: [
+        {
+          event_id: 'run-history:3',
+          run_id: 'run-history',
+          node_run_id: 'node-run-history',
+          event_type: 'reasoning_delta',
+          sequence: 3,
+          created_at: '2026-08-15T00:00:01Z',
+          payload: {
+            node_id: 'node-history',
+            text: '历史思考',
+            presentation: {
+              kind: 'answer',
+              answer_node_id: 'node-answer',
+              segment_index: 0
+            }
+          },
+          delta_index: 3,
+          content_type: 'reasoning',
+          text: '历史思考'
+        }
+      ],
+      has_more: false,
+      next_sequence: null
+    });
+
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: i18nText('appShell', 'auto.assistant_history')
+      })
+    );
+    fireEvent.click(await screen.findByText('First conversation'));
+    expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
+
+    const activityButtons = screen.getAllByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_activity')
+    });
+    fireEvent.click(activityButtons.at(-1) as HTMLElement);
+
+    expect(await screen.findByText('历史思考')).toBeInTheDocument();
+    expect(getConsoleAssistantRunActivity).toHaveBeenCalledWith(
+      'flow-1',
+      'run-history',
+      { pageSize: 500 }
     );
   });
 

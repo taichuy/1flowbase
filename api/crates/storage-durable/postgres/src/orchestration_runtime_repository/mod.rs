@@ -1043,6 +1043,23 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         )
         .await
     }
+
+    async fn is_assistant_run_visible(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<bool> {
+        PgControlPlaneStore::is_assistant_run_visible(
+            self,
+            workspace_id,
+            application_id,
+            actor_user_id,
+            flow_run_id,
+        )
+        .await
+    }
 }
 
 #[async_trait]

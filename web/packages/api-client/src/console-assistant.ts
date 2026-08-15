@@ -122,6 +122,25 @@ export interface ConsoleAssistantConversationMessage {
   created_at: string;
 }
 
+export interface ConsoleAssistantRunActivityEnvelope {
+  event_id: string;
+  run_id: string;
+  node_run_id: string | null;
+  event_type: string;
+  sequence: number;
+  created_at: string;
+  payload: Record<string, unknown>;
+  delta_index: number | null;
+  content_type: string | null;
+  text: string | null;
+}
+
+export interface ConsoleAssistantRunActivityPage {
+  items: ConsoleAssistantRunActivityEnvelope[];
+  has_more: boolean;
+  next_sequence: number | null;
+}
+
 interface ConsoleAssistantWebSocketTicket {
   ticket: string;
   protocol: string;
@@ -203,6 +222,23 @@ export function getConsoleAssistantLegacySnapshotMessages(
   const search = new URLSearchParams({ application_id: applicationId });
   return apiFetch<ConsoleAssistantConversationMessage[]>({
     path: `/api/console/assistant/legacy-runs/${flowRunId}/messages?${search.toString()}`
+  });
+}
+
+export function getConsoleAssistantRunActivity(
+  applicationId: string,
+  flowRunId: string,
+  input: { afterSequence?: number; pageSize?: number } = {}
+) {
+  const search = new URLSearchParams({ application_id: applicationId });
+  if (input.afterSequence !== undefined) {
+    search.set('after_sequence', String(input.afterSequence));
+  }
+  if (input.pageSize !== undefined) {
+    search.set('page_size', String(input.pageSize));
+  }
+  return apiFetch<ConsoleAssistantRunActivityPage>({
+    path: `/api/console/assistant/runs/${flowRunId}/activity?${search.toString()}`
   });
 }
 

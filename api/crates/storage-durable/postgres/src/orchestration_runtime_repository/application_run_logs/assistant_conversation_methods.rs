@@ -436,6 +436,47 @@ impl PgControlPlaneStore {
 
         assistant_conversation_messages_from_rows(rows)
     }
+
+    async fn is_assistant_run_visible(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        flow_run_id: Uuid,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            r#"
+            select exists (
+                select 1
+                from flow_runs runs
+                join applications on applications.id = runs.application_id
+                left join assistant_conversations conversations
+                  on conversations.conversation_id = runs.assistant_conversation_id
+                where runs.id = $1
+                  and applications.workspace_id = $2
+                  and runs.application_id = $3
+                  and runs.created_by = $4
+                  and runs.run_mode = 'assistant_execution'
+                  and runs.compatibility_mode = 'embedded_assistant'
+                  and (
+                      runs.assistant_conversation_id is null
+                      or (
+                          conversations.scope_id = $2
+                          and conversations.application_id = $3
+                          and conversations.created_by = $4
+                      )
+                  )
+            )
+            "#,
+        )
+        .bind(flow_run_id)
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(actor_user_id)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
+    }
 }
 
 fn assistant_conversation_record_from_row(

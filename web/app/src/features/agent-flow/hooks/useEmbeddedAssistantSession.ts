@@ -161,8 +161,20 @@ function restoredMessages(
     detailRunId: item.flow_run_id,
     canOpenDetail: true,
     rawOutput: null,
-    traceSummary: []
+    traceSummary: [],
+    presentation: 'answer'
   }));
+}
+
+function withAssistantActivityEvent(
+  message: AgentFlowDebugMessage,
+  event: ConsoleFlowDebugStreamEvent
+): AgentFlowDebugMessage {
+  return {
+    ...message,
+    presentation: 'answer',
+    activityEvents: [...(message.activityEvents ?? []), event]
+  };
 }
 
 export function useEmbeddedAssistantSession(
@@ -411,10 +423,13 @@ export function useEmbeddedAssistantSession(
           if (event.type === 'context_snapshot') {
             setContextSnapshot(event);
           }
-          streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
-            streamAssistantMessage,
-            event,
-            liveTraceItemsRef.current
+          streamAssistantMessage = withAssistantActivityEvent(
+            applyDebugStreamEventToAssistantMessage(
+              streamAssistantMessage,
+              event,
+              liveTraceItemsRef.current
+            ),
+            event
           );
           if (isTerminalEvent(event)) {
             receivedTerminal = true;
@@ -529,7 +544,8 @@ export function useEmbeddedAssistantSession(
               ...createRunningAssistantMessage(),
               runId: activeRunId,
               detailRunId: activeRunId,
-              canOpenDetail: true
+              canOpenDetail: true,
+              presentation: 'answer' as const
             };
             runningMessageId = runningMessage.id;
             nextMessages.push(runningMessage);
@@ -668,7 +684,10 @@ export function useEmbeddedAssistantSession(
         }
         return entries;
       }, []);
-      const runningMessage = createRunningAssistantMessage();
+      const runningMessage = {
+        ...createRunningAssistantMessage(),
+        presentation: 'answer' as const
+      };
       let streamAssistantMessage = runningMessage;
       let receivedTerminal = false;
       let receivedAnyEvent = false;
@@ -731,10 +750,13 @@ export function useEmbeddedAssistantSession(
             setContextSnapshot(event);
           }
 
-          streamAssistantMessage = applyDebugStreamEventToAssistantMessage(
-            streamAssistantMessage,
-            event,
-            liveTraceItemsRef.current
+          streamAssistantMessage = withAssistantActivityEvent(
+            applyDebugStreamEventToAssistantMessage(
+              streamAssistantMessage,
+              event,
+              liveTraceItemsRef.current
+            ),
+            event
           );
           if (isTerminalEvent(event)) {
             receivedTerminal = true;

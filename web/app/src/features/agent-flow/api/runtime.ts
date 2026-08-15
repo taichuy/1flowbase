@@ -122,6 +122,8 @@ export interface AgentFlowDebugMessage {
   rawOutput: Record<string, unknown> | null;
   statistics?: AgentFlowRunStatistics;
   traceSummary: AgentFlowTraceItem[];
+  presentation?: 'debug' | 'answer';
+  activityEvents?: FlowDebugRunStreamEvent[];
 }
 
 export interface AgentFlowPageReference {

@@ -10,6 +10,7 @@ import {
 } from '@1flowbase/api-client';
 import {
   CheckOutlined,
+  BranchesOutlined,
   ClockCircleOutlined,
   CloseOutlined,
   ExclamationCircleOutlined,
@@ -57,6 +58,7 @@ import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole';
 import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferenceTag';
 import { formatLlmTokenCount } from '../../lib/model-options';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
+import { AssistantRunActivityPanel } from './AssistantRunActivityPanel';
 import '../editor/styles/shell.css';
 import './embedded-assistant.css';
 
@@ -228,6 +230,9 @@ export function EmbeddedAgentAssistantPreview({
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [activityMessageId, setActivityMessageId] = useState<string | null>(
+    null
+  );
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] =
     useState<ConsoleAssistantConversationPage | null>(null);
@@ -260,6 +265,16 @@ export function EmbeddedAgentAssistantPreview({
     settings?.preference.application_id ?? null,
     clientTools
   );
+  const activityMessage =
+    session.messages.find(
+      (message) =>
+        message.id === activityMessageId && message.role === 'assistant'
+    ) ?? null;
+  const latestRunMessage =
+    [...session.messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.runId) ?? null;
+  const sidePanelOpen = historyOpen || activityMessage !== null;
 
   useEffect(() => {
     const wasOpen = assistantOpenRef.current;
@@ -320,6 +335,7 @@ export function EmbeddedAgentAssistantPreview({
     setSettings(null);
     setSettingsOpen(false);
     setHistoryOpen(false);
+    setActivityMessageId(null);
     setHistoryFullView(false);
     historyExpansionSideRef.current = null;
     setHistoryPage(null);
@@ -531,12 +547,11 @@ export function EmbeddedAgentAssistantPreview({
     );
   }
 
-  function openHistory() {
+  function expandSidePanel() {
     const rect = assistantWindowRectRef.current;
     if (!rect || mobile) {
       historyExpansionSideRef.current = null;
       setHistoryFullView(true);
-      setHistoryOpen(true);
       return;
     }
     const viewport = getWindowWorkspaceViewport();
@@ -554,7 +569,6 @@ export function EmbeddedAgentAssistantPreview({
     if (!side) {
       historyExpansionSideRef.current = null;
       setHistoryFullView(true);
-      setHistoryOpen(true);
       return;
     }
 
@@ -570,6 +584,13 @@ export function EmbeddedAgentAssistantPreview({
     assistantWindowRectRef.current = nextRect;
     setRect(ASSISTANT_WINDOW_ID, nextRect);
     setHistoryFullView(false);
+  }
+
+  function openHistory() {
+    if (!sidePanelOpen) {
+      expandSidePanel();
+    }
+    setActivityMessageId(null);
     setHistoryOpen(true);
   }
 
@@ -581,7 +602,7 @@ export function EmbeddedAgentAssistantPreview({
     openHistory();
   }
 
-  function closeHistory() {
+  function collapseSidePanel() {
     const side = historyExpansionSideRef.current;
     const rect = assistantWindowRectRef.current;
     if (side && rect) {
@@ -599,7 +620,24 @@ export function EmbeddedAgentAssistantPreview({
     }
     historyExpansionSideRef.current = null;
     setHistoryFullView(false);
+  }
+
+  function closeHistory() {
+    collapseSidePanel();
     setHistoryOpen(false);
+  }
+
+  function openActivity(messageId: string) {
+    if (!sidePanelOpen) {
+      expandSidePanel();
+    }
+    setHistoryOpen(false);
+    setActivityMessageId(messageId);
+  }
+
+  function closeActivity() {
+    collapseSidePanel();
+    setActivityMessageId(null);
   }
   const runtimePreferenceMenuItems: MenuProps['items'] = settings
     ? [
@@ -667,7 +705,7 @@ export function EmbeddedAgentAssistantPreview({
   }, [mobile, toggleMaximized, windowEntry]);
 
   useEffect(() => {
-    if (!historyOpen) {
+    if (!sidePanelOpen) {
       return;
     }
     const rect = assistantWindowRectRef.current;
@@ -681,7 +719,7 @@ export function EmbeddedAgentAssistantPreview({
     }
     historyExpansionSideRef.current = null;
     setHistoryFullView(true);
-  }, [historyFullView, historyOpen, mobile, windowEntry?.rect.width]);
+  }, [historyFullView, mobile, sidePanelOpen, windowEntry?.rect.width]);
 
   useEffect(() => () => historyResizeCleanupRef.current?.(), []);
 
@@ -821,12 +859,16 @@ export function EmbeddedAgentAssistantPreview({
           <div
             className="embedded-agent-assistant-preview__layout"
             data-history-full={historyFullView}
-            data-history-open={historyOpen}
+            data-history-open={sidePanelOpen}
             ref={historyLayoutRef}
           >
-            {historyOpen ? (
+            {sidePanelOpen ? (
               <aside
-                aria-label={i18nText('appShell', 'auto.assistant_history')}
+                aria-label={
+                  activityMessage
+                    ? i18nText('appShell', 'auto.assistant_activity')
+                    : i18nText('appShell', 'auto.assistant_history')
+                }
                 className="embedded-agent-assistant-preview__history"
                 data-resizing={isResizingHistory ? 'true' : 'false'}
                 data-testid="embedded-agent-assistant-history"
@@ -839,124 +881,140 @@ export function EmbeddedAgentAssistantPreview({
                 <div className="embedded-agent-assistant-preview__history-content">
                   <div className="embedded-agent-assistant-preview__history-header">
                     <span className="embedded-agent-assistant-preview__history-title">
-                      {i18nText('appShell', 'auto.assistant_history')}
+                      {activityMessage
+                        ? i18nText('appShell', 'auto.assistant_activity')
+                        : i18nText('appShell', 'auto.assistant_history')}
                     </span>
                     <Button
                       aria-label={i18nText('agentFlow', 'auto.close', {
-                        value1: i18nText('appShell', 'auto.assistant_history')
+                        value1: activityMessage
+                          ? i18nText('appShell', 'auto.assistant_activity')
+                          : i18nText('appShell', 'auto.assistant_history')
                       })}
                       icon={<CloseOutlined />}
                       size="small"
                       type="text"
-                      onClick={closeHistory}
+                      onClick={activityMessage ? closeActivity : closeHistory}
                     />
                   </div>
                   <div className="embedded-agent-assistant-preview__history-body">
-                    <Conversations
-                      activeKey={
-                        session.conversationId
-                          ? `conversation:${session.conversationId}`
-                          : session.legacyFlowRunId
-                            ? `legacy:${session.legacyFlowRunId}`
-                            : undefined
-                      }
-                      creation={{
-                        align: 'start',
-                        disabled: !session.canChangeConversation,
-                        icon: <PlusOutlined />,
-                        label: i18nText(
-                          'appShell',
-                          'auto.assistant_new_conversation'
-                        ),
-                        onClick: () => {
-                          void session
-                            .startNewConversation()
-                            .then((created) => {
-                              if (created) {
-                                closeHistory();
-                              }
-                            });
-                        }
-                      }}
-                      groupable
-                      items={historyPage?.items.map((item) => ({
-                        disabled: historyLoading || session.restoringHistory,
-                        group: assistantConversationGroup(item.updated_at),
-                        key: assistantConversationKey(item),
-                        label: (
-                          <span className="embedded-agent-assistant-preview__history-item">
-                            <span className="embedded-agent-assistant-preview__history-item-title">
-                              {item.title ??
-                                (item.conversation_id
-                                  ? i18nText(
-                                      'appShell',
-                                      'auto.assistant_new_conversation'
-                                    )
-                                  : i18nText(
-                                      'appShell',
-                                      'auto.assistant_legacy_snapshot'
-                                    ))}
-                            </span>
-                            {assistantRunStatusIndicator(
-                              item.latest_flow_run_status
-                            )}
-                          </span>
-                        )
-                      }))}
-                      onActiveChange={(key) => {
-                        const item = historyPage?.items.find(
-                          (candidate) =>
-                            assistantConversationKey(candidate) === key
-                        );
-                        if (!item) {
-                          return;
-                        }
-                        void session
-                          .restoreConversation({
-                            conversationId: item.conversation_id,
-                            legacyFlowRunId: item.legacy_flow_run_id,
-                            latestFlowRunId: item.latest_flow_run_id,
-                            latestFlowRunStatus: item.latest_flow_run_status
-                          })
-                          .then((restored) => {
-                            if (restored && item.conversation_id) {
-                              closeHistory();
+                    {activityMessage && applicationId ? (
+                      <AssistantRunActivityPanel
+                        applicationId={applicationId}
+                        message={activityMessage}
+                      />
+                    ) : (
+                      <>
+                        <Conversations
+                          activeKey={
+                            session.conversationId
+                              ? `conversation:${session.conversationId}`
+                              : session.legacyFlowRunId
+                                ? `legacy:${session.legacyFlowRunId}`
+                                : undefined
+                          }
+                          creation={{
+                            align: 'start',
+                            disabled: !session.canChangeConversation,
+                            icon: <PlusOutlined />,
+                            label: i18nText(
+                              'appShell',
+                              'auto.assistant_new_conversation'
+                            ),
+                            onClick: () => {
+                              void session
+                                .startNewConversation()
+                                .then((created) => {
+                                  if (created) {
+                                    closeHistory();
+                                  }
+                                });
                             }
-                          });
-                      }}
-                    />
-                    {session.legacyFlowRunId ? (
-                      <Button
-                        block
-                        disabled={!session.canChangeConversation}
-                        onClick={() => {
-                          void session
-                            .startNewConversation(
-                              session.legacyFlowRunId ?? undefined
+                          }}
+                          groupable
+                          items={historyPage?.items.map((item) => ({
+                            disabled:
+                              historyLoading || session.restoringHistory,
+                            group: assistantConversationGroup(item.updated_at),
+                            key: assistantConversationKey(item),
+                            label: (
+                              <span className="embedded-agent-assistant-preview__history-item">
+                                <span className="embedded-agent-assistant-preview__history-item-title">
+                                  {item.title ??
+                                    (item.conversation_id
+                                      ? i18nText(
+                                          'appShell',
+                                          'auto.assistant_new_conversation'
+                                        )
+                                      : i18nText(
+                                          'appShell',
+                                          'auto.assistant_legacy_snapshot'
+                                        ))}
+                                </span>
+                                {assistantRunStatusIndicator(
+                                  item.latest_flow_run_status
+                                )}
+                              </span>
                             )
-                            .then((created) => {
-                              if (created) {
-                                closeHistory();
-                              }
-                            });
-                        }}
-                      >
-                        {i18nText(
-                          'appShell',
-                          'auto.assistant_continue_legacy_snapshot'
-                        )}
-                      </Button>
-                    ) : null}
-                    {historyPage &&
-                    historyPage.items.length < historyPage.total ? (
-                      <Button
-                        block
-                        disabled={historyLoading}
-                        onClick={() => void loadHistory(historyPage.page + 1)}
-                      >
-                        {i18nText('appShell', 'auto.assistant_load_more')}
-                      </Button>
-                    ) : null}
+                          }))}
+                          onActiveChange={(key) => {
+                            const item = historyPage?.items.find(
+                              (candidate) =>
+                                assistantConversationKey(candidate) === key
+                            );
+                            if (!item) {
+                              return;
+                            }
+                            void session
+                              .restoreConversation({
+                                conversationId: item.conversation_id,
+                                legacyFlowRunId: item.legacy_flow_run_id,
+                                latestFlowRunId: item.latest_flow_run_id,
+                                latestFlowRunStatus: item.latest_flow_run_status
+                              })
+                              .then((restored) => {
+                                if (restored && item.conversation_id) {
+                                  closeHistory();
+                                }
+                              });
+                          }}
+                        />
+                        {session.legacyFlowRunId ? (
+                          <Button
+                            block
+                            disabled={!session.canChangeConversation}
+                            onClick={() => {
+                              void session
+                                .startNewConversation(
+                                  session.legacyFlowRunId ?? undefined
+                                )
+                                .then((created) => {
+                                  if (created) {
+                                    closeHistory();
+                                  }
+                                });
+                            }}
+                          >
+                            {i18nText(
+                              'appShell',
+                              'auto.assistant_continue_legacy_snapshot'
+                            )}
+                          </Button>
+                        ) : null}
+                        {historyPage &&
+                        historyPage.items.length < historyPage.total ? (
+                          <Button
+                            block
+                            disabled={historyLoading}
+                            onClick={() =>
+                              void loadHistory(historyPage.page + 1)
+                            }
+                          >
+                            {i18nText('appShell', 'auto.assistant_load_more')}
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div
@@ -975,7 +1033,7 @@ export function EmbeddedAgentAssistantPreview({
             ) : null}
             <div
               className="embedded-agent-assistant-preview__conversation"
-              hidden={(mobile || historyFullView) && historyOpen}
+              hidden={(mobile || historyFullView) && sidePanelOpen}
             >
               <AgentFlowDebugConsole
                 clearDisabled={!session.canEditCurrentConversation}
@@ -1175,6 +1233,21 @@ export function EmbeddedAgentAssistantPreview({
                     <Button
                       aria-label={i18nText(
                         'appShell',
+                        'auto.assistant_activity'
+                      )}
+                      disabled={!latestRunMessage}
+                      icon={<BranchesOutlined />}
+                      size="small"
+                      type="text"
+                      onClick={() => {
+                        if (latestRunMessage) {
+                          openActivity(latestRunMessage.id);
+                        }
+                      }}
+                    />
+                    <Button
+                      aria-label={i18nText(
+                        'appShell',
                         'auto.assistant_history'
                       )}
                       disabled={!settings}
@@ -1220,6 +1293,7 @@ export function EmbeddedAgentAssistantPreview({
                         fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
                     : undefined
                 }
+                onOpenMessageLog={(message) => openActivity(message.id)}
                 onStopRun={() => {
                   void session.stopRun();
                 }}
