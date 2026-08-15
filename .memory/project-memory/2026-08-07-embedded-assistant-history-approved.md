@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置助手历史会话与持久化恢复已批准
-summary: 用户已批准为内置助手增加稳定内部会话身份和专用历史接口；复用运行日志与消息投影，旧运行只读且不猜测合并，线上实施真值为 GitHub #1608。
+summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；客户端工具断连后返回 client_unavailable 且无页面副作用。
 keywords:
   - embedded assistant
   - conversation history
@@ -13,10 +13,11 @@ match_when:
   - 处理助手会话恢复、分页、旧运行或会话权限
   - 开始 GitHub issue 1608
 created_at: 2026-08-07 11
-updated_at: 2026-08-07 11
-last_verified_at: 2026-08-07 11
+updated_at: 2026-08-15 17
+last_verified_at: 2026-08-15 17
 decision_policy: verify_before_decision
-status: approved
+status: implemented_pending_user_acceptance
+integration_commit: f9b9e76db
 scope:
   - https://github.com/taichuy/1flowbase/issues/1608
   - web/app/src/features/agent-flow/components/embedded-assistant
@@ -54,3 +55,12 @@ scope:
 ## 截止日期
 
 无固定日期；新开发会话读取并执行 GitHub `#1608`，完成 AC、fresh QA 与用户验收后关闭。
+
+## 2026-08-15 长任务与历史续接
+
+- 用户确认关闭助手窗口、刷新或关闭浏览器只断开观察和客户端工具能力，不取消已接受的后端运行；显式 Stop 是唯一取消入口。
+- 历史会话在其他 conversation 运行期间仍可选择；选中 active conversation 时读取后端 `latest_flow_run_status` 并 attach `latest_flow_run_id`。
+- 同一 conversation 只允许一个 active run，不同 conversation 可各自在后端运行；PostgreSQL partial unique index 是并发兜底。
+- 浏览器注入工具只属于创建运行时的当前 WebSocket capability；断连后不执行页面副作用、不自动补执行，并立即返回 `client_unavailable` 工具错误供 Agent 继续处理。
+- 本轮不承诺 api-server 进程重启后的任务恢复；该能力仍属于独立 durable scheduler 范围。
+- `f9b9e76db` 已 fast-forward 到 `dev`，集中 Dev Acceptance 通过；等待用户人工验收真实窗口关闭、历史切换和长任务完成路径。
