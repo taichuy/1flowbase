@@ -173,6 +173,10 @@ export function EmbeddedAgentAssistantPreview({
           value2: maxBytes
         }),
       []
+    ),
+    unsupportedIsolatedFrameMessage: i18nText(
+      'appShell',
+      'auto.assistant_page_reference_isolated_frame_unsupported'
     )
   });
 

@@ -13,13 +13,15 @@ export function useAssistantPageReferenceSelection({
   maxBytes,
   pageKey,
   selectionHint,
-  tooLargeMessage
+  tooLargeMessage,
+  unsupportedIsolatedFrameMessage
 }: {
   active: boolean;
   maxBytes: number;
   pageKey: string;
   selectionHint: string;
   tooLargeMessage: (actualBytes: number, maxBytes: number) => string;
+  unsupportedIsolatedFrameMessage: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] =
@@ -69,19 +71,62 @@ export function useAssistantPageReferenceSelection({
     document.body.style.cursor = 'crosshair';
     document.body.style.userSelect = 'none';
 
+    const isIsolatedIframe = (element: Element) => {
+      if (!(element instanceof HTMLIFrameElement)) return false;
+      const sandboxTokens = element
+        .getAttribute('sandbox')
+        ?.split(/\s+/)
+        .filter(Boolean);
+      return Boolean(
+        sandboxTokens && !sandboxTokens.includes('allow-same-origin')
+      );
+    };
+    const isolatedFrameOverlays = new Map<Element, HTMLIFrameElement>();
+    document
+      .querySelectorAll<HTMLIFrameElement>('iframe[sandbox]')
+      .forEach((iframe) => {
+        if (
+          !isIsolatedIframe(iframe) ||
+          iframe.closest(ASSISTANT_CHROME_SELECTOR)
+        ) {
+          return;
+        }
+        const rect = iframe.getBoundingClientRect();
+        const overlay = document.createElement('div');
+        overlay.dataset.testid =
+          'assistant-page-reference-isolated-frame-overlay';
+        Object.assign(overlay.style, {
+          cursor: 'not-allowed',
+          height: `${rect.height}px`,
+          left: `${rect.left}px`,
+          position: 'fixed',
+          top: `${rect.top}px`,
+          width: `${rect.width}px`,
+          zIndex: '2147483599'
+        });
+        isolatedFrameOverlays.set(overlay, iframe);
+        document.body.append(overlay);
+      });
+
     const selectedElement = (event: MouseEvent) => {
-      const target = event.target;
+      const pathElements = event
+        .composedPath()
+        .filter((node): node is Element => node instanceof Element);
       if (
-        !(target instanceof Element) ||
-        target.closest(ASSISTANT_CHROME_SELECTOR)
+        pathElements.some((element) =>
+          element.matches(ASSISTANT_CHROME_SELECTOR)
+        )
       ) {
         return null;
       }
-      return target;
+      const deepestElement = pathElements[0];
+      return (
+        isolatedFrameOverlays.get(deepestElement) ?? deepestElement ?? null
+      );
     };
     const handleMove = (event: MouseEvent) => {
       const element = selectedElement(event);
-      if (!element) {
+      if (!element || isIsolatedIframe(element)) {
         outline.hidden = true;
         return;
       }
@@ -99,6 +144,11 @@ export function useAssistantPageReferenceSelection({
       if (!element) return;
       event.preventDefault();
       event.stopPropagation();
+      if (isIsolatedIframe(element)) {
+        setError(unsupportedIsolatedFrameMessage);
+        setSelecting(false);
+        return;
+      }
       const outerHtml = element.outerHTML;
       const actualBytes = byteLength(outerHtml);
       if (actualBytes > maxBytes) {
@@ -129,10 +179,17 @@ export function useAssistantPageReferenceSelection({
       document.removeEventListener('keydown', handleKeyDown, true);
       outline.remove();
       hint.remove();
+      isolatedFrameOverlays.forEach((_iframe, overlay) => overlay.remove());
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
     };
-  }, [maxBytes, selecting, selectionHint, tooLargeMessage]);
+  }, [
+    maxBytes,
+    selecting,
+    selectionHint,
+    tooLargeMessage,
+    unsupportedIsolatedFrameMessage
+  ]);
 
   return {
     cancelSelection,

@@ -20,6 +20,7 @@
     "assistant_run_failed": "The assistant run failed. Check the application run logs.",
     "assistant_settings": "Assistant settings",
     "assistant_new_conversation": "New conversation",
+    "assistant_page_reference_isolated_frame_unsupported": "Referencing elements inside an isolated block is not supported yet.",
     "assistant_page_reference_selection_hint": "Select an actual page element and click to reference it; press Esc to cancel",
     "assistant_page_reference_too_large": "The selected HTML is {{value1}} bytes, above the {{value2}} byte limit. It was not truncated or added.",
     "assistant_remove_page_reference": "Remove page reference",

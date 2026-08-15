@@ -16,7 +16,8 @@ function SelectionHarness({
     maxBytes,
     pageKey,
     selectionHint: '选择页面区域',
-    tooLargeMessage: (actual, max) => `${actual} > ${max}`
+    tooLargeMessage: (actual, max) => `${actual} > ${max}`,
+    unsupportedIsolatedFrameMessage: '隔离区块暂不支持内部元素引用'
   });
   return (
     <div>
@@ -74,5 +75,45 @@ describe('assistant page reference selection', () => {
     fireEvent.click(screen.getByTestId('inner-span'));
     expect(screen.getByTestId('selected-html')).toBeEmptyDOMElement();
     expect(screen.getByTestId('selection-error')).toHaveTextContent(/> 10/);
+  });
+
+  test('AC-003 selects the deepest rendered element inside an open ShadowRoot', () => {
+    render(<SelectionHarness />);
+    const host = document.createElement('section');
+    const shadowRoot = host.attachShadow({ mode: 'open' });
+    const heading = document.createElement('h1');
+    heading.textContent = '区块标题';
+    shadowRoot.append(heading);
+    document.body.append(host);
+
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    fireEvent.click(heading);
+
+    expect(screen.getByTestId('selected-html')).toHaveTextContent(
+      '<h1>区块标题</h1>'
+    );
+    host.remove();
+  });
+
+  test('AC-004 rejects an isolated iframe instead of referencing its outer element', () => {
+    render(<SelectionHarness />);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    document.body.append(iframe);
+
+    fireEvent.click(screen.getByRole('button', { name: '开始选择' }));
+    const iframeOverlay = screen.getByTestId(
+      'assistant-page-reference-isolated-frame-overlay'
+    );
+    fireEvent.click(iframeOverlay);
+
+    expect(screen.getByTestId('selected-html')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('selection-error')).toHaveTextContent(
+      '隔离区块暂不支持内部元素引用'
+    );
+    expect(
+      document.querySelector('[data-testid="assistant-page-reference-outline"]')
+    ).not.toBeInTheDocument();
+    iframe.remove();
   });
 });
