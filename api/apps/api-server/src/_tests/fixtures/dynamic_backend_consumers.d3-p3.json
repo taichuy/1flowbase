@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 304,
-  "count": 608,
+  "projected_interface_count": 306,
+  "count": 612,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1407,6 +1407,18 @@
       "POST",
       "/api/console/settings/extension-center/install-upload",
       "Upload extension center install"
+    ],
+    [
+      "extension_center.installed.disable",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/disable",
+      "Disable an installed executable extension"
+    ],
+    [
+      "extension_center.installed.enable",
+      "POST",
+      "/api/console/settings/extension-center/installed/:installation_id/enable",
+      "Enable an installed executable extension"
     ],
     [
       "extension_center.installed.select",
