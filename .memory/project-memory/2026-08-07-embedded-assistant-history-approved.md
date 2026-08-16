@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置助手历史会话与持久化恢复已批准
-summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 运行中按 sequence 展示完整活动，终态后折叠最终输出之前的过程并保留最后输出；左侧运行栏保留完整节点卡片，浏览器仅缓存主对话宽度与助手窗口高度。
+summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 由 Run Event Ledger 持久化并按 sequence 确定性恢复完整活动，终态不再把中间正文整体收进外层折叠；左侧运行栏保留完整节点卡片。
 keywords:
   - embedded assistant
   - conversation history
@@ -13,7 +13,7 @@ match_when:
   - 处理助手会话恢复、分页、旧运行或会话权限
   - 开始 GitHub issue 1608
 created_at: 2026-08-07 11
-updated_at: 2026-08-16 08
+updated_at: 2026-08-16 18
 last_verified_at: 2026-08-16 08
 decision_policy: verify_before_decision
 status: implemented_pending_user_acceptance
@@ -21,6 +21,7 @@ integration_commit: d845e4a61
 route_fix_commit: 07706dbae
 activity_timeline_commit: e39e1e2b1
 activity_presentation_commit: 3a28140a8
+ordered_activity_commit: f51fa3b4d
 scope:
   - https://github.com/taichuy/1flowbase/issues/1608
   - web/app/src/features/agent-flow/components/embedded-assistant
@@ -109,3 +110,12 @@ scope:
 - 思考不再使用 `ThoughtChain item -> Think` 双层折叠；运行中只有一层思考折叠，终态展开过程组时不再为思考叠加同名容器。
 - 工具默认行使用“工具名（主要定位值）”：`path` 显示路径值，`group_id` 显示 group id 值，不展示 JSON 键名；展开后再显示完整 Input / Output。
 - `3a28140a8` 已 fast-forward 合入本地 `dev`；后端定向 6/6、API client 235/235、嵌入助手 25/25、16-package 生产构建、Rust 静态门禁与样式边界通过，等待用户人工验收真实运行时序和终态折叠。
+
+## 2026-08-16 Run Event Ledger 时序恢复修正
+
+- 用户确认以成熟 ordered event log 机制为准：LLM Runtime 产生规范化语义事件，Run Event Ledger 是 run-level 全局序号与持久化唯一 owner；前端只按 `sequence_start/sequence_end` 做确定性投影。
+- `text_delta/reasoning_delta` 恢复 `persist_required=true`，历史 persister 继续按相同 projection identity 压缩连续区间；工具与生命周期事件是不可跨越的 barrier。
+- Assistant activity 只消费 Answer Presentation reasoning/output；节点调试副本继续留在 trace，避免同一思考重复展示。
+- 此决策取代本文件上一节“终态把最终输出之前全部过程收进单一折叠组”的交互：完成态保留中间正文、思考与工具的原始相对顺序，只把最后正式输出单独放在末尾。
+- 工具摘要补齐 `list(path) / get(tool_id) / call(tool_id)`；旧运行只能改善标题，已丢失的中间流序号不做猜测性回填。
+- `f51fa3b4d` 已 fast-forward 合入本地 `dev`；Rust activity 5/5、嵌入助手 29/29 和主工作树关键 3/3 通过，等待用户人工验收真实运行、完成与刷新恢复三态一致性。
