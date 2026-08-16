@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
 
@@ -10,11 +10,11 @@ use plugin_framework::{
     provider_contract::{
         ProtocolAuthenticationPresentation, ProtocolContextEnvelope, ProviderCompactProfile,
         ProviderCompactResult, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
-        ProviderMessageRole, ProviderOutputProtocolFailure, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation, SourceProtocolRequest,
-        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
+        ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        SourceProtocolRequest, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::{json, Value};

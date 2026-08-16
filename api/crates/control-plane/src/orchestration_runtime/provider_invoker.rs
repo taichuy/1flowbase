@@ -1002,7 +1002,7 @@ where
         }
     }
 
-    fn apply_provider_transport(
+    pub(super) fn apply_provider_transport(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         input: &mut ProviderInvocationInput,
