@@ -37,6 +37,83 @@ const RESUME_CLAIM_COLUMNS: &str = r#"
     request_payload, claim_token, generation, lease_expires_at, error_payload, completed_at
 "#;
 
+async fn append_resume_claim_running_recovery(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    input: &AcquireResumeClaimInput,
+    claim: &ResumeClaimRecord,
+) -> Result<()> {
+    let waiting_state = match input.kind {
+        ResumeClaimKind::Human => "waiting_human",
+        ResumeClaimKind::Callback => "waiting_callback",
+    };
+    let idempotency_key = format!(
+        "resume_claim:{}:{}:running",
+        claim.id, claim.generation
+    );
+    let latest = sqlx::query(
+        r#"
+        select id, state_code, idempotency_key
+          from flow_run_recovery_history
+         where flow_run_id = $1 and scope_id = $2 and application_id = $3
+         order by sequence desc, id desc
+         limit 1
+         for update
+        "#,
+    )
+    .bind(input.flow_run_id)
+    .bind(input.scope_id)
+    .bind(input.application_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(ControlPlaneError::Conflict(
+        "resume_claim_recovery_not_waiting",
+    ))?;
+    let latest_state: String = latest.get("state_code");
+    if latest_state == "running" {
+        let latest_idempotency_key: String = latest.get("idempotency_key");
+        let claim_running_prefix = format!("resume_claim:{}:", claim.id);
+        if latest_idempotency_key.starts_with(&claim_running_prefix) {
+            return Ok(());
+        }
+        return Err(ControlPlaneError::Conflict("resume_claim_recovery_not_waiting").into());
+    }
+    if latest_state != waiting_state {
+        return Err(ControlPlaneError::Conflict("resume_claim_recovery_not_waiting").into());
+    }
+    let latest_id: Uuid = latest.get("id");
+    let inserted = sqlx::query(
+        r#"
+        insert into flow_run_recovery_history (
+            id, scope_id, application_id, flow_run_id, node_run_id, sequence, state_code,
+            node_sequence, iteration_index, attempt_index, resume_sequence, event_sequence,
+            context_version_id, recovery_content_id, idempotency_key
+        )
+        select $1, latest.scope_id, latest.application_id, latest.flow_run_id,
+               latest.node_run_id, latest.sequence + 1, 'running', latest.node_sequence,
+               latest.iteration_index, latest.attempt_index, latest.resume_sequence,
+               latest.event_sequence, latest.context_version_id, latest.recovery_content_id, $2
+          from flow_run_recovery_history latest
+         where latest.id = $3
+           and latest.scope_id = $4
+           and latest.application_id = $5
+           and latest.flow_run_id = $6
+        on conflict do nothing
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(idempotency_key)
+    .bind(latest_id)
+    .bind(input.scope_id)
+    .bind(input.application_id)
+    .bind(input.flow_run_id)
+    .execute(&mut **tx)
+    .await?;
+    if inserted.rows_affected() != 1 {
+        return Err(ControlPlaneError::Conflict("resume_claim_recovery_not_waiting").into());
+    }
+    Ok(())
+}
+
 impl PgControlPlaneStore {
     async fn acquire_resume_claim(
         &self,
@@ -117,9 +194,11 @@ impl PgControlPlaneStore {
             .bind(claim_token)
             .fetch_one(&mut *tx)
             .await?;
+            let claim = map_resume_claim(&row)?;
+            append_resume_claim_running_recovery(&mut tx, input, &claim).await?;
             tx.commit().await?;
             return Ok(AcquireResumeClaimOutput {
-                claim: map_resume_claim(&row)?,
+                claim,
                 disposition: ResumeClaimDisposition::Acquired,
             });
         }
@@ -144,9 +223,11 @@ impl PgControlPlaneStore {
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(ControlPlaneError::Conflict("resume_claim_not_waiting"))?;
+        let claim = map_resume_claim(&row)?;
+        append_resume_claim_running_recovery(&mut tx, input, &claim).await?;
         tx.commit().await?;
         Ok(AcquireResumeClaimOutput {
-            claim: map_resume_claim(&row)?,
+            claim,
             disposition: ResumeClaimDisposition::Acquired,
         })
     }

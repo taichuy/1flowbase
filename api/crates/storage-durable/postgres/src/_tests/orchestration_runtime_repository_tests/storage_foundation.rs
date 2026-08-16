@@ -398,23 +398,48 @@ async fn resume_claim_reacquire_fences_stale_token_generation_and_payload_confli
         datetime!(2026-08-13 13:30:00 UTC),
     )
     .await;
-    sqlx::query("update flow_runs set status = 'waiting_human' where id = $1")
-        .bind(run.id)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    let checkpoint = store
-        .create_checkpoint(&CreateCheckpointInput {
+    let node_run = seed_node_run(&store, &run, datetime!(2026-08-13 13:30:00 UTC)).await;
+    let waiting = store
+        .persist_waiting_state(&PersistWaitingStateInput {
+            checkpoint_id: Uuid::now_v7(),
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
             flow_run_id: run.id,
-            node_run_id: None,
-            status: "waiting_human".into(),
-            reason: "claim fixture".into(),
-            locator_payload: json!({}),
+            node_run_id: node_run.id,
+            expected_status: FlowRunStatus::Running,
+            output_payload: json!({ "status": "waiting_human" }),
+            checkpoint_status: "waiting_human".into(),
+            checkpoint_reason: "claim fixture".into(),
+            locator_payload: json!({ "node_id": "node-llm", "next_node_index": 1 }),
             variable_snapshot: json!({}),
-            external_ref_payload: None,
+            checkpoint_external_ref_payload: None,
+            context_content: json!({ "format": "runtime_snapshot_v1", "variable_pool": {} }),
+            parent_context_version_id: None,
+            context_transition_kind: ContextTransitionKind::Append,
+            recovery_idempotency_key: "resume-claim-human-wait".into(),
+            resume_claim_id: None,
+            resume_claim_token: None,
+            waiting_event: AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node_run.id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "flow.waiting_human".into(),
+                layer: domain::RuntimeEventLayer::AgentTransition,
+                source: domain::RuntimeEventSource::Host,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({ "status": "waiting_human" }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            },
+            kind: PersistWaitingKind::Human,
         })
         .await
-        .unwrap();
+        .unwrap()
+        .expect("the human wait fixture should persist");
+    let checkpoint = waiting.checkpoint;
     let input = AcquireResumeClaimInput {
         scope_id: seeded.workspace_id,
         application_id: seeded.application_id,
