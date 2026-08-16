@@ -122,6 +122,7 @@ where
         &self,
         node: &orchestration_runtime::compiled_plan::CompiledNode,
         tool_call: &Value,
+        call_usage: &Value,
     ) -> Result<()> {
         let node_run_id = self
             .prepared_node_runs
@@ -143,6 +144,7 @@ where
                 node_run_id,
                 &node.node_id,
                 tool_call.clone(),
+                call_usage.clone(),
             ),
         )
         .await;
@@ -153,6 +155,7 @@ where
         &self,
         node: &orchestration_runtime::compiled_plan::CompiledNode,
         tool_call: &Value,
+        call_usage: &Value,
         tool_result: &Value,
         duration_ms: u64,
     ) -> Result<()> {
@@ -176,6 +179,7 @@ where
                 node_run_id,
                 &node.node_id,
                 tool_call.clone(),
+                call_usage.clone(),
                 tool_result.clone(),
                 duration_ms,
             ),

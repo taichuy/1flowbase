@@ -249,6 +249,7 @@ function appendAssistantToolCallToTrace(
       : [];
     const nextRound: Record<string, unknown> = {
       ...round,
+      ...(event.call_usage ? { usage: event.call_usage } : {}),
       assistant: {
         ...assistant,
         tool_calls: upsertToolPayload(toolCalls, currentToolCall, toolCallId)

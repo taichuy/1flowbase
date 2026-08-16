@@ -291,6 +291,7 @@ pub trait ExecutionLifecycle: Send + Sync {
         &self,
         _node: &CompiledNode,
         _tool_call: &Value,
+        _call_usage: &Value,
     ) -> Result<()> {
         Ok(())
     }
@@ -299,6 +300,7 @@ pub trait ExecutionLifecycle: Send + Sync {
         &self,
         _node: &CompiledNode,
         _tool_call: &Value,
+        _call_usage: &Value,
         _tool_result: &Value,
         _duration_ms: u64,
     ) -> Result<()> {

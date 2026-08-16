@@ -81,6 +81,11 @@ where
                 node.node_id
             )
         })?;
+        let call_usage = execution
+            .metrics_payload
+            .get("usage")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
         llm_variable_pool = std::mem::take(&mut callback_wait.checkpoint_variable_pool);
         let internal_ids = internal_calls
             .iter()
@@ -108,7 +113,9 @@ where
             };
             let started_at = OffsetDateTime::now_utc();
             let timer = std::time::Instant::now();
-            lifecycle.runtime_internal_tool_started(node, call).await?;
+            lifecycle
+                .runtime_internal_tool_started(node, call, &call_usage)
+                .await?;
             let mut output = internal_invoker
                 .invoke_runtime_internal_tool(node, registration, arguments)
                 .await?;
@@ -140,7 +147,7 @@ where
                 "duration_ms": duration_ms,
             });
             lifecycle
-                .runtime_internal_tool_finished(node, call, &tool_result, duration_ms)
+                .runtime_internal_tool_finished(node, call, &call_usage, &tool_result, duration_ms)
                 .await?;
             results.push(tool_result);
         }

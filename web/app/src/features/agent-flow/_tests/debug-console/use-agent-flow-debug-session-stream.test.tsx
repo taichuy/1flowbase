@@ -196,7 +196,9 @@ describe('useAgentFlowDebugSession streaming', () => {
       liveTrace
     );
 
-    expect(collectLlmToolCallbacks(reconciledTrace[0]?.debugPayload)).toMatchObject([
+    expect(
+      collectLlmToolCallbacks(reconciledTrace[0]?.debugPayload)
+    ).toMatchObject([
       {
         id: 'call-weather',
         name: 'lookup_weather',
@@ -223,39 +225,38 @@ describe('useAgentFlowDebugSession streaming', () => {
         debugPayload: {}
       }
     ];
-    const startedTrace = applyDebugStreamEventToTrace(
-      initialTrace,
-      {
-        type: 'assistant_tool_call_started',
-        node_run_id: 'node-run-llm',
-        node_id: 'node-llm',
-        tool_call: {
-          id: 'call-weather',
-          name: 'lookup_weather',
-          arguments: { city: 'Shanghai' }
-        }
-      } as never
-    );
-    const completedTrace = applyDebugStreamEventToTrace(
-      startedTrace,
-      {
-        type: 'assistant_tool_call_finished',
-        node_run_id: 'node-run-llm',
-        node_id: 'node-llm',
-        tool_call: {
-          id: 'call-weather',
-          name: 'lookup_weather',
-          arguments: { city: 'Shanghai' }
-        },
-        tool_result: {
-          tool_call_id: 'call-weather',
-          name: 'lookup_weather',
-          content: { temperature: 26 },
-          is_error: false
-        },
-        duration_ms: 42
-      } as never
-    );
+    const startedTrace = applyDebugStreamEventToTrace(initialTrace, {
+      type: 'assistant_tool_call_started',
+      node_run_id: 'node-run-llm',
+      node_id: 'node-llm',
+      tool_call: {
+        id: 'call-weather',
+        name: 'lookup_weather',
+        arguments: { city: 'Shanghai' }
+      },
+      call_usage: {
+        input_tokens: 1200,
+        output_tokens: 260,
+        total_tokens: 1460
+      }
+    } as never);
+    const completedTrace = applyDebugStreamEventToTrace(startedTrace, {
+      type: 'assistant_tool_call_finished',
+      node_run_id: 'node-run-llm',
+      node_id: 'node-llm',
+      tool_call: {
+        id: 'call-weather',
+        name: 'lookup_weather',
+        arguments: { city: 'Shanghai' }
+      },
+      tool_result: {
+        tool_call_id: 'call-weather',
+        name: 'lookup_weather',
+        content: { temperature: 26 },
+        is_error: false
+      },
+      duration_ms: 42
+    } as never);
 
     const assistantAfterToolStart = applyDebugStreamEventToAssistantMessage(
       {
@@ -280,14 +281,23 @@ describe('useAgentFlowDebugSession streaming', () => {
       startedTrace
     );
 
-    expect(collectLlmToolCallbacks(startedTrace[0]?.debugPayload)).toMatchObject([
+    expect(
+      collectLlmToolCallbacks(startedTrace[0]?.debugPayload)
+    ).toMatchObject([
       {
         id: 'call-weather',
         name: 'lookup_weather',
-        callbackStatus: 'waiting_callback'
+        callbackStatus: 'waiting_callback',
+        call_usage: {
+          input_tokens: 1200,
+          output_tokens: 260,
+          total_tokens: 1460
+        }
       }
     ]);
-    expect(collectLlmToolCallbacks(completedTrace[0]?.debugPayload)).toMatchObject([
+    expect(
+      collectLlmToolCallbacks(completedTrace[0]?.debugPayload)
+    ).toMatchObject([
       {
         id: 'call-weather',
         name: 'lookup_weather',

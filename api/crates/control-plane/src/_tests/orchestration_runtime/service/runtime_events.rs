@@ -946,6 +946,7 @@ async fn assistant_activity_sequence_ends_reasoning_at_a_precommitted_visible_bo
                 "name": "lookup",
                 "arguments": {}
             }),
+            json!({ "total_tokens": 12 }),
         ),
     );
     tool.persist_required = false;

@@ -10,9 +10,10 @@ import {
   type ConsoleFlowDebugStreamEvent
 } from '@1flowbase/api-client';
 
-import type {
-  AgentFlowDebugMessage,
-  AgentFlowTraceItem
+import {
+  fetchApplicationRunDebugSnapshot,
+  type AgentFlowDebugMessage,
+  type AgentFlowTraceItem
 } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
@@ -21,6 +22,7 @@ import {
   applyDebugStreamEventToTrace,
   reconcileSnapshotTraceWithLiveEvents
 } from '../../lib/debug-console/stream-events';
+import { mapRunDetailToTrace } from '../../lib/debug-console/run-detail-mapper';
 import { DebugMarkdownContent } from '../debug-console/conversation/DebugMarkdownContent';
 import { DebugWorkflowProcess } from '../debug-console/conversation/DebugWorkflowProcess';
 
@@ -648,27 +650,68 @@ export function AssistantRunNodePanel({
     applicationId,
     message
   });
+  const runId = message.detailRunId ?? message.runId;
+  const [snapshotTrace, setSnapshotTrace] = useState<
+    AgentFlowTraceItem[] | null
+  >(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
+  const terminal = terminalStatus(message.status);
+
+  useEffect(() => {
+    if (!runId || !terminal) {
+      setSnapshotTrace(null);
+      setSnapshotLoading(false);
+      setSnapshotFailed(false);
+      return;
+    }
+    let disposed = false;
+    setSnapshotLoading(true);
+    setSnapshotFailed(false);
+    void fetchApplicationRunDebugSnapshot(applicationId, runId)
+      .then((detail) => {
+        if (!disposed) {
+          setSnapshotTrace(mapRunDetailToTrace(detail));
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setSnapshotFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!disposed) {
+          setSnapshotLoading(false);
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [applicationId, runId, terminal]);
   const durableTrace = useMemo(
     () => projectNodeTrace(traceEvents),
     [traceEvents]
   );
   const traceItems = useMemo(
     () =>
+      snapshotTrace ??
       reconcileSnapshotTraceWithLiveEvents(durableTrace, message.traceSummary),
-    [durableTrace, message.traceSummary]
+    [durableTrace, message.traceSummary, snapshotTrace]
   );
 
   return (
     <div className="embedded-agent-assistant-node-panel">
-      {failed ? (
+      {failed || snapshotFailed ? (
         <Alert
           showIcon
           type="error"
           title={i18nText('appShell', 'auto.assistant_activity_load_failed')}
         />
       ) : null}
-      {loading && traceItems.length === 0 ? <Spin /> : null}
-      {!loading && traceItems.length === 0 ? (
+      {(loading || snapshotLoading) && traceItems.length === 0 ? (
+        <Spin />
+      ) : null}
+      {!loading && !snapshotLoading && traceItems.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={i18nText('appShell', 'auto.assistant_activity_empty')}

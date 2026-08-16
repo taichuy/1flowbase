@@ -300,7 +300,10 @@ function normalizeFromEnvelope(
       run_id: base.run_id,
       node_run_id: base.node_run_id ?? '',
       node_id: nodeId,
-      tool_call: toolCall
+      tool_call: toolCall,
+      ...(isRecord(payload.call_usage)
+        ? { call_usage: payload.call_usage }
+        : {})
     };
   }
 
@@ -316,6 +319,9 @@ function normalizeFromEnvelope(
       node_run_id: base.node_run_id ?? '',
       node_id: nodeId,
       tool_call: toolCall,
+      ...(isRecord(payload.call_usage)
+        ? { call_usage: payload.call_usage }
+        : {}),
       tool_result: payload.tool_result,
       duration_ms:
         typeof payload.duration_ms === 'number' &&

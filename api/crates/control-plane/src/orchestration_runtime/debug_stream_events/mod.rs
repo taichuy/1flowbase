@@ -201,6 +201,7 @@ pub fn assistant_tool_call_started(
     node_run_id: Uuid,
     node_id: &str,
     tool_call: Value,
+    call_usage: Value,
 ) -> RuntimeEventPayload {
     RuntimeEventPayload {
         event_type: "assistant_tool_call_started".to_string(),
@@ -214,6 +215,7 @@ pub fn assistant_tool_call_started(
             "node_run_id": node_run_id,
             "node_id": node_id,
             "tool_call": tool_call,
+            "call_usage": call_usage,
         }),
     }
 }
@@ -223,6 +225,7 @@ pub fn assistant_tool_call_finished(
     node_run_id: Uuid,
     node_id: &str,
     tool_call: Value,
+    call_usage: Value,
     tool_result: Value,
     duration_ms: u64,
 ) -> RuntimeEventPayload {
@@ -238,6 +241,7 @@ pub fn assistant_tool_call_finished(
             "node_run_id": node_run_id,
             "node_id": node_id,
             "tool_call": tool_call,
+            "call_usage": call_usage,
             "tool_result": tool_result,
             "duration_ms": duration_ms,
         }),

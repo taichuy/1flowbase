@@ -909,12 +909,14 @@ impl ExecutionLifecycle for RecordingExecutionLifecycle {
         &self,
         node: &CompiledNode,
         tool_call: &Value,
+        call_usage: &Value,
     ) -> Result<()> {
         self.tool_events.lock().unwrap().push(json!({
             "phase": "started",
             "node_id": node.node_id,
             "tool_call_id": tool_call["id"],
             "name": tool_call["name"],
+            "call_usage": call_usage,
         }));
         Ok(())
     }
@@ -923,6 +925,7 @@ impl ExecutionLifecycle for RecordingExecutionLifecycle {
         &self,
         node: &CompiledNode,
         tool_call: &Value,
+        call_usage: &Value,
         tool_result: &Value,
         _duration_ms: u64,
     ) -> Result<()> {
@@ -931,6 +934,7 @@ impl ExecutionLifecycle for RecordingExecutionLifecycle {
             "node_id": node.node_id,
             "tool_call_id": tool_call["id"],
             "name": tool_call["name"],
+            "call_usage": call_usage,
             "is_error": tool_result["is_error"],
         }));
         Ok(())
@@ -1077,13 +1081,33 @@ async fn runtime_internal_tool_executes_inline_and_continues_llm() {
                 "phase": "started",
                 "node_id": "node-llm",
                 "tool_call_id": "call_mcp",
-                "name": "catalog_mcp_call"
+                "name": "catalog_mcp_call",
+                "call_usage": {
+                    "input_tokens": 11,
+                    "input_cache_hit_tokens": 5,
+                    "input_cache_miss_tokens": null,
+                    "output_tokens": 3,
+                    "reasoning_tokens": null,
+                    "cache_read_tokens": null,
+                    "cache_write_tokens": null,
+                    "total_tokens": 14
+                }
             }),
             json!({
                 "phase": "finished",
                 "node_id": "node-llm",
                 "tool_call_id": "call_mcp",
                 "name": "catalog_mcp_call",
+                "call_usage": {
+                    "input_tokens": 11,
+                    "input_cache_hit_tokens": 5,
+                    "input_cache_miss_tokens": null,
+                    "output_tokens": 3,
+                    "reasoning_tokens": null,
+                    "cache_read_tokens": null,
+                    "cache_write_tokens": null,
+                    "total_tokens": 14
+                },
                 "is_error": false
             })
         ]

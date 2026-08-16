@@ -1924,6 +1924,43 @@ describe('EmbeddedAgentAssistant', () => {
   });
 
   test('AC-007 replays the same run activity projection for restored history', async () => {
+    vi.spyOn(runtimeApi, 'fetchApplicationRunDebugSnapshot').mockResolvedValue({
+      flow_run: { status: 'succeeded' },
+      node_runs: [
+        {
+          id: 'node-run-history',
+          node_id: 'node-history',
+          node_type: 'llm',
+          node_alias: 'History node',
+          status: 'succeeded',
+          input_payload: {},
+          output_payload: {},
+          error_payload: null,
+          metrics_payload: {
+            usage: { total_tokens: 17793 }
+          },
+          debug_payload: {
+            llm_rounds: {
+              tool_callbacks: [
+                {
+                  id: 'call-history',
+                  name: '1flowbase_mcp_list',
+                  callback_status: 'returned',
+                  execution_status: 'succeeded',
+                  call_usage: { total_tokens: 1460 },
+                  duration_ms: 61
+                }
+              ]
+            }
+          },
+          started_at: '2026-08-15T00:00:00Z',
+          finished_at: '2026-08-15T00:00:03Z'
+        }
+      ],
+      checkpoints: [],
+      callback_tasks: [],
+      events: []
+    } as never);
     getConsoleAssistantConversationMessages.mockResolvedValueOnce([
       {
         id: 'run-history:assistant',
@@ -2078,7 +2115,15 @@ describe('EmbeddedAgentAssistant', () => {
       'embedded-agent-assistant-history'
     );
     expect(within(sidebar).getByText('History node')).toBeInTheDocument();
+    expect(
+      await within(sidebar).findByText('17.79 K tokens')
+    ).toBeInTheDocument();
+    expect(within(sidebar).getByText('1.46 K tokens')).toBeInTheDocument();
     expect(within(sidebar).queryByText('历史思考')).not.toBeInTheDocument();
+    expect(runtimeApi.fetchApplicationRunDebugSnapshot).toHaveBeenCalledWith(
+      'flow-1',
+      'run-history'
+    );
     expect(getConsoleAssistantRunActivity).toHaveBeenCalledWith(
       'flow-1',
       'run-history',

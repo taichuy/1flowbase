@@ -66,6 +66,11 @@ describe('console application runtime stream client', () => {
             id: 'call-1',
             name: '1flowbase_mcp_get',
             arguments: { group_id: 'group-123' }
+          },
+          call_usage: {
+            input_tokens: 1200,
+            output_tokens: 260,
+            total_tokens: 1460
           }
         }
       })
@@ -75,6 +80,11 @@ describe('console application runtime stream client', () => {
         id: 'call-1',
         name: '1flowbase_mcp_get',
         arguments: { group_id: 'group-123' }
+      },
+      call_usage: {
+        input_tokens: 1200,
+        output_tokens: 260,
+        total_tokens: 1460
       }
     });
     expect(

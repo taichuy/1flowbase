@@ -1122,6 +1122,7 @@ export type ConsoleFlowDebugStreamEvent =
       node_run_id: string;
       node_id: string;
       tool_call: ConsoleProviderToolCall;
+      call_usage?: Record<string, unknown>;
       run_id?: string;
       event_id?: string;
       sequence?: number;
@@ -1134,6 +1135,7 @@ export type ConsoleFlowDebugStreamEvent =
       node_run_id: string;
       node_id: string;
       tool_call: ConsoleProviderToolCall;
+      call_usage?: Record<string, unknown>;
       tool_result: Record<string, unknown>;
       duration_ms: number;
       run_id?: string;
