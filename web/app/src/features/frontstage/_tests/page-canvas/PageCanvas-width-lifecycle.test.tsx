@@ -78,7 +78,10 @@ describe('PageCanvas width lifecycle', () => {
           [
             {
               target: measuredHost,
-              contentRect: { width: 1834 } as DOMRectReadOnly
+              contentRect: { width: 1834 } as DOMRectReadOnly,
+              borderBoxSize: [],
+              contentBoxSize: [],
+              devicePixelContentBoxSize: []
             } as ResizeObserverEntry
           ],
           {} as ResizeObserver
