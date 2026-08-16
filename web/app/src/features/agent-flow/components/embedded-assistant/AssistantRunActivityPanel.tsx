@@ -1,7 +1,7 @@
 import { Think, ThoughtChain } from '@ant-design/x';
 import type { ThoughtChainItemType } from '@ant-design/x';
 import { ToolOutlined } from '@ant-design/icons';
-import { Alert, Divider, Empty, Spin } from 'antd';
+import { Alert, Divider, Empty, Spin, Typography } from 'antd';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getConsoleAssistantRunActivity,
@@ -245,9 +245,11 @@ function toolSummary(entry: ActivityEntry) {
     const locator =
       typeof inputRecord.path === 'string'
         ? inputRecord.path
-        : typeof inputRecord.group_id === 'string'
-          ? inputRecord.group_id
-          : null;
+        : typeof inputRecord.tool_id === 'string'
+          ? inputRecord.tool_id
+          : typeof inputRecord.group_id === 'string'
+            ? inputRecord.group_id
+            : null;
     if (locator) {
       return `${entry.toolName} (${locator})`;
     }
@@ -563,7 +565,11 @@ export function AssistantRunTimeline({
     : (activity?.status ?? message.status);
   const terminal = terminalStatus(status);
   let lastOutputIndex = -1;
+  let lastErrorIndex = -1;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
+    if (lastErrorIndex < 0 && entries[index]?.kind === 'error') {
+      lastErrorIndex = index;
+    }
     if (entries[index]?.kind === 'output') {
       lastOutputIndex = index;
       break;
@@ -576,22 +582,16 @@ export function AssistantRunTimeline({
       ? ([...entries].reverse().find((entry) => entry.kind === 'error')?.text ??
         i18nText('appShell', 'auto.assistant_run_failed'))
       : '';
+  const formalOutputIndex =
+    lastOutputIndex >= 0
+      ? lastOutputIndex
+      : terminalError
+        ? lastErrorIndex
+        : -1;
   const processEntries =
-    terminal && lastOutputIndex >= 0
-      ? entries.filter((_, index) => index !== lastOutputIndex)
+    terminal && formalOutputIndex >= 0
+      ? entries.filter((_, index) => index !== formalOutputIndex)
       : entries;
-  const terminalItems: ThoughtChainItemType[] = processEntries.length
-    ? [
-        {
-          key: 'terminal-process',
-          title: processTitle(status, activity?.durationMs ?? null),
-          status: status === 'failed' ? 'error' : 'success',
-          collapsible: true,
-          content: <ActivitySequence entries={processEntries} terminal />
-        }
-      ]
-    : [];
-
   if (entries.length === 0 && !terminalError && !finalOutput && !failed) {
     return null;
   }
@@ -607,16 +607,15 @@ export function AssistantRunTimeline({
       ) : null}
       {terminal ? (
         <>
-          {terminalItems.length ? (
-            <ThoughtChain
-              classNames={activityTimelineClassNames}
-              items={terminalItems}
-              line
-              rootClassName="embedded-agent-assistant-activity__timeline"
-              styles={activityTimelineStyles}
-            />
+          {processEntries.length ? (
+            <>
+              <Typography.Text type="secondary">
+                {processTitle(status, activity?.durationMs ?? null)}
+              </Typography.Text>
+              <ActivitySequence entries={processEntries} terminal />
+            </>
           ) : null}
-          {terminalItems.length && (finalOutput || terminalError) ? (
+          {processEntries.length && (finalOutput || terminalError) ? (
             <Divider />
           ) : null}
           {finalOutput || terminalError ? (

@@ -136,7 +136,8 @@ fn assistant_activity_sequence_projection_exposes_the_full_durable_stream_interv
         json!({
             "text": "先检查，再继续",
             "sequence_start": 3,
-            "sequence_end": 9
+            "sequence_end": 9,
+            "presentation": { "kind": "answer", "segment_index": 0 }
         }),
     );
 
@@ -151,4 +152,18 @@ fn assistant_activity_sequence_projection_exposes_the_full_durable_stream_interv
         }
         _ => panic!("expected reasoning activity"),
     }
+
+    let node_debug_reasoning = event(
+        "reasoning_delta",
+        10,
+        json!({
+            "text": "节点调试副本",
+            "sequence_start": 10,
+            "sequence_end": 10
+        }),
+    );
+    assert!(
+        project_assistant_run_activity(&node_debug_reasoning).is_none(),
+        "AC-004 assistant activity must project only canonical Answer Presentation reasoning"
+    );
 }

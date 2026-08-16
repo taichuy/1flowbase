@@ -1615,6 +1615,90 @@ describe('EmbeddedAgentAssistant', () => {
     );
   });
 
+  test('AC-001 identifies list, get, and call activity by their canonical locator', async () => {
+    getConsoleAssistantRunActivity.mockResolvedValue({
+      status: 'succeeded',
+      started_at: '2026-08-16T00:00:00Z',
+      finished_at: '2026-08-16T00:00:01Z',
+      duration_ms: 1000,
+      items: [
+        {
+          kind: 'tool',
+          event_id: 'tool-list',
+          sequence_start: 1,
+          sequence_end: 1,
+          created_at: '2026-08-16T00:00:00Z',
+          tool_call_id: 'call-list',
+          tool_name: '1flowbase_mcp_list',
+          input: { path: '/frontstage/user_pages' },
+          output: {},
+          duration_ms: 1,
+          is_error: false,
+          status: 'succeeded'
+        },
+        {
+          kind: 'tool',
+          event_id: 'tool-get',
+          sequence_start: 2,
+          sequence_end: 2,
+          created_at: '2026-08-16T00:00:00Z',
+          tool_call_id: 'call-get',
+          tool_name: '1flowbase_mcp_get',
+          input: { tool_id: 'frontstage_block_tree_get_code' },
+          output: {},
+          duration_ms: 1,
+          is_error: false,
+          status: 'succeeded'
+        },
+        {
+          kind: 'tool',
+          event_id: 'tool-call',
+          sequence_start: 3,
+          sequence_end: 3,
+          created_at: '2026-08-16T00:00:00Z',
+          tool_call_id: 'call-call',
+          tool_name: '1flowbase_mcp_call',
+          input: { tool_id: 'frontstage_block_tree_get_code', arguments: {} },
+          output: {},
+          duration_ms: 1,
+          is_error: false,
+          status: 'succeeded'
+        }
+      ],
+      trace_events: [],
+      has_more: false,
+      next_sequence: null
+    });
+
+    render(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={{
+            id: 'tool-labels',
+            role: 'assistant',
+            content: '',
+            status: 'completed',
+            runId: 'run-tool-labels',
+            rawOutput: null,
+            traceSummary: [],
+            presentation: 'answer'
+          }}
+        />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByText('1flowbase_mcp_list (/frontstage/user_pages)')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('1flowbase_mcp_get (frontstage_block_tree_get_code)')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('1flowbase_mcp_call (frontstage_block_tree_get_code)')
+    ).toBeInTheDocument();
+  });
+
   test('AC-006 keeps ordered assistant activity inline and restores every node card in the sidebar', async () => {
     let finishRun: (() => void) | undefined;
     startConsoleAssistantRunWebSocket.mockImplementation(
@@ -1713,7 +1797,7 @@ describe('EmbeddedAgentAssistant', () => {
           tool_call: {
             id: 'call-2',
             name: '1flowbase_mcp_get',
-            arguments: { group_id: 'group-123' }
+            arguments: { tool_id: 'frontstage_block_tree_get_code' }
           },
           event_id: 'run-activity:8',
           sequence: 8
@@ -1726,7 +1810,7 @@ describe('EmbeddedAgentAssistant', () => {
           tool_call: {
             id: 'call-2',
             name: '1flowbase_mcp_get',
-            arguments: { group_id: 'group-123' }
+            arguments: { tool_id: 'frontstage_block_tree_get_code' }
           },
           tool_result: { id: 'item-1' },
           duration_ms: 3,
@@ -1824,7 +1908,9 @@ describe('EmbeddedAgentAssistant', () => {
     const firstTool = screen.getByText('1flowbase_mcp_list (/后台设置)');
     const firstOutput = screen.getByText('阶段结果一');
     const secondReasoning = screen.getByText('继续检查数据');
-    const secondTool = screen.getByText('1flowbase_mcp_get (group-123)');
+    const secondTool = screen.getByText(
+      '1flowbase_mcp_get (frontstage_block_tree_get_code)'
+    );
     const secondOutput = screen.getByText('阶段结果二');
     expect(firstReasoning.compareDocumentPosition(firstTool)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
@@ -1877,14 +1963,8 @@ describe('EmbeddedAgentAssistant', () => {
     await act(async () => {
       finishRun?.();
     });
-    await waitFor(() =>
-      expect(screen.queryByText('先检查配置')).not.toBeInTheDocument()
-    );
+    expect(await screen.findByText('阶段结果一')).toBeInTheDocument();
     expect(screen.getByText('阶段结果二')).toBeInTheDocument();
-    const duration = screen.getByText(
-      i18nText('appShell', 'auto.assistant_activity_duration_unknown')
-    );
-    fireEvent.click(duration);
     const terminalReasoningTitles = await screen.findAllByText(
       i18nText('agentFlow', 'auto.think')
     );
@@ -1894,8 +1974,17 @@ describe('EmbeddedAgentAssistant', () => {
     });
     expect(screen.queryByText('先检查配置')).not.toBeInTheDocument();
     fireEvent.click(terminalReasoningTitles[0] as HTMLElement);
-    expect(await screen.findByText('先检查配置')).toBeInTheDocument();
-    expect(screen.getByText('阶段结果一')).toBeInTheDocument();
+    const terminalFirstReasoning = await screen.findByText('先检查配置');
+    const terminalFirstTool = screen.getByText(
+      '1flowbase_mcp_list (/后台设置)'
+    );
+    const terminalFirstOutput = screen.getByText('阶段结果一');
+    expect(
+      terminalFirstReasoning.compareDocumentPosition(terminalFirstTool)
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(terminalFirstTool.compareDocumentPosition(terminalFirstOutput)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
     expect(
       screen.queryByLabelText(i18nText('agentFlow', 'auto.workflow'))
     ).not.toBeInTheDocument();

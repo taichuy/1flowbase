@@ -771,8 +771,7 @@ async fn project_canonical_provider_deltas(
                     .await
                     .push_provider_event(node_id, node_run_id, &canonical_event);
             if let (Some(stream), Some(flow_run_id)) = (stream, flow_run_id) {
-                for mut presentation_event in presentation_events {
-                    presentation_event.persist_required = false;
+                for presentation_event in presentation_events {
                     append_provider_runtime_event(stream, flow_run_id, presentation_event).await;
                 }
             }
@@ -781,7 +780,7 @@ async fn project_canonical_provider_deltas(
         let (Some(stream), Some(flow_run_id)) = (stream, flow_run_id) else {
             continue;
         };
-        let mut debug_event = match delta.kind {
+        let debug_event = match delta.kind {
             CanonicalContentKind::Text => {
                 debug_stream_events::text_delta(node_id, node_run_id, delta.text.clone())
             }
@@ -789,7 +788,6 @@ async fn project_canonical_provider_deltas(
                 debug_stream_events::reasoning_delta(node_id, node_run_id, delta.text.clone())
             }
         };
-        debug_event.persist_required = false;
         append_provider_runtime_event(stream, flow_run_id, debug_event).await;
     }
 }

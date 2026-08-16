@@ -89,7 +89,13 @@ pub(super) fn project_assistant_run_activity(
         )
     };
     match event.event_type.as_str() {
-        "reasoning_delta" => {
+        "reasoning_delta"
+            if event
+                .payload
+                .pointer("/presentation/kind")
+                .and_then(Value::as_str)
+                == Some("answer") =>
+        {
             let (event_id, sequence_start, sequence_end, created_at) = common();
             Some(AssistantRunActivityItem::Reasoning {
                 event_id,
