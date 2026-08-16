@@ -239,12 +239,21 @@
 
 .embedded-agent-assistant-activity__timeline {
   min-width: 0;
+  width: 100%;
 }
 
 .embedded-agent-assistant-activity__sequence {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
+  width: 100%;
+}
+
+.embedded-agent-assistant-activity__timeline-item,
+.embedded-agent-assistant-activity__timeline-item-header,
+.embedded-agent-assistant-activity__timeline-item-content {
+  min-width: 0;
+  width: 100%;
 }
 
 .embedded-agent-assistant-activity__think,
@@ -256,10 +265,12 @@
   display: grid;
   gap: 0.5rem;
   min-width: 0;
+  width: 100%;
 }
 
 .embedded-agent-assistant-activity__tool-detail .json-preview-block {
   min-width: 0;
+  width: 100%;
 }
 
 .embedded-agent-assistant-activity__tool-duration {

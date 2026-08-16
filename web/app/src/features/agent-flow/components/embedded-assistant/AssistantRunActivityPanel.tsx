@@ -48,6 +48,12 @@ interface LoadedRunActivity {
   traceEvents: ConsoleFlowDebugStreamEvent[];
 }
 
+const activityTimelineClassNames = {
+  item: 'embedded-agent-assistant-activity__timeline-item',
+  itemHeader: 'embedded-agent-assistant-activity__timeline-item-header',
+  itemContent: 'embedded-agent-assistant-activity__timeline-item-content'
+};
+
 function eventSequence(event: ConsoleFlowDebugStreamEvent, fallback: number) {
   return event.sequence ?? fallback;
 }
@@ -295,6 +301,7 @@ function ActivitySequence({
     chainEntries = [];
     blocks.push(
       <ThoughtChain
+        classNames={activityTimelineClassNames}
         key={`chain:${currentEntries[0]?.key}`}
         items={currentEntries.map(activityThoughtItem)}
         line
@@ -485,7 +492,7 @@ export function AssistantRunTimeline({
   applicationId: string;
   message: AgentFlowDebugMessage;
 }) {
-  const { activity, items, failed, loading } = useAssistantRunActivity({
+  const { activity, items, failed } = useAssistantRunActivity({
     applicationId,
     message
   });
@@ -532,6 +539,10 @@ export function AssistantRunTimeline({
       ]
     : [];
 
+  if (entries.length === 0 && !terminalError && !finalOutput && !failed) {
+    return null;
+  }
+
   return (
     <div className="embedded-agent-assistant-activity">
       {failed ? (
@@ -541,16 +552,11 @@ export function AssistantRunTimeline({
           title={i18nText('appShell', 'auto.assistant_activity_load_failed')}
         />
       ) : null}
-      {loading && entries.length === 0 ? <Spin /> : null}
-      {!loading && entries.length === 0 && !terminalError && !finalOutput ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={i18nText('appShell', 'auto.assistant_activity_empty')}
-        />
-      ) : terminal ? (
+      {terminal ? (
         <>
           {terminalItems.length ? (
             <ThoughtChain
+              classNames={activityTimelineClassNames}
               items={terminalItems}
               line
               rootClassName="embedded-agent-assistant-activity__timeline"

@@ -1352,6 +1352,40 @@ describe('EmbeddedAgentAssistant', () => {
     expect(screen.queryByText('失败前思考')).not.toBeInTheDocument();
   });
 
+  test('AC-008 waits for the first activity instead of flashing an empty assistant card', async () => {
+    const { container } = render(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={{
+            id: 'run-waiting:assistant',
+            role: 'assistant',
+            content: '',
+            status: 'running',
+            runId: 'run-waiting',
+            rawOutput: null,
+            traceSummary: [],
+            presentation: 'answer'
+          }}
+        />
+      </AppProviders>
+    );
+
+    await waitFor(() =>
+      expect(getConsoleAssistantRunActivity).toHaveBeenCalledWith(
+        'flow-1',
+        'run-waiting',
+        { pageSize: 500 }
+      )
+    );
+    expect(
+      screen.queryByText(i18nText('appShell', 'auto.assistant_activity_empty'))
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector('.embedded-agent-assistant-activity')
+    ).toBeNull();
+  });
+
   test('AC-006 keeps ordered assistant activity inline and restores every node card in the sidebar', async () => {
     let finishRun: (() => void) | undefined;
     startConsoleAssistantRunWebSocket.mockImplementation(
