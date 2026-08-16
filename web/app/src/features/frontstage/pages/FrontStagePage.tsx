@@ -100,6 +100,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   pageId,
   tabId,
   blockRuntimeAssembly,
+  blockRuntimeInputs,
   blockRoots = [],
   isBlockRootsLoading = false,
   hasBlockRootsLoadError = false,
@@ -224,6 +225,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     [blockRuntimeAssembly]
   );
   const assemblyTargetId = blockRuntimeAssembly?.layers.at(-1)?.block_id;
+  const runtimeInputsByBlockId = useMemo(
+    () =>
+      assemblyTargetId && blockRuntimeInputs
+        ? { [assemblyTargetId]: blockRuntimeInputs }
+        : undefined,
+    [assemblyTargetId, blockRuntimeInputs]
+  );
   const assemblyCanvasContent = useMemo<
     FrontstagePageContent | undefined
   >(() => {
@@ -1017,6 +1025,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         <PageCanvas
           content={assemblyCanvasContent}
           runtimeBlocks={assemblyBlocks}
+          runtimeInputsByBlockId={runtimeInputsByBlockId}
           selectedBlockId={
             canEnterDesignMode && isDesignMode ? selectedBlockId : null
           }
@@ -1182,6 +1191,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             : rootPageBlockIds
         }
         runtimeBlocks={isBlockRuntimeRoute ? assemblyBlocks : rootBlocks}
+        runtimeInputsByBlockId={runtimeInputsByBlockId}
         sharedSignalCoordinator={
           isBlockRuntimeRoute ? undefined : pageSignalCoordinator
         }

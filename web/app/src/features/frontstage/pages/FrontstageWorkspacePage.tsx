@@ -39,6 +39,7 @@ import {
   getFirstTopLevelPageId,
   resolveSelectedPageId
 } from '../lib/page-tree';
+import { createFrontstageBlockRouteInputs } from '../lib/page-canvas/runtime-assembly';
 import { FrontStagePage } from './FrontStagePage';
 
 export interface FrontstageWorkspacePageProps {
@@ -46,6 +47,7 @@ export interface FrontstageWorkspacePageProps {
   pageId?: string;
   tabRef?: string;
   blockId?: string;
+  blockInputSearch?: Record<string, unknown>;
   rootNode?: FrontstagePageTreeNode;
 }
 
@@ -54,6 +56,7 @@ export function FrontstageWorkspacePage({
   pageId,
   tabRef,
   blockId,
+  blockInputSearch,
   rootNode
 }: FrontstageWorkspacePageProps) {
   const navigate = useNavigate();
@@ -132,6 +135,10 @@ export function FrontstageWorkspacePage({
   const defaultTabs = pageTabsQuery.data?.filter((tab) => tab.is_default) ?? [];
   const defaultTab = defaultTabs.length === 1 ? defaultTabs[0] : undefined;
   const runtimeTarget = blockRuntimeAssemblyQuery.data?.layers.at(-1);
+  const blockRuntimeInputs = createFrontstageBlockRouteInputs(
+    runtimeTarget,
+    blockInputSearch
+  );
   const tabReference = runtimeTarget?.tab_id ?? tabRef ?? defaultTab?.id;
   const shouldLoadPageContent = Boolean(
     effectivePageId && selectedPageId && tabReference && !blockId
@@ -268,6 +275,7 @@ export function FrontstageWorkspacePage({
         pageId={effectivePageId}
         tabId={resolvedTab?.id ?? runtimeTarget?.tab_id}
         blockRuntimeAssembly={blockRuntimeAssemblyQuery.data}
+        blockRuntimeInputs={blockRuntimeInputs}
         isBlockRuntimeRoute={Boolean(blockId)}
         isBlockRuntimeLoading={Boolean(
           blockId && blockRuntimeAssemblyQuery.isLoading

@@ -268,12 +268,14 @@ function FrontStageSlugRoute({
   slug,
   pageId,
   tabRef,
-  blockId
+  blockId,
+  blockInputSearch
 }: {
   slug: string;
   pageId?: string;
   tabRef?: string;
   blockId?: string;
+  blockInputSearch?: Record<string, unknown>;
 }) {
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
@@ -306,6 +308,7 @@ function FrontStageSlugRoute({
         pageId={pageId}
         tabRef={tabRef}
         blockId={blockId}
+        blockInputSearch={blockInputSearch}
         rootNode={rootNode}
       />
     </SessionGuard>
@@ -612,11 +615,23 @@ const frontstageSlugPageRoute = createRoute({
 const frontstageSlugPageBlockRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
+  validateSearch: (search: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(search).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
+    ),
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug, pageId, blockId } = frontstageSlugPageBlockRoute.useParams();
+    const blockInputSearch = frontstageSlugPageBlockRoute.useSearch();
     return (
-      <FrontStageSlugRoute slug={slug} pageId={pageId} blockId={blockId} />
+      <FrontStageSlugRoute
+        slug={slug}
+        pageId={pageId}
+        blockId={blockId}
+        blockInputSearch={blockInputSearch}
+      />
     );
   }
 });

@@ -18,6 +18,7 @@ export type FrontStagePageProps = {
   pageId?: string;
   tabId?: string;
   blockRuntimeAssembly?: ConsoleFrontstageBlockRuntimeAssembly;
+  blockRuntimeInputs?: Record<string, unknown>;
   blockRoots?: ConsoleFrontstageBlockNode[];
   isBlockRootsLoading?: boolean;
   hasBlockRootsLoadError?: boolean;

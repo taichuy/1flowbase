@@ -113,6 +113,9 @@ type PageCanvasProps = {
   nativeContextHost?: FrontstageNativeBlockContextHost;
   renderBlockIds?: readonly string[];
   runtimeBlocks?: readonly FrontstageBlockInstance[];
+  runtimeInputsByBlockId?: Readonly<
+    Record<string, Readonly<Record<string, unknown>>>
+  >;
   sharedSignalCoordinator?: FrontstageSignalRuntimeCoordinator;
   /** When true, blocks show blue outlines + hover toolbar */
   isDesignMode?: boolean;
@@ -164,6 +167,7 @@ type RenderPlanSlotProps = {
   isolatedPreparationError?: Error | null;
   isolatedCapabilityHandlers?: IsolatedFrontendBlockCapabilityHandlers;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeInputValues?: Readonly<Record<string, unknown>>;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
@@ -314,6 +318,7 @@ function NativeRuntimeSlotSurface({
   item,
   preparation,
   signalCoordinator,
+  runtimeInputValues,
   runtimeContext,
   nativeContextHost,
   pageContent,
@@ -325,6 +330,7 @@ function NativeRuntimeSlotSurface({
   contentViewportStyle: CSSProperties;
   onRetry?: () => void;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeInputValues?: Readonly<Record<string, unknown>>;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
@@ -418,6 +424,7 @@ function NativeRuntimeSlotSurface({
           plan={plan}
           preparation={readyPreparation}
           signalCoordinator={signalCoordinator}
+          runtimeInputValues={runtimeInputValues}
           runtimeContext={runtimeContext}
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
@@ -441,6 +448,7 @@ function FrontstageNativeRuntimeInstance({
   plan,
   preparation,
   signalCoordinator,
+  runtimeInputValues,
   runtimeContext,
   nativeContextHost,
   pageContent,
@@ -454,6 +462,7 @@ function FrontstageNativeRuntimeInstance({
     { status: 'ready' }
   >;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
+  runtimeInputValues?: Readonly<Record<string, unknown>>;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
@@ -510,7 +519,7 @@ function FrontstageNativeRuntimeInstance({
         unavailable.page.route,
       ...(pageContent?.page.title ? { title: pageContent.page.title } : {})
     },
-    inputs: signalSnapshot.inputs,
+    inputs: { ...signalSnapshot.inputs, ...runtimeInputValues },
     ...capabilities,
     props: { ...plan.props }
   };
@@ -539,6 +548,7 @@ function RenderPlanSlot({
   isolatedPreparationError,
   isolatedCapabilityHandlers,
   signalCoordinator,
+  runtimeInputValues,
   runtimeContext,
   nativeContextHost,
   pageContent,
@@ -682,6 +692,7 @@ function RenderPlanSlot({
           item={item}
           preparation={runtimePreparation}
           signalCoordinator={signalCoordinator}
+          runtimeInputValues={runtimeInputValues}
           runtimeContext={runtimeContext}
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
@@ -771,6 +782,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   nativeContextHost,
   renderBlockIds,
   runtimeBlocks,
+  runtimeInputsByBlockId,
   sharedSignalCoordinator,
   isDesignMode = false,
   designActions,
@@ -1084,6 +1096,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                     isolatedCapabilityHandlersByBlockId?.[item.blockId]
                   }
                   signalCoordinator={signalCoordinator}
+                  runtimeInputValues={runtimeInputsByBlockId?.[item.blockId]}
                   runtimeContext={runtimeContext}
                   nativeContextHost={nativeContextHost}
                   pageContent={content}
