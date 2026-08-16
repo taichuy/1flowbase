@@ -330,6 +330,109 @@ fn thinking_content_has_a_native_reasoning_receipt() {
 }
 
 #[test]
+fn issue_1743_returned_thinking_and_text_close_into_canonical_history() {
+    let translated = translate_messages_request(json!({
+        "model": "1flowbase",
+        "messages": [
+            {"role": "user", "content": "first question"},
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "canonical reasoning",
+                        "signature": "signed-reasoning"
+                    },
+                    {"type": "text", "text": "canonical visible answer"},
+                    {"type": "redacted_thinking", "data": "sealed-reasoning"}
+                ]
+            },
+            {"role": "user", "content": "follow up"}
+        ]
+    }))
+    .expect("returned Anthropic content blocks should map to canonical history");
+
+    assert_eq!(translated.request.query, "follow up");
+    assert_eq!(
+        translated.request.history[1]["content"],
+        json!("canonical visible answer")
+    );
+    assert_eq!(
+        translated.request.history[1]["content_blocks"],
+        json!([
+            {
+                "type": "reasoning",
+                "text": "canonical reasoning",
+                "signature": "signed-reasoning"
+            },
+            {"type": "text", "text": "canonical visible answer"},
+            {"type": "reasoning_redacted", "data": "sealed-reasoning"}
+        ])
+    );
+    assert!(!translated.request.history[1]["content"]
+        .as_str()
+        .expect("visible history text")
+        .contains("reasoning"));
+}
+
+#[test]
+fn issue_1743_no_reasoning_keeps_tool_and_media_history() {
+    let translated = translate_messages_request(json!({
+        "model": "1flowbase",
+        "messages": [
+            {"role": "user", "content": "inspect image"},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "I will inspect it."},
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_read",
+                        "name": "Read",
+                        "input": {"file_path": "uploads/test.png"}
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_read",
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": "aW1hZ2U="
+                        }
+                    }]
+                }]
+            },
+            {"role": "user", "content": "continue"}
+        ]
+    }))
+    .expect("text, tool, and media history should remain canonical without reasoning");
+
+    assert_eq!(translated.request.query, "continue");
+    assert_eq!(
+        translated.request.history[1]["content"],
+        json!("I will inspect it.")
+    );
+    assert_eq!(
+        translated.request.history[1]["tool_calls"][0]["id"],
+        json!("toolu_read")
+    );
+    assert_eq!(translated.request.history[2]["role"], json!("tool"));
+    assert_eq!(
+        translated.request.history[2]["content_blocks"][0]["type"],
+        json!("image")
+    );
+    assert!(translated.request.history[1]
+        .get("content_blocks")
+        .is_none());
+}
+
+#[test]
 fn tool_result_history_maps_to_native_tool_messages() {
     let translated = translate_messages_request(json!({
         "model": "1flowbase",

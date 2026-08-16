@@ -168,6 +168,14 @@ test("quality gate limits conversation Cargo probes to one owned database and de
         "api-server-terminal-fallback-tests",
         "routes::application_public_api::stream_terminal_fallback::tests",
       ],
+      [
+        "control-plane-issue-1743-anthropic-round-trip-tests",
+        "issue_1743",
+      ],
+      [
+        "api-server-issue-1743-anthropic-round-trip-tests",
+        "issue_1743",
+      ],
     ],
   );
   for (const { args } of invocations) {
@@ -233,6 +241,50 @@ test("F03 Cargo filters execute the estimator corpus, fault fixture, and Native 
       1,
       `${required.testName} must be selected by exactly one Cargo command`,
     );
+  }
+});
+
+test("issue_1743 quality gate selects the Anthropic reasoning round-trip fixtures", () => {
+  const repoRoot = path.resolve(__dirname, "../../../../../");
+  const invocations = conversationTestInvocations(
+    repoRoot,
+    "postgres://gate@127.0.0.1:35432/owned",
+  );
+  const fixtures = [
+    {
+      packageName: "control-plane",
+      source: "api/crates/control-plane/src/application_public_api/compat/anthropic/tests.rs",
+      names: [
+        "issue_1743_returned_thinking_and_text_close_into_canonical_history",
+        "issue_1743_no_reasoning_keeps_tool_and_media_history",
+      ],
+    },
+    {
+      packageName: "api-server",
+      source: "api/apps/api-server/src/routes/application_public_api/anthropic/tests.rs",
+      names: [
+        "issue_1743_non_streaming_projects_canonical_reasoning_and_visible_text",
+        "issue_1743_non_streaming_without_reasoning_keeps_text_and_tool_blocks",
+      ],
+    },
+    {
+      packageName: "api-server",
+      source: "api/apps/api-server/src/routes/application_public_api/compat_sse/tests/forwarding.rs",
+      names: [
+        "issue_1743_anthropic_stream_uses_canonical_reasoning_and_visible_text",
+      ],
+    },
+  ];
+
+  for (const fixture of fixtures) {
+    const source = fs.readFileSync(path.join(repoRoot, fixture.source), "utf8");
+    for (const name of fixture.names) assert.ok(source.includes(`fn ${name}(`), name);
+    const matching = invocations.filter(({ args }) => {
+      const packageIndex = args.indexOf("-p");
+      return args[packageIndex + 1] === fixture.packageName
+        && args.at(-1) === "issue_1743";
+    });
+    assert.equal(matching.length, 1, `${fixture.packageName} issue_1743 gate`);
   }
 });
 

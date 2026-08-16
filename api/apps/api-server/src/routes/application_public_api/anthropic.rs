@@ -22,8 +22,8 @@ use control_plane::application_public_api::{
         AnthropicContextWindowRequest,
     },
     native::{
-        ApplicationNativeRunService, CreateNativeRunCommand, NativeRunRequest, NativeRunResult,
-        NativeRunStatus,
+        AnswerProjectionSegmentKind, ApplicationNativeRunService, CreateNativeRunCommand,
+        NativeRunRequest, NativeRunResult, NativeRunStatus,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -513,12 +513,7 @@ fn to_anthropic_response(
             return Err(native::blocking_run_projection_error(&run).into())
         }
     };
-    let mut content = Vec::new();
-    if let Some(answer) = run.answer {
-        if !answer.is_empty() {
-            content.push(json!({"type": "text", "text": answer}));
-        }
-    }
+    let mut content = anthropic_answer_blocks(&run);
     if let Some(blocks) = tool_blocks {
         content.extend(blocks);
     }
@@ -538,6 +533,33 @@ fn to_anthropic_response(
         },
         usage: anthropic_usage(run.usage),
     })
+}
+
+fn anthropic_answer_blocks(run: &NativeRunResult) -> Vec<Value> {
+    if let Some(segments) = run
+        .answer_segments
+        .as_ref()
+        .filter(|segments| !segments.is_empty())
+    {
+        return segments
+            .iter()
+            .filter(|segment| !segment.text.is_empty())
+            .map(|segment| match segment.kind {
+                AnswerProjectionSegmentKind::Reasoning => {
+                    json!({"type": "thinking", "thinking": segment.text})
+                }
+                AnswerProjectionSegmentKind::Message => {
+                    json!({"type": "text", "text": segment.text})
+                }
+            })
+            .collect();
+    }
+
+    run.answer
+        .as_ref()
+        .filter(|answer| !answer.is_empty())
+        .map(|answer| vec![json!({"type": "text", "text": answer})])
+        .unwrap_or_default()
 }
 
 fn anthropic_response_message_id() -> String {
