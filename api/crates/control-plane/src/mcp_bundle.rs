@@ -261,7 +261,8 @@ where
                     upstream_connection_id,
                     ..
                 } => Some(*upstream_connection_id),
-                domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+                domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+                | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
             })
             .collect::<BTreeSet<_>>();
         let mut connections = self
@@ -479,6 +480,12 @@ where
                             domain::McpBundleItemEffect::Create,
                             "unavailable",
                             Some("connection_missing"),
+                        ),
+                        domain::McpToolExecutionTarget::AssistantClient { .. } => item_report(
+                            &tool.tool_id,
+                            domain::McpBundleItemEffect::Create,
+                            "imported",
+                            None,
                         ),
                         _ => item_report(
                             &tool.tool_id,
@@ -706,6 +713,7 @@ pub(crate) fn retain_official_builtin_tools(
                 }
             }
             domain::McpToolExecutionTarget::McpProxy { .. } => true,
+            domain::McpToolExecutionTarget::AssistantClient { .. } => true,
         };
         if exportable {
             retained_tool_record_ids.insert(tool.id);
@@ -753,7 +761,8 @@ fn bundle_tool_plan(
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
             interfaces.get(interface_id)
         }
-        domain::McpToolExecutionTarget::McpProxy { .. } => None,
+        domain::McpToolExecutionTarget::McpProxy { .. }
+        | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
     };
     if let Some(interface) = interface {
         McpBundleToolPlan {
@@ -769,7 +778,14 @@ fn bundle_tool_plan(
             result_schema: tool.result_schema_snapshot.clone(),
             permission_code: tool.permission_code_snapshot.clone(),
             risk_level: tool.risk_level_snapshot,
-            status: domain::McpToolStatus::Disabled,
+            status: if matches!(
+                tool.execution_target,
+                domain::McpToolExecutionTarget::AssistantClient { .. }
+            ) {
+                tool.status
+            } else {
+                domain::McpToolStatus::Disabled
+            },
         }
     }
 }
@@ -788,6 +804,7 @@ fn bundle_tool_unavailable_reason(
             ..
         } if connections.contains_key(upstream_connection_id) => Some("credentials_missing"),
         domain::McpToolExecutionTarget::McpProxy { .. } => Some("connection_missing"),
+        domain::McpToolExecutionTarget::AssistantClient { .. } => None,
     }
 }
 
@@ -1085,6 +1102,15 @@ fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
             } => {
                 validate_identifier(remote_tool_name, "remote_tool_name")?;
                 validate_identifier(source_schema_hash, "source_schema_hash")?;
+            }
+            domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
+                validate_identifier(capability_code, "capability_code")?;
+                if !domain::is_mcp_assistant_client_capability(capability_code) {
+                    return Err(ControlPlaneError::InvalidInput(
+                        "assistant_client_capability_code",
+                    )
+                    .into());
+                }
             }
         }
         if !tool_ids.insert(tool.tool_id.as_str()) {

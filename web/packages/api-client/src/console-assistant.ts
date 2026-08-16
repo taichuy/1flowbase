@@ -17,7 +17,13 @@ export interface ConsoleAssistantPreference {
 
 export type ConsoleAssistantClientToolId =
   | 'get_client_context'
-  | 'refresh_client_view';
+  | 'refresh_client_view'
+  | 'list_page_blocks'
+  | 'inspect_block_render'
+  | 'search_block_render'
+  | 'read_block_render_fragment'
+  | 'click_block_element'
+  | 'recompile_block';
 
 export interface ConsoleAssistantClientToolCall {
   call_id: string;
@@ -32,6 +38,7 @@ export interface ConsoleAssistantClientToolExecution {
 
 export interface ConsoleAssistantClientTools {
   toolIds: ConsoleAssistantClientToolId[];
+  subscribeCapabilities?(listener: () => void): () => void;
   execute(
     call: ConsoleAssistantClientToolCall
   ): Promise<ConsoleAssistantClientToolExecution>;
@@ -185,6 +192,7 @@ interface ConsoleAssistantWebSocketTicket {
 
 export interface ConsoleAssistantWebSocketControl {
   cancel(runId: string): void;
+  refreshClientTools(): void;
   close(): void;
 }
 
@@ -563,7 +571,7 @@ export function attachConsoleAssistantRunWebSocket(
   runId: string,
   csrfToken: string,
   handlers: ConsoleFlowDebugStreamHandlers,
-  options?: Omit<ConsoleAssistantWebSocketOptions, 'clientTools'> & {
+  options?: ConsoleAssistantWebSocketOptions & {
     afterEventId?: string | null;
   }
 ) {
@@ -604,6 +612,7 @@ async function runConsoleAssistantWebSocket(
     let requestSequence = 1;
     let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
     const clientToolResults = new Map<string, string>();
+    let clientToolsRefreshRequested = false;
 
     const clearHandshakeDeadline = () => {
       if (handshakeTimer !== null) {
@@ -636,6 +645,12 @@ async function runConsoleAssistantWebSocket(
               run_id: runId
             })
           );
+        }
+      },
+      refreshClientTools() {
+        clientToolsRefreshRequested = true;
+        if (activeRunId && socket?.readyState === WebSocket.OPEN) {
+          socket.close();
         }
       },
       close() {
@@ -690,9 +705,11 @@ async function runConsoleAssistantWebSocket(
                 type: 'run.attach',
                 request_id: `attach-${requestSequence++}`,
                 run_id: activeRunId,
-                after_event_id: lastEventId
+                after_event_id: lastEventId,
+                client_tool_ids: options?.clientTools?.toolIds ?? []
               })
             );
+            if (clientToolsRefreshRequested) current.close();
             return;
           }
           if (command.kind !== 'create') {
@@ -731,8 +748,9 @@ async function runConsoleAssistantWebSocket(
             if (
               !clientTools ||
               typeof call.call_id !== 'string' ||
-              (call.name !== 'get_client_context' &&
-                call.name !== 'refresh_client_view') ||
+              !clientTools.toolIds.includes(
+                call.name as ConsoleAssistantClientToolId
+              ) ||
               !call.arguments ||
               typeof call.arguments !== 'object' ||
               Array.isArray(call.arguments)
@@ -747,7 +765,7 @@ async function runConsoleAssistantWebSocket(
             void clientTools
               .execute({
                 call_id: call.call_id,
-                name: call.name,
+                name: call.name as ConsoleAssistantClientToolId,
                 arguments: call.arguments as Record<string, unknown>
               })
               .then(
@@ -798,6 +816,7 @@ async function runConsoleAssistantWebSocket(
           }
           if ('run_id' in event && typeof event.run_id === 'string') {
             activeRunId = event.run_id;
+            if (clientToolsRefreshRequested) current.close();
           }
           if ('event_id' in event && typeof event.event_id === 'string') {
             lastEventId = event.event_id;
@@ -824,6 +843,11 @@ async function runConsoleAssistantWebSocket(
         current.onclose = () => {
           clearHandshakeDeadline();
           if (settled || terminal) {
+            return;
+          }
+          if (activeRunId && clientToolsRefreshRequested) {
+            clientToolsRefreshRequested = false;
+            void connect(true);
             return;
           }
           if (activeRunId && reconnectCount < maxReconnects) {

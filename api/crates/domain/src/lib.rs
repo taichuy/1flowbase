@@ -112,13 +112,14 @@ pub use mcp_bundle::{
     McpBundleUpstreamConnection, McpBundleVersionStatus, MCP_BUNDLE_SCHEMA_VERSION,
 };
 pub use mcp_management::{
-    McpCallToolResult, McpCatalogSnapshot, McpDescriptionCheckResult, McpExportPackage,
-    McpFieldMapping, McpGroupRecord, McpInstanceDiscoveryPolicyRecord, McpInstanceRecord,
-    McpInstanceStatus, McpInterfaceCatalogEntry, McpInterfaceCatalogSource, McpListItemKind,
-    McpListItemSummary, McpRiskLevel, McpToolAvailabilityStatus, McpToolBindingRecord,
-    McpToolExecutionTarget, McpToolRecord, McpToolStatus, McpUpstreamAuthType,
-    McpUpstreamConnectionRecord, McpUpstreamConnectionStatus, McpUpstreamSourceStatus,
-    McpUpstreamToolSourceRecord, McpUpstreamTransport,
+    is_mcp_assistant_client_capability, McpCallToolResult, McpCatalogSnapshot,
+    McpDescriptionCheckResult, McpExportPackage, McpFieldMapping, McpGroupRecord,
+    McpInstanceDiscoveryPolicyRecord, McpInstanceRecord, McpInstanceStatus,
+    McpInterfaceCatalogEntry, McpInterfaceCatalogSource, McpListItemKind, McpListItemSummary,
+    McpRiskLevel, McpToolAvailabilityStatus, McpToolBindingRecord, McpToolExecutionTarget,
+    McpToolRecord, McpToolStatus, McpUpstreamAuthType, McpUpstreamConnectionRecord,
+    McpUpstreamConnectionStatus, McpUpstreamSourceStatus, McpUpstreamToolSourceRecord,
+    McpUpstreamTransport, MCP_ASSISTANT_CLIENT_CAPABILITY_CODES,
 };
 pub use model_provider::{
     LocalPluginInstallationRecord, ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord,

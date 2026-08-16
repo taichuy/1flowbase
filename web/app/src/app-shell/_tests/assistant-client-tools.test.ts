@@ -2,8 +2,41 @@ import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, test, vi } from 'vitest';
 
 import { createAssistantClientTools } from '../AssistantClientTools';
+import { registerFrontstageAssistantRuntime } from '../../features/frontstage/lib/assistant-frontstage-runtime';
 
 describe('assistant client tools', () => {
+  test('AC-001 declares Frontstage capabilities only while its page runtime is mounted', () => {
+    const tools = createAssistantClientTools({
+      queryClient: new QueryClient(),
+      refreshTargets: new Map(),
+      snapshot: () => ({
+        href: 'https://console.example/',
+        route_id: 'home',
+        page_title: 'Home',
+        locale: 'en-US',
+        workspace_id: 'workspace-1',
+        viewport: { width: 1280, height: 720 }
+      })
+    });
+    const listener = vi.fn();
+    const unsubscribe = tools.subscribeCapabilities?.(listener);
+
+    expect(tools.toolIds).toEqual([
+      'get_client_context',
+      'refresh_client_view'
+    ]);
+    const unregister = registerFrontstageAssistantRuntime({
+      execute: vi.fn()
+    });
+    expect(tools.toolIds).toContain('list_page_blocks');
+    expect(listener).toHaveBeenCalledOnce();
+
+    unregister();
+    expect(tools.toolIds).not.toContain('list_page_blocks');
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe?.();
+  });
+
   test('AC-003 returns the honest complete URL from the browser address bar', async () => {
     const tools = createAssistantClientTools({
       queryClient: new QueryClient(),

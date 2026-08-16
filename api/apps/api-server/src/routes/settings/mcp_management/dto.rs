@@ -113,6 +113,9 @@ pub enum McpToolExecutionTargetDto {
         remote_tool_name: String,
         source_schema_hash: String,
     },
+    AssistantClient {
+        capability_code: String,
+    },
 }
 
 #[derive(Debug, Serialize, ToSchema)]

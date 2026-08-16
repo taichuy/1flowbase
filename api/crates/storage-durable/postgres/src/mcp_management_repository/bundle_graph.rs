@@ -6,7 +6,8 @@ use uuid::Uuid;
 use crate::repositories::PgControlPlaneStore;
 
 use super::mappers::{
-    execution_target_kind, execution_target_remote_tool_name, execution_target_source_schema_hash,
+    execution_target_assistant_client_capability_code, execution_target_kind,
+    execution_target_remote_tool_name, execution_target_source_schema_hash,
     execution_target_upstream_connection_id, map_mcp_instance_insert_error,
 };
 
@@ -60,11 +61,12 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                 insert into mcp_tools (
                     id, workspace_id, tool_id, name, short_description, full_description,
                     interface_id, execution_kind, upstream_connection_id, remote_tool_name,
-                    source_schema_hash, parameter_schema, result_schema, input_mapping,
-                    output_mapping, permission_code, risk_level, des_id, des_id_required,
+                    source_schema_hash, assistant_client_capability_code, parameter_schema,
+                    result_schema, input_mapping, output_mapping, permission_code, risk_level,
+                    des_id, des_id_required,
                     status, created_by, updated_by
                 ) values (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$22
                 )
                 on conflict (workspace_id, tool_id) do update set
                     name=excluded.name,
@@ -75,6 +77,7 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     upstream_connection_id=excluded.upstream_connection_id,
                     remote_tool_name=excluded.remote_tool_name,
                     source_schema_hash=excluded.source_schema_hash,
+                    assistant_client_capability_code=excluded.assistant_client_capability_code,
                     parameter_schema=excluded.parameter_schema,
                     result_schema=excluded.result_schema,
                     input_mapping=excluded.input_mapping,
@@ -101,6 +104,9 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
         ))
         .bind(execution_target_remote_tool_name(&tool.execution_target))
         .bind(execution_target_source_schema_hash(&tool.execution_target))
+        .bind(execution_target_assistant_client_capability_code(
+            &tool.execution_target,
+        ))
         .bind(&tool.parameter_schema)
         .bind(&tool.result_schema)
         .bind(&tool.input_mapping)

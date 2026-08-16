@@ -121,6 +121,10 @@ pub(super) fn to_tool_response(
             format!("MCP tools/call {remote_tool_name}"),
             domain::McpToolAvailabilityStatus::Available,
         ),
+        domain::McpToolExecutionTarget::AssistantClient { capability_code } => (
+            format!("Assistant browser capability {capability_code}"),
+            domain::McpToolAvailabilityStatus::Available,
+        ),
     };
 
     to_tool_response_with_operation(record, operation, availability_status)
@@ -146,7 +150,8 @@ pub(super) async fn to_tool_response_for_actor(
                 )
                 .await?,
         ),
-        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+        | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
     };
     if let Some(availability) = availability {
         let operation = match &record.execution_target {
@@ -156,6 +161,9 @@ pub(super) async fn to_tool_response_for_actor(
                 format!("MCP tools/call {remote_tool_name}")
             }
             domain::McpToolExecutionTarget::InterfaceWrapper { .. } => String::new(),
+            domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
+                format!("Assistant browser capability {capability_code}")
+            }
         };
         Ok(to_tool_response_with_operation(
             record,
@@ -192,6 +200,9 @@ pub(super) fn to_tool_response_with_operation(
                 remote_tool_name,
                 source_schema_hash,
             },
+            domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
+                McpToolExecutionTargetDto::AssistantClient { capability_code }
+            }
         },
         operation,
         parameter_schema: record.parameter_schema,

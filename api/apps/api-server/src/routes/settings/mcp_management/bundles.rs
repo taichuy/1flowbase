@@ -1081,7 +1081,7 @@ fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, Contro
     })
 }
 
-fn build_bundle_archive(
+pub(crate) fn build_bundle_archive(
     mut package: domain::McpBundlePackage,
 ) -> Result<Vec<u8>, ControlPlaneError> {
     let mut files = Vec::<(String, Vec<u8>, domain::McpBundleFileKind)>::new();

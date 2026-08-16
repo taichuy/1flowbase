@@ -81,6 +81,8 @@ import {
 } from '../lib/page-canvas/native-block-context-host';
 import { FrontstageIsolatedFrontendBlockHost } from '../lib/isolated-frontend-block-react-adapter';
 import type { PreparedFrontstageIsolatedContribution } from '../lib/isolated-frontend-block-contribution';
+import { createFrontstageAssistantDomRuntime } from '../lib/assistant-frontstage-runtime-dom';
+import { registerFrontstageAssistantRuntime } from '../lib/assistant-frontstage-runtime';
 
 export type FrontstagePageCanvasRuntimeContext = Pick<
   BlockContext,
@@ -766,6 +768,21 @@ function RenderPlanSlot({
         transition: 'border-color 0.15s, background 0.15s'
       }}
       data-testid={`block-slot-${item.blockId}`}
+      data-flowbase-frontstage-block-id={item.blockId}
+      data-flowbase-frontstage-render-status={
+        rendererVersionError || isolatedPreparationError
+          ? 'failed'
+          : (runtimePreparation?.status ??
+            (isolatedPreparation ? 'ready' : 'loading'))
+      }
+      data-flowbase-frontstage-generation={runtimePreparation?.generation ?? 0}
+      data-flowbase-frontstage-render-error={
+        rendererVersionError?.description ??
+        isolatedPreparationError?.message ??
+        (runtimePreparation?.status === 'failed'
+          ? runtimePreparation.error.message
+          : undefined)
+      }
       aria-label={
         isDesignMode
           ? i18nText('frontstage', 'auto.block_with_id', {
@@ -833,6 +850,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   onRuntimeDemandChange,
   onRuntimeRetry
 }) => {
+  useEffect(() => {
+    if (!onRuntimeRetry) return;
+    return registerFrontstageAssistantRuntime(
+      createFrontstageAssistantDomRuntime({ recompile: onRuntimeRetry })
+    );
+  }, [onRuntimeRetry]);
   const pageDocument = useMemo(
     () => (content ? createFrontstagePageDocument(content) : null),
     [content]

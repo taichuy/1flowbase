@@ -80,9 +80,7 @@ export function prepareFrontstageNativeContribution(
       entry.contributionCode === request.contributionCode
   );
   if (!catalogEntry) {
-    throw new Error(
-      i18nText('frontstage', 'auto.runtime_preview_unavailable')
-    );
+    throw new Error(i18nText('frontstage', 'auto.runtime_preview_unavailable'));
   }
   return discoverTrustedFrontendContribution(catalogEntry.raw, {
     workspaceId,
@@ -299,7 +297,9 @@ export class FrontstageNativePreparationScheduler {
 
   retry(blockId: string): void {
     const current = this.scheduled.get(blockId);
-    if (!current || current.snapshot.status !== 'failed') return;
+    if (!current) return;
+    current.abortController?.abort();
+    current.abortController = null;
     current.generation += 1;
     current.snapshot = this.snapshot(current, 'idle');
     this.emit();

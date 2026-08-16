@@ -310,7 +310,20 @@ export function McpToolsTab({
         status: values.status
       };
       let body: SaveConsoleMcpToolBody;
-      if (editingTool?.execution_target.kind === 'mcp_proxy') {
+      if (editingTool?.execution_target.kind === 'assistant_client') {
+        body = {
+          ...common,
+          execution_target: editingTool.execution_target,
+          parameter_schema: schemaRecord(
+            form.getFieldValue('parameter_schema')
+          ),
+          result_schema: schemaRecord(form.getFieldValue('result_schema')),
+          input_mapping: schemaRecord(form.getFieldValue('input_mapping')),
+          output_mapping: schemaRecord(form.getFieldValue('output_mapping')),
+          permission_code: editingTool.permission_code,
+          risk_level: form.getFieldValue('risk_level') as string
+        };
+      } else if (editingTool?.execution_target.kind === 'mcp_proxy') {
         const inputMapping = form.getFieldValue(
           'input_mapping'
         ) as ConsoleMcpProxyInputMapping;
@@ -528,6 +541,10 @@ export function McpToolsTab({
                   source_schema_hash:
                     record.execution_target.kind === 'mcp_proxy'
                       ? record.execution_target.source_schema_hash
+                      : undefined,
+                  capability_code:
+                    record.execution_target.kind === 'assistant_client'
+                      ? record.execution_target.capability_code
                       : undefined,
                   risk_level: record.risk_level,
                   status: record.status
@@ -912,7 +929,30 @@ export function McpToolsTab({
             </Form.Item>
           </div>
           <div hidden={step !== 'interface'}>
-            {editingTool?.execution_target.kind === 'mcp_proxy' ? (
+            {editingTool?.execution_target.kind === 'assistant_client' ? (
+              <Space
+                orientation="vertical"
+                size="middle"
+                className="mcp-management__stack"
+              >
+                <Descriptions bordered size="small" column={1}>
+                  <Descriptions.Item label="capability_code">
+                    {editingTool.execution_target.capability_code}
+                  </Descriptions.Item>
+                </Descriptions>
+                <Form.Item
+                  name="risk_level"
+                  label="risk_level"
+                  rules={[{ required: true }]}
+                >
+                  <Select
+                    options={['low', 'medium', 'high', 'critical'].map(
+                      (value) => ({ label: value, value })
+                    )}
+                  />
+                </Form.Item>
+              </Space>
+            ) : editingTool?.execution_target.kind === 'mcp_proxy' ? (
               <Space
                 orientation="vertical"
                 size="middle"

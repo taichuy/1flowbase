@@ -939,6 +939,7 @@ impl McpManagementRepository for PgControlPlaneStore {
                 upstream_connection_id,
                 remote_tool_name,
                 source_schema_hash,
+                assistant_client_capability_code,
                 parameter_schema,
                 result_schema,
                 input_mapping,
@@ -952,8 +953,8 @@ impl McpManagementRepository for PgControlPlaneStore {
                 updated_by
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8,
-                $9, $10, $11, $12, $13, $14, $15,
-                $16, $17, $18, $19, $20, $21, $21
+                $9, $10, $11, $12, $13, $14, $15, $16,
+                $17, $18, $19, $20, $21, $22, $22
             )
             returning *
             "#,
@@ -971,6 +972,9 @@ impl McpManagementRepository for PgControlPlaneStore {
         ))
         .bind(execution_target_remote_tool_name(&input.execution_target))
         .bind(execution_target_source_schema_hash(&input.execution_target))
+        .bind(execution_target_assistant_client_capability_code(
+            &input.execution_target,
+        ))
         .bind(&input.parameter_schema)
         .bind(&input.result_schema)
         .bind(&input.input_mapping)
@@ -1000,17 +1004,18 @@ impl McpManagementRepository for PgControlPlaneStore {
                 upstream_connection_id = $8,
                 remote_tool_name = $9,
                 source_schema_hash = $10,
-                parameter_schema = $11,
-                result_schema = $12,
-                input_mapping = $13,
-                output_mapping = $14,
-                permission_code = $15,
-                risk_level = $16,
-                des_id = $17,
-                des_id_required = $18,
-                status = $19,
+                assistant_client_capability_code = $11,
+                parameter_schema = $12,
+                result_schema = $13,
+                input_mapping = $14,
+                output_mapping = $15,
+                permission_code = $16,
+                risk_level = $17,
+                des_id = $18,
+                des_id_required = $19,
+                status = $20,
                 revision = revision + 1,
-                updated_by = $20,
+                updated_by = $21,
                 updated_at = now()
             where workspace_id = $1 and tool_id = $2
             returning *
@@ -1028,6 +1033,9 @@ impl McpManagementRepository for PgControlPlaneStore {
         ))
         .bind(execution_target_remote_tool_name(&input.execution_target))
         .bind(execution_target_source_schema_hash(&input.execution_target))
+        .bind(execution_target_assistant_client_capability_code(
+            &input.execution_target,
+        ))
         .bind(&input.parameter_schema)
         .bind(&input.result_schema)
         .bind(&input.input_mapping)

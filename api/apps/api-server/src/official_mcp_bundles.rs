@@ -11,6 +11,8 @@ use async_trait::async_trait;
 use reqwest::Client;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -217,6 +219,167 @@ pub struct ApiOfficialMcpBundleRegistry {
 }
 
 impl ApiOfficialMcpBundleRegistry {
+    fn bundled_frontstage_assistant_package() -> domain::McpBundlePackage {
+        const CAPABILITIES: [(&str, &str, &str, &str); 6] = [
+            (
+                "list_page_blocks",
+                "列出当前页面区块",
+                "列出当前 Frontstage 页面已挂载区块及渲染状态。",
+                "low",
+            ),
+            (
+                "inspect_block_render",
+                "检查区块渲染",
+                "按区块 ID 读取渲染状态、错误与有界 HTML 预览，并返回 render_ref。",
+                "low",
+            ),
+            (
+                "search_block_render",
+                "检索区块渲染内容",
+                "在区块的有界 Shadow DOM 投影中检索关键字并返回 node_ref。",
+                "low",
+            ),
+            (
+                "read_block_render_fragment",
+                "分页读取区块渲染",
+                "使用 render_ref 和 cursor 分页读取不可信页面内容。",
+                "low",
+            ),
+            (
+                "click_block_element",
+                "点击区块元素",
+                "仅使用当前 render_ref 产生的 node_ref 点击可交互元素。",
+                "high",
+            ),
+            (
+                "recompile_block",
+                "重新编译区块",
+                "仅推进目标区块 generation 并重新编译，不重挂相邻区块。",
+                "high",
+            ),
+        ];
+        let tools = CAPABILITIES
+            .into_iter()
+            .map(|(code, name, description, risk)| domain::McpBundleTool {
+                tool_id: format!("frontstage_{code}"),
+                name: name.to_string(),
+                short_description: description.to_string(),
+                full_description: format!(
+                    "{description} 该结果来自当前浏览器并被视为不可信页面内容；工具仅在内置助手活动 WebSocket 租约中可用。"
+                ),
+                execution_target: domain::McpToolExecutionTarget::AssistantClient {
+                    capability_code: code.to_string(),
+                },
+                parameter_schema_snapshot: match code {
+                    "list_page_blocks" => json!({"type":"object","properties":{},"additionalProperties":false}),
+                    "inspect_block_render" | "recompile_block" => json!({"type":"object","properties":{"block_id":{"type":"string"}},"required":["block_id"],"additionalProperties":false}),
+                    "search_block_render" => json!({"type":"object","properties":{"block_id":{"type":"string"},"query":{"type":"string","minLength":1}},"required":["block_id","query"],"additionalProperties":false}),
+                    "read_block_render_fragment" => json!({"type":"object","properties":{"block_id":{"type":"string"},"render_ref":{"type":"string"},"cursor":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":3000}},"required":["block_id","render_ref"],"additionalProperties":false}),
+                    "click_block_element" => json!({"type":"object","properties":{"block_id":{"type":"string"},"render_ref":{"type":"string"},"node_ref":{"type":"string"}},"required":["block_id","render_ref","node_ref"],"additionalProperties":false}),
+                    _ => unreachable!(),
+                },
+                result_schema_snapshot: json!({"type":"object"}),
+                input_mapping: json!({}),
+                output_mapping: json!({}),
+                permission_code_snapshot: None,
+                risk_level_snapshot: match risk {
+                    "high" => domain::McpRiskLevel::High,
+                    _ => domain::McpRiskLevel::Low,
+                },
+                status: domain::McpToolStatus::Enabled,
+            })
+            .collect::<Vec<_>>();
+        let bindings = tools
+            .iter()
+            .enumerate()
+            .map(|(index, tool)| domain::McpBundleToolBinding {
+                group_path: "/frontstage".to_string(),
+                tool_id: tool.tool_id.clone(),
+                display_alias: None,
+                visible: true,
+                sort_order: index as i32,
+            })
+            .collect();
+        domain::McpBundlePackage {
+            manifest: domain::McpBundleManifest {
+                schema_version: domain::MCP_BUNDLE_SCHEMA_VERSION.to_string(),
+                organization: "1flowbase".to_string(),
+                bundle_id: "frontstage_assistant".to_string(),
+                bundle_version: "1.0.1".to_string(),
+                locale: "zh_Hans".to_string(),
+                minimum_host_version: env!("CARGO_PKG_VERSION").to_string(),
+                exported_from_system_version: env!("CARGO_PKG_VERSION").to_string(),
+                exported_at: "2026-08-16T00:00:00Z".to_string(),
+                files: Vec::new(),
+            },
+            tools,
+            instances: vec![domain::McpBundleInstance {
+                instance_id: "frontstage_browser".to_string(),
+                name: "Frontstage 浏览器操作".to_string(),
+                description_short: Some("供内置 AI 助手操作当前 Frontstage 页面".to_string()),
+                status: domain::McpInstanceStatus::Enabled,
+                default_entry_path: "/frontstage".to_string(),
+                groups: vec![domain::McpBundleGroup {
+                    path: "/frontstage".to_string(),
+                    display_name: "Frontstage".to_string(),
+                    description_short: Some("当前浏览器页面能力".to_string()),
+                    enabled: true,
+                    sort_order: 0,
+                }],
+                bindings,
+                discovery_policy: domain::McpBundleInstanceDiscoveryPolicy {
+                    list_default_limit: 20,
+                    list_max_depth: 3,
+                    list_regex_enabled: false,
+                    list_regex_max_length: 64,
+                    list_return_fields: json!([
+                        "id",
+                        "item_kind",
+                        "path",
+                        "name",
+                        "description_short",
+                        "risk_level"
+                    ]),
+                },
+            }],
+            connections: Vec::new(),
+        }
+    }
+
+    fn ensure_bundled_frontstage_assistant(&self) -> Result<()> {
+        let organization = "1flowbase";
+        let bundle_id = "frontstage_assistant";
+        let version = "1.0.1";
+        if bundle_path(&self.root, organization, bundle_id, version).is_file()
+            && receipt_path(&self.root, organization, bundle_id, version).is_file()
+        {
+            return Ok(());
+        }
+        let bytes = crate::routes::mcp_management::bundles::build_bundle_archive(
+            Self::bundled_frontstage_assistant_package(),
+        )
+        .map_err(|error| anyhow!("failed to package built-in Frontstage MCP: {error}"))?;
+        let receipt = LocalMcpBundleReceipt {
+            organization: organization.to_string(),
+            bundle_id: bundle_id.to_string(),
+            bundle_version: version.to_string(),
+            locale: "zh_Hans".to_string(),
+            minimum_host_version: env!("CARGO_PKG_VERSION").to_string(),
+            exported_from_system_version: env!("CARGO_PKG_VERSION").to_string(),
+            release_tag: "builtin/frontstage-assistant/v1.0.1".to_string(),
+            checksum: format!("sha256:{:x}", Sha256::digest(&bytes)),
+            algorithm: "builtin-code-shipped".to_string(),
+            key_id: "1flowbase-builtin".to_string(),
+            signature: "code-shipped".to_string(),
+        };
+        let release = release_dir(&self.root, organization, bundle_id, version);
+        let staged = stage_release(&self.root, &receipt, &bytes)?;
+        let backup = activate_staged_release(&staged, &release)?;
+        if let Some(backup) = backup {
+            fs::remove_dir_all(backup)?;
+        }
+        Ok(())
+    }
     pub fn new(
         source: ResolvedOfficialMcpBundleSourceConfig,
         root: PathBuf,
@@ -602,6 +765,7 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
     }
 
     async fn reconcile_local_installations(&self) -> Result<()> {
+        self.ensure_bundled_frontstage_assistant()?;
         let existing_currents = self
             .installation_repository
             .list_extension_installations_for_node(&self.node_id)
@@ -643,6 +807,11 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
                 )
                 .await?;
             }
+        }
+        if let Some(receipt) =
+            read_receipt(&self.root, "1flowbase", "frontstage_assistant", "1.0.1")?
+        {
+            self.index_receipt(&receipt, true).await?;
         }
         for record in self
             .installation_repository
@@ -707,6 +876,13 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
             .as_deref()
             .ok_or_else(|| anyhow!("local MCP bundle release has no artifact path on this node"))?;
         let bytes = fs::read(local_path).context("failed to read local MCP bundle artifact")?;
+        if receipt.key_id == "1flowbase-builtin" {
+            let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+            if checksum != receipt.checksum {
+                bail!("built-in MCP bundle checksum mismatch");
+            }
+            return Ok(bytes);
+        }
         plugin_framework::verify_trusted_ed25519_artifact(
             &bytes,
             &receipt.checksum,

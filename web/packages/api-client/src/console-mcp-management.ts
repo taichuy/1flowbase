@@ -50,9 +50,15 @@ export interface ConsoleMcpProxyExecutionTarget {
   source_schema_hash: string;
 }
 
+export interface ConsoleMcpAssistantClientExecutionTarget {
+  kind: 'assistant_client';
+  capability_code: string;
+}
+
 export type ConsoleMcpToolExecutionTarget =
   | ConsoleMcpInterfaceWrapperExecutionTarget
-  | ConsoleMcpProxyExecutionTarget;
+  | ConsoleMcpProxyExecutionTarget
+  | ConsoleMcpAssistantClientExecutionTarget;
 
 export type ConsoleMcpToolAvailabilityStatus =
   | 'available'
@@ -371,6 +377,11 @@ export type SaveConsoleMcpToolBody = SaveConsoleMcpToolBodyBase &
         execution_target: ConsoleMcpProxyExecutionTarget;
         input_mapping: ConsoleMcpProxyInputMapping;
         output_mapping: ConsoleMcpProxyOutputMapping;
+      }
+    | {
+        execution_target: ConsoleMcpAssistantClientExecutionTarget;
+        input_mapping: unknown;
+        output_mapping: unknown;
       }
   );
 

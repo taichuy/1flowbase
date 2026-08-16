@@ -15,6 +15,9 @@ fn issue_1246_ac_002_execution_target_is_a_tagged_contract() {
         remote_tool_name: "weather.lookup".into(),
         source_schema_hash: "sha256:test".into(),
     };
+    let assistant_client = McpToolExecutionTarget::AssistantClient {
+        capability_code: "inspect_block_render".into(),
+    };
 
     assert_eq!(
         serde_json::to_value(interface).unwrap(),
@@ -29,6 +32,25 @@ fn issue_1246_ac_002_execution_target_is_a_tagged_contract() {
             "source_schema_hash": "sha256:test"
         })
     );
+    assert_eq!(
+        serde_json::to_value(assistant_client).unwrap(),
+        json!({"kind": "assistant_client", "capability_code": "inspect_block_render"})
+    );
+}
+
+#[test]
+fn assistant_client_mcp_target_accepts_only_frontstage_capabilities() {
+    for code in crate::mcp_management::MCP_ASSISTANT_CLIENT_CAPABILITY_CODES {
+        assert!(crate::mcp_management::is_mcp_assistant_client_capability(
+            code
+        ));
+    }
+    assert!(!crate::mcp_management::is_mcp_assistant_client_capability(
+        "get_client_context"
+    ));
+    assert!(!crate::mcp_management::is_mcp_assistant_client_capability(
+        "run_javascript"
+    ));
 }
 
 #[test]

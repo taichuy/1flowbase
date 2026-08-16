@@ -13,8 +13,10 @@ import {
   startConsoleAssistantRunWebSocket,
   subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings,
+  type ConsoleAssistantClientToolId,
   type ConsoleAssistantConversationMessage,
-  type ConsoleAssistantRunActivityPage
+  type ConsoleAssistantRunActivityPage,
+  type ConsoleAssistantWebSocketControl
 } from '../console-assistant';
 import * as transport from '../transport';
 
@@ -505,6 +507,108 @@ describe('console assistant client', () => {
       },
       is_error: false
     });
+    vi.unstubAllGlobals();
+  });
+
+  test('AC-001 replaces an active lease when browser capabilities change', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    vi.mocked(transport.apiFetch)
+      .mockResolvedValueOnce({
+        ticket: 'ticket-capabilities-1',
+        protocol: '1flowbase.assistant.v1',
+        expires_in_seconds: 60
+      } as never)
+      .mockResolvedValueOnce({
+        ticket: 'ticket-capabilities-2',
+        protocol: '1flowbase.assistant.v1',
+        expires_in_seconds: 60
+      } as never);
+    let connection = 0;
+    let toolIds: ConsoleAssistantClientToolId[] = ['get_client_context'];
+    let control: ConsoleAssistantWebSocketControl | undefined;
+
+    class CapabilityLeaseWebSocket {
+      static readonly OPEN = 1;
+      readonly readyState = CapabilityLeaseWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      readonly connection = ++connection;
+
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      send(value: string) {
+        const command = JSON.parse(value) as Record<string, unknown>;
+        sent.push(command);
+        if (this.connection === 1 && command.type === 'run.create') {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'flow_accepted',
+              event_type: 'flow_accepted',
+              event_id: 'run-1:1',
+              run_id: 'run-1',
+              sequence: 1,
+              payload: { status: 'queued' }
+            })
+          } as MessageEvent);
+          toolIds = ['get_client_context', 'list_page_blocks'];
+          queueMicrotask(() => control?.refreshClientTools());
+          return;
+        }
+        if (this.connection === 2 && command.type === 'run.attach') {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: 'flow_finished',
+              event_type: 'flow_finished',
+              event_id: 'run-1:2',
+              run_id: 'run-1',
+              sequence: 2,
+              payload: { status: 'succeeded', output: { answer: 'done' } }
+            })
+          } as MessageEvent);
+        }
+      }
+
+      close() {
+        queueMicrotask(() => this.onclose?.());
+      }
+    }
+
+    vi.stubGlobal('WebSocket', CapabilityLeaseWebSocket);
+    await startConsoleAssistantRunWebSocket(
+      { application_id: 'application-1', query: 'hello', history: [] },
+      'csrf-token',
+      { onEvent: vi.fn() },
+      {
+        baseUrl: 'http://127.0.0.1:3100',
+        clientTools: {
+          get toolIds() {
+            return toolIds;
+          },
+          execute: vi.fn()
+        },
+        onControl: (nextControl) => {
+          control = nextControl;
+        }
+      }
+    );
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: 'run.create',
+        client_tool_ids: ['get_client_context']
+      })
+    );
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: 'run.attach',
+        run_id: 'run-1',
+        client_tool_ids: ['get_client_context', 'list_page_blocks']
+      })
+    );
     vi.unstubAllGlobals();
   });
 
