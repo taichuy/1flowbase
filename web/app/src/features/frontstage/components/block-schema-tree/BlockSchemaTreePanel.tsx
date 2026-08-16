@@ -66,7 +66,6 @@ export interface BlockSchemaTreePanelProps {
   tabId: string;
   blockCreateDefaults?: {
     source_code: string;
-    dependency_lock: unknown[];
     runtime_descriptor: unknown;
   };
   currentBlockId: string;
@@ -247,7 +246,6 @@ export function BlockSchemaTreePanel({
           before_block_id: null,
           after_block_id: null,
           source_code: blockCreateDefaults.source_code,
-          dependency_lock: blockCreateDefaults.dependency_lock,
           runtime_descriptor: blockCreateDefaults.runtime_descriptor
         });
         if (parent) {

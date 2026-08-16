@@ -1,8 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  canonicalizeNativeReactCatalogDependencyLock,
-  type NativeReactCatalogDependencyLock
-} from '@1flowbase/page-runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -44,7 +40,6 @@ function pendingTab(blockId: string): FrontstageBlockCodeTabState {
 
 export interface FrontstageExecutableSavePayload {
   source_code: string;
-  dependency_lock: NativeReactCatalogDependencyLock;
   expected_source_revision: string | null;
 }
 
@@ -54,18 +49,9 @@ export async function compileFrontstageExecutableSave(
   if (!tab.executable) {
     throw new Error('Frontstage block source state is missing.');
   }
-  const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
-    tab.executable.dependency_lock ?? []
-  );
-  if (!dependencyLock) {
-    throw new Error('Frontstage block dependency_lock is invalid.');
-  }
   return {
     source_code: tab.draft,
-    expected_source_revision: tab.source_sha256,
-    dependency_lock: dependencyLock.filter(
-      ({ module_source }) => module_source !== 'tailwindcss'
-    )
+    expected_source_revision: tab.source_sha256
   };
 }
 

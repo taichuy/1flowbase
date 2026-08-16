@@ -43,7 +43,6 @@ import {
   updateFrontstagePageLayoutMode,
   type FrontstageBlockCompositionState
 } from '../lib/block-composition';
-import { resolveFrontstageNativeDependencyLock } from '../lib/block-catalog';
 import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capability-handlers';
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
@@ -962,13 +961,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         throw new Error('created block is missing');
       }
 
-      const dependencyLockResolution = resolveFrontstageNativeDependencyLock({
-        catalogEntry: entry,
-        workspaceId
-      });
-      if (dependencyLockResolution.error) {
-        throw new Error(dependencyLockResolution.error);
-      }
       const createdNode = await blockTreeMutations.create.mutateAsync({
         tab_id: tabId,
         title: entry.title,
@@ -978,9 +970,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         before_block_id: null,
         after_block_id: null,
         source_code: codeTemplate.source,
-        dependency_lock: dependencyLockResolution.dependencyLock.filter(
-          ({ module_source }) => module_source !== 'tailwindcss'
-        ),
         runtime_descriptor: createFrontstageBlockRuntimeDescriptor(createdBlock)
       });
       setSelectedBlockId(createdNode.block_id);

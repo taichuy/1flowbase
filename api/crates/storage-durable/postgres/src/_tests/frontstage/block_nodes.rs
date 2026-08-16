@@ -5,8 +5,8 @@ use control_plane::{
     ports::{
         CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
         DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput,
-        FrontstageBlockDescriptorUpdate, FrontstageBlockPosition, FrontstageBlockTreeRepository,
-        FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
+        FrontstageBlockDescriptorUpdate, FrontstageBlockPosition, FrontstageBlockSourceInput,
+        FrontstageBlockTreeRepository, FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
         UpdateFrontstageBlockDescriptorsInput,
     },
 };
@@ -310,9 +310,8 @@ async fn block_code_save_rejects_a_stale_source_revision_atomically() {
             page_id,
             block_id: "root".to_owned(),
             expected_source_revision: Some("0".repeat(64)),
-            code: FrontstageBlockCodeInput {
+            source: FrontstageBlockSourceInput {
                 source_code: "export default 2;".to_owned(),
-                dependency_lock: json!([]),
             },
             audit_log: stale,
         })

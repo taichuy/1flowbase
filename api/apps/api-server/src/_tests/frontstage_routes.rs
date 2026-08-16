@@ -312,10 +312,7 @@ async fn send_json(
 }
 
 fn ready_executable_payload(source_code: &str) -> Value {
-    json!({
-        "source_code": source_code,
-        "dependency_lock": []
-    })
+    json!({ "source_code": source_code })
 }
 
 async fn delete_node(

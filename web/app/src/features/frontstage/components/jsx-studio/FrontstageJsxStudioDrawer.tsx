@@ -12,7 +12,6 @@ import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-bl
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
-import { resolveFrontstageNativeDependencyLock } from '../../lib/block-catalog';
 import { isForbiddenResponseError } from '../../lib/api-errors';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -136,16 +135,8 @@ export function FrontstageJsxStudioDrawer({
   const blockCreateDefaults = useMemo(() => {
     const template = activeCatalogEntry?.codeCapabilities?.template;
     if (!activeCatalogEntry || !template) return undefined;
-    const lock = resolveFrontstageNativeDependencyLock({
-      catalogEntry: activeCatalogEntry,
-      workspaceId
-    });
-    if (lock.error) return undefined;
     return {
       source_code: template.source,
-      dependency_lock: lock.dependencyLock.filter(
-        ({ module_source }) => module_source !== 'tailwindcss'
-      ),
       runtime_descriptor: createFrontstageBlockRuntimeDescriptor(activeBlock)
     };
   }, [activeBlock, activeCatalogEntry, workspaceId]);

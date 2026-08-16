@@ -125,7 +125,6 @@ describe('frontstage block tree client contract', () => {
       before_block_id: null,
       after_block_id: 'summary',
       source_code: "import 'tailwindcss'; export default function Sales() {}",
-      dependency_lock: [],
       input_mapping: { customer: 'page.customer' },
       output_mapping: { result: 'page.result' },
       runtime_descriptor: { kind: 'native_react' }
@@ -231,8 +230,7 @@ describe('frontstage block tree client contract', () => {
         'page-1',
         'sales',
         {
-          source_code: "import 'tailwindcss'; export default Sales",
-          dependency_lock: []
+          source_code: "import 'tailwindcss'; export default Sales"
         },
         'csrf'
       )

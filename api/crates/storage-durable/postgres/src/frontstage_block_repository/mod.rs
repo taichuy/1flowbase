@@ -1188,10 +1188,10 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             update frontstage_block_codes
-            set code = $4, source_sha256 = $5, dependency_lock = $6,
-                updated_by = $8, updated_at = now()
+            set code = $4, source_sha256 = $5,
+                updated_by = $7, updated_at = now()
             where workspace_id = $1 and page_id = $2 and code_ref = $3
-              and ($7::text is null or source_sha256 = $7)
+              and ($6::text is null or source_sha256 = $6)
             returning workspace_id, page_id, code_ref, code as source_code, source_sha256,
                       dependency_lock, created_at, updated_at
             "#,
@@ -1199,12 +1199,11 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.page_id)
         .bind(&code_ref)
-        .bind(&input.code.source_code)
+        .bind(&input.source.source_code)
         .bind(format!(
             "{:x}",
-            Sha256::digest(input.code.source_code.as_bytes())
+            Sha256::digest(input.source.source_code.as_bytes())
         ))
-        .bind(&input.code.dependency_lock)
         .bind(&input.expected_source_revision)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)

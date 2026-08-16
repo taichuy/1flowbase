@@ -85,7 +85,6 @@ export interface CreateConsoleFrontstageBlockNodeInput {
   before_block_id: string | null;
   after_block_id: string | null;
   source_code: string;
-  dependency_lock: unknown[];
   input_mapping?: Record<string, string>;
   output_mapping?: Record<string, string>;
   runtime_descriptor: unknown | null;
@@ -119,7 +118,6 @@ export interface DeleteConsoleFrontstageBlockSubtreeInput {
 
 export interface SaveConsoleFrontstageBlockNodeCodeInput {
   source_code: string;
-  dependency_lock: unknown[];
   expected_source_revision?: string | null;
 }
 

@@ -200,6 +200,7 @@ fn root_slug_for(
 pub struct FrontstagePageService<R> {
     repository: R,
     actor_override: Option<domain::ActorContext>,
+    node_id: Option<String>,
 }
 
 impl<R> FrontstagePageService<R>
@@ -210,6 +211,7 @@ where
         Self {
             repository,
             actor_override: None,
+            node_id: None,
         }
     }
 
@@ -217,7 +219,13 @@ where
         Self {
             repository,
             actor_override: Some(actor),
+            node_id: None,
         }
+    }
+
+    pub fn with_node_id(mut self, node_id: impl Into<String>) -> Self {
+        self.node_id = Some(node_id.into());
+        self
     }
 
     async fn load_actor_context(

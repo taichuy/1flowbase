@@ -102,7 +102,6 @@ function renderPanel(
       tabId="tab-1"
       blockCreateDefaults={{
         source_code: 'export default () => null',
-        dependency_lock: [],
         runtime_descriptor: {}
       }}
       currentBlockId="root-page"
@@ -271,7 +270,6 @@ describe('BlockSchemaTreePanel', () => {
         before_block_id: null,
         after_block_id: null,
         source_code: 'export default () => null',
-        dependency_lock: [],
         runtime_descriptor: {}
       });
       expect(onOpenBlock).toHaveBeenCalledWith('child-page');

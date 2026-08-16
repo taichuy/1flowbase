@@ -338,8 +338,7 @@ describe('useFrontstageBlockTabs', () => {
       expect.objectContaining({
         source_code:
           'import \'tailwindcss\'; export default () => <div className="p-4" />;',
-        expected_source_revision: sha256Text('source:root'),
-        dependency_lock: [persistedDependencyLock[0]]
+        expected_source_revision: sha256Text('source:root')
       }),
       'csrf-123'
     );
@@ -347,7 +346,7 @@ describe('useFrontstageBlockTabs', () => {
 
   test.each([
     ['malformed dependency lock', { dependency_lock: [{ bad: true }] }]
-  ])('fails closed on %s without invoking save', async (_label, override) => {
+  ])('saves source without resubmitting %s', async (_label, override) => {
     api.fetchFrontstageBlockNodeCode.mockResolvedValueOnce({
       ...executableCode('root'),
       ...override
@@ -357,10 +356,15 @@ describe('useFrontstageBlockTabs', () => {
       expect(view.result.current.activeTab?.loading).toBe(false)
     );
     await act(async () => {
-      await view.result.current.saveActiveDraft().catch(() => undefined);
+      await view.result.current.saveActiveDraft();
     });
-    expect(api.saveFrontstageBlockNodeCode).not.toHaveBeenCalled();
-    expect(view.result.current.activeTab?.error).toBeInstanceOf(Error);
+    expect(api.saveFrontstageBlockNodeCode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'root',
+      expect.not.objectContaining({ dependency_lock: expect.anything() }),
+      'csrf-123'
+    );
   });
 
   test('passes the loaded source revision so the backend can reject a stale save', async () => {

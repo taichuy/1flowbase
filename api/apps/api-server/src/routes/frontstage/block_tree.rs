@@ -14,7 +14,7 @@ use control_plane::{
         SearchFrontstageBlocksCommand, UpdateFrontstageBlockDescriptorsCommand,
         UpdateFrontstageBlockNodeCommand,
     },
-    ports::{FrontstageBlockCodeInput, FrontstageBlockPosition},
+    ports::FrontstageBlockPosition,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -43,6 +43,7 @@ pub enum FrontstageBlockPresentationDto {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateFrontstageBlockNodeBody {
     pub tab_id: Option<String>,
     pub title: String,
@@ -51,8 +52,7 @@ pub struct CreateFrontstageBlockNodeBody {
     pub parent_block_id: Option<String>,
     pub before_block_id: Option<String>,
     pub after_block_id: Option<String>,
-    #[serde(flatten)]
-    pub code: FrontstageBlockCodeBody,
+    pub source_code: String,
     #[serde(default)]
     pub input_mapping: BTreeMap<String, String>,
     #[serde(default)]
@@ -95,17 +95,10 @@ pub struct DeleteFrontstageBlockSubtreeBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SaveFrontstageBlockNodeCodeBody {
     pub expected_source_revision: Option<String>,
-    #[serde(flatten)]
-    pub code: FrontstageBlockCodeBody,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct FrontstageBlockCodeBody {
     pub source_code: String,
-    #[schema(value_type = Vec<Object>)]
-    pub dependency_lock: Value,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -362,6 +355,7 @@ pub async fn create_frontstage_block_node(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .with_node_id(state.api_node_id.clone())
         .create_block_node(CreateFrontstageBlockNodeCommand {
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
@@ -379,7 +373,7 @@ pub async fn create_frontstage_block_node(
                 before_block_id: body.before_block_id,
                 after_block_id: body.after_block_id,
             },
-            code: code_input(body.code),
+            source_code: body.source_code,
             input_mapping: body.input_mapping,
             output_mapping: body.output_mapping,
             runtime_descriptor: body.runtime_descriptor,
@@ -694,7 +688,7 @@ pub async fn save_frontstage_block_node_code(
         .save_block_node_code(SaveFrontstageBlockNodeCodeCommand {
             scope,
             expected_source_revision: body.expected_source_revision,
-            code: code_input(body.code),
+            source_code: body.source_code,
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_code_response(
@@ -828,13 +822,6 @@ fn to_runtime_layer_response(
         runtime_descriptor: layer.node.runtime_descriptor,
         code_ref: layer.node.code_ref,
         source_revision: layer.source_revision,
-    }
-}
-
-fn code_input(body: FrontstageBlockCodeBody) -> FrontstageBlockCodeInput {
-    FrontstageBlockCodeInput {
-        source_code: body.source_code,
-        dependency_lock: body.dependency_lock,
     }
 }
 

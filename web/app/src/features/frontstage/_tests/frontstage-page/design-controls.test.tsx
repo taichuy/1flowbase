@@ -1043,7 +1043,6 @@ describe('FrontStagePage - design controls', () => {
         tab_id: 'tab-1',
         parent_block_id: null,
         source_code: selectedTemplate,
-        dependency_lock: [],
         runtime_descriptor: expect.objectContaining({
           catalog: {
             providerCode: 'third-party',

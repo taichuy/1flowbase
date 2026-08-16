@@ -37,6 +37,11 @@ pub struct FrontstageBlockCodeInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct FrontstageBlockSourceInput {
+    pub source_code: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateFrontstageBlockNodeInput {
     pub workspace_id: Uuid,
     pub actor_user_id: Uuid,
@@ -74,7 +79,7 @@ pub struct SaveFrontstageBlockNodeCodeInput {
     pub page_id: Uuid,
     pub block_id: String,
     pub expected_source_revision: Option<String>,
-    pub code: FrontstageBlockCodeInput,
+    pub source: FrontstageBlockSourceInput,
     pub audit_log: domain::AuditLogRecord,
 }
 

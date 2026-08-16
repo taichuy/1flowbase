@@ -70,7 +70,6 @@ export function JsxStudioResourcePanel({
   tabId?: string | null;
   blockCreateDefaults?: {
     source_code: string;
-    dependency_lock: unknown[];
     runtime_descriptor: unknown;
   };
   workspaceId: string;

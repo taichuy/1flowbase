@@ -10,11 +10,12 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput,
-        FrontstageBlockDescriptorUpdate, FrontstageBlockPosition,
-        FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
-        FrontstagePageRepository, MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
-        UpdateFrontstageBlockDescriptorsInput, UpdateFrontstageBlockNodeInput,
+        DeleteFrontstageBlockSubtreeInput, FrontendBlockCatalogRepository,
+        FrontstageBlockCodeInput, FrontstageBlockDescriptorUpdate, FrontstageBlockPosition,
+        FrontstageBlockSourceInput, FrontstageBlockSubtreeDeleteResult,
+        FrontstageBlockTreeRepository, FrontstagePageRepository, MoveFrontstageBlockNodeInput,
+        SaveFrontstageBlockNodeCodeInput, UpdateFrontstageBlockDescriptorsInput,
+        UpdateFrontstageBlockNodeInput,
     },
 };
 
@@ -67,7 +68,7 @@ pub struct CreateFrontstageBlockNodeCommand {
     pub description: Option<String>,
     pub presentation: domain::FrontstageBlockPresentation,
     pub position: FrontstageBlockPosition,
-    pub code: FrontstageBlockCodeInput,
+    pub source_code: String,
     pub input_mapping: BTreeMap<String, String>,
     pub output_mapping: BTreeMap<String, String>,
     pub runtime_descriptor: Option<Value>,
@@ -104,7 +105,7 @@ pub struct DeleteFrontstageBlockSubtreeCommand {
 pub struct SaveFrontstageBlockNodeCodeCommand {
     pub scope: FrontstageBlockScopeCommand,
     pub expected_source_revision: Option<String>,
-    pub code: FrontstageBlockCodeInput,
+    pub source_code: String,
 }
 
 pub struct FrontstageBlockOpenTarget {
@@ -343,7 +344,10 @@ where
     pub async fn create_block_node(
         &self,
         command: CreateFrontstageBlockNodeCommand,
-    ) -> Result<domain::FrontstageBlockNodeRecord> {
+    ) -> Result<domain::FrontstageBlockNodeRecord>
+    where
+        R: FrontendBlockCatalogRepository,
+    {
         let actor = self
             .ensure_block_designer(
                 command.actor_user_id,
@@ -352,6 +356,7 @@ where
                 None,
             )
             .await?;
+        let mut parent_runtime_descriptor = None;
         let tab_id = if let Some(parent_block_id) = command.position.parent_block_id.as_deref() {
             let parent = self
                 .load_block_node(&FrontstageBlockScopeCommand {
@@ -361,6 +366,7 @@ where
                     block_id: parent_block_id.to_owned(),
                 })
                 .await?;
+            parent_runtime_descriptor = Some(parent.runtime_descriptor.clone());
             if command
                 .tab_id
                 .is_some_and(|requested_tab_id| requested_tab_id != parent.tab_id)
@@ -390,8 +396,17 @@ where
         let description = optional_block_description(command.description);
         let block_id = Uuid::now_v7().to_string();
         let code_ref = format!("frontstage.block.{block_id}");
-        let runtime_descriptor =
-            canonical_runtime_descriptor(&block_id, &code_ref, command.runtime_descriptor)?;
+        let runtime_descriptor = canonical_runtime_descriptor(
+            &block_id,
+            &code_ref,
+            inherit_runtime_identity(
+                command.runtime_descriptor,
+                parent_runtime_descriptor.as_ref(),
+            )?,
+        )?;
+        let (runtime_descriptor, dependency_lock) = self
+            .resolve_runtime_descriptor_and_lock(command.workspace_id, runtime_descriptor)
+            .await?;
         let audit_log = block_audit(
             &actor,
             command.page_id,
@@ -414,7 +429,10 @@ where
                 input_mapping: command.input_mapping,
                 output_mapping: command.output_mapping,
                 runtime_descriptor,
-                code: validate_code(command.code)?,
+                code: validate_code(FrontstageBlockCodeInput {
+                    source_code: command.source_code,
+                    dependency_lock,
+                })?,
                 audit_log,
             })
             .await
@@ -672,11 +690,65 @@ where
                 expected_source_revision: validate_source_revision(
                     command.expected_source_revision,
                 )?,
-                code: validate_code(command.code)?,
+                source: FrontstageBlockSourceInput {
+                    source_code: command.source_code,
+                },
                 audit_log,
             })
             .await
             .map_err(map_block_repository_error)
+    }
+
+    async fn resolve_runtime_descriptor_and_lock(
+        &self,
+        workspace_id: Uuid,
+        mut runtime_descriptor: Value,
+    ) -> Result<(Value, Value)>
+    where
+        R: FrontendBlockCatalogRepository,
+    {
+        if runtime_descriptor
+            .pointer("/runtime/kind")
+            .and_then(Value::as_str)
+            != Some("native_react")
+        {
+            return Ok((runtime_descriptor, Value::Array(Vec::new())));
+        }
+
+        let requested_identity = FrontstageCatalogIdentity::from_descriptor(&runtime_descriptor)?;
+        let node_id = self
+            .node_id
+            .as_deref()
+            .ok_or(ControlPlaneError::UpstreamUnavailable(
+                "frontstage_catalog_node",
+            ))?;
+        let entries = self
+            .repository
+            .list_workspace_frontend_blocks(node_id, workspace_id)
+            .await?;
+        let entry = match requested_identity {
+            Some(identity) => entries.into_iter().find(|entry| identity.matches(entry)),
+            None => {
+                let mut defaults = entries.into_iter().filter(|entry| {
+                    entry.provider_code == "1flowbase"
+                        && entry.contribution_code == "frontstage.js-ui-block"
+                });
+                let entry = defaults.next();
+                if defaults.next().is_some() {
+                    return Err(ControlPlaneError::InvalidInput(
+                        "frontstage_block_catalog_identity",
+                    )
+                    .into());
+                }
+                entry
+            }
+        }
+        .ok_or(ControlPlaneError::NotFound(
+            "frontstage_block_catalog_entry",
+        ))?;
+        apply_catalog_identity(&mut runtime_descriptor, &entry)?;
+        let dependency_lock = canonical_dependency_lock(workspace_id, entry.code_modules)?;
+        Ok((runtime_descriptor, dependency_lock))
     }
 
     async fn ensure_block_designer(
@@ -767,30 +839,258 @@ pub(super) fn validate_source_revision(value: Option<String>) -> Result<Option<S
 }
 
 fn is_dependency_lock(value: &Value) -> bool {
-    value.as_array().is_some_and(|entries| {
-        entries.iter().all(|entry| {
-            entry.as_object().is_some_and(|entry| {
-                ["module_source", "module_version", "binding"]
-                    .iter()
-                    .all(|field| {
-                        entry
-                            .get(*field)
-                            .and_then(Value::as_str)
-                            .is_some_and(|v| !v.is_empty())
+    let Some(entries) = value.as_array() else {
+        return false;
+    };
+    let mut module_sources = HashSet::new();
+    entries.iter().all(|entry| {
+        let Some(entry) = entry.as_object() else {
+            return false;
+        };
+        let Some(module_source) = non_empty_string(entry.get("module_source")) else {
+            return false;
+        };
+        let Some(_module_version) = non_empty_string(entry.get("module_version")) else {
+            return false;
+        };
+        let Some(binding) = entry.get("binding").and_then(Value::as_str) else {
+            return false;
+        };
+        let host_binding = matches!(module_source, "react" | "react/jsx-runtime" | "antd");
+        if !module_sources.insert(module_source)
+            || !matches!(binding, "host" | "fetched")
+            || (binding == "host") != host_binding
+        {
+            return false;
+        }
+
+        let Some(exports) = entry.get("exports").and_then(Value::as_array) else {
+            return false;
+        };
+        let mut export_names = HashSet::new();
+        if exports.is_empty()
+            || !exports.iter().all(|value| {
+                non_empty_string(Some(value)).is_some_and(|name| export_names.insert(name))
+            })
+        {
+            return false;
+        }
+
+        let Some(assets) = entry.get("assets").and_then(Value::as_array) else {
+            return false;
+        };
+        let mut asset_identities = HashSet::new();
+        let mut browser_modules = 0;
+        if !assets.iter().all(|asset| {
+            let Some(asset) = asset.as_object() else {
+                return false;
+            };
+            let Some(role) = asset.get("role").and_then(Value::as_str) else {
+                return false;
+            };
+            let Some(media_type) = non_empty_string(asset.get("media_type")) else {
+                return false;
+            };
+            let Some(sha256) = asset.get("sha256").and_then(Value::as_str) else {
+                return false;
+            };
+            let Some(_url) = non_empty_string(asset.get("url")) else {
+                return false;
+            };
+            if !matches!(role, "browser_module" | "shadow_style" | "support")
+                || media_type.trim().is_empty()
+                || !is_sha256(sha256)
+                || asset
+                    .get("integrity")
+                    .is_some_and(|value| value.as_str() != Some("verified_sha256"))
+                || !asset_identities.insert((role, sha256))
+            {
+                return false;
+            }
+            if role == "browser_module" {
+                browser_modules += 1;
+            }
+            true
+        }) {
+            return false;
+        }
+        if binding == "host" {
+            assets.is_empty()
+        } else {
+            browser_modules == 1 && !assets.is_empty()
+        }
+    })
+}
+
+#[derive(Debug)]
+struct FrontstageCatalogIdentity {
+    installation_id: Uuid,
+    provider_code: String,
+    plugin_id: String,
+    plugin_version: String,
+    contribution_code: String,
+}
+
+impl FrontstageCatalogIdentity {
+    fn from_descriptor(descriptor: &Value) -> Result<Option<Self>> {
+        let fields = [
+            descriptor.pointer("/catalog/installationId"),
+            descriptor.pointer("/catalog/providerCode"),
+            descriptor.pointer("/contribution/pluginId"),
+            descriptor.pointer("/contribution/pluginVersion"),
+            descriptor.pointer("/contribution/code"),
+        ];
+        if fields
+            .iter()
+            .all(|value| non_empty_string(*value).is_none())
+        {
+            return Ok(None);
+        }
+        let required = |value: Option<&Value>| {
+            non_empty_string(value)
+                .ok_or(ControlPlaneError::InvalidInput(
+                    "frontstage_block_catalog_identity",
+                ))
+                .map(str::to_owned)
+        };
+        let installation_id = Uuid::parse_str(&required(fields[0])?)
+            .map_err(|_| ControlPlaneError::InvalidInput("frontstage_block_catalog_identity"))?;
+        Ok(Some(Self {
+            installation_id,
+            provider_code: required(fields[1])?,
+            plugin_id: required(fields[2])?,
+            plugin_version: required(fields[3])?,
+            contribution_code: required(fields[4])?,
+        }))
+    }
+
+    fn matches(&self, entry: &domain::FrontendBlockCatalogEntry) -> bool {
+        self.installation_id == entry.installation_id
+            && self.provider_code == entry.provider_code
+            && self.plugin_id == entry.plugin_id
+            && self.plugin_version == entry.plugin_version
+            && self.contribution_code == entry.contribution_code
+    }
+}
+
+fn canonical_dependency_lock(
+    workspace_id: Uuid,
+    modules: Vec<domain::FrontendBlockCodeModule>,
+) -> Result<Value> {
+    let entries = modules
+        .into_iter()
+        .filter(|module| module.source != "tailwindcss")
+        .map(|module| {
+            let binding = match module.binding {
+                domain::FrontendModuleBinding::Host => "host",
+                domain::FrontendModuleBinding::Fetched => "fetched",
+            };
+            let assets = module
+                .assets
+                .into_iter()
+                .map(|asset| {
+                    let sha256 = asset.sha256;
+                    let role = match asset.role {
+                        domain::FrontendModuleAssetRole::BrowserModule => "browser_module",
+                        domain::FrontendModuleAssetRole::ShadowStyle => "shadow_style",
+                        domain::FrontendModuleAssetRole::Support => "support",
+                    };
+                    serde_json::json!({
+                        "role": role,
+                        "media_type": asset.media_type,
+                        "sha256": sha256.clone(),
+                        "url": format!(
+                            "/api/console/frontstage/{workspace_id}/component-module-assets/{}",
+                            sha256
+                        ),
+                        "integrity": "verified_sha256"
                     })
-                    && entry.get("assets").is_some_and(Value::is_array)
-                    && entry
-                        .get("exports")
-                        .and_then(Value::as_array)
-                        .is_some_and(|exports| {
-                            !exports.is_empty()
-                                && exports
-                                    .iter()
-                                    .all(|export| export.as_str().is_some_and(|v| !v.is_empty()))
-                        })
+                })
+                .collect::<Vec<_>>();
+            serde_json::json!({
+                "module_source": module.source,
+                "module_version": module.version,
+                "binding": binding,
+                "assets": assets,
+                "exports": module.exports
             })
         })
+        .collect::<Vec<_>>();
+    let value = Value::Array(entries);
+    validate_code(FrontstageBlockCodeInput {
+        source_code: String::new(),
+        dependency_lock: value,
     })
+    .map(|code| code.dependency_lock)
+}
+
+fn apply_catalog_identity(
+    descriptor: &mut Value,
+    entry: &domain::FrontendBlockCatalogEntry,
+) -> Result<()> {
+    let object = descriptor
+        .as_object_mut()
+        .ok_or(ControlPlaneError::InvalidInput(
+            "frontstage_block_runtime_descriptor",
+        ))?;
+    object.insert(
+        "catalog".to_owned(),
+        serde_json::json!({
+            "providerCode": entry.provider_code,
+            "installationId": entry.installation_id.to_string()
+        }),
+    );
+    object.insert(
+        "contribution".to_owned(),
+        serde_json::json!({
+            "pluginId": entry.plugin_id,
+            "pluginVersion": entry.plugin_version,
+            "code": entry.contribution_code
+        }),
+    );
+    Ok(())
+}
+
+fn inherit_runtime_identity(
+    descriptor: Option<Value>,
+    parent: Option<&Value>,
+) -> Result<Option<Value>> {
+    let Some(parent) = parent.and_then(Value::as_object) else {
+        return Ok(descriptor);
+    };
+    let mut descriptor = match descriptor {
+        None => Map::new(),
+        Some(Value::Object(value)) => value,
+        Some(_) => {
+            return Err(
+                ControlPlaneError::InvalidInput("frontstage_block_runtime_descriptor").into(),
+            )
+        }
+    };
+    for field in ["catalog", "contribution", "runtime"] {
+        let missing = descriptor
+            .get(field)
+            .is_none_or(|value| value.as_object().is_some_and(|object| object.is_empty()));
+        if missing {
+            if let Some(value) = parent.get(field) {
+                descriptor.insert(field.to_owned(), value.clone());
+            }
+        }
+    }
+    Ok(Some(Value::Object(descriptor)))
+}
+
+fn non_empty_string(value: Option<&Value>) -> Option<&str> {
+    value
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn required_block_title(title: String) -> Result<String> {
@@ -959,7 +1259,7 @@ mod code_input_tests {
     }
 
     #[test]
-    fn accepts_source_and_user_dependency_declarations_only() {
+    fn accepts_source_and_canonical_dependency_lock() {
         let validated = validate_code(code()).expect("fixture must be valid");
         assert!(validated.source_code.contains("tailwindcss"));
         assert_eq!(validated.dependency_lock, serde_json::json!([]));
@@ -974,6 +1274,46 @@ mod code_input_tests {
             error.downcast_ref::<ControlPlaneError>(),
             Some(ControlPlaneError::InvalidInput("dependency_lock"))
         ));
+    }
+
+    #[test]
+    fn rejects_fetched_assets_without_runtime_contract_fields() {
+        let mut input = code();
+        input.dependency_lock = serde_json::json!([{
+            "module_source": "@1flowbase/native-components",
+            "module_version": "1.0.0",
+            "binding": "fetched",
+            "exports": ["Surface"],
+            "assets": [{
+                "role": "browser_module",
+                "sha256": "a".repeat(64),
+                "url": "/asset"
+            }]
+        }]);
+        let error = validate_code(input).expect_err("media_type is mandatory");
+        assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::InvalidInput("dependency_lock"))
+        ));
+    }
+
+    #[test]
+    fn accepts_complete_fetched_asset_contract() {
+        let mut input = code();
+        input.dependency_lock = serde_json::json!([{
+            "module_source": "@1flowbase/native-components",
+            "module_version": "1.0.0",
+            "binding": "fetched",
+            "exports": ["Surface"],
+            "assets": [{
+                "role": "browser_module",
+                "media_type": "text/javascript; charset=utf-8",
+                "sha256": "a".repeat(64),
+                "url": "/asset",
+                "integrity": "verified_sha256"
+            }]
+        }]);
+        validate_code(input).expect("complete lock must be accepted");
     }
 
     #[test]

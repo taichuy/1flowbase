@@ -308,6 +308,34 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     );
     assert!(initial_code_payload["data"].get("code_ref").is_none());
     let initial_hash = initial_code_payload["data"]["source_sha256"].clone();
+    let initial_lock = initial_code_payload["data"]["dependency_lock"].clone();
+    let lock_entries = initial_lock
+        .as_array()
+        .expect("created native block must have a canonical dependency lock");
+    assert!(!lock_entries.is_empty());
+    for asset in lock_entries
+        .iter()
+        .flat_map(|entry| entry["assets"].as_array().unwrap())
+    {
+        assert!(asset["media_type"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert_eq!(asset["integrity"], json!("verified_sha256"));
+    }
+
+    let (legacy_lock_status, _) = send_json(
+        &app,
+        "PUT",
+        &code_path,
+        &cookie,
+        &csrf,
+        json!({
+            "source_code": "export default 'must-not-save';",
+            "dependency_lock": []
+        }),
+    )
+    .await;
+    assert_eq!(legacy_lock_status, StatusCode::UNPROCESSABLE_ENTITY);
 
     let (save_code_status, save_code_payload) = send_json(
         &app,
@@ -324,6 +352,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         json!("export default 'changed';")
     );
     assert_ne!(save_code_payload["data"]["source_sha256"], initial_hash);
+    assert_eq!(save_code_payload["data"]["dependency_lock"], initial_lock);
     let (update_status, update_payload) = send_json(
         &app,
         "PATCH",

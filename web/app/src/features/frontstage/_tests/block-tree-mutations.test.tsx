@@ -154,7 +154,6 @@ describe('frontstage block tree feature mutations', () => {
       before_block_id: null,
       after_block_id: null,
       source_code: 'export default Created',
-      dependency_lock: [],
       tailwind_toolchain_lock: {
         package: 'tailwindcss',
         version: '4.3.3',
