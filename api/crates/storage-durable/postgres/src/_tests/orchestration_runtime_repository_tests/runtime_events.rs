@@ -269,7 +269,7 @@ async fn terminal_flow_run_fences_late_run_and_runtime_event_appends() {
 }
 
 #[tokio::test]
-async fn orchestration_runtime_repository_lists_runtime_event_backfill_page_by_stream_sequence() {
+async fn assistant_activity_sequence_orders_runtime_event_backfill_by_interval_start() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -281,6 +281,25 @@ async fn orchestration_runtime_repository_lists_runtime_event_backfill_page_by_s
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_runtime_events(
         &store,
         &[
+            AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: None,
+                span_id: None,
+                parent_span_id: None,
+                event_type: "assistant_tool_call_started".into(),
+                layer: domain::RuntimeEventLayer::RuntimeItem,
+                source: domain::RuntimeEventSource::Host,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({
+                    "stream_sequence": 50,
+                    "sequence_start": 50,
+                    "sequence_end": 50
+                }),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            },
             AppendRuntimeEventInput {
                 flow_run_id: run.id,
                 node_run_id: None,
@@ -325,14 +344,16 @@ async fn orchestration_runtime_repository_lists_runtime_event_backfill_page_by_s
 
     let page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_runtime_event_backfill_page(
-            &store, run.id, 50, 1,
+            &store, run.id, -1, 3,
         )
         .await
         .unwrap();
 
-    assert_eq!(page.len(), 1);
+    assert_eq!(page.len(), 3);
     assert_eq!(page[0].event_type, "text_delta");
     assert_eq!(page[0].payload["sequence_end"], 100);
+    assert_eq!(page[1].event_type, "assistant_tool_call_started");
+    assert_eq!(page[2].event_type, "flow_finished");
 }
 
 #[tokio::test]

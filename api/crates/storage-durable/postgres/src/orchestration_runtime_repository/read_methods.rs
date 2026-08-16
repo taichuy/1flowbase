@@ -249,8 +249,8 @@ impl PgControlPlaneStore {
             order by
                 coalesce(
                     case
-                      when payload ->> 'sequence_end' ~ '^-?[0-9]+$'
-                      then (payload ->> 'sequence_end')::bigint
+                      when payload ->> 'sequence_start' ~ '^-?[0-9]+$'
+                      then (payload ->> 'sequence_start')::bigint
                     end,
                     case
                       when payload ->> 'stream_sequence' ~ '^-?[0-9]+$'

@@ -747,7 +747,7 @@ async fn runtime_debug_event_persister_flushes_delta_batch_on_time_window() {
 }
 
 #[tokio::test]
-async fn durably_persisted_lifecycle_event_is_not_queued_for_persistence_again() {
+async fn assistant_activity_sequence_is_kept_by_durably_persisted_lifecycle_events() {
     let service = OrchestrationRuntimeService::for_tests();
     let seeded = service
         .seed_application_with_flow("Lifecycle Persistence Owner")
@@ -756,7 +756,7 @@ async fn durably_persisted_lifecycle_event_is_not_queued_for_persistence_again()
         std::sync::Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
     let service = service.with_runtime_event_stream(stream.clone());
 
-    service
+    let started = service
         .start_flow_debug_run(StartFlowDebugRunCommand {
             actor_user_id: seeded.actor_user_id,
             application_id: seeded.application_id,
@@ -774,6 +774,24 @@ async fn durably_persisted_lifecycle_event_is_not_queued_for_persistence_again()
         .expect("flow_started should be delivered to the runtime stream");
     assert!(!flow_started.persist_required);
     assert_eq!(flow_started.durability, RuntimeEventDurability::Ephemeral);
+    let durable_flow_started = service
+        .list_runtime_events(started.flow_run.id, 0)
+        .await
+        .into_iter()
+        .find(|event| event.event_type == "flow_started")
+        .expect("flow_started should remain durable");
+    assert_eq!(
+        durable_flow_started.payload["stream_sequence"],
+        flow_started.sequence
+    );
+    assert_eq!(
+        durable_flow_started.payload["sequence_start"],
+        flow_started.sequence
+    );
+    assert_eq!(
+        durable_flow_started.payload["sequence_end"],
+        flow_started.sequence
+    );
 }
 
 #[tokio::test]
@@ -908,6 +926,56 @@ async fn runtime_event_persister_coalesces_reasoning_delta_separately_from_text(
     assert_eq!(runtime_events[0].payload["text"], "先分析");
     assert_eq!(runtime_events[1].event_type, "text_delta");
     assert_eq!(runtime_events[1].payload["text"], "结果");
+}
+
+#[tokio::test]
+async fn assistant_activity_sequence_ends_reasoning_at_a_precommitted_visible_boundary() {
+    let repository =
+        crate::orchestration_runtime::test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    let mut tool = RuntimeEventEnvelope::new(
+        run_id,
+        4,
+        debug_stream_events::assistant_tool_call_started(
+            run_id,
+            node_run_id,
+            "node-llm",
+            json!({
+                "id": "call-1",
+                "name": "lookup",
+                "arguments": {}
+            }),
+        ),
+    );
+    tool.persist_required = false;
+    tool.durability = RuntimeEventDurability::Ephemeral;
+
+    control_plane::orchestration_runtime::persist_runtime_debug_stream_events(
+        &repository,
+        vec![
+            runtime_reasoning_delta_with_sequence(run_id, node_run_id, 3, "先检查"),
+            tool,
+            runtime_reasoning_delta_with_sequence(run_id, node_run_id, 5, "继续检查"),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let reasoning = repository
+        .list_runtime_events(run_id, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.event_type == "reasoning_delta")
+        .collect::<Vec<_>>();
+    assert_eq!(reasoning.len(), 2);
+    assert_eq!(reasoning[0].payload["text"], "先检查");
+    assert_eq!(reasoning[0].payload["sequence_start"], 3);
+    assert_eq!(reasoning[0].payload["sequence_end"], 3);
+    assert_eq!(reasoning[1].payload["text"], "继续检查");
+    assert_eq!(reasoning[1].payload["sequence_start"], 5);
+    assert_eq!(reasoning[1].payload["sequence_end"], 5);
 }
 
 #[tokio::test]

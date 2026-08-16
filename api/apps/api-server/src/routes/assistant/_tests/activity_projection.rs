@@ -28,7 +28,7 @@ fn event(
 }
 
 #[test]
-fn activity_projection_uses_canonical_tool_contract_and_answer_segments() {
+fn assistant_activity_sequence_projection_uses_canonical_tool_contract_and_answer_segments() {
     let started = event(
         "assistant_tool_call_started",
         2,
@@ -64,6 +64,8 @@ fn activity_projection_uses_canonical_tool_contract_and_answer_segments() {
 
     match project_assistant_run_activity(&started).expect("tool start is visible") {
         AssistantRunActivityItem::Tool {
+            sequence_start,
+            sequence_end,
             tool_call_id,
             tool_name,
             input,
@@ -71,6 +73,8 @@ fn activity_projection_uses_canonical_tool_contract_and_answer_segments() {
             status,
             ..
         } => {
+            assert_eq!(sequence_start, 2);
+            assert_eq!(sequence_end, 2);
             assert_eq!(tool_call_id, "call-list");
             assert_eq!(tool_name, "1flowbase_mcp_list");
             assert_eq!(input, json!({ "path": "/后台设置" }));
@@ -122,4 +126,29 @@ fn activity_projection_rejects_tool_aliases_instead_of_guessing() {
     );
 
     assert!(project_assistant_run_activity(&legacy).is_none());
+}
+
+#[test]
+fn assistant_activity_sequence_projection_exposes_the_full_durable_stream_interval() {
+    let reasoning = event(
+        "reasoning_delta",
+        9,
+        json!({
+            "text": "先检查，再继续",
+            "sequence_start": 3,
+            "sequence_end": 9
+        }),
+    );
+
+    match project_assistant_run_activity(&reasoning).expect("reasoning is visible") {
+        AssistantRunActivityItem::Reasoning {
+            sequence_start,
+            sequence_end,
+            ..
+        } => {
+            assert_eq!(sequence_start, 3);
+            assert_eq!(sequence_end, 9);
+        }
+        _ => panic!("expected reasoning activity"),
+    }
 }

@@ -137,7 +137,8 @@ export interface ConsoleAssistantRunActivityEnvelope {
 
 interface ConsoleAssistantRunActivityCommon {
   event_id: string;
-  sequence: number;
+  sequence_start: number;
+  sequence_end: number;
   created_at: string;
 }
 

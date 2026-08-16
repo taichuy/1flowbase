@@ -22,20 +22,23 @@ pub struct AssistantRunActivityPageResponse {
 pub enum AssistantRunActivityItem {
     Reasoning {
         event_id: String,
-        sequence: i64,
+        sequence_start: i64,
+        sequence_end: i64,
         created_at: String,
         text: String,
     },
     Output {
         event_id: String,
-        sequence: i64,
+        sequence_start: i64,
+        sequence_end: i64,
         created_at: String,
         text: String,
         segment_index: Option<i64>,
     },
     Tool {
         event_id: String,
-        sequence: i64,
+        sequence_start: i64,
+        sequence_end: i64,
         created_at: String,
         tool_call_id: String,
         tool_name: String,
@@ -47,7 +50,8 @@ pub enum AssistantRunActivityItem {
     },
     Error {
         event_id: String,
-        sequence: i64,
+        sequence_start: i64,
+        sequence_end: i64,
         created_at: String,
         error: String,
     },
@@ -71,16 +75,26 @@ pub(super) fn project_assistant_run_activity(
     let common = || {
         (
             event.event_id.clone(),
-            event.sequence,
+            event
+                .payload
+                .get("sequence_start")
+                .and_then(Value::as_i64)
+                .unwrap_or(event.sequence),
+            event
+                .payload
+                .get("sequence_end")
+                .and_then(Value::as_i64)
+                .unwrap_or(event.sequence),
             event.created_at.clone(),
         )
     };
     match event.event_type.as_str() {
         "reasoning_delta" => {
-            let (event_id, sequence, created_at) = common();
+            let (event_id, sequence_start, sequence_end, created_at) = common();
             Some(AssistantRunActivityItem::Reasoning {
                 event_id,
-                sequence,
+                sequence_start,
+                sequence_end,
                 created_at,
                 text: event.text.clone()?,
             })
@@ -92,10 +106,11 @@ pub(super) fn project_assistant_run_activity(
                 .and_then(Value::as_str)
                 == Some("answer") =>
         {
-            let (event_id, sequence, created_at) = common();
+            let (event_id, sequence_start, sequence_end, created_at) = common();
             Some(AssistantRunActivityItem::Output {
                 event_id,
-                sequence,
+                sequence_start,
+                sequence_end,
                 created_at,
                 text: event.text.clone()?,
                 segment_index: event
@@ -118,10 +133,11 @@ pub(super) fn project_assistant_run_activity(
                 .and_then(|value| value.get("is_error"))
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let (event_id, sequence, created_at) = common();
+            let (event_id, sequence_start, sequence_end, created_at) = common();
             Some(AssistantRunActivityItem::Tool {
                 event_id,
-                sequence,
+                sequence_start,
+                sequence_end,
                 created_at,
                 tool_call_id: tool_call.id,
                 tool_name: tool_call.name,
@@ -141,10 +157,11 @@ pub(super) fn project_assistant_run_activity(
             })
         }
         "flow_failed" => {
-            let (event_id, sequence, created_at) = common();
+            let (event_id, sequence_start, sequence_end, created_at) = common();
             Some(AssistantRunActivityItem::Error {
                 event_id,
-                sequence,
+                sequence_start,
+                sequence_end,
                 created_at,
                 error: event
                     .payload

@@ -62,9 +62,11 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 import { AppProviders } from '../../../../app/AppProviders';
+import type { ConsoleFlowDebugStreamEvent } from '@1flowbase/api-client';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
 import { AssistantRunTimeline } from '../../components/embedded-assistant/AssistantRunActivityPanel';
 import * as runtimeApi from '../../api/runtime';
+import type { AgentFlowDebugMessage } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 
@@ -1233,13 +1235,17 @@ describe('EmbeddedAgentAssistant', () => {
         handlers.onEvent({
           type: 'flow_accepted',
           run_id: 'run-cancelled-live',
-          status: 'queued'
+          status: 'queued',
+          event_id: 'run-cancelled-live:1',
+          sequence: 1
         });
         handlers.onEvent({
           type: 'reasoning_delta',
           run_id: 'run-cancelled-live',
           node_id: 'node-answer',
           text: 'Temporary reasoning',
+          event_id: 'run-cancelled-live:2',
+          sequence: 2,
           presentation: {
             kind: 'answer',
             answer_node_id: 'node-answer',
@@ -1251,6 +1257,8 @@ describe('EmbeddedAgentAssistant', () => {
           run_id: 'run-cancelled-live',
           node_id: 'node-answer',
           text: 'Public partial answer',
+          event_id: 'run-cancelled-live:3',
+          sequence: 3,
           presentation: {
             kind: 'answer',
             answer_node_id: 'node-answer',
@@ -1260,7 +1268,9 @@ describe('EmbeddedAgentAssistant', () => {
         handlers.onEvent({
           type: 'flow_cancelled',
           run_id: 'run-cancelled-live',
-          status: 'cancelled'
+          status: 'cancelled',
+          event_id: 'run-cancelled-live:4',
+          sequence: 4
         });
       }
     );
@@ -1314,14 +1324,16 @@ describe('EmbeddedAgentAssistant', () => {
         {
           kind: 'reasoning',
           event_id: 'run-failed:1',
-          sequence: 1,
+          sequence_start: 1,
+          sequence_end: 1,
           created_at: '2026-08-16T00:00:00Z',
           text: '失败前思考'
         },
         {
           kind: 'error',
           event_id: 'run-failed:2',
-          sequence: 2,
+          sequence_start: 2,
+          sequence_end: 2,
           created_at: '2026-08-16T00:00:01Z',
           error: 'Provider rejected the request'
         }
@@ -1387,6 +1399,220 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       container.querySelector('.embedded-agent-assistant-activity')
     ).toBeNull();
+  });
+
+  test('AC-009 expands only the active reasoning segment and preserves manual collapse across deltas', async () => {
+    const firstReasoning = {
+      type: 'reasoning_delta' as const,
+      run_id: 'run-reasoning-lifecycle',
+      node_run_id: 'node-run-llm',
+      node_id: 'node-llm',
+      text: '第一轮思考',
+      event_id: 'run-reasoning-lifecycle:1',
+      sequence: 1
+    };
+    const toolStarted = {
+      type: 'assistant_tool_call_started' as const,
+      run_id: 'run-reasoning-lifecycle',
+      node_run_id: 'node-run-llm',
+      node_id: 'node-llm',
+      tool_call: {
+        id: 'call-lifecycle',
+        name: 'lookup',
+        arguments: {}
+      },
+      event_id: 'run-reasoning-lifecycle:2',
+      sequence: 2
+    };
+    const secondReasoning = {
+      ...firstReasoning,
+      text: '第二轮思考',
+      event_id: 'run-reasoning-lifecycle:3',
+      sequence: 3
+    };
+    const secondReasoningDelta = {
+      ...secondReasoning,
+      text: '继续',
+      event_id: 'run-reasoning-lifecycle:4',
+      sequence: 4
+    };
+    const message = (
+      activityEvents: ConsoleFlowDebugStreamEvent[]
+    ): AgentFlowDebugMessage => ({
+      id: 'run-reasoning-lifecycle:assistant',
+      role: 'assistant' as const,
+      content: '',
+      status: 'running',
+      runId: 'run-reasoning-lifecycle',
+      rawOutput: null,
+      traceSummary: [],
+      activityEvents,
+      presentation: 'answer' as const
+    });
+    const { rerender } = render(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={message([firstReasoning])}
+        />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('第一轮思考')).toBeInTheDocument();
+
+    rerender(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={message([firstReasoning, toolStarted])}
+        />
+      </AppProviders>
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('第一轮思考')).not.toBeInTheDocument()
+    );
+
+    rerender(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={message([firstReasoning, toolStarted, secondReasoning])}
+        />
+      </AppProviders>
+    );
+    expect(await screen.findByText('第二轮思考')).toBeInTheDocument();
+    const reasoningTitles = screen.getAllByText(
+      i18nText('agentFlow', 'auto.think')
+    );
+    fireEvent.click(reasoningTitles[1] as HTMLElement);
+    await waitFor(() =>
+      expect(screen.queryByText('第二轮思考')).not.toBeInTheDocument()
+    );
+
+    rerender(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={message([
+            firstReasoning,
+            toolStarted,
+            secondReasoning,
+            secondReasoningDelta
+          ])}
+        />
+      </AppProviders>
+    );
+    expect(screen.queryByText('第二轮思考继续')).not.toBeInTheDocument();
+  });
+
+  test('AC-010 preserves sequence_start order when terminal durable activity replaces live events', async () => {
+    getConsoleAssistantRunActivity
+      .mockResolvedValueOnce({
+        status: 'running',
+        started_at: '2026-08-16T00:00:00Z',
+        finished_at: null,
+        duration_ms: null,
+        items: [],
+        trace_events: [],
+        has_more: false,
+        next_sequence: null
+      })
+      .mockResolvedValue({
+        status: 'succeeded',
+        started_at: '2026-08-16T00:00:00Z',
+        finished_at: '2026-08-16T00:00:02Z',
+        duration_ms: 2000,
+        items: [
+          {
+            kind: 'tool',
+            event_id: 'run-terminal-order:4',
+            sequence_start: 4,
+            sequence_end: 5,
+            created_at: '2026-08-16T00:00:01Z',
+            tool_call_id: 'call-order',
+            tool_name: 'lookup',
+            input: {},
+            output: { ok: true },
+            duration_ms: 5,
+            is_error: false,
+            status: 'succeeded'
+          },
+          {
+            kind: 'output',
+            event_id: 'run-terminal-order:6',
+            sequence_start: 6,
+            sequence_end: 6,
+            created_at: '2026-08-16T00:00:02Z',
+            text: '最终回答',
+            segment_index: 0
+          },
+          {
+            kind: 'reasoning',
+            event_id: 'run-terminal-order:3',
+            sequence_start: 3,
+            sequence_end: 3,
+            created_at: '2026-08-16T00:00:00Z',
+            text: '先思考'
+          }
+        ],
+        trace_events: [],
+        has_more: false,
+        next_sequence: null
+      });
+    const runningMessage: AgentFlowDebugMessage = {
+      id: 'run-terminal-order:assistant',
+      role: 'assistant' as const,
+      content: '',
+      status: 'running',
+      runId: 'run-terminal-order',
+      rawOutput: null,
+      traceSummary: [],
+      activityEvents: [
+        {
+          type: 'reasoning_delta' as const,
+          run_id: 'run-terminal-order',
+          node_id: 'node-llm',
+          text: '先思考',
+          event_id: 'run-terminal-order:3',
+          sequence: 3
+        }
+      ],
+      presentation: 'answer' as const
+    };
+    const { rerender } = render(
+      <AppProviders>
+        <AssistantRunTimeline applicationId="flow-1" message={runningMessage} />
+      </AppProviders>
+    );
+    expect(await screen.findByText('先思考')).toBeInTheDocument();
+
+    rerender(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={{ ...runningMessage, status: 'completed' }}
+        />
+      </AppProviders>
+    );
+    const duration = await screen.findByText(
+      i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
+        value1: 2
+      })
+    );
+    fireEvent.click(duration);
+    const thinkTitle = await screen.findByText(
+      i18nText('agentFlow', 'auto.think')
+    );
+    expect(screen.queryByText('先思考')).not.toBeInTheDocument();
+    fireEvent.click(thinkTitle);
+    const reasoning = await screen.findByText('先思考');
+    const tool = screen.getByText('lookup');
+    expect(reasoning.compareDocumentPosition(tool)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(tool.compareDocumentPosition(screen.getByText('最终回答'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 
   test('AC-006 keeps ordered assistant activity inline and restores every node card in the sidebar', async () => {
@@ -1718,14 +1944,16 @@ describe('EmbeddedAgentAssistant', () => {
         {
           kind: 'reasoning',
           event_id: 'run-history:3',
-          sequence: 3,
+          sequence_start: 3,
+          sequence_end: 3,
           created_at: '2026-08-15T00:00:01Z',
           text: '历史思考'
         },
         {
           kind: 'output',
           event_id: 'run-history:4',
-          sequence: 4,
+          sequence_start: 4,
+          sequence_end: 4,
           created_at: '2026-08-15T00:00:02Z',
           text: '历史最终回答',
           segment_index: 0

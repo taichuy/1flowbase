@@ -2,7 +2,7 @@ import { Think, ThoughtChain } from '@ant-design/x';
 import type { ThoughtChainItemType } from '@ant-design/x';
 import { ToolOutlined } from '@ant-design/icons';
 import { Alert, Divider, Empty, Spin } from 'antd';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getConsoleAssistantRunActivity,
   normalizeConsoleRuntimeEvent,
@@ -27,7 +27,8 @@ import { DebugWorkflowProcess } from '../debug-console/conversation/DebugWorkflo
 interface ActivityEntry {
   key: string;
   kind: 'reasoning' | 'tool' | 'output' | 'error';
-  sequence: number;
+  sequenceStart: number;
+  sequenceEnd: number;
   text?: string;
   segmentIndex?: number | null;
   toolCallId?: string;
@@ -61,18 +62,17 @@ const activityTimelineStyles = {
   }
 } as const;
 
-function eventSequence(event: ConsoleFlowDebugStreamEvent, fallback: number) {
-  return event.sequence ?? fallback;
-}
-
 function liveActivityItem(
-  event: ConsoleFlowDebugStreamEvent,
-  fallbackSequence: number
+  event: ConsoleFlowDebugStreamEvent
 ): ConsoleAssistantRunActivityItem | null {
-  const sequence = eventSequence(event, fallbackSequence);
+  if (event.sequence === undefined) {
+    return null;
+  }
+  const sequence = event.sequence;
   const common = {
     event_id: event.event_id ?? `${event.type}:${sequence}`,
-    sequence,
+    sequence_start: sequence,
+    sequence_end: sequence,
     created_at: event.created_at ?? ''
   };
   if (event.type === 'reasoning_delta' && event.text) {
@@ -130,18 +130,27 @@ function liveActivityItem(
 function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
   const entries: ActivityEntry[] = [];
   [...items]
-    .sort((left, right) => left.sequence - right.sequence)
+    .sort(
+      (left, right) =>
+        left.sequence_start - right.sequence_start ||
+        left.sequence_end - right.sequence_end
+    )
     .forEach((item) => {
       const previous = entries.at(-1);
       if (item.kind === 'reasoning') {
         if (previous?.kind === 'reasoning') {
           previous.text = `${previous.text ?? ''}${item.text}`;
+          previous.sequenceEnd = Math.max(
+            previous.sequenceEnd,
+            item.sequence_end
+          );
           return;
         }
         entries.push({
-          key: item.event_id,
+          key: `reasoning:${item.sequence_start}`,
           kind: 'reasoning',
-          sequence: item.sequence,
+          sequenceStart: item.sequence_start,
+          sequenceEnd: item.sequence_end,
           text: item.text,
           status: 'success'
         });
@@ -153,12 +162,17 @@ function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
           previous.segmentIndex === item.segment_index
         ) {
           previous.text = `${previous.text ?? ''}${item.text}`;
+          previous.sequenceEnd = Math.max(
+            previous.sequenceEnd,
+            item.sequence_end
+          );
           return;
         }
         entries.push({
-          key: item.event_id,
+          key: `output:${item.segment_index ?? 'none'}:${item.sequence_start}`,
           kind: 'output',
-          sequence: item.sequence,
+          sequenceStart: item.sequence_start,
+          sequenceEnd: item.sequence_end,
           text: item.text,
           segmentIndex: item.segment_index,
           status: 'success'
@@ -177,6 +191,10 @@ function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
           started.input = item.input;
           started.output = item.output;
           started.durationMs = item.duration_ms;
+          started.sequenceEnd = Math.max(
+            started.sequenceEnd,
+            item.sequence_end
+          );
           started.loading = item.status === 'running';
           started.status =
             item.status === 'running'
@@ -187,9 +205,10 @@ function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
           return;
         }
         entries.push({
-          key: item.event_id,
+          key: `tool:${item.tool_call_id}`,
           kind: 'tool',
-          sequence: item.sequence,
+          sequenceStart: item.sequence_start,
+          sequenceEnd: item.sequence_end,
           toolCallId: item.tool_call_id,
           toolName: item.tool_name,
           input: item.input,
@@ -206,9 +225,10 @@ function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
         return;
       }
       entries.push({
-        key: item.event_id,
+        key: `error:${item.sequence_start}`,
         kind: 'error',
-        sequence: item.sequence,
+        sequenceStart: item.sequence_start,
+        sequenceEnd: item.sequence_end,
         text: item.error,
         status: 'error'
       });
@@ -290,7 +310,43 @@ function activityThoughtItem(entry: ActivityEntry): ThoughtChainItemType {
   };
 }
 
-function ActivitySequence({ entries }: { entries: ActivityEntry[] }) {
+function ActivitySequence({
+  entries,
+  terminal = false
+}: {
+  entries: ActivityEntry[];
+  terminal?: boolean;
+}) {
+  const activeReasoningKey =
+    !terminal && entries.at(-1)?.kind === 'reasoning'
+      ? (entries.at(-1)?.key ?? null)
+      : null;
+  const previousActiveReasoningKey = useRef<string | null>(null);
+  const [reasoningExpanded, setReasoningExpanded] = useState<
+    Record<string, boolean>
+  >({});
+
+  useEffect(() => {
+    const previousKey = previousActiveReasoningKey.current;
+    if (previousKey === activeReasoningKey) {
+      return;
+    }
+    previousActiveReasoningKey.current = activeReasoningKey;
+    setReasoningExpanded((current) => {
+      let changed = false;
+      const next = { ...current };
+      if (previousKey && next[previousKey] !== false) {
+        next[previousKey] = false;
+        changed = true;
+      }
+      if (activeReasoningKey && next[activeReasoningKey] !== true) {
+        next[activeReasoningKey] = true;
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [activeReasoningKey]);
+
   const blocks: ReactNode[] = [];
   let chainEntries: ActivityEntry[] = [];
 
@@ -320,9 +376,17 @@ function ActivitySequence({ entries }: { entries: ActivityEntry[] }) {
     flushChain();
     blocks.push(
       <Think
+        blink={entry.key === activeReasoningKey}
         className="embedded-agent-assistant-activity__think"
-        defaultExpanded={false}
+        expanded={reasoningExpanded[entry.key] ?? false}
         key={entry.key}
+        loading={entry.key === activeReasoningKey}
+        onExpand={(expanded) => {
+          setReasoningExpanded((current) => ({
+            ...current,
+            [entry.key]: expanded
+          }));
+        }}
         title={i18nText('agentFlow', 'auto.think')}
       >
         <DebugMarkdownContent content={entry.text ?? ''} />
@@ -409,13 +473,13 @@ function useAssistantRunActivity({
   }, [applicationId, message.status, runId]);
 
   const durableWatermark = (durable?.items ?? []).reduce(
-    (watermark, item) => Math.max(watermark, item.sequence),
+    (watermark, item) => Math.max(watermark, item.sequence_end),
     -1
   );
   const liveItems = (message.activityEvents ?? [])
     .map(liveActivityItem)
     .filter((item): item is ConsoleAssistantRunActivityItem => item !== null)
-    .filter((item) => item.sequence > durableWatermark);
+    .filter((item) => item.sequence_end > durableWatermark);
   const itemById = new Map<string, ConsoleAssistantRunActivityItem>();
   [...(durable?.items ?? []), ...liveItems].forEach((item) => {
     itemById.set(item.event_id, item);
@@ -423,11 +487,10 @@ function useAssistantRunActivity({
 
   const traceById = new Map<string, ConsoleFlowDebugStreamEvent>();
   [...(durable?.traceEvents ?? []), ...(message.activityEvents ?? [])].forEach(
-    (event, index) => {
-      const key =
-        event.event_id ??
-        `${runId}:${eventSequence(event, index)}:${event.type}`;
-      traceById.set(key, event);
+    (event) => {
+      if (event.event_id) {
+        traceById.set(event.event_id, event);
+      }
     }
   );
 
@@ -522,7 +585,7 @@ export function AssistantRunTimeline({
           title: processTitle(status, activity?.durationMs ?? null),
           status: status === 'failed' ? 'error' : 'success',
           collapsible: true,
-          content: <ActivitySequence entries={processEntries} />
+          content: <ActivitySequence entries={processEntries} terminal />
         }
       ]
     : [];

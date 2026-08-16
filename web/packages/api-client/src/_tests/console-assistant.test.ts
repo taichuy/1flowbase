@@ -114,16 +114,34 @@ describe('console assistant client', () => {
       finished_at: string | null;
       duration_ms: number | null;
       items: Array<
-        | { kind: 'reasoning'; text: string }
-        | { kind: 'output'; text: string; segment_index: number | null }
+        | {
+            kind: 'reasoning';
+            sequence_start: number;
+            sequence_end: number;
+            text: string;
+          }
+        | {
+            kind: 'output';
+            sequence_start: number;
+            sequence_end: number;
+            text: string;
+            segment_index: number | null;
+          }
         | {
             kind: 'tool';
+            sequence_start: number;
+            sequence_end: number;
             tool_call_id: string;
             tool_name: string;
             input: unknown;
             output: unknown | null;
           }
-        | { kind: 'error'; error: string }
+        | {
+            kind: 'error';
+            sequence_start: number;
+            sequence_end: number;
+            error: string;
+          }
       >;
       trace_events: unknown[];
     }>();

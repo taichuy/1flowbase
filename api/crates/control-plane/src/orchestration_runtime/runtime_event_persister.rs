@@ -128,6 +128,12 @@ where
 
     for event in events {
         if !event.persist_required {
+            // A visible event that was committed by its lifecycle owner still separates
+            // adjacent streamed deltas. Skipping the boundary would merge reasoning or
+            // answer text from both sides of a tool/node event into one durable segment.
+            if !is_stream_delta_event(&event.event_type) {
+                flush_pending_delta(&mut runtime_events, pending_delta.take());
+            }
             continue;
         }
 
@@ -568,7 +574,7 @@ fn flush_pending_delta(
     ));
 }
 
-fn payload_with_stream_sequence(
+pub(super) fn payload_with_stream_sequence(
     mut payload: Value,
     sequence_start: i64,
     sequence_end: i64,

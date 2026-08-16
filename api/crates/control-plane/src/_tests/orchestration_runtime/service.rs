@@ -53,9 +53,18 @@ fn runtime_text_delta_with_payload(
 }
 
 fn runtime_reasoning_delta(run_id: Uuid, node_run_id: Uuid, text: &str) -> RuntimeEventEnvelope {
+    runtime_reasoning_delta_with_sequence(run_id, node_run_id, 1, text)
+}
+
+fn runtime_reasoning_delta_with_sequence(
+    run_id: Uuid,
+    node_run_id: Uuid,
+    sequence: i64,
+    text: &str,
+) -> RuntimeEventEnvelope {
     RuntimeEventEnvelope::new(
         run_id,
-        1,
+        sequence,
         RuntimeEventPayload {
             event_type: "reasoning_delta".to_string(),
             source: RuntimeEventSource::Provider,
