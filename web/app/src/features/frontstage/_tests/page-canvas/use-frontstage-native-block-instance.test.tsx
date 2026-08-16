@@ -19,9 +19,34 @@ import type {
   FrontstageNativePreparationSnapshot,
   FrontstageNativePreparedRuntime
 } from '../../lib/page-canvas/native-runtime-preparation';
+import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 describe('PageCanvas declarative Native block lifecycle', () => {
+  test('AC-013 exposes route inputs to the selected runtime block context', async () => {
+    const InputBlock = ({ ctx }: { ctx: BlockContext }) => (
+      <div data-testid="runtime-route-input">
+        {String(ctx.inputs.record_id ?? 'missing')}
+      </div>
+    );
+
+    render(
+      <PageCanvas
+        content={pageContent('Route input')}
+        runtimeBlocks={[runtimeBlock('Route input')]}
+        runtimePreparations={[preparation('source-a', 1, InputBlock)]}
+        runtimeInputsByBlockId={{
+          'block-1': { record_id: 'record-1' }
+        }}
+      />
+    );
+
+    const root = await nativeRoot();
+    expect(
+      await within(root.shadow).findByTestId('runtime-route-input')
+    ).toHaveTextContent('record-1');
+  });
+
   test('D3R-AC-001/004 keeps Hooks across props and theme updates, then remounts once per source/runtime/dependency identity change', async () => {
     let mounts = 0;
     let unmounts = 0;
@@ -53,6 +78,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     const view = render(
       <PageCanvas
         content={pageContent('Initial')}
+        runtimeBlocks={[runtimeBlock('Initial')]}
         runtimeContext={runtimeContext('light')}
         runtimePreparations={[initialPreparation]}
       />
@@ -67,6 +93,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     view.rerender(
       <PageCanvas
         content={pageContent('Changed')}
+        runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
         runtimePreparations={[initialPreparation]}
       />
@@ -78,6 +105,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     view.rerender(
       <PageCanvas
         content={pageContent('Changed')}
+        runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
         runtimePreparations={[preparation('source-b', 1, StatefulBlock)]}
       />
@@ -94,6 +122,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     view.rerender(
       <PageCanvas
         content={pageContent('Changed')}
+        runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
         runtimePreparations={[
           preparation('source-b', 1, StatefulBlock, true, {
@@ -108,6 +137,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     view.rerender(
       <PageCanvas
         content={pageContent('Changed')}
+        runtimeBlocks={[runtimeBlock('Changed')]}
         runtimeContext={runtimeContext('dark')}
         runtimePreparations={[
           preparation('source-b', 1, StatefulBlock, true, {
@@ -139,6 +169,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     const view = render(
       <PageCanvas
         content={pageContent('Demand')}
+        runtimeBlocks={[runtimeBlock('Demand')]}
         runtimePreparations={[preparation('source-a', 0, LifecycleBlock)]}
       />
     );
@@ -149,6 +180,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     view.rerender(
       <PageCanvas
         content={pageContent('Demand')}
+        runtimeBlocks={[runtimeBlock('Demand')]}
         runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
       />
     );
@@ -158,6 +190,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       view.rerender(
         <PageCanvas
           content={pageContent('Demand')}
+          runtimeBlocks={[runtimeBlock('Demand')]}
           runtimePreparations={[
             preparation('source-a', priority, LifecycleBlock, false)
           ]}
@@ -171,6 +204,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     view.rerender(
       <PageCanvas
         content={pageContent('Demand')}
+        runtimeBlocks={[runtimeBlock('Demand')]}
         runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
       />
     );
@@ -203,6 +237,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
       render(
         <PageCanvas
           content={pageContent('Retry')}
+          runtimeBlocks={[runtimeBlock('Retry')]}
           runtimePreparations={[preparation('source-a', 1, RecoveringBlock)]}
         />
       );
@@ -278,6 +313,35 @@ function runtimeContext(
     application: null,
     theme: { mode, tokens: {} },
     ui: { locale: 'en_US' }
+  };
+}
+
+function runtimeBlock(title: string): FrontstageBlockInstance {
+  return {
+    id: 'block-1',
+    rendererVersion: 'v1',
+    sourceId: 'block-1',
+    codeRef: 'block-1-code',
+    sourceCodeRef: 'block-1',
+    catalog: {
+      providerCode: 'official',
+      installationId: 'installation-1'
+    },
+    contribution: {
+      pluginId: 'official.blocks',
+      pluginVersion: '1.0.0',
+      code: 'block-1'
+    },
+    runtime: {
+      kind: 'native_react',
+      entry: 'blocks/block-1.js',
+      hint: 'native_react'
+    },
+    layout: { order: 0, region: 'main' },
+    presentation: { heightMode: 'auto', height: null },
+    order: 0,
+    props: { title },
+    ports: { inputs: [], outputs: [] }
   };
 }
 

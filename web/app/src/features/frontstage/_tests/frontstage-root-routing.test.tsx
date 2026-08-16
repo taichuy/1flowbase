@@ -78,6 +78,7 @@ const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
     blockRoots?: Array<{ block_id: string; tab_id: string }>;
     blockRuntimeAssembly?: { layers: Array<{ block_id: string }> };
+    blockRuntimeInputs?: Record<string, unknown>;
     isBlockRuntimeRoute?: boolean;
     isBlockRuntimeLoading?: boolean;
     hasBlockRuntimeLoadError?: boolean;
@@ -530,6 +531,77 @@ describe('frontstage topbar root routing', () => {
       expect(
         frontStagePageView.props?.blockRuntimeAssembly?.layers.at(-1)?.block_id
       ).toBe('block-child');
+    });
+  });
+
+  test('AC-013 maps only declared target inputs from the block deep-link query', async () => {
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    blockApi.fetchFrontstageBlockRuntimeAssembly.mockResolvedValue({
+      layers: [
+        {
+          block_id: 'block-parent',
+          tab_id: 'tab-overview',
+          parent_block_id: null,
+          presentation: 'page',
+          title: 'Parent',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {
+            ports: {
+              inputs: [],
+              outputs: [{ name: 'record_id', schema: { type: 'string' } }]
+            }
+          },
+          code_ref: 'parent-code',
+          source_revision: 'a'.repeat(64)
+        },
+        {
+          block_id: 'block-child',
+          tab_id: 'tab-overview',
+          parent_block_id: 'block-parent',
+          presentation: 'drawer',
+          title: 'Child',
+          schema_version: 1,
+          input_mapping: {},
+          output_mapping: {},
+          runtime_descriptor: {
+            ports: {
+              inputs: [
+                {
+                  name: 'record_id',
+                  schema: { type: 'string' },
+                  source: {
+                    scope: 'tab',
+                    block_id: 'block-parent',
+                    output: 'record_id'
+                  }
+                }
+              ],
+              outputs: []
+            }
+          },
+          code_ref: 'child-code',
+          source_revision: 'b'.repeat(64)
+        }
+      ]
+    });
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level/blocks/block-child?record_id=record-1&ignored=drop-me'
+    );
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.blockRuntimeInputs).toEqual({
+        record_id: 'record-1'
+      });
     });
   });
 

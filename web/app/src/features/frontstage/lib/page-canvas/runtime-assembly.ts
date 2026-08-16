@@ -89,6 +89,63 @@ export function createFrontstageRuntimeAssemblyBlocks(
   });
 }
 
+export function createFrontstageBlockRouteInputs(
+  layer: ConsoleFrontstageBlockRuntimeLayer | undefined,
+  search: Readonly<Record<string, unknown>> | undefined
+): Record<string, unknown> {
+  if (!layer || !search) return {};
+  const descriptor = record(layer.runtime_descriptor);
+  const inputs = record(descriptor.ports).inputs;
+  if (!Array.isArray(inputs)) return {};
+
+  const values: Record<string, unknown> = {};
+  for (const candidate of inputs) {
+    const input = record(candidate);
+    const name = optionalString(input.name);
+    if (!name || typeof search[name] !== 'string') continue;
+    const value = parseFrontstageBlockRouteInput(
+      search[name] as string,
+      record(input.schema)
+    );
+    if (value !== undefined) values[name] = value;
+  }
+  return values;
+}
+
+function parseFrontstageBlockRouteInput(
+  value: string,
+  schema: Record<string, unknown>
+): unknown {
+  switch (schema.type) {
+    case 'boolean':
+      return value === 'true' ? true : value === 'false' ? false : undefined;
+    case 'integer': {
+      const parsed = Number(value);
+      return Number.isInteger(parsed) ? parsed : undefined;
+    }
+    case 'number': {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    case 'array':
+    case 'object':
+      try {
+        const parsed: unknown = JSON.parse(value);
+        return schema.type === 'array'
+          ? Array.isArray(parsed)
+            ? parsed
+            : undefined
+          : isRecord(parsed)
+            ? parsed
+            : undefined;
+      } catch {
+        return undefined;
+      }
+    default:
+      return value;
+  }
+}
+
 export function createFrontstageRootNodeBlocks(
   nodes: readonly ConsoleFrontstageBlockNode[]
 ): FrontstageBlockInstance[] {
