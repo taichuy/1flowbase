@@ -7,15 +7,17 @@ use plugin_framework::{
         message_block_required_capabilities, semantic_required_capabilities, ModelDiscoveryMode,
         NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
         NativePromptCacheControlType, ProtocolContextEnvelope, ProviderBalanceInfo,
-        ProviderBalanceResult, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensCoverage, ProviderCountTokensError, ProviderCountTokensFallbackReason,
-        ProviderCountTokensInput, ProviderCountTokensMethod, ProviderCountTokensResult,
+        ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
+        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensCoverage,
+        ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
+        ProviderCountTokensMethod, ProviderCountTokensResult, ProviderGenerateProjectionError,
         ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
         ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
-        ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
-        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderProjectionErrorCode,
+        ProviderProjectionFidelity, ProviderProjectionLossCode, ProviderProjectionSource,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
+        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
+        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::json;
@@ -841,6 +843,189 @@ fn root_1534_ac_003_explicit_anthropic_capabilities_accept_reasoning_block_seman
             "protocol_context.restore.anthropic_messages.v2".to_string(),
         ])
         .expect("Anthropic declares both canonical block semantics explicitly");
+}
+
+#[test]
+fn root_1743_d1_ac_002_generate_projects_reasoning_and_visible_text_lossily() {
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: "visible answer".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type": "reasoning", "text": "private reasoning"},
+                {"type": "text", "text": "visible answer"}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let (provider_wire, receipt) = input
+        .to_current_provider_generate_wire_value(&[])
+        .expect("visible assistant text makes reasoning omission safe");
+    assert_eq!(receipt.fidelity, Some(ProviderProjectionFidelity::Lossy));
+    assert_eq!(
+        receipt.loss_codes,
+        BTreeSet::from([ProviderProjectionLossCode::ReasoningHistoryOmitted])
+    );
+    assert_eq!(
+        provider_wire["messages"][0]["content_blocks"],
+        json!([{"type": "text", "text": "visible answer"}])
+    );
+    let provenance = receipt
+        .provenance
+        .expect("projection must identify its immutable canonical source");
+    assert_eq!(
+        provenance.source,
+        ProviderProjectionSource::CanonicalInvocation
+    );
+    assert_eq!(provenance.omitted_blocks[0].message_index, 0);
+    assert_eq!(provenance.omitted_blocks[0].block_index, 0);
+    assert_eq!(
+        provenance.omitted_blocks[0].block_kind,
+        ProviderCanonicalBlockKind::Reasoning
+    );
+    assert_eq!(provenance.preserved_blocks[0].block_index, 1);
+}
+
+#[test]
+fn root_1743_d1_ac_003_exact_provider_preserves_reasoning_history() {
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: "visible answer".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type": "reasoning", "text": "private reasoning"},
+                {"type": "text", "text": "visible answer"}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let projection = input
+        .project_current_provider_generate(&["reasoning_history_input_supported".to_string()])
+        .expect("a synthetic exact-capable provider must receive canonical reasoning");
+    assert_eq!(
+        projection.receipt.fidelity,
+        Some(ProviderProjectionFidelity::Exact)
+    );
+    assert!(projection.receipt.loss_codes.is_empty());
+    assert_eq!(projection.provider_bound_input.messages, input.messages);
+    assert_eq!(
+        projection.provider_bound_input.required_capabilities,
+        BTreeSet::from([ProviderInvocationCapability::ReasoningHistoryInputSupported])
+    );
+}
+
+#[test]
+fn root_1743_d1_ac_005_reasoning_only_projection_is_typed_unsupported() {
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: String::new(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type": "reasoning", "text": "private reasoning"}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let error = input
+        .project_current_provider_generate(&[])
+        .expect_err("omitting a reasoning-only assistant message must fail closed");
+    match error {
+        ProviderGenerateProjectionError::Unsupported {
+            code,
+            block,
+            receipt,
+        } => {
+            assert_eq!(
+                code,
+                ProviderProjectionErrorCode::ReasoningOnlyMessageUnsupported
+            );
+            assert_eq!(block.message_index, 0);
+            assert_eq!(block.block_index, 0);
+            assert_eq!(
+                receipt.fidelity,
+                Some(ProviderProjectionFidelity::Unsupported)
+            );
+            assert_eq!(receipt.error_code, Some(code));
+            assert_eq!(receipt.provenance.unwrap().omitted_blocks[0], block);
+        }
+        ProviderGenerateProjectionError::InvalidContract { message } => {
+            panic!("expected typed unsupported, got invalid contract: {message}")
+        }
+    }
+}
+
+#[test]
+fn root_1743_d1_ac_004_signed_and_redacted_reasoning_never_become_text() {
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: "visible answer".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type": "reasoning", "text": "signed", "signature": "opaque-signature"},
+                {"type": "reasoning_redacted", "data": "opaque-redaction"},
+                {"type": "text", "text": "visible answer"}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let projection = input.project_current_provider_generate(&[]).unwrap();
+    let encoded = serde_json::to_string(&projection.provider_bound_input).unwrap();
+    assert!(!encoded.contains("signed"));
+    assert!(!encoded.contains("opaque-signature"));
+    assert!(!encoded.contains("opaque-redaction"));
+    assert_eq!(
+        projection.receipt.loss_codes,
+        BTreeSet::from([
+            ProviderProjectionLossCode::RedactedReasoningOmitted,
+            ProviderProjectionLossCode::SignedReasoningOmitted,
+        ])
+    );
+}
+
+#[test]
+fn root_1743_reasoning_capabilities_round_trip_with_manifest_names() {
+    for (capability, name) in [
+        (
+            ProviderInvocationCapability::ReasoningOutputSupported,
+            "reasoning_output_supported",
+        ),
+        (
+            ProviderInvocationCapability::ReasoningHistoryInputSupported,
+            "reasoning_history_input_supported",
+        ),
+        (
+            ProviderInvocationCapability::NativeContinuationSupported,
+            "native_continuation_supported",
+        ),
+    ] {
+        assert_eq!(capability.manifest_capability_name(), name);
+        let value = serde_json::to_value(capability).unwrap();
+        assert_eq!(value, json!(name));
+        assert_eq!(
+            serde_json::from_value::<ProviderInvocationCapability>(value).unwrap(),
+            capability
+        );
+    }
 }
 
 #[test]
