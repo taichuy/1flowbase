@@ -272,7 +272,7 @@ export function McpInstancesTab({
           display_name: values.display_name?.trim() || null,
           description_short: values.description_short,
           enabled: values.enabled,
-          sort_order: values.sort_order
+          sort_order: Number(values.sort_order)
         },
         csrfToken
       ),
@@ -304,6 +304,9 @@ export function McpInstancesTab({
       await queryClient.invalidateQueries({
         queryKey: settingsMcpCatalogQueryKey
       });
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : String(error));
     }
   });
   const moveGroupMutation = useMutation({

@@ -11,6 +11,7 @@ import {
 import type { CSSProperties, FC, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
+import type { ConsoleFrontstageBlockRuntimeLayer } from '@1flowbase/api-client';
 
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../state/auth-store';
@@ -1028,7 +1029,47 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   assemblyLayers.forEach((layer, index) => {
     if (layer.presentation === 'page') assemblyPageIndex = index;
   });
+  const assemblyPageLayer =
+    assemblyPageIndex >= 0 ? assemblyLayers[assemblyPageIndex] : undefined;
+  const nestedAssemblyPageLayer = assemblyPageLayer?.parent_block_id
+    ? assemblyPageLayer
+    : undefined;
   const assemblyOverlays = assemblyLayers.slice(assemblyPageIndex + 1);
+  const renderAssemblyLayerCanvas = (
+    layer: ConsoleFrontstageBlockRuntimeLayer
+  ) => (
+    <PageCanvas
+      content={assemblyCanvasContent}
+      runtimeBlocks={assemblyBlocks}
+      runtimeInputsByBlockId={runtimeInputsByBlockId}
+      selectedBlockId={
+        canEnterDesignMode && isDesignMode ? selectedBlockId : null
+      }
+      onSelectBlock={
+        canEnterDesignMode && isDesignMode
+          ? (blockId) => {
+              setSelectedBlockId((currentBlockId) =>
+                currentBlockId === blockId ? null : blockId
+              );
+            }
+          : undefined
+      }
+      runtimePreparations={assemblyPreparations}
+      runtimeContext={nativeBlockRuntimeContext}
+      nativeContextHost={nativeContextHost}
+      renderBlockIds={[layer.block_id]}
+      sharedSignalCoordinator={undefined}
+      isDesignMode={canEnterDesignMode && isDesignMode}
+      designActions={designActions}
+      toolbarDisabled={isPageContentSavePending}
+      onResponsiveLayoutSave={
+        canEnterDesignMode && isDesignMode
+          ? handleCanvasResponsiveLayoutSave
+          : undefined
+      }
+      showTitle={false}
+    />
+  );
   const renderAssemblyOverlays = (index = 0): ReactNode => {
     const layer = assemblyOverlays[index];
     if (!layer) return null;
@@ -1043,37 +1084,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       );
     const content = (
       <>
-        <PageCanvas
-          content={assemblyCanvasContent}
-          runtimeBlocks={assemblyBlocks}
-          runtimeInputsByBlockId={runtimeInputsByBlockId}
-          selectedBlockId={
-            canEnterDesignMode && isDesignMode ? selectedBlockId : null
-          }
-          onSelectBlock={
-            canEnterDesignMode && isDesignMode
-              ? (blockId) => {
-                  setSelectedBlockId((currentBlockId) =>
-                    currentBlockId === blockId ? null : blockId
-                  );
-                }
-              : undefined
-          }
-          runtimePreparations={assemblyPreparations}
-          runtimeContext={nativeBlockRuntimeContext}
-          nativeContextHost={nativeContextHost}
-          renderBlockIds={[layer.block_id]}
-          sharedSignalCoordinator={undefined}
-          isDesignMode={canEnterDesignMode && isDesignMode}
-          designActions={designActions}
-          toolbarDisabled={isPageContentSavePending}
-          onResponsiveLayoutSave={
-            canEnterDesignMode && isDesignMode
-              ? handleCanvasResponsiveLayoutSave
-              : undefined
-          }
-          showTitle={false}
-        />
+        {renderAssemblyLayerCanvas(layer)}
         {renderAssemblyOverlays(index + 1)}
       </>
     );
@@ -1146,60 +1157,64 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           showIcon
         />
       ) : null}
-      <PageCanvas
-        content={
-          selectedPageNode && hasLoadedSelectedPageContent
-            ? displayedPageContent
-            : undefined
-        }
-        isLoading={Boolean(
-          selectedPageNode && (isPageContentLoading || isBlockRootsLoading)
-        )}
-        hasError={Boolean(
-          selectedPageNode &&
-          (hasPageContentLoadError || hasBlockRootsLoadError)
-        )}
-        isPermissionDenied={Boolean(
-          selectedPageNode && isPageContentPermissionDenied
-        )}
-        selectedBlockId={
-          canEnterDesignMode && isDesignMode ? selectedBlockId : null
-        }
-        onSelectBlock={
-          canEnterDesignMode && isDesignMode
-            ? (blockId) => {
-                setSelectedBlockId((currentBlockId) =>
-                  currentBlockId === blockId ? null : blockId
-                );
-              }
-            : undefined
-        }
-        onRetry={onRetryLoadPageContent}
-        runtimePreparations={pageCanvasNativePreparations.preparations}
-        isolatedRuntimePreparations={
-          pageCanvasIsolatedPreparations.preparations
-        }
-        isolatedRuntimePreparationErrorsByBlockId={
-          pageCanvasIsolatedPreparations.errorsByBlockId
-        }
-        runtimeContext={nativeBlockRuntimeContext}
-        nativeContextHost={nativeContextHost}
-        renderBlockIds={rootPageBlockIds}
-        runtimeBlocks={rootBlocks}
-        runtimeInputsByBlockId={runtimeInputsByBlockId}
-        sharedSignalCoordinator={pageSignalCoordinator}
-        onRuntimeDemandChange={handleRuntimeDemandChange}
-        onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
-        isDesignMode={canEnterDesignMode && isDesignMode}
-        designActions={designActions}
-        toolbarDisabled={isPageContentSavePending}
-        onResponsiveLayoutSave={
-          canEnterDesignMode && isDesignMode
-            ? handleCanvasResponsiveLayoutSave
-            : undefined
-        }
-        showTitle={false}
-      />
+      {nestedAssemblyPageLayer ? (
+        renderAssemblyLayerCanvas(nestedAssemblyPageLayer)
+      ) : (
+        <PageCanvas
+          content={
+            selectedPageNode && hasLoadedSelectedPageContent
+              ? displayedPageContent
+              : undefined
+          }
+          isLoading={Boolean(
+            selectedPageNode && (isPageContentLoading || isBlockRootsLoading)
+          )}
+          hasError={Boolean(
+            selectedPageNode &&
+            (hasPageContentLoadError || hasBlockRootsLoadError)
+          )}
+          isPermissionDenied={Boolean(
+            selectedPageNode && isPageContentPermissionDenied
+          )}
+          selectedBlockId={
+            canEnterDesignMode && isDesignMode ? selectedBlockId : null
+          }
+          onSelectBlock={
+            canEnterDesignMode && isDesignMode
+              ? (blockId) => {
+                  setSelectedBlockId((currentBlockId) =>
+                    currentBlockId === blockId ? null : blockId
+                  );
+                }
+              : undefined
+          }
+          onRetry={onRetryLoadPageContent}
+          runtimePreparations={pageCanvasNativePreparations.preparations}
+          isolatedRuntimePreparations={
+            pageCanvasIsolatedPreparations.preparations
+          }
+          isolatedRuntimePreparationErrorsByBlockId={
+            pageCanvasIsolatedPreparations.errorsByBlockId
+          }
+          runtimeContext={nativeBlockRuntimeContext}
+          nativeContextHost={nativeContextHost}
+          renderBlockIds={rootPageBlockIds}
+          runtimeBlocks={rootBlocks}
+          runtimeInputsByBlockId={runtimeInputsByBlockId}
+          sharedSignalCoordinator={pageSignalCoordinator}
+          onRuntimeDemandChange={handleRuntimeDemandChange}
+          onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
+          isDesignMode={canEnterDesignMode && isDesignMode}
+          designActions={designActions}
+          toolbarDisabled={isPageContentSavePending}
+          onResponsiveLayoutSave={
+            canEnterDesignMode && isDesignMode
+              ? handleCanvasResponsiveLayoutSave
+              : undefined
+          }
+          showTitle={false}
+        />
+      )}
       {isBlockRuntimeRoute && hasBlockRuntimeLoadError ? (
         <Alert
           style={{ margin: '8px 16px' }}

@@ -577,6 +577,81 @@ describe('FrontStagePage - runtime canvas state', () => {
     );
   });
 
+  test('AC-001 renders the last nested page layer as the primary canvas', async () => {
+    authenticate([]);
+    vi.stubGlobal('IntersectionObserver', undefined);
+    const layer = (
+      blockId: string,
+      parentBlockId: string | null,
+      presentation: 'page' | 'drawer' | 'modal' | 'inline' = 'page'
+    ) => ({
+      block_id: blockId,
+      tab_id: 'tab-1',
+      parent_block_id: parentBlockId,
+      title: `${blockId} shell`,
+      presentation,
+      schema_version: 1,
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: {
+        renderer_version: 'v1',
+        runtime: { kind: 'native_react', entry: 'index.js' }
+      },
+      code_ref: `frontstage.block.${blockId}`,
+      source_revision: 'a'.repeat(64)
+    });
+
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent({
+            root: {
+              uid: 'root-1',
+              payload: {
+                blocks: [createCatalogMatchedBlockPayload({ id: 'base-root' })]
+              }
+            }
+          })}
+          blockRuntimeAssembly={{
+            layers: [
+              layer('assembly-root', null),
+              layer('assembly-nested-page', 'assembly-root'),
+              layer(
+                'assembly-nested-drawer',
+                'assembly-nested-page',
+                'drawer'
+              )
+            ]
+          }}
+        />
+      </AppProviders>
+    );
+
+    const host = await screen.findByTestId(
+      'frontstage-native-block-root-assembly-nested-page'
+    );
+    await vi.waitFor(() => {
+      expect(host.shadowRoot?.textContent).toContain(
+        'source:assembly-nested-page'
+      );
+    });
+    expect(screen.queryByTestId('block-slot-base-root')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('block-slot-assembly-root')
+    ).not.toBeInTheDocument();
+    const drawerHost = await screen.findByTestId(
+      'frontstage-native-block-root-assembly-nested-drawer'
+    );
+    await vi.waitFor(() => {
+      expect(drawerHost.shadowRoot?.textContent).toContain(
+        'source:assembly-nested-drawer'
+      );
+    });
+    expect(screen.getByText('assembly-nested-drawer shell')).toBeInTheDocument();
+  });
+
   test('shows manager shell and canvas placeholders', () => {
     authenticate(['frontstage.page.design']);
     renderPage('page-1');
