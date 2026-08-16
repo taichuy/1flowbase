@@ -110,6 +110,7 @@ pub struct ProviderInvocationOutput {
 #[derive(Clone)]
 pub struct ResolvedProviderRoute {
     pub runtime_capabilities: BTreeSet<String>,
+    runtime_plugin_id: Option<String>,
     invocation_pin: Arc<dyn Any + Send + Sync>,
 }
 
@@ -131,8 +132,18 @@ impl ResolvedProviderRoute {
     {
         Self {
             runtime_capabilities,
+            runtime_plugin_id: None,
             invocation_pin: Arc::new(invocation_pin),
         }
+    }
+
+    pub fn with_runtime_plugin_id(mut self, plugin_id: impl Into<String>) -> Self {
+        self.runtime_plugin_id = Some(plugin_id.into());
+        self
+    }
+
+    pub fn runtime_plugin_id(&self) -> Option<&str> {
+        self.runtime_plugin_id.as_deref()
     }
 
     pub fn invocation_pin<T>(&self) -> Option<&T>

@@ -74,6 +74,7 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
         provider_instance_id: 'provider-1',
         provider_instance_display_name: 'Gemini A',
         provider_code: 'gemini',
+        plugin_id: 'gemini@0.1.20',
         protocol: 'gemini',
         upstream_model_id: 'gemini-3-flash',
         reasoning_effort: null,
@@ -83,6 +84,8 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
         input_tokens: 35629,
         output_tokens: 0,
         total_tokens: 35629,
+        input_cache_hit_tokens: 32066,
+        input_cache_hit_rate: 0.9,
         started_at: '2026-07-11T03:04:00Z',
         first_token_at: null,
         finished_at: '2026-07-11T03:04:05Z',
@@ -121,6 +124,12 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   ).toBeInTheDocument();
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
+  expect(screen.getByText('模型供应商插件')).toBeInTheDocument();
+  expect(screen.getByText('gemini@0.1.20')).toBeInTheDocument();
+  expect(screen.getByText('命中缓存 tokens')).toBeInTheDocument();
+  expect(screen.getByText('32066')).toBeInTheDocument();
+  expect(screen.getByText('缓存命中率')).toBeInTheDocument();
+  expect(screen.getByText('90.00%')).toBeInTheDocument();
   expect(screen.getByText('root')).toBeInTheDocument();
   expect(screen.getByText('user-1')).toBeInTheDocument();
   expect(screen.getByText('5.00 s')).toBeInTheDocument();

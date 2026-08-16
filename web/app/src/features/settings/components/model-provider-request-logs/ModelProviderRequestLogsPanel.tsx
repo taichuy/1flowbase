@@ -195,6 +195,13 @@ export function ModelProviderRequestLogsPanel() {
           row.provider_instance_display_name ?? row.provider_code
       },
       {
+        key: 'plugin_id',
+        title: i18nText('settings', 'auto.request_log_provider_plugin'),
+        dataIndex: 'plugin_id',
+        width: 180,
+        render: (value) => (typeof value === 'string' ? value : '—')
+      },
+      {
         key: 'upstream_model_id',
         title: i18nText('settings', 'auto.request_log_model'),
         dataIndex: 'upstream_model_id',
@@ -227,6 +234,21 @@ export function ModelProviderRequestLogsPanel() {
             {typeof value === 'number' ? value : '—'}
           </span>
         )
+      },
+      {
+        key: 'input_cache_hit_tokens',
+        title: i18nText('settings', 'auto.request_log_cache_hit_tokens'),
+        dataIndex: 'input_cache_hit_tokens',
+        width: 140,
+        render: (value) => (typeof value === 'number' ? value : '—')
+      },
+      {
+        key: 'input_cache_hit_rate',
+        title: i18nText('settings', 'auto.request_log_cache_hit_rate'),
+        dataIndex: 'input_cache_hit_rate',
+        width: 120,
+        render: (value) =>
+          typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : '—'
       },
       {
         key: 'time_to_first_token_ms',

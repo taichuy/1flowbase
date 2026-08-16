@@ -2,7 +2,7 @@ use super::*;
 
 pub const PROVIDER_REQUEST_LOG_QUEUE: &str = "provider-request-logs";
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProviderRequestLogTask {
     pub scope_id: Uuid,
     pub attempt_id: Uuid,
@@ -23,6 +23,8 @@ pub struct ProviderRequestLogTask {
     pub provider_instance_id: Option<Uuid>,
     pub provider_instance_display_name: Option<String>,
     pub provider_code: String,
+    #[serde(default)]
+    pub plugin_id: Option<String>,
     pub protocol: String,
     pub upstream_model_id: String,
     pub reasoning_effort: Option<String>,
@@ -32,6 +34,10 @@ pub struct ProviderRequestLogTask {
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
+    #[serde(default)]
+    pub input_cache_hit_tokens: Option<i64>,
+    #[serde(default)]
+    pub input_cache_hit_rate: Option<f64>,
     pub started_at: OffsetDateTime,
     pub first_token_at: Option<OffsetDateTime>,
     pub finished_at: Option<OffsetDateTime>,
@@ -94,6 +100,7 @@ pub struct ModelProviderRequestLogRecord {
     pub provider_instance_id: Option<Uuid>,
     pub provider_instance_display_name: Option<String>,
     pub provider_code: String,
+    pub plugin_id: Option<String>,
     pub protocol: String,
     pub upstream_model_id: String,
     pub reasoning_effort: Option<String>,
@@ -103,6 +110,8 @@ pub struct ModelProviderRequestLogRecord {
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
+    pub input_cache_hit_tokens: Option<i64>,
+    pub input_cache_hit_rate: Option<f64>,
     pub started_at: OffsetDateTime,
     pub first_token_at: Option<OffsetDateTime>,
     pub finished_at: Option<OffsetDateTime>,

@@ -199,6 +199,16 @@ pub(super) fn provider_request_log_task_from_attempt(
         .unwrap_or(false);
     let usage = attempt.get("usage").cloned().unwrap_or_else(|| json!({}));
     let output_tokens = usage_i64(&usage, "output_tokens");
+    let total_tokens = usage_i64(&usage, "total_tokens");
+    let input_cache_hit_tokens = usage_i64(&usage, "input_cache_hit_tokens")
+        .or_else(|| usage_i64(&usage, "cache_read_tokens"))
+        .or_else(|| usage_i64(&usage, "cached_input_tokens"));
+    let input_cache_hit_rate = match (total_tokens, input_cache_hit_tokens) {
+        (Some(total), Some(hit)) if total > 0 => {
+            Some(((hit as f64 / total as f64) * 10_000.0).round() / 10_000.0)
+        }
+        _ => None,
+    };
     let raw_status = attempt
         .get("status")
         .and_then(Value::as_str)
@@ -245,6 +255,10 @@ pub(super) fn provider_request_log_task_from_attempt(
             .and_then(Value::as_str)
             .unwrap_or("unknown")
             .to_string(),
+        plugin_id: attempt
+            .get("plugin_id")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         protocol: attempt
             .get("protocol")
             .and_then(Value::as_str)
@@ -268,7 +282,9 @@ pub(super) fn provider_request_log_task_from_attempt(
         failed_after_first_token,
         input_tokens: usage_i64(&usage, "input_tokens"),
         output_tokens,
-        total_tokens: usage_i64(&usage, "total_tokens"),
+        total_tokens,
+        input_cache_hit_tokens,
+        input_cache_hit_rate,
         started_at,
         first_token_at,
         finished_at: Some(finished_at),
