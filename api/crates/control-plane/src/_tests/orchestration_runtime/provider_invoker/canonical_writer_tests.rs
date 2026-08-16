@@ -16,7 +16,7 @@ fn provider_timing_classifies_events_without_recording_their_content() {
 #[test]
 fn output_protocol_failure_is_a_terminal_canonical_failure_after_flushing_text() {
     let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
-    writer
+    let text_deltas = writer
         .write(&ProviderStreamEvent::TextDelta {
             delta: "discarded attempt text".to_string(),
         })
@@ -38,7 +38,12 @@ fn output_protocol_failure_is_a_terminal_canonical_failure_after_flushing_text()
         provider_stream_event_kind(&ProviderStreamEvent::OutputProtocolFailure { failure }),
         "output_protocol_failure"
     );
-    assert_eq!(deltas.len(), 1);
+    assert_eq!(text_deltas.len(), 1);
+    assert!(deltas.is_empty());
+    assert_eq!(
+        writer.state().accumulated().text().as_str(),
+        "discarded attempt text"
+    );
     assert!(matches!(
         writer.state().terminal(),
         Some(CanonicalTerminal::Failed { error })
