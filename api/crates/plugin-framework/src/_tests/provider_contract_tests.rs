@@ -1003,6 +1003,85 @@ fn root_1743_d1_ac_004_signed_and_redacted_reasoning_never_become_text() {
 }
 
 #[test]
+fn root_1743_generic_history_exactness_does_not_cover_redacted_reasoning() {
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: "visible answer".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!([
+                {"type": "reasoning", "text": "ordinary"},
+                {"type": "reasoning_redacted", "data": "opaque"},
+                {"type": "text", "text": "visible answer"}
+            ])),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let projection = input
+        .project_current_provider_generate(&["reasoning_history_input_supported".to_string()])
+        .expect("ordinary reasoning remains exact while redacted reasoning degrades safely");
+    assert_eq!(
+        projection.receipt.fidelity,
+        Some(ProviderProjectionFidelity::Lossy)
+    );
+    assert_eq!(
+        projection.provider_bound_input.messages[0].content_blocks,
+        Some(json!([
+            {"type": "reasoning", "text": "ordinary"},
+            {"type": "text", "text": "visible answer"}
+        ]))
+    );
+    assert_eq!(
+        projection.provider_bound_input.required_capabilities,
+        BTreeSet::from([ProviderInvocationCapability::ReasoningHistoryInputSupported])
+    );
+    assert_eq!(
+        projection.receipt.loss_codes,
+        BTreeSet::from([ProviderProjectionLossCode::RedactedReasoningOmitted])
+    );
+}
+
+#[test]
+fn root_1743_projection_receipt_bounds_large_history_locator_summary() {
+    let content_blocks = (0..256)
+        .flat_map(|index| {
+            [
+                json!({"type": "reasoning", "text": format!("private-{index}")}),
+                json!({"type": "text", "text": format!("visible-{index}")}),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let input = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: "visible answer".to_string(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(json!(content_blocks)),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let projection = input.project_current_provider_generate(&[]).unwrap();
+    let provenance = projection.receipt.provenance.as_ref().unwrap();
+    assert_eq!(provenance.preserved_block_count, 256);
+    assert_eq!(provenance.omitted_block_count, 256);
+    assert!(provenance.capped);
+    assert_eq!(provenance.preserved_blocks.len(), 16);
+    assert_eq!(provenance.omitted_blocks.len(), 16);
+    let receipt = serde_json::to_string(&projection.receipt).unwrap();
+    assert!(receipt.len() < 5_000);
+    assert!(!receipt.contains("private-255"));
+    assert!(!receipt.contains("visible-255"));
+}
+
+#[test]
 fn root_1743_reasoning_capabilities_round_trip_with_manifest_names() {
     for (capability, name) in [
         (

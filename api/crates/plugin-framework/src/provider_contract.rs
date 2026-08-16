@@ -44,6 +44,7 @@ pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY: &str
     "protocol_context.restore.openai_responses.v1";
 pub const PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY: &str =
     "1flowbase_generate_translation";
+const PROVIDER_PROJECTION_LOCATOR_LIMIT: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -535,6 +536,9 @@ pub enum ProviderProjectionSource {
 #[serde(deny_unknown_fields)]
 pub struct ProviderProjectionProvenance {
     pub source: ProviderProjectionSource,
+    pub preserved_block_count: u32,
+    pub omitted_block_count: u32,
+    pub capped: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preserved_blocks: Vec<ProviderCanonicalBlockLocator>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1354,14 +1358,12 @@ impl ProviderInvocationInput {
             .synchronize_required_capabilities()
             .map_err(|message| ProviderGenerateProjectionError::InvalidContract { message })?;
         if declared_capabilities.contains(PROVIDER_REASONING_HISTORY_INPUT_SUPPORTED_CAPABILITY)
-            && receipt.fidelity == Some(ProviderProjectionFidelity::Exact)
+            && projected_message_capabilities
+                .contains(&ProviderInvocationCapability::MessageBlocksReasoningHistoryV1)
         {
             invocation
                 .required_capabilities
                 .remove(&ProviderInvocationCapability::MessageBlocksReasoningHistoryV1);
-            invocation
-                .required_capabilities
-                .remove(&ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1);
             invocation
                 .required_capabilities
                 .insert(ProviderInvocationCapability::ReasoningHistoryInputSupported);
@@ -1513,6 +1515,9 @@ fn project_generate_reasoning_history(
         declared_capabilities.contains(PROVIDER_REASONING_HISTORY_INPUT_SUPPORTED_CAPABILITY);
     let mut preserved_blocks = Vec::new();
     let mut omitted_blocks = Vec::new();
+    let mut preserved_block_count = 0usize;
+    let mut omitted_block_count = 0usize;
+    let mut has_reasoning = false;
     let mut projected_blocks = Vec::new();
 
     for (message_index, message) in invocation.messages.iter().enumerate() {
@@ -1561,13 +1566,20 @@ fn project_generate_reasoning_history(
                 }
                 _ => None,
             };
+            has_reasoning |= required_legacy_capability.is_some();
             let omit = message.role == ProviderMessageRole::Assistant
                 && required_legacy_capability.is_some_and(|capability| {
-                    !generic_history_input && !declared_capabilities.contains(capability)
+                    let generic_supports_block = generic_history_input
+                        && block_kind == ProviderCanonicalBlockKind::Reasoning
+                        && !block.get("signature").is_some_and(|value| !value.is_null());
+                    !generic_supports_block && !declared_capabilities.contains(capability)
                 });
             if omit {
                 first_omitted.get_or_insert_with(|| locator.clone());
-                omitted_blocks.push(locator);
+                omitted_block_count = omitted_block_count.saturating_add(1);
+                if omitted_blocks.len() < PROVIDER_PROJECTION_LOCATOR_LIMIT {
+                    omitted_blocks.push(locator);
+                }
                 match block_kind {
                     ProviderCanonicalBlockKind::Reasoning
                         if block.get("signature").is_some_and(|value| !value.is_null()) =>
@@ -1589,27 +1601,30 @@ fn project_generate_reasoning_history(
                     _ => {}
                 }
             } else {
-                preserved_blocks.push(locator);
+                preserved_block_count = preserved_block_count.saturating_add(1);
+                if preserved_blocks.len() < PROVIDER_PROJECTION_LOCATOR_LIMIT {
+                    preserved_blocks.push(locator);
+                }
                 retained.push(block.clone());
             }
         }
         projected_blocks.push((message_index, retained, first_omitted));
     }
 
-    if omitted_blocks.is_empty()
-        && preserved_blocks.iter().all(|block| {
-            !matches!(
-                block.block_kind,
-                ProviderCanonicalBlockKind::Reasoning
-                    | ProviderCanonicalBlockKind::RedactedReasoning
-            )
-        })
-    {
+    if !has_reasoning {
         return Ok(());
     }
 
+    let locators_capped = preserved_block_count > preserved_blocks.len()
+        || omitted_block_count > omitted_blocks.len();
+    let (preserved_block_count, preserved_count_capped) =
+        bounded_projection_count(preserved_block_count);
+    let (omitted_block_count, omitted_count_capped) = bounded_projection_count(omitted_block_count);
     let provenance = ProviderProjectionProvenance {
         source: ProviderProjectionSource::CanonicalInvocation,
+        preserved_block_count,
+        omitted_block_count,
+        capped: preserved_count_capped || omitted_count_capped || locators_capped,
         preserved_blocks,
         omitted_blocks,
     };
@@ -1639,7 +1654,7 @@ fn project_generate_reasoning_history(
         }
     }
 
-    if provenance.omitted_blocks.is_empty() {
+    if provenance.omitted_block_count == 0 {
         receipt.fidelity = Some(ProviderProjectionFidelity::Exact);
     } else {
         for (message_index, retained, first_omitted) in projected_blocks {
@@ -1661,6 +1676,10 @@ fn project_generate_reasoning_history(
     }
     receipt.provenance = Some(provenance);
     Ok(())
+}
+
+fn bounded_projection_count(count: usize) -> (u32, bool) {
+    u32::try_from(count).map_or((u32::MAX, true), |count| (count, false))
 }
 
 fn canonical_block_kind(block_type: &str) -> Option<ProviderCanonicalBlockKind> {
