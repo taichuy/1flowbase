@@ -252,6 +252,7 @@ export function EmbeddedAgentAssistantPreview({
   const historyExpansionSideRef = useRef<AssistantHistoryExpansionSide | null>(
     null
   );
+  const historyExpansionWidthRef = useRef(0);
   const historyLayoutRef = useRef<HTMLDivElement | null>(null);
   const historyWidthRef = useRef(historyWidth);
   const assistantWindowRectRef = useRef<WindowWorkspaceRect | null>(null);
@@ -342,12 +343,14 @@ export function EmbeddedAgentAssistantPreview({
     setActivityMessageId(null);
     setHistoryFullView(false);
     historyExpansionSideRef.current = null;
+    historyExpansionWidthRef.current = 0;
     setHistoryPage(null);
   }, [workspaceId]);
 
   useEffect(() => {
     if (!open) {
       historyExpansionSideRef.current = null;
+      historyExpansionWidthRef.current = 0;
       close(ASSISTANT_WINDOW_ID);
       return;
     }
@@ -543,18 +546,14 @@ export function EmbeddedAgentAssistantPreview({
 
   function assistantHistoryMaxWidth() {
     const rect = assistantWindowRectRef.current;
-    const side = historyExpansionSideRef.current;
-    if (!rect || !side) {
+    if (!rect) {
       return historyWidthRef.current;
     }
-    const viewport = getWindowWorkspaceViewport();
-    const availableWidth =
-      side === 'left'
-        ? rect.left - (viewport.left + 8)
-        : viewport.left + viewport.width - 8 - (rect.left + rect.width);
     return Math.max(
       ASSISTANT_HISTORY_MIN_WIDTH,
-      historyWidthRef.current + availableWidth
+      rect.width -
+        ASSISTANT_HISTORY_RESIZE_WIDTH -
+        ASSISTANT_CONVERSATION_MIN_WIDTH
     );
   }
 
@@ -562,6 +561,7 @@ export function EmbeddedAgentAssistantPreview({
     const rect = assistantWindowRectRef.current;
     if (!rect || mobile) {
       historyExpansionSideRef.current = null;
+      historyExpansionWidthRef.current = 0;
       setHistoryFullView(true);
       return;
     }
@@ -579,6 +579,7 @@ export function EmbeddedAgentAssistantPreview({
 
     if (!side) {
       historyExpansionSideRef.current = null;
+      historyExpansionWidthRef.current = 0;
       setHistoryFullView(true);
       return;
     }
@@ -592,6 +593,7 @@ export function EmbeddedAgentAssistantPreview({
           }
         : { ...rect, width: rect.width + occupiedWidth };
     historyExpansionSideRef.current = side;
+    historyExpansionWidthRef.current = occupiedWidth;
     assistantWindowRectRef.current = nextRect;
     setRect(ASSISTANT_WINDOW_ID, nextRect);
     setHistoryFullView(false);
@@ -617,10 +619,8 @@ export function EmbeddedAgentAssistantPreview({
     const side = historyExpansionSideRef.current;
     const rect = assistantWindowRectRef.current;
     if (side && rect) {
-      const nextWidth = Math.max(
-        400,
-        rect.width - assistantHistoryOccupiedWidth()
-      );
+      const expansionWidth = historyExpansionWidthRef.current;
+      const nextWidth = Math.max(400, rect.width - expansionWidth);
       const removedWidth = rect.width - nextWidth;
       const nextRect =
         side === 'left'
@@ -630,6 +630,7 @@ export function EmbeddedAgentAssistantPreview({
       setRect(ASSISTANT_WINDOW_ID, nextRect);
     }
     historyExpansionSideRef.current = null;
+    historyExpansionWidthRef.current = 0;
     setHistoryFullView(false);
   }
 
@@ -729,6 +730,7 @@ export function EmbeddedAgentAssistantPreview({
       return;
     }
     historyExpansionSideRef.current = null;
+    historyExpansionWidthRef.current = 0;
     setHistoryFullView(true);
   }, [historyFullView, mobile, sidePanelOpen, windowEntry?.rect.width]);
 
@@ -759,24 +761,11 @@ export function EmbeddedAgentAssistantPreview({
         maxWidth
       );
       const currentWidth = historyWidthRef.current;
-      const rect = assistantWindowRectRef.current;
-      const side = historyExpansionSideRef.current;
-      if (nextWidth === currentWidth || !rect || !side) {
+      if (nextWidth === currentWidth) {
         return;
       }
-      const widthDelta = nextWidth - currentWidth;
-      const nextRect =
-        side === 'left'
-          ? {
-              ...rect,
-              left: rect.left - widthDelta,
-              width: rect.width + widthDelta
-            }
-          : { ...rect, width: rect.width + widthDelta };
       historyWidthRef.current = nextWidth;
-      assistantWindowRectRef.current = nextRect;
       setHistoryWidth(nextWidth);
-      setRect(ASSISTANT_WINDOW_ID, nextRect);
     };
     const cleanup = () => {
       window.removeEventListener('mousemove', onMouseMove);

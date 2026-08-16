@@ -735,6 +735,8 @@ describe('EmbeddedAgentAssistant', () => {
         document.querySelector('.agent-flow-editor__debug-console') as Node
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).not.toBe(0);
+    const expandedLeft = Number.parseFloat(assistantWindow.style.left);
+    const expandedWidth = Number.parseFloat(assistantWindow.style.width);
 
     const resizeHandle = screen.getByTestId(
       'embedded-agent-assistant-history-resize'
@@ -742,9 +744,8 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.mouseDown(resizeHandle, { clientX: 280 });
     fireEvent.mouseMove(window, { clientX: 340 });
     expect(historySidebar).toHaveStyle({ width: '340px' });
-    expect(Number.parseFloat(assistantWindow.style.width)).toBe(
-      initialWidth + 340 + 12
-    );
+    expect(Number.parseFloat(assistantWindow.style.left)).toBe(expandedLeft);
+    expect(Number.parseFloat(assistantWindow.style.width)).toBe(expandedWidth);
     fireEvent.mouseUp(window);
     expect(historySidebar).toHaveAttribute('data-resizing', 'false');
 
