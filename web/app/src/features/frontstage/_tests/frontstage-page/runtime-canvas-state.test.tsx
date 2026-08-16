@@ -492,7 +492,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     );
   });
 
-  test('renders every embedded runtime assembly layer without detail or code reads', async () => {
+  test('AC-003 keeps the base PageCanvas mounted while assembly layers render only as overlays', async () => {
     authenticate(['frontstage.page.design']);
     useFrontstageDesignModeStore.getState().setDesignMode(true);
     vi.stubGlobal('IntersectionObserver', undefined);
@@ -529,13 +529,26 @@ describe('FrontStagePage - runtime canvas state', () => {
         <FrontStagePageHarness
           pageId="page-1"
           initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent()}
+          pageContent={createPageContent({
+            root: {
+              uid: 'root-1',
+              payload: {
+                blocks: [createCatalogMatchedBlockPayload({ id: 'base-root' })]
+              }
+            }
+          })}
           blockRuntimeAssembly={assembly}
         />
       </AppProviders>
     );
 
-    for (const current of assembly.layers) {
+    expect(
+      await screen.findByTestId('block-slot-base-root')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('block-slot-assembly-root')
+    ).not.toBeInTheDocument();
+    for (const current of assembly.layers.slice(1)) {
       const host = await screen.findByTestId(
         `frontstage-native-block-root-${current.block_id}`
       );
@@ -551,7 +564,9 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(blockTreeApi.fetchFrontstageBlockNodeCode).not.toHaveBeenCalled();
     expect(
       runtimeSessionsHook.useFrontstagePageCanvasNativePreparations
-    ).toHaveBeenCalledWith(expect.objectContaining({ readPlan: null }));
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ readPlan: expect.any(Object) })
+    );
     expect(
       runtimeAssemblyHook.useFrontstageRuntimeAssembly
     ).toHaveBeenCalledWith(expect.objectContaining({ assembly }));

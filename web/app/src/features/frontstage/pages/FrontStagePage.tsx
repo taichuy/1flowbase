@@ -105,9 +105,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   isBlockRootsLoading = false,
   hasBlockRootsLoadError = false,
   isBlockRuntimeRoute = false,
-  isBlockRuntimeLoading = false,
   hasBlockRuntimeLoadError = false,
-  isBlockRuntimePermissionDenied = false,
   onRetryLoadBlockRuntime,
   onNavigateBlock,
   showSidebar = true,
@@ -350,6 +348,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       jsBlockCapabilityHandlers && selectedPageId && tabId
         ? {
             interface: jsBlockCapabilityHandlers.interface,
+            openBlock: ({ blockId, inputs }) => {
+              if (!onNavigateBlock) {
+                throw new Error(
+                  'Native Block navigation is not registered by the Frontstage Host.'
+                );
+              }
+              onNavigateBlock(blockId, { inputs });
+            },
             observeApiCall: (observation) =>
               recordFrontstageRuntimeObservation({
                 actorId: actor?.id ?? 'anonymous',
@@ -369,7 +375,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               })
           }
         : undefined,
-    [actor?.id, jsBlockCapabilityHandlers, selectedPageId, tabId, workspaceId]
+    [
+      actor?.id,
+      jsBlockCapabilityHandlers,
+      onNavigateBlock,
+      selectedPageId,
+      tabId,
+      workspaceId
+    ]
   );
   const activePageRenderPlan = useMemo(
     () =>
@@ -405,13 +418,13 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   );
   const pageCanvasCodeReadPlan = useMemo(
     () =>
-      !isBlockRuntimeRoute && activePageRenderPlan
+      activePageRenderPlan
         ? createFrontstagePageCanvasBlockCodeReadPlan({
             workspaceId,
             renderPlan: activePageRenderPlan
           })
         : null,
-    [activePageRenderPlan, isBlockRuntimeRoute, workspaceId]
+    [activePageRenderPlan, workspaceId]
   );
   const runtimeBlocks = useMemo(
     () => [...(displayedPageDocument?.blocks ?? []), ...assemblyBlocks],
@@ -431,7 +444,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       actorId: actor?.id,
       actorWorkspaceId: actor?.current_workspace_id,
       workspaceId,
-      renderPlan: isBlockRuntimeRoute ? null : activePageRenderPlan,
+      renderPlan: activePageRenderPlan,
       catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null
     });
   const assemblyPreparations = useFrontstageRuntimeAssembly({
@@ -468,6 +481,14 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         isCurrentInstance: input.isCurrentInstance,
         interfaceHandler: jsBlockCapabilityHandlers.interface,
         outputs: unavailable.outputs,
+        openBlock: ({ blockId, inputs }) => {
+          if (!onNavigateBlock) {
+            throw new Error(
+              'Native Block navigation is not registered by the Frontstage Host.'
+            );
+          }
+          onNavigateBlock(blockId, { inputs });
+        },
         observeApiCall: input.observeApiCall
       });
       return {
@@ -489,6 +510,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     activePageContent?.tab.routeSegment,
     jsBlockCapabilityHandlers,
     nativeBlockRuntimeContext,
+    onNavigateBlock,
     selectedPageId,
     tabId
   ]);
@@ -1017,13 +1039,19 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   assemblyLayers.forEach((layer, index) => {
     if (layer.presentation === 'page') assemblyPageIndex = index;
   });
-  const assemblyPageSurface =
-    assemblyPageIndex >= 0 ? assemblyLayers[assemblyPageIndex] : undefined;
   const assemblyOverlays = assemblyLayers.slice(assemblyPageIndex + 1);
   const renderAssemblyOverlays = (index = 0): ReactNode => {
     const layer = assemblyOverlays[index];
     if (!layer) return null;
-    const closeBlock = () => onNavigateBlock?.(layer.parent_block_id);
+    const parentLayer = assemblyLayers.find(
+      (candidate) => candidate.block_id === layer.parent_block_id
+    );
+    const closeBlock = () =>
+      onNavigateBlock?.(
+        parentLayer?.presentation === 'page'
+          ? null
+          : (parentLayer?.block_id ?? null)
+      );
     const content = (
       <>
         <PageCanvas
@@ -1131,29 +1159,19 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       ) : null}
       <PageCanvas
         content={
-          isBlockRuntimeRoute
-            ? assemblyCanvasContent
-            : selectedPageNode && hasLoadedSelectedPageContent
-              ? displayedPageContent
-              : undefined
+          selectedPageNode && hasLoadedSelectedPageContent
+            ? displayedPageContent
+            : undefined
         }
         isLoading={Boolean(
-          selectedPageNode &&
-          (isBlockRuntimeRoute
-            ? isBlockRuntimeLoading
-            : isPageContentLoading || isBlockRootsLoading)
+          selectedPageNode && (isPageContentLoading || isBlockRootsLoading)
         )}
         hasError={Boolean(
           selectedPageNode &&
-          (isBlockRuntimeRoute
-            ? hasBlockRuntimeLoadError
-            : hasPageContentLoadError || hasBlockRootsLoadError)
+          (hasPageContentLoadError || hasBlockRootsLoadError)
         )}
         isPermissionDenied={Boolean(
-          selectedPageNode &&
-          (isBlockRuntimeRoute
-            ? isBlockRuntimePermissionDenied
-            : isPageContentPermissionDenied)
+          selectedPageNode && isPageContentPermissionDenied
         )}
         selectedBlockId={
           canEnterDesignMode && isDesignMode ? selectedBlockId : null
@@ -1167,46 +1185,22 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               }
             : undefined
         }
-        onRetry={
-          isBlockRuntimeRoute ? onRetryLoadBlockRuntime : onRetryLoadPageContent
-        }
-        runtimePreparations={
-          isBlockRuntimeRoute
-            ? assemblyPreparations
-            : pageCanvasNativePreparations.preparations
-        }
+        onRetry={onRetryLoadPageContent}
+        runtimePreparations={pageCanvasNativePreparations.preparations}
         isolatedRuntimePreparations={
-          isBlockRuntimeRoute
-            ? undefined
-            : pageCanvasIsolatedPreparations.preparations
+          pageCanvasIsolatedPreparations.preparations
         }
         isolatedRuntimePreparationErrorsByBlockId={
-          isBlockRuntimeRoute
-            ? undefined
-            : pageCanvasIsolatedPreparations.errorsByBlockId
+          pageCanvasIsolatedPreparations.errorsByBlockId
         }
         runtimeContext={nativeBlockRuntimeContext}
         nativeContextHost={nativeContextHost}
-        renderBlockIds={
-          isBlockRuntimeRoute
-            ? assemblyPageSurface
-              ? [assemblyPageSurface.block_id]
-              : []
-            : rootPageBlockIds
-        }
-        runtimeBlocks={isBlockRuntimeRoute ? assemblyBlocks : rootBlocks}
+        renderBlockIds={rootPageBlockIds}
+        runtimeBlocks={rootBlocks}
         runtimeInputsByBlockId={runtimeInputsByBlockId}
-        sharedSignalCoordinator={
-          isBlockRuntimeRoute ? undefined : pageSignalCoordinator
-        }
-        onRuntimeDemandChange={
-          isBlockRuntimeRoute ? undefined : handleRuntimeDemandChange
-        }
-        onRuntimeRetry={
-          isBlockRuntimeRoute
-            ? undefined
-            : pageCanvasNativePreparations.retryBlock
-        }
+        sharedSignalCoordinator={pageSignalCoordinator}
+        onRuntimeDemandChange={handleRuntimeDemandChange}
+        onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
         isDesignMode={canEnterDesignMode && isDesignMode}
         designActions={designActions}
         toolbarDisabled={isPageContentSavePending}
@@ -1217,6 +1211,21 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         }
         showTitle={false}
       />
+      {isBlockRuntimeRoute && hasBlockRuntimeLoadError ? (
+        <Alert
+          style={{ margin: '8px 16px' }}
+          type="error"
+          showIcon
+          title={i18nText('frontstage', 'auto.block_tree_load_failed')}
+          action={
+            onRetryLoadBlockRuntime ? (
+              <Button size="small" onClick={onRetryLoadBlockRuntime}>
+                {i18nText('frontstage', 'auto.retry')}
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
       {renderAssemblyOverlays()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <Button

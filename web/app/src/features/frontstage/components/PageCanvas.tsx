@@ -540,7 +540,12 @@ function FrontstageNativeRuntimeInstance({
         isCurrentInstance,
         outputs
       })
-    : { api: unavailable.api, events: unavailable.events, outputs };
+    : {
+        api: unavailable.api,
+        events: unavailable.events,
+        navigation: unavailable.navigation,
+        outputs
+      };
   const context: BlockContext = {
     ...unavailable,
     ...(runtimeContext ?? {}),

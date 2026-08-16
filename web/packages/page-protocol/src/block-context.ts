@@ -11,6 +11,7 @@ export const BLOCK_CONTEXT_KEYS = [
   'patch',
   'api',
   'events',
+  'navigation',
   'theme',
   'ui'
 ] as const;
@@ -103,6 +104,15 @@ export interface BlockContextEvents {
   emit(event: string, payload?: BlockContextRecord): void;
 }
 
+export interface BlockContextOpenBlockInput {
+  blockId: string;
+  inputs?: Readonly<Record<string, string>>;
+}
+
+export interface BlockContextNavigation {
+  openBlock(input: BlockContextOpenBlockInput): void | Promise<void>;
+}
+
 export interface BlockContextOutputPublishResult {
   ok: boolean;
   stale: boolean;
@@ -143,6 +153,7 @@ export interface BlockContext<
   patch(patch: BlockContextRecord): void | Promise<void>;
   api: BlockContextApi;
   events: BlockContextEvents;
+  navigation: BlockContextNavigation;
   theme: BlockContextTheme;
   ui: BlockContextUi;
 }

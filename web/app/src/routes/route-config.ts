@@ -2,10 +2,12 @@ import type { AppRouteId } from '@1flowbase/shared-types';
 
 export const FRONTSTAGE_SLUG_PATH = '/$slug';
 export const FRONTSTAGE_SLUG_PAGE_PATH = '/$slug/pages/$pageId';
+export const FRONTSTAGE_PAGE_BLOCK_CHILD_PATH = 'blocks/$blockId';
+export const FRONTSTAGE_PAGE_TAB_CHILD_PATH = 'tabs/$tabRef';
 export const FRONTSTAGE_SLUG_PAGE_BLOCK_PATH =
-  '/$slug/pages/$pageId/blocks/$blockId';
+  `${FRONTSTAGE_SLUG_PAGE_PATH}/${FRONTSTAGE_PAGE_BLOCK_CHILD_PATH}` as const;
 export const FRONTSTAGE_SLUG_PAGE_TAB_PATH =
-  '/$slug/pages/$pageId/tabs/$tabRef';
+  `${FRONTSTAGE_SLUG_PAGE_PATH}/${FRONTSTAGE_PAGE_TAB_CHILD_PATH}` as const;
 
 export interface AppRouteDefinition {
   id: AppRouteId;

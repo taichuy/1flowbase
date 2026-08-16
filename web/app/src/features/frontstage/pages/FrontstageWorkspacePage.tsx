@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 
 import {
   FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
@@ -129,7 +129,7 @@ export function FrontstageWorkspacePage({
 
       return fetchFrontstagePageTabs(workspaceId, selectedPageId);
     },
-    enabled: Boolean(selectedPageId && !blockId),
+    enabled: Boolean(selectedPageId),
     retry: false
   });
   const defaultTabs = pageTabsQuery.data?.filter((tab) => tab.is_default) ?? [];
@@ -139,9 +139,14 @@ export function FrontstageWorkspacePage({
     runtimeTarget,
     blockInputSearch
   );
-  const tabReference = runtimeTarget?.tab_id ?? tabRef ?? defaultTab?.id;
+  const activeTabIdRef = useRef<string | undefined>(undefined);
+  const tabReference = blockId
+    ? (runtimeTarget?.tab_id ??
+      activeTabIdRef.current ??
+      (blockRuntimeAssemblyQuery.isError ? defaultTab?.id : undefined))
+    : (tabRef ?? defaultTab?.id);
   const shouldLoadPageContent = Boolean(
-    effectivePageId && selectedPageId && tabReference && !blockId
+    effectivePageId && selectedPageId && tabReference
   );
   const pageContentQuery = useQuery({
     queryKey:
@@ -171,6 +176,9 @@ export function FrontstageWorkspacePage({
     retry: false
   });
   const resolvedTabId = pageContentQuery.data?.tab.id;
+  useEffect(() => {
+    if (resolvedTabId) activeTabIdRef.current = resolvedTabId;
+  }, [resolvedTabId]);
   const blockRootsQuery = useQuery({
     queryKey:
       selectedPageId && resolvedTabId
@@ -186,7 +194,7 @@ export function FrontstageWorkspacePage({
         tab_id: resolvedTabId
       });
     },
-    enabled: Boolean(selectedPageId && resolvedTabId && !blockId),
+    enabled: Boolean(selectedPageId && resolvedTabId),
     retry: false
   });
 
@@ -289,7 +297,7 @@ export function FrontstageWorkspacePage({
         onRetryLoadBlockRuntime={() => {
           void blockRuntimeAssemblyQuery.refetch();
         }}
-        onNavigateBlock={(nextBlockId, replace = false) => {
+        onNavigateBlock={(nextBlockId, options) => {
           if (!rootNode?.slug || !selectedPageId) return;
           void navigate(
             nextBlockId
@@ -300,12 +308,13 @@ export function FrontstageWorkspacePage({
                     pageId: selectedPageId,
                     blockId: nextBlockId
                   },
-                  replace
+                  search: { ...(options?.inputs ?? {}) },
+                  replace: options?.replace ?? false
                 }
               : {
                   to: FRONTSTAGE_SLUG_PAGE_PATH,
                   params: { slug: rootNode.slug, pageId: selectedPageId },
-                  replace
+                  replace: options?.replace ?? false
                 }
           );
         }}

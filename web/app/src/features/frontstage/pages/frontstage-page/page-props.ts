@@ -27,7 +27,13 @@ export type FrontStagePageProps = {
   hasBlockRuntimeLoadError?: boolean;
   isBlockRuntimePermissionDenied?: boolean;
   onRetryLoadBlockRuntime?: () => void;
-  onNavigateBlock?: (blockId: string | null, replace?: boolean) => void;
+  onNavigateBlock?: (
+    blockId: string | null,
+    options?: {
+      replace?: boolean;
+      inputs?: Readonly<Record<string, string>>;
+    }
+  ) => void;
   showSidebar?: boolean;
   autoSelectFirstPage?: boolean;
   onNavigatePage?: (pageId?: string) => void;

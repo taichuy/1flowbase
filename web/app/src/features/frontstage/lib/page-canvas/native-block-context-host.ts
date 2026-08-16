@@ -1,4 +1,5 @@
 import type {
+  BlockContextOpenBlockInput,
   BlockContextOutputs,
   BlockRuntimeDiagnostic
 } from '@1flowbase/page-protocol';
@@ -12,6 +13,7 @@ import {
 
 export interface FrontstageNativeBlockContextHost {
   interface: BlockHostEffectHandler<BlockHostInterfaceEffect>;
+  openBlock(input: BlockContextOpenBlockInput): void | Promise<void>;
   emitEvent?(event: NativeBlockContextEventInput): void;
   observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
   reportDiagnostic?(diagnostic: BlockRuntimeDiagnostic): void;
@@ -32,6 +34,7 @@ export function createFrontstageNativeBlockContextCapabilities(input: {
     isCurrentInstance: input.isCurrentInstance,
     interfaceHandler: input.host.interface,
     outputs: input.outputs,
+    openBlock: input.host.openBlock,
     emitEvent: input.host.emitEvent,
     observeApiCall: input.host.observeApiCall,
     reportDiagnostic: ({ error, capability }) =>

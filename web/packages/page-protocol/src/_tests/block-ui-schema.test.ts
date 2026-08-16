@@ -100,6 +100,7 @@ describe('block UI schema protocol', () => {
       'patch',
       'api',
       'events',
+      'navigation',
       'theme',
       'ui'
     ]);

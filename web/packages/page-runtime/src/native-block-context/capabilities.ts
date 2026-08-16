@@ -4,6 +4,7 @@ import type {
   BlockContext,
   BlockContextApi,
   BlockContextEvents,
+  BlockContextOpenBlockInput,
   BlockContextOutputs,
   BlockContextOutputPublishResult,
   BlockProtocolError
@@ -34,7 +35,7 @@ export interface NativeBlockContextApiCallObservation {
 export interface NativeBlockContextCapabilityDiagnostic {
   requestId: string;
   instanceEpoch: string;
-  capability: 'api' | 'events' | 'outputs';
+  capability: 'api' | 'events' | 'navigation' | 'outputs';
   error: BlockProtocolError;
 }
 
@@ -52,6 +53,7 @@ export interface CreateNativeBlockContextCapabilitiesOptions {
   interfaceHandler: BlockHostEffectHandler<BlockHostInterfaceEffect>;
   outputs: BlockContextOutputs;
   emitEvent?(event: NativeBlockContextEventInput): void;
+  openBlock?(input: BlockContextOpenBlockInput): void | Promise<void>;
   observeApiCall?(observation: NativeBlockContextApiCallObservation): void;
   reportDiagnostic?(diagnostic: NativeBlockContextCapabilityDiagnostic): void;
   now?: () => number;
@@ -59,7 +61,7 @@ export interface CreateNativeBlockContextCapabilitiesOptions {
 
 export type NativeBlockContextCapabilities = Pick<
   BlockContext,
-  'api' | 'events' | 'outputs'
+  'api' | 'events' | 'navigation' | 'outputs'
 >;
 
 export function createNativeBlockContextCapabilities(
@@ -217,6 +219,38 @@ export function createNativeBlockContextCapabilities(
   return {
     api,
     events,
+    navigation: {
+      openBlock(input) {
+        requireCurrentInstance(
+          options,
+          'navigation',
+          'navigation.instance_epoch'
+        );
+        if (!isValidOpenBlockInput(input)) {
+          const error = new Error(
+            'Native Block navigation requires a valid block id and string inputs.'
+          );
+          report(options, 'navigation', {
+            code: 'interface_denied',
+            path: 'navigation.input',
+            message: error.message
+          });
+          throw error;
+        }
+        if (!options.openBlock) {
+          const error = new Error(
+            'Native Block ctx.navigation.openBlock is not registered by this Host.'
+          );
+          report(options, 'navigation', {
+            code: 'interface_denied',
+            path: 'navigation.handler',
+            message: error.message
+          });
+          throw error;
+        }
+        return options.openBlock(input);
+      }
+    },
     outputs: {
       publish(values) {
         if (!options.isCurrentInstance()) {
@@ -288,5 +322,22 @@ function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
     (typeof value === 'object' || typeof value === 'function') &&
     value !== null &&
     typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
+function isValidOpenBlockInput(
+  input: BlockContextOpenBlockInput
+): input is BlockContextOpenBlockInput {
+  return (
+    typeof input === 'object' &&
+    input !== null &&
+    typeof input.blockId === 'string' &&
+    input.blockId.trim().length > 0 &&
+    (input.inputs === undefined ||
+      (typeof input.inputs === 'object' &&
+        input.inputs !== null &&
+        Object.values(input.inputs).every(
+          (value) => typeof value === 'string'
+        )))
   );
 }

@@ -317,6 +317,11 @@ export function createFrontstageUnavailableBlockContext(
         throw createUnavailableContextError('ctx.events.emit');
       }
     },
+    navigation: {
+      openBlock() {
+        throw createUnavailableContextError('ctx.navigation.openBlock');
+      }
+    },
     theme: { mode: 'light', tokens: {} },
     ui: {}
   };

@@ -36,6 +36,12 @@ export const FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS: readonly BlockSourceExtr
     delete<TResponse = unknown>(path: string, request?: NativeReactApiRequest): Promise<TResponse>;
   };
   events: { emit(name: string, payload?: Record<string, unknown>): void };
+  navigation: {
+    openBlock(input: {
+      blockId: string;
+      inputs?: Readonly<Record<string, string>>;
+    }): void | Promise<void>;
+  };
   theme: { mode: 'light' | 'dark'; tokens: Record<string, unknown> };
   ui: { locale?: string };
 }

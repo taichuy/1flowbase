@@ -24,11 +24,15 @@ describe('Native Block context capabilities', () => {
       capabilities.api.get('/api/console/records/second')
     ).resolves.toEqual({ id: 'second' });
     expect(capabilities.api).toBe(capabilities.api);
-    expect(observations.filter(({ status }) => status === 'pending')).toHaveLength(2);
+    expect(
+      observations.filter(({ status }) => status === 'pending')
+    ).toHaveLength(2);
 
     pending.resolve({ id: 'first' });
     await expect(first).resolves.toEqual({ id: 'first' });
-    expect(new Set(observations.map(({ callId }) => callId).values()).size).toBe(2);
+    expect(
+      new Set(observations.map(({ callId }) => callId).values()).size
+    ).toBe(2);
   });
 
   test('D4-AC-004 rejects stale API/events/output channels by instance epoch', async () => {
@@ -76,6 +80,67 @@ describe('Native Block context capabilities', () => {
     current = false;
     pending.resolve({ ok: true, stale: false });
     await expect(published).resolves.toEqual({ ok: false, stale: true });
+  });
+
+  test('AC-001 delegates typed block navigation and rejects stale instances', async () => {
+    let current = true;
+    const openBlock = vi.fn();
+    const capabilities = createNativeBlockContextCapabilities({
+      requestId: 'native:block-1:epoch-1',
+      instanceEpoch: 'epoch-1',
+      isCurrentInstance: () => current,
+      interfaceHandler: vi.fn(),
+      outputs: { publish: () => ({ ok: true, stale: false }) },
+      openBlock
+    });
+
+    await capabilities.navigation.openBlock({
+      blockId: 'block-child',
+      inputs: { record_id: 'record-1' }
+    });
+    expect(openBlock).toHaveBeenCalledWith({
+      blockId: 'block-child',
+      inputs: { record_id: 'record-1' }
+    });
+
+    current = false;
+    expect(() =>
+      capabilities.navigation.openBlock({ blockId: 'block-stale' })
+    ).toThrow('stale instance');
+  });
+
+  test('AC-001 rejects navigation when the Host did not register it', () => {
+    const capabilities = createNativeBlockContextCapabilities({
+      requestId: 'native:block-1:epoch-1',
+      instanceEpoch: 'epoch-1',
+      isCurrentInstance: () => true,
+      interfaceHandler: vi.fn(),
+      outputs: { publish: () => ({ ok: true, stale: false }) }
+    });
+
+    expect(() =>
+      capabilities.navigation.openBlock({ blockId: 'block-child' })
+    ).toThrow('not registered by this Host');
+  });
+
+  test('AC-001 rejects malformed authored navigation input at the Host boundary', () => {
+    const openBlock = vi.fn();
+    const capabilities = createNativeBlockContextCapabilities({
+      requestId: 'native:block-1:epoch-1',
+      instanceEpoch: 'epoch-1',
+      isCurrentInstance: () => true,
+      interfaceHandler: vi.fn(),
+      outputs: { publish: () => ({ ok: true, stale: false }) },
+      openBlock
+    });
+
+    expect(() =>
+      capabilities.navigation.openBlock({
+        blockId: '',
+        inputs: { record_id: 1 }
+      } as never)
+    ).toThrow('valid block id and string inputs');
+    expect(openBlock).not.toHaveBeenCalled();
   });
 });
 

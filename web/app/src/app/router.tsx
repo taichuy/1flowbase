@@ -26,9 +26,9 @@ import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
 import { SessionGuard } from '../routes/session-guard';
 import {
-  FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
+  FRONTSTAGE_PAGE_BLOCK_CHILD_PATH,
+  FRONTSTAGE_PAGE_TAB_CHILD_PATH,
   FRONTSTAGE_SLUG_PAGE_PATH,
-  FRONTSTAGE_SLUG_PAGE_TAB_PATH,
   FRONTSTAGE_SLUG_PATH
 } from '../routes/route-config';
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
@@ -608,13 +608,45 @@ const frontstageSlugPageRoute = createRoute({
   notFoundComponent: NotFoundPage,
   component: () => {
     const { slug, pageId } = frontstageSlugPageRoute.useParams();
-    return <FrontStageSlugRoute slug={slug} pageId={pageId} />;
+    const childRouteState = useRouterState({
+      select: (state) => {
+        const blockMatch = state.matches.find(
+          (match) => match.routeId === frontstageSlugPageBlockRoute.id
+        );
+        const tabMatch = state.matches.find(
+          (match) => match.routeId === frontstageSlugPageTabRoute.id
+        );
+        return {
+          blockId:
+            typeof blockMatch?.params.blockId === 'string'
+              ? blockMatch.params.blockId
+              : undefined,
+          blockInputSearch:
+            blockMatch?.search && typeof blockMatch.search === 'object'
+              ? (blockMatch.search as Record<string, unknown>)
+              : undefined,
+          tabRef:
+            typeof tabMatch?.params.tabRef === 'string'
+              ? tabMatch.params.tabRef
+              : undefined
+        };
+      }
+    });
+    return (
+      <FrontStageSlugRoute
+        slug={slug}
+        pageId={pageId}
+        tabRef={childRouteState.tabRef}
+        blockId={childRouteState.blockId}
+        blockInputSearch={childRouteState.blockInputSearch}
+      />
+    );
   }
 });
 
 const frontstageSlugPageBlockRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
+  getParentRoute: () => frontstageSlugPageRoute,
+  path: FRONTSTAGE_PAGE_BLOCK_CHILD_PATH,
   validateSearch: (search: Record<string, unknown>) =>
     Object.fromEntries(
       Object.entries(search).filter(
@@ -622,28 +654,14 @@ const frontstageSlugPageBlockRoute = createRoute({
       )
     ),
   notFoundComponent: NotFoundPage,
-  component: () => {
-    const { slug, pageId, blockId } = frontstageSlugPageBlockRoute.useParams();
-    const blockInputSearch = frontstageSlugPageBlockRoute.useSearch();
-    return (
-      <FrontStageSlugRoute
-        slug={slug}
-        pageId={pageId}
-        blockId={blockId}
-        blockInputSearch={blockInputSearch}
-      />
-    );
-  }
+  component: () => null
 });
 
 const frontstageSlugPageTabRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+  getParentRoute: () => frontstageSlugPageRoute,
+  path: FRONTSTAGE_PAGE_TAB_CHILD_PATH,
   notFoundComponent: NotFoundPage,
-  component: () => {
-    const { slug, pageId, tabRef } = frontstageSlugPageTabRoute.useParams();
-    return <FrontStageSlugRoute slug={slug} pageId={pageId} tabRef={tabRef} />;
-  }
+  component: () => null
 });
 
 const signInRoute = createRoute({
@@ -710,9 +728,10 @@ const routeTree = rootRoute.addChildren([
     meProfileRoute,
     meSecurityRoute,
     frontstageSlugRoute,
-    frontstageSlugPageRoute,
-    frontstageSlugPageBlockRoute,
-    frontstageSlugPageTabRoute
+    frontstageSlugPageRoute.addChildren([
+      frontstageSlugPageBlockRoute,
+      frontstageSlugPageTabRoute
+    ])
   ]),
   signInRoute
 ]);
