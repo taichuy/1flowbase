@@ -132,6 +132,7 @@ export interface ConsoleFrontstageBlockRootListQuery extends ConsoleFrontstageBl
 }
 
 export interface ConsoleFrontstageBlockSearchQuery {
+  tab_id: string;
   query: string;
   limit?: number;
 }

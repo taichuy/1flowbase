@@ -53,6 +53,7 @@ pub struct SearchFrontstageBlocksCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
+    pub tab_id: Uuid,
     pub query: String,
     pub limit: u32,
 }
@@ -146,13 +147,14 @@ where
             command.actor_user_id,
             command.workspace_id,
             command.page_id,
-            None,
+            Some(command.tab_id),
         )
         .await?;
         self.repository
             .search_frontstage_blocks(
                 command.workspace_id,
                 command.page_id,
+                command.tab_id,
                 &command.query,
                 command.limit,
             )

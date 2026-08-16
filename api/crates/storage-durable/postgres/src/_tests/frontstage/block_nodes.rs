@@ -407,6 +407,15 @@ async fn block_unification_migration_removes_drafts_and_preserves_page_tab_metad
     .unwrap();
     assert_eq!((state.0, state.1, state.2, state.3), (1, 1, 0, 0));
     assert_eq!(state.4, json!({ "version": 1 }));
+
+    let legacy_write = sqlx::query(
+        "update frontstage_page_schemas set document_payload = document_payload || jsonb_build_object('blocks', '[]'::jsonb) where workspace_id = $1 and tab_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(tab_id)
+    .execute(&pool)
+    .await;
+    assert!(legacy_write.is_err());
 }
 
 // AC-008/009: structure, code and audit share one transaction; public identities remain page and
@@ -909,17 +918,19 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
     );
     root_b.title = Some("Root B".to_owned());
     store.create_frontstage_block_node(&root_b).await.unwrap();
+    let mut second_tab_root = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        second_tab_id,
+        "match-second-tab",
+        "root-second-tab-code",
+        FrontstageBlockPosition::default(),
+        Uuid::now_v7(),
+    );
+    second_tab_root.title = Some("Match Second Tab".to_owned());
     store
-        .create_frontstage_block_node(&create_input(
-            workspace_id,
-            actor_user_id,
-            page_id,
-            second_tab_id,
-            "root-second-tab",
-            "root-second-tab-code",
-            FrontstageBlockPosition::default(),
-            Uuid::now_v7(),
-        ))
+        .create_frontstage_block_node(&second_tab_root)
         .await
         .unwrap();
 
@@ -1007,7 +1018,7 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
         .await
         .unwrap();
     assert_eq!(second_tab_roots.len(), 1);
-    assert_eq!(second_tab_roots[0].block_id, "root-second-tab");
+    assert_eq!(second_tab_roots[0].block_id, "match-second-tab");
 
     let children = store
         .list_frontstage_block_children(workspace_id, page_id, "root-a", 10)
@@ -1054,7 +1065,7 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
     assert_eq!(descendants["leaf"].path, ["root-a", "match-a", "leaf"]);
 
     let matches = store
-        .search_frontstage_blocks(workspace_id, page_id, "match", 10)
+        .search_frontstage_blocks(workspace_id, page_id, tab_id, "match", 10)
         .await
         .unwrap();
     assert_eq!(
@@ -1064,6 +1075,7 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
             .collect::<Vec<_>>(),
         ["match-a", "match-b"]
     );
+    assert!(matches.iter().all(|result| result.node.tab_id == tab_id));
     assert!(matches.iter().all(|result| {
         result
             .ancestors
@@ -1094,12 +1106,9 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
         node_error.downcast_ref::<OrderedTreeQueryError>(),
         Some(&OrderedTreeQueryError::NodeNotFound)
     );
-    let limit_error = store
+    let empty_roots = store
         .list_frontstage_block_roots(workspace_id, page_id, tab_id, 0)
         .await
-        .unwrap_err();
-    assert_eq!(
-        limit_error.downcast_ref::<OrderedTreeQueryError>(),
-        Some(&OrderedTreeQueryError::InvalidResultLimit { max: 1_000 })
-    );
+        .unwrap();
+    assert!(empty_roots.is_empty());
 }

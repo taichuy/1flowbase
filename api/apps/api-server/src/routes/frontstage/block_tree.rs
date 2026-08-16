@@ -123,6 +123,7 @@ pub struct FrontstageBlockRootListQuery {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FrontstageBlockSearchQuery {
+    pub tab_id: String,
     pub query: String,
     #[serde(default = "default_result_limit")]
     pub limit: u32,
@@ -403,6 +404,7 @@ pub async fn search_frontstage_blocks(
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
             page_id: parse_uuid(&page_id, "page_id")?,
+            tab_id: parse_uuid(&query.tab_id, "tab_id")?,
             query: query.query,
             limit: query.limit,
         })

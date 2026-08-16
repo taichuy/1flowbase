@@ -123,10 +123,14 @@ export function BlockSchemaTreePanel({
   });
   const searchResultsQuery = useQuery({
     queryKey: frontstageBlockTreeQueryKeys.search(workspaceId, pageId, {
+      tab_id: tabId,
       query: searchQuery
     }),
     queryFn: () =>
-      searchFrontstageBlocks(workspaceId, pageId, { query: searchQuery }),
+      searchFrontstageBlocks(workspaceId, pageId, {
+        tab_id: tabId,
+        query: searchQuery
+      }),
     enabled: searchQuery.length > 0
   });
 

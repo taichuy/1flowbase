@@ -914,11 +914,6 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             with updated_schema as (
                 update frontstage_page_schemas
                 set schema_payload = $4,
-                    root_payload = case
-                        when jsonb_typeof($4->'blocks') = 'array'
-                            then jsonb_set(root_payload, '{blocks}', $4->'blocks', true)
-                        else root_payload
-                    end,
                     document_payload = $4,
                     updated_by = $5,
                     updated_at = now()

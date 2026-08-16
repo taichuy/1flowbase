@@ -13,6 +13,14 @@ where document_payload ? 'blocks'
    or schema_payload ? 'blocks'
    or root_payload ? 'blocks';
 
+alter table frontstage_page_schemas
+  add constraint frontstage_page_schemas_document_without_blocks_check
+    check (not (document_payload ? 'blocks')),
+  add constraint frontstage_page_schemas_schema_without_blocks_check
+    check (not (schema_payload ? 'blocks')),
+  add constraint frontstage_page_schemas_root_without_blocks_check
+    check (not (root_payload ? 'blocks'));
+
 alter table frontstage_block_nodes
   add constraint frontstage_block_nodes_descriptor_v1_check check (
     jsonb_typeof(runtime_descriptor -> 'catalog') = 'object'

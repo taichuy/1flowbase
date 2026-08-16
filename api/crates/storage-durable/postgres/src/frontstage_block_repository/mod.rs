@@ -927,6 +927,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
+        tab_id: Uuid,
         query: &str,
         limit: u32,
     ) -> Result<Vec<domain::FrontstageBlockSearchResult>> {
@@ -965,7 +966,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         projections
             .into_iter()
             .zip(summaries)
-            .filter(|(projection, _)| projection.is_match)
+            .filter(|(projection, summary)| projection.is_match && summary.tab_id == tab_id)
             .map(|(_, summary)| {
                 let mut ancestors = Vec::new();
                 let mut current = summary.parent_internal_id;

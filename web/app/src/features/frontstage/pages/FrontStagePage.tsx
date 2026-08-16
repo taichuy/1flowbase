@@ -247,7 +247,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         routeSegment: null,
         documentRootUid: target.block_id
       },
-      document: { rootUid: target.block_id, payload: { blocks: [] } }
+      document: { rootUid: target.block_id, payload: {} }
     };
   }, [
     blockRuntimeAssembly,
@@ -640,10 +640,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           !Array.isArray(documentPayload)
             ? (documentPayload as Record<string, unknown>)
             : {};
-        const { blocks: _legacyBlocks, ...documentMetadata } = documentRecord;
         const nextContent = await pageContentSave.save({
           payload: {
-            ...documentMetadata,
+            ...documentRecord,
             'x-layout-mode': compositionState.document.layoutMode
           }
         });

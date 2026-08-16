@@ -215,7 +215,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
 
     let (search_status, search_payload) = get_json(
         &app,
-        &format!("{blocks_path}/search?query=Searchable%20grand"),
+        &format!("{blocks_path}/search?tab_id={tab_id}&query=Searchable%20grand"),
         &cookie,
     )
     .await;
@@ -441,7 +441,7 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
     assert_eq!(roots_status, StatusCode::FORBIDDEN);
     let (search_status, _) = get_json(
         &app,
-        &format!("{blocks_path}/search?query=Protected"),
+        &format!("{blocks_path}/search?tab_id={tab_id}&query=Protected"),
         &viewer_cookie,
     )
     .await;

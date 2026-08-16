@@ -43,11 +43,12 @@ describe('frontstage block tree client contract', () => {
     });
     await expect(
       searchConsoleFrontstageBlocks('workspace 1', 'page/1', {
+        tab_id: 'tab/1',
         query: 'sales drawer',
         limit: 10
       })
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/search?query=sales+drawer&limit=10',
+      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/search?tab_id=tab%2F1&query=sales+drawer&limit=10',
       method: 'GET'
     });
     await expect(

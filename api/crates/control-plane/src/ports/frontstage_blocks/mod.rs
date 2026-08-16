@@ -167,6 +167,7 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
+        tab_id: Uuid,
         query: &str,
         limit: u32,
     ) -> anyhow::Result<Vec<domain::FrontstageBlockSearchResult>>;

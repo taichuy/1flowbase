@@ -19,7 +19,7 @@ export function createStyleBoundaryFrontstagePageContent() {
     },
     document: {
       rootUid: 'root-1',
-      payload: { blocks: [] }
+      payload: {}
     }
   };
 }

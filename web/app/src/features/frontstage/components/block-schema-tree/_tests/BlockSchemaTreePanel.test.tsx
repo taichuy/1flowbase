@@ -227,7 +227,7 @@ describe('BlockSchemaTreePanel', () => {
       expect(api.searchFrontstageBlocks).toHaveBeenCalledWith(
         'workspace-1',
         'page-1',
-        { query: 'child' }
+        { tab_id: 'tab-1', query: 'child' }
       );
     });
     expect(
