@@ -1294,6 +1294,9 @@ describe('EmbeddedAgentAssistant', () => {
         `${i18nText('appShell', 'auto.assistant_activity_duration_unknown')} · ${i18nText('appShell', 'auto.assistant_status_cancelled')}`
       )
     );
+    fireEvent.click(
+      await screen.findByText(i18nText('agentFlow', 'auto.think'))
+    );
     expect(await screen.findByText('Temporary reasoning')).toBeInTheDocument();
     expect(
       screen.queryByText(i18nText('agentFlow', 'auto.stopped'))
@@ -1613,6 +1616,13 @@ describe('EmbeddedAgentAssistant', () => {
       Node.DOCUMENT_POSITION_FOLLOWING
     );
     fireEvent.click(firstTool);
+    const toolTimelineItem = firstTool.closest(
+      '.embedded-agent-assistant-activity__timeline-item'
+    );
+    expect(toolTimelineItem).toHaveStyle({
+      display: 'grid',
+      gridTemplateColumns: 'auto minmax(0, 1fr)'
+    });
     const inputTitle = i18nText('agentFlow', 'auto.input');
     const outputTitle = i18nText('appShell', 'auto.assistant_activity_output');
     const inputJson = screen.getByLabelText(`${inputTitle} JSON`);
@@ -1649,6 +1659,15 @@ describe('EmbeddedAgentAssistant', () => {
       i18nText('appShell', 'auto.assistant_activity_duration_unknown')
     );
     fireEvent.click(duration);
+    const terminalReasoningTitles = await screen.findAllByText(
+      i18nText('agentFlow', 'auto.think')
+    );
+    expect(terminalReasoningTitles).toHaveLength(2);
+    terminalReasoningTitles.forEach((title) => {
+      expect(title.closest('.ant-think')).not.toBeNull();
+    });
+    expect(screen.queryByText('先检查配置')).not.toBeInTheDocument();
+    fireEvent.click(terminalReasoningTitles[0] as HTMLElement);
     expect(await screen.findByText('先检查配置')).toBeInTheDocument();
     expect(screen.getByText('阶段结果一')).toBeInTheDocument();
     expect(
@@ -1813,6 +1832,9 @@ describe('EmbeddedAgentAssistant', () => {
           value1: 3
         })
       )
+    );
+    fireEvent.click(
+      await screen.findByText(i18nText('agentFlow', 'auto.think'))
     );
     const historyReasoning = await screen.findByText('历史思考');
     expect(

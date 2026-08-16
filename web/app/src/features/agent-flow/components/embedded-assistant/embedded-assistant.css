@@ -256,8 +256,7 @@
   width: 100%;
 }
 
-.embedded-agent-assistant-activity__think,
-.embedded-agent-assistant-activity__reasoning-content {
+.embedded-agent-assistant-activity__think {
   min-width: 0;
 }
 

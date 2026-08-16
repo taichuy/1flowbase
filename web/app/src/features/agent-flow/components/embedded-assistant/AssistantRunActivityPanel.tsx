@@ -54,6 +54,13 @@ const activityTimelineClassNames = {
   itemContent: 'embedded-agent-assistant-activity__timeline-item-content'
 };
 
+const activityTimelineStyles = {
+  item: {
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr)'
+  }
+} as const;
+
 function eventSequence(event: ConsoleFlowDebugStreamEvent, fallback: number) {
   return event.sequence ?? fallback;
 }
@@ -283,13 +290,7 @@ function activityThoughtItem(entry: ActivityEntry): ThoughtChainItemType {
   };
 }
 
-function ActivitySequence({
-  entries,
-  reasoningCollapsible
-}: {
-  entries: ActivityEntry[];
-  reasoningCollapsible: boolean;
-}) {
+function ActivitySequence({ entries }: { entries: ActivityEntry[] }) {
   const blocks: ReactNode[] = [];
   let chainEntries: ActivityEntry[] = [];
 
@@ -306,6 +307,7 @@ function ActivitySequence({
         items={currentEntries.map(activityThoughtItem)}
         line
         rootClassName="embedded-agent-assistant-activity__timeline"
+        styles={activityTimelineStyles}
       />
     );
   };
@@ -317,23 +319,14 @@ function ActivitySequence({
     }
     flushChain();
     blocks.push(
-      reasoningCollapsible ? (
-        <Think
-          className="embedded-agent-assistant-activity__think"
-          defaultExpanded={false}
-          key={entry.key}
-          title={i18nText('agentFlow', 'auto.think')}
-        >
-          <DebugMarkdownContent content={entry.text ?? ''} />
-        </Think>
-      ) : (
-        <div
-          className="embedded-agent-assistant-activity__reasoning-content"
-          key={entry.key}
-        >
-          <DebugMarkdownContent content={entry.text ?? ''} />
-        </div>
-      )
+      <Think
+        className="embedded-agent-assistant-activity__think"
+        defaultExpanded={false}
+        key={entry.key}
+        title={i18nText('agentFlow', 'auto.think')}
+      >
+        <DebugMarkdownContent content={entry.text ?? ''} />
+      </Think>
     );
   });
   flushChain();
@@ -529,12 +522,7 @@ export function AssistantRunTimeline({
           title: processTitle(status, activity?.durationMs ?? null),
           status: status === 'failed' ? 'error' : 'success',
           collapsible: true,
-          content: (
-            <ActivitySequence
-              entries={processEntries}
-              reasoningCollapsible={false}
-            />
-          )
+          content: <ActivitySequence entries={processEntries} />
         }
       ]
     : [];
@@ -560,6 +548,7 @@ export function AssistantRunTimeline({
               items={terminalItems}
               line
               rootClassName="embedded-agent-assistant-activity__timeline"
+              styles={activityTimelineStyles}
             />
           ) : null}
           {terminalItems.length && (finalOutput || terminalError) ? (
@@ -572,7 +561,7 @@ export function AssistantRunTimeline({
           ) : null}
         </>
       ) : (
-        <ActivitySequence entries={entries} reasoningCollapsible />
+        <ActivitySequence entries={entries} />
       )}
     </div>
   );
