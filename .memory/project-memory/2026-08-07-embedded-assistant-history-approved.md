@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置助手历史会话与持久化恢复已批准
-summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 投影为主聊天有序行为叙事，左侧运行栏恢复完整节点卡片并按最近 pane owner 缩放。
+summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 投影为主聊天有序行为叙事，左侧运行栏恢复完整节点卡片并按最近 pane owner 缩放；浏览器仅缓存主对话宽度与助手窗口高度。
 keywords:
   - embedded assistant
   - conversation history
@@ -95,3 +95,9 @@ scope:
 - 桌面结构固定为“左外边缘 → 运行过程侧栏 → 中间分隔线 → 主对话 → 右外边缘”；不得为了调整缩放语义而把运行侧栏移到右侧。
 - 水平拖拽采用 nearest pane owner：左外边缘只增减左侧运行栏，右外边缘只增减右侧主对话，中间分隔线在外层窗口宽度不变时反向分配两栏宽度。
 - 数学不变量：左边缘 `Δsidebar = ΔwindowWidth, Δconversation = 0`；中间 `Δsidebar = ΔdividerX, Δconversation = -ΔdividerX`；右边缘 `Δsidebar = 0, Δconversation = ΔwindowWidth`。
+
+## 2026-08-16 助手尺寸浏览器缓存边界
+
+- 用户确认浏览器 Storage 只保存主对话 pane 宽度 `conversationWidth` 和助手窗口高度 `windowHeight`。
+- 不保存窗口位置、运行栏宽度、侧栏开关、最大化状态或外层双栏总宽。侧栏打开时 `conversationWidth = outerWidth - sidebarWidth - dividerWidth`。
+- Storage 只在拖拽交互结束时写入，恢复时按当前 viewport 夹取；左外边缘只改运行栏时不改变缓存的主对话宽度。

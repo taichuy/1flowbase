@@ -63,6 +63,10 @@ import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferen
 import { formatLlmTokenCount } from '../../lib/model-options';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
 import {
+  readAssistantWindowSize,
+  writeAssistantWindowSize
+} from './assistant-window-size-storage';
+import {
   AssistantRunNodePanel,
   AssistantRunTimeline
 } from './AssistantRunActivityPanel';
@@ -208,12 +212,22 @@ function assistantRunStatusIndicator(status: string | null) {
 
 function initialAssistantWindowRect(): WindowWorkspaceRect {
   const viewport = getWindowWorkspaceViewport();
-  const width = Math.min(560, Math.max(400, viewport.width - 32));
+  const storedSize = readAssistantWindowSize();
+  const width = Math.min(
+    Math.max(400, storedSize?.conversationWidth ?? 560),
+    Math.max(400, viewport.width - 32)
+  );
+  const height = storedSize
+    ? Math.min(
+        Math.max(320, storedSize.windowHeight),
+        Math.max(320, viewport.height - 16)
+      )
+    : Math.min(Math.max(480, viewport.height - 24), viewport.height - 16);
   return {
     left: Math.max(8, viewport.left + viewport.width - width - 16),
     top: Math.max(viewport.top + 8, 56),
     width,
-    height: Math.min(Math.max(480, viewport.height - 24), viewport.height - 16)
+    height
   };
 }
 
@@ -792,6 +806,7 @@ export function EmbeddedAgentAssistantPreview({
       document.body.style.userSelect = previousUserSelect;
       historyResizeCleanupRef.current = null;
       setIsResizingHistory(false);
+      persistAssistantWindowSize(assistantWindowRectRef.current);
     };
 
     historyResizeCleanupRef.current = cleanup;
@@ -831,6 +846,20 @@ export function EmbeddedAgentAssistantPreview({
     }
     assistantWindowRectRef.current = nextRect;
     setRect(ASSISTANT_WINDOW_ID, nextRect);
+  }
+
+  function persistAssistantWindowSize(rect: WindowWorkspaceRect | null) {
+    if (!rect) {
+      return;
+    }
+    const historyOccupiedWidth =
+      sidePanelOpen && !mobile && !historyFullView
+        ? historyWidthRef.current + ASSISTANT_HISTORY_RESIZE_WIDTH
+        : 0;
+    writeAssistantWindowSize({
+      conversationWidth: rect.width - historyOccupiedWidth,
+      windowHeight: rect.height
+    });
   }
 
   async function saveSettings() {
@@ -903,6 +932,7 @@ export function EmbeddedAgentAssistantPreview({
           title={i18nText('appShell', 'auto.assistant')}
           zIndex={assistantWindowZIndex}
           onActivate={() => activate(ASSISTANT_WINDOW_ID)}
+          onInteractionEnd={persistAssistantWindowSize}
           onRectChange={updateAssistantWindowRect}
         >
           <div

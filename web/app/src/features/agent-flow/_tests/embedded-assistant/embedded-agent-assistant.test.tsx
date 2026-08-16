@@ -66,11 +66,15 @@ interface WindowDimensionSpy {
   mockReturnValue(value: number): void;
 }
 
+const ASSISTANT_WINDOW_SIZE_STORAGE_KEY =
+  '1flowbase.embedded_assistant.window_size';
+
 describe('EmbeddedAgentAssistant', () => {
   let innerHeightSpy: WindowDimensionSpy | undefined;
   let innerWidthSpy: WindowDimensionSpy | undefined;
 
   beforeEach(() => {
+    window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);
     innerHeightSpy = vi
       .spyOn(window, 'innerHeight', 'get')
       .mockReturnValue(900);
@@ -201,6 +205,7 @@ describe('EmbeddedAgentAssistant', () => {
   });
 
   afterEach(() => {
+    window.localStorage.removeItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY);
     innerHeightSpy?.mockRestore();
     innerHeightSpy = undefined;
     innerWidthSpy?.mockRestore();
@@ -796,6 +801,112 @@ describe('EmbeddedAgentAssistant', () => {
     expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft);
     expect(Number.parseFloat(assistantWindow.style.width)).toBe(
       initialWidth + 60
+    );
+  });
+
+  test('caches only the main conversation width and assistant window height', async () => {
+    innerWidthSpy?.mockReturnValue(2_000);
+    const firstRender = render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+
+    const assistantWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    ) as HTMLElement;
+    const initialWidth = Number.parseFloat(assistantWindow.style.width);
+    const initialHeight = Number.parseFloat(assistantWindow.style.height);
+    const initialRight =
+      Number.parseFloat(assistantWindow.style.left) + initialWidth;
+    const initialBottom =
+      Number.parseFloat(assistantWindow.style.top) + initialHeight;
+    const rightResizeHandle = screen.getByRole('separator', {
+      name: `${i18nText('appShell', 'auto.assistant')} right`
+    });
+    fireEvent.mouseDown(rightResizeHandle, { clientX: initialRight });
+    fireEvent.mouseMove(window, { clientX: initialRight + 80 });
+    fireEvent.mouseUp(window);
+    const bottomResizeHandle = screen.getByRole('separator', {
+      name: `${i18nText('appShell', 'auto.assistant')} bottom`
+    });
+    fireEvent.mouseDown(bottomResizeHandle, { clientY: initialBottom });
+    fireEvent.mouseMove(window, { clientY: initialBottom - 100 });
+    fireEvent.mouseUp(window);
+
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+      )
+    ).toEqual({
+      conversationWidth: initialWidth + 80,
+      windowHeight: initialHeight - 100
+    });
+
+    const history = await screen.findByRole('button', {
+      name: i18nText('appShell', 'auto.assistant_history')
+    });
+    fireEvent.click(history);
+    const historySidebar = await screen.findByTestId(
+      'embedded-agent-assistant-history'
+    );
+    const expandedLeft = Number.parseFloat(assistantWindow.style.left);
+    const leftResizeHandle = screen.getByRole('separator', {
+      name: `${i18nText('appShell', 'auto.assistant')} left`
+    });
+    fireEvent.mouseDown(leftResizeHandle, { clientX: expandedLeft });
+    fireEvent.mouseMove(window, { clientX: expandedLeft - 60 });
+    fireEvent.mouseUp(window);
+    expect(historySidebar).toHaveStyle({ width: '340px' });
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+      )
+    ).toEqual({
+      conversationWidth: initialWidth + 80,
+      windowHeight: initialHeight - 100
+    });
+
+    const divider = screen.getByTestId(
+      'embedded-agent-assistant-history-resize'
+    );
+    fireEvent.mouseDown(divider, { clientX: 340 });
+    fireEvent.mouseMove(window, { clientX: 380 });
+    fireEvent.mouseUp(window);
+    expect(historySidebar).toHaveStyle({ width: '380px' });
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(ASSISTANT_WINDOW_SIZE_STORAGE_KEY) ?? '{}'
+      )
+    ).toEqual({
+      conversationWidth: initialWidth + 40,
+      windowHeight: initialHeight - 100
+    });
+
+    firstRender.unmount();
+    render(
+      <AppProviders>
+        <EmbeddedAgentAssistant />
+      </AppProviders>
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18nText('appShell', 'auto.assistant')
+      })
+    );
+    const restoredWindow = screen.getByTestId(
+      'embedded-agent-assistant-preview'
+    ) as HTMLElement;
+    expect(Number.parseFloat(restoredWindow.style.width)).toBe(
+      initialWidth + 40
+    );
+    expect(Number.parseFloat(restoredWindow.style.height)).toBe(
+      initialHeight - 100
     );
   });
 
