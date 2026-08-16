@@ -205,6 +205,7 @@ export class FrontstageNativePreparationScheduler {
     tasks: readonly FrontstageNativePreparationTask[],
     demands: FrontstageRuntimeDemandByBlockId | undefined
   ): void {
+    let snapshotsChanged = false;
     const nextBlockIds = new Set(tasks.map(({ blockId }) => blockId));
     for (const [blockId, current] of this.scheduled) {
       if (!nextBlockIds.has(blockId)) {
@@ -212,6 +213,7 @@ export class FrontstageNativePreparationScheduler {
         current.generation += 1;
         current.snapshot = this.snapshot(current, 'disposed');
         this.scheduled.delete(blockId);
+        snapshotsChanged = true;
       }
     }
 
@@ -235,6 +237,7 @@ export class FrontstageNativePreparationScheduler {
           observedAtMs: 0
         };
         this.scheduled.set(task.blockId, current);
+        snapshotsChanged = true;
       } else if (current.task.identity !== task.identity) {
         current.abortController?.abort();
         current.task = task;
@@ -242,16 +245,29 @@ export class FrontstageNativePreparationScheduler {
         current.generation += 1;
         current.abortController = null;
         current.snapshot = this.snapshot(current, 'idle');
+        snapshotsChanged = true;
       } else {
+        const placementChanged =
+          current.priority !== priority ||
+          current.task.slotIndex !== task.slotIndex ||
+          !sameObservationContext(
+            current.task.observationContext,
+            task.observationContext
+          );
         current.task = task;
         current.priority = priority;
-        if (current.snapshot.status === 'ready') {
+        if (placementChanged && current.snapshot.status === 'ready') {
           current.snapshot = this.readySnapshot(
             current,
             current.snapshot.prepared
           );
-        } else {
-          current.snapshot = { ...current.snapshot, priority };
+          snapshotsChanged = true;
+        } else if (placementChanged) {
+          current.snapshot = {
+            ...current.snapshot,
+            ...this.baseSnapshot(current)
+          };
+          snapshotsChanged = true;
         }
       }
 
@@ -260,13 +276,18 @@ export class FrontstageNativePreparationScheduler {
           current.abortController.abort();
           current.abortController = null;
           current.generation += 1;
+          snapshotsChanged = true;
         }
-        if (current.snapshot.status !== 'ready') {
+        if (
+          current.snapshot.status !== 'ready' &&
+          current.snapshot.status !== 'idle'
+        ) {
           current.snapshot = this.snapshot(current, 'idle');
+          snapshotsChanged = true;
         }
       }
     }
-    this.emit();
+    if (snapshotsChanged) this.emit();
     this.pump();
   }
 
@@ -445,6 +466,22 @@ export class FrontstageNativePreparationScheduler {
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+function sameObservationContext(
+  left: FrontstageRuntimeObservationContext | undefined,
+  right: FrontstageRuntimeObservationContext | undefined
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      left.actorId === right.actorId &&
+      left.workspaceId === right.workspaceId &&
+      left.pageId === right.pageId &&
+      left.tabId === right.tabId &&
+      left.blockId === right.blockId)
+  );
 }
 
 function toError(error: unknown): Error {

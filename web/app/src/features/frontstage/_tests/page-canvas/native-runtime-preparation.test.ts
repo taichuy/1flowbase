@@ -138,6 +138,27 @@ describe('FrontstagePageNativeModuleRegistryCache', () => {
 });
 
 describe('FrontstageNativePreparationScheduler', () => {
+  test('does not emit again when reconcile receives semantically unchanged tasks and demands', () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    const listener = vi.fn();
+    const createDormantTask = (): FrontstageNativePreparationTask => ({
+      ...task('dormant', 0, async () => prepared('dormant')),
+      observationContext: {
+        actorId: 'actor-1',
+        workspaceId: 'workspace-1',
+        pageId: 'page-1',
+        tabId: null,
+        blockId: 'dormant'
+      }
+    });
+    scheduler.subscribe(listener);
+
+    scheduler.reconcile([createDormantTask()], { dormant: 3 });
+    scheduler.reconcile([createDormantTask()], { dormant: 3 });
+
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
   test('D3-AC-001 bounds concurrency, pauses new work while hidden, and preserves ready preparations', async () => {
     const scheduler = new FrontstageNativePreparationScheduler(2);
     const flights = [deferred(), deferred(), deferred()];

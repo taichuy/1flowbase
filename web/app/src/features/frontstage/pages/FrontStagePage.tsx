@@ -86,6 +86,10 @@ import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMe
 import { usePageTreeWorkspace } from './frontstage-page/use-page-tree-workspace';
 import './frontstage-page.css';
 
+const EMPTY_RUNTIME_DEMANDS: FrontstageRuntimeDemandByBlockId = Object.freeze(
+  {}
+);
+
 export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
   pageId,
@@ -351,7 +355,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const runtimeDemandsByBlockId =
     runtimeDemandState.scope === runtimeDemandScope
       ? runtimeDemandState.demands
-      : {};
+      : EMPTY_RUNTIME_DEMANDS;
   const handleRuntimeDemandChange = useCallback(
     (blockId: string, priority: FrontstageRuntimeDemandPriority) => {
       setRuntimeDemandState((current) => {
