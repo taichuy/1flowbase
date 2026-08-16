@@ -699,6 +699,68 @@ async fn anthropic_callback_retry_marks_upstream_429_as_pre_token_failure_withou
 }
 
 #[tokio::test]
+async fn deterministic_upstream_400_does_not_consume_llm_node_retries() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(10);
+    llm.config["retry_interval_ms"] = json!(0);
+
+    let rejected = ProviderInvocationOutput {
+        events: vec![ProviderStreamEvent::Error {
+            error: ProviderRuntimeError {
+                kind: ProviderRuntimeErrorKind::ProviderUpstreamError,
+                message:
+                    "The reasoning_content in the thinking mode must be passed back to the API."
+                        .to_string(),
+                provider_summary: Some("invalid request".to_string()),
+                provider_details: Some(json!({
+                    "status_code": 400,
+                    "error_type": "invalid_request_error"
+                })),
+            },
+        }],
+        result: ProviderInvocationResult::default(),
+        first_token_at: None,
+        time_to_first_token_ms: None,
+    };
+    let (invoker, captured_inputs) = sequential_tool_output_invoker(vec![
+        rejected,
+        final_provider_output("must not be called".to_string()),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start": {"query": "hello"}}), &invoker)
+        .await
+        .expect("runtime should return a failed outcome");
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+
+    assert_eq!(captured_inputs.lock().unwrap().len(), 1);
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(failure.error_payload["status_code"], json!(400));
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("provider_upstream_error")
+            );
+        }
+        other => panic!("expected terminal provider failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn llm_node_retries_protocol_only_empty_response() {
     let mut plan = base_plan();
     let llm = plan

@@ -58,6 +58,51 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
     )
     .await
     .unwrap();
+    let llm_node = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_node_run(
+        &store,
+        &CreateNodeRunInput {
+            flow_run_id: legacy_run.id,
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "DeepSeek".to_string(),
+            status: NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at,
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_node_run(
+        &store,
+        &CompleteNodeRunInput {
+            node_run_id: llm_node.id,
+            status: NodeRunStatus::Succeeded,
+            output_payload: json!({ "text": "Refunds are available within seven days." }),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({
+                "assistant_message": {
+                    "role": "assistant",
+                    "content": "Refunds are available within seven days.",
+                    "content_blocks": [
+                        { "type": "reasoning", "text": "Check the refund window." },
+                        { "type": "text", "text": "Refunds are available within seven days." }
+                    ],
+                    "tool_calls": [
+                        {
+                            "id": "call-refund-policy",
+                            "name": "lookup_refund_policy",
+                            "arguments": { "region": "global" }
+                        }
+                    ]
+                }
+            }),
+            finished_at: started_at + Duration::milliseconds(500),
+        },
+    )
+    .await
+    .unwrap();
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_flow_run(
         &store,
         &UpdateFlowRunInput {
@@ -118,6 +163,34 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
     );
     assert!(messages[1].page_references.is_empty());
     assert!(messages.iter().all(|message| message.status == "succeeded"));
+
+    let native_history = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_conversation_native_history(
+        &store,
+        seeded.workspace_id,
+        seeded.application_id,
+        seeded.actor_user_id,
+        conversation_id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(native_history.len(), 2);
+    assert_eq!(native_history[0].role, "user");
+    assert!(native_history[0].content_blocks.is_none());
+    assert_eq!(
+        native_history[1].content_blocks,
+        Some(vec![
+            json!({ "type": "reasoning", "text": "Check the refund window." }),
+            json!({ "type": "text", "text": "Refunds are available within seven days." })
+        ])
+    );
+    assert_eq!(
+        native_history[1].tool_calls,
+        Some(vec![json!({
+            "id": "call-refund-policy",
+            "name": "lookup_refund_policy",
+            "arguments": { "region": "global" }
+        })])
+    );
 
     let legacy_snapshot = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_legacy_snapshot_messages(
         &store,

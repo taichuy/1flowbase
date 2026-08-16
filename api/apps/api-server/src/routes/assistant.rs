@@ -180,8 +180,6 @@ pub struct StartAssistantRunBody {
     pub conversation_id: Option<Uuid>,
     pub query: String,
     #[serde(default)]
-    pub history: Vec<Value>,
-    #[serde(default)]
     pub page_references: Vec<AssistantPageReferenceBody>,
     #[serde(default)]
     pub title: Option<String>,
@@ -1179,6 +1177,18 @@ async fn prepare_assistant_execution(
                 .conversation_id
         }
     };
+    let history = state
+        .store
+        .list_assistant_conversation_native_history(
+            context.actor.current_workspace_id,
+            application_id,
+            context.user.id,
+            assistant_conversation_id,
+        )
+        .await?
+        .into_iter()
+        .map(|message| message.into_value())
+        .collect();
     let execution = assistant_execution(&preference)?;
     let inputs = NativeObject::default();
     let flow_run = ApplicationPublishedRunService::new(state.store.clone())
@@ -1192,7 +1202,7 @@ async fn prepare_assistant_execution(
                 query: body.query,
                 system: Vec::new(),
                 model: preference.model,
-                history: body.history,
+                history,
                 attachments: Vec::new(),
                 conversation: NativeObject::default(),
                 expand_id: None,

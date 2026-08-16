@@ -72,6 +72,29 @@ pub struct AssistantConversationMessage {
     pub created_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssistantConversationNativeMessage {
+    pub role: String,
+    pub content: String,
+    pub content_blocks: Option<Vec<Value>>,
+    pub tool_calls: Option<Vec<Value>>,
+}
+
+impl AssistantConversationNativeMessage {
+    pub fn into_value(self) -> Value {
+        let mut message = serde_json::Map::new();
+        message.insert("role".to_string(), Value::String(self.role));
+        message.insert("content".to_string(), Value::String(self.content));
+        if let Some(content_blocks) = self.content_blocks {
+            message.insert("content_blocks".to_string(), Value::Array(content_blocks));
+        }
+        if let Some(tool_calls) = self.tool_calls {
+            message.insert("tool_calls".to_string(), Value::Array(tool_calls));
+        }
+        Value::Object(message)
+    }
+}
+
 #[async_trait]
 pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
     async fn create_published_flow_run(
@@ -143,6 +166,17 @@ pub trait ApplicationPublishedFlowRunRepository: Send + Sync {
     ) -> Result<Vec<AssistantConversationMessage>> {
         let _ = (workspace_id, application_id, actor_user_id, conversation_id);
         anyhow::bail!("list_assistant_conversation_messages not implemented")
+    }
+
+    async fn list_assistant_conversation_native_history(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<Vec<AssistantConversationNativeMessage>> {
+        let _ = (workspace_id, application_id, actor_user_id, conversation_id);
+        anyhow::bail!("list_assistant_conversation_native_history not implemented")
     }
 
     async fn list_assistant_legacy_snapshot_messages(

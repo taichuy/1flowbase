@@ -81,6 +81,7 @@ pub(super) fn build_failed_llm_execution(
         debug_facts: build_llm_debug_facts(
             runtime,
             None,
+            &provider_events,
             debug_invocation.messages,
             None,
             debug_invocation.context,
@@ -189,6 +190,7 @@ pub(super) fn build_successful_llm_execution(
     let debug_facts = build_llm_debug_facts(
         runtime,
         Some(result),
+        &provider_events,
         debug_invocation.messages,
         metrics_payload.get("usage"),
         debug_invocation.context,
@@ -252,6 +254,7 @@ pub(super) fn build_llm_provider_route_payload(runtime: &CompiledLlmRuntime) -> 
 pub(super) fn build_llm_debug_facts(
     runtime: &CompiledLlmRuntime,
     result: Option<&ProviderInvocationResult>,
+    provider_events: &[ProviderStreamEvent],
     invocation_messages: &[Value],
     result_usage: Option<&Value>,
     invocation_debug_context: Option<&LlmInvocationDebugContext>,
@@ -261,12 +264,23 @@ pub(super) fn build_llm_debug_facts(
         .and_then(|result| result.final_content.as_deref())
         .unwrap_or_default();
 
+    let mut assistant_message = Map::new();
+    assistant_message.insert("role".to_string(), json!("assistant"));
+    assistant_message.insert("content".to_string(), json!(assistant_content));
+    let content_blocks =
+        canonical_assistant_content_blocks(provider_events, Some(assistant_content));
+    if !content_blocks.is_empty() {
+        assistant_message.insert("content_blocks".to_string(), Value::Array(content_blocks));
+    }
+    if let Some(result) = result.filter(|result| !result.tool_calls.is_empty()) {
+        assistant_message.insert(
+            "tool_calls".to_string(),
+            serde_json::to_value(&result.tool_calls).unwrap_or(Value::Null),
+        );
+    }
     debug.insert(
         "assistant_message".to_string(),
-        json!({
-            "role": "assistant",
-            "content": assistant_content,
-        }),
+        Value::Object(assistant_message),
     );
     let llm_rounds = build_llm_round_timeline(invocation_messages, result, result_usage);
     if !llm_rounds.is_empty() {

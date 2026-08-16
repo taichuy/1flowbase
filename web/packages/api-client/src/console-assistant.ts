@@ -69,7 +69,6 @@ export interface StartConsoleAssistantRunInput {
   application_id: string;
   conversation_id?: string;
   query: string;
-  history: Array<{ role: 'user' | 'assistant'; content: string }>;
   page_references?: ConsoleAssistantPageReference[];
   title?: string;
 }

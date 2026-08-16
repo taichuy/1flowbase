@@ -40,11 +40,11 @@ pub use native_results::{
 };
 pub use repository_contracts::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
-    AssistantConversationMessage, AssistantConversationPage, AssistantConversationRecord,
-    AssistantConversationSummary, CancelPublishedFlowRunInput, CreateAssistantConversationInput,
-    CreatePublishedFlowRunResult, ListAssistantConversationsInput,
-    ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
-    PublishedRunStreamState,
+    AssistantConversationMessage, AssistantConversationNativeMessage, AssistantConversationPage,
+    AssistantConversationRecord, AssistantConversationSummary, CancelPublishedFlowRunInput,
+    CreateAssistantConversationInput, CreatePublishedFlowRunResult,
+    ListAssistantConversationsInput, ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage,
+    PublishedRunPendingCallback, PublishedRunStreamState,
 };
 pub(crate) use run_input::{
     compiled_plan_start_node_id as public_compiled_plan_start_node_id,
