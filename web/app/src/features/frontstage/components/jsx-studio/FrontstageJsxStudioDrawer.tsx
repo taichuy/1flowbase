@@ -12,6 +12,7 @@ import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-bl
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import { resolveFrontstageNativeDependencyLock } from '../../lib/block-catalog';
 import { isForbiddenResponseError } from '../../lib/api-errors';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
@@ -21,6 +22,9 @@ import {
   type FrontstageJsxInsertion
 } from '../../lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
+import { createFrontstageBlockRuntimeDescriptor } from '../../lib/page-document';
+import { createFrontstageRootNodeBlocks } from '../../lib/page-canvas/runtime-assembly';
+import { findMatchingFrontstageBlockCatalogEntry } from '../../pages/frontstage-page/block-catalog-helpers';
 import { FrontstageBlockCodeTabs } from './block-tabs/FrontstageBlockCodeTabs';
 import type { FrontstageBlockDeletedEvent } from './block-tabs/types';
 import { useFrontstageBlockTabs } from './block-tabs/use-frontstage-block-tabs';
@@ -39,6 +43,7 @@ export interface FrontstageJsxStudioDrawerProps {
   block: FrontstageBlockInstance;
   pageBlocks?: readonly FrontstageBlockInstance[];
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
+  catalogEntries?: readonly NormalizedFrontstageBlockCatalogEntry[];
   runPanel?:
     | ReactNode
     | ((context: {
@@ -67,6 +72,7 @@ function blockIdFromEditorModelPath(
 export function FrontstageJsxStudioDrawer({
   block,
   catalogEntry,
+  catalogEntries = [],
   initialSection,
   onClose,
   onSaveBlock,
@@ -86,7 +92,34 @@ export function FrontstageJsxStudioDrawer({
     open
   });
   const activeTab = blockTabs.activeTab;
+  const activeBlock = useMemo(
+    () =>
+      activeTab?.detail
+        ? (createFrontstageRootNodeBlocks([activeTab.detail])[0] ?? block)
+        : block,
+    [activeTab?.detail, block]
+  );
   const activeBlockId = activeTab?.block_id ?? block.id;
+  const activeCatalogEntry = useMemo(() => {
+    if (!activeTab?.detail) return catalogEntry;
+    const candidates =
+      catalogEntries.length > 0
+        ? catalogEntries
+        : catalogEntry
+          ? [catalogEntry]
+          : [];
+    return (
+      findMatchingFrontstageBlockCatalogEntry(activeBlock, candidates) ??
+      (activeBlockId === block.id ? catalogEntry : null)
+    );
+  }, [
+    activeBlock,
+    activeBlockId,
+    activeTab?.detail,
+    block.id,
+    catalogEntries,
+    catalogEntry
+  ]);
   const draft = activeTab?.draft ?? '';
   const permissionDenied = isForbiddenResponseError(activeTab?.error);
   const notFound =
@@ -96,9 +129,26 @@ export function FrontstageJsxStudioDrawer({
     'status' in activeTab.error &&
     activeTab.error.status === 404;
   const projection = useMemo(
-    () => createFrontstageJsxEditorProjection({ catalogEntry }),
-    [catalogEntry]
+    () =>
+      createFrontstageJsxEditorProjection({ catalogEntry: activeCatalogEntry }),
+    [activeCatalogEntry]
   );
+  const blockCreateDefaults = useMemo(() => {
+    const template = activeCatalogEntry?.codeCapabilities?.template;
+    if (!activeCatalogEntry || !template) return undefined;
+    const lock = resolveFrontstageNativeDependencyLock({
+      catalogEntry: activeCatalogEntry,
+      workspaceId
+    });
+    if (lock.error) return undefined;
+    return {
+      source_code: template.source,
+      dependency_lock: lock.dependencyLock.filter(
+        ({ module_source }) => module_source !== 'tailwindcss'
+      ),
+      runtime_descriptor: createFrontstageBlockRuntimeDescriptor(activeBlock)
+    };
+  }, [activeBlock, activeCatalogEntry, workspaceId]);
   useEffect(() => {
     if (open) {
       setRunRevision(null);
@@ -261,18 +311,20 @@ export function FrontstageJsxStudioDrawer({
       renderResource={(section) =>
         section === 'templates' ? (
           <JsxStudioTemplatesPanel
-            catalogEntry={catalogEntry}
+            catalogEntry={activeCatalogEntry}
             readOnly={permissionDenied}
             workspaceId={workspaceId}
             onReplaceCode={blockTabs.setActiveDraft}
           />
         ) : (
           <JsxStudioResourcePanel
-            block={block}
+            block={activeBlock}
+            blockCreateDefaults={blockCreateDefaults}
             codeSource={draft}
             currentBlockId={activeBlockId}
             pageBlocks={pageBlocks}
             pageId={pageId}
+            tabId={activeTab?.detail?.tab_id ?? tabId}
             workspaceId={workspaceId}
             onInsertCode={insertCode}
             onDeletedBlock={(event) => void handleDeletedBlock(event)}

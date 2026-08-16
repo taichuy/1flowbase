@@ -1,4 +1,7 @@
-import type { ConsoleFrontstageBlockRuntimeLayer } from '@1flowbase/api-client';
+import type {
+  ConsoleFrontstageBlockNode,
+  ConsoleFrontstageBlockRuntimeLayer
+} from '@1flowbase/api-client';
 
 import type { FrontstageBlockInstance } from '../page-document';
 
@@ -33,7 +36,7 @@ export function createFrontstageRuntimeAssemblyBlocks(
         optionalString(descriptor.renderer_version) ??
         optionalString(descriptor.rendererVersion),
       sourceId: layer.block_id,
-      codeRef: layer.block_id,
+      codeRef: layer.code_ref,
       sourceCodeRef: layer.block_id,
       catalog: {
         providerCode:
@@ -56,6 +59,18 @@ export function createFrontstageRuntimeAssemblyBlocks(
           'runtime-assembly'
       },
       props: record(descriptor.props),
+      ports: {
+        inputs: Array.isArray(record(descriptor.ports).inputs)
+          ? (record(descriptor.ports).inputs as NonNullable<
+              FrontstageBlockInstance['ports']
+            >['inputs'])
+          : [],
+        outputs: Array.isArray(record(descriptor.ports).outputs)
+          ? (record(descriptor.ports).outputs as NonNullable<
+              FrontstageBlockInstance['ports']
+            >['outputs'])
+          : []
+      },
       presentation: {
         heightMode: fixedHeight ? 'fixed' : 'auto',
         height:
@@ -72,4 +87,24 @@ export function createFrontstageRuntimeAssemblyBlocks(
       }
     };
   });
+}
+
+export function createFrontstageRootNodeBlocks(
+  nodes: readonly ConsoleFrontstageBlockNode[]
+): FrontstageBlockInstance[] {
+  return createFrontstageRuntimeAssemblyBlocks(
+    nodes.map((node) => ({
+      block_id: node.block_id,
+      tab_id: node.tab_id,
+      parent_block_id: node.parent_block_id,
+      title: node.title,
+      presentation: node.presentation,
+      schema_version: node.schema_version,
+      input_mapping: node.input_mapping,
+      output_mapping: node.output_mapping,
+      runtime_descriptor: node.runtime_descriptor,
+      code_ref: node.code_ref,
+      source_revision: null
+    }))
+  );
 }

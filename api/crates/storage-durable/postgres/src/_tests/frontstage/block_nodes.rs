@@ -4,8 +4,10 @@ use control_plane::{
     audit::audit_log,
     ports::{
         CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput, FrontstageBlockPosition,
-        FrontstageBlockTreeRepository, FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
+        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput,
+        FrontstageBlockDescriptorUpdate, FrontstageBlockPosition, FrontstageBlockTreeRepository,
+        FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
+        UpdateFrontstageBlockDescriptorsInput,
     },
 };
 use domain::FrontstageBlockPresentation;
@@ -87,7 +89,18 @@ fn create_input(
         schema_version: 1,
         input_mapping: BTreeMap::new(),
         output_mapping: BTreeMap::new(),
-        runtime_descriptor: json!({ "id": block_id, "codeRef": code_ref }),
+        runtime_descriptor: json!({
+            "id": block_id,
+            "codeRef": code_ref,
+            "rendererVersion": "v1",
+            "catalog": {},
+            "contribution": {},
+            "props": {},
+            "ports": { "inputs": [], "outputs": [] },
+            "x-layout": { "order": 0 },
+            "x-presentation": { "heightMode": "auto", "height": null },
+            "runtime": { "kind": "native_react", "entry": "index.js", "hint": "native_react" }
+        }),
         code: FrontstageBlockCodeInput {
             source_code: format!("export default function {block_id}() {{ return null; }}"),
             dependency_lock: json!([]),
@@ -120,6 +133,147 @@ async fn block_fixture() -> (PgPool, PgControlPlaneStore, Uuid, Uuid) {
     .unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     (pool, store, workspace_id, actor_user_id)
+}
+
+#[tokio::test]
+async fn new_page_and_tab_documents_do_not_restore_legacy_blocks() {
+    let (pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, default_tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "canonical-documents").await;
+    let second_tab_id = Uuid::now_v7();
+    store
+        .create_frontstage_page_tab(&CreateFrontstagePageTabInput {
+            id: second_tab_id,
+            workspace_id,
+            actor_user_id,
+            page_id,
+            title: Some("Second".to_owned()),
+            rank: "k".to_owned(),
+            is_default: false,
+            route_segment: Some("second".to_owned()),
+            document_root_uid: format!("frontstage.tab.{second_tab_id}.root"),
+        })
+        .await
+        .unwrap();
+
+    let payloads = sqlx::query_scalar::<_, Value>(
+        "select document_payload from frontstage_page_schemas where workspace_id = $1 and tab_id = any($2) order by tab_id",
+    )
+    .bind(workspace_id)
+    .bind(vec![default_tab_id, second_tab_id])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(payloads.len(), 2);
+    assert!(payloads
+        .iter()
+        .all(|payload| payload.get("blocks").is_none()));
+    assert!(payloads
+        .iter()
+        .all(|payload| payload["version"] == json!(1)));
+    assert!(payloads.iter().any(|payload| {
+        payload["root_uid"] == json!(format!("frontstage.tab.{default_tab_id}.root"))
+    }));
+}
+
+#[tokio::test]
+async fn descriptor_batch_is_atomic_and_tab_scoped() {
+    let (_pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "descriptor-batch").await;
+    for (block_id, code_ref) in [("root-a", "root-a-code"), ("root-b", "root-b-code")] {
+        store
+            .create_frontstage_block_node(&create_input(
+                workspace_id,
+                actor_user_id,
+                page_id,
+                tab_id,
+                block_id,
+                code_ref,
+                FrontstageBlockPosition::default(),
+                Uuid::now_v7(),
+            ))
+            .await
+            .unwrap();
+    }
+    let descriptor = |block_id: &str, code_ref: &str, order: i32| {
+        json!({
+            "id": block_id,
+            "codeRef": code_ref,
+            "rendererVersion": "v1",
+            "catalog": {}, "contribution": {}, "props": {},
+            "ports": { "inputs": [], "outputs": [] },
+            "x-layout": { "order": order },
+            "x-presentation": { "heightMode": "auto", "height": null },
+            "runtime": { "kind": "native_react", "entry": "index.js", "hint": "native_react" }
+        })
+    };
+    let audit = audit_log(
+        Some(workspace_id),
+        Some(actor_user_id),
+        "frontstage_page_tab",
+        Some(tab_id),
+        "frontstage.block_descriptors_updated",
+        json!({}),
+    );
+    let records = store
+        .update_frontstage_block_descriptors(&UpdateFrontstageBlockDescriptorsInput {
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            updates: vec![
+                FrontstageBlockDescriptorUpdate {
+                    block_id: "root-a".to_owned(),
+                    runtime_descriptor: descriptor("root-a", "root-a-code", 2),
+                },
+                FrontstageBlockDescriptorUpdate {
+                    block_id: "root-b".to_owned(),
+                    runtime_descriptor: descriptor("root-b", "root-b-code", 1),
+                },
+            ],
+            audit_log: audit,
+        })
+        .await
+        .unwrap();
+    assert_eq!(records[0].runtime_descriptor["x-layout"]["order"], 2);
+    assert_eq!(records[1].runtime_descriptor["x-layout"]["order"], 1);
+
+    let before = records[0].runtime_descriptor.clone();
+    let failed = store
+        .update_frontstage_block_descriptors(&UpdateFrontstageBlockDescriptorsInput {
+            workspace_id,
+            actor_user_id,
+            page_id,
+            tab_id,
+            updates: vec![
+                FrontstageBlockDescriptorUpdate {
+                    block_id: "root-a".to_owned(),
+                    runtime_descriptor: descriptor("root-a", "root-a-code", 99),
+                },
+                FrontstageBlockDescriptorUpdate {
+                    block_id: "missing".to_owned(),
+                    runtime_descriptor: descriptor("missing", "missing-code", 0),
+                },
+            ],
+            audit_log: audit_log(
+                Some(workspace_id),
+                Some(actor_user_id),
+                "frontstage_page_tab",
+                Some(tab_id),
+                "frontstage.block_descriptors_updated",
+                json!({}),
+            ),
+        })
+        .await;
+    assert!(failed.is_err());
+    let unchanged = store
+        .get_frontstage_block_node(workspace_id, page_id, "root-a")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.runtime_descriptor, before);
 }
 
 #[tokio::test]
@@ -181,10 +335,9 @@ async fn block_code_save_rejects_a_stale_source_revision_atomically() {
     assert_eq!(persisted, source);
 }
 
-// AC-001/008: the cutover preserves the public id and complete runtime descriptor while deriving
-// only the frozen page presentation, nullable title, empty typed mappings and stable array order.
+// Draft blocks are intentionally discarded at the descriptor-v1 cutover while Page/Tab survive.
 #[tokio::test]
-async fn block_node_migration_backfills_legacy_roots_without_descriptor_loss() {
+async fn block_unification_migration_removes_drafts_and_preserves_page_tab_metadata() {
     let pool = isolated_database().await.connect().await.unwrap();
     before_frontstage_block_nodes_migrator()
         .run(&pool)
@@ -236,24 +389,33 @@ async fn block_node_migration_backfills_legacy_roots_without_descriptor_loss() {
     tx.commit().await.unwrap();
 
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    let row: (String, Uuid, Uuid, String, String, Option<String>, Value, Value, Value) =
-        sqlx::query_as(
-            "select block_id, tree_partition_id, tab_id, sibling_rank, presentation, title, input_mapping, output_mapping, runtime_descriptor from frontstage_block_nodes where scope_id = $1 and tree_partition_id = $2",
-        )
-        .bind(workspace_id)
-        .bind(page_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(row.0, "hero");
-    assert_eq!(row.1, page_id);
-    assert_eq!(row.2, tab_id);
-    assert!(row.3.ends_with('U'));
-    assert_eq!(row.4, "page");
-    assert_eq!(row.5, None);
-    assert_eq!(row.6, json!({}));
-    assert_eq!(row.7, json!({}));
-    assert_eq!(row.8, descriptor);
+    let state: (i64, i64, i64, i64, Value) = sqlx::query_as(
+        r#"
+        select
+          (select count(*) from frontstage_pages where id = $1),
+          (select count(*) from frontstage_page_tabs where id = $2),
+          (select count(*) from frontstage_block_nodes where scope_id = $3 and tree_partition_id = $1),
+          (select count(*) from frontstage_block_codes where workspace_id = $3 and page_id = $1),
+          (select document_payload from frontstage_page_schemas where workspace_id = $3 and tab_id = $2)
+        "#,
+    )
+    .bind(page_id)
+    .bind(tab_id)
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((state.0, state.1, state.2, state.3), (1, 1, 0, 0));
+    assert_eq!(state.4, json!({ "version": 1 }));
+
+    let legacy_write = sqlx::query(
+        "update frontstage_page_schemas set document_payload = document_payload || jsonb_build_object('blocks', '[]'::jsonb) where workspace_id = $1 and tab_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(tab_id)
+    .execute(&pool)
+    .await;
+    assert!(legacy_write.is_err());
 }
 
 // AC-008/009: structure, code and audit share one transaction; public identities remain page and
@@ -712,6 +874,21 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
         create_page_and_tab(&store, workspace_id, actor_user_id, "tree-reads").await;
     let (other_page_id, other_tab_id) =
         create_page_and_tab(&store, workspace_id, actor_user_id, "tree-isolation").await;
+    let second_tab_id = Uuid::now_v7();
+    store
+        .create_frontstage_page_tab(&CreateFrontstagePageTabInput {
+            id: second_tab_id,
+            workspace_id,
+            actor_user_id,
+            page_id,
+            title: Some("Second".to_owned()),
+            rank: "V".to_owned(),
+            is_default: false,
+            route_segment: Some("second".to_owned()),
+            document_root_uid: format!("frontstage.tab.{second_tab_id}.root"),
+        })
+        .await
+        .unwrap();
 
     let mut root_a = create_input(
         workspace_id,
@@ -741,6 +918,21 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
     );
     root_b.title = Some("Root B".to_owned());
     store.create_frontstage_block_node(&root_b).await.unwrap();
+    let mut second_tab_root = create_input(
+        workspace_id,
+        actor_user_id,
+        page_id,
+        second_tab_id,
+        "match-second-tab",
+        "root-second-tab-code",
+        FrontstageBlockPosition::default(),
+        Uuid::now_v7(),
+    );
+    second_tab_root.title = Some("Match Second Tab".to_owned());
+    store
+        .create_frontstage_block_node(&second_tab_root)
+        .await
+        .unwrap();
 
     let mut match_a = create_input(
         workspace_id,
@@ -805,7 +997,7 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
     store.create_frontstage_block_node(&isolated).await.unwrap();
 
     let roots = store
-        .list_frontstage_block_roots(workspace_id, page_id, 10)
+        .list_frontstage_block_roots(workspace_id, page_id, tab_id, 10)
         .await
         .unwrap();
     assert_eq!(
@@ -821,6 +1013,12 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
             && node.parent_block_id.is_none()
             && node.schema_version == 1
     }));
+    let second_tab_roots = store
+        .list_frontstage_block_roots(workspace_id, page_id, second_tab_id, 10)
+        .await
+        .unwrap();
+    assert_eq!(second_tab_roots.len(), 1);
+    assert_eq!(second_tab_roots[0].block_id, "match-second-tab");
 
     let children = store
         .list_frontstage_block_children(workspace_id, page_id, "root-a", 10)
@@ -867,7 +1065,7 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
     assert_eq!(descendants["leaf"].path, ["root-a", "match-a", "leaf"]);
 
     let matches = store
-        .search_frontstage_blocks(workspace_id, page_id, "match", 10)
+        .search_frontstage_blocks(workspace_id, page_id, tab_id, "match", 10)
         .await
         .unwrap();
     assert_eq!(
@@ -877,6 +1075,7 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
             .collect::<Vec<_>>(),
         ["match-a", "match-b"]
     );
+    assert!(matches.iter().all(|result| result.node.tab_id == tab_id));
     assert!(matches.iter().all(|result| {
         result
             .ancestors
@@ -907,12 +1106,9 @@ async fn block_node_structural_reads_delegate_and_map_public_tree_context() {
         node_error.downcast_ref::<OrderedTreeQueryError>(),
         Some(&OrderedTreeQueryError::NodeNotFound)
     );
-    let limit_error = store
-        .list_frontstage_block_roots(workspace_id, page_id, 0)
+    let empty_roots = store
+        .list_frontstage_block_roots(workspace_id, page_id, tab_id, 0)
         .await
-        .unwrap_err();
-    assert_eq!(
-        limit_error.downcast_ref::<OrderedTreeQueryError>(),
-        Some(&OrderedTreeQueryError::InvalidResultLimit { max: 1_000 })
-    );
+        .unwrap();
+    assert!(empty_roots.is_empty());
 }

@@ -7,20 +7,22 @@ async fn create_block(
     csrf: &str,
     workspace_id: &str,
     page_id: &str,
-    tab_id: &str,
+    tab_id: Option<&str>,
     title: &str,
     parent_block_id: Option<&str>,
     code: &str,
     runtime_descriptor: Option<Value>,
 ) -> (StatusCode, Value) {
     let mut body = json!({
-        "tab_id": tab_id,
         "title": title,
         "description": format!("Description for {title}"),
         "presentation": "inline",
         "parent_block_id": parent_block_id,
         "runtime_descriptor": runtime_descriptor,
     });
+    if let Some(tab_id) = tab_id {
+        body["tab_id"] = json!(tab_id);
+    }
     body.as_object_mut()
         .expect("block body must be an object")
         .extend(
@@ -88,7 +90,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         &csrf,
         &workspace_id,
         &page_id,
-        &tab_id,
+        Some(&tab_id),
         "Root block",
         None,
         "export default 'root';",
@@ -103,7 +105,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     let root = &root_payload["data"];
     let root_id = root["block_id"].as_str().unwrap();
     uuid::Uuid::parse_str(root_id).expect("server should generate a public UUID block id");
-    for internal_field in ["id", "model_code", "physical_table_name", "code_ref"] {
+    for internal_field in ["id", "model_code", "physical_table_name"] {
         assert!(
             root.get(internal_field).is_none(),
             "leaked {internal_field}: {root}"
@@ -120,6 +122,10 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     );
     assert_eq!(root["runtime_descriptor"]["rendererVersion"], json!("v1"));
     assert_eq!(
+        root["code_ref"],
+        json!(format!("frontstage.block.{root_id}"))
+    );
+    assert_eq!(
         root["runtime_descriptor"]["customRendererOption"],
         json!(true)
     );
@@ -132,13 +138,42 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         json!(format!("/block-tree/pages/{page_id}/blocks/{root_id}"))
     );
 
+    let (descriptor_status, descriptor_payload) = send_json(
+        &app,
+        "PUT",
+        &format!(
+            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/block-descriptors"
+        ),
+        &cookie,
+        &csrf,
+        json!({
+            "updates": [{
+                "block_id": root_id,
+                "runtime_descriptor": {
+                    "x-layout": { "order": 7 },
+                    "customRendererOption": true
+                }
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(descriptor_status, StatusCode::OK, "{descriptor_payload}");
+    assert_eq!(
+        descriptor_payload["data"][0]["runtime_descriptor"]["x-layout"]["order"],
+        json!(7)
+    );
+    assert_eq!(
+        descriptor_payload["data"][0]["runtime_descriptor"]["id"],
+        json!(root_id)
+    );
+
     let (_, child_payload) = create_block(
         &app,
         &cookie,
         &csrf,
         &workspace_id,
         &page_id,
-        &tab_id,
+        None,
         "Searchable child",
         Some(root_id),
         "export default 'child';",
@@ -155,7 +190,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         &csrf,
         &workspace_id,
         &page_id,
-        &tab_id,
+        None,
         "Searchable grandchild",
         Some(&child_id),
         "export default 'grandchild';",
@@ -167,7 +202,8 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         .unwrap()
         .to_owned();
 
-    let (roots_status, roots_payload) = get_json(&app, &blocks_path, &cookie).await;
+    let (roots_status, roots_payload) =
+        get_json(&app, &format!("{blocks_path}?tab_id={tab_id}"), &cookie).await;
     assert_eq!(roots_status, StatusCode::OK);
     assert_eq!(roots_payload["data"].as_array().unwrap().len(), 1);
     assert_eq!(roots_payload["data"][0]["block_id"], json!(root_id));
@@ -179,7 +215,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
 
     let (search_status, search_payload) = get_json(
         &app,
-        &format!("{blocks_path}/search?query=Searchable%20grand"),
+        &format!("{blocks_path}/search?tab_id={tab_id}&query=Searchable%20grand"),
         &cookie,
     )
     .await;
@@ -351,7 +387,7 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
         &root_csrf,
         &workspace_id,
         &page_id,
-        &tab_id,
+        Some(&tab_id),
         "Protected block",
         None,
         "export default 1;",
@@ -396,11 +432,16 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
     let (viewer_cookie, viewer_csrf) =
         login_and_capture_cookie(&app, "block-tree-viewer", "temp-pass").await;
 
-    let (roots_status, _) = get_json(&app, &blocks_path, &viewer_cookie).await;
+    let (roots_status, _) = get_json(
+        &app,
+        &format!("{blocks_path}?tab_id={tab_id}"),
+        &viewer_cookie,
+    )
+    .await;
     assert_eq!(roots_status, StatusCode::FORBIDDEN);
     let (search_status, _) = get_json(
         &app,
-        &format!("{blocks_path}/search?query=Protected"),
+        &format!("{blocks_path}/search?tab_id={tab_id}&query=Protected"),
         &viewer_cookie,
     )
     .await;
@@ -411,7 +452,7 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
         &viewer_csrf,
         &workspace_id,
         &page_id,
-        &tab_id,
+        Some(&tab_id),
         "Denied",
         None,
         "",

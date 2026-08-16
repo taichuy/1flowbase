@@ -14,14 +14,17 @@ import {
   openConsoleFrontstageBlock,
   saveConsoleFrontstageBlockNodeCode,
   searchConsoleFrontstageBlocks,
+  updateConsoleFrontstageBlockDescriptors,
   updateConsoleFrontstageBlockNode,
   type ConsoleFrontstageBlockDescendantsQuery,
   type ConsoleFrontstageBlockListQuery,
+  type ConsoleFrontstageBlockRootListQuery,
   type ConsoleFrontstageBlockSearchQuery,
   type CreateConsoleFrontstageBlockNodeInput,
   type DeleteConsoleFrontstageBlockSubtreeInput,
   type MoveConsoleFrontstageBlockNodeInput,
   type SaveConsoleFrontstageBlockNodeCodeInput,
+  type UpdateConsoleFrontstageBlockDescriptorsInput,
   type UpdateConsoleFrontstageBlockNodeInput
 } from '@1flowbase/api-client';
 
@@ -35,7 +38,7 @@ export const frontstageBlockTreeQueryKeys = {
   roots: (
     workspaceId: string,
     pageId: string,
-    query: ConsoleFrontstageBlockListQuery = {}
+    query: ConsoleFrontstageBlockRootListQuery
   ) => [...pageKey(workspaceId, pageId), 'roots', query] as const,
   children: (
     workspaceId: string,
@@ -95,7 +98,7 @@ export const frontstageBlockTreeQueryKeys = {
 export function fetchFrontstageBlockRoots(
   workspaceId: string,
   pageId: string,
-  query: ConsoleFrontstageBlockListQuery = {}
+  query: ConsoleFrontstageBlockRootListQuery
 ) {
   return listConsoleFrontstageBlockRoots(
     workspaceId,
@@ -114,6 +117,23 @@ export function createFrontstageBlockNode(
   return createConsoleFrontstageBlockNode(
     workspaceId,
     pageId,
+    input,
+    csrfToken,
+    getFrontstageApiBaseUrl()
+  );
+}
+
+export function updateFrontstageBlockDescriptors(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: UpdateConsoleFrontstageBlockDescriptorsInput,
+  csrfToken: string
+) {
+  return updateConsoleFrontstageBlockDescriptors(
+    workspaceId,
+    pageId,
+    tabId,
     input,
     csrfToken,
     getFrontstageApiBaseUrl()
@@ -329,6 +349,7 @@ export type {
   ConsoleFrontstageBlockDescendant as FrontstageBlockDescendant,
   ConsoleFrontstageBlockDescendantsQuery as FrontstageBlockDescendantsQuery,
   ConsoleFrontstageBlockListQuery as FrontstageBlockListQuery,
+  ConsoleFrontstageBlockRootListQuery as FrontstageBlockRootListQuery,
   ConsoleFrontstageBlockNode as FrontstageBlockNode,
   ConsoleFrontstageBlockNodeCode as FrontstageBlockNodeCode,
   ConsoleFrontstageBlockRuntimeAssembly as FrontstageBlockRuntimeAssembly,
@@ -342,5 +363,6 @@ export type {
   DeleteConsoleFrontstageBlockSubtreeInput as DeleteFrontstageBlockSubtreeInput,
   MoveConsoleFrontstageBlockNodeInput as MoveFrontstageBlockNodeInput,
   SaveConsoleFrontstageBlockNodeCodeInput as SaveFrontstageBlockNodeCodeInput,
+  UpdateConsoleFrontstageBlockDescriptorsInput as UpdateFrontstageBlockDescriptorsInput,
   UpdateConsoleFrontstageBlockNodeInput as UpdateFrontstageBlockNodeInput
 } from '@1flowbase/api-client';

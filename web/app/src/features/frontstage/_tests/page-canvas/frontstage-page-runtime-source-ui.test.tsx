@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
+import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -14,29 +15,11 @@ const pageContentSaveHook = vi.hoisted(() => ({
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
 }));
-const blockCodeHook = vi.hoisted(() => ({
-  useFrontstageBlockCode: vi.fn()
-}));
 const nativePreparationsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn()
 }));
 const isolatedPreparationsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasIsolatedPreparations: vi.fn()
-}));
-const blockCodeApi = vi.hoisted(() => ({
-  fetchFrontstageBlockCode: vi.fn(),
-  frontstageBlockCodeQueryKey: vi.fn(
-    (workspaceId: string, pageId: string, codeRef: string) =>
-      [
-        'frontstage',
-        workspaceId,
-        'pages',
-        pageId,
-        'block-code',
-        codeRef
-      ] as const
-  ),
-  saveFrontstageBlockCode: vi.fn()
 }));
 
 vi.mock(
@@ -44,7 +27,6 @@ vi.mock(
   () => pageContentSaveHook
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
-vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => nativePreparationsHook
@@ -53,7 +35,6 @@ vi.mock(
   '../../hooks/use-frontstage-page-canvas-isolated-preparations',
   () => isolatedPreparationsHook
 );
-vi.mock('../../api/block-code', () => blockCodeApi);
 
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
@@ -100,49 +81,35 @@ function createPageContent(): FrontstagePageContent {
     },
     document: {
       rootUid: 'root-1',
-      payload: {
-        blocks: [
-          {
-            id: 'hero',
-            renderer_version: 'v1',
-            codeRef: 'hero-code',
-            contributionCode: 'official.hero',
-            runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
-            layout: { order: 0, region: 'main' }
-          }
-        ]
-      }
+      payload: {}
     }
   };
 }
 
-function createCatalogMatchedPageContent(): FrontstagePageContent {
+function createRootNode(
+  runtimeKind: 'native_react' | 'isolated_iframe' = 'native_react',
+  catalogMatched = false
+): ConsoleFrontstageBlockNode {
   return {
-    page: {
-      id: 'page-1',
-      title: 'Landing',
-      kind: 'page',
-      parentId: null,
-      rank: '001000',
-      contentPresentation: 'single'
-    },
-    tab: {
-      id: 'tab-1',
-      pageId: 'page-1',
-      title: '概览',
-      rank: '001000',
-      isDefault: true,
-      routeSegment: null,
-      documentRootUid: 'root-1'
-    },
-    document: {
-      rootUid: 'root-1',
-      payload: {
-        blocks: [
-          {
-            id: 'hero',
-            renderer_version: 'v1',
-            codeRef: 'hero-code',
+    block_id: 'hero',
+    workspace_id: 'workspace-1',
+    page_id: 'page-1',
+    tab_id: 'tab-1',
+    parent_block_id: null,
+    rank: '001000',
+    presentation: 'page',
+    title: 'Hero',
+    description: null,
+    schema_version: 1,
+    code_ref: 'hero-code',
+    input_mapping: {},
+    output_mapping: {},
+    runtime_descriptor: {
+      id: 'hero',
+      rendererVersion: 'v1',
+      codeRef: 'hero-code',
+      ...(catalogMatched
+        ? {
             catalog: {
               providerCode: 'official',
               installationId: 'installation-1'
@@ -151,13 +118,20 @@ function createCatalogMatchedPageContent(): FrontstagePageContent {
               pluginId: 'official.blocks',
               pluginVersion: '1.0.0',
               code: 'hero'
-            },
-            runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
-            layout: { order: 0, region: 'main' }
+            }
           }
-        ]
-      }
-    }
+        : { contributionCode: 'official.hero' }),
+      runtime: {
+        kind: runtimeKind,
+        entry:
+          runtimeKind === 'native_react'
+            ? 'blocks/hero.js'
+            : '@official/isolated-hero'
+      },
+      layout: { order: 0, region: 'main' }
+    },
+    created_at: '2026-08-16T00:00:00Z',
+    updated_at: '2026-08-16T00:00:00Z'
   };
 }
 
@@ -216,27 +190,10 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       loading: false,
       error: null
     });
-    blockCodeHook.useFrontstageBlockCode.mockReturnValue({
-      code: '',
-      draft: '',
-      dirty: false,
-      loading: false,
-      saving: false,
-      error: null,
-      setDraft: vi.fn(),
-      reset: vi.fn(),
-      save: vi.fn()
-    });
     mockNativePreparations();
     isolatedPreparationsHook.useFrontstagePageCanvasIsolatedPreparations.mockReturnValue(
       { preparations: [], errorsByBlockId: {} }
     );
-    blockCodeApi.fetchFrontstageBlockCode.mockResolvedValue({
-      pageId: 'page-1',
-      codeRef: 'hero-code',
-      code: 'export default { render() {} }',
-      source_sha256: 'hero-source-sha256'
-    });
   });
 
   test('passes the active page read plan to Native preparation and shows local loading', async () => {
@@ -247,6 +204,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           pageId="page-1"
           initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
           pageContent={createPageContent()}
+          blockRoots={[createRootNode()]}
         />
       </AppProviders>
     );
@@ -320,7 +278,8 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           workspaceId="workspace-1"
           pageId="page-1"
           initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
-          pageContent={createCatalogMatchedPageContent()}
+          pageContent={createPageContent()}
+          blockRoots={[createRootNode('native_react', true)]}
         />
       </AppProviders>
     );
@@ -350,29 +309,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
   });
 
   test('passes graph-backed isolated render requests into production preparation', async () => {
-    const content = createCatalogMatchedPageContent();
-    content.document.payload = {
-      blocks: [
-        {
-          id: 'hero',
-          renderer_version: 'v1',
-          catalog: {
-            providerCode: 'official',
-            installationId: 'installation-1'
-          },
-          contribution: {
-            pluginId: 'official.blocks',
-            pluginVersion: '1.0.0',
-            code: 'hero'
-          },
-          runtime: {
-            kind: 'isolated_iframe',
-            entry: '@official/isolated-hero'
-          },
-          layout: { order: 0, region: 'main' }
-        }
-      ]
-    };
+    const content = createPageContent();
     const catalogEntry = createCatalogEntry();
     catalogEntry.runtimeKind = 'isolated_iframe';
     catalogEntry.raw = {
@@ -394,6 +331,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           pageId="page-1"
           initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
           pageContent={content}
+          blockRoots={[createRootNode('isolated_iframe', true)]}
         />
       </AppProviders>
     );

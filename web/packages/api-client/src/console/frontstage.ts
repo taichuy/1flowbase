@@ -56,14 +56,6 @@ export interface ConsoleFrontstagePageCreationResponse {
   default_tab: ConsoleFrontstagePageTab;
 }
 
-export interface ConsoleFrontstageBlockCode {
-  page_id: string;
-  code_ref: string;
-  source_code: string;
-  source_sha256: string | null;
-  dependency_lock: unknown[] | null;
-}
-
 export interface CreateFrontstagePageNodeInput {
   title?: string | null;
   icon?: string | null;
@@ -102,19 +94,6 @@ export interface UpdateFrontstagePageTabInput {
 
 export interface SaveFrontstageTabDocumentInput {
   payload: unknown;
-}
-
-export interface SaveFrontstageBlockCodeInput {
-  source_code: string;
-  dependency_lock: unknown[];
-  expected_source_revision?: string | null;
-}
-
-export interface CreateFrontstageBlockInput {
-  payload: unknown;
-  code_ref: string;
-  source_code: string;
-  dependency_lock: unknown[];
 }
 
 export interface DispatchFrontstageQueryInput {
@@ -715,57 +694,6 @@ export function saveFrontstageTabDocument(
 ): Promise<ConsoleFrontstagePageDetail> {
   return apiFetch<ConsoleFrontstagePageDetail>({
     path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
-    method: 'PUT',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function createFrontstageBlock(
-  workspaceId: string,
-  pageId: string,
-  tabId: string,
-  input: CreateFrontstageBlockInput,
-  csrfToken: string,
-  baseUrl?: string
-): Promise<ConsoleFrontstagePageDetail> {
-  return apiFetch<ConsoleFrontstagePageDetail>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/blocks`,
-    method: 'POST',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
-}
-
-export function getFrontstageBlockCode(
-  workspaceId: string,
-  pageId: string,
-  codeRef: string,
-  baseUrl?: string
-): Promise<ConsoleFrontstageBlockCode> {
-  const encodedCodeRef = encodeURIComponent(codeRef);
-
-  return apiFetch<ConsoleFrontstageBlockCode>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/block-codes/${encodedCodeRef}`,
-    method: 'GET',
-    baseUrl
-  });
-}
-
-export function saveFrontstageBlockCode(
-  workspaceId: string,
-  pageId: string,
-  codeRef: string,
-  input: SaveFrontstageBlockCodeInput,
-  csrfToken: string,
-  baseUrl?: string
-): Promise<ConsoleFrontstageBlockCode> {
-  const encodedCodeRef = encodeURIComponent(codeRef);
-
-  return apiFetch<ConsoleFrontstageBlockCode>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/block-codes/${encodedCodeRef}`,
     method: 'PUT',
     body: input,
     csrfToken,

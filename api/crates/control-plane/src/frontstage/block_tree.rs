@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use anyhow::Result;
 use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
@@ -10,10 +10,11 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput, FrontstageBlockPosition,
+        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput,
+        FrontstageBlockDescriptorUpdate, FrontstageBlockPosition,
         FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
         FrontstagePageRepository, MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
-        UpdateFrontstageBlockNodeInput,
+        UpdateFrontstageBlockDescriptorsInput, UpdateFrontstageBlockNodeInput,
     },
 };
 
@@ -33,6 +34,7 @@ pub struct ListFrontstageBlocksCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
+    pub tab_id: Uuid,
     pub limit: u32,
 }
 
@@ -51,6 +53,7 @@ pub struct SearchFrontstageBlocksCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
+    pub tab_id: Uuid,
     pub query: String,
     pub limit: u32,
 }
@@ -59,7 +62,7 @@ pub struct CreateFrontstageBlockNodeCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
-    pub tab_id: Uuid,
+    pub tab_id: Option<Uuid>,
     pub title: String,
     pub description: Option<String>,
     pub presentation: domain::FrontstageBlockPresentation,
@@ -78,6 +81,14 @@ pub struct UpdateFrontstageBlockNodeCommand {
     pub input_mapping: Option<BTreeMap<String, String>>,
     pub output_mapping: Option<BTreeMap<String, String>>,
     pub runtime_descriptor: Option<Value>,
+}
+
+pub struct UpdateFrontstageBlockDescriptorsCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
+    pub updates: Vec<(String, Value)>,
 }
 
 pub struct MoveFrontstageBlockNodeCommand {
@@ -109,16 +120,21 @@ where
     pub async fn list_block_roots(
         &self,
         command: ListFrontstageBlocksCommand,
-    ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
+    ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
         self.ensure_block_designer(
             command.actor_user_id,
             command.workspace_id,
             command.page_id,
-            None,
+            Some(command.tab_id),
         )
         .await?;
         self.repository
-            .list_frontstage_block_roots(command.workspace_id, command.page_id, command.limit)
+            .list_frontstage_block_roots(
+                command.workspace_id,
+                command.page_id,
+                command.tab_id,
+                command.limit,
+            )
             .await
             .map_err(map_block_repository_error)
     }
@@ -131,13 +147,14 @@ where
             command.actor_user_id,
             command.workspace_id,
             command.page_id,
-            None,
+            Some(command.tab_id),
         )
         .await?;
         self.repository
             .search_frontstage_blocks(
                 command.workspace_id,
                 command.page_id,
+                command.tab_id,
                 &command.query,
                 command.limit,
             )
@@ -332,9 +349,43 @@ where
                 command.actor_user_id,
                 command.workspace_id,
                 command.page_id,
-                Some(command.tab_id),
+                None,
             )
             .await?;
+        let tab_id = if let Some(parent_block_id) = command.position.parent_block_id.as_deref() {
+            let parent = self
+                .load_block_node(&FrontstageBlockScopeCommand {
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: command.workspace_id,
+                    page_id: command.page_id,
+                    block_id: parent_block_id.to_owned(),
+                })
+                .await?;
+            if command
+                .tab_id
+                .is_some_and(|requested_tab_id| requested_tab_id != parent.tab_id)
+            {
+                return Err(ControlPlaneError::InvalidInput(
+                    "frontstage_block_parent_tab_mismatch",
+                )
+                .into());
+            }
+            parent.tab_id
+        } else {
+            let tab_id = command.tab_id.ok_or(ControlPlaneError::InvalidInput(
+                "frontstage_block_tab_id_required",
+            ))?;
+            let tab_exists = self
+                .repository
+                .list_frontstage_page_tabs(command.workspace_id, command.page_id)
+                .await?
+                .iter()
+                .any(|tab| tab.id == tab_id);
+            if !tab_exists {
+                return Err(ControlPlaneError::NotFound("frontstage_page_tab").into());
+            }
+            tab_id
+        };
         let title = required_block_title(command.title)?;
         let description = optional_block_description(command.description);
         let block_id = Uuid::now_v7().to_string();
@@ -352,7 +403,7 @@ where
                 workspace_id: command.workspace_id,
                 actor_user_id: command.actor_user_id,
                 page_id: command.page_id,
-                tab_id: command.tab_id,
+                tab_id,
                 block_id,
                 position: command.position,
                 presentation: command.presentation,
@@ -415,6 +466,73 @@ where
                 input_mapping: command.input_mapping,
                 output_mapping: command.output_mapping,
                 runtime_descriptor,
+                audit_log,
+            })
+            .await
+            .map_err(map_block_repository_error)
+    }
+
+    pub async fn update_block_descriptors(
+        &self,
+        command: UpdateFrontstageBlockDescriptorsCommand,
+    ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
+        let actor = self
+            .ensure_block_designer(
+                command.actor_user_id,
+                command.workspace_id,
+                command.page_id,
+                Some(command.tab_id),
+            )
+            .await?;
+        if command.updates.is_empty() {
+            return Err(ControlPlaneError::InvalidInput("frontstage_block_descriptors").into());
+        }
+        let mut seen = HashSet::with_capacity(command.updates.len());
+        let mut updates = Vec::with_capacity(command.updates.len());
+        for (block_id, descriptor) in command.updates {
+            if !seen.insert(block_id.clone()) {
+                return Err(ControlPlaneError::InvalidInput(
+                    "frontstage_block_descriptor_duplicate",
+                )
+                .into());
+            }
+            let scope = FrontstageBlockScopeCommand {
+                actor_user_id: command.actor_user_id,
+                workspace_id: command.workspace_id,
+                page_id: command.page_id,
+                block_id: block_id.clone(),
+            };
+            let existing = self.load_block_node(&scope).await?;
+            if existing.tab_id != command.tab_id {
+                return Err(ControlPlaneError::NotFound("block_node_not_found").into());
+            }
+            updates.push(FrontstageBlockDescriptorUpdate {
+                block_id,
+                runtime_descriptor: canonical_runtime_descriptor(
+                    &existing.block_id,
+                    &existing.code_ref,
+                    Some(descriptor),
+                )?,
+            });
+        }
+        let audit_log = audit_log(
+            Some(actor.current_workspace_id),
+            Some(actor.user_id),
+            "frontstage_page_tab",
+            Some(command.tab_id),
+            "frontstage.block_descriptors_updated",
+            serde_json::json!({
+                "page_id": command.page_id,
+                "block_ids": updates.iter().map(|item| &item.block_id).collect::<Vec<_>>()
+            }),
+        );
+        self.repository
+            .update_frontstage_block_descriptors(&UpdateFrontstageBlockDescriptorsInput {
+                workspace_id: command.workspace_id,
+                actor_user_id: command.actor_user_id,
+                page_id: command.page_id,
+                tab_id: command.tab_id,
+                updates,
                 audit_log,
             })
             .await
@@ -706,6 +824,52 @@ fn canonical_runtime_descriptor(
     descriptor
         .entry("rendererVersion".to_owned())
         .or_insert_with(|| Value::String(DEFAULT_RENDERER_VERSION.to_owned()));
+    descriptor
+        .entry("catalog".to_owned())
+        .or_insert_with(|| Value::Object(Map::new()));
+    descriptor
+        .entry("contribution".to_owned())
+        .or_insert_with(|| Value::Object(Map::new()));
+    descriptor
+        .entry("props".to_owned())
+        .or_insert_with(|| Value::Object(Map::new()));
+    descriptor
+        .entry("ports".to_owned())
+        .or_insert_with(|| serde_json::json!({ "inputs": [], "outputs": [] }));
+    descriptor
+        .entry("x-layout".to_owned())
+        .or_insert_with(|| serde_json::json!({ "order": 0 }));
+    descriptor
+        .entry("x-presentation".to_owned())
+        .or_insert_with(|| serde_json::json!({ "heightMode": "auto", "height": null }));
+    descriptor.entry("runtime".to_owned()).or_insert_with(|| {
+        serde_json::json!({
+            "kind": "native_react",
+            "entry": "index.js",
+            "hint": "native_react"
+        })
+    });
+    for field in [
+        "catalog",
+        "contribution",
+        "props",
+        "ports",
+        "x-layout",
+        "x-presentation",
+        "runtime",
+    ] {
+        if !descriptor.get(field).is_some_and(Value::is_object) {
+            return Err(
+                ControlPlaneError::InvalidInput("frontstage_block_runtime_descriptor").into(),
+            );
+        }
+    }
+    let ports = descriptor["ports"].as_object().expect("validated object");
+    if !ports.get("inputs").is_some_and(Value::is_array)
+        || !ports.get("outputs").is_some_and(Value::is_array)
+    {
+        return Err(ControlPlaneError::InvalidInput("frontstage_block_runtime_descriptor").into());
+    }
     Ok(Value::Object(descriptor))
 }
 

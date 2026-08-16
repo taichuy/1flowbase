@@ -44,9 +44,6 @@ import {
 
 import './block-schema-tree.css';
 
-const INITIAL_BLOCK_SOURCE =
-  'export default function Block() { return null; }\n';
-
 const BLOCK_SCHEMA_TREE_THEME = {
   components: {
     Tree: { indentSize: 12 }
@@ -60,12 +57,18 @@ interface BlockFormValues {
 }
 
 type FormTarget =
-  | { mode: 'create'; parent: FrontstageBlockNodeSummary }
+  | { mode: 'create'; parent: FrontstageBlockNodeSummary | null }
   | { mode: 'edit'; node: FrontstageBlockNodeSummary };
 
 export interface BlockSchemaTreePanelProps {
   workspaceId: string;
   pageId: string;
+  tabId: string;
+  blockCreateDefaults?: {
+    source_code: string;
+    dependency_lock: unknown[];
+    runtime_descriptor: unknown;
+  };
   currentBlockId: string;
   onOpenBlock: (blockId: string) => void;
   onDeletedBlock?: (event: FrontstageBlockDeletedEvent) => void;
@@ -74,6 +77,8 @@ export interface BlockSchemaTreePanelProps {
 export function BlockSchemaTreePanel({
   workspaceId,
   pageId,
+  tabId,
+  blockCreateDefaults,
   currentBlockId,
   onOpenBlock,
   onDeletedBlock
@@ -93,8 +98,11 @@ export function BlockSchemaTreePanel({
   const [childrenError, setChildrenError] = useState<unknown>(null);
 
   const rootsQuery = useQuery({
-    queryKey: frontstageBlockTreeQueryKeys.roots(workspaceId, pageId),
-    queryFn: () => fetchFrontstageBlockRoots(workspaceId, pageId)
+    queryKey: frontstageBlockTreeQueryKeys.roots(workspaceId, pageId, {
+      tab_id: tabId
+    }),
+    queryFn: () =>
+      fetchFrontstageBlockRoots(workspaceId, pageId, { tab_id: tabId })
   });
   const currentBlockQuery = useQuery({
     queryKey: frontstageBlockTreeQueryKeys.block(
@@ -102,8 +110,7 @@ export function BlockSchemaTreePanel({
       pageId,
       currentBlockId
     ),
-    queryFn: () =>
-      fetchFrontstageBlockNode(workspaceId, pageId, currentBlockId)
+    queryFn: () => fetchFrontstageBlockNode(workspaceId, pageId, currentBlockId)
   });
   const ancestorsQuery = useQuery({
     queryKey: frontstageBlockTreeQueryKeys.ancestors(
@@ -116,10 +123,14 @@ export function BlockSchemaTreePanel({
   });
   const searchResultsQuery = useQuery({
     queryKey: frontstageBlockTreeQueryKeys.search(workspaceId, pageId, {
+      tab_id: tabId,
       query: searchQuery
     }),
     queryFn: () =>
-      searchFrontstageBlocks(workspaceId, pageId, { query: searchQuery }),
+      searchFrontstageBlocks(workspaceId, pageId, {
+        tab_id: tabId,
+        query: searchQuery
+      }),
     enabled: searchQuery.length > 0
   });
 
@@ -141,11 +152,7 @@ export function BlockSchemaTreePanel({
             parent.block_id
           ),
           queryFn: () =>
-            fetchFrontstageBlockChildren(
-              workspaceId,
-              pageId,
-              parent.block_id
-            )
+            fetchFrontstageBlockChildren(workspaceId, pageId, parent.block_id)
         });
         setChildrenByParent((current) => {
           const next = new Map(current);
@@ -175,9 +182,7 @@ export function BlockSchemaTreePanel({
 
   const treeData = useMemo(
     () =>
-      (rootsQuery.data ?? []).map((root) =>
-        toTreeNode(root, childrenByParent)
-      ),
+      (rootsQuery.data ?? []).map((root) => toTreeNode(root, childrenByParent)),
     [childrenByParent, rootsQuery.data]
   );
 
@@ -210,6 +215,11 @@ export function BlockSchemaTreePanel({
     form.setFieldsValue({ title: '', description: '', presentation: 'page' });
   };
 
+  const openRootCreateForm = () => {
+    setFormTarget({ mode: 'create', parent: null });
+    form.setFieldsValue({ title: '', description: '', presentation: 'page' });
+  };
+
   const openEditForm = (node: FrontstageBlockNodeSummary) => {
     setFormTarget({ mode: 'edit', node });
     form.setFieldsValue({
@@ -224,27 +234,33 @@ export function BlockSchemaTreePanel({
     const values = await form.validateFields();
     try {
       if (formTarget.mode === 'create') {
+        if (!blockCreateDefaults) {
+          throw new Error('Frontstage block catalog template is unavailable.');
+        }
+        const parent = formTarget.parent;
         const created = await mutations.create.mutateAsync({
-          tab_id: formTarget.parent.tab_id,
+          ...(parent ? {} : { tab_id: tabId }),
           title: values.title,
           description: values.description ?? '',
           presentation: values.presentation,
-          parent_block_id: formTarget.parent.block_id,
+          parent_block_id: parent?.block_id ?? null,
           before_block_id: null,
           after_block_id: null,
-          source_code: INITIAL_BLOCK_SOURCE,
-          dependency_lock: [],
-          runtime_descriptor: null
+          source_code: blockCreateDefaults.source_code,
+          dependency_lock: blockCreateDefaults.dependency_lock,
+          runtime_descriptor: blockCreateDefaults.runtime_descriptor
         });
-        await loadChildren(formTarget.parent);
-        setExpandedKeys((current) =>
-          current.includes(formTarget.parent.block_id)
-            ? current
-            : [...current, formTarget.parent.block_id]
-        );
-        void message.success(
-          i18nText('frontstage', 'auto.block_tree_created')
-        );
+        if (parent) {
+          await loadChildren(parent);
+          setExpandedKeys((current) =>
+            current.includes(parent.block_id)
+              ? current
+              : [...current, parent.block_id]
+          );
+        } else {
+          await rootsQuery.refetch();
+        }
+        void message.success(i18nText('frontstage', 'auto.block_tree_created'));
         onOpenBlock(created.block_id);
       } else {
         await mutations.update.mutateAsync({
@@ -256,9 +272,7 @@ export function BlockSchemaTreePanel({
           }
         });
         await refreshOwner(formTarget.node.parent_block_id);
-        void message.success(
-          i18nText('frontstage', 'auto.block_tree_updated')
-        );
+        void message.success(i18nText('frontstage', 'auto.block_tree_updated'));
       }
       setFormTarget(null);
       form.resetFields();
@@ -295,12 +309,14 @@ export function BlockSchemaTreePanel({
             if (impact.affected_count === 1) {
               await mutations.deleteLeaf.mutateAsync({
                 block_id: node.block_id,
-                parent_block_id: node.parent_block_id
+                parent_block_id: node.parent_block_id,
+                tab_id: node.tab_id
               });
             } else {
               await mutations.deleteSubtree.mutateAsync({
                 block_id: node.block_id,
                 parent_block_id: node.parent_block_id,
+                tab_id: node.tab_id,
                 input: {
                   expected_affected_count: impact.affected_count
                 }
@@ -361,6 +377,13 @@ export function BlockSchemaTreePanel({
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
         />
+        <Button
+          icon={<PlusOutlined />}
+          disabled={operationPending || !blockCreateDefaults}
+          onClick={openRootCreateForm}
+        >
+          {i18nText('frontstage', 'auto.create_block')}
+        </Button>
         {searchQuery ? (
           <SearchResults
             error={searchResultsQuery.error}
@@ -438,10 +461,10 @@ export function BlockSchemaTreePanel({
                 />
               </ConfigProvider>
             ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={i18nText('frontstage', 'auto.block_tree_empty')}
-            />
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={i18nText('frontstage', 'auto.block_tree_empty')}
+              />
             )}
           </>
         ) : null}
@@ -590,14 +613,9 @@ function BlockTreeNodeTitle({
         className="frontstage-block-schema-tree__node-actions"
         onClick={(event) => event.stopPropagation()}
       >
-        <Tooltip
-          title={i18nText('frontstage', 'auto.block_tree_create_child')}
-        >
+        <Tooltip title={i18nText('frontstage', 'auto.block_tree_create_child')}>
           <Button
-            aria-label={i18nText(
-              'frontstage',
-              'auto.block_tree_create_child'
-            )}
+            aria-label={i18nText('frontstage', 'auto.block_tree_create_child')}
             disabled={pending}
             icon={<PlusOutlined />}
             size="small"
@@ -675,7 +693,7 @@ function SearchResults({
             className="frontstage-block-schema-tree__search-result"
             onClick={() => onOpenBlock(result.node.block_id)}
           >
-            <Space direction="vertical" size={0} align="start">
+            <Space orientation="vertical" size={0} align="start">
               <Typography.Text>
                 {result.node.title ?? result.node.block_id}
               </Typography.Text>

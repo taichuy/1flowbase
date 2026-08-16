@@ -8,8 +8,8 @@ import {
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime';
 import {
-  getFrontstageBlockCode,
-  type ConsoleFrontstageBlockCode
+  getConsoleFrontstageBlockNodeCode,
+  type ConsoleFrontstageBlockNodeCode
 } from '@1flowbase/api-client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -42,7 +42,7 @@ import {
 } from '../api/external-npm';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 
-type NativePreparationSource = ConsoleFrontstageBlockCode;
+type NativePreparationSource = ConsoleFrontstageBlockNodeCode;
 
 export interface UseFrontstagePageCanvasNativePreparationsInput {
   actorId: string | null | undefined;
@@ -343,10 +343,10 @@ async function defaultFetchSource(
   signal: AbortSignal
 ): Promise<NativePreparationSource> {
   throwIfAborted(signal);
-  const source = await getFrontstageBlockCode(
+  const source = await getConsoleFrontstageBlockNodeCode(
     request.workspaceId,
     request.pageId,
-    request.codeRef,
+    request.blockId,
     getFrontstageApiBaseUrl()
   );
   throwIfAborted(signal);

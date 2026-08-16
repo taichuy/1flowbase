@@ -2,11 +2,6 @@
 
 import { describe, expect, test } from 'vitest';
 
-import type { FrontstagePageContent } from '../../api/page-content';
-import {
-  createFrontstagePageContentFixture,
-  type FrontstagePageContentFixtureOverrides
-} from '../frontstage-page-content-fixtures';
 import {
   createFrontstagePageDocument,
   type FrontstageBlockInstance
@@ -15,12 +10,7 @@ import {
   createFrontstageBlockRenderPlanItem,
   createFrontstagePageRenderPlan
 } from '../../lib/page-canvas/render-plan';
-
-function createPageContent(
-  overrides: FrontstagePageContentFixtureOverrides = {}
-): FrontstagePageContent {
-  return createFrontstagePageContentFixture(overrides);
-}
+import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 function createBlock(
   overrides: Partial<FrontstageBlockInstance> = {}
@@ -41,10 +31,7 @@ function createBlock(
       code: 'official.hero'
     },
     props: { title: 'Hello' },
-    presentation: overrides.presentation ?? {
-      heightMode: 'auto',
-      height: null
-    },
+    presentation: { heightMode: 'auto', height: null },
     layout: { order: 0, region: 'main' },
     order: 0,
     runtime: {
@@ -57,7 +44,45 @@ function createBlock(
 }
 
 describe('frontstage page canvas render plan', () => {
-  test('D5-P3 selects isolated iframe without requiring Native code refs', () => {
+  test('orders explicit Block Node descriptors without reading Page Document blocks', () => {
+    const metadata = createFrontstagePageDocument(
+      createFrontstagePageContentFixture()
+    );
+    const document = {
+      ...metadata,
+      blocks: [
+        createBlock({
+          id: 'second',
+          codeRef: 'second-code',
+          order: 20,
+          layout: { order: 20, region: 'main' }
+        }),
+        createBlock({
+          id: 'first',
+          codeRef: 'first-code',
+          order: 10,
+          layout: { order: 10, region: 'header' }
+        }),
+        createBlock({
+          id: 'same-order',
+          codeRef: 'same-order-code',
+          order: 10,
+          layout: { order: 10, region: 'footer' }
+        })
+      ],
+      isEmpty: false
+    };
+
+    const plan = createFrontstagePageRenderPlan(document);
+    expect(plan.items.map((item) => item.blockId)).toEqual([
+      'first',
+      'same-order',
+      'second'
+    ]);
+    expect(plan.items.map((item) => item.order)).toEqual([10, 10, 20]);
+  });
+
+  test('selects isolated iframe without requiring Native code refs', () => {
     const item = createFrontstageBlockRenderPlanItem(
       createBlock({
         codeRef: '',
@@ -78,312 +103,30 @@ describe('frontstage page canvas render plan', () => {
     });
   });
 
-  test('creates stable Native React block items ordered by block order', () => {
-    const document = createFrontstagePageDocument(
-      createPageContent({
-        root: {
-          uid: 'root-1',
-          payload: {
-            blocks: [
-              {
-                id: 'second',
-                renderer_version: 'v1',
-                codeRef: 'second-code',
-                contributionCode: 'official.second',
-                props: { label: 'Second' },
-                runtime: { kind: 'native_react', entry: 'blocks/second.js' },
-                layout: { order: 20, region: 'main' }
-              },
-              {
-                id: 'first',
-                renderer_version: 'v1',
-                codeRef: 'first-code',
-                contributionCode: 'official.first',
-                props: { label: 'First' },
-                runtime: { kind: 'native_react', entry: 'blocks/first.js' },
-                layout: { order: 10, region: 'header' }
-              },
-              {
-                id: 'same-order',
-                renderer_version: 'v1',
-                codeRef: 'same-order-code',
-                contributionCode: 'official.same',
-                runtime: { kind: 'native_react', entry: 'blocks/same.js' },
-                layout: { order: 10, region: 'footer' }
-              }
-            ]
-          }
-        }
-      })
-    );
+  test('does not mutate source blocks or share mutable plan objects', () => {
+    const block = createBlock({ props: { nested: { value: 1 } } });
+    const first = createFrontstageBlockRenderPlanItem(block);
+    const second = createFrontstageBlockRenderPlanItem(block);
 
-    const plan = createFrontstagePageRenderPlan(document);
-
-    expect(plan).toMatchObject({
-      pageId: 'page-1',
-      rootUid: 'root-1',
-      isEmpty: false
-    });
-    expect(plan.items.map((item) => item.blockId)).toEqual([
-      'first',
-      'same-order',
-      'second'
-    ]);
-    expect(plan.items.map((item) => item.order)).toEqual([10, 10, 20]);
-    expect(plan.items[0]).toMatchObject({
-      blockId: 'first',
-      codeRef: 'first-code',
-      renderMode: 'native_react',
-      canPrepareNativeReact: true,
-      canMountIsolatedIframe: false,
-      fallbackReasons: [],
-      runtime: {
-        kind: 'native_react',
-        entry: 'blocks/first.js',
-        hint: 'native_react'
-      },
-      contribution: {
-        code: 'official.first'
-      },
-      layout: {
-        order: 10,
-        region: 'header'
-      },
-      props: {
-        label: 'First'
-      }
-    });
+    expect(first).toEqual(second);
+    expect(first).not.toBe(second);
+    expect(first.props).not.toBe(block.props);
   });
 
-  test('marks unsupported and unknown runtime blocks as placeholders', () => {
-    const document = createFrontstagePageDocument(
-      createPageContent({
-        root: {
-          uid: 'root-1',
-          payload: {
-            blocks: [
-              {
-                id: 'legacy',
-                renderer_version: 'v1',
-                codeRef: 'legacy-code',
-                contributionCode: 'official.legacy',
-                runtime: { kind: 'inline', entry: 'legacy.js' },
-                layout: { order: 0 }
-              },
-              {
-                id: 'unknown',
-                renderer_version: 'v1',
-                codeRef: 'unknown-code',
-                contributionCode: 'official.unknown',
-                runtime: { kind: 'unknown', entry: 'unknown.js' },
-                layout: { order: 1 }
-              }
-            ]
-          }
-        }
-      })
-    );
-
-    const plan = createFrontstagePageRenderPlan(document);
-
-    expect(plan.items).toEqual([
-      expect.objectContaining({
-        blockId: 'legacy',
-        renderMode: 'placeholder',
-        canPrepareNativeReact: false,
-        fallbackReasons: [
-          expect.objectContaining({
-            code: 'unsupported_runtime',
-            path: 'blocks.0.runtime.kind'
-          })
-        ]
-      }),
-      expect.objectContaining({
-        blockId: 'unknown',
-        renderMode: 'placeholder',
-        canPrepareNativeReact: false,
-        fallbackReasons: [
-          expect.objectContaining({
-            code: 'unknown_runtime',
-            path: 'blocks.1.runtime.kind'
-          })
-        ]
-      })
-    ]);
-  });
-
-  test('does not prepare Native React for missing or unsupported renderer versions', () => {
-    const document = createFrontstagePageDocument(
-      createPageContent({
-        root: {
-          uid: 'root-1',
-          payload: {
-            blocks: [
-              {
-                id: 'future',
-                renderer_version: 'v2',
-                codeRef: 'future-code',
-                contributionCode: 'official.future',
-                runtime: { kind: 'native_react', entry: 'blocks/future.js' }
-              },
-              {
-                id: 'legacy',
-                codeRef: 'legacy-code',
-                contributionCode: 'official.legacy',
-                runtime: { kind: 'native_react', entry: 'blocks/legacy.js' }
-              }
-            ]
-          }
-        }
-      })
-    );
-
-    const plan = createFrontstagePageRenderPlan(document);
-
-    expect(plan.items).toEqual([
-      expect.objectContaining({
-        blockId: 'future',
-        renderMode: 'placeholder',
-        canPrepareNativeReact: false,
-        fallbackReasons: [
-          expect.objectContaining({
-            code: 'unsupported_renderer_version',
-            path: 'blocks.0.renderer_version'
-          })
-        ]
-      }),
-      expect.objectContaining({
-        blockId: 'legacy',
-        renderMode: 'placeholder',
-        canPrepareNativeReact: false,
-        fallbackReasons: [
-          expect.objectContaining({
-            code: 'missing_renderer_version',
-            path: 'blocks.1.renderer_version'
-          })
-        ]
-      })
-    ]);
-  });
-
-  test('keeps normalized fallback fields stable while reporting missing codeRef and entry', () => {
-    const document = createFrontstagePageDocument(
-      createPageContent({
-        root: {
-          uid: 'root-1',
-          payload: {
-            blocks: [
-              {
-                renderer_version: 'v1',
-                contributionCode: 'official.missing',
-                runtime: { kind: 'native_react' },
-                props: 'invalid-props'
-              },
-              {
-                id: 'explicit',
-                renderer_version: 'v1',
-                codeRef: 'explicit-code',
-                contributionCode: 'official.explicit',
-                runtime: { kind: 'native_react' }
-              }
-            ]
-          }
-        }
-      })
-    );
-
-    const firstPlan = createFrontstagePageRenderPlan(document);
-    const secondPlan = createFrontstagePageRenderPlan(document);
-
-    expect(firstPlan).toEqual(secondPlan);
-    expect(firstPlan.items).toEqual([
-      expect.objectContaining({
-        blockId: 'block-1',
-        codeRef: 'block-1-code',
-        sourceBlockId: null,
-        sourceCodeRef: null,
-        props: {},
-        renderMode: 'placeholder',
-        canPrepareNativeReact: false,
-        fallbackReasons: [
-          expect.objectContaining({
-            code: 'missing_code_ref',
-            path: 'blocks.0.codeRef'
-          }),
-          expect.objectContaining({
-            code: 'missing_runtime_entry',
-            path: 'blocks.0.runtime.entry'
-          })
-        ]
-      }),
-      expect.objectContaining({
-        blockId: 'explicit',
-        codeRef: 'explicit-code',
-        sourceBlockId: 'explicit',
-        sourceCodeRef: 'explicit-code',
-        renderMode: 'placeholder',
-        canPrepareNativeReact: false,
-        fallbackReasons: [
-          expect.objectContaining({
-            code: 'missing_runtime_entry',
-            path: 'blocks.1.runtime.entry'
-          })
-        ]
-      })
-    ]);
-  });
-
-  test('does not mutate source documents or share mutable plan objects', () => {
-    const block = createBlock({
-      props: { nested: { value: 'before' } },
-      layout: { order: 0, nested: { width: 12 } }
-    });
-    const document = {
-      ...createFrontstagePageDocument(createPageContent()),
-      blocks: [block],
-      isEmpty: false
-    };
-    const originalDocument = structuredClone(document);
-
-    const plan = createFrontstagePageRenderPlan(document);
-
-    expect(document).toEqual(originalDocument);
-    expect(plan.items[0].props).toEqual(block.props);
-    expect(plan.items[0].props).not.toBe(block.props);
-    expect(plan.items[0].layout).toEqual(block.layout);
-    expect(plan.items[0].layout).not.toBe(block.layout);
-
-    const planProps = plan.items[0].props as { nested: { value: string } };
-    const planLayout = plan.items[0].layout as unknown as {
-      nested: { width: number };
-    };
-    planProps.nested.value = 'after';
-    planLayout.nested.width = 24;
-
-    expect(block.props).toEqual({ nested: { value: 'before' } });
-    expect(block.layout).toEqual({ order: 0, nested: { width: 12 } });
-  });
-
-  test('builds a block-level item with caller supplied source index', () => {
+  test('uses a caller supplied source index in fallback paths', () => {
     const item = createFrontstageBlockRenderPlanItem(
       createBlock({
-        id: 'metric',
-        codeRef: 'metric-code',
-        runtime: {
-          kind: 'native_react',
-          entry: 'blocks/metric.js',
-          hint: 'native_react'
-        }
+        rendererVersion: null,
+        runtime: { kind: 'native_react', entry: null, hint: 'native_react' }
       }),
       7
     );
 
-    expect(item).toMatchObject({
-      blockId: 'metric',
-      sourceIndex: 7,
-      renderMode: 'native_react',
-      canPrepareNativeReact: true,
-      fallbackReasons: []
-    });
+    expect(item.fallbackReasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'blocks.7.renderer_version' }),
+        expect.objectContaining({ path: 'blocks.7.runtime.entry' })
+      ])
+    );
   });
 });

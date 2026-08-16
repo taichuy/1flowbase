@@ -1,4 +1,7 @@
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import {
+  resolveFrontstageNativeDependencyLock,
+  type NormalizedFrontstageBlockCatalogEntry
+} from '../../lib/block-catalog';
 import type { FrontstageBlockCompositionInput } from '../../lib/block-composition';
 import { FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 } from '../../lib/block-renderer-version';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
@@ -44,7 +47,7 @@ function createCatalogBlockInput(
 
 function findMatchingFrontstageBlockCatalogEntry(
   block: FrontstageBlockInstance | null | undefined,
-  catalogItems: NormalizedFrontstageBlockCatalogEntry[]
+  catalogItems: readonly NormalizedFrontstageBlockCatalogEntry[]
 ): NormalizedFrontstageBlockCatalogEntry | null {
   if (!block) {
     return null;
@@ -62,4 +65,19 @@ function findMatchingFrontstageBlockCatalogEntry(
   );
 }
 
-export { createCatalogBlockInput, findMatchingFrontstageBlockCatalogEntry };
+function resolveFrontstageBlockNativeDependencyLock(
+  block: FrontstageBlockInstance | null | undefined,
+  catalogItems: readonly NormalizedFrontstageBlockCatalogEntry[],
+  workspaceId: string
+) {
+  return resolveFrontstageNativeDependencyLock({
+    catalogEntry: findMatchingFrontstageBlockCatalogEntry(block, catalogItems),
+    workspaceId
+  });
+}
+
+export {
+  createCatalogBlockInput,
+  findMatchingFrontstageBlockCatalogEntry,
+  resolveFrontstageBlockNativeDependencyLock
+};

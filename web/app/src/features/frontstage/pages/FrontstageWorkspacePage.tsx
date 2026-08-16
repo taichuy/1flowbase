@@ -31,6 +31,7 @@ import {
   isNotFoundResponseError
 } from '../lib/api-errors';
 import {
+  fetchFrontstageBlockRoots,
   fetchFrontstageBlockRuntimeAssembly,
   frontstageBlockTreeQueryKeys
 } from '../api/block-tree';
@@ -162,6 +163,25 @@ export function FrontstageWorkspacePage({
     enabled: shouldLoadPageContent,
     retry: false
   });
+  const resolvedTabId = pageContentQuery.data?.tab.id;
+  const blockRootsQuery = useQuery({
+    queryKey:
+      selectedPageId && resolvedTabId
+        ? frontstageBlockTreeQueryKeys.roots(workspaceId, selectedPageId, {
+            tab_id: resolvedTabId
+          })
+        : ['frontstage', workspaceId, 'pages', 'unselected', 'block-roots'],
+    queryFn: () => {
+      if (!selectedPageId || !resolvedTabId) {
+        throw new Error('Frontstage block roots query requires page and tab');
+      }
+      return fetchFrontstageBlockRoots(workspaceId, selectedPageId, {
+        tab_id: resolvedTabId
+      });
+    },
+    enabled: Boolean(selectedPageId && resolvedTabId && !blockId),
+    retry: false
+  });
 
   if (rootNode?.kind === 'page' && !pageId && rootNode.slug && !blockId) {
     return (
@@ -287,6 +307,9 @@ export function FrontstageWorkspacePage({
         isPageTreeLoading={pageTreeQuery.isLoading}
         hasPageTreeLoadError={pageTreeQuery.isError}
         pageContent={pageContentQuery.data}
+        blockRoots={blockRootsQuery.data}
+        isBlockRootsLoading={blockRootsQuery.isLoading}
+        hasBlockRootsLoadError={blockRootsQuery.isError}
         isPageContentLoading={pageContentQuery.isLoading}
         hasPageContentLoadError={pageContentQuery.isError}
         isPageContentPermissionDenied={isForbiddenResponseError(

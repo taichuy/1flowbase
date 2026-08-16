@@ -16,6 +16,7 @@ import { SectionPageLayout } from '../../../shared/ui/section-page-layout/Sectio
 import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import type { FrontstagePageContent } from '../api/page-content';
+import { fetchFrontstageBlockDeleteImpact } from '../api/block-tree';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import {
@@ -31,11 +32,11 @@ import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
 import { useFrontstagePageCanvasIsolatedPreparations } from '../hooks/use-frontstage-page-canvas-isolated-preparations';
 import { useFrontstageRuntimeAssembly } from '../hooks/use-frontstage-runtime-assembly';
+import { useFrontstageBlockTreeMutations } from '../hooks/use-frontstage-block-tree-mutations';
 import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-content-save';
 import {
   appendFrontstageBlock,
   createFrontstageBlockCompositionState,
-  removeFrontstageBlock,
   updateFrontstageBlock,
   updateFrontstageBlockLayout,
   updateFrontstageBlockPresentation,
@@ -48,14 +49,17 @@ import { createFrontstageJsBlockCapabilityHandlers } from '../lib/js-block-capab
 import { createFrontstageUnavailableBlockContext } from '../lib/native-trusted-block-react-adapter';
 import {
   createFrontstagePageDocument,
-  createFrontstagePageDocumentSaveInput,
+  createFrontstageBlockRuntimeDescriptor,
   type FrontstageBlockInstance,
   type FrontstageBlockPresentation,
   type FrontstagePageLayoutMode
 } from '../lib/page-document';
 import { createFrontstagePageRenderPlan } from '../lib/page-canvas/render-plan';
 import { createFrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
-import { createFrontstageRuntimeAssemblyBlocks } from '../lib/page-canvas/runtime-assembly';
+import {
+  createFrontstageRootNodeBlocks,
+  createFrontstageRuntimeAssemblyBlocks
+} from '../lib/page-canvas/runtime-assembly';
 import type {
   FrontstageRuntimeDemandByBlockId,
   FrontstageRuntimeDemandPriority
@@ -76,7 +80,8 @@ import { getPageDisplayTitle } from '../lib/page-tree';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   createCatalogBlockInput,
-  findMatchingFrontstageBlockCatalogEntry
+  findMatchingFrontstageBlockCatalogEntry,
+  resolveFrontstageBlockNativeDependencyLock
 } from './frontstage-page/block-catalog-helpers';
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
@@ -95,6 +100,9 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   pageId,
   tabId,
   blockRuntimeAssembly,
+  blockRoots = [],
+  isBlockRootsLoading = false,
+  hasBlockRootsLoadError = false,
   isBlockRuntimeRoute = false,
   isBlockRuntimeLoading = false,
   hasBlockRuntimeLoadError = false,
@@ -185,6 +193,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     pageId: selectedPageId,
     tabId
   });
+  const blockTreeMutations = useFrontstageBlockTreeMutations(
+    workspaceId,
+    selectedPageId ?? ''
+  );
   const displayedPageContent = savedPageContent ?? pageContent;
   const hasLoadedSelectedPageContent = Boolean(
     selectedPageId && displayedPageContent?.page.id === selectedPageId
@@ -192,13 +204,20 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const activePageContent = hasLoadedSelectedPageContent
     ? displayedPageContent
     : undefined;
-  const displayedPageDocument = useMemo(
-    () =>
-      activePageContent
-        ? createFrontstagePageDocument(activePageContent)
-        : null,
-    [activePageContent]
+  const rootBlocks = useMemo(
+    () => createFrontstageRootNodeBlocks(blockRoots),
+    [blockRoots]
   );
+  const displayedPageDocument = useMemo(() => {
+    if (!activePageContent) return null;
+    const metadata = createFrontstagePageDocument(activePageContent);
+    return {
+      ...metadata,
+      blocks: rootBlocks,
+      isEmpty: rootBlocks.length === 0,
+      diagnostics: []
+    };
+  }, [activePageContent, rootBlocks]);
   const assemblyBlocks = useMemo(
     () =>
       createFrontstageRuntimeAssemblyBlocks(blockRuntimeAssembly?.layers ?? []),
@@ -228,7 +247,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         routeSegment: null,
         documentRootUid: target.block_id
       },
-      document: { rootUid: target.block_id, payload: { blocks: [] } }
+      document: { rootUid: target.block_id, payload: {} }
     };
   }, [
     blockRuntimeAssembly,
@@ -484,6 +503,8 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     Boolean(activePageContent) &&
     !isPageContentLoading &&
     !hasPageContentLoadError &&
+    !isBlockRootsLoading &&
+    !hasBlockRootsLoadError &&
     !isPageContentSavePending;
   const operationStatusText = isOperationPending
     ? i18nText('frontstage', 'auto.saving')
@@ -524,14 +545,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       ),
     [blockCatalog.items, selectedBlock]
   );
-  const nativeDependencyLockResolution = useMemo(
-    () =>
-      resolveFrontstageNativeDependencyLock({
-        catalogEntry: matchingJsBlockCatalogEntry,
-        workspaceId
-      }),
-    [matchingJsBlockCatalogEntry, workspaceId]
-  );
   useEffect(() => {
     setSavedPageContent(null);
     setSelectedBlockId(null);
@@ -545,13 +558,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       if (assemblyTargetId) {
         return currentBlockId;
       }
-      if (!currentBlockId || !pageContent) {
+      if (!currentBlockId) {
         setIsJsxStudioOpen(false);
         return null;
       }
-
-      const document = createFrontstagePageDocument(pageContent);
-      const hasCurrentBlock = document.blocks.some(
+      const hasCurrentBlock = rootBlocks.some(
         (block) => block.id === currentBlockId
       );
       if (!hasCurrentBlock) {
@@ -560,7 +571,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
       return hasCurrentBlock ? currentBlockId : null;
     });
-  }, [assemblyTargetId, pageContent]);
+  }, [assemblyTargetId, rootBlocks]);
 
   useEffect(() => {
     if (!canShowSelectedBlockActions) {
@@ -609,12 +620,32 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       pageContentSave.clearError();
 
       try {
-        const input = createFrontstagePageDocumentSaveInput(
-          sourceContent,
-          compositionState.document
-        );
-        const nextContent = await pageContentSave.save(input);
-
+        if (!tabId) throw new Error('missing frontstage tab id');
+        if (compositionState.document.blocks.length > 0) {
+          await blockTreeMutations.updateDescriptors.mutateAsync({
+            tab_id: tabId,
+            input: {
+              updates: compositionState.document.blocks.map((block) => ({
+                block_id: block.id,
+                runtime_descriptor:
+                  createFrontstageBlockRuntimeDescriptor(block)
+              }))
+            }
+          });
+        }
+        const documentPayload = sourceContent.document.payload;
+        const documentRecord: Record<string, unknown> =
+          typeof documentPayload === 'object' &&
+          documentPayload !== null &&
+          !Array.isArray(documentPayload)
+            ? (documentPayload as Record<string, unknown>)
+            : {};
+        const nextContent = await pageContentSave.save({
+          payload: {
+            ...documentRecord,
+            'x-layout-mode': compositionState.document.layoutMode
+          }
+        });
         setSavedPageContent(nextContent);
         setSelectedBlockId(compositionState.selectedBlockId);
         return true;
@@ -625,22 +656,29 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         setIsBlockSavePending(false);
       }
     },
-    [pageContentSave]
+    [blockTreeMutations.updateDescriptors, pageContentSave, tabId]
   );
 
   const saveStudioBlock = useCallback(
     async (nextBlock: FrontstageBlockInstance) => {
-      if (!blockCompositionState || !activePageContent) {
+      if (!selectedPageId) {
         return false;
       }
-
-      const nextCompositionState = updateFrontstageBlock(
-        blockCompositionState,
-        nextBlock
-      );
-      return saveBlockComposition(activePageContent, nextCompositionState);
+      try {
+        await blockTreeMutations.update.mutateAsync({
+          block_id: nextBlock.id,
+          input: {
+            runtime_descriptor:
+              createFrontstageBlockRuntimeDescriptor(nextBlock)
+          }
+        });
+        return true;
+      } catch (error) {
+        setBlockSaveError(toDisplayErrorMessage(error));
+        return false;
+      }
     },
-    [activePageContent, blockCompositionState, saveBlockComposition]
+    [blockTreeMutations.update, selectedPageId]
   );
   const designActions = useMemo(() => {
     if (!canEnterDesignMode || !isDesignMode) {
@@ -653,17 +691,42 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         setIsJsxStudioOpen(true);
       },
       onDelete: (blockId: string) => {
-        if (!blockCompositionState || !activePageContent) return;
-        const next = removeFrontstageBlock(blockCompositionState, blockId);
-        void saveBlockComposition(activePageContent, next);
+        const node = blockRoots.find(
+          (candidate) => candidate.block_id === blockId
+        );
+        if (!selectedPageId || !node) return;
+        void fetchFrontstageBlockDeleteImpact(
+          workspaceId,
+          selectedPageId,
+          blockId
+        )
+          .then(async (impact) => {
+            if (impact.affected_count === 1) {
+              await blockTreeMutations.deleteLeaf.mutateAsync({
+                block_id: blockId,
+                parent_block_id: null,
+                tab_id: node.tab_id
+              });
+            } else {
+              await blockTreeMutations.deleteSubtree.mutateAsync({
+                block_id: blockId,
+                parent_block_id: null,
+                tab_id: node.tab_id,
+                input: { expected_affected_count: impact.affected_count }
+              });
+            }
+          })
+          .catch((error) => setBlockSaveError(toDisplayErrorMessage(error)));
       }
     };
   }, [
     canEnterDesignMode,
     isDesignMode,
-    blockCompositionState,
-    activePageContent,
-    saveBlockComposition,
+    blockRoots,
+    blockTreeMutations.deleteLeaf,
+    blockTreeMutations.deleteSubtree,
+    selectedPageId,
+    workspaceId,
     setSelectedBlockId,
     setIsJsxStudioOpen
   ]);
@@ -808,8 +871,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     }
     setBlockSaveError(null);
     pageContentSave.clearError();
-    const sourceContent = activePageContent;
-    if (!sourceContent || !blockCompositionState) {
+    if (!activePageContent || !blockCompositionState || !tabId) {
       return;
     }
 
@@ -855,10 +917,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     blockCreationPendingRef.current = true;
     setIsBlockSavePending(true);
     try {
-      const input = createFrontstagePageDocumentSaveInput(
-        sourceContent,
-        nextCompositionState.document
-      );
       const createdBlock =
         nextCompositionState.document.blocks.find(
           (block) => block.id === nextCompositionState.selectedBlockId
@@ -870,7 +928,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         throw new Error('created block is missing');
       }
 
-      const codeRef = createdBlock.codeRef;
       const dependencyLockResolution = resolveFrontstageNativeDependencyLock({
         catalogEntry: entry,
         workspaceId
@@ -878,17 +935,21 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       if (dependencyLockResolution.error) {
         throw new Error(dependencyLockResolution.error);
       }
-      const nextContent = await pageContentSave.createBlock({
-        payload: input.payload,
-        code_ref: codeRef,
+      const createdNode = await blockTreeMutations.create.mutateAsync({
+        tab_id: tabId,
+        title: entry.title,
+        description: '',
+        presentation: 'page',
+        parent_block_id: null,
+        before_block_id: null,
+        after_block_id: null,
         source_code: codeTemplate.source,
         dependency_lock: dependencyLockResolution.dependencyLock.filter(
           ({ module_source }) => module_source !== 'tailwindcss'
-        )
+        ),
+        runtime_descriptor: createFrontstageBlockRuntimeDescriptor(createdBlock)
       });
-
-      setSavedPageContent(nextContent);
-      setSelectedBlockId(nextCompositionState.selectedBlockId);
+      setSelectedBlockId(createdNode.block_id);
     } catch (error) {
       setBlockSaveError(toDisplayErrorMessage(error));
     } finally {
@@ -992,7 +1053,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         <Drawer
           open
           title={layer.title}
-          width="min(720px, 92vw)"
+          size="min(720px, 92vw)"
           onClose={closeBlock}
         >
           {content}
@@ -1065,13 +1126,15 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         }
         isLoading={Boolean(
           selectedPageNode &&
-          (isBlockRuntimeRoute ? isBlockRuntimeLoading : isPageContentLoading)
+          (isBlockRuntimeRoute
+            ? isBlockRuntimeLoading
+            : isPageContentLoading || isBlockRootsLoading)
         )}
         hasError={Boolean(
           selectedPageNode &&
           (isBlockRuntimeRoute
             ? hasBlockRuntimeLoadError
-            : hasPageContentLoadError)
+            : hasPageContentLoadError || hasBlockRootsLoadError)
         )}
         isPermissionDenied={Boolean(
           selectedPageNode &&
@@ -1118,7 +1181,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               : []
             : rootPageBlockIds
         }
-        runtimeBlocks={isBlockRuntimeRoute ? assemblyBlocks : undefined}
+        runtimeBlocks={isBlockRuntimeRoute ? assemblyBlocks : rootBlocks}
         sharedSignalCoordinator={
           isBlockRuntimeRoute ? undefined : pageSignalCoordinator
         }
@@ -1271,12 +1334,19 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             block={selectedBlock}
             pageBlocks={runtimeBlocks}
             catalogEntry={matchingJsBlockCatalogEntry}
+            catalogEntries={blockCatalog.items}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
             runPanel={({ blockId, code, runRevision }) => {
               const activeStudioBlock = runtimeBlocks.find(
                 (candidate) => candidate.id === blockId
               );
+              const activeDependencyLockResolution =
+                resolveFrontstageBlockNativeDependencyLock(
+                  activeStudioBlock,
+                  blockCatalog.items,
+                  workspaceId
+                );
               return runRevision === null || !activeStudioBlock ? undefined : (
                 <JsxStudioRunPanel
                   block={activeStudioBlock}
@@ -1285,10 +1355,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
                   nativeDependencyLock={
-                    nativeDependencyLockResolution.dependencyLock
+                    activeDependencyLockResolution.dependencyLock
                   }
                   nativeDependencyLockError={
-                    nativeDependencyLockResolution.error
+                    activeDependencyLockResolution.error
                   }
                   externalNpm={blockCatalog.externalNpm}
                   revision={`run:${runRevision}`}

@@ -17,6 +17,7 @@ import {
   openConsoleFrontstageBlock,
   saveConsoleFrontstageBlockNodeCode,
   searchConsoleFrontstageBlocks,
+  updateConsoleFrontstageBlockDescriptors,
   updateConsoleFrontstageBlockNode,
   type ConsoleFrontstageBlockNodeSummary,
   type ConsoleFrontstageBlockRuntimeAssembly
@@ -32,18 +33,22 @@ describe('frontstage block tree client contract', () => {
 
   test('AC-001/003 uses exact page-scoped read routes and snake_case queries', async () => {
     await expect(
-      listConsoleFrontstageBlockRoots('workspace 1', 'page/1', { limit: 25 })
+      listConsoleFrontstageBlockRoots('workspace 1', 'page/1', {
+        tab_id: 'tab/1',
+        limit: 25
+      })
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks?limit=25',
+      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks?tab_id=tab%2F1&limit=25',
       method: 'GET'
     });
     await expect(
       searchConsoleFrontstageBlocks('workspace 1', 'page/1', {
+        tab_id: 'tab/1',
         query: 'sales drawer',
         limit: 10
       })
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/search?query=sales+drawer&limit=10',
+      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/search?tab_id=tab%2F1&query=sales+drawer&limit=10',
       method: 'GET'
     });
     await expect(
@@ -157,6 +162,26 @@ describe('frontstage block tree client contract', () => {
         description: 'Sales details block',
         presentation: 'page'
       }
+    });
+    await expect(
+      updateConsoleFrontstageBlockDescriptors(
+        'workspace-1',
+        'page-1',
+        'tab-1',
+        {
+          updates: [
+            {
+              block_id: 'sales',
+              runtime_descriptor: { 'x-layout': { order: 1 } }
+            }
+          ]
+        },
+        'csrf'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/block-descriptors',
+      method: 'PUT',
+      csrfToken: 'csrf'
     });
     await expect(
       moveConsoleFrontstageBlockNode(

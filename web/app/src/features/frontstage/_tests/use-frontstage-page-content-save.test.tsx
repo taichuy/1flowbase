@@ -9,9 +9,16 @@ import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-conte
 const frontstageApi = vi.hoisted(() => ({
   frontstagePageContentQueryKey: vi.fn(
     (workspaceId: string, pageId: string, tabId: string) =>
-      ['frontstage', workspaceId, 'pages', pageId, 'tabs', tabId, 'content'] as const
+      [
+        'frontstage',
+        workspaceId,
+        'pages',
+        pageId,
+        'tabs',
+        tabId,
+        'content'
+      ] as const
   ),
-  createFrontstagePageBlock: vi.fn(),
   saveFrontstagePageContent: vi.fn()
 }));
 
@@ -65,35 +72,13 @@ function createPageContent(title = '页面 1') {
     },
     document: {
       rootUid: 'root-1',
-      payload: { blocks: [{ uid: 'hero', renderer_version: 'v1' }] }
+      payload: { 'x-layout-mode': 'auto' }
     }
   };
 }
 
 function createSaveInput() {
-  return { payload: { blocks: [{ uid: 'hero', renderer_version: 'v1' }] } };
-}
-
-function createBlockInput() {
-  return {
-    ...createSaveInput(),
-    code_ref: 'hero-code',
-    source_code: 'export default function Hero() {}',
-    dependency_lock: [],
-    tailwind_toolchain_lock: {
-      package: 'tailwindcss',
-      version: '4.3.3',
-      mode: 'utilities'
-    },
-    generated_css: '',
-    generated_css_sha256:
-      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    compiler_identity: {
-      package: 'tailwindcss',
-      version: '4.3.3',
-      mode: 'utilities'
-    }
-  };
+  return { payload: { 'x-layout-mode': 'auto' } };
 }
 
 function setupSave(queryClient = createQueryClient()) {
@@ -128,45 +113,6 @@ describe('useFrontstagePageContentSave', () => {
     frontstageApi.saveFrontstagePageContent.mockResolvedValue(
       createPageContent('页面 已保存')
     );
-    frontstageApi.createFrontstagePageBlock.mockResolvedValue(
-      createPageContent('页面 已创建区块')
-    );
-  });
-
-  test('creates a block atomically, writes the query cache, and invalidates active tab queries', async () => {
-    const { invalidateQueriesSpy, queryClient, result } = setupSave();
-    const input = createBlockInput();
-    let savedContent: unknown;
-
-    await act(async () => {
-      savedContent = await result.current.createBlock(input);
-    });
-
-    const queryKey = [
-      'frontstage',
-      'workspace-1',
-      'pages',
-      'page-1',
-      'tabs',
-      'tab-1',
-      'content'
-    ];
-
-    expect(frontstageApi.createFrontstagePageBlock).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'tab-1',
-      input,
-      'csrf-123'
-    );
-    expect(savedContent).toEqual(createPageContent('页面 已创建区块'));
-    expect(queryClient.getQueryData(queryKey)).toEqual(
-      createPageContent('页面 已创建区块')
-    );
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey: ['frontstage', 'workspace-1', 'pages', 'page-1', 'tabs'],
-      refetchType: 'active'
-    });
   });
 
   test('saves page content with csrf token, writes the query cache, and invalidates active page content queries', async () => {

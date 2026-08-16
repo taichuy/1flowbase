@@ -11,13 +11,11 @@ use axum::{
     Json, Router,
 };
 use control_plane::frontstage::{
-    CreateFrontstageBlockCommand, CreateFrontstageGroupCommand, CreateFrontstagePageCommand,
-    CreateFrontstagePageTabCommand, DeleteFrontstagePageCommand, DeleteFrontstagePageTabCommand,
-    FrontstagePageService, GetFrontstageBlockCodeCommand, GetFrontstagePageDetailCommand,
-    MoveFrontstagePageCommand, SaveFrontstageBlockCodeCommand, SaveFrontstageTabDocumentCommand,
+    CreateFrontstageGroupCommand, CreateFrontstagePageCommand, CreateFrontstagePageTabCommand,
+    DeleteFrontstagePageCommand, DeleteFrontstagePageTabCommand, FrontstagePageService,
+    GetFrontstagePageDetailCommand, MoveFrontstagePageCommand, SaveFrontstageTabDocumentCommand,
     UpdateFrontstagePageMetadataCommand, UpdateFrontstagePageTabCommand,
 };
-use control_plane::ports::FrontstageBlockCodeInput;
 use control_plane::resource_action::{
     ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
     ResourceScopeKind,
@@ -119,16 +117,6 @@ pub struct FrontstagePageDetailResponse {
     pub document: FrontstageTabDocumentResponse,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageBlockCodeResponse {
-    pub page_id: String,
-    pub code_ref: String,
-    pub source_code: String,
-    pub source_sha256: Option<String>,
-    #[schema(value_type = Option<Vec<Object>>)]
-    pub dependency_lock: Option<Value>,
-}
-
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFrontstageGroupBody {
     pub title: Option<String>,
@@ -206,23 +194,6 @@ pub struct UpdateFrontstagePageTabBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveFrontstageTabDocumentBody {
     pub payload: Value,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct SaveFrontstageBlockCodeBody {
-    pub expected_source_revision: Option<String>,
-    pub source_code: String,
-    #[schema(value_type = Vec<Object>)]
-    pub dependency_lock: Value,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateFrontstageBlockBody {
-    pub payload: Value,
-    pub code_ref: String,
-    pub source_code: String,
-    #[schema(value_type = Vec<Object>)]
-    pub dependency_lock: Value,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -309,10 +280,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_put(save_frontstage_tab_document, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/blocks",
-            console_post(create_frontstage_block, Authenticated),
-        )
-        .route(
             "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
             console_post(dispatch_frontstage_query, Authenticated),
         )
@@ -379,11 +346,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 callable_interfaces::dispatch_frontstage_callable_interface,
                 Authenticated,
             ),
-        )
-        .route(
-            "/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
-            console_get(get_frontstage_block_code, Authenticated)
-                .put(save_frontstage_block_code, Authenticated),
         )
 }
 
@@ -962,48 +924,6 @@ pub async fn save_frontstage_tab_document(
 }
 
 #[utoipa::path(
-    post,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/blocks",
-    request_body = CreateFrontstageBlockBody,
-    responses(
-        (status = 201, body = FrontstagePageDetailResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody),
-        (status = 409, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn create_frontstage_block(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
-    Json(body): Json<CreateFrontstageBlockBody>,
-) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageDetailResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .create_block(CreateFrontstageBlockCommand {
-            actor_user_id: context.user.id,
-            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
-            page_id: parse_uuid(&page_id, "page_id")?,
-            tab_id: parse_uuid(&tab_id, "tab_id")?,
-            document_payload: body.payload,
-            code_ref: body.code_ref,
-            code: FrontstageBlockCodeInput {
-                source_code: body.source_code,
-                dependency_lock: body.dependency_lock,
-            },
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_page_detail_response(detail))),
-    ))
-}
-
-#[utoipa::path(
     get,
     path = "/api/console/frontstage/{workspace_id}/ui-templates",
     params(("workspace_id" = String, Path)),
@@ -1046,88 +966,6 @@ pub async fn list_frontstage_ui_templates(
             })
             .collect(),
     )))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}",
-    params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
-        ("page_id" = String, Path, description = "Page id"),
-        ("code_ref" = String, Path, description = "JS block code ref")
-    ),
-    responses(
-        (status = 200, body = FrontstageBlockCodeResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn get_frontstage_block_code(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((workspace_id, page_id, code_ref)): Path<(String, String, String)>,
-) -> Result<Json<ApiSuccess<FrontstageBlockCodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
-    let page_id = parse_uuid(&page_id, "page_id")?;
-
-    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_code(GetFrontstageBlockCodeCommand {
-            actor_user_id: context.user.id,
-            workspace_id,
-            page_id,
-            code_ref,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_block_code_response(code))))
-}
-
-#[utoipa::path(
-    put,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}",
-    request_body = SaveFrontstageBlockCodeBody,
-    params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
-        ("page_id" = String, Path, description = "Page id"),
-        ("code_ref" = String, Path, description = "JS block code ref")
-    ),
-    responses(
-        (status = 200, body = FrontstageBlockCodeResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn save_frontstage_block_code(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((workspace_id, page_id, code_ref)): Path<(String, String, String)>,
-    Json(body): Json<SaveFrontstageBlockCodeBody>,
-) -> Result<Json<ApiSuccess<FrontstageBlockCodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
-    let page_id = parse_uuid(&page_id, "page_id")?;
-
-    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .save_block_code(SaveFrontstageBlockCodeCommand {
-            actor_user_id: context.user.id,
-            workspace_id,
-            page_id,
-            code_ref,
-            expected_source_revision: body.expected_source_revision,
-            code: FrontstageBlockCodeInput {
-                source_code: body.source_code,
-                dependency_lock: body.dependency_lock,
-            },
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_block_code_response(code))))
 }
 
 pub(crate) fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -1252,18 +1090,6 @@ fn to_page_detail_response(
             root_uid: detail.document.root_uid,
             payload: detail.document.payload,
         },
-    }
-}
-
-fn to_block_code_response(
-    code: domain::frontstage::FrontstageBlockCodeRecord,
-) -> FrontstageBlockCodeResponse {
-    FrontstageBlockCodeResponse {
-        page_id: code.page_id.to_string(),
-        code_ref: code.code_ref,
-        source_code: code.source_code,
-        source_sha256: code.source_sha256,
-        dependency_lock: code.dependency_lock,
     }
 }
 

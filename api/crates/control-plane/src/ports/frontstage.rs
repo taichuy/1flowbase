@@ -72,27 +72,6 @@ pub struct SaveFrontstageTabDocumentInput {
     pub document_payload: serde_json::Value,
 }
 
-#[derive(Debug, Clone)]
-pub struct SaveFrontstageBlockCodeInput {
-    pub workspace_id: Uuid,
-    pub page_id: Uuid,
-    pub code_ref: String,
-    pub expected_source_revision: Option<String>,
-    pub code: super::FrontstageBlockCodeInput,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateFrontstageBlockInput {
-    pub workspace_id: Uuid,
-    pub actor_user_id: Uuid,
-    pub page_id: Uuid,
-    pub tab_id: Uuid,
-    pub document_payload: serde_json::Value,
-    pub code_ref: String,
-    pub code: super::FrontstageBlockCodeInput,
-    pub audit_log: domain::AuditLogRecord,
-}
-
 #[async_trait]
 pub trait FrontstagePageRepository: Send + Sync {
     async fn load_actor_context_for_workspace(
@@ -188,22 +167,12 @@ pub trait FrontstagePageRepository: Send + Sync {
         input: &SaveFrontstageTabDocumentInput,
     ) -> anyhow::Result<domain::frontstage::FrontstagePageDetail>;
 
-    async fn create_frontstage_block(
-        &self,
-        input: &CreateFrontstageBlockInput,
-    ) -> anyhow::Result<domain::frontstage::FrontstagePageDetail>;
-
     async fn get_frontstage_block_code(
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
         code_ref: &str,
     ) -> anyhow::Result<Option<domain::frontstage::FrontstageBlockCodeRecord>>;
-
-    async fn save_frontstage_block_code(
-        &self,
-        input: &SaveFrontstageBlockCodeInput,
-    ) -> anyhow::Result<domain::frontstage::FrontstageBlockCodeRecord>;
 
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> anyhow::Result<()>;
 }

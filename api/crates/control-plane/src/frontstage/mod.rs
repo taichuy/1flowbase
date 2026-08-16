@@ -5,7 +5,6 @@ use std::{
 
 use access_control::ensure_permission;
 use anyhow::Result;
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
@@ -13,15 +12,13 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateFrontstagePageInput, CreateFrontstagePageTabInput, FrontstagePageRepository,
-        MoveFrontstagePageInput, SaveFrontstageBlockCodeInput, SaveFrontstageTabDocumentInput,
-        UpdateFrontstagePageMetadataInput, UpdateFrontstagePageTabInput,
+        MoveFrontstagePageInput, SaveFrontstageTabDocumentInput, UpdateFrontstagePageMetadataInput,
+        UpdateFrontstagePageTabInput,
     },
 };
 
-mod block_creation;
 mod block_tree;
 
-pub use block_creation::CreateFrontstageBlockCommand;
 pub use block_tree::*;
 
 pub struct CreateFrontstageGroupCommand {
@@ -107,28 +104,12 @@ pub struct DeleteFrontstagePageTabCommand {
     pub tab_id: Uuid,
 }
 
-pub struct GetFrontstageBlockCodeCommand {
-    pub actor_user_id: Uuid,
-    pub workspace_id: Uuid,
-    pub page_id: Uuid,
-    pub code_ref: String,
-}
-
 pub struct SaveFrontstageTabDocumentCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub page_id: Uuid,
     pub tab_id: Uuid,
     pub document_payload: serde_json::Value,
-}
-
-pub struct SaveFrontstageBlockCodeCommand {
-    pub actor_user_id: Uuid,
-    pub workspace_id: Uuid,
-    pub page_id: Uuid,
-    pub code_ref: String,
-    pub expected_source_revision: Option<String>,
-    pub code: crate::ports::FrontstageBlockCodeInput,
 }
 
 const RESERVED_FRONTSTAGE_SLUGS: &[&str] = &[
@@ -145,43 +126,6 @@ const RESERVED_FRONTSTAGE_SLUGS: &[&str] = &[
     "sign-in",
     "templates",
 ];
-
-const FRONTSTAGE_BLOCK_RENDERER_VERSION_V1: &str = "v1";
-
-fn validate_frontstage_block_renderer_versions(document_payload: &Value) -> Result<()> {
-    let Some(blocks) = document_payload
-        .as_object()
-        .and_then(|document| document.get("blocks"))
-    else {
-        return Ok(());
-    };
-    let Some(blocks) = blocks.as_array() else {
-        return Ok(());
-    };
-
-    for block in blocks {
-        let Some(block) = block.as_object() else {
-            return Err(ControlPlaneError::InvalidInput(
-                "frontstage_block_renderer_version_missing",
-            )
-            .into());
-        };
-        let Some(renderer_version) = block.get("renderer_version").and_then(Value::as_str) else {
-            return Err(ControlPlaneError::InvalidInput(
-                "frontstage_block_renderer_version_missing",
-            )
-            .into());
-        };
-        if renderer_version != FRONTSTAGE_BLOCK_RENDERER_VERSION_V1 {
-            return Err(ControlPlaneError::InvalidInput(
-                "frontstage_block_renderer_version_unsupported",
-            )
-            .into());
-        }
-    }
-
-    Ok(())
-}
 
 fn normalize_frontstage_slug(value: Option<String>) -> Result<Option<String>> {
     let Some(value) = value else {
@@ -727,7 +671,9 @@ where
         ensure_design_permission(&actor)?;
         self.ensure_existing_page(command.workspace_id, command.page_id)
             .await?;
-        validate_frontstage_block_renderer_versions(&command.document_payload)?;
+        if command.document_payload.get("blocks").is_some() {
+            return Err(ControlPlaneError::InvalidInput("frontstage_document_blocks").into());
+        }
 
         let detail = self
             .repository
@@ -743,56 +689,6 @@ where
             .await?;
 
         Ok(detail)
-    }
-
-    pub async fn get_block_code(
-        &self,
-        command: GetFrontstageBlockCodeCommand,
-    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
-        let actor = self
-            .load_actor_context(command.actor_user_id, command.workspace_id)
-            .await?;
-        self.ensure_page_visible(
-            &actor,
-            command.actor_user_id,
-            command.workspace_id,
-            command.page_id,
-        )
-        .await?;
-        let code_ref = normalize_code_ref(command.code_ref)?;
-
-        self.repository
-            .get_frontstage_block_code(command.workspace_id, command.page_id, &code_ref)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("frontstage_block_code").into())
-    }
-
-    pub async fn save_block_code(
-        &self,
-        command: SaveFrontstageBlockCodeCommand,
-    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
-        let actor = self
-            .load_actor_context(command.actor_user_id, command.workspace_id)
-            .await?;
-        ensure_design_permission(&actor)?;
-        self.ensure_existing_page(command.workspace_id, command.page_id)
-            .await?;
-        let code_ref = normalize_code_ref(command.code_ref)?;
-
-        let saved = self
-            .repository
-            .save_frontstage_block_code(&SaveFrontstageBlockCodeInput {
-                workspace_id: command.workspace_id,
-                page_id: command.page_id,
-                code_ref,
-                expected_source_revision: block_tree::validate_source_revision(
-                    command.expected_source_revision,
-                )?,
-                code: block_tree::validate_code(command.code)?,
-            })
-            .await?;
-
-        Ok(saved)
     }
 
     async fn ensure_page_parent_placement(
@@ -947,15 +843,6 @@ fn ensure_page_record(page: &domain::FrontstagePageRecord) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn normalize_code_ref(code_ref: String) -> Result<String> {
-    let trimmed = code_ref.trim();
-    if trimmed.is_empty() || trimmed.len() > 200 {
-        return Err(ControlPlaneError::InvalidInput("code_ref").into());
-    }
-
-    Ok(trimmed.to_owned())
 }
 
 fn normalize_rank(rank: Option<String>) -> String {

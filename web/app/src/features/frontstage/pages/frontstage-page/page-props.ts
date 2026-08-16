@@ -1,5 +1,8 @@
 import type { FrontstagePageContent } from '../../api/page-content';
-import type { ConsoleFrontstageBlockRuntimeAssembly } from '@1flowbase/api-client';
+import type {
+  ConsoleFrontstageBlockNode,
+  ConsoleFrontstageBlockRuntimeAssembly
+} from '@1flowbase/api-client';
 import type { FrontstagePageTab } from '../../api/page-tabs';
 import type { FrontStageTreeNode } from '../../lib/page-tree';
 import type {
@@ -15,6 +18,9 @@ export type FrontStagePageProps = {
   pageId?: string;
   tabId?: string;
   blockRuntimeAssembly?: ConsoleFrontstageBlockRuntimeAssembly;
+  blockRoots?: ConsoleFrontstageBlockNode[];
+  isBlockRootsLoading?: boolean;
+  hasBlockRootsLoadError?: boolean;
   isBlockRuntimeRoute?: boolean;
   isBlockRuntimeLoading?: boolean;
   hasBlockRuntimeLoadError?: boolean;

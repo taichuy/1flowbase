@@ -22,12 +22,29 @@ const pageTabsApi = vi.hoisted(() => ({
 }));
 
 const pageContentApi = vi.hoisted(() => ({
-  frontstagePageContentQueryKey: vi.fn(),
+  frontstagePageContentQueryKey: vi.fn(
+    (workspaceId: string, pageId: string, tabReference: string) => [
+      'frontstage',
+      workspaceId,
+      'pages',
+      pageId,
+      'tabs',
+      tabReference,
+      'content'
+    ]
+  ),
   fetchFrontstagePageContent: vi.fn()
 }));
 
 const blockApi = vi.hoisted(() => ({
   frontstageBlockTreeQueryKeys: {
+    roots: (workspaceId: string, pageId: string, query: unknown) => [
+      'frontstage',
+      workspaceId,
+      pageId,
+      'roots',
+      query
+    ],
     runtimeAssembly: (workspaceId: string, pageId: string, blockId: string) => [
       'frontstage',
       workspaceId,
@@ -36,6 +53,7 @@ const blockApi = vi.hoisted(() => ({
       'runtime-assembly'
     ]
   },
+  fetchFrontstageBlockRoots: vi.fn(),
   fetchFrontstageBlockRuntimeAssembly: vi.fn()
 }));
 
@@ -58,6 +76,7 @@ const pageTreeMutations = vi.hoisted(() => {
 
 const frontStagePageView = vi.hoisted(() => ({
   props: null as null | {
+    blockRoots?: Array<{ block_id: string; tab_id: string }>;
     blockRuntimeAssembly?: { layers: Array<{ block_id: string }> };
     isBlockRuntimeRoute?: boolean;
     isBlockRuntimeLoading?: boolean;
@@ -150,6 +169,7 @@ describe('frontstage topbar root routing', () => {
     resetAuthStore();
     vi.clearAllMocks();
     frontStagePageView.props = null;
+    blockApi.fetchFrontstageBlockRoots.mockResolvedValue([]);
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-123',
       actor: {
@@ -310,6 +330,88 @@ describe('frontstage topbar root routing', () => {
     });
     await waitFor(() => {
       expect(window.location.pathname).toBe('/sales/pages/page-top-level');
+    });
+  });
+
+  test('keeps the page URL and loads roots from the active tab', async () => {
+    const defaultTab = {
+      id: 'tab-overview',
+      page_id: 'page-top-level',
+      title: 'Overview',
+      rank: '001000',
+      is_default: true,
+      route_segment: null,
+      document_root_uid: 'root-overview'
+    };
+    const roots = [
+      {
+        block_id: 'root-block',
+        tab_id: 'tab-overview'
+      }
+    ];
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([defaultTab]);
+    pageContentApi.fetchFrontstagePageContent.mockResolvedValue({
+      page: { id: 'page-top-level' },
+      tab: defaultTab,
+      document: { rootUid: 'root-overview', payload: {} }
+    });
+    blockApi.fetchFrontstageBlockRoots.mockResolvedValue(roots);
+    window.history.pushState({}, '', '/sales/pages/page-top-level');
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(frontStagePageView.props?.blockRoots).toEqual(roots);
+    });
+    expect(blockApi.fetchFrontstageBlockRoots).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-top-level',
+      { tab_id: 'tab-overview' }
+    );
+    expect(window.location.pathname).toBe('/sales/pages/page-top-level');
+  });
+
+  test('resolves a non-default tab route segment before loading roots', async () => {
+    const analyticsTab = {
+      id: 'tab-analytics',
+      page_id: 'page-top-level',
+      title: 'Analytics',
+      rank: '002000',
+      is_default: false,
+      route_segment: 'analytics',
+      document_root_uid: 'root-analytics'
+    };
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([analyticsTab]);
+    pageContentApi.fetchFrontstagePageContent.mockResolvedValue({
+      page: { id: 'page-top-level' },
+      tab: analyticsTab,
+      document: { rootUid: 'root-analytics', payload: {} }
+    });
+    blockApi.fetchFrontstageBlockRoots.mockResolvedValue([]);
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level/tabs/analytics'
+    );
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(blockApi.fetchFrontstageBlockRoots).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-top-level',
+        { tab_id: 'tab-analytics' }
+      );
     });
   });
 

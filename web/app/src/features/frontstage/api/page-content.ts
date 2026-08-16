@@ -1,10 +1,8 @@
 import {
-  createFrontstageBlock,
   getFrontstagePageTabDetail,
   saveFrontstageTabDocument,
   type ConsoleFrontstagePageDetail,
-  type ConsoleFrontstagePageNode,
-  type CreateFrontstageBlockInput as CreateFrontstageBlockRequest
+  type ConsoleFrontstagePageNode
 } from '@1flowbase/api-client';
 
 import { getFrontstageApiBaseUrl } from './page-tree';
@@ -45,15 +43,22 @@ export interface SaveFrontstageTabDocumentInput {
   payload: unknown;
 }
 
-export type CreateFrontstageBlockInput = CreateFrontstageBlockRequest;
-
 type FrontstagePageDetailDto = ConsoleFrontstagePageDetail;
 
 export const frontstagePageContentQueryKey = (
   workspaceId: string,
   pageId: string,
   tabId: string
-) => ['frontstage', workspaceId, 'pages', pageId, 'tabs', tabId, 'content'] as const;
+) =>
+  [
+    'frontstage',
+    workspaceId,
+    'pages',
+    pageId,
+    'tabs',
+    tabId,
+    'content'
+  ] as const;
 
 function mapFrontstagePageNode(
   page: ConsoleFrontstagePageNode
@@ -120,25 +125,6 @@ export async function saveFrontstagePageContent(
   csrfToken: string
 ): Promise<FrontstagePageContent> {
   const detail = await saveFrontstageTabDocument(
-    workspaceId,
-    pageId,
-    tabId,
-    input,
-    csrfToken,
-    getFrontstageApiBaseUrl()
-  );
-
-  return mapFrontstagePageContent(detail);
-}
-
-export async function createFrontstagePageBlock(
-  workspaceId: string,
-  pageId: string,
-  tabId: string,
-  input: CreateFrontstageBlockInput,
-  csrfToken: string
-): Promise<FrontstagePageContent> {
-  const detail = await createFrontstageBlock(
     workspaceId,
     pageId,
     tabId,

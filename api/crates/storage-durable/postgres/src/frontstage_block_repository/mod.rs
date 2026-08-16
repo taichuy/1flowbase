@@ -9,7 +9,7 @@ use control_plane::{
         DeleteFrontstageBlockSubtreeInput, FrontstageBlockPosition,
         FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
         MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
-        UpdateFrontstageBlockNodeInput,
+        UpdateFrontstageBlockDescriptorsInput, UpdateFrontstageBlockNodeInput,
     },
 };
 use runtime_core::{
@@ -18,11 +18,11 @@ use runtime_core::{
         Exposure, Plane, ResourceDescriptor, ResourceKind, TenantScope, TrustLevel,
     },
     runtime_record_repository::{
-        OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeCommandError,
-        OrderedTreeCreateInput, OrderedTreeCreatePosition, OrderedTreeDescendantsInput,
-        OrderedTreeLeafDeleteInput, OrderedTreeMoveInput, OrderedTreeMovePosition,
-        OrderedTreeNodeInput, OrderedTreeQueryError, OrderedTreeQueryRepository,
-        OrderedTreeSearchInput, OrderedTreeSubtreeDeleteInput, OrderedTreeSubtreeImpactInput,
+        OrderedTreeChildrenInput, OrderedTreeCommandError, OrderedTreeCreateInput,
+        OrderedTreeCreatePosition, OrderedTreeDescendantsInput, OrderedTreeLeafDeleteInput,
+        OrderedTreeMoveInput, OrderedTreeMovePosition, OrderedTreeNodeInput, OrderedTreeQueryError,
+        OrderedTreeQueryRepository, OrderedTreeSearchInput, OrderedTreeSubtreeDeleteInput,
+        OrderedTreeSubtreeImpactInput,
     },
 };
 use serde_json::{json, Map, Value};
@@ -755,26 +755,32 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
+        tab_id: Uuid,
         limit: u32,
-    ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        let metadata = frontstage_block_summary_metadata(workspace_id);
-        let projections = OrderedTreeQueryRepository::list_ordered_tree_roots(
-            self,
-            &metadata,
-            OrderedTreeBoundedListInput {
-                scope_id: workspace_id,
-                tree_partition_id: page_id,
-                result_limit: limit,
-            },
-        )
+    ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
+        let rows = sqlx::query(&format!(
+            r#"
+            select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
+            from frontstage_block_nodes node
+            left join frontstage_block_nodes parent
+              on parent.scope_id = node.scope_id
+             and parent.tree_partition_id = node.tree_partition_id
+             and parent.id = node.parent_id
+            where node.scope_id = $1
+              and node.tree_partition_id = $2
+              and node.tab_id = $3
+              and node.parent_id is null
+            order by node.sibling_rank collate "C", node.id
+            limit $4
+            "#,
+        ))
+        .bind(workspace_id)
+        .bind(page_id)
+        .bind(tab_id)
+        .bind(i64::from(limit))
+        .fetch_all(self.pool())
         .await?;
-        map_node_records(
-            self,
-            workspace_id,
-            page_id,
-            projections.into_iter().map(|projection| projection.record),
-        )
-        .await
+        rows.iter().map(map_record).collect()
     }
 
     async fn list_frontstage_block_children(
@@ -921,6 +927,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
+        tab_id: Uuid,
         query: &str,
         limit: u32,
     ) -> Result<Vec<domain::FrontstageBlockSearchResult>> {
@@ -959,7 +966,7 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         projections
             .into_iter()
             .zip(summaries)
-            .filter(|(projection, _)| projection.is_match)
+            .filter(|(projection, summary)| projection.is_match && summary.tab_id == tab_id)
             .map(|(_, summary)| {
                 let mut ancestors = Vec::new();
                 let mut current = summary.parent_internal_id;
@@ -1087,6 +1094,80 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
                 .ok_or(ControlPlaneError::NotFound("frontstage_block_node"))?;
         tx.commit().await?;
         Ok(record)
+    }
+
+    async fn update_frontstage_block_descriptors(
+        &self,
+        input: &UpdateFrontstageBlockDescriptorsInput,
+    ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
+        validate_actor_audit(input.workspace_id, input.actor_user_id, &input.audit_log)?;
+        if input.updates.is_empty()
+            || input
+                .updates
+                .iter()
+                .any(|item| !item.runtime_descriptor.is_object())
+        {
+            return Err(ControlPlaneError::InvalidInput("frontstage_block_descriptors").into());
+        }
+        let block_ids = input
+            .updates
+            .iter()
+            .map(|item| item.block_id.as_str())
+            .collect::<Vec<_>>();
+        let mut tx = self.pool().begin().await?;
+        let locked_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            select block_id
+            from frontstage_block_nodes
+            where scope_id = $1 and tree_partition_id = $2 and tab_id = $3
+              and block_id = any($4)
+            for update
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.page_id)
+        .bind(input.tab_id)
+        .bind(&block_ids)
+        .fetch_all(&mut *tx)
+        .await?;
+        if locked_ids.len() != input.updates.len() {
+            return Err(ControlPlaneError::NotFound("frontstage_block_node").into());
+        }
+
+        for item in &input.updates {
+            sqlx::query(
+                r#"
+                update frontstage_block_nodes
+                set runtime_descriptor = $4, updated_by = $5, updated_at = now()
+                where scope_id = $1 and tree_partition_id = $2 and tab_id = $3
+                  and block_id = $6
+                "#,
+            )
+            .bind(input.workspace_id)
+            .bind(input.page_id)
+            .bind(input.tab_id)
+            .bind(&item.runtime_descriptor)
+            .bind(input.actor_user_id)
+            .bind(&item.block_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        insert_audit(&mut tx, &input.audit_log).await?;
+        let mut records = Vec::with_capacity(input.updates.len());
+        for item in &input.updates {
+            records.push(
+                get_record_in_transaction(
+                    &mut tx,
+                    input.workspace_id,
+                    input.page_id,
+                    &item.block_id,
+                )
+                .await?
+                .ok_or(ControlPlaneError::NotFound("frontstage_block_node"))?,
+            );
+        }
+        tx.commit().await?;
+        Ok(records)
     }
 
     async fn save_frontstage_block_node_code(

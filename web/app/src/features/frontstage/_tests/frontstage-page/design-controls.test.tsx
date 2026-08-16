@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
+import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { useState } from 'react';
 import { expect, vi } from 'vitest';
 
@@ -16,10 +17,10 @@ import {
   useFrontstageDesignModeStore
 } from '../../../../state/frontstage-design-mode-store';
 import type {
-  CreateFrontstageBlockInput,
   FrontstagePageContent,
   SaveFrontstageTabDocumentInput
 } from '../../api/page-content';
+
 import {
   createFrontstagePageContentFixture,
   type FrontstagePageContentFixtureOverrides
@@ -40,9 +41,6 @@ const pageContentSaveHook = vi.hoisted(() => ({
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
 }));
-const blockCodeHook = vi.hoisted(() => ({
-  useFrontstageBlockCode: vi.fn()
-}));
 const dataCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageDataCapabilities: vi.fn()
 }));
@@ -52,25 +50,10 @@ const runtimeSessionsHook = vi.hoisted(() => ({
     retryBlock: vi.fn()
   }))
 }));
-const blockCodeApi = vi.hoisted(() => ({
-  fetchFrontstageBlockCode: vi.fn(
-    (_workspaceId: string, pageId: string, codeRef: string) =>
-      Promise.resolve({ pageId, codeRef, code: 'export default {}' })
-  ),
-  frontstageBlockCodeQueryKey: vi.fn(
-    (workspaceId: string, pageId: string, codeRef: string) =>
-      [
-        'frontstage',
-        workspaceId,
-        'pages',
-        pageId,
-        'block-code',
-        codeRef
-      ] as const
-  ),
-  saveFrontstageBlockCode: vi.fn()
-}));
 const blockTreeApi = vi.hoisted(() => ({
+  createFrontstageBlockNode: vi.fn(),
+  updateFrontstageBlockDescriptors: vi.fn(),
+  updateFrontstageBlockNode: vi.fn(),
   fetchFrontstageBlockNode: vi.fn(),
   fetchFrontstageBlockNodeCode: vi.fn(),
   saveFrontstageBlockNodeCode: vi.fn(),
@@ -114,7 +97,6 @@ vi.mock(
   () => pageContentSaveHook
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
-vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-data-capabilities',
   () => dataCapabilitiesHook
@@ -123,7 +105,6 @@ vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
-vi.mock('../../api/block-code', () => blockCodeApi);
 vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
 vi.mock('../../components/jsx-studio/JsxStudioRunPanel', () => ({
@@ -154,7 +135,6 @@ type TestFrontStageTreeNode = {
 
 type FrontstagePageContentSaveState = {
   save: ReturnType<typeof vi.fn>;
-  createBlock: ReturnType<typeof vi.fn>;
   saving: boolean;
   isPending: boolean;
   error: Error | null;
@@ -274,6 +254,39 @@ function FrontStagePageHarness({
   const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
     initialPageTree ?? []
   );
+  const fixtureBlocks =
+    pageContent?.document.payload !== null &&
+    typeof pageContent?.document.payload === 'object' &&
+    !Array.isArray(pageContent.document.payload) &&
+    Array.isArray(
+      (pageContent.document.payload as Record<string, unknown>).blocks
+    )
+      ? ((pageContent.document.payload as Record<string, unknown>)
+          .blocks as Array<Record<string, unknown>>)
+      : [];
+  const blockRoots = fixtureBlocks.map(
+    (block, index): ConsoleFrontstageBlockNode => ({
+      block_id: String(block.id),
+      workspace_id: workspaceId,
+      page_id: pageId ?? 'page-1',
+      tab_id: tabId ?? pageContent?.tab.id ?? 'tab-1',
+      parent_block_id: null,
+      rank: String(index + 1).padStart(6, '0'),
+      presentation: 'page',
+      title: typeof block.title === 'string' ? block.title : null,
+      description: null,
+      schema_version: 1,
+      code_ref:
+        typeof block.codeRef === 'string'
+          ? block.codeRef
+          : `frontstage.block.${String(block.id)}`,
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: block,
+      created_at: '2026-08-16T00:00:00Z',
+      updated_at: '2026-08-16T00:00:00Z'
+    })
+  );
 
   return (
     <FrontStagePage
@@ -284,6 +297,7 @@ function FrontStagePageHarness({
       onNavigateTab={onNavigateTab}
       initialPageTree={pageTree}
       pageContent={pageContent}
+      blockRoots={blockRoots}
       isPageContentLoading={isPageContentLoading}
       hasPageContentLoadError={hasPageContentLoadError}
       onCreateGroupNode={(input) => {
@@ -378,11 +392,6 @@ function mockPageContentSaveState(
     save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
       Promise.resolve(createSavedPageContentFromInput(input))
     ),
-    createBlock: vi.fn((input: CreateFrontstageBlockInput) =>
-      Promise.resolve(
-        createSavedPageContentFromInput({ payload: input.payload })
-      )
-    ),
     saving: false,
     isPending: false,
     error: null,
@@ -445,40 +454,12 @@ function mockFrontstageBlockCatalog(
   });
 }
 
-function mockFrontstageBlockCode() {
-  blockCodeHook.useFrontstageBlockCode.mockReturnValue({
-    code: '',
-    draft: '',
-    dirty: false,
-    loading: false,
-    saving: false,
-    error: null,
-    setDraft: vi.fn(),
-    reset: vi.fn(),
-    save: vi.fn()
-  });
-}
-
 function mockFrontstageDataCapabilities() {
   dataCapabilitiesHook.useFrontstageDataCapabilities.mockReturnValue({
     data: { queries: [], actions: [], models: [] },
     loading: false,
     error: null
   });
-}
-
-function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
-  const payload = input.payload;
-  if (typeof payload !== 'object' || payload === null) {
-    throw new Error('root payload must be an object');
-  }
-
-  const blocks = (payload as { blocks?: unknown }).blocks;
-  if (!Array.isArray(blocks)) {
-    throw new Error('root payload blocks must be an array');
-  }
-
-  return blocks as Array<Record<string, unknown>>;
 }
 
 describe('FrontStagePage - design controls', () => {
@@ -488,7 +469,6 @@ describe('FrontStagePage - design controls', () => {
     vi.clearAllMocks();
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
-    mockFrontstageBlockCode();
     mockFrontstageDataCapabilities();
     pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
       {
@@ -500,11 +480,34 @@ describe('FrontStagePage - design controls', () => {
         document_root_uid: 'frontstage.tab.tab-1.root'
       }
     ]);
-    blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
-      pageId: 'page-1',
-      codeRef: 'frontstage-js-block-1-code',
-      code: 'saved template'
+    blockTreeApi.createFrontstageBlockNode.mockResolvedValue({
+      block_id: 'created-root-block',
+      workspace_id: 'workspace-1',
+      page_id: 'page-1',
+      tab_id: 'tab-1',
+      parent_block_id: null,
+      rank: '001000',
+      presentation: 'page',
+      title: 'Created block',
+      description: null,
+      schema_version: 1,
+      code_ref: 'frontstage.block.created-root-block',
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: {},
+      created_at: '2026-08-16T00:00:00Z',
+      updated_at: '2026-08-16T00:00:00Z'
     });
+    blockTreeApi.updateFrontstageBlockDescriptors.mockResolvedValue([]);
+    blockTreeApi.updateFrontstageBlockNode.mockImplementation(
+      async (_workspaceId: string, _pageId: string, blockId: string) => ({
+        block_id: blockId,
+        workspace_id: 'workspace-1',
+        page_id: 'page-1',
+        tab_id: 'tab-1',
+        parent_block_id: null
+      })
+    );
     blockTreeApi.fetchFrontstageBlockNode.mockResolvedValue({
       block_id: 'orders-block',
       workspace_id: 'workspace-1',
@@ -1009,6 +1012,7 @@ describe('FrontStagePage - design controls', () => {
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1018,7 +1022,9 @@ describe('FrontStagePage - design controls', () => {
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
-    await waitFor(() => expect(saveState.createBlock).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledOnce()
+    );
     expect(
       screen.queryByRole('dialog', { name: '新增区块' })
     ).not.toBeInTheDocument();
@@ -1027,48 +1033,36 @@ describe('FrontStagePage - design controls', () => {
       pageContentSaveHook.useFrontstagePageContentSave
     ).toHaveBeenLastCalledWith({
       workspaceId: 'workspace-1',
-      pageId: 'page-1'
+      pageId: 'page-1',
+      tabId: 'tab-1'
     });
-
-    const [createInput] = saveState.createBlock.mock.calls[0] as [
-      CreateFrontstageBlockInput
-    ];
-    const [block] = getSavedBlocks(createInput);
-
-    expect(block).toMatchObject({
-      renderer_version: 'v1',
-      catalog: {
-        providerCode: 'third-party',
-        installationId: 'third-party-installation'
-      },
-      contribution: {
-        pluginId: 'third-party-reports',
-        pluginVersion: '3.1.0',
-        code: 'report-block'
-      },
-      props: {},
-      'x-layout': {
-        order: 0,
-        region: 'main'
-      },
-      runtime: {
-        kind: 'native_react',
-        entry: 'index.js',
-        hint: 'native_react',
-        code_template_version: '3.1.0',
-        code_template_language: 'tsx'
-      }
-    });
-    expect(block.id).toMatch(/^frontstage-js-block-[0-9a-f-]{36}$/);
-    expect(block.codeRef).toBe(`${String(block.id)}-code`);
-    expect(block).not.toHaveProperty('layout');
-    expect(createInput).toEqual(
+    expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
       expect.objectContaining({
-        payload: createInput.payload,
-        code_ref: block.codeRef,
+        tab_id: 'tab-1',
+        parent_block_id: null,
         source_code: selectedTemplate,
-        dependency_lock: []
-      })
+        dependency_lock: [],
+        runtime_descriptor: expect.objectContaining({
+          catalog: {
+            providerCode: 'third-party',
+            installationId: 'third-party-installation'
+          },
+          contribution: {
+            pluginId: 'third-party-reports',
+            pluginVersion: '3.1.0',
+            code: 'report-block'
+          },
+          props: {},
+          'x-layout': expect.objectContaining({ order: 0 }),
+          runtime: expect.objectContaining({
+            kind: 'native_react',
+            entry: 'index.js'
+          })
+        })
+      }),
+      'csrf-123'
     );
   });
 
@@ -1083,6 +1077,7 @@ describe('FrontStagePage - design controls', () => {
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1096,8 +1091,7 @@ describe('FrontStagePage - design controls', () => {
       await screen.findByText('Catalog entry 缺少代码模板')
     ).toBeInTheDocument();
     expect(saveState.save).not.toHaveBeenCalled();
-    expect(saveState.createBlock).not.toHaveBeenCalled();
-    expect(blockCodeApi.saveFrontstageBlockCode).not.toHaveBeenCalled();
+    expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
   });
 
   test('R8-AC-004 shows Catalog permission failures without a fallback', async () => {
@@ -1111,6 +1105,7 @@ describe('FrontStagePage - design controls', () => {
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1121,8 +1116,7 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
     expect(await screen.findByText('Catalog forbidden')).toBeInTheDocument();
-    expect(saveState.createBlock).not.toHaveBeenCalled();
-    expect(blockCodeApi.saveFrontstageBlockCode).not.toHaveBeenCalled();
+    expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -1136,33 +1130,34 @@ describe('FrontStagePage - design controls', () => {
       entries: [createCatalogEntry(), createCatalogEntry({ id: 'second' })],
       message: '区块目录加载失败'
     }
-  ])('R8-AC-004 rejects $label without choosing a fallback', async ({
-    entries,
-    message
-  }) => {
-    authenticate(['frontstage.page.design']);
-    const saveState = mockPageContentSaveState();
-    mockFrontstageBlockCatalog(entries);
+  ])(
+    'R8-AC-004 rejects $label without choosing a fallback',
+    async ({ entries, message }) => {
+      authenticate(['frontstage.page.design']);
+      const saveState = mockPageContentSaveState();
+      mockFrontstageBlockCatalog(entries);
 
-    render(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent()}
-        />
-      </AppProviders>
-    );
+      render(
+        <AppProviders>
+          <FrontStagePageHarness
+            pageId="page-1"
+            tabId="tab-1"
+            initialPageTree={[createBackendPage('page-1')]}
+            pageContent={createPageContent()}
+          />
+        </AppProviders>
+      );
 
-    activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+      activateDesignMode();
+      fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
-    expect(await screen.findByText(message)).toBeInTheDocument();
-    expect(saveState.createBlock).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole('dialog', { name: '新增区块' })
-    ).not.toBeInTheDocument();
-  });
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('dialog', { name: '新增区块' })
+      ).not.toBeInTheDocument();
+    }
+  );
 
   test('disables Add Block while page content is saving', () => {
     authenticate(['frontstage.page.design']);
@@ -1172,6 +1167,7 @@ describe('FrontStagePage - design controls', () => {
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1192,6 +1188,7 @@ describe('FrontStagePage - design controls', () => {
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1206,19 +1203,24 @@ describe('FrontStagePage - design controls', () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     let completeCreation: (() => void) | undefined;
-    const createBlock = vi.fn(
-      (input: CreateFrontstageBlockInput) =>
-        new Promise<FrontstagePageContent>((resolve) => {
+    blockTreeApi.createFrontstageBlockNode.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
           completeCreation = () =>
-            resolve(createSavedPageContentFromInput({ payload: input.payload }));
+            resolve({
+              block_id: 'created-root-block',
+              tab_id: 'tab-1',
+              parent_block_id: null
+            });
         })
     );
-    mockPageContentSaveState({ createBlock });
+    mockPageContentSaveState();
 
     render(
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1230,7 +1232,9 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(createButton);
     fireEvent.click(createButton);
 
-    await waitFor(() => expect(createBlock).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledOnce()
+    );
     expect(createButton).toBeDisabled();
     await act(async () => completeCreation?.());
   });
@@ -1238,14 +1242,16 @@ describe('FrontStagePage - design controls', () => {
   test('shows a clear Add Block save error in design mode', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
-    mockPageContentSaveState({
-      createBlock: vi.fn(() => Promise.reject(new Error('request failed')))
-    });
+    mockPageContentSaveState();
+    blockTreeApi.createFrontstageBlockNode.mockRejectedValueOnce(
+      new Error('request failed')
+    );
 
     render(
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1262,14 +1268,16 @@ describe('FrontStagePage - design controls', () => {
   test('keeps the previous document when atomic block creation fails', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
-    const saveState = mockPageContentSaveState({
-      createBlock: vi.fn(() => Promise.reject(new Error('create failed')))
-    });
+    const saveState = mockPageContentSaveState();
+    blockTreeApi.createFrontstageBlockNode.mockRejectedValueOnce(
+      new Error('create failed')
+    );
 
     render(
       <AppProviders>
         <FrontStagePageHarness
           pageId="page-1"
+          tabId="tab-1"
           initialPageTree={[createBackendPage('page-1')]}
           pageContent={createPageContent()}
         />
@@ -1281,9 +1289,9 @@ describe('FrontStagePage - design controls', () => {
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
     expect(screen.getByText('create failed')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(saveState.createBlock).toHaveBeenCalledTimes(1);
-    });
+    await waitFor(() =>
+      expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledTimes(1)
+    );
     expect(saveState.save).not.toHaveBeenCalled();
     expect(screen.queryByText('1 个区块')).not.toBeInTheDocument();
   });
@@ -1316,7 +1324,7 @@ describe('FrontStagePage - design controls', () => {
   });
 
   test(
-    'renders and selects the new block after Add Block save succeeds',
+    'creates the root through Block Tree without writing the Page document',
     async () => {
       authenticate(['frontstage.page.design']);
       mockFrontstageBlockCatalog([createCatalogEntry()]);
@@ -1326,6 +1334,7 @@ describe('FrontStagePage - design controls', () => {
         <AppProviders>
           <FrontStagePageHarness
             pageId="page-1"
+            tabId="tab-1"
             initialPageTree={[createBackendPage('page-1')]}
             pageContent={createPageContent()}
           />
@@ -1335,24 +1344,10 @@ describe('FrontStagePage - design controls', () => {
       activateDesignMode();
       fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
 
-      await waitFor(() => {
-        expect(saveState.createBlock).toHaveBeenCalledTimes(1);
-      });
-      const [createInput] = saveState.createBlock.mock.calls[0] as [
-        CreateFrontstageBlockInput
-      ];
-      const [createdBlock] = getSavedBlocks(createInput);
-      const createdBlockId = String(createdBlock?.id);
-
-      await waitFor(() => {
-        expect(
-          screen.getByTestId(`block-slot-${createdBlockId}`)
-        ).toBeInTheDocument();
-      });
-
-      expect(
-        screen.getByRole('button', { name: `区块 ${createdBlockId}` })
-      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledTimes(1)
+      );
+      expect(saveState.save).not.toHaveBeenCalled();
       expect(
         screen.queryByRole('dialog', { name: '区块代码' })
       ).not.toBeInTheDocument();
