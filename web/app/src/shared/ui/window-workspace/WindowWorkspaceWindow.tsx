@@ -41,7 +41,10 @@ export interface WindowWorkspaceWindowProps {
   minHeight?: number;
   minWidth?: number;
   onActivate: () => void;
-  onRectChange?: (rect: WindowWorkspaceRect) => void;
+  onRectChange?: (
+    rect: WindowWorkspaceRect,
+    resizeEdge?: WindowWorkspaceResizeEdge
+  ) => void;
   onInteractionEnd?: (rect: WindowWorkspaceRect) => void;
   rect?: WindowWorkspaceRect;
   resizeClassName?: (edge: WindowWorkspaceResizeEdge) => string | undefined;
@@ -80,7 +83,7 @@ export function WindowWorkspaceWindow({
   currentRectRef.current = currentRect;
   const cleanupRef = useRef<(() => void) | null>(null);
   const commitRect = useCallback(
-    (next: WindowWorkspaceRect) => {
+    (next: WindowWorkspaceRect, resizeEdge?: WindowWorkspaceResizeEdge) => {
       const current = currentRectRef.current;
       if (
         current.left === next.left &&
@@ -91,14 +94,17 @@ export function WindowWorkspaceWindow({
         return;
       }
       currentRectRef.current = next;
-      if (onRectChange) onRectChange(next);
+      if (onRectChange) onRectChange(next, resizeEdge);
       else setLocalRect(next);
     },
     [onRectChange]
   );
   const setRect = useCallback(
-    (next: WindowWorkspaceRect) => {
-      commitRect(clampWindowWorkspaceRect(next, minWidth, minHeight));
+    (next: WindowWorkspaceRect, resizeEdge?: WindowWorkspaceResizeEdge) => {
+      commitRect(
+        clampWindowWorkspaceRect(next, minWidth, minHeight),
+        resizeEdge
+      );
     },
     [commitRect, minHeight, minWidth]
   );
@@ -124,7 +130,8 @@ export function WindowWorkspaceWindow({
       dx: number,
       dy: number,
       start: WindowWorkspaceRect
-    ) => WindowWorkspaceRect
+    ) => WindowWorkspaceRect,
+    resizeEdge?: WindowWorkspaceResizeEdge
   ) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -138,7 +145,10 @@ export function WindowWorkspaceWindow({
     document.body.style.cursor = cursor;
     document.body.style.userSelect = 'none';
     const mousemove = (next: MouseEvent) =>
-      setRect(move(next.clientX - startX, next.clientY - startY, start));
+      setRect(
+        move(next.clientX - startX, next.clientY - startY, start),
+        resizeEdge
+      );
     const cleanup = () => {
       window.removeEventListener('mousemove', mousemove);
       window.removeEventListener('mouseup', cleanup);
@@ -181,7 +191,8 @@ export function WindowWorkspaceWindow({
         if (edge === 'top')
           return { ...start, top: start.top + dy, height: start.height - dy };
         return { ...start, height: start.height + dy };
-      }
+      },
+      edge
     );
 
   const windowZIndex = zIndex ?? (active ? 1051 : 1050);
@@ -209,9 +220,7 @@ export function WindowWorkspaceWindow({
           .filter(Boolean)
           .join(' ')}
       >
-        <WindowWorkspaceOverlayZIndexContext.Provider
-          value={windowZIndex + 1}
-        >
+        <WindowWorkspaceOverlayZIndexContext.Provider value={windowZIndex + 1}>
           {children}
         </WindowWorkspaceOverlayZIndexContext.Provider>
       </div>

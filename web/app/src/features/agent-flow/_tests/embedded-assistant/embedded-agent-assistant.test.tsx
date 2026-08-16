@@ -691,7 +691,7 @@ describe('EmbeddedAgentAssistant', () => {
     expect(controller.signal.aborted).toBe(true);
   });
 
-  test('AC-005 keeps history in a collapsible right sidebar with pane-owned resizing', async () => {
+  test('AC-005 assigns each horizontal resize edge to its nearest pane', async () => {
     render(
       <AppProviders>
         <EmbeddedAgentAssistant />
@@ -709,12 +709,6 @@ describe('EmbeddedAgentAssistant', () => {
     const assistantWindow = screen.getByTestId(
       'embedded-agent-assistant-preview'
     ) as HTMLElement;
-    const windowDragHandle = assistantWindow.querySelector(
-      '.agent-flow-editor__dock-panel-header'
-    ) as HTMLElement;
-    fireEvent.mouseDown(windowDragHandle, { clientX: 1_000, clientY: 80 });
-    fireEvent.mouseMove(window, { clientX: 0, clientY: 80 });
-    fireEvent.mouseUp(window);
     const initialLeft = Number.parseFloat(assistantWindow.style.left);
     const initialWidth = Number.parseFloat(assistantWindow.style.width);
 
@@ -724,7 +718,9 @@ describe('EmbeddedAgentAssistant', () => {
       'embedded-agent-assistant-history'
     );
     await waitFor(() =>
-      expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft)
+      expect(Number.parseFloat(assistantWindow.style.left)).toBeLessThan(
+        initialLeft
+      )
     );
     expect(Number.parseFloat(assistantWindow.style.width)).toBeGreaterThan(
       initialWidth
@@ -734,14 +730,19 @@ describe('EmbeddedAgentAssistant', () => {
       i18nText('appShell', 'auto.assistant_history')
     );
     expect(document.querySelector('.ant-drawer')).not.toBeInTheDocument();
+    expect(
+      historySidebar.compareDocumentPosition(
+        document.querySelector('.agent-flow-editor__debug-console') as Node
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
     const expandedLeft = Number.parseFloat(assistantWindow.style.left);
     const expandedWidth = Number.parseFloat(assistantWindow.style.width);
 
     const resizeHandle = screen.getByTestId(
       'embedded-agent-assistant-history-resize'
     );
-    fireEvent.mouseDown(resizeHandle, { clientX: 340 });
-    fireEvent.mouseMove(window, { clientX: 280 });
+    fireEvent.mouseDown(resizeHandle, { clientX: 280 });
+    fireEvent.mouseMove(window, { clientX: 340 });
     expect(historySidebar).toHaveStyle({ width: '340px' });
     expect(Number.parseFloat(assistantWindow.style.left)).toBe(expandedLeft);
     expect(Number.parseFloat(assistantWindow.style.width)).toBe(expandedWidth);
@@ -750,18 +751,39 @@ describe('EmbeddedAgentAssistant', () => {
 
     const conversationWidth =
       Number.parseFloat(assistantWindow.style.width) - 340 - 12;
-    const rightResizeHandle = screen.getByRole('separator', {
-      name: `${i18nText('appShell', 'auto.assistant')} right`
+    const leftResizeHandle = screen.getByRole('separator', {
+      name: `${i18nText('appShell', 'auto.assistant')} left`
     });
-    fireEvent.mouseDown(rightResizeHandle, { clientX: expandedWidth });
-    fireEvent.mouseMove(window, { clientX: expandedWidth + 60 });
+    fireEvent.mouseDown(leftResizeHandle, { clientX: expandedLeft });
+    fireEvent.mouseMove(window, { clientX: expandedLeft - 60 });
     expect(historySidebar).toHaveStyle({ width: '400px' });
-    expect(Number.parseFloat(assistantWindow.style.left)).toBe(expandedLeft);
+    expect(Number.parseFloat(assistantWindow.style.left)).toBe(
+      expandedLeft - 60
+    );
     expect(Number.parseFloat(assistantWindow.style.width)).toBe(
       expandedWidth + 60
     );
     expect(Number.parseFloat(assistantWindow.style.width) - 400 - 12).toBe(
       conversationWidth
+    );
+    fireEvent.mouseUp(window);
+
+    innerWidthSpy?.mockReturnValue(2_000);
+    const rightResizeHandle = screen.getByRole('separator', {
+      name: `${i18nText('appShell', 'auto.assistant')} right`
+    });
+    const rightEdge = expandedLeft + expandedWidth;
+    fireEvent.mouseDown(rightResizeHandle, { clientX: rightEdge });
+    fireEvent.mouseMove(window, { clientX: rightEdge + 60 });
+    expect(historySidebar).toHaveStyle({ width: '400px' });
+    expect(Number.parseFloat(assistantWindow.style.left)).toBe(
+      expandedLeft - 60
+    );
+    expect(Number.parseFloat(assistantWindow.style.width)).toBe(
+      expandedWidth + 120
+    );
+    expect(Number.parseFloat(assistantWindow.style.width) - 400 - 12).toBe(
+      conversationWidth + 60
     );
     fireEvent.mouseUp(window);
 
@@ -772,7 +794,9 @@ describe('EmbeddedAgentAssistant', () => {
       ).not.toBeInTheDocument()
     );
     expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft);
-    expect(Number.parseFloat(assistantWindow.style.width)).toBe(initialWidth);
+    expect(Number.parseFloat(assistantWindow.style.width)).toBe(
+      initialWidth + 60
+    );
   });
 
   test('AC-005 uses the assistant-owned history view without moving it on narrow screens', async () => {
@@ -802,50 +826,6 @@ describe('EmbeddedAgentAssistant', () => {
     ).toBeInTheDocument();
     expect(document.querySelector('.ant-drawer')).not.toBeInTheDocument();
     expect(assistantWindow.style.left).toBe(initialLeft);
-  });
-
-  test('AC-005 restores both edges after left expansion and right sidebar resizing', async () => {
-    render(
-      <AppProviders>
-        <EmbeddedAgentAssistant />
-      </AppProviders>
-    );
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: i18nText('appShell', 'auto.assistant')
-      })
-    );
-    const assistantWindow = screen.getByTestId(
-      'embedded-agent-assistant-preview'
-    ) as HTMLElement;
-    const initialLeft = Number.parseFloat(assistantWindow.style.left);
-    const initialWidth = Number.parseFloat(assistantWindow.style.width);
-    const history = await screen.findByRole('button', {
-      name: i18nText('appShell', 'auto.assistant_history')
-    });
-    fireEvent.click(history);
-    await screen.findByTestId('embedded-agent-assistant-history');
-    expect(Number.parseFloat(assistantWindow.style.left)).toBeLessThan(
-      initialLeft
-    );
-
-    innerWidthSpy?.mockReturnValue(2_000);
-    const expandedWidth = Number.parseFloat(assistantWindow.style.width);
-    const rightResizeHandle = screen.getByRole('separator', {
-      name: `${i18nText('appShell', 'auto.assistant')} right`
-    });
-    fireEvent.mouseDown(rightResizeHandle, { clientX: expandedWidth });
-    fireEvent.mouseMove(window, { clientX: expandedWidth + 60 });
-    fireEvent.mouseUp(window);
-    fireEvent.click(history);
-
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId('embedded-agent-assistant-history')
-      ).not.toBeInTheDocument()
-    );
-    expect(Number.parseFloat(assistantWindow.style.left)).toBe(initialLeft);
-    expect(Number.parseFloat(assistantWindow.style.width)).toBe(initialWidth);
   });
 
   test('AC-005 switches an open history sidebar to the full assistant view after a narrow resize', async () => {

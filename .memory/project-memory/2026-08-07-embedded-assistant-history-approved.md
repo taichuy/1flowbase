@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置助手历史会话与持久化恢复已批准
-summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 投影为主聊天有序行为叙事，侧栏恢复完整节点卡片。
+summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 投影为主聊天有序行为叙事，左侧运行栏恢复完整节点卡片并按最近 pane owner 缩放。
 keywords:
   - embedded assistant
   - conversation history
@@ -13,8 +13,8 @@ match_when:
   - 处理助手会话恢复、分页、旧运行或会话权限
   - 开始 GitHub issue 1608
 created_at: 2026-08-07 11
-updated_at: 2026-08-16 07
-last_verified_at: 2026-08-16 07
+updated_at: 2026-08-16 08
+last_verified_at: 2026-08-16 08
 decision_policy: verify_before_decision
 status: implemented_pending_user_acceptance
 integration_commit: d845e4a61
@@ -89,3 +89,9 @@ scope:
 - 后端新增 assistant-owned 只读活动查询，按 durable stream `sequence` 返回事件，并强制限定当前 Cookie 用户、workspace、application、`assistant_execution` 与 `embedded_assistant`；外部运行返回 404。
 - 实时事件与历史恢复复用同一事件模型形成两个投影：主聊天是有序行为叙事；侧栏是完整节点状态与详情。通用 Agent Flow Debug Console 保持原行为，仅内置助手的 answer presentation 使用新主内容投影。
 - 桌面仍使用聊天 + 运行过程双栏；窄屏运行过程独占助手窗口。修正实现完成定向 42/42、生产构建与 style-boundary，等待合并后用户人工验收。
+
+## 2026-08-16 双栏边缘缩放语义（用户二次纠正后）
+
+- 桌面结构固定为“左外边缘 → 运行过程侧栏 → 中间分隔线 → 主对话 → 右外边缘”；不得为了调整缩放语义而把运行侧栏移到右侧。
+- 水平拖拽采用 nearest pane owner：左外边缘只增减左侧运行栏，右外边缘只增减右侧主对话，中间分隔线在外层窗口宽度不变时反向分配两栏宽度。
+- 数学不变量：左边缘 `Δsidebar = ΔwindowWidth, Δconversation = 0`；中间 `Δsidebar = ΔdividerX, Δconversation = -ΔdividerX`；右边缘 `Δsidebar = 0, Δconversation = ΔwindowWidth`。

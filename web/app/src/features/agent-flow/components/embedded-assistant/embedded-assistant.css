@@ -25,7 +25,6 @@
 }
 
 .embedded-agent-assistant-preview__conversation {
-  order: 0;
   flex: 1;
   min-height: 0;
 }
@@ -97,7 +96,6 @@
 }
 
 .embedded-agent-assistant-preview__history {
-  order: 1;
   display: flex;
   flex: 0 0 auto;
   flex-direction: row;
@@ -120,7 +118,6 @@
 
 .embedded-agent-assistant-preview__history-resize {
   position: relative;
-  order: -1;
   flex: 0 0 12px;
   width: 12px;
   cursor: col-resize;
