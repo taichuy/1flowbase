@@ -55,6 +55,48 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.embedded-agent-assistant-preview__subtitle,
+.embedded-agent-assistant-preview__conversation-id {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.embedded-agent-assistant-preview__subtitle {
+  max-width: 100%;
+  gap: 0.5rem;
+}
+
+.embedded-agent-assistant-preview__flow-name,
+.embedded-agent-assistant-preview__conversation-id-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-agent-assistant-preview__flow-name {
+  flex: 0 1 auto;
+}
+
+.embedded-agent-assistant-preview__conversation-id {
+  flex: 1 1 auto;
+  color: var(--text-tertiary);
+}
+
+.embedded-agent-assistant-preview__conversation-id-value {
+  flex: 1 1 auto;
+}
+
+.embedded-agent-assistant-preview__conversation-id-copy.ant-btn {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  color: var(--text-tertiary);
+}
+
 .embedded-agent-assistant-preview
   .agent-flow-editor__debug-composer-send.ant-btn {
   border-color: transparent !important;
