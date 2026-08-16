@@ -611,8 +611,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
             }))
             .bind(json!({
                 "version": 1,
-                "root_uid": tab.document_root_uid,
-                "blocks": []
+                "root_uid": tab.document_root_uid
             }))
             .bind(input.actor_user_id)
             .execute(&mut *tx)
@@ -655,7 +654,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .bind(
             json!({"uid": input.document_root_uid, "kind": "frontstage.tab.root", "children": []}),
         )
-        .bind(json!({"version": 1, "root_uid": input.document_root_uid, "blocks": []}))
+        .bind(json!({"version": 1, "root_uid": input.document_root_uid}))
         .bind(input.actor_user_id)
         .execute(&mut *tx)
         .await?;

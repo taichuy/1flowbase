@@ -136,6 +136,48 @@ async fn block_fixture() -> (PgPool, PgControlPlaneStore, Uuid, Uuid) {
 }
 
 #[tokio::test]
+async fn new_page_and_tab_documents_do_not_restore_legacy_blocks() {
+    let (pool, store, workspace_id, actor_user_id) = block_fixture().await;
+    let (page_id, default_tab_id) =
+        create_page_and_tab(&store, workspace_id, actor_user_id, "canonical-documents").await;
+    let second_tab_id = Uuid::now_v7();
+    store
+        .create_frontstage_page_tab(&CreateFrontstagePageTabInput {
+            id: second_tab_id,
+            workspace_id,
+            actor_user_id,
+            page_id,
+            title: Some("Second".to_owned()),
+            rank: "k".to_owned(),
+            is_default: false,
+            route_segment: Some("second".to_owned()),
+            document_root_uid: format!("frontstage.tab.{second_tab_id}.root"),
+        })
+        .await
+        .unwrap();
+
+    let payloads = sqlx::query_scalar::<_, Value>(
+        "select document_payload from frontstage_page_schemas where workspace_id = $1 and tab_id = any($2) order by tab_id",
+    )
+    .bind(workspace_id)
+    .bind(vec![default_tab_id, second_tab_id])
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(payloads.len(), 2);
+    assert!(payloads
+        .iter()
+        .all(|payload| payload.get("blocks").is_none()));
+    assert!(payloads
+        .iter()
+        .all(|payload| payload["version"] == json!(1)));
+    assert!(payloads.iter().any(|payload| {
+        payload["root_uid"] == json!(format!("frontstage.tab.{default_tab_id}.root"))
+    }));
+}
+
+#[tokio::test]
 async fn descriptor_batch_is_atomic_and_tab_scoped() {
     let (_pool, store, workspace_id, actor_user_id) = block_fixture().await;
     let (page_id, tab_id) =
