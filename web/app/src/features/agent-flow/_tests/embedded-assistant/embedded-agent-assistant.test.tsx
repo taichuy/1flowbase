@@ -55,6 +55,12 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   };
 });
 
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value }: { value: string }) => (
+    <pre data-testid="mock-json-editor">{value}</pre>
+  )
+}));
+
 import { AppProviders } from '../../../../app/AppProviders';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
 import { AssistantRunTimeline } from '../../components/embedded-assistant/AssistantRunActivityPanel';
@@ -1545,6 +1551,10 @@ describe('EmbeddedAgentAssistant', () => {
     const reasoningTitles = await screen.findAllByText(
       i18nText('agentFlow', 'auto.think')
     );
+    expect(reasoningTitles).toHaveLength(2);
+    reasoningTitles.forEach((title) => {
+      expect(title.closest('.ant-think')).not.toBeNull();
+    });
     fireEvent.click(reasoningTitles[0] as HTMLElement);
     fireEvent.click(reasoningTitles[1] as HTMLElement);
     const firstReasoning = await screen.findByText('先检查配置');
@@ -1569,11 +1579,30 @@ describe('EmbeddedAgentAssistant', () => {
       Node.DOCUMENT_POSITION_FOLLOWING
     );
     fireEvent.click(firstTool);
+    const inputTitle = i18nText('agentFlow', 'auto.input');
+    const outputTitle = i18nText('appShell', 'auto.assistant_activity_output');
+    const inputJson = screen.getByLabelText(`${inputTitle} JSON`);
+    const toolDetail = inputJson.closest(
+      '.embedded-agent-assistant-activity__tool-detail'
+    );
+    expect(toolDetail).not.toBeNull();
     expect(
-      screen.getByText(i18nText('agentFlow', 'auto.input'))
-    ).toBeInTheDocument();
-    expect(screen.getByText(/"path": "\/后台设置"/)).toBeInTheDocument();
-    expect(reasoningTitles).toHaveLength(2);
+      within(toolDetail as HTMLElement).queryByText(inputTitle)
+    ).not.toBeInTheDocument();
+    expect(
+      within(toolDetail as HTMLElement).queryByText(outputTitle)
+    ).not.toBeInTheDocument();
+    expect(inputJson).toHaveTextContent('"path": "/后台设置"');
+    expect(screen.getByLabelText(`${outputTitle} JSON`)).toHaveTextContent(
+      '"count": 2'
+    );
+    expect(screen.queryByTestId('mock-json-editor')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: inputTitle }));
+    expect(await screen.findByTestId('mock-json-editor')).toHaveTextContent(
+      '"path": "/后台设置"'
+    );
+    fireEvent.click(screen.getByRole('button', { name: outputTitle }));
+    expect(await screen.findAllByTestId('mock-json-editor')).toHaveLength(2);
 
     await act(async () => {
       finishRun?.();

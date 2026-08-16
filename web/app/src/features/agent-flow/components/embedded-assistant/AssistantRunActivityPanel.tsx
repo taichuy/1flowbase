@@ -1,8 +1,8 @@
-import { ThoughtChain } from '@ant-design/x';
+import { Think, ThoughtChain } from '@ant-design/x';
 import type { ThoughtChainItemType } from '@ant-design/x';
 import { ToolOutlined } from '@ant-design/icons';
 import { Alert, Divider, Empty, Spin } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   getConsoleAssistantRunActivity,
   normalizeConsoleRuntimeEvent,
@@ -15,6 +15,7 @@ import type {
   AgentFlowTraceItem
 } from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
+import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
 import { parseAssistantContent } from '../../lib/debug-console/assistant-content';
 import {
   applyDebugStreamEventToTrace,
@@ -220,23 +221,26 @@ function toolSummary(entry: ActivityEntry) {
 }
 
 function toolDetail(entry: ActivityEntry) {
+  const inputTitle = i18nText('agentFlow', 'auto.input');
+  const outputTitle = i18nText('appShell', 'auto.assistant_activity_output');
+
   return (
     <div className="embedded-agent-assistant-activity__tool-detail">
-      <div className="embedded-agent-assistant-activity__detail-label">
-        {i18nText('agentFlow', 'auto.input')}
-      </div>
-      <pre className="embedded-agent-assistant-activity__payload">
-        {JSON.stringify(entry.input ?? {}, null, 2)}
-      </pre>
+      <JsonPreviewBlock
+        defaultCollapsed
+        displayTitle=""
+        height="160px"
+        title={inputTitle}
+        value={entry.input ?? {}}
+      />
       {entry.output !== null && entry.output !== undefined ? (
-        <>
-          <div className="embedded-agent-assistant-activity__detail-label">
-            {i18nText('appShell', 'auto.assistant_activity_output')}
-          </div>
-          <pre className="embedded-agent-assistant-activity__payload">
-            {JSON.stringify(entry.output, null, 2)}
-          </pre>
-        </>
+        <JsonPreviewBlock
+          defaultCollapsed
+          displayTitle=""
+          height="160px"
+          title={outputTitle}
+          value={entry.output}
+        />
       ) : null}
       {entry.durationMs !== null && entry.durationMs !== undefined ? (
         <div className="embedded-agent-assistant-activity__tool-duration">
@@ -249,10 +253,7 @@ function toolDetail(entry: ActivityEntry) {
   );
 }
 
-function activityThoughtItem(
-  entry: ActivityEntry,
-  reasoningCollapsible: boolean
-): ThoughtChainItemType {
+function activityThoughtItem(entry: ActivityEntry): ThoughtChainItemType {
   return {
     key: entry.key,
     icon: entry.kind === 'tool' ? <ToolOutlined /> : undefined,
@@ -266,9 +267,7 @@ function activityThoughtItem(
             : i18nText('appShell', 'auto.assistant_activity_output'),
     status: entry.status,
     blink: entry.loading,
-    collapsible:
-      entry.kind === 'tool' ||
-      (entry.kind === 'reasoning' && reasoningCollapsible),
+    collapsible: entry.kind === 'tool',
     content:
       entry.kind === 'tool' ? (
         toolDetail(entry)
@@ -276,6 +275,65 @@ function activityThoughtItem(
         <DebugMarkdownContent content={entry.text ?? ''} />
       )
   };
+}
+
+function ActivitySequence({
+  entries,
+  reasoningCollapsible
+}: {
+  entries: ActivityEntry[];
+  reasoningCollapsible: boolean;
+}) {
+  const blocks: ReactNode[] = [];
+  let chainEntries: ActivityEntry[] = [];
+
+  const flushChain = () => {
+    if (chainEntries.length === 0) {
+      return;
+    }
+    const currentEntries = chainEntries;
+    chainEntries = [];
+    blocks.push(
+      <ThoughtChain
+        key={`chain:${currentEntries[0]?.key}`}
+        items={currentEntries.map(activityThoughtItem)}
+        line
+        rootClassName="embedded-agent-assistant-activity__timeline"
+      />
+    );
+  };
+
+  entries.forEach((entry) => {
+    if (entry.kind !== 'reasoning') {
+      chainEntries.push(entry);
+      return;
+    }
+    flushChain();
+    blocks.push(
+      reasoningCollapsible ? (
+        <Think
+          className="embedded-agent-assistant-activity__think"
+          defaultExpanded={false}
+          key={entry.key}
+          title={i18nText('agentFlow', 'auto.think')}
+        >
+          <DebugMarkdownContent content={entry.text ?? ''} />
+        </Think>
+      ) : (
+        <div
+          className="embedded-agent-assistant-activity__reasoning-content"
+          key={entry.key}
+        >
+          <DebugMarkdownContent content={entry.text ?? ''} />
+        </div>
+      )
+    );
+  });
+  flushChain();
+
+  return (
+    <div className="embedded-agent-assistant-activity__sequence">{blocks}</div>
+  );
 }
 
 async function loadDurableActivity(applicationId: string, runId: string) {
@@ -457,11 +515,7 @@ export function AssistantRunTimeline({
     terminal && lastOutputIndex >= 0
       ? entries.filter((_, index) => index !== lastOutputIndex)
       : entries;
-  const liveItems = entries.map((entry) => activityThoughtItem(entry, true));
-  const processItems = processEntries.map((entry) =>
-    activityThoughtItem(entry, false)
-  );
-  const terminalItems: ThoughtChainItemType[] = processItems.length
+  const terminalItems: ThoughtChainItemType[] = processEntries.length
     ? [
         {
           key: 'terminal-process',
@@ -469,10 +523,9 @@ export function AssistantRunTimeline({
           status: status === 'failed' ? 'error' : 'success',
           collapsible: true,
           content: (
-            <ThoughtChain
-              items={processItems}
-              line
-              rootClassName="embedded-agent-assistant-activity__timeline"
+            <ActivitySequence
+              entries={processEntries}
+              reasoningCollapsible={false}
             />
           )
         }
@@ -513,11 +566,7 @@ export function AssistantRunTimeline({
           ) : null}
         </>
       ) : (
-        <ThoughtChain
-          items={liveItems}
-          line
-          rootClassName="embedded-agent-assistant-activity__timeline"
-        />
+        <ActivitySequence entries={entries} reasoningCollapsible />
       )}
     </div>
   );

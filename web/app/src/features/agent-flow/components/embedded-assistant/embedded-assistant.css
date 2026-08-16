@@ -241,16 +241,25 @@
   min-width: 0;
 }
 
+.embedded-agent-assistant-activity__sequence {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.embedded-agent-assistant-activity__think,
+.embedded-agent-assistant-activity__reasoning-content {
+  min-width: 0;
+}
+
 .embedded-agent-assistant-activity__tool-detail {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
 }
 
-.embedded-agent-assistant-activity__detail-label {
-  color: var(--text-primary);
-  font-size: 0.75rem;
-  font-weight: 600;
+.embedded-agent-assistant-activity__tool-detail .json-preview-block {
+  min-width: 0;
 }
 
 .embedded-agent-assistant-activity__tool-duration {
@@ -264,21 +273,6 @@
 
 .embedded-agent-assistant-node-panel {
   min-width: 0;
-}
-
-.embedded-agent-assistant-activity__payload {
-  max-height: 18rem;
-  overflow: auto;
-  margin: 0;
-  padding: 0.625rem;
-  border-radius: 0.5rem;
-  background: var(--bg-page);
-  color: var(--text-secondary);
-  font-family: var(--font-family-mono);
-  font-size: 0.75rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .embedded-agent-assistant-preview__runtime-menu-row,
