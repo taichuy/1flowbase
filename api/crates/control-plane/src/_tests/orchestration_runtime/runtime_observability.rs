@@ -5,9 +5,27 @@ use control_plane::runtime_observability::{
     coalesce_provider_stream_events, item_kind_for_event, provider_stream_event_type,
 };
 use observability::{RuntimeBusEvent, RuntimeEventBus};
-use plugin_framework::provider_contract::{ProviderMcpCall, ProviderStreamEvent, ProviderToolCall};
+use plugin_framework::provider_contract::{
+    ProviderMcpCall, ProviderOutputProtocolFailure, ProviderStreamEvent, ProviderToolCall,
+};
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+#[test]
+fn output_protocol_failure_has_a_stable_provider_observability_event_type() {
+    assert_eq!(
+        provider_stream_event_type(&ProviderStreamEvent::OutputProtocolFailure {
+            failure: ProviderOutputProtocolFailure {
+                protocol: "dsml".to_string(),
+                error_code: "incomplete_envelope".to_string(),
+                message: "malformed tool-call markup".to_string(),
+                retry_feedback: "emit a complete tool call".to_string(),
+                provider_details: serde_json::json!({}),
+            },
+        }),
+        "output_protocol_failure"
+    );
+}
 
 #[test]
 fn runtime_event_folds_to_debug_stream_part_with_trust_level() {

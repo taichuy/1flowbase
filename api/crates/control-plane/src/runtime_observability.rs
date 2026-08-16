@@ -364,6 +364,7 @@ pub fn provider_stream_event_type(event: &ProviderStreamEvent) -> &'static str {
         ProviderStreamEvent::UsageSnapshot { .. } => "usage_snapshot",
         ProviderStreamEvent::Finish { .. } => "finish",
         ProviderStreamEvent::Error { .. } => "error",
+        ProviderStreamEvent::OutputProtocolFailure { .. } => "output_protocol_failure",
     }
 }
 
