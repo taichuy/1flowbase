@@ -129,8 +129,7 @@ async fn llm_output_payload_keeps_think_tags_in_standard_text_content() {
     assert_eq!(
         trace.debug_payload["assistant_message"]["content_blocks"],
         json!([
-            { "type": "reasoning", "text": "先分析" },
-            { "type": "text", "text": "正式回答" }
+            { "type": "text", "text": "<think>先分析用户问题</think>正式回答" }
         ])
     );
 }
@@ -224,6 +223,13 @@ async fn llm_output_payload_merges_reasoning_deltas_into_dify_style_text() {
     assert!(trace.output_payload.get("reasoning_content").is_none());
     assert!(trace.debug_payload.get("reasoning_content").is_none());
     assert!(trace.output_payload.get("message").is_none());
+    assert_eq!(
+        trace.debug_payload["assistant_message"]["content_blocks"],
+        json!([
+            { "type": "reasoning", "text": "先分析" },
+            { "type": "text", "text": "正式回答" }
+        ])
+    );
 }
 
 #[tokio::test]

@@ -287,7 +287,7 @@ pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool 
 
 fn provider_status_code(details: Option<&Value>) -> Option<u16> {
     details
-        .and_then(|details| details.get("status"))
+        .and_then(|details| details.get("status_code").or_else(|| details.get("status")))
         .and_then(Value::as_u64)
         .and_then(|status| u16::try_from(status).ok())
         .filter(|status| (100..=599).contains(status))
