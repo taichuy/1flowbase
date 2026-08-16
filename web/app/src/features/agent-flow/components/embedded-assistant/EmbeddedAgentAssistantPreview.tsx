@@ -253,6 +253,7 @@ export function EmbeddedAgentAssistantPreview({
     null
   );
   const historyExpansionWidthRef = useRef(0);
+  const historyRightResizeWidthRef = useRef(0);
   const historyLayoutRef = useRef<HTMLDivElement | null>(null);
   const historyWidthRef = useRef(historyWidth);
   const assistantWindowRectRef = useRef<WindowWorkspaceRect | null>(null);
@@ -344,6 +345,7 @@ export function EmbeddedAgentAssistantPreview({
     setHistoryFullView(false);
     historyExpansionSideRef.current = null;
     historyExpansionWidthRef.current = 0;
+    historyRightResizeWidthRef.current = 0;
     setHistoryPage(null);
   }, [workspaceId]);
 
@@ -351,6 +353,7 @@ export function EmbeddedAgentAssistantPreview({
     if (!open) {
       historyExpansionSideRef.current = null;
       historyExpansionWidthRef.current = 0;
+      historyRightResizeWidthRef.current = 0;
       close(ASSISTANT_WINDOW_ID);
       return;
     }
@@ -562,6 +565,7 @@ export function EmbeddedAgentAssistantPreview({
     if (!rect || mobile) {
       historyExpansionSideRef.current = null;
       historyExpansionWidthRef.current = 0;
+      historyRightResizeWidthRef.current = 0;
       setHistoryFullView(true);
       return;
     }
@@ -580,6 +584,7 @@ export function EmbeddedAgentAssistantPreview({
     if (!side) {
       historyExpansionSideRef.current = null;
       historyExpansionWidthRef.current = 0;
+      historyRightResizeWidthRef.current = 0;
       setHistoryFullView(true);
       return;
     }
@@ -594,6 +599,7 @@ export function EmbeddedAgentAssistantPreview({
         : { ...rect, width: rect.width + occupiedWidth };
     historyExpansionSideRef.current = side;
     historyExpansionWidthRef.current = occupiedWidth;
+    historyRightResizeWidthRef.current = 0;
     assistantWindowRectRef.current = nextRect;
     setRect(ASSISTANT_WINDOW_ID, nextRect);
     setHistoryFullView(false);
@@ -620,17 +626,21 @@ export function EmbeddedAgentAssistantPreview({
     const rect = assistantWindowRectRef.current;
     if (side && rect) {
       const expansionWidth = historyExpansionWidthRef.current;
-      const nextWidth = Math.max(400, rect.width - expansionWidth);
-      const removedWidth = rect.width - nextWidth;
+      const rightResizeWidth = historyRightResizeWidthRef.current;
+      const nextWidth = Math.max(
+        400,
+        rect.width - expansionWidth - rightResizeWidth
+      );
       const nextRect =
         side === 'left'
-          ? { ...rect, left: rect.left + removedWidth, width: nextWidth }
+          ? { ...rect, left: rect.left + expansionWidth, width: nextWidth }
           : { ...rect, width: nextWidth };
       assistantWindowRectRef.current = nextRect;
       setRect(ASSISTANT_WINDOW_ID, nextRect);
     }
     historyExpansionSideRef.current = null;
     historyExpansionWidthRef.current = 0;
+    historyRightResizeWidthRef.current = 0;
     setHistoryFullView(false);
   }
 
@@ -731,6 +741,7 @@ export function EmbeddedAgentAssistantPreview({
     }
     historyExpansionSideRef.current = null;
     historyExpansionWidthRef.current = 0;
+    historyRightResizeWidthRef.current = 0;
     setHistoryFullView(true);
   }, [historyFullView, mobile, sidePanelOpen, windowEntry?.rect.width]);
 
@@ -756,7 +767,7 @@ export function EmbeddedAgentAssistantPreview({
       const nextWidth = Math.min(
         Math.max(
           ASSISTANT_HISTORY_MIN_WIDTH,
-          startWidth + moveEvent.clientX - startX
+          startWidth - (moveEvent.clientX - startX)
         ),
         maxWidth
       );
@@ -779,6 +790,34 @@ export function EmbeddedAgentAssistantPreview({
     historyResizeCleanupRef.current = cleanup;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', cleanup);
+  }
+
+  function updateAssistantWindowRect(nextRect: WindowWorkspaceRect) {
+    const currentRect = assistantWindowRectRef.current;
+    const isRightEdgeResize =
+      currentRect &&
+      nextRect.left === currentRect.left &&
+      nextRect.width !== currentRect.width;
+    if (isRightEdgeResize && sidePanelOpen && !mobile && !historyFullView) {
+      const requestedDelta = nextRect.width - currentRect.width;
+      const nextHistoryWidth = Math.max(
+        ASSISTANT_HISTORY_MIN_WIDTH,
+        historyWidthRef.current + requestedDelta
+      );
+      const acceptedDelta = nextHistoryWidth - historyWidthRef.current;
+      const acceptedRect = {
+        ...nextRect,
+        width: currentRect.width + acceptedDelta
+      };
+      historyWidthRef.current = nextHistoryWidth;
+      historyRightResizeWidthRef.current += acceptedDelta;
+      assistantWindowRectRef.current = acceptedRect;
+      setHistoryWidth(nextHistoryWidth);
+      setRect(ASSISTANT_WINDOW_ID, acceptedRect);
+      return;
+    }
+    assistantWindowRectRef.current = nextRect;
+    setRect(ASSISTANT_WINDOW_ID, nextRect);
   }
 
   async function saveSettings() {
@@ -851,10 +890,7 @@ export function EmbeddedAgentAssistantPreview({
           title={i18nText('appShell', 'auto.assistant')}
           zIndex={assistantWindowZIndex}
           onActivate={() => activate(ASSISTANT_WINDOW_ID)}
-          onRectChange={(rect) => {
-            assistantWindowRectRef.current = rect;
-            setRect(ASSISTANT_WINDOW_ID, rect);
-          }}
+          onRectChange={updateAssistantWindowRect}
         >
           <div
             className="embedded-agent-assistant-preview__layout"
