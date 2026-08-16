@@ -183,8 +183,7 @@ describe('useFrontstageBlockTabs', () => {
       'root',
       {
         source_code: savedSource,
-        expected_source_revision: sha256Text('source:root'),
-        dependency_lock: []
+        expected_source_revision: sha256Text('source:root')
       },
       'csrf-123'
     );
