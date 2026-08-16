@@ -350,6 +350,7 @@ impl PgControlPlaneStore {
                     source_order
                 from message_rows
                 where nullif(btrim(answer), '') is not null
+                   or native_message is not null
             ) messages
             order by created_at asc, source_order asc, flow_run_id asc, message_order asc
             "#,
@@ -362,6 +363,87 @@ impl PgControlPlaneStore {
         .await?;
 
         assistant_conversation_messages_from_rows(rows)
+    }
+
+    async fn list_assistant_conversation_native_history(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<
+        Vec<control_plane::application_public_api::run_service::AssistantConversationNativeMessage>,
+    > {
+        let rows = sqlx::query(
+            r#"
+            with visible_runs as (
+                select seed.id, 0 as source_order
+                from assistant_conversations conversations
+                join flow_runs seed on seed.id = conversations.seed_legacy_flow_run_id
+                join applications on applications.id = seed.application_id
+                where conversations.conversation_id = $1
+                  and conversations.scope_id = $2
+                  and conversations.application_id = $3
+                  and conversations.created_by = $4
+                  and applications.workspace_id = $2
+                  and seed.application_id = $3
+                  and seed.created_by = $4
+                  and seed.run_mode = 'assistant_execution'
+                  and seed.compatibility_mode = 'embedded_assistant'
+                  and seed.assistant_conversation_id is null
+                union all
+                select runs.id, 1 as source_order
+                from flow_runs runs
+                join assistant_conversations conversations
+                  on conversations.conversation_id = runs.assistant_conversation_id
+                where conversations.conversation_id = $1
+                  and conversations.scope_id = $2
+                  and conversations.application_id = $3
+                  and conversations.created_by = $4
+                  and runs.run_mode = 'assistant_execution'
+                  and runs.compatibility_mode = 'embedded_assistant'
+            ), message_rows as (
+                select items.*, visible_runs.source_order
+                from application_run_conversation_message_items items
+                join visible_runs on visible_runs.id = items.flow_run_id
+                where items.is_current
+                  and items.status = 'succeeded'
+            )
+            select role, content, native_message
+            from (
+                select
+                    flow_run_id,
+                    'user'::text as role,
+                    query as content,
+                    null::jsonb as native_message,
+                    started_at as created_at,
+                    0 as message_order,
+                    source_order
+                from message_rows
+                where nullif(btrim(query), '') is not null
+                union all
+                select
+                    flow_run_id,
+                    'assistant'::text as role,
+                    answer as content,
+                    native_message,
+                    coalesce(finished_at, updated_at) as created_at,
+                    1 as message_order,
+                    source_order
+                from message_rows
+                where nullif(btrim(answer), '') is not null
+            ) messages
+            order by created_at asc, source_order asc, flow_run_id asc, message_order asc
+            "#,
+        )
+        .bind(conversation_id)
+        .bind(workspace_id)
+        .bind(application_id)
+        .bind(actor_user_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter().map(native_assistant_message_from_row).collect()
     }
 
     async fn list_assistant_legacy_snapshot_messages(
@@ -521,4 +603,31 @@ fn assistant_conversation_messages_from_rows(
             )
         })
         .collect()
+}
+
+fn native_assistant_message_from_row(
+    row: sqlx::postgres::PgRow,
+) -> Result<control_plane::application_public_api::run_service::AssistantConversationNativeMessage>
+{
+    let role: String = row.try_get("role")?;
+    let content: String = row.try_get("content")?;
+    let native_message: Option<serde_json::Value> = row.try_get("native_message")?;
+    let content_blocks = native_message
+        .as_ref()
+        .and_then(|message| message.get("content_blocks"))
+        .and_then(serde_json::Value::as_array)
+        .cloned();
+    let tool_calls = native_message
+        .as_ref()
+        .and_then(|message| message.get("tool_calls"))
+        .and_then(serde_json::Value::as_array)
+        .cloned();
+    Ok(
+        control_plane::application_public_api::run_service::AssistantConversationNativeMessage {
+            role,
+            content,
+            content_blocks,
+            tool_calls,
+        },
+    )
 }

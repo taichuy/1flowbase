@@ -67,6 +67,51 @@ pub(super) fn collect_dify_style_deltas(events: &[ProviderStreamEvent]) -> Optio
     (!content.is_empty()).then_some(content)
 }
 
+pub(super) fn canonical_assistant_content_blocks(
+    events: &[ProviderStreamEvent],
+    final_content: Option<&str>,
+) -> Vec<Value> {
+    let mut blocks = Vec::new();
+    let mut current_kind: Option<&'static str> = None;
+    let mut current_text = String::new();
+
+    let flush = |blocks: &mut Vec<Value>, kind: &mut Option<&'static str>, text: &mut String| {
+        if let Some(kind) = kind.take() {
+            if !text.is_empty() {
+                blocks.push(json!({ "type": kind, "text": std::mem::take(text) }));
+            }
+        }
+    };
+
+    for event in events {
+        let (kind, delta) = match event {
+            ProviderStreamEvent::ReasoningDelta { delta } => ("reasoning", delta.as_str()),
+            ProviderStreamEvent::TextDelta { delta } => ("text", delta.as_str()),
+            _ => continue,
+        };
+        if delta.is_empty() {
+            continue;
+        }
+        if current_kind != Some(kind) {
+            flush(&mut blocks, &mut current_kind, &mut current_text);
+            current_kind = Some(kind);
+        }
+        current_text.push_str(delta);
+    }
+    flush(&mut blocks, &mut current_kind, &mut current_text);
+
+    if !blocks
+        .iter()
+        .any(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+    {
+        if let Some(content) = final_content.filter(|content| !content.is_empty()) {
+            blocks.push(json!({ "type": "text", "text": content }));
+        }
+    }
+
+    blocks
+}
+
 pub(super) fn collect_usage(
     events: &[ProviderStreamEvent],
     result_usage: &ProviderUsage,

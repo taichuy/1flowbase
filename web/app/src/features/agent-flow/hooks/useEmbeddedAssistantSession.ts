@@ -673,17 +673,6 @@ export function useEmbeddedAssistantSession(
         setCurrentLegacySnapshot(null);
       }
 
-      const history = messages.reduce<
-        Array<{ role: 'user' | 'assistant'; content: string }>
-      >((entries, message) => {
-        if (
-          (message.role === 'user' || message.role === 'assistant') &&
-          message.content.trim().length > 0
-        ) {
-          entries.push({ role: message.role, content: message.content });
-        }
-        return entries;
-      }, []);
       const runningMessage: AgentFlowDebugMessage = {
         ...createRunningAssistantMessage(),
         presentation: 'answer'
@@ -786,7 +775,6 @@ export function useEmbeddedAssistantSession(
               application_id: applicationId,
               conversation_id: targetConversationId,
               query,
-              history,
               ...(pageReferences.length > 0
                 ? { page_references: pageReferences }
                 : {})
@@ -813,7 +801,6 @@ export function useEmbeddedAssistantSession(
               application_id: applicationId,
               conversation_id: targetConversationId,
               query,
-              history,
               ...(pageReferences.length > 0
                 ? { page_references: pageReferences }
                 : {})

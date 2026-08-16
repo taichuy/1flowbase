@@ -126,6 +126,13 @@ async fn llm_output_payload_keeps_think_tags_in_standard_text_content() {
     assert!(trace.output_payload.get("reasoning_content").is_none());
     assert!(trace.debug_payload.get("reasoning_content").is_none());
     assert!(trace.output_payload.get("message").is_none());
+    assert_eq!(
+        trace.debug_payload["assistant_message"]["content_blocks"],
+        json!([
+            { "type": "reasoning", "text": "先分析" },
+            { "type": "text", "text": "正式回答" }
+        ])
+    );
 }
 
 struct ReasoningDeltaProviderInvoker;

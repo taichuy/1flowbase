@@ -1,4 +1,4 @@
-const APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION: i32 = 1;
+const APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION: i32 = 2;
 
 impl PgControlPlaneStore {
     async fn ensure_application_run_conversation_message_items_projection(
@@ -38,10 +38,13 @@ impl PgControlPlaneStore {
         .await?;
         let llm_system_content =
             Self::application_run_conversation_llm_system_content(tx, flow_run.id).await?;
+        let llm_assistant_message =
+            Self::application_run_conversation_llm_assistant_message(tx, flow_run.id).await?;
         let items = application_run_conversation_message_items_from_flow_run(
             flow_run,
             scope_id,
             llm_system_content,
+            llm_assistant_message,
         );
 
         for item in items {
@@ -59,6 +62,7 @@ impl PgControlPlaneStore {
                     query,
                     model,
                     answer,
+                    native_message,
                     detail_run_id,
                     can_open_detail,
                     is_current,
@@ -70,7 +74,8 @@ impl PgControlPlaneStore {
                     updated_at
                 ) values (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                    $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+                    $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                    $21
                 )
                 "#,
             )
@@ -85,6 +90,7 @@ impl PgControlPlaneStore {
             .bind(item.query)
             .bind(item.model)
             .bind(item.answer)
+            .bind(item.native_message)
             .bind(item.detail_run_id)
             .bind(item.can_open_detail)
             .bind(item.is_current)
@@ -133,6 +139,36 @@ impl PgControlPlaneStore {
         Ok(None)
     }
 
+    async fn application_run_conversation_llm_assistant_message(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        flow_run_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let rows = sqlx::query(
+            r#"
+            select debug_payload
+            from node_runs
+            where flow_run_id = $1
+              and node_type = 'llm'
+              and status = 'succeeded'
+            order by finished_at desc nulls last, started_at desc, id desc
+            "#,
+        )
+        .bind(flow_run_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        for row in rows {
+            let debug_payload: serde_json::Value = row.try_get("debug_payload")?;
+            if let Some(message) = canonical_assistant_message(
+                debug_payload.get("assistant_message"),
+            ) {
+                return Ok(Some(message));
+            }
+        }
+
+        Ok(None)
+    }
+
     async fn delete_application_run_conversation_message_items_projection(
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run_id: Uuid,
@@ -141,11 +177,9 @@ impl PgControlPlaneStore {
             r#"
             delete from application_run_conversation_message_items
             where flow_run_id = $1
-              and projection_version = $2
             "#,
         )
         .bind(flow_run_id)
-        .bind(APPLICATION_RUN_CONVERSATION_MESSAGE_ITEM_PROJECTION_VERSION)
         .execute(&mut **tx)
         .await?;
 
@@ -471,6 +505,7 @@ struct ApplicationRunConversationMessageItemProjection {
     query: Option<String>,
     model: Option<String>,
     answer: Option<String>,
+    native_message: Option<serde_json::Value>,
     detail_run_id: Option<Uuid>,
     can_open_detail: bool,
     is_current: bool,
@@ -485,6 +520,7 @@ fn application_run_conversation_message_items_from_flow_run(
     flow_run: &domain::FlowRunRecord,
     scope_id: Uuid,
     llm_system_content: Option<String>,
+    llm_assistant_message: Option<serde_json::Value>,
 ) -> Vec<ApplicationRunConversationMessageItemProjection> {
     let mut items = Vec::new();
     let model = application_conversation_model_text(&flow_run.input_payload);
@@ -568,6 +604,7 @@ fn application_run_conversation_message_items_from_flow_run(
                 .as_ref()
                 .and_then(application_conversation_answer_text)
         }),
+        native_message: llm_assistant_message,
         detail_run_id: Some(flow_run.id),
         can_open_detail: true,
         is_current: true,
@@ -601,6 +638,7 @@ fn push_application_run_conversation_imported_item(
         query: None,
         model,
         answer: None,
+        native_message: None,
         detail_run_id: None,
         can_open_detail: false,
         is_current: false,
@@ -610,6 +648,26 @@ fn push_application_run_conversation_imported_item(
         created_at: flow_run.created_at,
         updated_at: flow_run.updated_at,
     });
+}
+
+fn canonical_assistant_message(value: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    let object = value?.as_object()?;
+    if object.get("role").and_then(serde_json::Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let content = object.get("content")?.as_str()?;
+    let mut message = serde_json::Map::new();
+    message.insert("role".to_string(), serde_json::Value::String("assistant".to_string()));
+    message.insert(
+        "content".to_string(),
+        serde_json::Value::String(content.to_string()),
+    );
+    for field in ["content_blocks", "tool_calls"] {
+        if let Some(value) = object.get(field).filter(|value| value.is_array()) {
+            message.insert(field.to_string(), value.clone());
+        }
+    }
+    Some(serde_json::Value::Object(message))
 }
 
 fn application_run_conversation_history_message_content(

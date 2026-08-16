@@ -48,8 +48,7 @@ describe('console assistant client', () => {
       startConsoleAssistantRun(
         {
           application_id: 'application-1',
-          query: 'hello',
-          history: []
+          query: 'hello'
         },
         'csrf-token'
       )
@@ -168,7 +167,7 @@ describe('console assistant client', () => {
     );
 
     await startConsoleAssistantRunStream(
-      { application_id: 'application-1', query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello' },
       'csrf-token',
       { onEvent }
     );
@@ -180,8 +179,7 @@ describe('console assistant client', () => {
         credentials: 'include',
         body: JSON.stringify({
           application_id: 'application-1',
-          query: 'hello',
-          history: []
+          query: 'hello'
         }),
         headers: expect.objectContaining({
           accept: 'text/event-stream',
@@ -207,7 +205,7 @@ describe('console assistant client', () => {
     );
 
     await startConsoleAssistantRunStream(
-      { application_id: 'application-1', query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello' },
       'csrf-token',
       { onEvent }
     );
@@ -324,7 +322,7 @@ describe('console assistant client', () => {
 
     vi.stubGlobal('WebSocket', FakeWebSocket);
     await startConsoleAssistantRunWebSocket(
-      { application_id: 'application-1', query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello' },
       'csrf-token',
       { onEvent },
       { baseUrl: 'http://127.0.0.1:3100' }
@@ -478,7 +476,7 @@ describe('console assistant client', () => {
 
     vi.stubGlobal('WebSocket', ClientToolWebSocket);
     await startConsoleAssistantRunWebSocket(
-      { application_id: 'application-1', query: 'where am I?', history: [] },
+      { application_id: 'application-1', query: 'where am I?' },
       'csrf-token',
       { onEvent: vi.fn() },
       {
@@ -602,7 +600,7 @@ describe('console assistant client', () => {
 
     vi.stubGlobal('WebSocket', ReconnectingWebSocket);
     await startConsoleAssistantRunWebSocket(
-      { application_id: 'application-1', query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello' },
       'csrf-token',
       { onEvent },
       { baseUrl: 'http://127.0.0.1:3100' }
@@ -650,7 +648,7 @@ describe('console assistant client', () => {
 
     vi.stubGlobal('WebSocket', StalledWebSocket);
     const run = startConsoleAssistantRunWebSocket(
-      { application_id: 'application-1', query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello' },
       'csrf-token',
       { onEvent: vi.fn() },
       {

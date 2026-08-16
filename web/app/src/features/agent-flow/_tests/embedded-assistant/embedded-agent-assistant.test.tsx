@@ -1214,8 +1214,7 @@ describe('EmbeddedAgentAssistant', () => {
         {
           application_id: 'flow-1',
           conversation_id: 'conversation-new',
-          query: 'Summarize this',
-          history: []
+          query: 'Summarize this'
         },
         'csrf-token',
         expect.any(Object),
@@ -2459,8 +2458,7 @@ describe('EmbeddedAgentAssistant', () => {
         {
           application_id: 'flow-1',
           conversation_id: 'conversation-new',
-          query: 'Fallback please',
-          history: []
+          query: 'Fallback please'
         },
         'csrf-token',
         expect.any(Object)

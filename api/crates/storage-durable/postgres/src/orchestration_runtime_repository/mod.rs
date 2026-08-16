@@ -1026,6 +1026,25 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         .await
     }
 
+    async fn list_assistant_conversation_native_history(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        actor_user_id: Uuid,
+        conversation_id: Uuid,
+    ) -> Result<
+        Vec<control_plane::application_public_api::run_service::AssistantConversationNativeMessage>,
+    > {
+        PgControlPlaneStore::list_assistant_conversation_native_history(
+            self,
+            workspace_id,
+            application_id,
+            actor_user_id,
+            conversation_id,
+        )
+        .await
+    }
+
     async fn list_assistant_legacy_snapshot_messages(
         &self,
         workspace_id: Uuid,
