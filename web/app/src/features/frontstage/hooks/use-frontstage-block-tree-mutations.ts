@@ -8,22 +8,30 @@ import {
   frontstageBlockTreeQueryKeys,
   moveFrontstageBlockNode,
   saveFrontstageBlockNodeCode,
+  updateFrontstageBlockDescriptors,
   updateFrontstageBlockNode,
   type CreateFrontstageBlockNodeInput,
   type DeleteFrontstageBlockSubtreeInput,
   type MoveFrontstageBlockNodeInput,
   type SaveFrontstageBlockNodeCodeInput,
+  type UpdateFrontstageBlockDescriptorsInput,
   type UpdateFrontstageBlockNodeInput
 } from '../api/block-tree';
 
 interface BlockOwner {
   block_id: string;
   parent_block_id: string | null;
+  tab_id: string;
 }
 
 interface UpdateBlockVariables {
   block_id: string;
   input: UpdateFrontstageBlockNodeInput;
+}
+
+interface UpdateBlockDescriptorsVariables {
+  tab_id: string;
+  input: UpdateFrontstageBlockDescriptorsInput;
 }
 
 interface MoveBlockVariables {
@@ -61,11 +69,13 @@ export function useFrontstageBlockTreeMutations(
       refetchType: 'active'
     });
 
-  const invalidateOwner = (parentBlockId: string | null) =>
+  const invalidateOwner = (parentBlockId: string | null, tabId: string) =>
     queryClient.invalidateQueries({
       queryKey:
         parentBlockId === null
-          ? frontstageBlockTreeQueryKeys.roots(workspaceId, pageId)
+          ? frontstageBlockTreeQueryKeys.roots(workspaceId, pageId, {
+              tab_id: tabId
+            })
           : frontstageBlockTreeQueryKeys.children(
               workspaceId,
               pageId,
@@ -94,7 +104,7 @@ export function useFrontstageBlockTreeMutations(
       ),
     onSuccess: async (node) => {
       await Promise.all([
-        invalidateOwner(node.parent_block_id),
+        invalidateOwner(node.parent_block_id, node.tab_id),
         invalidateSearches()
       ]);
     }
@@ -111,9 +121,26 @@ export function useFrontstageBlockTreeMutations(
       ),
     onSuccess: async (node) => {
       await Promise.all([
-        invalidateOwner(node.parent_block_id),
+        invalidateOwner(node.parent_block_id, node.tab_id),
         invalidateDetail(node.block_id),
         invalidateSearches()
+      ]);
+    }
+  });
+
+  const updateDescriptorsMutation = useMutation({
+    mutationFn: ({ tab_id, input }: UpdateBlockDescriptorsVariables) =>
+      updateFrontstageBlockDescriptors(
+        workspaceId,
+        pageId,
+        tab_id,
+        input,
+        requireCsrfToken(csrfToken)
+      ),
+    onSuccess: async (nodes, variables) => {
+      await Promise.all([
+        invalidateOwner(null, variables.tab_id),
+        ...nodes.map((node) => invalidateDetail(node.block_id))
       ]);
     }
   });
@@ -129,12 +156,14 @@ export function useFrontstageBlockTreeMutations(
       ),
     onSuccess: async (node, variables) => {
       const invalidations = [
-        invalidateOwner(node.parent_block_id),
+        invalidateOwner(node.parent_block_id, node.tab_id),
         invalidateDetail(node.block_id),
         invalidateSearches()
       ];
       if (variables.previous_parent_block_id !== node.parent_block_id) {
-        invalidations.push(invalidateOwner(variables.previous_parent_block_id));
+        invalidations.push(
+          invalidateOwner(variables.previous_parent_block_id, node.tab_id)
+        );
       }
       await Promise.all(invalidations);
     }
@@ -164,7 +193,7 @@ export function useFrontstageBlockTreeMutations(
         )
       });
       await Promise.all([
-        invalidateOwner(variables.parent_block_id),
+        invalidateOwner(variables.parent_block_id, variables.tab_id),
         invalidateSearches()
       ]);
     }
@@ -195,7 +224,7 @@ export function useFrontstageBlockTreeMutations(
         )
       });
       await Promise.all([
-        invalidateOwner(variables.parent_block_id),
+        invalidateOwner(variables.parent_block_id, variables.tab_id),
         invalidateSearches()
       ]);
     }
@@ -212,11 +241,7 @@ export function useFrontstageBlockTreeMutations(
       ),
     onSuccess: (code) => {
       queryClient.setQueryData(
-        frontstageBlockTreeQueryKeys.code(
-          workspaceId,
-          pageId,
-          code.block_id
-        ),
+        frontstageBlockTreeQueryKeys.code(workspaceId, pageId, code.block_id),
         code
       );
     }
@@ -225,6 +250,7 @@ export function useFrontstageBlockTreeMutations(
   return {
     create: createMutation,
     update: updateMutation,
+    updateDescriptors: updateDescriptorsMutation,
     move: moveMutation,
     deleteLeaf: deleteLeafMutation,
     deleteSubtree: deleteSubtreeMutation,

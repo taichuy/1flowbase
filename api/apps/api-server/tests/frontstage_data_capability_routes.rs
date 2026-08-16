@@ -454,36 +454,40 @@ async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation
     payload["data"].clone()
 }
 
-fn document(root_uid: &str, blocks: Vec<&str>) -> Value {
-    json!({
-        "version": 1,
-        "root_uid": root_uid,
-        "blocks": blocks.into_iter().map(|id| json!({
-            "id": id,
-            "renderer_version": "v1"
-        })).collect::<Vec<_>>()
-    })
+fn document(root_uid: &str) -> Value {
+    json!({ "version": 1, "root_uid": root_uid })
 }
 
-async fn save_document(
+async fn create_block_node(
     app: &Router,
     cookie: &str,
     csrf: &str,
     workspace_id: Uuid,
     page_id: Uuid,
     tab_id: Uuid,
-    payload: &Value,
-) {
-    let (status, response) = json_request(
+    title: &str,
+) -> String {
+    let (status, payload) = json_request(
         app,
-        "PUT",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document"),
+        "POST",
+        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"),
         cookie,
         csrf,
-        json!({ "payload": payload }),
+        json!({
+            "tab_id": tab_id,
+            "title": title,
+            "presentation": "page",
+            "parent_block_id": null,
+            "before_block_id": null,
+            "after_block_id": null,
+            "source_code": "export default function Block() { return null; }",
+            "dependency_lock": [],
+            "runtime_descriptor": {}
+        }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "{response}");
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
+    payload["data"]["block_id"].as_str().unwrap().to_owned()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -663,39 +667,49 @@ async fn seed_grant(
 }
 
 #[tokio::test]
-async fn callable_dispatch_uses_method_and_path_for_any_current_document_block() {
+async fn callable_dispatch_uses_method_path_and_current_tab_block_node() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
-    let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let (second_tab, second_root_uid) =
+    let (page_id, tab_id, _root_uid) =
+        create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
+    let (second_tab, _second_root_uid) =
         create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
-    let bound = document(&root_uid, vec!["block-a", "block-b"]);
-    save_document(
+    let first_block = create_block_node(
         &fixture.app,
         &cookie,
         &csrf,
         workspace_id,
         page_id,
         tab_id,
-        &bound,
+        "Block A",
     )
     .await;
-    save_document(
+    let _first_sibling = create_block_node(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        "Block B",
+    )
+    .await;
+    let second_block = create_block_node(
         &fixture.app,
         &cookie,
         &csrf,
         workspace_id,
         page_id,
         second_tab,
-        &document(&second_root_uid, vec!["block-a"]),
+        "Second tab block",
     )
     .await;
 
     for (target_tab, block, method, path, expected) in [
         (
             tab_id,
-            "block-a",
+            first_block.as_str(),
             "GET",
             "/api/console/missing",
             StatusCode::NOT_FOUND,
@@ -709,14 +723,14 @@ async fn callable_dispatch_uses_method_and_path_for_any_current_document_block()
         ),
         (
             tab_id,
-            "block-a",
+            first_block.as_str(),
             "POST",
             PAGE_TAB_GET_PATH,
             StatusCode::NOT_FOUND,
         ),
         (
             second_tab,
-            "block-a",
+            second_block.as_str(),
             "GET",
             PAGE_TAB_GET_PATH,
             StatusCode::OK,
@@ -748,7 +762,7 @@ async fn callable_dispatch_uses_method_and_path_for_any_current_document_block()
         workspace_id,
         page_id,
         tab_id,
-        "block-a",
+        &first_block,
         "GET",
         PAGE_TAB_GET_PATH,
         "run-read",
@@ -767,15 +781,15 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let primary_document = document(&root_uid, vec!["block-write"]);
-    save_document(
+    let primary_document = document(&root_uid);
+    let block_id = create_block_node(
         &fixture.app,
         &cookie,
         &csrf,
         workspace_id,
         page_id,
         tab_id,
-        &primary_document,
+        "Writable block",
     )
     .await;
 
@@ -788,7 +802,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         &cookie,
         &csrf,
         json!({
-            "block_id": "block-write",
+            "block_id": &block_id,
             "interface_id": PAGE_TAB_SAVE_OPERATION_ID,
             "binding_alias": "savePage",
             "schema_digest": "legacy-digest",
@@ -807,7 +821,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         workspace_id,
         page_id,
         tab_id,
-        "block-write",
+        &block_id,
         "PUT",
         PAGE_TAB_SAVE_PATH,
         "run-write",
@@ -833,7 +847,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         workspace_id,
         page_id,
         tab_id,
-        "block-write",
+        &block_id,
         "PUT",
         PAGE_TAB_SAVE_PATH,
         "run-write",
@@ -865,7 +879,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         workspace_id,
         page_id,
         tab_id,
-        "block-write",
+        &block_id,
         "PUT",
         PAGE_TAB_SAVE_PATH,
         "run-write",
@@ -891,7 +905,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         workspace_id,
         page_id,
         tab_id,
-        "block-write",
+        &block_id,
         "PUT",
         PAGE_TAB_SAVE_PATH,
         "run-write",
@@ -908,26 +922,31 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
-    let (page_id, first_tab, first_root_uid) =
+    let (page_id, first_tab, _first_root_uid) =
         create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let (second_tab, second_root_uid) =
+    let (second_tab, _second_root_uid) =
         create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
 
-    for (tab_id, root_uid) in [
-        (first_tab, first_root_uid.as_str()),
-        (second_tab, second_root_uid.as_str()),
-    ] {
-        save_document(
-            &fixture.app,
-            &cookie,
-            &csrf,
-            workspace_id,
-            page_id,
-            tab_id,
-            &document(root_uid, vec!["block-delete"]),
-        )
-        .await;
-    }
+    let first_block = create_block_node(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        first_tab,
+        "First delete block",
+    )
+    .await;
+    let second_block = create_block_node(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        second_tab,
+        "Second delete block",
+    )
+    .await;
 
     let first_grant = issue_grant(
         &fixture.app,
@@ -936,7 +955,7 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         workspace_id,
         page_id,
         first_tab,
-        "block-delete",
+        &first_block,
         "DELETE",
         PAGE_TAB_DELETE_PATH,
         "run-delete-first",
@@ -950,7 +969,7 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         workspace_id,
         page_id,
         first_tab,
-        "block-delete",
+        &first_block,
         "DELETE",
         PAGE_TAB_DELETE_PATH,
         "run-delete-first",
@@ -968,7 +987,7 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         workspace_id,
         page_id,
         second_tab,
-        "block-delete",
+        &second_block,
         "DELETE",
         PAGE_TAB_DELETE_PATH,
         "run-delete-last",
@@ -982,7 +1001,7 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         workspace_id,
         page_id,
         second_tab,
-        "block-delete",
+        &second_block,
         "DELETE",
         PAGE_TAB_DELETE_PATH,
         "run-delete-last",
@@ -999,16 +1018,16 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
     let fixture = fixture().await;
     let (root_cookie, root_csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &root_cookie).await;
-    let (page_id, tab_id, root_uid) =
+    let (page_id, tab_id, _root_uid) =
         create_page(&fixture.app, &root_cookie, &root_csrf, workspace_id).await;
-    save_document(
+    let block_id = create_block_node(
         &fixture.app,
         &root_cookie,
         &root_csrf,
         workspace_id,
         page_id,
         tab_id,
-        &document(&root_uid, vec!["block-members"]),
+        "Members block",
     )
     .await;
     create_member(
@@ -1042,7 +1061,7 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
         workspace_id,
         page_id,
         tab_id,
-        "block-members",
+        &block_id,
         "GET",
         "/api/console/settings/members",
         "run-visitor",
@@ -1060,28 +1079,37 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (actor_id, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let (second_tab, second_root_uid) =
+    let (second_tab, _second_root_uid) =
         create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
-    let primary_document = document(&root_uid, vec!["block-write", "block-other"]);
-    save_document(
+    let primary_document = document(&root_uid);
+    let primary_block = create_block_node(
         &fixture.app,
         &cookie,
         &csrf,
         workspace_id,
         page_id,
         tab_id,
-        &primary_document,
+        "Primary write block",
     )
     .await;
-    let second_document = document(&second_root_uid, vec!["block-write", "block-other"]);
-    save_document(
+    let other_block = create_block_node(
+        &fixture.app,
+        &cookie,
+        &csrf,
+        workspace_id,
+        page_id,
+        tab_id,
+        "Other block",
+    )
+    .await;
+    let second_block = create_block_node(
         &fixture.app,
         &cookie,
         &csrf,
         workspace_id,
         page_id,
         second_tab,
-        &second_document,
+        "Second tab block",
     )
     .await;
 
@@ -1089,7 +1117,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
         name: &'static str,
         actor: Uuid,
         tab: Uuid,
-        block: &'static str,
+        block: String,
+        dispatch_block: String,
         method: &'static str,
         path: &'static str,
         draft: &'static str,
@@ -1101,7 +1130,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "expired",
             actor: actor_id,
             tab: tab_id,
-            block: "block-write",
+            block: primary_block.clone(),
+            dispatch_block: primary_block.clone(),
             method: "PUT",
             path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
@@ -1112,7 +1142,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "route-method",
             actor: actor_id,
             tab: tab_id,
-            block: "block-write",
+            block: primary_block.clone(),
+            dispatch_block: primary_block.clone(),
             method: "GET",
             path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
@@ -1123,7 +1154,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "block",
             actor: actor_id,
             tab: tab_id,
-            block: "block-other",
+            block: other_block.clone(),
+            dispatch_block: primary_block.clone(),
             method: "PUT",
             path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
@@ -1134,7 +1166,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "route-path",
             actor: actor_id,
             tab: tab_id,
-            block: "block-write",
+            block: primary_block.clone(),
+            dispatch_block: primary_block.clone(),
             method: "PUT",
             path: "/api/console/frontstage/other",
             draft: "draft",
@@ -1145,7 +1178,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "tab",
             actor: actor_id,
             tab: tab_id,
-            block: "block-write",
+            block: primary_block.clone(),
+            dispatch_block: second_block.clone(),
             method: "PUT",
             path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
@@ -1156,7 +1190,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "user",
             actor: Uuid::new_v4(),
             tab: tab_id,
-            block: "block-write",
+            block: primary_block.clone(),
+            dispatch_block: primary_block.clone(),
             method: "PUT",
             path: PAGE_TAB_SAVE_PATH,
             draft: "draft",
@@ -1167,7 +1202,8 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             name: "draft",
             actor: actor_id,
             tab: tab_id,
-            block: "block-write",
+            block: primary_block.clone(),
+            dispatch_block: primary_block.clone(),
             method: "PUT",
             path: PAGE_TAB_SAVE_PATH,
             draft: "other-draft",
@@ -1184,7 +1220,7 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             workspace_id,
             page_id,
             case.tab,
-            case.block,
+            &case.block,
             case.method,
             case.path,
             "run",
@@ -1199,7 +1235,7 @@ async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
             workspace_id,
             page_id,
             case.dispatch_tab,
-            "block-write",
+            &case.dispatch_block,
             "PUT",
             PAGE_TAB_SAVE_PATH,
             "run",

@@ -13,6 +13,7 @@ const blockTreeApi = vi.hoisted(() => ({
   deleteFrontstageBlockSubtree: vi.fn(),
   moveFrontstageBlockNode: vi.fn(),
   saveFrontstageBlockNodeCode: vi.fn(),
+  updateFrontstageBlockDescriptors: vi.fn(),
   updateFrontstageBlockNode: vi.fn()
 }));
 
@@ -62,27 +63,69 @@ describe('frontstage block tree feature mutations', () => {
     authenticate();
     blockTreeApi.createFrontstageBlockNode.mockResolvedValue({
       block_id: 'created',
-      parent_block_id: 'parent-new'
+      parent_block_id: 'parent-new',
+      tab_id: 'tab-1'
     });
     blockTreeApi.moveFrontstageBlockNode.mockResolvedValue({
       block_id: 'moving',
-      parent_block_id: 'parent-new'
+      parent_block_id: 'parent-new',
+      tab_id: 'tab-1'
     });
     blockTreeApi.deleteFrontstageBlockLeaf.mockResolvedValue(undefined);
   });
 
-  test('AC-009 keeps query ownership page-scoped', () => {
-    expect(frontstageBlockTreeQueryKeys.roots('workspace-1', 'page-1')).toEqual(
-      [
-        'frontstage',
-        'workspace-1',
-        'pages',
-        'page-1',
-        'block-tree',
-        'roots',
-        {}
+  test('updates one tab descriptor batch through a single request', async () => {
+    blockTreeApi.updateFrontstageBlockDescriptors.mockResolvedValue([
+      { block_id: 'root-a', parent_block_id: null, tab_id: 'tab-1' },
+      { block_id: 'root-b', parent_block_id: null, tab_id: 'tab-1' }
+    ]);
+    const { invalidateQueries, result } = setup();
+    const input = {
+      updates: [
+        {
+          block_id: 'root-a',
+          runtime_descriptor: { 'x-layout': { order: 0 } }
+        },
+        { block_id: 'root-b', runtime_descriptor: { 'x-layout': { order: 1 } } }
       ]
+    };
+
+    await act(async () => {
+      await result.current.updateDescriptors.mutateAsync({
+        tab_id: 'tab-1',
+        input
+      });
+    });
+
+    expect(blockTreeApi.updateFrontstageBlockDescriptors).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      'tab-1',
+      input,
+      'csrf-123'
     );
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: frontstageBlockTreeQueryKeys.roots('workspace-1', 'page-1', {
+        tab_id: 'tab-1'
+      }),
+      refetchType: 'active'
+    });
+  });
+
+  test('AC-009 keeps query ownership page-scoped', () => {
+    expect(
+      frontstageBlockTreeQueryKeys.roots('workspace-1', 'page-1', {
+        tab_id: 'tab-1'
+      })
+    ).toEqual([
+      'frontstage',
+      'workspace-1',
+      'pages',
+      'page-1',
+      'block-tree',
+      'roots',
+      { tab_id: 'tab-1' }
+    ]);
     expect(
       frontstageBlockTreeQueryKeys.block(
         'workspace-1',
@@ -141,7 +184,8 @@ describe('frontstage block tree feature mutations', () => {
       });
       await result.current.deleteLeaf.mutateAsync({
         block_id: 'moving',
-        parent_block_id: 'parent-new'
+        parent_block_id: 'parent-new',
+        tab_id: 'tab-1'
       });
     });
 

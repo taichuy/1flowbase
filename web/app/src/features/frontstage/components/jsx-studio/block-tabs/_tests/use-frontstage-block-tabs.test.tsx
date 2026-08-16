@@ -43,6 +43,7 @@ function detail(blockId: string): FrontstageBlockNode {
     title: `Title ${blockId}`,
     description: null,
     schema_version: 1,
+    code_ref: `frontstage.block.${blockId}`,
     input_mapping: {},
     output_mapping: {},
     runtime_descriptor: null,

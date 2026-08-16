@@ -11,7 +11,8 @@ use control_plane::{
         FrontstageBlockScopeCommand, FrontstagePageService, ListFrontstageBlockChildrenCommand,
         ListFrontstageBlockDescendantsCommand, ListFrontstageBlocksCommand,
         MoveFrontstageBlockNodeCommand, SaveFrontstageBlockNodeCodeCommand,
-        SearchFrontstageBlocksCommand, UpdateFrontstageBlockNodeCommand,
+        SearchFrontstageBlocksCommand, UpdateFrontstageBlockDescriptorsCommand,
+        UpdateFrontstageBlockNodeCommand,
     },
     ports::{FrontstageBlockCodeInput, FrontstageBlockPosition},
 };
@@ -25,7 +26,9 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::console_route_assembly::{
+        console_get, console_post, console_put, ConsoleRouteAssembly,
+    },
 };
 
 use super::parse_uuid;
@@ -41,7 +44,7 @@ pub enum FrontstageBlockPresentationDto {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFrontstageBlockNodeBody {
-    pub tab_id: String,
+    pub tab_id: Option<String>,
     pub title: String,
     pub description: Option<String>,
     pub presentation: FrontstageBlockPresentationDto,
@@ -65,6 +68,18 @@ pub struct UpdateFrontstageBlockNodeBody {
     pub input_mapping: Option<BTreeMap<String, String>>,
     pub output_mapping: Option<BTreeMap<String, String>>,
     pub runtime_descriptor: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FrontstageBlockDescriptorUpdateBody {
+    pub block_id: String,
+    #[schema(value_type = Object)]
+    pub runtime_descriptor: Value,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateFrontstageBlockDescriptorsBody {
+    pub updates: Vec<FrontstageBlockDescriptorUpdateBody>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -95,6 +110,13 @@ pub struct FrontstageBlockCodeBody {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FrontstageBlockListQuery {
+    #[serde(default = "default_result_limit")]
+    pub limit: u32,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FrontstageBlockRootListQuery {
+    pub tab_id: String,
     #[serde(default = "default_result_limit")]
     pub limit: u32,
 }
@@ -146,6 +168,7 @@ pub struct FrontstageBlockNodeResponse {
     pub output_mapping: BTreeMap<String, String>,
     #[schema(value_type = Object)]
     pub runtime_descriptor: Value,
+    pub code_ref: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -214,6 +237,10 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
 
     ConsoleRouteAssembly::new()
+        .route(
+            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/block-descriptors",
+            console_put(update_frontstage_block_descriptors, Authenticated),
+        )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/blocks/search",
             console_get(search_frontstage_blocks, Authenticated),
@@ -302,24 +329,25 @@ pub async fn open_frontstage_block(
     })))
 }
 
-#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks", summary = "List Frontstage block roots", description = "Lists public Block Node Descriptor v1 roots in the page ordered-tree partition.", params(("workspace_id" = String, Path), ("page_id" = String, Path), FrontstageBlockListQuery), responses((status = 200, body = Vec<FrontstageBlockNodeSummaryResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks", summary = "List Frontstage block roots", description = "Lists complete Block Node Descriptor v1 roots owned by one page tab.", params(("workspace_id" = String, Path), ("page_id" = String, Path), FrontstageBlockRootListQuery), responses((status = 200, body = Vec<FrontstageBlockNodeResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody)))]
 pub async fn list_frontstage_block_roots(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((workspace_id, page_id)): Path<(String, String)>,
-    Query(query): Query<FrontstageBlockListQuery>,
-) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeSummaryResponse>>>, ApiError> {
+    Query(query): Query<FrontstageBlockRootListQuery>,
+) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .list_block_roots(ListFrontstageBlocksCommand {
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
             page_id: parse_uuid(&page_id, "page_id")?,
+            tab_id: parse_uuid(&query.tab_id, "tab_id")?,
             limit: query.limit,
         })
         .await?;
     Ok(Json(ApiSuccess::new(
-        nodes.into_iter().map(to_summary_response).collect(),
+        nodes.into_iter().map(to_node_response).collect(),
     )))
 }
 
@@ -337,7 +365,11 @@ pub async fn create_frontstage_block_node(
             actor_user_id: context.user.id,
             workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
             page_id: parse_uuid(&page_id, "page_id")?,
-            tab_id: parse_uuid(&body.tab_id, "tab_id")?,
+            tab_id: body
+                .tab_id
+                .as_deref()
+                .map(|tab_id| parse_uuid(tab_id, "tab_id"))
+                .transpose()?,
             title: body.title,
             description: body.description,
             presentation: to_domain_presentation(body.presentation),
@@ -424,6 +456,45 @@ pub async fn update_frontstage_block_node(
         })
         .await?;
     Ok(Json(ApiSuccess::new(to_node_response(node))))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/block-descriptors",
+    summary = "Update Frontstage block descriptors atomically",
+    description = "Updates the complete Block Node Descriptor v1 values for one tab in a single transaction.",
+    request_body = UpdateFrontstageBlockDescriptorsBody,
+    responses(
+        (status = 200, body = Vec<FrontstageBlockNodeResponse>),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn update_frontstage_block_descriptors(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Json(body): Json<UpdateFrontstageBlockDescriptorsBody>,
+) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .update_block_descriptors(UpdateFrontstageBlockDescriptorsCommand {
+            actor_user_id: context.user.id,
+            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+            page_id: parse_uuid(&page_id, "page_id")?,
+            tab_id: parse_uuid(&tab_id, "tab_id")?,
+            updates: body
+                .updates
+                .into_iter()
+                .map(|item| (item.block_id, item.runtime_descriptor))
+                .collect(),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        nodes.into_iter().map(to_node_response).collect(),
+    )))
 }
 
 #[utoipa::path(delete, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}", summary = "Delete a Frontstage block leaf", description = "Deletes one leaf block; nodes with children require the explicit subtree action.", responses((status = 204), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -721,6 +792,7 @@ fn to_node_response(node: domain::FrontstageBlockNodeRecord) -> FrontstageBlockN
         input_mapping: node.input_mapping,
         output_mapping: node.output_mapping,
         runtime_descriptor: node.runtime_descriptor,
+        code_ref: node.code_ref,
         created_at: format_time(node.created_at),
         updated_at: format_time(node.updated_at),
     }

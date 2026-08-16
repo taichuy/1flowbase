@@ -1500,7 +1500,7 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
         state.as_ref(),
         &actor,
         CompletedOperation::Read {
-            operation_id: "get_frontstage_block_code",
+            operation_id: "get_frontstage_block_node_code",
         },
         json!({
             "page_id": "019f51cf-4423-7ff0-93aa-6b0b1b8020bf",

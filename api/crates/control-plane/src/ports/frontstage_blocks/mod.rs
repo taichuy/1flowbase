@@ -52,6 +52,22 @@ pub struct UpdateFrontstageBlockNodeInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct FrontstageBlockDescriptorUpdate {
+    pub block_id: String,
+    pub runtime_descriptor: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateFrontstageBlockDescriptorsInput {
+    pub workspace_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub page_id: Uuid,
+    pub tab_id: Uuid,
+    pub updates: Vec<FrontstageBlockDescriptorUpdate>,
+    pub audit_log: domain::AuditLogRecord,
+}
+
+#[derive(Debug, Clone)]
 pub struct SaveFrontstageBlockNodeCodeInput {
     pub workspace_id: Uuid,
     pub actor_user_id: Uuid,
@@ -119,8 +135,9 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
         page_id: Uuid,
+        tab_id: Uuid,
         limit: u32,
-    ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeSummary>>;
+    ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeRecord>>;
 
     async fn list_frontstage_block_children(
         &self,
@@ -165,6 +182,11 @@ pub trait FrontstageBlockTreeRepository: Send + Sync {
         &self,
         input: &UpdateFrontstageBlockNodeInput,
     ) -> anyhow::Result<domain::FrontstageBlockNodeRecord>;
+
+    async fn update_frontstage_block_descriptors(
+        &self,
+        input: &UpdateFrontstageBlockDescriptorsInput,
+    ) -> anyhow::Result<Vec<domain::FrontstageBlockNodeRecord>>;
 
     async fn save_frontstage_block_node_code(
         &self,

@@ -3,11 +3,9 @@ import { useMemo, useState } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
-  createFrontstagePageBlock,
   frontstagePageContentQueryKey,
   saveFrontstagePageContent,
   type FrontstagePageContent,
-  type CreateFrontstageBlockInput,
   type SaveFrontstageTabDocumentInput
 } from '../api/page-content';
 
@@ -80,26 +78,6 @@ export function useFrontstagePageContentSave({
     onSuccess: async (savedContent: FrontstagePageContent) => {
       queryClient.setQueryData(queryKey, savedContent);
       await queryClient.invalidateQueries({
-        queryKey: ['frontstage', workspaceId ?? '', 'pages', pageId ?? '', 'tabs'],
-        refetchType: 'active'
-      });
-    }
-  });
-
-  const createBlockMutation = useMutation({
-    mutationFn: (input: CreateFrontstageBlockInput) =>
-      createFrontstagePageBlock(
-        requireValue(workspaceId, 'workspace id'),
-        requireValue(pageId, 'page id'),
-        requireValue(tabId, 'tab id'),
-        input,
-        requireCsrfToken(csrfToken)
-      ),
-    onMutate: clearMutationError,
-    onError: captureMutationError,
-    onSuccess: async (savedContent: FrontstagePageContent) => {
-      queryClient.setQueryData(queryKey, savedContent);
-      await queryClient.invalidateQueries({
         queryKey: [
           'frontstage',
           workspaceId ?? '',
@@ -114,15 +92,13 @@ export function useFrontstagePageContentSave({
 
   const reset = () => {
     saveMutation.reset();
-    createBlockMutation.reset();
     setMutationError(null);
   };
 
   return {
     save: saveMutation.mutateAsync,
-    createBlock: createBlockMutation.mutateAsync,
-    saving: saveMutation.isPending || createBlockMutation.isPending,
-    isPending: saveMutation.isPending || createBlockMutation.isPending,
+    saving: saveMutation.isPending,
+    isPending: saveMutation.isPending,
     error: mutationError,
     reset,
     clearError: clearMutationError

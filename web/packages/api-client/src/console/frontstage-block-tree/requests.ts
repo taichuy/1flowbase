@@ -5,6 +5,7 @@ import type {
   ConsoleFrontstageBlockDescendant,
   ConsoleFrontstageBlockDescendantsQuery,
   ConsoleFrontstageBlockListQuery,
+  ConsoleFrontstageBlockRootListQuery,
   ConsoleFrontstageBlockNode,
   ConsoleFrontstageBlockNodeCode,
   ConsoleFrontstageBlockRuntimeAssembly,
@@ -17,6 +18,7 @@ import type {
   DeleteConsoleFrontstageBlockSubtreeInput,
   MoveConsoleFrontstageBlockNodeInput,
   SaveConsoleFrontstageBlockNodeCodeInput,
+  UpdateConsoleFrontstageBlockDescriptorsInput,
   UpdateConsoleFrontstageBlockNodeInput
 } from './types';
 
@@ -43,9 +45,9 @@ function withQuery(path: string, values: object): string {
 export function listConsoleFrontstageBlockRoots(
   workspaceId: string,
   pageId: string,
-  query: ConsoleFrontstageBlockListQuery = {},
+  query: ConsoleFrontstageBlockRootListQuery,
   baseUrl?: string
-): Promise<ConsoleFrontstageBlockNodeSummary[]> {
+): Promise<ConsoleFrontstageBlockNode[]> {
   return apiFetch({
     path: withQuery(blockTreePath(workspaceId, pageId), query),
     method: 'GET',
@@ -106,6 +108,23 @@ export function updateConsoleFrontstageBlockNode(
   return apiFetch({
     path: blockPath(workspaceId, pageId, blockId),
     method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleFrontstageBlockDescriptors(
+  workspaceId: string,
+  pageId: string,
+  tabId: string,
+  input: UpdateConsoleFrontstageBlockDescriptorsInput,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleFrontstageBlockNode[]> {
+  return apiFetch({
+    path: `/api/console/frontstage/${encodeURIComponent(workspaceId)}/pages/${encodeURIComponent(pageId)}/tabs/${encodeURIComponent(tabId)}/block-descriptors`,
+    method: 'PUT',
     body: input,
     csrfToken,
     baseUrl

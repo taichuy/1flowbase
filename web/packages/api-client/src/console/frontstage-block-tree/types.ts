@@ -20,6 +20,7 @@ export interface ConsoleFrontstageBlockNodeSummary {
 }
 
 export interface ConsoleFrontstageBlockNode extends ConsoleFrontstageBlockNodeSummary {
+  code_ref: string;
   input_mapping: Record<string, string>;
   output_mapping: Record<string, string>;
   runtime_descriptor: unknown;
@@ -76,7 +77,7 @@ export interface ConsoleFrontstageBlockOpenTarget {
 }
 
 export interface CreateConsoleFrontstageBlockNodeInput {
-  tab_id: string;
+  tab_id?: string;
   title: string;
   description?: string;
   presentation: ConsoleFrontstageBlockPresentation;
@@ -99,6 +100,13 @@ export interface UpdateConsoleFrontstageBlockNodeInput {
   runtime_descriptor?: unknown;
 }
 
+export interface UpdateConsoleFrontstageBlockDescriptorsInput {
+  updates: Array<{
+    block_id: string;
+    runtime_descriptor: unknown;
+  }>;
+}
+
 export interface MoveConsoleFrontstageBlockNodeInput {
   parent_block_id: string | null;
   before_block_id: string | null;
@@ -117,6 +125,10 @@ export interface SaveConsoleFrontstageBlockNodeCodeInput {
 
 export interface ConsoleFrontstageBlockListQuery {
   limit?: number;
+}
+
+export interface ConsoleFrontstageBlockRootListQuery extends ConsoleFrontstageBlockListQuery {
+  tab_id: string;
 }
 
 export interface ConsoleFrontstageBlockSearchQuery {

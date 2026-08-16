@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -63,6 +69,7 @@ function summary(
 function detail(node: FrontstageBlockNodeSummary): FrontstageBlockNode {
   return {
     ...node,
+    code_ref: `frontstage.block.${node.block_id}`,
     input_mapping: {},
     output_mapping: {},
     runtime_descriptor: null
@@ -92,6 +99,12 @@ function renderPanel(
     <BlockSchemaTreePanel
       workspaceId="workspace-1"
       pageId="page-1"
+      tabId="tab-1"
+      blockCreateDefaults={{
+        source_code: 'export default () => null',
+        dependency_lock: [],
+        runtime_descriptor: {}
+      }}
       currentBlockId="root-page"
       onOpenBlock={onOpenBlock}
       onDeletedBlock={onDeletedBlock}
@@ -134,7 +147,9 @@ describe('BlockSchemaTreePanel', () => {
       .closest('[role="treeitem"]');
     expect(rootTreeItem).toHaveAttribute('aria-selected', 'true');
     expect(rootTreeItem?.querySelector('.ant-tree-iconEle')).toBeNull();
-    expect(screen.queryByText(/根容器|Root container/u)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/根容器|Root container/u)
+    ).not.toBeInTheDocument();
 
     const switcher = rootTreeItem?.querySelector('.ant-tree-switcher');
     expect(switcher).not.toBeNull();
@@ -165,6 +180,7 @@ describe('BlockSchemaTreePanel', () => {
       <BlockSchemaTreePanel
         workspaceId="workspace-1"
         pageId="page-1"
+        tabId="tab-1"
         currentBlockId="child-page"
         onOpenBlock={vi.fn()}
       />,
@@ -186,6 +202,7 @@ describe('BlockSchemaTreePanel', () => {
       <BlockSchemaTreePanel
         workspaceId="workspace-1"
         pageId="page-1"
+        tabId="tab-1"
         currentBlockId="root-page"
         onOpenBlock={vi.fn()}
       />
@@ -213,7 +230,9 @@ describe('BlockSchemaTreePanel', () => {
         { query: 'child' }
       );
     });
-    expect(await screen.findByText('Root page / Child page')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Root page / Child page')
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Child page/u }));
     expect(onOpenBlock).toHaveBeenCalledWith('child-page');
   });
@@ -231,7 +250,11 @@ describe('BlockSchemaTreePanel', () => {
       target: { value: 'Nested page description' }
     });
     fireEvent.mouseDown(screen.getByLabelText(/展示方式|Presentation/u));
-    fireEvent.click(await screen.findByText(/页面|Page/u, { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(
+      await screen.findByText(/页面|Page/u, {
+        selector: '.ant-select-item-option-content'
+      })
+    );
     const createDialog = await screen.findByRole('dialog');
     fireEvent.click(
       within(createDialog).getByRole('button', {
@@ -241,16 +264,15 @@ describe('BlockSchemaTreePanel', () => {
 
     await waitFor(() => {
       expect(mutations.create.mutateAsync).toHaveBeenCalledWith({
-        tab_id: 'tab-1',
         title: 'Nested page',
         description: 'Nested page description',
         presentation: 'page',
         parent_block_id: 'root-page',
         before_block_id: null,
         after_block_id: null,
-        source_code: 'export default function Block() { return null; }\n',
+        source_code: 'export default () => null',
         dependency_lock: [],
-        runtime_descriptor: null
+        runtime_descriptor: {}
       });
       expect(onOpenBlock).toHaveBeenCalledWith('child-page');
     });
@@ -303,6 +325,7 @@ describe('BlockSchemaTreePanel', () => {
         <BlockSchemaTreePanel
           workspaceId="workspace-1"
           pageId="page-1"
+          tabId="tab-1"
           currentBlockId="root-page"
           onOpenBlock={vi.fn()}
         />
@@ -387,6 +410,7 @@ describe('BlockSchemaTreePanel', () => {
       expect(mutations.deleteSubtree.mutateAsync).toHaveBeenCalledWith({
         block_id: 'root-page',
         parent_block_id: null,
+        tab_id: 'tab-1',
         input: { expected_affected_count: 2 }
       });
       expect(onDeletedBlock).toHaveBeenCalledWith({
@@ -415,7 +439,8 @@ describe('BlockSchemaTreePanel', () => {
     await waitFor(() => {
       expect(mutations.deleteLeaf.mutateAsync).toHaveBeenCalledWith({
         block_id: 'root-page',
-        parent_block_id: null
+        parent_block_id: null,
+        tab_id: 'tab-1'
       });
       expect(onDeletedBlock).toHaveBeenCalledWith({
         block_id: 'root-page',
@@ -427,7 +452,9 @@ describe('BlockSchemaTreePanel', () => {
   test('AC-004 renders honest empty, error and permission states', async () => {
     api.fetchFrontstageBlockRoots.mockResolvedValueOnce([]);
     const { onOpenBlock: emptyOpenBlock } = renderPanel();
-    expect(await screen.findByText(/当前页面没有区块|no blocks/u)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/当前页面没有区块|no blocks/u)
+    ).toBeInTheDocument();
     emptyOpenBlock.mockClear();
 
     api.fetchFrontstageBlockRoots.mockRejectedValueOnce(new Error('offline'));

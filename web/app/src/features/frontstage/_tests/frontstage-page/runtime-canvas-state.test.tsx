@@ -1,3 +1,4 @@
+import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, vi } from 'vitest';
@@ -31,9 +32,6 @@ const pageContentSaveHook = vi.hoisted(() => ({
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
 }));
-const blockCodeHook = vi.hoisted(() => ({
-  useFrontstageBlockCode: vi.fn()
-}));
 const runtimeSessionsHook = vi.hoisted(() => ({
   useFrontstagePageCanvasNativePreparations: vi.fn((_input?: unknown) => ({
     preparations: [],
@@ -47,23 +45,16 @@ const runtimeAssemblyHook = vi.hoisted(() => ({
     }): unknown[] => []
   )
 }));
-const blockCodeApi = vi.hoisted(() => ({
-  fetchFrontstageBlockCode: vi.fn(
-    (_workspaceId: string, pageId: string, codeRef: string) =>
-      Promise.resolve({ pageId, codeRef, code: 'export default {}' })
-  ),
-  frontstageBlockCodeQueryKey: vi.fn(
-    (workspaceId: string, pageId: string, codeRef: string) =>
-      [
-        'frontstage',
-        workspaceId,
-        'pages',
-        pageId,
-        'block-code',
-        codeRef
-      ] as const
-  ),
-  saveFrontstageBlockCode: vi.fn()
+const blockTreeMutationsHook = vi.hoisted(() => ({
+  useFrontstageBlockTreeMutations: vi.fn(() => ({
+    create: { mutateAsync: vi.fn(), isPending: false },
+    update: { mutateAsync: vi.fn(), isPending: false },
+    updateDescriptors: { mutateAsync: vi.fn(), isPending: false },
+    move: { mutateAsync: vi.fn(), isPending: false },
+    deleteLeaf: { mutateAsync: vi.fn(), isPending: false },
+    deleteSubtree: { mutateAsync: vi.fn(), isPending: false },
+    saveCode: { mutateAsync: vi.fn(), isPending: false }
+  }))
 }));
 const blockTreeApi = vi.hoisted(() => ({
   fetchFrontstageBlockNode: vi.fn(),
@@ -74,7 +65,6 @@ vi.mock(
   () => pageContentSaveHook
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
-vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
 vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
@@ -83,7 +73,10 @@ vi.mock(
   '../../hooks/use-frontstage-runtime-assembly',
   () => runtimeAssemblyHook
 );
-vi.mock('../../api/block-code', () => blockCodeApi);
+vi.mock(
+  '../../hooks/use-frontstage-block-tree-mutations',
+  () => blockTreeMutationsHook
+);
 vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
   FrontstageJsxStudioDrawer: ({
@@ -233,6 +226,45 @@ function FrontStagePageHarness({
   const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
     initialPageTree ?? []
   );
+  const legacyFixtureBlocks =
+    pageContent?.document.payload !== null &&
+    typeof pageContent?.document.payload === 'object' &&
+    !Array.isArray(pageContent.document.payload) &&
+    Array.isArray(
+      (pageContent.document.payload as Record<string, unknown>).blocks
+    )
+      ? ((pageContent.document.payload as Record<string, unknown>)
+          .blocks as Array<Record<string, unknown>>)
+      : [];
+  const blockRoots = legacyFixtureBlocks.map(
+    (block, index): ConsoleFrontstageBlockNode => ({
+      block_id: String(block.id),
+      workspace_id: workspaceId,
+      page_id: pageId ?? pageContent?.page.id ?? 'page-1',
+      tab_id: pageContent?.tab.id ?? 'tab-1',
+      parent_block_id: null,
+      rank: String(index + 1).padStart(6, '0'),
+      presentation:
+        block.presentation === 'drawer' ||
+        block.presentation === 'modal' ||
+        block.presentation === 'inline'
+          ? block.presentation
+          : 'page',
+      title: typeof block.title === 'string' ? block.title : null,
+      description:
+        typeof block.description === 'string' ? block.description : null,
+      schema_version: 1,
+      code_ref:
+        typeof block.codeRef === 'string'
+          ? block.codeRef
+          : `frontstage.block.${String(block.id)}`,
+      input_mapping: {},
+      output_mapping: {},
+      runtime_descriptor: block,
+      created_at: '2026-08-16T00:00:00Z',
+      updated_at: '2026-08-16T00:00:00Z'
+    })
+  );
 
   return (
     <FrontStagePage
@@ -241,6 +273,7 @@ function FrontStagePageHarness({
       onNavigatePage={onNavigatePage}
       initialPageTree={pageTree}
       pageContent={pageContent}
+      blockRoots={blockRoots}
       isPageContentLoading={isPageContentLoading}
       hasPageContentLoadError={hasPageContentLoadError}
       blockRuntimeAssembly={blockRuntimeAssembly}
@@ -420,20 +453,6 @@ function mockFrontstageBlockCatalog(
   });
 }
 
-function mockFrontstageBlockCode() {
-  blockCodeHook.useFrontstageBlockCode.mockReturnValue({
-    code: '',
-    draft: '',
-    dirty: false,
-    loading: false,
-    saving: false,
-    error: null,
-    setDraft: vi.fn(),
-    reset: vi.fn(),
-    save: vi.fn()
-  });
-}
-
 describe('FrontStagePage - runtime canvas state', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -441,7 +460,6 @@ describe('FrontStagePage - runtime canvas state', () => {
     vi.clearAllMocks();
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
-    mockFrontstageBlockCode();
     runtimeSessionsHook.useFrontstagePageCanvasNativePreparations.mockImplementation(
       () => ({ preparations: [], retryBlock: vi.fn() })
     );
@@ -472,11 +490,6 @@ describe('FrontStagePage - runtime canvas state', () => {
           };
         })
     );
-    blockCodeApi.saveFrontstageBlockCode.mockResolvedValue({
-      pageId: 'page-1',
-      codeRef: 'frontstage-js-block-1-code',
-      code: 'saved template'
-    });
   });
 
   test('renders every embedded runtime assembly layer without detail or code reads', async () => {

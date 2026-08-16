@@ -44,7 +44,7 @@ function createCatalogBlockInput(
 
 function findMatchingFrontstageBlockCatalogEntry(
   block: FrontstageBlockInstance | null | undefined,
-  catalogItems: NormalizedFrontstageBlockCatalogEntry[]
+  catalogItems: readonly NormalizedFrontstageBlockCatalogEntry[]
 ): NormalizedFrontstageBlockCatalogEntry | null {
   if (!block) {
     return null;

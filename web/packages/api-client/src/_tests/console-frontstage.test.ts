@@ -3,7 +3,6 @@ import * as transport from '../transport';
 
 import {
   createFrontstageGroup,
-  createFrontstageBlock,
   createFrontstagePage,
   createFrontstagePageTab,
   deleteFrontstagePageTab,
@@ -14,7 +13,6 @@ import {
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
   getFrontstageComponentCapability,
-  getFrontstageBlockCode,
   getFrontstagePageTabDetail,
   frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
@@ -22,9 +20,7 @@ import {
   listFrontstageComponentCapabilities,
   listFrontstagePages,
   moveFrontstagePageNode,
-  saveFrontstageBlockCode,
   saveFrontstageTabDocument,
-  type ConsoleFrontstageBlockCode,
   type ConsoleFrontstageComponentCapabilitySummary,
   updateFrontstagePageTab,
   updateFrontstagePageNodeTitle
@@ -58,19 +54,6 @@ describe('console-frontstage client', () => {
       }
     }),
     cancel: vi.fn()
-  });
-
-  test('keeps the block code source hash field in the API DTO contract', () => {
-    const blockCode = {
-      page_id: 'page-1',
-      code_ref: 'hero',
-      source_code: 'export default 1;',
-      source_sha256: null,
-      dependency_lock: null
-    } satisfies ConsoleFrontstageBlockCode;
-
-    expect(blockCode.source_code).toContain('export default');
-    expect(blockCode.source_sha256).toBeNull();
   });
 
   test('D2-AC-001 exposes the canonical registered React module identity', () => {
@@ -121,10 +104,7 @@ describe('console-frontstage client', () => {
       name: 'OpenAPI capability catalog',
       request: () =>
         listFrontstageInterfaceCapabilities('workspace-1', {
-          path_prefixes: [
-            '/api/public/',
-            '/api/console/settings/auth-center/'
-          ],
+          path_prefixes: ['/api/public/', '/api/console/settings/auth-center/'],
           path_query: '/api/console/applications',
           adapter_id: 'console_openapi',
           method: 'GET',
@@ -174,15 +154,6 @@ describe('console-frontstage client', () => {
         getFrontstagePageTabDetail('workspace-1', 'page-1', 'analytics'),
       expected: {
         path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/analytics',
-        method: 'GET'
-      }
-    },
-    {
-      name: 'encoded JS block code ref',
-      request: () =>
-        getFrontstageBlockCode('workspace-1', 'page-1', 'hero/main'),
-      expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/block-codes/hero%2Fmain',
         method: 'GET'
       }
     }
@@ -521,59 +492,13 @@ describe('console-frontstage client', () => {
           'workspace-1',
           'page-1',
           'tab-1',
-          { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
+          { payload: { version: 1, 'x-layout-mode': 'auto' } },
           'csrf-123'
         ),
       expected: {
         path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
         method: 'PUT',
-        body: { payload: { version: 1, blocks: [{ id: 'hero-1' }] } },
-        csrfToken: 'csrf-123'
-      }
-    },
-    {
-      name: 'atomic block creation',
-      request: () =>
-        createFrontstageBlock(
-          'workspace-1',
-          'page-1',
-          'tab-1',
-          {
-            payload: { version: 1, blocks: [{ id: 'hero-1' }] },
-            code_ref: 'hero-1-code',
-            source_code: 'export default function Hero() {}',
-            dependency_lock: []
-          },
-          'csrf-123'
-        ),
-      expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/blocks',
-        method: 'POST',
-        body: {
-          payload: { version: 1, blocks: [{ id: 'hero-1' }] },
-          code_ref: 'hero-1-code',
-          source_code: 'export default function Hero() {}'
-        },
-        csrfToken: 'csrf-123'
-      }
-    },
-    {
-      name: 'block code save',
-      request: () =>
-        saveFrontstageBlockCode(
-          'workspace-1',
-          'page-1',
-          'hero',
-          {
-            source_code: 'export default function Hero() {}',
-            dependency_lock: []
-          },
-          'csrf-123'
-        ),
-      expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/block-codes/hero',
-        method: 'PUT',
-        body: expect.objectContaining({ source_code: 'export default function Hero() {}' }),
+        body: { payload: { version: 1, 'x-layout-mode': 'auto' } },
         csrfToken: 'csrf-123'
       }
     }

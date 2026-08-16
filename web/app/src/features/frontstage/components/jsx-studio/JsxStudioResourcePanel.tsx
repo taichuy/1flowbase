@@ -48,6 +48,8 @@ export function JsxStudioResourcePanel({
   currentBlockId,
   pageBlocks,
   pageId,
+  tabId,
+  blockCreateDefaults,
   workspaceId,
   onInsertCode,
   onDeletedBlock,
@@ -65,6 +67,12 @@ export function JsxStudioResourcePanel({
   currentBlockId?: string;
   pageBlocks: readonly FrontstageBlockInstance[];
   pageId?: string;
+  tabId?: string | null;
+  blockCreateDefaults?: {
+    source_code: string;
+    dependency_lock: unknown[];
+    runtime_descriptor: unknown;
+  };
   workspaceId: string;
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   onDeletedBlock?: (event: FrontstageBlockDeletedEvent) => void;
@@ -100,11 +108,13 @@ export function JsxStudioResourcePanel({
     );
   }
 
-  if (section === 'block-tree' && onOpenBlock && pageId) {
+  if (section === 'block-tree' && onOpenBlock && pageId && tabId) {
     return (
       <BlockSchemaTreePanel
         currentBlockId={currentBlockId ?? block.id}
         pageId={pageId}
+        tabId={tabId}
+        blockCreateDefaults={blockCreateDefaults}
         workspaceId={workspaceId}
         onDeletedBlock={onDeletedBlock}
         onOpenBlock={onOpenBlock}

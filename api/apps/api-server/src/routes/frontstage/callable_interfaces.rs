@@ -8,7 +8,7 @@ use axum::{
 };
 use control_plane::{
     errors::ControlPlaneError,
-    frontstage::{FrontstagePageService, GetFrontstagePageDetailCommand},
+    frontstage::{FrontstageBlockScopeCommand, FrontstagePageService},
 };
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -177,11 +177,6 @@ struct FrontstageCallableWriteGrant {
     expires_at: OffsetDateTime,
 }
 
-#[derive(Debug, Deserialize)]
-struct FrontstageCallableBlock {
-    id: String,
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/frontstage/{workspace_id}/interface-capabilities",
@@ -316,19 +311,12 @@ pub async fn dispatch_frontstage_callable_interface(
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
 
-    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_page_detail(GetFrontstagePageDetailCommand {
-            actor_user_id: context.user.id,
-            workspace_id,
-            page_id,
-            tab_reference: tab_id.to_string(),
-        })
-        .await?;
-
     let (route, callable) = resolve_source_callable(
         &state,
+        &context,
         workspace_id,
-        &detail.document.payload,
+        page_id,
+        tab_id,
         &body.block_id,
         &body.method,
         &body.path,
@@ -413,18 +401,12 @@ pub async fn issue_frontstage_callable_write_grant(
     let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
-    let detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_page_detail(GetFrontstagePageDetailCommand {
-            actor_user_id: context.user.id,
-            workspace_id,
-            page_id,
-            tab_reference: tab_id.to_string(),
-        })
-        .await?;
     let (route, callable) = resolve_source_callable(
         &state,
+        &context,
         workspace_id,
-        &detail.document.payload,
+        page_id,
+        tab_id,
         &body.block_id,
         &body.method,
         &body.path,
@@ -477,13 +459,25 @@ pub async fn issue_frontstage_callable_write_grant(
 
 async fn resolve_source_callable(
     state: &ApiState,
+    context: &crate::middleware::require_session::RequestContext,
     workspace_id: Uuid,
-    document_payload: &Value,
+    page_id: Uuid,
+    tab_id: Uuid,
     block_id: &str,
     method: &str,
     path: &str,
 ) -> Result<(CanonicalRouteKey, RegisteredCallable), ApiError> {
-    ensure_document_block(document_payload, block_id)?;
+    let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .get_block_node(FrontstageBlockScopeCommand {
+            actor_user_id: context.user.id,
+            workspace_id,
+            page_id,
+            block_id: block_id.to_owned(),
+        })
+        .await?;
+    if node.tab_id != tab_id {
+        return Err(ControlPlaneError::NotFound("frontstage_block").into());
+    }
     let route = canonical_route_key(method, path)?;
     let callable = get_openapi_capability_by_route(state, workspace_id, &route.method, &route.path)
         .await?
@@ -520,25 +514,6 @@ fn canonical_route_key(method: &str, path: &str) -> Result<CanonicalRouteKey, Ap
         method,
         path: path.to_string(),
     })
-}
-
-fn ensure_document_block(document_payload: &Value, block_id: &str) -> Result<(), ApiError> {
-    let blocks = document_payload
-        .get("blocks")
-        .and_then(Value::as_array)
-        .ok_or(ControlPlaneError::InvalidInput(
-            "frontstage_document_blocks",
-        ))?;
-    let block = blocks
-        .iter()
-        .find(|block| block.get("id").and_then(Value::as_str) == Some(block_id))
-        .ok_or(ControlPlaneError::NotFound("frontstage_block"))?;
-    let block: FrontstageCallableBlock = serde_json::from_value(block.clone())
-        .map_err(|_| ControlPlaneError::InvalidInput("frontstage_block"))?;
-    if block.id != block_id {
-        return Err(ControlPlaneError::InvalidInput("block_id").into());
-    }
-    Ok(())
 }
 
 async fn consume_write_grant(
@@ -822,18 +797,5 @@ mod tests {
             assert!(canonical_route_key("GET", path).is_err(), "{path}");
         }
         assert!(canonical_route_key("TRACE", "/api/console/applications").is_err());
-    }
-
-    #[test]
-    fn route_dispatch_requires_a_current_document_block() {
-        let document = serde_json::json!({
-            "blocks": [
-                { "id": "block-1" },
-                { "id": "block-2" }
-            ]
-        });
-        assert!(ensure_document_block(&document, "block-1").is_ok());
-        assert!(ensure_document_block(&document, "block-2").is_ok());
-        assert!(ensure_document_block(&document, "missing-block").is_err());
     }
 }

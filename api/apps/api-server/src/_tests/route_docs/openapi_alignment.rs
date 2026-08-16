@@ -528,8 +528,6 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
         paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/move");
     let frontstage_content_route =
         paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document");
-    let frontstage_block_code_route =
-        paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}");
     let frontstage_interface_capabilities_route =
         paths.get("/api/console/frontstage/{workspace_id}/interface-capabilities");
     let frontstage_interface_capability_detail_route =
@@ -555,10 +553,9 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
         frontstage_content_route.is_some(),
         "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/tabs/{{tab_id}}/document"
     );
-    assert!(
-        frontstage_block_code_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/block-codes/{{code_ref}}"
-    );
+    assert!(!paths.contains_key(
+        "/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}"
+    ));
     assert!(
         frontstage_interface_capabilities_route.is_some(),
         "missing path /api/console/frontstage/{{workspace_id}}/interface-capabilities"
@@ -575,8 +572,6 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     let delete_op = &frontstage_node_route.unwrap()["delete"];
     let move_op = &frontstage_move_route.unwrap()["post"];
     let content_put_op = &frontstage_content_route.unwrap()["put"];
-    let block_get_op = &frontstage_block_code_route.unwrap()["get"];
-    let block_put_op = &frontstage_block_code_route.unwrap()["put"];
     let interface_capabilities_get_op = &frontstage_interface_capabilities_route.unwrap()["get"];
     let interface_capability_detail_get_op =
         &frontstage_interface_capability_detail_route.unwrap()["get"];
@@ -602,8 +597,6 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
         content_put_op["requestBody"]["content"]["application/json"]["schema"]["$ref"],
         json!("#/components/schemas/SaveFrontstageTabDocumentBody")
     );
-    assert!(block_get_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
-    assert!(block_put_op["responses"]["200"]["content"]["application/json"]["schema"].is_object());
     assert!(delete_op["responses"]["204"].is_object());
     assert_eq!(
         get_op["responses"]["400"]["content"]["application/json"]["schema"]["$ref"],
@@ -624,6 +617,10 @@ async fn openapi_contains_canonical_frontstage_block_tree_routes() {
     let paths = openapi_paths().await;
     let base = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks";
     let expected_methods = [
+        (
+            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/block-descriptors".to_owned(),
+            &["put"][..],
+        ),
         (base.to_owned(), &["get", "post"][..]),
         (format!("{base}/search"), &["get"][..]),
         (

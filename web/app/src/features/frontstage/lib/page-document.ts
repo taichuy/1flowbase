@@ -586,7 +586,7 @@ function createPayloadRecord(payload: unknown): Record<string, unknown> {
   return isRecord(payload) ? { ...payload } : {};
 }
 
-function createBlockPayload(
+export function createFrontstageBlockRuntimeDescriptor(
   block: FrontstageBlockInstance
 ): FrontstageBlockPayload {
   return {
@@ -638,7 +638,7 @@ export function createFrontstagePageDocumentSaveInput(
   return {
     payload: createPayloadWithBlocks(
       content.document.payload,
-      document.blocks.map(createBlockPayload),
+      document.blocks.map(createFrontstageBlockRuntimeDescriptor),
       document.layoutMode
     )
   };
