@@ -20,6 +20,8 @@
             "compact.responses_compact",
             "compact.responses_compaction_v2",
             "responses.native_passthrough",
+            "reasoning_output_supported",
+            "native_continuation_supported",
             "protocol_context.restore.openai_chat.v1",
             "protocol_context.restore.openai_responses.v1"
           ]
