@@ -49,7 +49,13 @@ describe('PageCanvas', () => {
       />
     );
 
-    expect(screen.getByTestId('block-slot-canonical-root')).toBeInTheDocument();
+    const blockSlot = screen.getByTestId('block-slot-canonical-root');
+    expect(blockSlot).toBeInTheDocument();
+    expect(blockSlot.firstElementChild).toHaveStyle({
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: '0'
+    });
   });
 
   test('renders a compact loading state before content is available', () => {

@@ -34,6 +34,25 @@ describe('native trusted block portal surface', () => {
     expect(first).not.toHaveProperty('update');
   });
 
+  test('AC-001 AC-002 contains wide block content inside the mount scroll owner', () => {
+    const root = createRoot();
+    const surface = attachNativeTrustedBlockPortalSurface({
+      root,
+      blockId: 'wide-content'
+    });
+
+    expect(surface.mountElement).toHaveStyle({
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: '0',
+      boxSizing: 'border-box',
+      overflowX: 'auto',
+      overflowY: 'visible'
+    });
+
+    surface.dispose();
+  });
+
   test('D3R-AC-008 cleanup is idempotent, restores host markers, and permits a fresh epoch', () => {
     const root = createRoot();
     root.setAttribute('data-flowbase-native-trusted-block-id', 'host-value');

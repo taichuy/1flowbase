@@ -48,6 +48,16 @@ export function attachNativeTrustedBlockPortalSurface({
   const mountElement = document.createElement('div');
   mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE, '');
   mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
+  // Normal block content owns horizontal scrolling here. Popups mount as
+  // direct ShadowRoot children, so they remain outside this scroll boundary.
+  Object.assign(mountElement.style, {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: '0',
+    boxSizing: 'border-box',
+    overflowX: 'auto',
+    overflowY: 'visible'
+  });
   shadowRoot.replaceChildren(mountElement);
   activeRoots.add(root);
 

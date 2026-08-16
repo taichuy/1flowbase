@@ -447,7 +447,7 @@ function NativeRuntimeSlotSurface({
       <div
         ref={setRoot}
         data-testid={`frontstage-native-block-root-${item.blockId}`}
-        style={{ width: '100%', minWidth: 0 }}
+        style={{ width: '100%', maxWidth: '100%', minWidth: 0 }}
       />
       {root ? (
         <FrontstageNativeRuntimeInstance
@@ -672,6 +672,9 @@ function RenderPlanSlot({
 
   const isToolbarVisible = !!(isDesignMode && (isHovered || isSelected));
   const contentViewportStyle: CSSProperties = {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
     height: isFixedHeight ? '100%' : 'auto',
     boxSizing: 'border-box',
     overflow: isFixedHeight ? 'auto' : 'visible',
