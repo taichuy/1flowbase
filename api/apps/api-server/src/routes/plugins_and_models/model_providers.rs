@@ -726,6 +726,7 @@ fn to_request_log_response(
         provider_instance_id: record.provider_instance_id.map(|id| id.to_string()),
         provider_instance_display_name: record.provider_instance_display_name,
         provider_code: record.provider_code,
+        plugin_id: record.plugin_id,
         protocol: record.protocol,
         upstream_model_id: record.upstream_model_id,
         reasoning_effort: record.reasoning_effort,
@@ -735,6 +736,8 @@ fn to_request_log_response(
         input_tokens: record.input_tokens,
         output_tokens: record.output_tokens,
         total_tokens: record.total_tokens,
+        input_cache_hit_tokens: record.input_cache_hit_tokens,
+        input_cache_hit_rate: record.input_cache_hit_rate,
         started_at: format_time(record.started_at),
         first_token_at: format_optional_time(record.first_token_at),
         finished_at: format_optional_time(record.finished_at),
@@ -1150,6 +1153,7 @@ mod request_log_response_tests {
                 provider_instance_id: None,
                 provider_instance_display_name: Some("Gemini02".into()),
                 provider_code: "gemini".into(),
+                plugin_id: Some("gemini@0.1.20".into()),
                 protocol: "google_genai".into(),
                 upstream_model_id: "gemini-3-flash".into(),
                 reasoning_effort: None,
@@ -1159,6 +1163,8 @@ mod request_log_response_tests {
                 input_tokens: Some(3),
                 output_tokens: Some(191),
                 total_tokens: Some(194),
+                input_cache_hit_tokens: Some(97),
+                input_cache_hit_rate: Some(0.5),
                 started_at,
                 first_token_at: Some(started_at - Duration::milliseconds(6076)),
                 finished_at: Some(started_at),
@@ -1169,5 +1175,8 @@ mod request_log_response_tests {
         assert_eq!(response.node_run_id, Some(node_run_id.to_string()));
         assert_eq!(response.time_to_first_token_ms, Some(3350));
         assert_eq!(response.total_duration_ms, Some(7426));
+        assert_eq!(response.plugin_id.as_deref(), Some("gemini@0.1.20"));
+        assert_eq!(response.input_cache_hit_tokens, Some(97));
+        assert_eq!(response.input_cache_hit_rate, Some(0.5));
     }
 }

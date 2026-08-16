@@ -384,6 +384,7 @@ where
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
+                    plugin_id: None,
                     reasoning_effort: None,
                     status: "failed",
                     failed_after_first_token: false,
@@ -434,6 +435,7 @@ where
                 );
             }
         };
+        let runtime_plugin_id = resolved_route.runtime_plugin_id().map(str::to_string);
         let route_matches_probe = routing_probe.is_some()
             && attempt_runtime.provider_instance_id == runtime.provider_instance_id
             && attempt_runtime.provider_code == runtime.provider_code
@@ -525,6 +527,7 @@ where
                 attempt_index,
                 retry_reason: retry_reason.as_deref(),
                 runtime: attempt_runtime,
+                plugin_id: runtime_plugin_id.as_deref(),
                 reasoning_effort: reasoning_effort.as_deref(),
                 status: "failed",
                 failed_after_first_token: false,
@@ -583,6 +586,7 @@ where
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
+                    plugin_id: runtime_plugin_id.as_deref(),
                     reasoning_effort: reasoning_effort.as_deref(),
                     status: "failed",
                     failed_after_first_token: false,
@@ -734,6 +738,7 @@ where
             attempt_index,
             retry_reason: retry_reason.as_deref(),
             runtime: attempt_runtime,
+            plugin_id: runtime_plugin_id.as_deref(),
             reasoning_effort: reasoning_effort.as_deref(),
             status: attempt_status,
             failed_after_first_token,

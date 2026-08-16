@@ -24,6 +24,7 @@ fn request_log(
         provider_instance_id: Some(Uuid::now_v7()),
         provider_instance_display_name: Some("Provider Snapshot".into()),
         provider_code: "fixture_provider".into(),
+        plugin_id: Some("fixture_provider@1.0.0".into()),
         protocol: "openai_compatible".into(),
         upstream_model_id: "gpt-5.4-mini".into(),
         reasoning_effort: Some("high".into()),
@@ -33,6 +34,9 @@ fn request_log(
         input_tokens: Some(120),
         output_tokens,
         total_tokens: output_tokens.map(|v| v + 120),
+        input_cache_hit_tokens: Some(60),
+        input_cache_hit_rate: output_tokens
+            .map(|v| ((60.0 / (v + 120) as f64) * 10_000.0_f64).round() / 10_000.0),
         started_at,
         first_token_at: output_tokens
             .filter(|v| *v > 0)
@@ -227,6 +231,12 @@ async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
     assert_eq!(page.items[0].application_id, row.application_id);
     assert_eq!(page.items[0].conversation_id, row.conversation_id);
     assert_eq!(page.items[0].application_name, "Runtime App Snapshot");
+    assert_eq!(
+        page.items[0].plugin_id.as_deref(),
+        Some("fixture_provider@1.0.0")
+    );
+    assert_eq!(page.items[0].input_cache_hit_tokens, Some(60));
+    assert_eq!(page.items[0].input_cache_hit_rate, Some(0.5));
 }
 
 #[tokio::test]

@@ -184,6 +184,7 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ("provider_instance_id", ManyToOne, false, false),
         ("provider_instance_display_name", String, false, false),
         ("provider_code", String, true, false),
+        ("plugin_id", String, false, false),
         ("protocol", String, true, false),
         ("upstream_model_id", String, true, false),
         ("reasoning_effort", String, false, false),
@@ -193,6 +194,8 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ("input_tokens", Number, false, false),
         ("output_tokens", Number, false, false),
         ("total_tokens", Number, false, false),
+        ("input_cache_hit_tokens", Number, false, false),
+        ("input_cache_hit_rate", Number, false, false),
         ("started_at", Datetime, true, false),
         ("first_token_at", Datetime, false, false),
         ("finished_at", Datetime, false, false),
@@ -213,6 +216,9 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ),
         include_str!(
             "../../../storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql"
+        ),
+        include_str!(
+            "../../../storage-durable/postgres/migrations/20260816130000_add_provider_request_log_plugin_cache_snapshots.sql"
         ),
     ];
     for (code, field_kind, is_required, is_unique) in expected {

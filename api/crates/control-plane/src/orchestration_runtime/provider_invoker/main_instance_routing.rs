@@ -135,6 +135,7 @@ where
             .iter()
             .cloned()
             .collect();
+        let plugin_id = installation.plugin_id.clone();
         Ok(
             orchestration_runtime::execution_engine::ResolvedProviderRoute::new(
                 runtime_capabilities,
@@ -143,7 +144,8 @@ where
                     installation,
                     package,
                 },
-            ),
+            )
+            .with_runtime_plugin_id(plugin_id),
         )
     }
 }

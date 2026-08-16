@@ -123,6 +123,7 @@ export interface ConsoleModelProviderRequestLog {
   provider_instance_id: string | null;
   provider_instance_display_name: string | null;
   provider_code: string;
+  plugin_id: string | null;
   protocol: string;
   upstream_model_id: string;
   reasoning_effort: string | null;
@@ -132,6 +133,8 @@ export interface ConsoleModelProviderRequestLog {
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
+  input_cache_hit_tokens: number | null;
+  input_cache_hit_rate: number | null;
   started_at: string;
   first_token_at: string | null;
   finished_at: string | null;

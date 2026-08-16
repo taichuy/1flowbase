@@ -32,6 +32,7 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         provider_instance_id: Some(Uuid::now_v7()),
         provider_instance_display_name: Some("Worker Provider Snapshot".into()),
         provider_code: "worker_fixture".into(),
+        plugin_id: Some("worker_fixture@1.0.0".into()),
         protocol: "openai_compatible".into(),
         upstream_model_id: "worker-model".into(),
         reasoning_effort: Some("high".into()),
@@ -41,6 +42,8 @@ fn request_log_task(scope_id: Uuid, attempt_id: Uuid) -> ProviderRequestLogTask 
         input_tokens: Some(12),
         output_tokens: Some(8),
         total_tokens: Some(20),
+        input_cache_hit_tokens: Some(5),
+        input_cache_hit_rate: Some(0.25),
         started_at,
         first_token_at: Some(started_at + Duration::milliseconds(25)),
         finished_at: Some(started_at + Duration::milliseconds(80)),
@@ -150,13 +153,20 @@ async fn provider_request_log_worker_batches_valid_payloads_and_acks_each_task()
         .items
         .iter()
         .any(|item| item.attempt_id == second.attempt_id));
+    let first_persisted = page
+        .items
+        .iter()
+        .find(|item| item.attempt_id == first.attempt_id)
+        .expect("first persisted request log");
+    assert_eq!(first_persisted.node_run_id, first.node_run_id);
+    assert_eq!(first_persisted.plugin_id, first.plugin_id);
     assert_eq!(
-        page.items
-            .iter()
-            .find(|item| item.attempt_id == first.attempt_id)
-            .expect("first persisted request log")
-            .node_run_id,
-        first.node_run_id
+        first_persisted.input_cache_hit_tokens,
+        first.input_cache_hit_tokens
+    );
+    assert_eq!(
+        first_persisted.input_cache_hit_rate,
+        first.input_cache_hit_rate
     );
     assert!(entries
         .iter()

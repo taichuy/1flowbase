@@ -25,6 +25,10 @@ async fn llm_node_success_keeps_processed_result_fields_in_output_payload() {
     assert_eq!(trace.output_payload["usage"]["input_tokens"], json!(5));
     assert_eq!(trace.output_payload["usage"]["output_tokens"], json!(7));
     assert_eq!(trace.output_payload["usage"]["total_tokens"], json!(12));
+    assert_eq!(
+        trace.metrics_payload["attempts"][0]["plugin_id"],
+        json!("fixture_provider@1.0.0")
+    );
     assert!(trace.output_payload.get("route").is_none());
     assert!(trace.output_payload.get("attempts").is_none());
     assert!(trace.output_payload.get("assistant_message").is_none());

@@ -60,7 +60,8 @@ impl ProviderInvoker for StubProviderInvoker {
             .into_iter()
             .collect(),
             (),
-        ))
+        )
+        .with_runtime_plugin_id("fixture_provider@1.0.0"))
     }
 
     async fn invoke_llm(

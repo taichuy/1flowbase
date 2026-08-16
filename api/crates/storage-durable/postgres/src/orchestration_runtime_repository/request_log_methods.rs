@@ -8,7 +8,7 @@ impl PgControlPlaneStore {
         }
 
         let mut query = QueryBuilder::<Postgres>::new(
-            "insert into model_provider_request_logs (id, scope_id, attempt_id, flow_run_id, node_run_id, user_id, user_account, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms, created_at) ",
+            "insert into model_provider_request_logs (id, scope_id, attempt_id, flow_run_id, node_run_id, user_id, user_account, application_id, conversation_id, application_name, attempt_index, is_retry, retry_reason, provider_instance_id, provider_instance_display_name, provider_code, plugin_id, protocol, upstream_model_id, reasoning_effort, status, error_code, failed_after_first_token, input_tokens, output_tokens, total_tokens, input_cache_hit_tokens, input_cache_hit_rate, started_at, first_token_at, finished_at, time_to_first_token_ms, total_duration_ms, created_at) ",
         );
         query.push_values(records, |mut row, record| {
             row.push_bind(Uuid::now_v7())
@@ -31,6 +31,7 @@ impl PgControlPlaneStore {
                 .push_bind(record.provider_instance_id)
                 .push_bind(&record.provider_instance_display_name)
                 .push_bind(&record.provider_code)
+                .push_bind(&record.plugin_id)
                 .push_bind(&record.protocol)
                 .push_bind(&record.upstream_model_id)
                 .push_bind(&record.reasoning_effort)
@@ -40,6 +41,8 @@ impl PgControlPlaneStore {
                 .push_bind(record.input_tokens)
                 .push_bind(record.output_tokens)
                 .push_bind(record.total_tokens)
+                .push_bind(record.input_cache_hit_tokens)
+                .push_bind(record.input_cache_hit_rate)
                 .push_bind(record.started_at)
                 .push_bind(record.first_token_at)
                 .push_bind(record.finished_at)
