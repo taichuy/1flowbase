@@ -1003,7 +1003,7 @@ export interface ConsoleRunContextSnapshot extends ConsoleContextSnapshot {
   created_at: string;
 }
 
-export interface ConsoleProviderToolCall {
+export interface ConsoleProviderToolCall extends Record<string, unknown> {
   id: string;
   name: string;
   arguments: unknown;
@@ -1134,7 +1134,7 @@ export type ConsoleFlowDebugStreamEvent =
       node_run_id: string;
       node_id: string;
       tool_call: ConsoleProviderToolCall;
-      tool_result: unknown;
+      tool_result: Record<string, unknown>;
       duration_ms: number;
       run_id?: string;
       event_id?: string;

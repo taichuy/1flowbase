@@ -306,7 +306,7 @@ function normalizeFromEnvelope(
 
   if (eventType === 'assistant_tool_call_finished') {
     const toolCall = normalizeProviderToolCall(payload.tool_call);
-    if (!toolCall || !('tool_result' in payload)) {
+    if (!toolCall || !isRecord(payload.tool_result)) {
       return null;
     }
     return {

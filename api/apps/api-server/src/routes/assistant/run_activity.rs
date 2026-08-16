@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 use crate::routes::debug_run_stream::RuntimeEventStreamEnvelopeResponse;
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(super) struct AssistantRunActivityPageResponse {
+pub struct AssistantRunActivityPageResponse {
     pub status: String,
     pub started_at: String,
     pub finished_at: Option<String>,
@@ -19,7 +19,7 @@ pub(super) struct AssistantRunActivityPageResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(super) enum AssistantRunActivityItem {
+pub enum AssistantRunActivityItem {
     Reasoning {
         event_id: String,
         sequence: i64,
@@ -55,7 +55,7 @@ pub(super) enum AssistantRunActivityItem {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum AssistantRunToolStatus {
+pub enum AssistantRunToolStatus {
     Running,
     Succeeded,
     Failed,

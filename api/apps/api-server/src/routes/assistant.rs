@@ -46,10 +46,8 @@ pub(crate) mod websocket;
 use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
 pub use conversation_events::AssistantConversationSummaryResponse;
 use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
-use run_activity::{
-    format_assistant_activity_time, project_assistant_run_activity,
-    AssistantRunActivityPageResponse,
-};
+pub use run_activity::AssistantRunActivityPageResponse;
+use run_activity::{format_assistant_activity_time, project_assistant_run_activity};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;

@@ -240,7 +240,22 @@ function assistantToolEventFromRunEvent(
   const nodeRunId =
     event.node_run_id ?? optionalStringField(payload, 'node_run_id');
   const nodeId = optionalStringField(payload, 'node_id');
-  const toolCall = isRecord(payload.tool_call) ? payload.tool_call : null;
+  const rawToolCall = isRecord(payload.tool_call) ? payload.tool_call : null;
+  const toolCallId = rawToolCall
+    ? optionalStringField(rawToolCall, 'id')
+    : null;
+  const toolName = rawToolCall
+    ? optionalStringField(rawToolCall, 'name')
+    : null;
+  const toolCall =
+    rawToolCall && toolCallId && toolName
+      ? {
+          ...rawToolCall,
+          id: toolCallId,
+          name: toolName,
+          arguments: rawToolCall.arguments ?? {}
+        }
+      : null;
 
   if (!nodeRunId || !nodeId || !toolCall) {
     return null;

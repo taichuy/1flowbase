@@ -205,11 +205,12 @@ function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
 function toolSummary(entry: ActivityEntry) {
   const input = entry.input;
   if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const inputRecord = input as Record<string, unknown>;
     const locator =
-      typeof input.path === 'string'
-        ? input.path
-        : typeof input.group_id === 'string'
-          ? input.group_id
+      typeof inputRecord.path === 'string'
+        ? inputRecord.path
+        : typeof inputRecord.group_id === 'string'
+          ? inputRecord.group_id
           : null;
     if (locator) {
       return `${entry.toolName} (${locator})`;
@@ -433,9 +434,13 @@ export function AssistantRunTimeline({
       : message.status
     : (activity?.status ?? message.status);
   const terminal = terminalStatus(status);
-  const lastOutputIndex = entries.findLastIndex(
-    (entry) => entry.kind === 'output'
-  );
+  let lastOutputIndex = -1;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    if (entries[index]?.kind === 'output') {
+      lastOutputIndex = index;
+      break;
+    }
+  }
   const finalOutput =
     lastOutputIndex >= 0 ? (entries[lastOutputIndex]?.text ?? '') : answer;
   const terminalError =
