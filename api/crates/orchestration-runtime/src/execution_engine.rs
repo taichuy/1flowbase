@@ -12,9 +12,9 @@ use plugin_framework::{
         NativePromptBlock, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
         ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation,
+        ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
+        ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
 use serde_json::{json, Map, Value};

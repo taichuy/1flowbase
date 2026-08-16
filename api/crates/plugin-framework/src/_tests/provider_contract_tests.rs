@@ -12,10 +12,10 @@ use plugin_framework::{
         ProviderCountTokensInput, ProviderCountTokensMethod, ProviderCountTokensResult,
         ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
         ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
-        ProviderOutputItemPhase, ProviderRuntimeError, ProviderRuntimeErrorKind,
-        ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest, ProviderStdioResponse,
-        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
-        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
+        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::json;
@@ -1224,6 +1224,39 @@ fn provider_runtime_line_error_preserves_upstream_details() {
             );
         }
         other => panic!("expected upstream error stream event, got {other:?}"),
+    }
+}
+
+#[test]
+fn provider_runtime_line_preserves_recoverable_output_protocol_failure() {
+    let line = ProviderRuntimeLine::OutputProtocolFailure {
+        failure: ProviderOutputProtocolFailure {
+            protocol: "dsml".to_string(),
+            error_code: "incomplete_envelope".to_string(),
+            message: "provider returned incomplete tool-call markup".to_string(),
+            retry_feedback: "Emit one complete tool call or answer normally.".to_string(),
+            provider_details: json!({"candidate": "</DSML>"}),
+        },
+    };
+
+    let encoded = serde_json::to_value(&line).unwrap();
+    assert_eq!(encoded["type"], "output_protocol_failure");
+    assert_eq!(encoded["failure"]["protocol"], "dsml");
+    assert_eq!(
+        encoded["failure"]["provider_details"]["candidate"],
+        "</DSML>"
+    );
+
+    let decoded: ProviderRuntimeLine = serde_json::from_value(encoded).unwrap();
+    match decoded.into_stream_event() {
+        Some(ProviderStreamEvent::OutputProtocolFailure { failure }) => {
+            assert_eq!(failure.error_code, "incomplete_envelope");
+            assert_eq!(
+                failure.retry_feedback,
+                "Emit one complete tool call or answer normally."
+            );
+        }
+        other => panic!("expected output protocol failure event, got {other:?}"),
     }
 }
 

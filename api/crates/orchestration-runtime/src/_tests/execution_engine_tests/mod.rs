@@ -11,8 +11,9 @@ use plugin_framework::{
         ProtocolAuthenticationPresentation, ProtocolContextEnvelope, ProviderCompactProfile,
         ProviderCompactResult, ProviderCountTokensInput, ProviderCountTokensResult,
         ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
-        ProviderMessageRole, ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStreamEvent,
-        ProviderToolCall, ProviderUsage, ProviderWireOperation, SourceProtocolRequest,
+        ProviderMessageRole, ProviderOutputProtocolFailure, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderWireOperation, SourceProtocolRequest,
         PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };

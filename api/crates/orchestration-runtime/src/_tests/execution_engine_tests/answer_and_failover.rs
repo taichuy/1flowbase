@@ -768,6 +768,141 @@ async fn llm_node_retries_protocol_only_empty_response() {
 }
 
 #[tokio::test]
+async fn llm_node_retry_consumes_output_protocol_failure_and_adds_model_feedback() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+
+    let retry_feedback = "Your previous tool-call markup was incomplete. Emit one complete tool call or answer normally.";
+    let malformed = ProviderInvocationOutput {
+        events: vec![
+            ProviderStreamEvent::ReasoningDelta {
+                delta: "I will call the tool".to_string(),
+            },
+            ProviderStreamEvent::TextDelta {
+                delta: "visible prefix".to_string(),
+            },
+            ProviderStreamEvent::OutputProtocolFailure {
+                failure: ProviderOutputProtocolFailure {
+                    protocol: "dsml".to_string(),
+                    error_code: "incomplete_envelope".to_string(),
+                    message: "provider returned incomplete tool-call markup".to_string(),
+                    retry_feedback: retry_feedback.to_string(),
+                    provider_details: json!({"candidate": "</｜DSML｜tool_calls>"}),
+                },
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Error,
+            },
+        ],
+        result: ProviderInvocationResult {
+            final_content: Some("visible prefix".to_string()),
+            finish_reason: Some(ProviderFinishReason::Error),
+            ..ProviderInvocationResult::default()
+        },
+        first_token_at: None,
+        time_to_first_token_ms: None,
+    };
+    let (invoker, captured_inputs) = sequential_tool_output_invoker(vec![
+        malformed,
+        provider_output(final_llm_response("retry succeeded")),
+    ]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start": {"query": "hello"}}), &invoker)
+        .await
+        .unwrap();
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+    let inputs = captured_inputs.lock().expect("inputs mutex poisoned");
+
+    assert_eq!(inputs.len(), 2);
+    assert_eq!(
+        inputs[1].messages.last().unwrap().role,
+        ProviderMessageRole::User
+    );
+    assert_eq!(inputs[1].messages.last().unwrap().content, retry_feedback);
+    assert_eq!(llm_trace.output_payload["text"], json!("retry succeeded"));
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["error_code"],
+        json!("provider_output_protocol_failure")
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["failed_after_first_token"],
+        json!(true)
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][1]["retry_reason"],
+        json!("provider_output_protocol_failure")
+    );
+}
+
+#[tokio::test]
+async fn output_protocol_failure_without_node_retry_fails_without_exposing_partial_text() {
+    let plan = base_plan();
+    let malformed = ProviderInvocationOutput {
+        events: vec![
+            ProviderStreamEvent::TextDelta {
+                delta: "visible prefix".to_string(),
+            },
+            ProviderStreamEvent::OutputProtocolFailure {
+                failure: ProviderOutputProtocolFailure {
+                    protocol: "dsml".to_string(),
+                    error_code: "invalid_arguments".to_string(),
+                    message: "provider returned invalid tool-call arguments".to_string(),
+                    retry_feedback: "Emit valid JSON arguments.".to_string(),
+                    provider_details: json!({}),
+                },
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Error,
+            },
+        ],
+        result: ProviderInvocationResult {
+            final_content: Some("visible prefix".to_string()),
+            finish_reason: Some(ProviderFinishReason::Error),
+            ..ProviderInvocationResult::default()
+        },
+        first_token_at: None,
+        time_to_first_token_ms: None,
+    };
+    let (invoker, captured_inputs) = sequential_tool_output_invoker(vec![malformed]);
+
+    let outcome = start_flow_debug_run(&plan, &json!({"node-start": {"query": "hello"}}), &invoker)
+        .await
+        .expect("runtime should return failed outcome");
+
+    assert_eq!(captured_inputs.lock().unwrap().len(), 1);
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("provider_output_protocol_failure")
+            );
+            assert_eq!(failure.error_payload["protocol"], json!("dsml"));
+            assert_eq!(
+                failure.error_payload["protocol_error_code"],
+                json!("invalid_arguments")
+            );
+        }
+        other => panic!("expected output protocol failure, got {other:?}"),
+    }
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+    assert!(llm_trace.output_payload.get("text").is_none());
+}
+
+#[tokio::test]
 async fn native_responses_terminal_persists_only_ephemeral_continuation_marker() {
     let plan = base_plan();
     let (invoker, _) = sequential_tool_output_invoker(vec![ProviderInvocationOutput {
