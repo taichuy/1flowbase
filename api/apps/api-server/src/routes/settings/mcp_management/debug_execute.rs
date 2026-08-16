@@ -405,16 +405,27 @@ fn parameter_schema_has_location_field(schema: &Value, location: &str, field: &s
         return false;
     };
     for segment in field.split('.').filter(|segment| !segment.is_empty()) {
-        let Some(next) = cursor
-            .get("properties")
-            .and_then(Value::as_object)
-            .and_then(|properties| properties.get(segment))
-        else {
+        let Some(next) = schema_property(cursor, segment) else {
             return false;
         };
         cursor = next;
     }
     true
+}
+
+fn schema_property<'a>(schema: &'a Value, name: &str) -> Option<&'a Value> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .and_then(|properties| properties.get(name))
+        .or_else(|| {
+            schema
+                .get("allOf")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find_map(|branch| schema_property(branch, name))
+        })
 }
 
 fn map_tool_result(output_mapping: &Value, interface_response: &Value) -> Value {
@@ -549,5 +560,71 @@ mod server_binding_tests {
         .unwrap();
 
         assert_eq!(mapped.path["workspace_id"], json!(trusted_workspace_id));
+    }
+
+    #[test]
+    fn maps_flattened_json_body_fields_declared_with_all_of() {
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "create_frontstage_block_node".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "POST".into(),
+            path: "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks".into(),
+            name: "Create Frontstage block".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![McpParameterDescriptor {
+                name: "body".into(),
+                field_type: "object".into(),
+                parameter_type: McpParameterType::JsonBody,
+                description: None,
+                required: true,
+                schema: json!({"type":"object"}),
+            }],
+            parameter_schema: json!({
+                "type": "object",
+                "properties": {
+                    "body": {
+                        "allOf": [
+                            {
+                                "type": "object",
+                                "required": ["source_code"],
+                                "properties": {"source_code": {"type": "string"}}
+                            },
+                            {
+                                "type": "object",
+                                "required": ["title"],
+                                "properties": {"title": {"type": "string"}}
+                            }
+                        ]
+                    }
+                }
+            }),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::High,
+            bindable: true,
+            disabled_reason: None,
+        };
+
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[
+                {"interface_param":"source_code","mcp_param":"body.source_code","required":true},
+                {"interface_param":"title","mcp_param":"body.title","required":true}
+            ]}),
+            &json!({"body":{"source_code":"export default () => null","title":"Materials"}}),
+            McpServerBoundInputs {
+                workspace_id: Uuid::now_v7(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            mapped.body,
+            serde_json::Map::from_iter([
+                ("source_code".into(), json!("export default () => null")),
+                ("title".into(), json!("Materials")),
+            ])
+        );
     }
 }

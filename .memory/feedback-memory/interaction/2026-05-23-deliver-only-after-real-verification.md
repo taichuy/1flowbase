@@ -2,7 +2,7 @@
 feedback_category: interaction
 decision_policy: direct_reference
 created_at: 2026-05-23 07
-summary: 交付实现前必须先验证用户实际入口和关键完成态，不能只凭代码修改或局部测试就宣布完成。
+summary: 交付实现前必须先验证用户实际入口和关键完成态；用户指定主页 URL 时，不能用可用的深链代替主入口验收。
 ---
 
 # Deliver Only After Real Verification
@@ -10,6 +10,8 @@ summary: 交付实现前必须先验证用户实际入口和关键完成态，�
 ## Rule
 
 涉及前端可见效果、接口载荷或用户已经反馈“重启后仍无变化”的修复，交付前必须先拿到可复用证据：目标入口测试、相关组件测试、接口回归或运行态检查至少覆盖用户实际看到的路径。
+
+用户明确给出主页 URL 时，必须从该 URL 开始验收，同时记录最终 URL 和真实内容 ready selector。深链单独可用只能证明目标内容存在，不能证明主入口已接入。
 
 ## Reason
 

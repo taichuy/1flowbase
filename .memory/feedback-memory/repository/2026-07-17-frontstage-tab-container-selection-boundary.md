@@ -21,8 +21,8 @@ match_when:
   - 调整标签页选中态、拖拽入口或配置入口
   - 设计页面级与标签页级配置边界
 created_at: 2026-07-17 17
-updated_at: 2026-07-17 22
-last_verified_at: 2026-07-17 22
+updated_at: 2026-08-16 08
+last_verified_at: 2026-08-16 08
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -49,6 +49,8 @@ scope:
 “创建区块”的主操作直接创建一个带有最小、可运行 JSX 示例的默认 JS 区块，不先弹出区块目录选择抽屉。选中真实区块后，工具条将“区块配置”和“编辑 JSX”作为两个相邻的紧凑图标，不把两者混在一个更多菜单中。
 
 直接创建流程不能只在前端测试中 mock 官方 JS 区块 Catalog entry。用户验收前必须用真实 `GET /api/console/frontend-blocks` 证明运行库已注册官方默认贡献；注册缺失时应修复后端插件 / Catalog 投影链路，不得用前端 fallback 或手工插库伪造可用项。
+
+独立 Block Tree 深链是单区块运行装配与下级容器导航入口，不是页面 / Tab 文档的设计画布。不得把页面主入口规范化到该深链后继续显示“创建区块”等页面文档写操作；否则视觉选中对象与真实可写 owner 不一致。
 
 通用 JSX 区块应由系统内置并保持稳定身份，它负责承载用户可编辑 JSX；`block-sdk`、`antd-facade` 和未来完成沙箱适配的组件是该区块的受控导入模块。不要把每个可导入组件再注册成一种区块类型，也不要开放未经适配的任意包导入。
 

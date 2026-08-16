@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 内置助手历史会话与持久化恢复已批准
-summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 的 durable 活动按 sequence 投影为主聊天有序行为叙事，左侧运行栏恢复完整节点卡片并按最近 pane owner 缩放；浏览器仅缓存主对话宽度与助手窗口高度。
+summary: 内置助手历史 contract 已扩展为客户端断连后后端运行继续、历史可切换并 attach、同一 conversation 单 active run；显式 Stop 会真实终止执行；每次 flow_run 运行中按 sequence 展示完整活动，终态后折叠最终输出之前的过程并保留最后输出；左侧运行栏保留完整节点卡片，浏览器仅缓存主对话宽度与助手窗口高度。
 keywords:
   - embedded assistant
   - conversation history
@@ -20,6 +20,7 @@ status: implemented_pending_user_acceptance
 integration_commit: d845e4a61
 route_fix_commit: 07706dbae
 activity_timeline_commit: e39e1e2b1
+activity_presentation_commit: 3a28140a8
 scope:
   - https://github.com/taichuy/1flowbase/issues/1608
   - web/app/src/features/agent-flow/components/embedded-assistant
@@ -101,3 +102,10 @@ scope:
 - 用户确认浏览器 Storage 只保存主对话 pane 宽度 `conversationWidth` 和助手窗口高度 `windowHeight`。
 - 不保存窗口位置、运行栏宽度、侧栏开关、最大化状态或外层双栏总宽。侧栏打开时 `conversationWidth = outerWidth - sidebarWidth - dividerWidth`。
 - Storage 只在拖拽交互结束时写入，恢复时按当前 viewport 夹取；左外边缘只改运行栏时不改变缓存的主对话宽度。
+
+## 2026-08-16 活动事件终态收纳与工具摘要
+
+- 运行中按 durable `sequence` 展示 reasoning、工具调用/结果和阶段输出；所有节点事件进入终态后，把最终输出之前的全部过程收进单一“耗时”折叠组，最后一段输出始终在外部可见。
+- 思考不再使用 `ThoughtChain item -> Think` 双层折叠；运行中只有一层思考折叠，终态展开过程组时不再为思考叠加同名容器。
+- 工具默认行使用“工具名（主要定位值）”：`path` 显示路径值，`group_id` 显示 group id 值，不展示 JSON 键名；展开后再显示完整 Input / Output。
+- `3a28140a8` 已 fast-forward 合入本地 `dev`；后端定向 6/6、API client 235/235、嵌入助手 25/25、16-package 生产构建、Rust 静态门禁与样式边界通过，等待用户人工验收真实运行时序和终态折叠。

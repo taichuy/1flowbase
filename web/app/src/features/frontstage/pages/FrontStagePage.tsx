@@ -317,7 +317,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               return (
                 displayedPageDocument?.blocks.find(
                   (candidate) => candidate.id === blockId
-                )?.id ?? null
+                )?.id ??
+                assemblyBlocks.find((candidate) => candidate.id === blockId)
+                  ?.id ??
+                null
               );
             }
           })
@@ -325,6 +328,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     [
       confirmRuntimeWrite,
       csrfToken,
+      assemblyBlocks,
       displayedPageDocument,
       selectedPageId,
       tabId,
