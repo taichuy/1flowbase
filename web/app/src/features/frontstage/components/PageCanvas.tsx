@@ -21,7 +21,6 @@ import {
 } from 'react';
 import {
   ResponsiveGridLayout,
-  useContainerWidth,
   type Layout,
   type ResizeHandleAxis
 } from 'react-grid-layout/react';
@@ -137,6 +136,40 @@ type PageCanvasProps = {
   ) => void;
   onRuntimeRetry?: (blockId: string) => void;
 };
+
+const FRONTSTAGE_CANVAS_INITIAL_WIDTH = 1280;
+
+function useFrontstagePageCanvasWidth() {
+  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(
+    null
+  );
+  const [width, setWidth] = useState(FRONTSTAGE_CANVAS_INITIAL_WIDTH);
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    setContainerNode(node);
+  }, []);
+
+  useEffect(() => {
+    if (!containerNode) return;
+
+    const updateWidth = (nextWidth: number) => {
+      if (!Number.isFinite(nextWidth) || nextWidth <= 0) return;
+      setWidth((currentWidth) =>
+        Math.abs(currentWidth - nextWidth) < 0.5 ? currentWidth : nextWidth
+      );
+    };
+
+    updateWidth(containerNode.offsetWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateWidth(entry.contentRect.width);
+    });
+    observer.observe(containerNode);
+    return () => observer.disconnect();
+  }, [containerNode]);
+
+  return { width, containerRef };
+}
 
 function renderFrontstageResizeHandle(
   axis: ResizeHandleAxis,
@@ -861,10 +894,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     () => () => localSignalCoordinator?.dispose(),
     [localSignalCoordinator]
   );
-  const { width: measuredWidth, containerRef } = useContainerWidth({
-    initialWidth: 1280
-  });
-  const gridWidth = measuredWidth > 0 ? measuredWidth : 1280;
+  const { width: gridWidth, containerRef } = useFrontstagePageCanvasWidth();
   const interactionCompactor = useMemo(
     () => createFrontstageInteractionCompactor(document?.layoutMode ?? 'auto'),
     [document?.layoutMode]
