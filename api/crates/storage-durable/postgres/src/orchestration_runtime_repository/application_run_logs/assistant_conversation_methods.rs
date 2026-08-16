@@ -350,7 +350,6 @@ impl PgControlPlaneStore {
                     source_order
                 from message_rows
                 where nullif(btrim(answer), '') is not null
-                   or native_message is not null
             ) messages
             order by created_at asc, source_order asc, flow_run_id asc, message_order asc
             "#,
@@ -432,6 +431,7 @@ impl PgControlPlaneStore {
                     source_order
                 from message_rows
                 where nullif(btrim(answer), '') is not null
+                   or native_message is not null
             ) messages
             order by created_at asc, source_order asc, flow_run_id asc, message_order asc
             "#,

@@ -88,6 +88,13 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
                     "content_blocks": [
                         { "type": "reasoning", "text": "Check the refund window." },
                         { "type": "text", "text": "Refunds are available within seven days." }
+                    ],
+                    "tool_calls": [
+                        {
+                            "id": "call-refund-policy",
+                            "name": "lookup_refund_policy",
+                            "arguments": { "region": "global" }
+                        }
                     ]
                 }
             }),
@@ -175,6 +182,14 @@ async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed
             json!({ "type": "reasoning", "text": "Check the refund window." }),
             json!({ "type": "text", "text": "Refunds are available within seven days." })
         ])
+    );
+    assert_eq!(
+        native_history[1].tool_calls,
+        Some(vec![json!({
+            "id": "call-refund-policy",
+            "name": "lookup_refund_policy",
+            "arguments": { "region": "global" }
+        })])
     );
 
     let legacy_snapshot = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_legacy_snapshot_messages(
