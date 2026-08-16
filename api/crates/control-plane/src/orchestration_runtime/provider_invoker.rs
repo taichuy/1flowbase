@@ -1,5 +1,7 @@
 use super::*;
-use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
+use plugin_framework::provider_contract::{
+    ProviderMessageRole, ProviderOutputItemPhase, ProviderRuntimeError, ProviderRuntimeErrorKind,
+};
 use plugin_framework::{
     provider_contract::ProviderCountTokensFallbackReason,
     provider_count_tokens_estimator::estimate_provider_count_tokens,

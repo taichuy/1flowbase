@@ -1,4 +1,5 @@
 use super::*;
+use crate::orchestration_runtime::canonical_stream::CanonicalTerminal;
 use plugin_framework::provider_contract::{
     ProviderFinishReason, ProviderOutputProtocolFailure, ProviderUsage,
 };
