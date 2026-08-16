@@ -474,6 +474,9 @@ runtime:
     - message_blocks.reasoning_history.v1
     - message_blocks.redacted_reasoning_history.v1
     - count_tokens
+    - reasoning_output_supported
+    - reasoning_history_input_supported
+    - native_continuation_supported
     - protocol_context.consume.anthropic_messages.v1
     - protocol_context.restore.openai_chat.v1
     - protocol_context.restore.openai_responses.v1
@@ -491,6 +494,9 @@ runtime:
             "message_blocks.reasoning_history.v1",
             "message_blocks.redacted_reasoning_history.v1",
             "count_tokens",
+            "reasoning_output_supported",
+            "reasoning_history_input_supported",
+            "native_continuation_supported",
             "protocol_context.consume.anthropic_messages.v1",
             "protocol_context.restore.openai_chat.v1",
             "protocol_context.restore.openai_responses.v1"
