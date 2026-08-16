@@ -249,7 +249,10 @@ function toolDetail(entry: ActivityEntry) {
   );
 }
 
-function activityThoughtItem(entry: ActivityEntry): ThoughtChainItemType {
+function activityThoughtItem(
+  entry: ActivityEntry,
+  reasoningCollapsible: boolean
+): ThoughtChainItemType {
   return {
     key: entry.key,
     icon: entry.kind === 'tool' ? <ToolOutlined /> : undefined,
@@ -263,7 +266,9 @@ function activityThoughtItem(entry: ActivityEntry): ThoughtChainItemType {
             : i18nText('appShell', 'auto.assistant_activity_output'),
     status: entry.status,
     blink: entry.loading,
-    collapsible: entry.kind === 'tool',
+    collapsible:
+      entry.kind === 'tool' ||
+      (entry.kind === 'reasoning' && reasoningCollapsible),
     content:
       entry.kind === 'tool' ? (
         toolDetail(entry)
@@ -452,8 +457,10 @@ export function AssistantRunTimeline({
     terminal && lastOutputIndex >= 0
       ? entries.filter((_, index) => index !== lastOutputIndex)
       : entries;
-  const liveItems = entries.map(activityThoughtItem);
-  const processItems = processEntries.map(activityThoughtItem);
+  const liveItems = entries.map((entry) => activityThoughtItem(entry, true));
+  const processItems = processEntries.map((entry) =>
+    activityThoughtItem(entry, false)
+  );
   const terminalItems: ThoughtChainItemType[] = processItems.length
     ? [
         {

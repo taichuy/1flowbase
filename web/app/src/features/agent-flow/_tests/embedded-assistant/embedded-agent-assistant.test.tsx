@@ -1542,6 +1542,11 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.change(composer, { target: { value: 'Inspect activity order' } });
     fireEvent.click(sendButton);
 
+    const reasoningTitles = await screen.findAllByText(
+      i18nText('agentFlow', 'auto.think')
+    );
+    fireEvent.click(reasoningTitles[0] as HTMLElement);
+    fireEvent.click(reasoningTitles[1] as HTMLElement);
     const firstReasoning = await screen.findByText('先检查配置');
     const firstTool = screen.getByText('1flowbase_mcp_list (/后台设置)');
     const firstOutput = screen.getByText('阶段结果一');
@@ -1568,9 +1573,7 @@ describe('EmbeddedAgentAssistant', () => {
       screen.getByText(i18nText('agentFlow', 'auto.input'))
     ).toBeInTheDocument();
     expect(screen.getByText(/"path": "\/后台设置"/)).toBeInTheDocument();
-    expect(
-      screen.queryAllByText(i18nText('agentFlow', 'auto.think'))
-    ).toHaveLength(2);
+    expect(reasoningTitles).toHaveLength(2);
 
     await act(async () => {
       finishRun?.();
