@@ -163,22 +163,23 @@ export function FrontstageWorkspacePage({
     enabled: shouldLoadPageContent,
     retry: false
   });
+  const resolvedTabId = pageContentQuery.data?.tab.id;
   const blockRootsQuery = useQuery({
     queryKey:
-      selectedPageId && tabReference
+      selectedPageId && resolvedTabId
         ? frontstageBlockTreeQueryKeys.roots(workspaceId, selectedPageId, {
-            tab_id: tabReference
+            tab_id: resolvedTabId
           })
         : ['frontstage', workspaceId, 'pages', 'unselected', 'block-roots'],
     queryFn: () => {
-      if (!selectedPageId || !tabReference) {
+      if (!selectedPageId || !resolvedTabId) {
         throw new Error('Frontstage block roots query requires page and tab');
       }
       return fetchFrontstageBlockRoots(workspaceId, selectedPageId, {
-        tab_id: tabReference
+        tab_id: resolvedTabId
       });
     },
-    enabled: Boolean(selectedPageId && tabReference && !blockId),
+    enabled: Boolean(selectedPageId && resolvedTabId && !blockId),
     retry: false
   });
 

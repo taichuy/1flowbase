@@ -376,6 +376,45 @@ describe('frontstage topbar root routing', () => {
     expect(window.location.pathname).toBe('/sales/pages/page-top-level');
   });
 
+  test('resolves a non-default tab route segment before loading roots', async () => {
+    const analyticsTab = {
+      id: 'tab-analytics',
+      page_id: 'page-top-level',
+      title: 'Analytics',
+      rank: '002000',
+      is_default: false,
+      route_segment: 'analytics',
+      document_root_uid: 'root-analytics'
+    };
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([analyticsTab]);
+    pageContentApi.fetchFrontstagePageContent.mockResolvedValue({
+      page: { id: 'page-top-level' },
+      tab: analyticsTab,
+      document: { rootUid: 'root-analytics', payload: {} }
+    });
+    blockApi.fetchFrontstageBlockRoots.mockResolvedValue([]);
+    window.history.pushState(
+      {},
+      '',
+      '/sales/pages/page-top-level/tabs/analytics'
+    );
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(blockApi.fetchFrontstageBlockRoots).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-top-level',
+        { tab_id: 'tab-analytics' }
+      );
+    });
+  });
+
   test('AC-006 restores a canonical block deep link and browser history from one assembly query', async () => {
     pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
     blockApi.fetchFrontstageBlockRuntimeAssembly.mockResolvedValue({

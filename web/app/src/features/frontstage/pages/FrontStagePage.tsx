@@ -80,7 +80,8 @@ import { getPageDisplayTitle } from '../lib/page-tree';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   createCatalogBlockInput,
-  findMatchingFrontstageBlockCatalogEntry
+  findMatchingFrontstageBlockCatalogEntry,
+  resolveFrontstageBlockNativeDependencyLock
 } from './frontstage-page/block-catalog-helpers';
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
@@ -543,14 +544,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
         blockCatalog.items
       ),
     [blockCatalog.items, selectedBlock]
-  );
-  const nativeDependencyLockResolution = useMemo(
-    () =>
-      resolveFrontstageNativeDependencyLock({
-        catalogEntry: matchingJsBlockCatalogEntry,
-        workspaceId
-      }),
-    [matchingJsBlockCatalogEntry, workspaceId]
   );
   useEffect(() => {
     setSavedPageContent(null);
@@ -1349,6 +1342,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               const activeStudioBlock = runtimeBlocks.find(
                 (candidate) => candidate.id === blockId
               );
+              const activeDependencyLockResolution =
+                resolveFrontstageBlockNativeDependencyLock(
+                  activeStudioBlock,
+                  blockCatalog.items,
+                  workspaceId
+                );
               return runRevision === null || !activeStudioBlock ? undefined : (
                 <JsxStudioRunPanel
                   block={activeStudioBlock}
@@ -1357,10 +1356,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
                   nativeDependencyLock={
-                    nativeDependencyLockResolution.dependencyLock
+                    activeDependencyLockResolution.dependencyLock
                   }
                   nativeDependencyLockError={
-                    nativeDependencyLockResolution.error
+                    activeDependencyLockResolution.error
                   }
                   externalNpm={blockCatalog.externalNpm}
                   revision={`run:${runRevision}`}
