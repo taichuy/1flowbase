@@ -19,6 +19,7 @@ where
             runtime_context,
             invoker,
             &BTreeSet::new(),
+            None,
             attempt_index,
         )
         .await?;
@@ -27,16 +28,70 @@ where
     Ok(request_runtimes)
 }
 
-pub(super) struct ResolvedLlmRequestRuntime {
-    pub(super) runtime: CompiledLlmRuntime,
-    pub(super) route: Result<ResolvedProviderRoute>,
+pub(crate) struct ResolvedLlmRequestRuntime {
+    pub(crate) runtime: CompiledLlmRuntime,
+    pub(crate) route: Result<ResolvedProviderRoute>,
+    pub(crate) generate_projection_receipt: Option<ProviderGenerateTranslationReceipt>,
 }
 
-pub(super) async fn resolve_llm_request_runtime<I>(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LlmRoutePreflightCause {
+    Unsupported {
+        code: ProviderProjectionErrorCode,
+        block: ProviderCanonicalBlockLocator,
+        receipt: ProviderGenerateTranslationReceipt,
+    },
+    InvalidCanonicalContract {
+        message: String,
+    },
+    MissingReasoningCapabilities {
+        capabilities: BTreeSet<String>,
+        receipt: ProviderGenerateTranslationReceipt,
+    },
+}
+
+impl LlmRoutePreflightCause {
+    fn missing_capabilities(&self) -> BTreeSet<String> {
+        match self {
+            Self::Unsupported { receipt, .. } => receipt
+                .provenance
+                .iter()
+                .flat_map(|provenance| provenance.omitted_blocks.iter())
+                .filter_map(|block| match block.block_kind {
+                    plugin_framework::provider_contract::ProviderCanonicalBlockKind::Reasoning => {
+                        Some(
+                            ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
+                                .manifest_capability_name()
+                                .to_string(),
+                        )
+                    }
+                    plugin_framework::provider_contract::ProviderCanonicalBlockKind::RedactedReasoning => {
+                        Some(
+                            ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+                                .manifest_capability_name()
+                                .to_string(),
+                        )
+                    }
+                    _ => None,
+                })
+                .collect(),
+            Self::MissingReasoningCapabilities { capabilities, .. } => capabilities.clone(),
+            Self::InvalidCanonicalContract { .. } => BTreeSet::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AcceptedLlmRoutePreflight {
+    pub(crate) receipt: ProviderGenerateTranslationReceipt,
+}
+
+pub(crate) async fn resolve_llm_request_runtime<I>(
     runtime: &CompiledLlmRuntime,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
     required_capabilities: &BTreeSet<ProviderInvocationCapability>,
+    canonical_generate_probe: Option<&ProviderInvocationInput>,
     attempt_index: usize,
 ) -> Result<ResolvedLlmRequestRuntime>
 where
@@ -46,14 +101,13 @@ where
         let mut compatible = Vec::with_capacity(main_routing.candidates.len());
         let mut missing = BTreeSet::new();
         for candidate in main_routing.candidates {
-            let candidate_missing = missing_routing_capabilities(
+            match preflight_llm_route_candidate(
                 &candidate.route.runtime_capabilities,
                 required_capabilities,
-            );
-            if candidate_missing.is_empty() {
-                compatible.push(candidate);
-            } else {
-                missing.extend(candidate_missing);
+                canonical_generate_probe,
+            ) {
+                Ok(preflight) => compatible.push((candidate, preflight)),
+                Err(cause) => missing.extend(cause.missing_capabilities()),
             }
         }
         if compatible.is_empty() {
@@ -67,10 +121,11 @@ where
             runtime_context,
         )
         .await?;
-        let selected = compatible.swap_remove(target_index);
+        let (selected, preflight) = compatible.swap_remove(target_index);
         return Ok(ResolvedLlmRequestRuntime {
             runtime: selected.runtime,
             route: Ok(selected.route),
+            generate_projection_receipt: preflight.map(|preflight| preflight.receipt),
         });
     }
 
@@ -81,22 +136,23 @@ where
     for candidate in candidates {
         match invoker.resolve_llm_route(&candidate).await {
             Ok(route) => {
-                let candidate_missing = missing_routing_capabilities(
+                match preflight_llm_route_candidate(
                     &route.runtime_capabilities,
                     required_capabilities,
-                );
-                if candidate_missing.is_empty() {
-                    compatible.push(ResolvedLlmRequestRuntime {
+                    canonical_generate_probe,
+                ) {
+                    Ok(preflight) => compatible.push(ResolvedLlmRequestRuntime {
                         runtime: candidate,
                         route: Ok(route),
-                    });
-                } else {
-                    missing.extend(candidate_missing);
+                        generate_projection_receipt: preflight.map(|preflight| preflight.receipt),
+                    }),
+                    Err(cause) => missing.extend(cause.missing_capabilities()),
                 }
             }
             Err(error) => compatible.push(ResolvedLlmRequestRuntime {
                 runtime: candidate,
                 route: Err(error),
+                generate_projection_receipt: None,
             }),
         }
     }
@@ -121,6 +177,56 @@ where
     )
     .await?;
     Ok(compatible.swap_remove(target_index))
+}
+
+pub(crate) fn preflight_llm_route_candidate(
+    declared_capabilities: &BTreeSet<String>,
+    required_capabilities: &BTreeSet<ProviderInvocationCapability>,
+    canonical_generate_probe: Option<&ProviderInvocationInput>,
+) -> std::result::Result<Option<AcceptedLlmRoutePreflight>, LlmRoutePreflightCause> {
+    let Some(canonical_generate_probe) = canonical_generate_probe else {
+        let capabilities =
+            missing_routing_capabilities(declared_capabilities, required_capabilities);
+        return if capabilities.is_empty() {
+            Ok(None)
+        } else {
+            Err(LlmRoutePreflightCause::MissingReasoningCapabilities {
+                capabilities,
+                receipt: ProviderGenerateTranslationReceipt::default(),
+            })
+        };
+    };
+    let declared_capability_list = declared_capabilities.iter().cloned().collect::<Vec<_>>();
+    let projection = canonical_generate_probe
+        .project_current_provider_generate(&declared_capability_list)
+        .map_err(|error| match error {
+            ProviderGenerateProjectionError::Unsupported {
+                code,
+                block,
+                receipt,
+            } => LlmRoutePreflightCause::Unsupported {
+                code,
+                block,
+                receipt,
+            },
+            ProviderGenerateProjectionError::InvalidContract { message } => {
+                LlmRoutePreflightCause::InvalidCanonicalContract { message }
+            }
+        })?;
+    let capabilities = missing_routing_capabilities(
+        declared_capabilities,
+        &projection.provider_bound_input.required_capabilities,
+    );
+    if capabilities.is_empty() {
+        Ok(Some(AcceptedLlmRoutePreflight {
+            receipt: projection.receipt,
+        }))
+    } else {
+        Err(LlmRoutePreflightCause::MissingReasoningCapabilities {
+            capabilities,
+            receipt: projection.receipt,
+        })
+    }
 }
 
 pub(super) fn llm_request_count(node: &CompiledNode) -> usize {
@@ -554,6 +660,7 @@ mod tests {
             &ExecutionRuntimeContext::default(),
             &DynamicMainResolver,
             &BTreeSet::new(),
+            None,
             1,
         )
         .await
@@ -617,6 +724,7 @@ mod tests {
             &ExecutionRuntimeContext::default(),
             &resolver,
             &BTreeSet::from([ProviderInvocationCapability::MessageBlocksReasoningHistoryV1]),
+            None,
             0,
         )
         .await
@@ -664,6 +772,7 @@ mod tests {
             &ExecutionRuntimeContext::default(),
             &resolver,
             &BTreeSet::from([ProviderInvocationCapability::MessageBlocksReasoningHistoryV1]),
+            None,
             0,
         )
         .await
@@ -707,6 +816,7 @@ mod tests {
             &ExecutionRuntimeContext::default(),
             &resolver,
             &BTreeSet::from([ProviderInvocationCapability::MessageBlocksReasoningHistoryV1]),
+            None,
             0,
         )
         .await
@@ -748,6 +858,7 @@ mod tests {
                 &ExecutionRuntimeContext::default(),
                 &resolver,
                 &required,
+                None,
                 0,
             )
             .await
@@ -764,6 +875,7 @@ mod tests {
             &ExecutionRuntimeContext::default(),
             &resolver,
             &required,
+            None,
             0,
         )
         .await
@@ -789,6 +901,7 @@ mod tests {
             &BTreeSet::from([
                 ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1,
             ]),
+            None,
             0,
         )
         .await

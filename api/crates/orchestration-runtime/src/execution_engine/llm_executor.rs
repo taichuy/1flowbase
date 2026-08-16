@@ -277,7 +277,7 @@ where
         )
         .await;
     }
-    let mut routing_probe = match build_provider_invocation(
+    let routing_probe = match build_provider_invocation(
         plan,
         node,
         runtime,
@@ -289,7 +289,7 @@ where
     )
     .await
     {
-        Ok(invocation) => Some(invocation),
+        Ok(invocation) => invocation,
         Err(error_payload) => {
             return build_failed_llm_execution(
                 node,
@@ -314,10 +314,7 @@ where
             );
         }
     };
-    let required_capabilities = routing_probe
-        .as_ref()
-        .map(|invocation| invocation.input.required_capabilities.clone())
-        .unwrap_or_default();
+    let required_capabilities = routing_probe.input.required_capabilities.clone();
     let request_count = llm_request_count(node);
     let retry_enabled = node
         .config
@@ -340,6 +337,7 @@ where
             runtime_context,
             invoker,
             &required_capabilities,
+            Some(&routing_probe.input),
             attempt_index,
         )
         .await
@@ -436,52 +434,43 @@ where
             }
         };
         let runtime_plugin_id = resolved_route.runtime_plugin_id().map(str::to_string);
-        let route_matches_probe = routing_probe.is_some()
-            && attempt_runtime.provider_instance_id == runtime.provider_instance_id
-            && attempt_runtime.provider_code == runtime.provider_code
-            && attempt_runtime.protocol == runtime.protocol
-            && attempt_runtime.model == runtime.model;
-        let mut invocation = if route_matches_probe {
-            routing_probe
-                .take()
-                .expect("the routing probe is consumed by at most one matching route")
-        } else {
-            match build_provider_invocation(
-                plan,
-                node,
-                attempt_runtime,
-                resolved_inputs,
-                rendered_templates,
-                variable_pool,
-                runtime_context,
-                invoker,
-            )
-            .await
-            {
-                Ok(invocation) => invocation,
-                Err(error_payload) => {
-                    return build_failed_llm_execution(
-                        node,
+        // Candidate preflight may produce a lossy provider-bound projection. Invocation always
+        // starts again from the canonical node inputs so the routing copy can never reach a Provider.
+        let mut invocation = match build_provider_invocation(
+            plan,
+            node,
+            attempt_runtime,
+            resolved_inputs,
+            rendered_templates,
+            variable_pool,
+            runtime_context,
+            invoker,
+        )
+        .await
+        {
+            Ok(invocation) => invocation,
+            Err(error_payload) => {
+                return build_failed_llm_execution(
+                    node,
+                    attempt_runtime,
+                    error_payload,
+                    LlmFailureProjection::NoNodeOutput,
+                    None,
+                    build_llm_metrics_payload(
                         attempt_runtime,
-                        error_payload,
-                        LlmFailureProjection::NoNodeOutput,
+                        ProviderUsage::default(),
+                        Some(ProviderFinishReason::Error),
+                        0,
+                        attempt_metrics,
                         None,
-                        build_llm_metrics_payload(
-                            attempt_runtime,
-                            ProviderUsage::default(),
-                            Some(ProviderFinishReason::Error),
-                            0,
-                            attempt_metrics,
-                            None,
-                            None,
-                        ),
-                        Vec::new(),
-                        LlmDebugInvocation {
-                            messages: &[],
-                            context: None,
-                        },
-                    );
-                }
+                        None,
+                    ),
+                    Vec::new(),
+                    LlmDebugInvocation {
+                        messages: &[],
+                        context: None,
+                    },
+                );
             }
         };
         if let Some(feedback) = retry_feedback.as_ref() {
