@@ -376,14 +376,11 @@ pub(crate) fn bounded_generate_projection_receipt(
     receipt: &ProviderGenerateTranslationReceipt,
 ) -> Value {
     let provenance = receipt.provenance.as_ref().map(|provenance| {
-        let preserved_count = provenance.preserved_blocks.len();
-        let omitted_count = provenance.omitted_blocks.len();
         json!({
             "source": provenance.source,
-            "preserved_count": preserved_count,
-            "omitted_count": omitted_count,
-            "locators_capped": preserved_count > MAX_PROJECTION_LOCATORS
-                || omitted_count > MAX_PROJECTION_LOCATORS,
+            "preserved_count": provenance.preserved_block_count,
+            "omitted_count": provenance.omitted_block_count,
+            "locators_capped": provenance.capped,
             "preserved_blocks": provenance.preserved_blocks
                 .iter()
                 .take(MAX_PROJECTION_LOCATORS)

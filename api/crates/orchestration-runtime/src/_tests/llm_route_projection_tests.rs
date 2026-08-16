@@ -177,6 +177,12 @@ fn issue_1743_lossy_candidate_is_accepted_without_mutating_canonical_probe() {
         .as_mut()
         .expect("lossy receipt must carry provenance")
         .omitted_blocks = vec![omitted_locator; 20];
+    let oversized_provenance = oversized
+        .provenance
+        .as_mut()
+        .expect("lossy receipt must carry provenance");
+    oversized_provenance.omitted_block_count = 20;
+    oversized_provenance.capped = true;
     let bounded = bounded_generate_projection_receipt(&oversized);
     assert_eq!(bounded["provenance"]["omitted_count"], json!(20));
     assert_eq!(
