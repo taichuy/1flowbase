@@ -24,6 +24,7 @@ import {
   getConsoleDebugVariableSnapshot,
   getConsoleRuntimeDebugStream,
   getConsoleRuntimeDebugArtifact,
+  normalizeConsoleRuntimeEvent,
   getConsoleRunArchiveImportJob,
   resolveConsoleRuntimeDebugArtifacts,
   startConsoleFlowDebugRunStream,
@@ -49,6 +50,49 @@ function sseResponse(frame: string) {
 describe('console application runtime stream client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test('AC-010 accepts canonical tool calls and rejects compatibility aliases', () => {
+    expect(
+      normalizeConsoleRuntimeEvent({
+        event_type: 'assistant_tool_call_started',
+        event_id: 'run-1:2',
+        run_id: 'run-1',
+        sequence: 2,
+        created_at: '2026-08-16T00:00:00Z',
+        payload: {
+          node_id: 'node-llm',
+          tool_call: {
+            id: 'call-1',
+            name: '1flowbase_mcp_get',
+            arguments: { group_id: 'group-123' }
+          }
+        }
+      })
+    ).toMatchObject({
+      type: 'assistant_tool_call_started',
+      tool_call: {
+        id: 'call-1',
+        name: '1flowbase_mcp_get',
+        arguments: { group_id: 'group-123' }
+      }
+    });
+    expect(
+      normalizeConsoleRuntimeEvent({
+        event_type: 'assistant_tool_call_started',
+        event_id: 'run-1:3',
+        run_id: 'run-1',
+        sequence: 3,
+        created_at: '2026-08-16T00:00:01Z',
+        payload: {
+          node_id: 'node-llm',
+          tool_call: {
+            tool_call_id: 'legacy-call',
+            function: { name: 'legacy-tool' }
+          }
+        }
+      })
+    ).toBeNull();
   });
 
   test('AC-001 preserves Answer presentation metadata from runtime envelopes', async () => {

@@ -290,25 +290,33 @@ function normalizeFromEnvelope(
   }
 
   if (eventType === 'assistant_tool_call_started') {
+    const toolCall = normalizeProviderToolCall(payload.tool_call);
+    if (!toolCall) {
+      return null;
+    }
     return {
       ...base,
       type: 'assistant_tool_call_started',
       run_id: base.run_id,
       node_run_id: base.node_run_id ?? '',
       node_id: nodeId,
-      tool_call: isRecord(payload.tool_call) ? payload.tool_call : {}
+      tool_call: toolCall
     };
   }
 
   if (eventType === 'assistant_tool_call_finished') {
+    const toolCall = normalizeProviderToolCall(payload.tool_call);
+    if (!toolCall || !('tool_result' in payload)) {
+      return null;
+    }
     return {
       ...base,
       type: 'assistant_tool_call_finished',
       run_id: base.run_id,
       node_run_id: base.node_run_id ?? '',
       node_id: nodeId,
-      tool_call: isRecord(payload.tool_call) ? payload.tool_call : {},
-      tool_result: isRecord(payload.tool_result) ? payload.tool_result : {},
+      tool_call: toolCall,
+      tool_result: payload.tool_result,
       duration_ms:
         typeof payload.duration_ms === 'number' &&
         Number.isFinite(payload.duration_ms)
@@ -503,6 +511,24 @@ function normalizeAnswerPresentation(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeProviderToolCall(value: unknown) {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.id) ||
+    !isNonEmptyString(value.name)
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    name: value.name,
+    arguments: value.arguments ?? {},
+    ...(value.provider_metadata === undefined
+      ? {}
+      : { provider_metadata: value.provider_metadata })
+  };
 }
 
 function toOptionalString(value: unknown): string | undefined {

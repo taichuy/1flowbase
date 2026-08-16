@@ -1,11 +1,12 @@
-import { Think, ThoughtChain } from '@ant-design/x';
+import { ThoughtChain } from '@ant-design/x';
 import type { ThoughtChainItemType } from '@ant-design/x';
 import { ToolOutlined } from '@ant-design/icons';
-import { Alert, Empty, Spin } from 'antd';
+import { Alert, Divider, Empty, Spin } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import {
   getConsoleAssistantRunActivity,
   normalizeConsoleRuntimeEvent,
+  type ConsoleAssistantRunActivityItem,
   type ConsoleFlowDebugStreamEvent
 } from '@1flowbase/api-client';
 
@@ -26,170 +27,254 @@ interface ActivityEntry {
   key: string;
   kind: 'reasoning' | 'tool' | 'output' | 'error';
   sequence: number;
-  title: string;
   text?: string;
-  detail?: unknown;
+  segmentIndex?: number | null;
+  toolCallId?: string;
+  toolName?: string;
+  input?: unknown;
+  output?: unknown;
+  durationMs?: number | null;
   status: ThoughtChainItemType['status'];
   loading?: boolean;
-  toolCallId?: string | null;
+}
+
+interface LoadedRunActivity {
+  status: string;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  items: ConsoleAssistantRunActivityItem[];
+  traceEvents: ConsoleFlowDebugStreamEvent[];
 }
 
 function eventSequence(event: ConsoleFlowDebugStreamEvent, fallback: number) {
   return event.sequence ?? fallback;
 }
 
-function toolCallField(toolCall: Record<string, unknown>, key: string) {
-  const value = toolCall[key];
-  return typeof value === 'string' && value.trim() ? value : null;
+function liveActivityItem(
+  event: ConsoleFlowDebugStreamEvent,
+  fallbackSequence: number
+): ConsoleAssistantRunActivityItem | null {
+  const sequence = eventSequence(event, fallbackSequence);
+  const common = {
+    event_id: event.event_id ?? `${event.type}:${sequence}`,
+    sequence,
+    created_at: event.created_at ?? ''
+  };
+  if (event.type === 'reasoning_delta' && event.text) {
+    return { ...common, kind: 'reasoning', text: event.text };
+  }
+  if (
+    event.type === 'text_delta' &&
+    event.text &&
+    event.presentation?.kind === 'answer'
+  ) {
+    return {
+      ...common,
+      kind: 'output',
+      text: event.text,
+      segment_index: event.presentation.segment_index
+    };
+  }
+  if (event.type === 'assistant_tool_call_started') {
+    return {
+      ...common,
+      kind: 'tool',
+      tool_call_id: event.tool_call.id,
+      tool_name: event.tool_call.name,
+      input: event.tool_call.arguments,
+      output: null,
+      duration_ms: null,
+      is_error: false,
+      status: 'running'
+    };
+  }
+  if (event.type === 'assistant_tool_call_finished') {
+    const isError =
+      typeof event.tool_result === 'object' &&
+      event.tool_result !== null &&
+      'is_error' in event.tool_result &&
+      event.tool_result.is_error === true;
+    return {
+      ...common,
+      kind: 'tool',
+      tool_call_id: event.tool_call.id,
+      tool_name: event.tool_call.name,
+      input: event.tool_call.arguments,
+      output: event.tool_result,
+      duration_ms: event.duration_ms,
+      is_error: isError,
+      status: isError ? 'failed' : 'succeeded'
+    };
+  }
+  if (event.type === 'flow_failed') {
+    return { ...common, kind: 'error', error: event.error };
+  }
+  return null;
 }
 
-function toolCallId(toolCall: Record<string, unknown>) {
-  return (
-    toolCallField(toolCall, 'id') ??
-    toolCallField(toolCall, 'tool_call_id') ??
-    toolCallField(toolCall, 'call_id')
-  );
-}
-
-function toolCallName(toolCall: Record<string, unknown>) {
-  const direct = toolCallField(toolCall, 'name');
-  const callable = toolCall.function;
-  const nested =
-    callable && typeof callable === 'object' && !Array.isArray(callable)
-      ? toolCallField(callable as Record<string, unknown>, 'name')
-      : null;
-  return direct ?? nested ?? i18nText('agentFlow', 'auto.tool_call');
-}
-
-function projectActivity(
-  events: ConsoleFlowDebugStreamEvent[],
-  fallbackAnswer: string
-) {
-  const ordered = events
-    .map((event, index) => ({ event, sequence: eventSequence(event, index) }))
-    .sort((left, right) => left.sequence - right.sequence);
+function projectActivity(items: ConsoleAssistantRunActivityItem[]) {
   const entries: ActivityEntry[] = [];
-
-  ordered.forEach(({ event, sequence }, index) => {
-    if (event.type === 'reasoning_delta' && event.text) {
+  [...items]
+    .sort((left, right) => left.sequence - right.sequence)
+    .forEach((item) => {
       const previous = entries.at(-1);
-      if (previous?.kind === 'reasoning') {
-        previous.text = `${previous.text ?? ''}${event.text}`;
-        previous.sequence = sequence;
+      if (item.kind === 'reasoning') {
+        if (previous?.kind === 'reasoning') {
+          previous.text = `${previous.text ?? ''}${item.text}`;
+          return;
+        }
+        entries.push({
+          key: item.event_id,
+          kind: 'reasoning',
+          sequence: item.sequence,
+          text: item.text,
+          status: 'success'
+        });
+        return;
+      }
+      if (item.kind === 'output') {
+        if (
+          previous?.kind === 'output' &&
+          previous.segmentIndex === item.segment_index
+        ) {
+          previous.text = `${previous.text ?? ''}${item.text}`;
+          return;
+        }
+        entries.push({
+          key: item.event_id,
+          kind: 'output',
+          sequence: item.sequence,
+          text: item.text,
+          segmentIndex: item.segment_index,
+          status: 'success'
+        });
+        return;
+      }
+      if (item.kind === 'tool') {
+        const started = [...entries]
+          .reverse()
+          .find(
+            (entry) =>
+              entry.kind === 'tool' && entry.toolCallId === item.tool_call_id
+          );
+        if (started) {
+          started.toolName = item.tool_name;
+          started.input = item.input;
+          started.output = item.output;
+          started.durationMs = item.duration_ms;
+          started.loading = item.status === 'running';
+          started.status =
+            item.status === 'running'
+              ? 'loading'
+              : item.status === 'failed'
+                ? 'error'
+                : 'success';
+          return;
+        }
+        entries.push({
+          key: item.event_id,
+          kind: 'tool',
+          sequence: item.sequence,
+          toolCallId: item.tool_call_id,
+          toolName: item.tool_name,
+          input: item.input,
+          output: item.output,
+          durationMs: item.duration_ms,
+          loading: item.status === 'running',
+          status:
+            item.status === 'running'
+              ? 'loading'
+              : item.status === 'failed'
+                ? 'error'
+                : 'success'
+        });
         return;
       }
       entries.push({
-        key: event.event_id ?? `reasoning-${sequence}-${index}`,
-        kind: 'reasoning',
-        sequence,
-        title: i18nText('agentFlow', 'auto.think'),
-        text: event.text,
-        status: 'success'
-      });
-      return;
-    }
-    if (
-      event.type === 'text_delta' &&
-      event.text &&
-      event.presentation?.kind === 'answer'
-    ) {
-      const previous = entries.at(-1);
-      if (previous?.kind === 'output') {
-        previous.text = `${previous.text ?? ''}${event.text}`;
-        previous.sequence = sequence;
-        return;
-      }
-      entries.push({
-        key: event.event_id ?? `output-${sequence}-${index}`,
-        kind: 'output',
-        sequence,
-        title: i18nText('appShell', 'auto.assistant_activity_output'),
-        text: event.text,
-        status: 'success'
-      });
-      return;
-    }
-    if (event.type === 'assistant_tool_call_started') {
-      const id = toolCallId(event.tool_call);
-      entries.push({
-        key: event.event_id ?? `tool-${id ?? sequence}-${index}`,
-        kind: 'tool',
-        sequence,
-        title: toolCallName(event.tool_call),
-        detail: { tool_call: event.tool_call },
-        status: 'loading',
-        loading: true,
-        toolCallId: id
-      });
-      return;
-    }
-    if (event.type === 'assistant_tool_call_finished') {
-      const id = toolCallId(event.tool_call);
-      const started = [...entries]
-        .reverse()
-        .find((entry) => entry.kind === 'tool' && entry.toolCallId === id);
-      if (started) {
-        started.detail = {
-          tool_call: event.tool_call,
-          tool_result: event.tool_result,
-          duration_ms: event.duration_ms
-        };
-        started.status = 'success';
-        started.loading = false;
-        return;
-      }
-      entries.push({
-        key: event.event_id ?? `tool-${id ?? sequence}-${index}`,
-        kind: 'tool',
-        sequence,
-        title: toolCallName(event.tool_call),
-        detail: {
-          tool_call: event.tool_call,
-          tool_result: event.tool_result,
-          duration_ms: event.duration_ms
-        },
-        status: 'success',
-        toolCallId: id
-      });
-      return;
-    }
-    if (event.type === 'flow_failed') {
-      entries.push({
-        key: event.event_id ?? `error-${sequence}-${index}`,
+        key: item.event_id,
         kind: 'error',
-        sequence,
-        title: i18nText('appShell', 'auto.assistant_status_failed'),
-        text: event.error,
+        sequence: item.sequence,
+        text: item.error,
         status: 'error'
       });
-    }
-  });
-
-  const projectedOutput = entries
-    .filter((entry) => entry.kind === 'output')
-    .map((entry) => entry.text ?? '')
-    .join('');
-  const missingOutput = fallbackAnswer.startsWith(projectedOutput)
-    ? fallbackAnswer.slice(projectedOutput.length)
-    : projectedOutput
-      ? ''
-      : fallbackAnswer;
-  if (missingOutput) {
-    entries.push({
-      key: `output-fallback-${ordered.at(-1)?.sequence ?? 0}`,
-      kind: 'output',
-      sequence: (ordered.at(-1)?.sequence ?? 0) + 1,
-      title: i18nText('appShell', 'auto.assistant_activity_output'),
-      text: missingOutput,
-      status: 'success'
     });
-  }
-
   return entries;
 }
 
+function toolSummary(entry: ActivityEntry) {
+  const input = entry.input;
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const locator =
+      typeof input.path === 'string'
+        ? input.path
+        : typeof input.group_id === 'string'
+          ? input.group_id
+          : null;
+    if (locator) {
+      return `${entry.toolName} (${locator})`;
+    }
+  }
+  return entry.toolName ?? i18nText('agentFlow', 'auto.tool_call');
+}
+
+function toolDetail(entry: ActivityEntry) {
+  return (
+    <div className="embedded-agent-assistant-activity__tool-detail">
+      <div className="embedded-agent-assistant-activity__detail-label">
+        {i18nText('agentFlow', 'auto.input')}
+      </div>
+      <pre className="embedded-agent-assistant-activity__payload">
+        {JSON.stringify(entry.input ?? {}, null, 2)}
+      </pre>
+      {entry.output !== null && entry.output !== undefined ? (
+        <>
+          <div className="embedded-agent-assistant-activity__detail-label">
+            {i18nText('appShell', 'auto.assistant_activity_output')}
+          </div>
+          <pre className="embedded-agent-assistant-activity__payload">
+            {JSON.stringify(entry.output, null, 2)}
+          </pre>
+        </>
+      ) : null}
+      {entry.durationMs !== null && entry.durationMs !== undefined ? (
+        <div className="embedded-agent-assistant-activity__tool-duration">
+          {i18nText('appShell', 'auto.assistant_activity_tool_duration', {
+            value1: entry.durationMs
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function activityThoughtItem(entry: ActivityEntry): ThoughtChainItemType {
+  return {
+    key: entry.key,
+    icon: entry.kind === 'tool' ? <ToolOutlined /> : undefined,
+    title:
+      entry.kind === 'reasoning'
+        ? i18nText('agentFlow', 'auto.think')
+        : entry.kind === 'tool'
+          ? toolSummary(entry)
+          : entry.kind === 'error'
+            ? i18nText('appShell', 'auto.assistant_status_failed')
+            : i18nText('appShell', 'auto.assistant_activity_output'),
+    status: entry.status,
+    blink: entry.loading,
+    collapsible: entry.kind === 'tool',
+    content:
+      entry.kind === 'tool' ? (
+        toolDetail(entry)
+      ) : (
+        <DebugMarkdownContent content={entry.text ?? ''} />
+      )
+  };
+}
+
 async function loadDurableActivity(applicationId: string, runId: string) {
-  const events: ConsoleFlowDebugStreamEvent[] = [];
+  const items: ConsoleAssistantRunActivityItem[] = [];
+  const traceEvents: ConsoleFlowDebugStreamEvent[] = [];
   let afterSequence: number | undefined;
 
   for (;;) {
@@ -197,45 +282,51 @@ async function loadDurableActivity(applicationId: string, runId: string) {
       ...(afterSequence === undefined ? {} : { afterSequence }),
       pageSize: 500
     });
-    page.items.forEach((item) => {
-      const event = normalizeConsoleRuntimeEvent(item);
-      if (event) {
-        events.push(event);
+    items.push(...page.items);
+    page.trace_events.forEach((event) => {
+      const normalized = normalizeConsoleRuntimeEvent(event);
+      if (normalized) {
+        traceEvents.push(normalized);
       }
     });
     if (!page.has_more || page.next_sequence === null) {
-      return events;
+      return {
+        status: page.status,
+        startedAt: page.started_at,
+        finishedAt: page.finished_at,
+        durationMs: page.duration_ms,
+        items,
+        traceEvents
+      } satisfies LoadedRunActivity;
     }
     afterSequence = page.next_sequence;
   }
 }
 
-function useAssistantRunEvents({
+function useAssistantRunActivity({
   applicationId,
   message
 }: {
   applicationId: string;
   message: AgentFlowDebugMessage;
 }) {
-  const [durableEvents, setDurableEvents] = useState<
-    ConsoleFlowDebugStreamEvent[]
-  >([]);
+  const [durable, setDurable] = useState<LoadedRunActivity | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const runId = message.detailRunId ?? message.runId;
 
   useEffect(() => {
     if (!runId) {
-      setDurableEvents([]);
+      setDurable(null);
       return;
     }
     let disposed = false;
     setLoading(true);
     setFailed(false);
     void loadDurableActivity(applicationId, runId)
-      .then((events) => {
+      .then((activity) => {
         if (!disposed) {
-          setDurableEvents(events);
+          setDurable(activity);
         }
       })
       .catch(() => {
@@ -251,28 +342,76 @@ function useAssistantRunEvents({
     return () => {
       disposed = true;
     };
-  }, [applicationId, runId]);
+  }, [applicationId, message.status, runId]);
 
-  const events = useMemo(() => {
-    const byKey = new Map<string, ConsoleFlowDebugStreamEvent>();
-    const durableWatermark = durableEvents.reduce(
-      (watermark, event, index) =>
-        Math.max(watermark, eventSequence(event, index)),
-      -1
-    );
-    const liveTail = (message.activityEvents ?? []).filter(
-      (event, index) => eventSequence(event, index) > durableWatermark
-    );
-    [...durableEvents, ...liveTail].forEach((event, index) => {
+  const durableWatermark = (durable?.items ?? []).reduce(
+    (watermark, item) => Math.max(watermark, item.sequence),
+    -1
+  );
+  const liveItems = (message.activityEvents ?? [])
+    .map(liveActivityItem)
+    .filter((item): item is ConsoleAssistantRunActivityItem => item !== null)
+    .filter((item) => item.sequence > durableWatermark);
+  const itemById = new Map<string, ConsoleAssistantRunActivityItem>();
+  [...(durable?.items ?? []), ...liveItems].forEach((item) => {
+    itemById.set(item.event_id, item);
+  });
+
+  const traceById = new Map<string, ConsoleFlowDebugStreamEvent>();
+  [...(durable?.traceEvents ?? []), ...(message.activityEvents ?? [])].forEach(
+    (event, index) => {
       const key =
         event.event_id ??
-        `${'run_id' in event ? event.run_id : runId}:${eventSequence(event, index)}:${event.type}`;
-      byKey.set(key, event);
-    });
-    return [...byKey.values()];
-  }, [durableEvents, message.activityEvents, runId]);
+        `${runId}:${eventSequence(event, index)}:${event.type}`;
+      traceById.set(key, event);
+    }
+  );
 
-  return { events, failed, loading };
+  return {
+    activity: durable,
+    items: [...itemById.values()],
+    traceEvents: [...traceById.values()],
+    failed,
+    loading
+  };
+}
+
+function terminalStatus(status: string) {
+  return [
+    'succeeded',
+    'completed',
+    'incomplete',
+    'failed',
+    'cancelled'
+  ].includes(status);
+}
+
+function formatDuration(durationMs: number | null) {
+  if (durationMs === null) {
+    return i18nText('appShell', 'auto.assistant_activity_duration_unknown');
+  }
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0
+    ? i18nText('appShell', 'auto.assistant_activity_duration_minutes', {
+        value1: minutes,
+        value2: seconds
+      })
+    : i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
+        value1: seconds
+      });
+}
+
+function processTitle(status: string, durationMs: number | null) {
+  const duration = formatDuration(durationMs);
+  if (status === 'failed') {
+    return `${duration} · ${i18nText('appShell', 'auto.assistant_status_failed')}`;
+  }
+  if (status === 'cancelled') {
+    return `${duration} · ${i18nText('appShell', 'auto.assistant_status_cancelled')}`;
+  }
+  return duration;
 }
 
 export function AssistantRunTimeline({
@@ -282,41 +421,51 @@ export function AssistantRunTimeline({
   applicationId: string;
   message: AgentFlowDebugMessage;
 }) {
-  const { events, failed, loading } = useAssistantRunEvents({
+  const { activity, items, failed, loading } = useAssistantRunActivity({
     applicationId,
     message
   });
+  const entries = useMemo(() => projectActivity(items), [items]);
   const answer = parseAssistantContent(message.content).answerText;
-  const activity = useMemo(
-    () => projectActivity(events, answer),
-    [answer, events]
+  const status = terminalStatus(message.status)
+    ? activity && terminalStatus(activity.status)
+      ? activity.status
+      : message.status
+    : (activity?.status ?? message.status);
+  const terminal = terminalStatus(status);
+  const lastOutputIndex = entries.findLastIndex(
+    (entry) => entry.kind === 'output'
   );
-  const thoughtItems = useMemo<ThoughtChainItemType[]>(
-    () =>
-      activity.map((entry) => ({
-        key: entry.key,
-        icon: entry.kind === 'tool' ? <ToolOutlined /> : undefined,
-        title: entry.title,
-        status: entry.status,
-        blink: entry.loading,
-        // Reasoning and final output form the default narrative. Only the raw
-        // tool payload is secondary detail that should start collapsed.
-        collapsible: entry.kind === 'tool',
-        content:
-          entry.kind === 'reasoning' ? (
-            <Think title={entry.title} loading={entry.loading} defaultExpanded>
-              <DebugMarkdownContent content={entry.text ?? ''} />
-            </Think>
-          ) : entry.kind === 'tool' ? (
-            <pre className="embedded-agent-assistant-activity__payload">
-              {JSON.stringify(entry.detail, null, 2)}
-            </pre>
-          ) : (
-            <DebugMarkdownContent content={entry.text ?? ''} />
+  const finalOutput =
+    lastOutputIndex >= 0 ? (entries[lastOutputIndex]?.text ?? '') : answer;
+  const terminalError =
+    status === 'failed' && !finalOutput
+      ? ([...entries].reverse().find((entry) => entry.kind === 'error')?.text ??
+        i18nText('appShell', 'auto.assistant_run_failed'))
+      : '';
+  const processEntries =
+    terminal && lastOutputIndex >= 0
+      ? entries.filter((_, index) => index !== lastOutputIndex)
+      : entries;
+  const liveItems = entries.map(activityThoughtItem);
+  const processItems = processEntries.map(activityThoughtItem);
+  const terminalItems: ThoughtChainItemType[] = processItems.length
+    ? [
+        {
+          key: 'terminal-process',
+          title: processTitle(status, activity?.durationMs ?? null),
+          status: status === 'failed' ? 'error' : 'success',
+          collapsible: true,
+          content: (
+            <ThoughtChain
+              items={processItems}
+              line
+              rootClassName="embedded-agent-assistant-activity__timeline"
+            />
           )
-      })),
-    [activity]
-  );
+        }
+      ]
+    : [];
 
   return (
     <div className="embedded-agent-assistant-activity">
@@ -327,15 +476,33 @@ export function AssistantRunTimeline({
           title={i18nText('appShell', 'auto.assistant_activity_load_failed')}
         />
       ) : null}
-      {loading && events.length === 0 ? <Spin /> : null}
-      {!loading && thoughtItems.length === 0 ? (
+      {loading && entries.length === 0 ? <Spin /> : null}
+      {!loading && entries.length === 0 && !terminalError && !finalOutput ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={i18nText('appShell', 'auto.assistant_activity_empty')}
         />
+      ) : terminal ? (
+        <>
+          {terminalItems.length ? (
+            <ThoughtChain
+              items={terminalItems}
+              line
+              rootClassName="embedded-agent-assistant-activity__timeline"
+            />
+          ) : null}
+          {terminalItems.length && (finalOutput || terminalError) ? (
+            <Divider />
+          ) : null}
+          {finalOutput || terminalError ? (
+            <div className="embedded-agent-assistant-activity__final-output">
+              <DebugMarkdownContent content={finalOutput || terminalError} />
+            </div>
+          ) : null}
+        </>
       ) : (
         <ThoughtChain
-          items={thoughtItems}
+          items={liveItems}
           line
           rootClassName="embedded-agent-assistant-activity__timeline"
         />
@@ -358,11 +525,14 @@ export function AssistantRunNodePanel({
   applicationId: string;
   message: AgentFlowDebugMessage;
 }) {
-  const { events, failed, loading } = useAssistantRunEvents({
+  const { traceEvents, failed, loading } = useAssistantRunActivity({
     applicationId,
     message
   });
-  const durableTrace = useMemo(() => projectNodeTrace(events), [events]);
+  const durableTrace = useMemo(
+    () => projectNodeTrace(traceEvents),
+    [traceEvents]
+  );
   const traceItems = useMemo(
     () =>
       reconcileSnapshotTraceWithLiveEvents(durableTrace, message.traceSummary),

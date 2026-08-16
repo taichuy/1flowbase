@@ -241,6 +241,27 @@
   min-width: 0;
 }
 
+.embedded-agent-assistant-activity__tool-detail {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.embedded-agent-assistant-activity__detail-label {
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.embedded-agent-assistant-activity__tool-duration {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.embedded-agent-assistant-activity__final-output {
+  min-width: 0;
+}
+
 .embedded-agent-assistant-node-panel {
   min-width: 0;
 }

@@ -13,7 +13,8 @@ import {
   startConsoleAssistantRunWebSocket,
   subscribeConsoleAssistantConversationsWebSocket,
   updateConsoleAssistantSettings,
-  type ConsoleAssistantConversationMessage
+  type ConsoleAssistantConversationMessage,
+  type ConsoleAssistantRunActivityPage
 } from '../console-assistant';
 import * as transport from '../transport';
 
@@ -107,6 +108,25 @@ describe('console assistant client', () => {
   });
 
   test('AC-004 reads one assistant run activity page in durable stream order', async () => {
+    expectTypeOf<ConsoleAssistantRunActivityPage>().toMatchTypeOf<{
+      status: string;
+      started_at: string;
+      finished_at: string | null;
+      duration_ms: number | null;
+      items: Array<
+        | { kind: 'reasoning'; text: string }
+        | { kind: 'output'; text: string; segment_index: number | null }
+        | {
+            kind: 'tool';
+            tool_call_id: string;
+            tool_name: string;
+            input: unknown;
+            output: unknown | null;
+          }
+        | { kind: 'error'; error: string }
+      >;
+      trace_events: unknown[];
+    }>();
     await expect(
       getConsoleAssistantRunActivity('application-1', 'run-1', {
         afterSequence: 20,

@@ -262,7 +262,7 @@ async fn assistant_run_activity_replays_owned_durable_events_in_stream_order() {
             .unwrap();
         assert_eq!(activity.status(), StatusCode::OK);
         page = response_json(activity).await;
-        if page["data"]["items"]
+        if page["data"]["trace_events"]
             .as_array()
             .is_some_and(|items| items.len() >= 2)
         {
@@ -271,9 +271,9 @@ async fn assistant_run_activity_replays_owned_durable_events_in_stream_order() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 
-    let items = page["data"]["items"]
+    let items = page["data"]["trace_events"]
         .as_array()
-        .expect("activity response has items");
+        .expect("activity response has trace events");
     assert!(
         items.len() >= 2,
         "multiple durable activity events should become visible"
@@ -284,6 +284,10 @@ async fn assistant_run_activity_replays_owned_durable_events_in_stream_order() {
     assert!(items
         .windows(2)
         .all(|pair| pair[0]["sequence"].as_i64() <= pair[1]["sequence"].as_i64()));
+    assert_eq!(page["data"]["status"], "running");
+    assert!(page["data"]["started_at"].is_string());
+    assert!(page["data"]["finished_at"].is_null());
+    assert!(page["data"]["duration_ms"].is_null());
 
     let foreign = app
         .clone()

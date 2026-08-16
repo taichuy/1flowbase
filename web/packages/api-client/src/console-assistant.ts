@@ -135,8 +135,44 @@ export interface ConsoleAssistantRunActivityEnvelope {
   text: string | null;
 }
 
+interface ConsoleAssistantRunActivityCommon {
+  event_id: string;
+  sequence: number;
+  created_at: string;
+}
+
+export type ConsoleAssistantRunActivityItem =
+  | (ConsoleAssistantRunActivityCommon & {
+      kind: 'reasoning';
+      text: string;
+    })
+  | (ConsoleAssistantRunActivityCommon & {
+      kind: 'output';
+      text: string;
+      segment_index: number | null;
+    })
+  | (ConsoleAssistantRunActivityCommon & {
+      kind: 'tool';
+      tool_call_id: string;
+      tool_name: string;
+      input: unknown;
+      output: unknown | null;
+      duration_ms: number | null;
+      is_error: boolean;
+      status: 'running' | 'succeeded' | 'failed';
+    })
+  | (ConsoleAssistantRunActivityCommon & {
+      kind: 'error';
+      error: string;
+    });
+
 export interface ConsoleAssistantRunActivityPage {
-  items: ConsoleAssistantRunActivityEnvelope[];
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  items: ConsoleAssistantRunActivityItem[];
+  trace_events: ConsoleAssistantRunActivityEnvelope[];
   has_more: boolean;
   next_sequence: number | null;
 }

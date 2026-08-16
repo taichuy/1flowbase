@@ -40,11 +40,16 @@ use uuid::Uuid;
 mod _tests;
 mod client_tools;
 pub mod conversation_events;
+mod run_activity;
 pub(crate) mod websocket;
 
 use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
 pub use conversation_events::AssistantConversationSummaryResponse;
 use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
+use run_activity::{
+    format_assistant_activity_time, project_assistant_run_activity,
+    AssistantRunActivityPageResponse,
+};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
@@ -248,13 +253,6 @@ pub struct AssistantRunActivityQuery {
     pub page_size: Option<usize>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AssistantRunActivityPageResponse {
-    pub items: Vec<debug_run_stream::RuntimeEventStreamEnvelopeResponse>,
-    pub has_more: bool,
-    pub next_sequence: Option<i64>,
-}
-
 struct PreparedAssistantExecution {
     application_id: Uuid,
     conversation_id: Uuid,
@@ -347,6 +345,15 @@ pub async fn get_run_activity(
     {
         return Err(control_plane::errors::ControlPlaneError::NotFound("flow_run").into());
     }
+    let flow_run = OrchestrationRuntimeRepository::get_flow_run(
+        &state.store,
+        query.application_id,
+        flow_run_id,
+    )
+    .await?
+    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+        "flow_run",
+    ))?;
 
     let page_size = query
         .page_size
@@ -363,16 +370,30 @@ pub async fn get_run_activity(
     .await?;
     let has_more = events.len() > page_size;
     events.truncate(page_size);
-    let items = events
+    let trace_events = events
         .into_iter()
         .map(debug_run_stream::to_runtime_event_record_response)
         .collect::<Vec<_>>();
     let next_sequence = has_more
-        .then(|| items.last().map(|item| item.sequence))
+        .then(|| trace_events.last().map(|item| item.sequence))
         .flatten();
+    let items = trace_events
+        .iter()
+        .filter_map(project_assistant_run_activity)
+        .collect();
+    let finished_at = flow_run.finished_at;
+    let duration_ms = finished_at.map(|value| {
+        let milliseconds = (value - flow_run.started_at).whole_milliseconds();
+        i64::try_from(milliseconds).unwrap_or(i64::MAX).max(0)
+    });
 
     Ok(Json(ApiSuccess::new(AssistantRunActivityPageResponse {
+        status: flow_run.status.as_str().to_string(),
+        started_at: format_assistant_activity_time(flow_run.started_at),
+        finished_at: finished_at.map(format_assistant_activity_time),
+        duration_ms,
         items,
+        trace_events,
         has_more,
         next_sequence,
     })))

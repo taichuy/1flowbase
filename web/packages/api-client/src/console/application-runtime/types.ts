@@ -1003,6 +1003,13 @@ export interface ConsoleRunContextSnapshot extends ConsoleContextSnapshot {
   created_at: string;
 }
 
+export interface ConsoleProviderToolCall {
+  id: string;
+  name: string;
+  arguments: unknown;
+  provider_metadata?: unknown;
+}
+
 export type ConsoleFlowDebugStreamEvent =
   | {
       type: 'flow_accepted';
@@ -1114,7 +1121,7 @@ export type ConsoleFlowDebugStreamEvent =
       type: 'assistant_tool_call_started';
       node_run_id: string;
       node_id: string;
-      tool_call: Record<string, unknown>;
+      tool_call: ConsoleProviderToolCall;
       run_id?: string;
       event_id?: string;
       sequence?: number;
@@ -1126,8 +1133,8 @@ export type ConsoleFlowDebugStreamEvent =
       type: 'assistant_tool_call_finished';
       node_run_id: string;
       node_id: string;
-      tool_call: Record<string, unknown>;
-      tool_result: Record<string, unknown>;
+      tool_call: ConsoleProviderToolCall;
+      tool_result: unknown;
       duration_ms: number;
       run_id?: string;
       event_id?: string;

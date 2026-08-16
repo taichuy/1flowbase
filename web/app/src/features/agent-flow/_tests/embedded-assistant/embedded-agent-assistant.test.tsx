@@ -57,6 +57,7 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { EmbeddedAgentAssistant } from '../../components/embedded-assistant/EmbeddedAgentAssistant';
+import { AssistantRunTimeline } from '../../components/embedded-assistant/AssistantRunActivityPanel';
 import * as runtimeApi from '../../api/runtime';
 import { i18nText } from '../../../../shared/i18n/text';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
@@ -162,7 +163,12 @@ describe('EmbeddedAgentAssistant', () => {
     ]);
     getConsoleAssistantRunActivity.mockReset();
     getConsoleAssistantRunActivity.mockResolvedValue({
+      status: 'running',
+      started_at: '2026-08-16T00:00:00Z',
+      finished_at: null,
+      duration_ms: null,
       items: [],
+      trace_events: [],
       has_more: false,
       next_sequence: null
     });
@@ -1276,20 +1282,72 @@ describe('EmbeddedAgentAssistant', () => {
     expect(
       await screen.findByText('Public partial answer')
     ).toBeInTheDocument();
-    const temporaryReasoning = screen.getByText('Temporary reasoning');
-    expect(temporaryReasoning).toBeInTheDocument();
-    expect(
-      temporaryReasoning.compareDocumentPosition(
-        screen.getByText('Public partial answer')
-      ) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    expect(screen.queryByText('Temporary reasoning')).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByText(
+        `${i18nText('appShell', 'auto.assistant_activity_duration_unknown')} · ${i18nText('appShell', 'auto.assistant_status_cancelled')}`
+      )
+    );
+    expect(await screen.findByText('Temporary reasoning')).toBeInTheDocument();
     expect(
       screen.queryByText(i18nText('agentFlow', 'auto.stopped'))
     ).not.toBeInTheDocument();
     await waitFor(() => expect(composer).toBeEnabled());
   });
 
+  test('AC-006 keeps a formal terminal error outside the process when failure has no output', async () => {
+    getConsoleAssistantRunActivity.mockResolvedValue({
+      status: 'failed',
+      started_at: '2026-08-16T00:00:00Z',
+      finished_at: '2026-08-16T00:00:01Z',
+      duration_ms: 1000,
+      items: [
+        {
+          kind: 'reasoning',
+          event_id: 'run-failed:1',
+          sequence: 1,
+          created_at: '2026-08-16T00:00:00Z',
+          text: '失败前思考'
+        },
+        {
+          kind: 'error',
+          event_id: 'run-failed:2',
+          sequence: 2,
+          created_at: '2026-08-16T00:00:01Z',
+          error: 'Provider rejected the request'
+        }
+      ],
+      trace_events: [],
+      has_more: false,
+      next_sequence: null
+    });
+
+    render(
+      <AppProviders>
+        <AssistantRunTimeline
+          applicationId="flow-1"
+          message={{
+            id: 'run-failed:assistant',
+            role: 'assistant',
+            content: '',
+            status: 'failed',
+            runId: 'run-failed',
+            rawOutput: null,
+            traceSummary: [],
+            presentation: 'answer'
+          }}
+        />
+      </AppProviders>
+    );
+
+    expect(
+      await screen.findByText('Provider rejected the request')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('失败前思考')).not.toBeInTheDocument();
+  });
+
   test('AC-006 keeps ordered assistant activity inline and restores every node card in the sidebar', async () => {
+    let finishRun: (() => void) | undefined;
     startConsoleAssistantRunWebSocket.mockImplementation(
       async (_input, _csrfToken, handlers) => {
         handlers.onEvent({
@@ -1328,7 +1386,11 @@ describe('EmbeddedAgentAssistant', () => {
           run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
-          tool_call: { id: 'call-1', name: 'list_items' },
+          tool_call: {
+            id: 'call-1',
+            name: '1flowbase_mcp_list',
+            arguments: { path: '/后台设置' }
+          },
           event_id: 'run-activity:4',
           sequence: 4
         });
@@ -1337,7 +1399,11 @@ describe('EmbeddedAgentAssistant', () => {
           run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
-          tool_call: { id: 'call-1', name: 'list_items' },
+          tool_call: {
+            id: 'call-1',
+            name: '1flowbase_mcp_list',
+            arguments: { path: '/后台设置' }
+          },
           tool_result: { count: 2 },
           duration_ms: 4,
           event_id: 'run-activity:5',
@@ -1375,7 +1441,11 @@ describe('EmbeddedAgentAssistant', () => {
           run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
-          tool_call: { id: 'call-2', name: 'get_item' },
+          tool_call: {
+            id: 'call-2',
+            name: '1flowbase_mcp_get',
+            arguments: { group_id: 'group-123' }
+          },
           event_id: 'run-activity:8',
           sequence: 8
         });
@@ -1384,7 +1454,11 @@ describe('EmbeddedAgentAssistant', () => {
           run_id: 'run-activity',
           node_run_id: 'node-run-llm',
           node_id: 'node-llm',
-          tool_call: { id: 'call-2', name: 'get_item' },
+          tool_call: {
+            id: 'call-2',
+            name: '1flowbase_mcp_get',
+            arguments: { group_id: 'group-123' }
+          },
           tool_result: { id: 'item-1' },
           duration_ms: 3,
           event_id: 'run-activity:9',
@@ -1403,41 +1477,46 @@ describe('EmbeddedAgentAssistant', () => {
             segment_index: 1
           }
         });
-        handlers.onEvent({
-          type: 'node_finished',
-          run_id: 'run-activity',
-          node_run_id: 'node-run-llm',
-          node_id: 'node-llm',
-          status: 'succeeded',
-          event_id: 'run-activity:11',
-          sequence: 11
-        });
-        handlers.onEvent({
-          type: 'node_started',
-          run_id: 'run-activity',
-          node_run_id: 'node-run-answer',
-          node_id: 'node-answer',
-          node_type: 'answer',
-          title: 'Answer node',
-          event_id: 'run-activity:12',
-          sequence: 12
-        });
-        handlers.onEvent({
-          type: 'node_finished',
-          run_id: 'run-activity',
-          node_run_id: 'node-run-answer',
-          node_id: 'node-answer',
-          status: 'succeeded',
-          event_id: 'run-activity:13',
-          sequence: 13
-        });
-        handlers.onEvent({
-          type: 'flow_finished',
-          run_id: 'run-activity',
-          status: 'succeeded',
-          output: { answer: '阶段结果一阶段结果二' },
-          event_id: 'run-activity:14',
-          sequence: 14
+        await new Promise<void>((resolve) => {
+          finishRun = () => {
+            handlers.onEvent({
+              type: 'node_finished',
+              run_id: 'run-activity',
+              node_run_id: 'node-run-llm',
+              node_id: 'node-llm',
+              status: 'succeeded',
+              event_id: 'run-activity:11',
+              sequence: 11
+            });
+            handlers.onEvent({
+              type: 'node_started',
+              run_id: 'run-activity',
+              node_run_id: 'node-run-answer',
+              node_id: 'node-answer',
+              node_type: 'answer',
+              title: 'Answer node',
+              event_id: 'run-activity:12',
+              sequence: 12
+            });
+            handlers.onEvent({
+              type: 'node_finished',
+              run_id: 'run-activity',
+              node_run_id: 'node-run-answer',
+              node_id: 'node-answer',
+              status: 'succeeded',
+              event_id: 'run-activity:13',
+              sequence: 13
+            });
+            handlers.onEvent({
+              type: 'flow_finished',
+              run_id: 'run-activity',
+              status: 'succeeded',
+              output: { answer: '阶段结果一阶段结果二' },
+              event_id: 'run-activity:14',
+              sequence: 14
+            });
+            resolve();
+          };
         });
       }
     );
@@ -1464,10 +1543,10 @@ describe('EmbeddedAgentAssistant', () => {
     fireEvent.click(sendButton);
 
     const firstReasoning = await screen.findByText('先检查配置');
-    const firstTool = screen.getByText('list_items');
+    const firstTool = screen.getByText('1flowbase_mcp_list (/后台设置)');
     const firstOutput = screen.getByText('阶段结果一');
     const secondReasoning = screen.getByText('继续检查数据');
-    const secondTool = screen.getByText('get_item');
+    const secondTool = screen.getByText('1flowbase_mcp_get (group-123)');
     const secondOutput = screen.getByText('阶段结果二');
     expect(firstReasoning.compareDocumentPosition(firstTool)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
@@ -1484,6 +1563,28 @@ describe('EmbeddedAgentAssistant', () => {
     expect(secondTool.compareDocumentPosition(secondOutput)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
+    fireEvent.click(firstTool);
+    expect(
+      screen.getByText(i18nText('agentFlow', 'auto.input'))
+    ).toBeInTheDocument();
+    expect(screen.getByText(/"path": "\/后台设置"/)).toBeInTheDocument();
+    expect(
+      screen.queryAllByText(i18nText('agentFlow', 'auto.think'))
+    ).toHaveLength(2);
+
+    await act(async () => {
+      finishRun?.();
+    });
+    await waitFor(() =>
+      expect(screen.queryByText('先检查配置')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('阶段结果二')).toBeInTheDocument();
+    const duration = screen.getByText(
+      i18nText('appShell', 'auto.assistant_activity_duration_unknown')
+    );
+    fireEvent.click(duration);
+    expect(await screen.findByText('先检查配置')).toBeInTheDocument();
+    expect(screen.getByText('阶段结果一')).toBeInTheDocument();
     expect(
       screen.queryByLabelText(i18nText('agentFlow', 'auto.workflow'))
     ).not.toBeInTheDocument();
@@ -1518,12 +1619,34 @@ describe('EmbeddedAgentAssistant', () => {
         flow_run_id: 'run-history',
         role: 'assistant',
         content: '历史最终回答',
+        status: 'succeeded',
         page_references: [],
         created_at: '2026-08-15T00:00:00Z'
       }
     ]);
     getConsoleAssistantRunActivity.mockResolvedValue({
+      status: 'succeeded',
+      started_at: '2026-08-15T00:00:00Z',
+      finished_at: '2026-08-15T00:00:03Z',
+      duration_ms: 3000,
       items: [
+        {
+          kind: 'reasoning',
+          event_id: 'run-history:3',
+          sequence: 3,
+          created_at: '2026-08-15T00:00:01Z',
+          text: '历史思考'
+        },
+        {
+          kind: 'output',
+          event_id: 'run-history:4',
+          sequence: 4,
+          created_at: '2026-08-15T00:00:02Z',
+          text: '历史最终回答',
+          segment_index: 0
+        }
+      ],
+      trace_events: [
         {
           event_id: 'run-history:1',
           run_id: 'run-history',
@@ -1616,11 +1739,19 @@ describe('EmbeddedAgentAssistant', () => {
       })
     );
     fireEvent.click(await screen.findByText('First conversation'));
-    const historyReasoning = await screen.findByText('历史思考');
-    const historyOutput = screen.getByText('历史最终回答');
-    expect(historyReasoning.compareDocumentPosition(historyOutput)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
+    expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
+    expect(screen.queryByText('历史思考')).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByText(
+        i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
+          value1: 3
+        })
+      )
     );
+    const historyReasoning = await screen.findByText('历史思考');
+    expect(
+      historyReasoning.compareDocumentPosition(screen.getByText('历史最终回答'))
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     const activityButtons = screen.getAllByRole('button', {
       name: i18nText('appShell', 'auto.assistant_activity')
