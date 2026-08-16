@@ -1,6 +1,7 @@
 use super::*;
 use axum::body::Bytes;
 use control_plane::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
+use control_plane::application_public_api::native::AnswerProjectionSegment;
 use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
 use control_plane::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
@@ -95,6 +96,70 @@ fn anthropic_response_projects_native_tool_calls() {
         payload["content"][0]["input"]["order_id"],
         json!("order_123")
     );
+}
+
+#[test]
+fn issue_1743_non_streaming_projects_canonical_reasoning_and_visible_text() {
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.answer = Some("<think>display-only legacy text</think>stale answer".to_string());
+    run.answer_segments = Some(vec![
+        AnswerProjectionSegment::reasoning("canonical reasoning"),
+        AnswerProjectionSegment::message("canonical visible answer"),
+    ]);
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into())
+            .expect("canonical answer segments should project"),
+    )
+    .expect("Anthropic response serializes");
+
+    assert_eq!(
+        payload["content"],
+        json!([
+            {"type": "thinking", "thinking": "canonical reasoning"},
+            {"type": "text", "text": "canonical visible answer"}
+        ])
+    );
+    assert!(!payload.to_string().contains("display-only legacy text"));
+    assert!(!payload.to_string().contains("stale answer"));
+}
+
+#[test]
+fn issue_1743_non_streaming_without_reasoning_keeps_text_and_tool_blocks() {
+    let callback_task_id = Uuid::from_u128(0x17430000000000000000000000000001);
+    let mut run = blocking_run(NativeRunStatus::Waiting);
+    run.answer = Some("stale answer".to_string());
+    run.answer_segments = Some(vec![AnswerProjectionSegment::message("visible answer")]);
+    run.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".to_string(),
+        payload: json!({
+            "callback_task_id": callback_task_id,
+            "callback_kind": "llm_tool_calls"
+        }),
+    });
+    run.tool_calls = Some(json!([{
+        "id": "toolu_lookup",
+        "name": "lookup",
+        "arguments": {"query": "order"}
+    }]));
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into())
+            .expect("text and tool blocks should project without reasoning"),
+    )
+    .expect("Anthropic response serializes");
+
+    assert_eq!(payload["stop_reason"], json!("tool_use"));
+    assert_eq!(
+        payload["content"][0],
+        json!({"type": "text", "text": "visible answer"})
+    );
+    assert_eq!(payload["content"][1]["type"], json!("tool_use"));
+    assert!(payload["content"]
+        .as_array()
+        .expect("content blocks")
+        .iter()
+        .all(|block| block["type"] != json!("thinking")));
 }
 
 #[test]

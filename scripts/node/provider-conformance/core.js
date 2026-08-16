@@ -892,7 +892,7 @@ function boundedRunnerError(result, tokens) {
   return message.slice(0, 512);
 }
 
-async function loadPackage(runner, packageInfo) {
+async function loadPackage(runner, packageInfo, tokens) {
   const expectedPackageSha256 = `sha256:${packageInfo.sha256}`;
   const loaded = await requestJson(`${runner.base_url}/providers/load`, 'POST', {
     package_root: packageInfo.package_root,
@@ -902,7 +902,10 @@ async function loadPackage(runner, packageInfo) {
       expected_manifest_fingerprint: packageInfo.official_manifest.fingerprint,
     },
   });
-  requireCondition(loaded.status === 200, 'plugin runner rejected an actual package');
+  requireCondition(
+    loaded.status === 200,
+    `plugin runner rejected the ${packageInfo.provider.provider_code} actual package with HTTP ${loaded.status}: ${boundedRunnerError(loaded, tokens)}`
+  );
   requireCondition(
     loaded.body?.provider_code === packageInfo.provider.provider_code,
     'plugin runner loaded the wrong actual package'
@@ -1125,7 +1128,7 @@ async function runConformance(options) {
     upstream = await createFakeUpstream();
     for (const providerCode of REQUIRED_PROVIDER_CODES) {
       const packageInfo = packages.get(providerCode);
-      packageInfo.runtime_identity = await loadPackage(runner, packageInfo);
+      packageInfo.runtime_identity = await loadPackage(runner, packageInfo, canaries);
       packageInfo.loaded_plugin_id = packageInfo.runtime_identity.plugin_id;
     }
 

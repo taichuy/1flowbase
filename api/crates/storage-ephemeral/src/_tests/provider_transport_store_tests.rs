@@ -227,6 +227,48 @@ async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_eph
 }
 
 #[tokio::test]
+async fn issue_1743_ttl_and_terminal_cleanup_preserve_flow_owned_lifecycle() {
+    let terminal_store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let terminal_flow_run_id = Uuid::now_v7();
+    let terminal_slot = ProviderContinuationSlotId::for_flow_run(terminal_flow_run_id);
+    terminal_store
+        .put_continuation(terminal_slot, responses_continuation())
+        .await
+        .unwrap();
+
+    terminal_store
+        .clear_flow_run(terminal_flow_run_id)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        terminal_store
+            .consume_continuation(terminal_slot)
+            .await
+            .expect_err("terminal cleanup must remove the flow-owned continuation")
+            .to_string(),
+        "ephemeral_continuation_missing"
+    );
+
+    let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let expiring_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
+    expiring_store
+        .put_continuation(expiring_slot, responses_continuation())
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+    assert_eq!(
+        expiring_store
+            .consume_continuation(expiring_slot)
+            .await
+            .expect_err("expired continuation must not be claimable")
+            .to_string(),
+        "ephemeral_continuation_missing"
+    );
+}
+
+#[tokio::test]
 async fn wp12_sealed_request_and_continuation_are_consumed_once() {
     let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
     let flow_run_id = Uuid::now_v7();

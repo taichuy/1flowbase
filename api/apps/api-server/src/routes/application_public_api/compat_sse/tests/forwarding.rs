@@ -868,7 +868,7 @@ async fn anthropic_completed_stream_projects_thinking_and_visible_text() {
 }
 
 #[tokio::test]
-async fn anthropic_completed_stream_uses_structured_answer_segments_for_thinking_and_text() {
+async fn issue_1743_anthropic_stream_uses_canonical_reasoning_and_visible_text() {
     let mut run = native_run();
     run.status = NativeRunStatus::Succeeded;
     run.answer = Some("<think>旧思考</think>旧回答".to_string());

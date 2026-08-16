@@ -9,11 +9,13 @@ use async_trait::async_trait;
 use plugin_framework::{
     error::PluginFrameworkError,
     provider_contract::{
-        NativePromptBlock, ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensError, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderMessage, ProviderMessageRole,
-        ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        NativePromptBlock, ProviderCanonicalBlockLocator, ProviderCompactError,
+        ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensError,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderFinishReason,
+        ProviderGenerateProjectionError, ProviderGenerateTranslationReceipt,
+        ProviderInvocationCapability, ProviderInvocationInput, ProviderInvocationResult,
+        ProviderMessage, ProviderMessageRole, ProviderOutputProtocolFailure,
+        ProviderProjectionErrorCode, ProviderRuntimeError, ProviderRuntimeErrorKind,
         ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
     },
 };
@@ -53,9 +55,9 @@ mod http_request;
 mod llm_callbacks;
 mod llm_context;
 mod llm_error_payloads;
-mod llm_final_content;
+pub(crate) mod llm_final_content;
 mod llm_invocation;
-mod llm_metrics;
+pub(crate) mod llm_metrics;
 mod llm_node_outputs;
 mod llm_parameters;
 mod node_failure_policy;

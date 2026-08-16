@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
 };
 
@@ -10,11 +10,11 @@ use plugin_framework::{
     provider_contract::{
         ProtocolAuthenticationPresentation, ProtocolContextEnvelope, ProviderCompactProfile,
         ProviderCompactResult, ProviderCountTokensInput, ProviderCountTokensResult,
-        ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderMcpCall,
-        ProviderMessageRole, ProviderOutputProtocolFailure, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
-        ProviderWireOperation, SourceProtocolRequest,
-        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
+        ProviderInvocationResult, ProviderMcpCall, ProviderMessageRole,
+        ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderRuntimeErrorKind,
+        ProviderStreamEvent, ProviderToolCall, ProviderUsage, ProviderWireOperation,
+        SourceProtocolRequest, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::{json, Value};
@@ -56,6 +56,7 @@ impl ProviderInvoker for StubProviderInvoker {
             [
                 "message_blocks.reasoning_history.v1".to_string(),
                 "message_blocks.redacted_reasoning_history.v1".to_string(),
+                "native_continuation_supported".to_string(),
             ]
             .into_iter()
             .collect(),
@@ -523,6 +524,16 @@ struct SequentialLlmToolCallInvoker {
 
 #[async_trait]
 impl ProviderInvoker for SequentialLlmToolCallInvoker {
+    async fn resolve_llm_route(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
+        Ok(ResolvedProviderRoute::new(
+            BTreeSet::from(["native_continuation_supported".to_string()]),
+            (),
+        ))
+    }
+
     async fn invoke_llm(
         &self,
         _runtime: &CompiledLlmRuntime,

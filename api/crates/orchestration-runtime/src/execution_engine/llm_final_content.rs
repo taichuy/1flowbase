@@ -241,7 +241,7 @@ pub(super) fn content_delta_seen_before_terminal_failure(
     saw_content_delta && matches!(finish_reason, Some(ProviderFinishReason::Error))
 }
 
-pub(super) fn build_provider_error_payload(
+pub(crate) fn build_provider_error_payload(
     runtime: &CompiledLlmRuntime,
     error: &ProviderRuntimeError,
 ) -> Value {
@@ -255,7 +255,179 @@ pub(super) fn build_provider_error_payload(
     if let Some(status_code) = provider_status_code(error.provider_details.as_ref()) {
         payload["status_code"] = json!(status_code);
     }
+    if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported {
+        if let Some(details) = error.provider_details.as_ref().and_then(Value::as_object) {
+            if let Some(route_id) = details
+                .get("route_id")
+                .and_then(Value::as_str)
+                .filter(|value| value.len() <= 128)
+            {
+                payload["route_id"] = Value::String(route_id.to_string());
+            }
+            payload["missing_capabilities"] = Value::Array(
+                details
+                    .get("missing_capabilities")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .filter(|value| value.len() <= 128)
+                    .take(32)
+                    .map(|value| Value::String(value.to_string()))
+                    .collect(),
+            );
+            if let Some(projection) = details
+                .get("projection")
+                .and_then(allowlisted_projection_diagnostic)
+            {
+                payload["projection"] = projection;
+            }
+        }
+    }
     payload
+}
+
+fn allowlisted_projection_diagnostic(value: &Value) -> Option<Value> {
+    let object = value.as_object()?;
+    let causes = object
+        .get("causes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(8)
+        .filter_map(allowlisted_projection_cause)
+        .collect::<Vec<_>>();
+    Some(json!({
+        "cause_count": object.get("cause_count").and_then(Value::as_u64),
+        "causes_capped": object.get("causes_capped").and_then(Value::as_bool).unwrap_or(false),
+        "causes": causes,
+    }))
+}
+
+fn allowlisted_projection_cause(value: &Value) -> Option<Value> {
+    let object = value.as_object()?;
+    let cause = object
+        .get("cause")
+        .and_then(Value::as_str)
+        .filter(|cause| {
+            matches!(
+                *cause,
+                "unsupported" | "invalid_canonical_contract" | "missing_capabilities"
+            )
+        })?;
+    let mut output = Map::from_iter([("cause".to_string(), Value::String(cause.to_string()))]);
+    if let Some(error_code) = object
+        .get("error_code")
+        .and_then(Value::as_str)
+        .filter(|code| *code == "reasoning_only_message_unsupported")
+    {
+        output.insert(
+            "error_code".to_string(),
+            Value::String(error_code.to_string()),
+        );
+    }
+    if let Some(block) = object.get("block").and_then(allowlisted_block_locator) {
+        output.insert("block".to_string(), block);
+    }
+    if let Some(receipt) = object.get("receipt").and_then(allowlisted_receipt) {
+        output.insert("receipt".to_string(), receipt);
+    }
+    if let Some(missing) = object.get("missing_capabilities").and_then(Value::as_array) {
+        output.insert(
+            "missing_capabilities".to_string(),
+            Value::Array(
+                missing
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|value| value.len() <= 128)
+                    .take(32)
+                    .map(|value| Value::String(value.to_string()))
+                    .collect(),
+            ),
+        );
+    }
+    Some(Value::Object(output))
+}
+
+fn allowlisted_receipt(value: &Value) -> Option<Value> {
+    let object = value.as_object()?;
+    let fidelity = object
+        .get("fidelity")
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "exact" | "lossy" | "unsupported"));
+    let loss_codes = object
+        .get("loss_codes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|value| {
+            matches!(
+                *value,
+                "reasoning_history_omitted"
+                    | "signed_reasoning_omitted"
+                    | "redacted_reasoning_omitted"
+            )
+        })
+        .take(8)
+        .map(|value| Value::String(value.to_string()))
+        .collect::<Vec<_>>();
+    let error_code = object
+        .get("error_code")
+        .and_then(Value::as_str)
+        .filter(|value| *value == "reasoning_only_message_unsupported");
+    let provenance = object.get("provenance").and_then(Value::as_object).map(|provenance| {
+        json!({
+            "source": provenance.get("source").and_then(Value::as_str)
+                .filter(|value| *value == "canonical_invocation"),
+            "preserved_count": provenance.get("preserved_count").and_then(Value::as_u64),
+            "omitted_count": provenance.get("omitted_count").and_then(Value::as_u64),
+            "locators_capped": provenance.get("locators_capped").and_then(Value::as_bool).unwrap_or(false),
+            "preserved_blocks": allowlisted_locator_array(provenance.get("preserved_blocks")),
+            "omitted_blocks": allowlisted_locator_array(provenance.get("omitted_blocks")),
+        })
+    });
+    Some(json!({
+        "fidelity": fidelity,
+        "loss_codes": loss_codes,
+        "error_code": error_code,
+        "provenance": provenance,
+    }))
+}
+
+fn allowlisted_locator_array(value: Option<&Value>) -> Vec<Value> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(16)
+        .filter_map(allowlisted_block_locator)
+        .collect()
+}
+
+fn allowlisted_block_locator(value: &Value) -> Option<Value> {
+    let object = value.as_object()?;
+    let block_kind = object
+        .get("block_kind")
+        .and_then(Value::as_str)
+        .filter(|kind| {
+            matches!(
+                *kind,
+                "text"
+                    | "image"
+                    | "image_url"
+                    | "document"
+                    | "tool_use"
+                    | "tool_result"
+                    | "reasoning"
+                    | "redacted_reasoning"
+            )
+        })?;
+    Some(json!({
+        "message_index": object.get("message_index").and_then(Value::as_u64),
+        "block_index": object.get("block_index").and_then(Value::as_u64),
+        "block_kind": block_kind,
+    }))
 }
 
 pub(super) fn build_output_protocol_failure_payload(

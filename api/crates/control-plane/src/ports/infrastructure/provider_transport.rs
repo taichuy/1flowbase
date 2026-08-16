@@ -283,10 +283,19 @@ pub struct ProviderTransportAffinity {
     model: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProviderContinuation {
     response_id: String,
     affinity: ProviderTransportAffinity,
+}
+
+impl fmt::Debug for ProviderContinuation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderContinuation")
+            .field("affinity", &self.affinity)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProviderContinuation {
@@ -311,6 +320,10 @@ impl ProviderContinuation {
 
     pub(crate) fn affinity(&self) -> &ProviderTransportAffinity {
         &self.affinity
+    }
+
+    pub fn matches_affinity(&self, expected: &ProviderTransportAffinity) -> bool {
+        &self.affinity == expected
     }
 }
 

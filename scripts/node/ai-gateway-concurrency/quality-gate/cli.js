@@ -331,6 +331,16 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "api-server",
       "routes::application_public_api::stream_terminal_fallback::tests",
     ),
+    invocation(
+      "control-plane-issue-1743-anthropic-round-trip-tests",
+      "control-plane",
+      "issue_1743",
+    ),
+    invocation(
+      "api-server-issue-1743-anthropic-round-trip-tests",
+      "api-server",
+      "issue_1743",
+    ),
   ];
 }
 
