@@ -34,6 +34,15 @@ fn responses_continuation() -> ProviderContinuation {
     .expect("fixture continuation must be valid")
 }
 
+fn responses_affinity(
+    provider_instance_id: &str,
+    provider_code: &str,
+    protocol: &str,
+    model: &str,
+) -> ProviderTransportAffinity {
+    ProviderTransportAffinity::new(provider_instance_id, provider_code, protocol, model)
+}
+
 fn protocol_context_value(canary: &str) -> ProviderProtocolContextValue {
     ProviderProtocolContextValue::new(json!({
         "source_protocol": "anthropic_messages",
@@ -224,6 +233,176 @@ async fn d3_p3_provider_continuation_restores_opaque_id_and_affinity_only_in_eph
     );
     assert!(payload.affinity().is_some());
     assert!(!format!("{payload:?}").contains("provider-response-secret"));
+}
+
+#[tokio::test]
+async fn issue_1743_flow_owner_and_provider_affinity_claim_continuation_once() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let flow_run_id = Uuid::now_v7();
+    let slot = ProviderContinuationSlotId::for_flow_run(flow_run_id);
+    store
+        .put_continuation(slot, responses_continuation())
+        .await
+        .unwrap();
+
+    let continuation = store
+        .consume_continuation_for(
+            slot,
+            &responses_affinity(
+                "provider-instance-a",
+                "openai",
+                "openai_responses",
+                "gpt-test",
+            ),
+        )
+        .await
+        .expect("the owning flow and selected Provider route must claim the continuation");
+
+    assert!(continuation.matches_affinity(&responses_affinity(
+        "provider-instance-a",
+        "openai",
+        "openai_responses",
+        "gpt-test",
+    )));
+    assert_eq!(store.get_continuation(slot).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn issue_1743_owner_mismatch_does_not_claim_another_flow_continuation() {
+    let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let owner_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
+    let other_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
+    store
+        .put_continuation(owner_slot, responses_continuation())
+        .await
+        .unwrap();
+
+    let error = store
+        .consume_continuation_for(
+            other_slot,
+            &responses_affinity(
+                "provider-instance-a",
+                "openai",
+                "openai_responses",
+                "gpt-test",
+            ),
+        )
+        .await
+        .expect_err("a different flow owner must not claim the continuation");
+
+    assert_eq!(error.to_string(), "ephemeral_continuation_missing");
+    assert!(store.get_continuation(owner_slot).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn issue_1743_route_affinity_mismatch_never_returns_opaque_cursor() {
+    let mismatches = [
+        responses_affinity(
+            "provider-instance-b",
+            "openai",
+            "openai_responses",
+            "gpt-test",
+        ),
+        responses_affinity(
+            "provider-instance-a",
+            "anthropic",
+            "openai_responses",
+            "gpt-test",
+        ),
+        responses_affinity(
+            "provider-instance-a",
+            "openai",
+            "anthropic_messages",
+            "gpt-test",
+        ),
+        responses_affinity(
+            "provider-instance-a",
+            "openai",
+            "openai_responses",
+            "gpt-other",
+        ),
+    ];
+
+    for mismatch in mismatches {
+        let store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+        let slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
+        store
+            .put_continuation(slot, responses_continuation())
+            .await
+            .unwrap();
+
+        let error = store
+            .consume_continuation_for(slot, &mismatch)
+            .await
+            .expect_err("a different Provider route must not receive the opaque cursor");
+
+        assert_eq!(error.to_string(), "provider_continuation_affinity_mismatch");
+        assert!(!error.to_string().contains("provider-response-secret"));
+        let retained = store
+            .get_continuation(slot)
+            .await
+            .unwrap()
+            .expect("a mismatched route must not consume the owner's continuation");
+        assert!(!format!("{retained:?}").contains("provider-response-secret"));
+    }
+}
+
+#[tokio::test]
+async fn issue_1743_ttl_and_terminal_cleanup_preserve_flow_owned_lifecycle() {
+    let terminal_store = MemoryProviderTransportStore::new(Duration::minutes(5), 64 * 1024);
+    let terminal_flow_run_id = Uuid::now_v7();
+    let terminal_slot = ProviderContinuationSlotId::for_flow_run(terminal_flow_run_id);
+    terminal_store
+        .put_continuation(terminal_slot, responses_continuation())
+        .await
+        .unwrap();
+
+    terminal_store
+        .clear_flow_run(terminal_flow_run_id)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        terminal_store
+            .consume_continuation_for(
+                terminal_slot,
+                &responses_affinity(
+                    "provider-instance-a",
+                    "openai",
+                    "openai_responses",
+                    "gpt-test",
+                ),
+            )
+            .await
+            .expect_err("terminal cleanup must remove the flow-owned continuation")
+            .to_string(),
+        "ephemeral_continuation_missing"
+    );
+
+    let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20), 64 * 1024);
+    let expiring_slot = ProviderContinuationSlotId::for_flow_run(Uuid::now_v7());
+    expiring_store
+        .put_continuation(expiring_slot, responses_continuation())
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+    assert_eq!(
+        expiring_store
+            .consume_continuation_for(
+                expiring_slot,
+                &responses_affinity(
+                    "provider-instance-a",
+                    "openai",
+                    "openai_responses",
+                    "gpt-test",
+                ),
+            )
+            .await
+            .expect_err("expired continuation must not be claimable")
+            .to_string(),
+        "ephemeral_continuation_missing"
+    );
 }
 
 #[tokio::test]

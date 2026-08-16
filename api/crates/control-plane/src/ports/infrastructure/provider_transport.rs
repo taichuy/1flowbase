@@ -283,10 +283,19 @@ pub struct ProviderTransportAffinity {
     model: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProviderContinuation {
     response_id: String,
     affinity: ProviderTransportAffinity,
+}
+
+impl fmt::Debug for ProviderContinuation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderContinuation")
+            .field("affinity", &self.affinity)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProviderContinuation {
@@ -311,6 +320,10 @@ impl ProviderContinuation {
 
     pub(crate) fn affinity(&self) -> &ProviderTransportAffinity {
         &self.affinity
+    }
+
+    pub fn matches_affinity(&self, expected: &ProviderTransportAffinity) -> bool {
+        &self.affinity == expected
     }
 }
 
@@ -537,6 +550,34 @@ pub trait ProviderTransportStore: Send + Sync {
             .get_continuation(slot_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+        anyhow::ensure!(
+            self.delete_continuation(slot_id).await?,
+            "ephemeral_continuation_missing"
+        );
+        Ok(continuation)
+    }
+
+    /// Atomically claims a flow-owned continuation for the selected Provider route.
+    ///
+    /// The flow-run slot is the continuation state owner. `expected_affinity` binds the claim to
+    /// the Provider instance (the selected route), provider contract, protocol, and model. A
+    /// successful claim is the mutually exclusive choice of native continuation over full replay
+    /// for that execution attempt; the opaque response cursor must not be returned on mismatch.
+    /// Concurrent production adapters should override this compatibility implementation with one
+    /// atomic compare-and-remove storage action.
+    async fn consume_continuation_for(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+        expected_affinity: &ProviderTransportAffinity,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let continuation = self
+            .get_continuation(slot_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+        anyhow::ensure!(
+            continuation.matches_affinity(expected_affinity),
+            "provider_continuation_affinity_mismatch"
+        );
         anyhow::ensure!(
             self.delete_continuation(slot_id).await?,
             "ephemeral_continuation_missing"

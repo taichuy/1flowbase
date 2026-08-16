@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use control_plane::ports::{
     ProviderContinuation, ProviderContinuationSlotId, ProviderProtocolContextSlotId,
-    ProviderProtocolContextValue, ProviderTransportPayload, ProviderTransportSlotId,
-    ProviderTransportStore,
+    ProviderProtocolContextValue, ProviderTransportAffinity, ProviderTransportPayload,
+    ProviderTransportSlotId, ProviderTransportStore,
 };
 use time::{Duration, OffsetDateTime};
 use tokio::sync::RwLock;
@@ -215,6 +215,27 @@ impl ProviderTransportStore for MemoryProviderTransportStore {
         let mut continuations = self.continuations.write().await;
         let entry = Self::take_unexpired(&mut continuations, &slot_id, |entry| entry.expires_at)
             .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
+        Ok(entry.continuation)
+    }
+
+    async fn consume_continuation_for(
+        &self,
+        slot_id: ProviderContinuationSlotId,
+        expected_affinity: &ProviderTransportAffinity,
+    ) -> anyhow::Result<ProviderContinuation> {
+        let mut continuations = self.continuations.write().await;
+        let Some(entry) = continuations.get(&slot_id).cloned() else {
+            return Err(anyhow::anyhow!("ephemeral_continuation_missing"));
+        };
+        if entry.expires_at <= OffsetDateTime::now_utc() {
+            continuations.remove(&slot_id);
+            return Err(anyhow::anyhow!("ephemeral_continuation_missing"));
+        }
+        anyhow::ensure!(
+            entry.continuation.matches_affinity(expected_affinity),
+            "provider_continuation_affinity_mismatch"
+        );
+        continuations.remove(&slot_id);
         Ok(entry.continuation)
     }
 
