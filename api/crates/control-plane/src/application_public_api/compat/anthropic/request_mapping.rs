@@ -269,7 +269,13 @@ pub(super) fn normalize_anthropic_tool(
         .filter(|field| {
             !matches!(
                 field.as_str(),
-                "name" | "description" | "input_schema" | "cache_control"
+                "name"
+                    | "description"
+                    | "input_schema"
+                    | "cache_control"
+                    | "eager_input_streaming"
+                    | "strict"
+                    | "defer_loading"
             )
         })
         .collect::<Vec<_>>();
@@ -338,6 +344,63 @@ pub(super) fn normalize_anthropic_tool(
             None,
             TranslationDecisionKind::Dropped,
             Some("tool cache hints do not affect Native tool semantics"),
+            TranslationSafeRepresentation::Present,
+        );
+    }
+    if let Some(value) = object.get("eager_input_streaming") {
+        if !value.is_boolean() {
+            return Err(reject_anthropic_nested_field(
+                report,
+                &format!("{path}.eager_input_streaming"),
+                "tool eager_input_streaming must be boolean",
+                TranslationSafeRepresentation::Present,
+            ));
+        }
+        report.record(
+            &format!("{path}.eager_input_streaming"),
+            None,
+            TranslationDecisionKind::Dropped,
+            Some(
+                "tool input streaming is not part of Native tool semantics; matching Anthropic providers may restore it from source protocol context",
+            ),
+            TranslationSafeRepresentation::Present,
+        );
+    }
+    for field in ["strict", "defer_loading"] {
+        let Some(value) = object.get(field) else {
+            continue;
+        };
+        let Some(enabled) = value.as_bool() else {
+            let reason = if field == "strict" {
+                "tool strict must be boolean"
+            } else {
+                "tool defer_loading must be boolean"
+            };
+            return Err(reject_anthropic_nested_field(
+                report,
+                &format!("{path}.{field}"),
+                reason,
+                TranslationSafeRepresentation::Present,
+            ));
+        };
+        if enabled {
+            report.record(
+                &format!("{path}.{field}"),
+                None,
+                TranslationDecisionKind::Unsupported,
+                Some("Native tools cannot guarantee this Anthropic tool semantic"),
+                TranslationSafeRepresentation::Present,
+            );
+            return Err(
+                AnthropicCompatError::unsupported(format!("tools[{index}].{field}"))
+                    .with_report(report.clone()),
+            );
+        }
+        report.record(
+            &format!("{path}.{field}"),
+            None,
+            TranslationDecisionKind::Dropped,
+            Some("false preserves the Native tool default"),
             TranslationSafeRepresentation::Present,
         );
     }

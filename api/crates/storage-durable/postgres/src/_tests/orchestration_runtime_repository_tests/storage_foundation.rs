@@ -385,7 +385,7 @@ async fn recovery_history_is_append_only_and_coordinates_do_not_embed_content() 
 }
 
 #[tokio::test]
-async fn resume_claim_reacquire_fences_stale_token_generation_and_payload_conflicts() {
+async fn legacy_resume_claim_without_recovery_history_still_fences_generation_and_payload() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
@@ -408,7 +408,7 @@ async fn resume_claim_reacquire_fences_stale_token_generation_and_payload_confli
             flow_run_id: run.id,
             node_run_id: None,
             status: "waiting_human".into(),
-            reason: "claim fixture".into(),
+            reason: "legacy claim fixture".into(),
             locator_payload: json!({}),
             variable_snapshot: json!({}),
             external_ref_payload: None,

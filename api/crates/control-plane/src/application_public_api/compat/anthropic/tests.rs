@@ -35,6 +35,74 @@ fn tools_have_a_native_translation_receipt() {
 }
 
 #[test]
+fn issue_1736_ac_001_eager_tool_input_streaming_degrades_without_rejecting_the_tool() {
+    let translated = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{ "role": "user", "content": "inspect the repository" }],
+        "tools": [{
+            "name": "Bash",
+            "description": "Run a command",
+            "input_schema": {
+                "type": "object",
+                "properties": { "command": { "type": "string" } },
+                "required": ["command"]
+            },
+            "eager_input_streaming": true
+        }]
+    }))
+    .expect("eager input streaming is a transport hint, not a reason to reject the tool");
+
+    assert_eq!(
+        translated.request.inputs.as_value()["tools"][0]["name"],
+        "Bash"
+    );
+    assert!(translated.report.has_decision(
+        "$.tools[0].eager_input_streaming",
+        TranslationDecisionKind::Dropped
+    ));
+}
+
+#[test]
+fn issue_1736_ac_003_semantic_tool_fields_fail_with_a_typed_unsupported_error() {
+    for field in ["strict", "defer_loading"] {
+        let mut tool = json!({
+            "name": "Bash",
+            "input_schema": { "type": "object" }
+        });
+        tool[field] = json!(true);
+        let error = translate_messages_request(json!({
+            "model": "claude-compatible",
+            "messages": [{ "role": "user", "content": "inspect the repository" }],
+            "tools": [tool]
+        }))
+        .expect_err("semantic tool fields must not be silently discarded");
+
+        assert_eq!(error.error_type, "unsupported_feature");
+        assert!(error.report.has_decision(
+            &format!("$.tools[0].{field}"),
+            TranslationDecisionKind::Unsupported
+        ));
+    }
+}
+
+#[test]
+fn issue_1736_ac_003_unknown_tool_fields_remain_rejected() {
+    let error = translate_messages_request(json!({
+        "model": "claude-compatible",
+        "messages": [{ "role": "user", "content": "inspect the repository" }],
+        "tools": [{
+            "name": "Bash",
+            "input_schema": { "type": "object" },
+            "future_unknown_field": true
+        }]
+    }))
+    .expect_err("unclassified tool fields must continue to fail closed");
+
+    assert_eq!(error.error_type, "invalid_request");
+    assert_eq!(error.message, "unknown Anthropic tool field");
+}
+
+#[test]
 fn prompt_markers_are_not_interpreted_as_system_context() {
     let request = map_messages_request(json!({
         "model": "1flowbase",
