@@ -3,6 +3,7 @@ use plugin_framework::{DataModelTemplateIdentity, DataModelTemplateOperation};
 use runtime_core::{
     data_model_template_registry::{CompiledDataModelTemplate, DataModelTemplateCatalog},
     general_data_model_template::CoreGeneralOperationHandler,
+    ordered_tree_template::CoreOrderedTreeOperationHandler,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -390,10 +391,28 @@ fn build_operation_definition(
     create_schema_ref: &str,
     update_schema_ref: &str,
 ) -> Option<Value> {
-    let handler = CoreGeneralOperationHandler::from_ref(&operation.handler_ref);
+    let general_handler = CoreGeneralOperationHandler::from_ref(&operation.handler_ref);
+    let ordered_tree_handler = CoreOrderedTreeOperationHandler::from_ref(&operation.handler_ref);
     let operation_id = operation_id(model.id, &operation.code);
     let summary = format!("{} — {}", operation.summary, model.title);
-    if handler.is_none() {
+    if ordered_tree_handler.is_some_and(|handler| {
+        !matches!(
+            handler,
+            CoreOrderedTreeOperationHandler::ListRecords
+                | CoreOrderedTreeOperationHandler::GetRecord
+                | CoreOrderedTreeOperationHandler::CreateRecord
+                | CoreOrderedTreeOperationHandler::UpdateRecord
+                | CoreOrderedTreeOperationHandler::DeleteRecord
+        )
+    }) {
+        return Some(descriptor_operation_definition(
+            operation,
+            operation_id,
+            summary,
+            false,
+        ));
+    }
+    if general_handler.is_none() && ordered_tree_handler.is_none() {
         return Some(descriptor_operation_definition(
             operation,
             operation_id,
@@ -403,27 +422,35 @@ fn build_operation_definition(
     }
     let mut definition = operation_definition_base(operation, operation_id, summary);
 
-    match handler {
-        None => unreachable!("non-general handlers return above"),
-        Some(CoreGeneralOperationHandler::ListRecords) => {
+    match (general_handler, ordered_tree_handler) {
+        (Some(CoreGeneralOperationHandler::ListRecords), None)
+        | (None, Some(CoreOrderedTreeOperationHandler::ListRecords)) => {
             definition.insert("parameters".to_owned(), runtime_list_parameters());
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, true));
         }
-        Some(CoreGeneralOperationHandler::GetRecord) => {
+        (Some(CoreGeneralOperationHandler::GetRecord), None)
+        | (None, Some(CoreOrderedTreeOperationHandler::GetRecord)) => {
             definition.insert(
                 "parameters".to_owned(),
                 json!([id_parameter(), expand_parameter()]),
             );
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
         }
-        Some(CoreGeneralOperationHandler::CreateRecord) => {
+        (Some(CoreGeneralOperationHandler::CreateRecord), None) => {
             definition.insert(
                 "requestBody".to_owned(),
                 json_request_body(create_schema_ref),
             );
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
         }
-        Some(CoreGeneralOperationHandler::UpdateRecord) => {
+        (None, Some(CoreOrderedTreeOperationHandler::CreateRecord)) => {
+            definition.insert(
+                "requestBody".to_owned(),
+                json_schema_request_body(ordered_tree_write_schema(model, operation, true)),
+            );
+            definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
+        }
+        (Some(CoreGeneralOperationHandler::UpdateRecord), None) => {
             definition.insert("parameters".to_owned(), json!([id_parameter()]));
             definition.insert(
                 "requestBody".to_owned(),
@@ -431,10 +458,20 @@ fn build_operation_definition(
             );
             definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
         }
-        Some(CoreGeneralOperationHandler::DeleteRecord) => {
+        (None, Some(CoreOrderedTreeOperationHandler::UpdateRecord)) => {
+            definition.insert("parameters".to_owned(), json!([id_parameter()]));
+            definition.insert(
+                "requestBody".to_owned(),
+                json_schema_request_body(ordered_tree_write_schema(model, operation, false)),
+            );
+            definition.insert("responses".to_owned(), runtime_responses(schema_ref, false));
+        }
+        (Some(CoreGeneralOperationHandler::DeleteRecord), None)
+        | (None, Some(CoreOrderedTreeOperationHandler::DeleteRecord)) => {
             definition.insert("parameters".to_owned(), json!([id_parameter()]));
             definition.insert("responses".to_owned(), runtime_delete_responses());
         }
+        _ => unreachable!("non-CRUD and external handlers return before definition assembly"),
     }
     Some(Value::Object(definition))
 }
@@ -608,6 +645,56 @@ fn json_request_body(schema_ref: &str) -> Value {
             }
         }
     })
+}
+
+fn json_schema_request_body(schema: Value) -> Value {
+    json!({
+        "required": true,
+        "content": {
+            "application/json": { "schema": schema }
+        }
+    })
+}
+
+fn ordered_tree_write_schema(
+    model: &domain::ModelDefinitionRecord,
+    operation: &DataModelTemplateOperation,
+    include_required: bool,
+) -> Value {
+    let mut schema = record_write_schema(model, include_required);
+    let Some(schema_object) = schema.as_object_mut() else {
+        return schema;
+    };
+    if let Some(operation_properties) = operation
+        .input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+    {
+        let properties = schema_object
+            .entry("properties")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .expect("record write schema properties must be an object");
+        properties.extend(operation_properties.clone());
+    }
+    if let Some(operation_required) = operation
+        .input_schema
+        .get("required")
+        .and_then(Value::as_array)
+    {
+        let required = schema_object
+            .entry("required")
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .expect("record write schema required must be an array");
+        for field in operation_required {
+            if !required.contains(field) {
+                required.push(field.clone());
+            }
+        }
+    }
+    schema_object.insert("additionalProperties".to_owned(), Value::Bool(false));
+    schema
 }
 
 fn runtime_responses(schema_ref: &str, list: bool) -> Value {
@@ -864,6 +951,66 @@ mod tests {
         );
     }
 
+    // AC-003: ordered-tree CRUD contracts expose model fields and tree placement together.
+    #[test]
+    fn ordered_tree_crud_openapi_projects_typed_write_inputs_and_record_outputs() {
+        let mut model = model_fixture();
+        model.template_code = "ordered_tree".to_owned();
+        model.fields = vec![
+            writable_field(model.id, "title", domain::ModelFieldKind::String, true),
+            writable_field(model.id, "content", domain::ModelFieldKind::Text, false),
+        ];
+        let templates = DataModelTemplateCatalog::core();
+
+        let create = build_operation_openapi(&model, "create_record", &templates).unwrap();
+        let create_operation = &create["paths"]["/api/runtime/models/orders/create"]["post"];
+        let create_schema =
+            &create_operation["requestBody"]["content"]["application/json"]["schema"];
+        for field in ["title", "content", "parent_id", "before_id", "after_id"] {
+            assert!(
+                create_schema["properties"][field].is_object(),
+                "create schema must expose {field}"
+            );
+        }
+        assert_eq!(create_schema["required"], json!(["title"]));
+        assert_eq!(create_schema["additionalProperties"], false);
+        assert_eq!(
+            create_operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/OrdersRecord"
+        );
+        let catalog_operation = build_category_operations(std::slice::from_ref(&model), &templates)
+            .operations
+            .into_iter()
+            .find(|operation| operation.id == operation_id(model.id, "create_record"))
+            .expect("ordered-tree create operation must be cataloged");
+        let interface =
+            crate::openapi_interface::catalog_entry_from_operation(&catalog_operation, &create)
+                .expect("ordered-tree create OpenAPI must compile into an interface");
+        for field in ["title", "content", "parent_id", "before_id", "after_id"] {
+            assert!(interface.parameter_descriptors.iter().any(|parameter| {
+                parameter.name == field
+                    && parameter.location
+                        == crate::openapi_interface::OpenApiParameterLocation::JsonBody
+            }));
+        }
+        assert!(interface.response_schema["properties"]["title"].is_object());
+        assert!(interface.response_schema["properties"]["parent_id"].is_object());
+
+        let update = build_operation_openapi(&model, "update_record", &templates).unwrap();
+        let update_operation = &update["paths"]["/api/runtime/models/orders/update/{id}"]["patch"];
+        let update_schema =
+            &update_operation["requestBody"]["content"]["application/json"]["schema"];
+        assert!(update_schema["properties"]["title"].is_object());
+        assert!(update_schema["properties"]["content"].is_object());
+        assert!(update_schema["properties"].get("parent_id").is_none());
+        assert!(update_schema["properties"].get("sibling_rank").is_none());
+        assert_eq!(update_schema["additionalProperties"], false);
+        assert_eq!(
+            update_operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/OrdersRecord"
+        );
+    }
+
     #[test]
     fn data_model_template_global_openapi_uses_descriptor_route_inventory_only() {
         let templates = DataModelTemplateCatalog::core();
@@ -995,6 +1142,36 @@ mod tests {
             availability_status: domain::MetadataAvailabilityStatus::Available,
             status: domain::DataModelStatus::Published,
             protection: domain::DataModelProtection::default(),
+        }
+    }
+
+    fn writable_field(
+        model_id: Uuid,
+        code: &str,
+        field_kind: domain::ModelFieldKind,
+        api_required: bool,
+    ) -> domain::ModelFieldRecord {
+        domain::ModelFieldRecord {
+            id: Uuid::now_v7(),
+            data_model_id: model_id,
+            code: code.to_owned(),
+            title: code.to_owned(),
+            description: None,
+            physical_column_name: code.to_owned(),
+            external_field_key: None,
+            field_kind,
+            is_system: false,
+            is_writable: true,
+            is_required: api_required,
+            api_required,
+            is_unique: false,
+            default_value: None,
+            display_interface: None,
+            display_options: json!({}),
+            relation_target_model_id: None,
+            relation_options: json!({}),
+            sort_order: 0,
+            availability_status: domain::MetadataAvailabilityStatus::Available,
         }
     }
 }
