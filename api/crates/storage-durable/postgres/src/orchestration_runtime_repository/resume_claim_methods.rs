@@ -64,10 +64,15 @@ async fn append_resume_claim_running_recovery(
     .bind(input.scope_id)
     .bind(input.application_id)
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or(ControlPlaneError::Conflict(
-        "resume_claim_recovery_not_waiting",
-    ))?;
+    .await?;
+    let Some(latest) = latest else {
+        tracing::warn!(
+            flow_run_id = %input.flow_run_id,
+            claim_id = %claim.id,
+            "legacy resume claim has no recovery history; preserving the pre-recovery contract"
+        );
+        return Ok(());
+    };
     let latest_state: String = latest.get("state_code");
     if latest_state == "running" {
         let latest_idempotency_key: String = latest.get("idempotency_key");
