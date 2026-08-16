@@ -557,34 +557,6 @@ pub trait ProviderTransportStore: Send + Sync {
         Ok(continuation)
     }
 
-    /// Atomically claims a flow-owned continuation for the selected Provider route.
-    ///
-    /// The flow-run slot is the continuation state owner. `expected_affinity` binds the claim to
-    /// the Provider instance (the selected route), provider contract, protocol, and model. A
-    /// successful claim is the mutually exclusive choice of native continuation over full replay
-    /// for that execution attempt; the opaque response cursor must not be returned on mismatch.
-    /// Concurrent production adapters should override this compatibility implementation with one
-    /// atomic compare-and-remove storage action.
-    async fn consume_continuation_for(
-        &self,
-        slot_id: ProviderContinuationSlotId,
-        expected_affinity: &ProviderTransportAffinity,
-    ) -> anyhow::Result<ProviderContinuation> {
-        let continuation = self
-            .get_continuation(slot_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("ephemeral_continuation_missing"))?;
-        anyhow::ensure!(
-            continuation.matches_affinity(expected_affinity),
-            "provider_continuation_affinity_mismatch"
-        );
-        anyhow::ensure!(
-            self.delete_continuation(slot_id).await?,
-            "ephemeral_continuation_missing"
-        );
-        Ok(continuation)
-    }
-
     async fn delete_continuation(
         &self,
         slot_id: ProviderContinuationSlotId,

@@ -68,11 +68,16 @@ where
 {
     async fn pipeline_provider_input(
         &self,
-        input: ProviderInvocationInput,
+        mut input: ProviderInvocationInput,
     ) -> std::result::Result<
         orchestration_runtime::provider_input_pipeline::ProviderInputPipelineOutput,
         orchestration_runtime::provider_input_pipeline::ProviderInputPipelineError,
     > {
+        if self.continuation_affinity().is_some() {
+            input.required_capabilities.insert(
+                plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+            );
+        }
         self.runtime.pipeline_provider_input(input).await
     }
 
@@ -144,16 +149,34 @@ where
         if !runtime.targets_main_instance() {
             return Ok(None);
         }
-        self.resolve_current_main_llm_routing(runtime)
-            .await
-            .map(Some)
+        let mut routing = self.resolve_current_main_llm_routing(runtime).await?;
+        if self.continuation_affinity().is_some() {
+            routing.candidates.retain(|candidate| {
+                self.ensure_continuation_route(
+                    &candidate.runtime,
+                    &candidate.route.runtime_capabilities,
+                )
+                .is_ok()
+            });
+            if routing.candidates.is_empty() {
+                return Err(provider_transport_error(
+                    ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                    "main Provider routing has no legal continuation owner",
+                ));
+            }
+        }
+        Ok(Some(routing))
     }
 
     async fn resolve_llm_route(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
     ) -> Result<orchestration_runtime::execution_engine::ResolvedProviderRoute> {
-        self.resolve_registered_llm_route(runtime).await
+        let route = self.resolve_registered_llm_route(runtime).await?;
+        if let Some(affinity) = self.continuation_affinity() {
+            self.ensure_provider_affinity(runtime, affinity)?;
+        }
+        Ok(route)
     }
 
     async fn invoke_llm(
@@ -172,6 +195,7 @@ where
         resolved_route: orchestration_runtime::execution_engine::ResolvedProviderRoute,
         mut input: ProviderInvocationInput,
     ) -> Result<orchestration_runtime::execution_engine::ProviderInvocationOutput> {
+        self.ensure_continuation_route(runtime, &resolved_route.runtime_capabilities)?;
         self.apply_provider_transport(runtime, &mut input)?;
         let pin = resolved_route
             .invocation_pin::<RuntimeProviderInvocationPin>()
@@ -946,6 +970,38 @@ where
     R: PluginRepository + Clone + Send + Sync,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    fn continuation_affinity(&self) -> Option<&crate::ports::ProviderTransportAffinity> {
+        self.provider_continuation
+            .as_ref()
+            .map(crate::ports::ProviderContinuation::affinity)
+            .or_else(|| {
+                self.provider_transport_payload
+                    .as_ref()
+                    .and_then(crate::ports::ProviderTransportPayload::affinity)
+            })
+    }
+
+    fn ensure_continuation_route(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        runtime_capabilities: &std::collections::BTreeSet<String>,
+    ) -> Result<()> {
+        let Some(affinity) = self.continuation_affinity() else {
+            return Ok(());
+        };
+        self.ensure_provider_affinity(runtime, affinity)?;
+        let capability = plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported
+            .manifest_capability_name();
+        if runtime_capabilities.contains(capability) {
+            Ok(())
+        } else {
+            Err(provider_transport_error(
+                ProviderRuntimeErrorKind::SemanticCapabilityUnsupported,
+                "selected LLM Provider does not support native continuation",
+            ))
+        }
+    }
+
     fn apply_provider_transport(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
@@ -954,6 +1010,9 @@ where
         if let Some(continuation) = self.provider_continuation.as_ref() {
             self.ensure_provider_affinity(runtime, continuation.affinity())?;
             input.previous_response_id = Some(continuation.response_id().to_string());
+            input.required_capabilities.insert(
+                plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+            );
         }
         let native_transport_capability =
             plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough;
@@ -969,6 +1028,22 @@ where
 
         if let Some(affinity) = payload.affinity() {
             self.ensure_provider_affinity(runtime, affinity)?;
+            input.required_capabilities.insert(
+                plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+            );
+            // The sealed native request already owns the continuation delta. Canonical history is
+            // retained for routing, then removed at the selected Provider boundary to prevent a
+            // second full-history wire representation from accompanying the native transport.
+            input.messages.clear();
+            input.system.clear();
+            input.tools.clear();
+            input.mcp_bindings.clear();
+            input.required_capabilities.remove(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1,
+            );
+            input.required_capabilities.remove(
+                &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1,
+            );
         }
 
         input
@@ -1030,6 +1105,13 @@ where
             _ => Err(ControlPlaneError::Conflict("plugin_node_context_required").into()),
         }
     }
+}
+
+fn provider_transport_error(
+    kind: ProviderRuntimeErrorKind,
+    message: &'static str,
+) -> anyhow::Error {
+    plugin_framework::PluginFrameworkError::runtime(ProviderRuntimeError::new(kind, message)).into()
 }
 
 impl<R, H> RuntimeProviderInvoker<R, H>
@@ -1480,6 +1562,10 @@ pub(super) use media::textualize_media_content_blocks_for_text_model;
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/provider_invoker/canonical_writer_tests.rs"]
 mod canonical_writer_tests;
+
+#[cfg(test)]
+#[path = "../_tests/orchestration_runtime/provider_invoker/continuation_claim_tests.rs"]
+mod continuation_claim_tests;
 
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/support.rs"]

@@ -149,6 +149,12 @@ where
                     Err(cause) => missing.extend(cause.missing_capabilities()),
                 }
             }
+            Err(error)
+                if provider_runtime_error_from_anyhow(&error).kind
+                    == ProviderRuntimeErrorKind::ProviderAffinityMismatch =>
+            {
+                continue;
+            }
             Err(error) => compatible.push(ResolvedLlmRequestRuntime {
                 runtime: candidate,
                 route: Err(error),
@@ -311,6 +317,7 @@ fn missing_routing_capabilities(
                 capability,
                 ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
                     | ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+                    | ProviderInvocationCapability::NativeContinuationSupported
             )
         })
         .map(|capability| capability.manifest_capability_name().to_string())

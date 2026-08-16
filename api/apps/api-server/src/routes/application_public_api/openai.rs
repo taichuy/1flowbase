@@ -585,12 +585,10 @@ async fn dispatch_response_for_endpoint(
     let mut provider_transport_payload = request.metadata.take_provider_transport_payload();
     if let Some(previous_flow_run_id) = previous_flow_run_id {
         if let Some(payload) = provider_transport_payload.take() {
-            let continuation = state
-                .infrastructure
-                .provider_transport_store()
-                .get_continuation(ProviderContinuationSlotId::for_flow_run(
-                    previous_flow_run_id,
-                ))
+            let continuation_slot = ProviderContinuationSlotId::for_flow_run(previous_flow_run_id);
+            let store = state.infrastructure.provider_transport_store();
+            let continuation_exists = store
+                .get_continuation(continuation_slot)
                 .await
                 .map_err(|_| {
                     OpenAiRouteError::Native(native::NativeApiError::new(
@@ -599,11 +597,22 @@ async fn dispatch_response_for_endpoint(
                         "Provider continuation storage is temporarily unavailable",
                     ))
                 })?
-                .ok_or_else(|| {
+                .is_some();
+            if !continuation_exists {
+                return Err(OpenAiRouteError::Native(native::NativeApiError::new(
+                    StatusCode::CONFLICT,
+                    "ephemeral_continuation_missing",
+                    "the previous Provider continuation is no longer available",
+                )));
+            }
+            let continuation = store
+                .consume_continuation(continuation_slot)
+                .await
+                .map_err(|_| {
                     OpenAiRouteError::Native(native::NativeApiError::new(
                         StatusCode::CONFLICT,
-                        "ephemeral_continuation_missing",
-                        "the previous Provider continuation is no longer available",
+                        "provider_continuation_claim_failed",
+                        "the previous Provider continuation could not be claimed",
                     ))
                 })?;
             let payload = payload

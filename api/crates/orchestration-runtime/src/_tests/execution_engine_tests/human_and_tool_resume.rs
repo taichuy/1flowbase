@@ -487,7 +487,7 @@ async fn resume_llm_tool_results_recalls_same_llm_then_enters_downstream() {
 }
 
 #[tokio::test]
-async fn resume_llm_tool_results_passes_native_response_cursor_system_and_delta_messages() {
+async fn issue_1743_resume_llm_tool_results_uses_native_cursor_capability_and_delta_only() {
     let mut waiting_response = tool_call_response(vec![ProviderToolCall {
         id: "call_weather".to_string(),
         name: "lookup_weather".to_string(),
@@ -580,6 +580,9 @@ async fn resume_llm_tool_results_passes_native_response_cursor_system_and_delta_
         captured[0].previous_response_id.as_deref(),
         Some("resp_previous")
     );
+    assert!(captured[0]
+        .required_capabilities
+        .contains(&ProviderInvocationCapability::NativeContinuationSupported));
     assert_eq!(
         captured[0].system_text().as_deref(),
         Some("Always answer with current tool evidence.")
@@ -597,7 +600,7 @@ async fn resume_llm_tool_results_passes_native_response_cursor_system_and_delta_
 }
 
 #[tokio::test]
-async fn resume_llm_tool_results_replays_full_history_after_http_sse_response_cursor() {
+async fn issue_1743_resume_without_native_continuation_replays_full_canonical_history() {
     let mut waiting_response = tool_call_response(vec![ProviderToolCall {
         id: "call_weather".to_string(),
         name: "lookup_weather".to_string(),

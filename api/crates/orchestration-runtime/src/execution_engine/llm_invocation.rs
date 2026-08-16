@@ -134,20 +134,13 @@ where
         pending_llm_tool_callback_previous_response_id(node, runtime, variable_pool);
     let context_policy = llm_context_policy(node, runtime);
     let mut provider_context = if previous_response_id.is_some() {
-        let prompt_messages =
-            if let Some(messages) = pending_llm_tool_callback_delta_messages(node, variable_pool) {
-                messages
-            } else {
-                binding_prompt_messages_with_context_sources(
-                    plan,
-                    node,
-                    rendered_templates,
-                    resolved_inputs,
-                    variable_pool,
-                    &context_policy,
-                    runtime_context,
-                )?
-            };
+        let prompt_messages = pending_llm_tool_callback_delta_messages(node, variable_pool)
+            .ok_or_else(|| {
+                json!({
+                    "error_code": "native_continuation_delta_missing",
+                    "message": "native Provider continuation requires a correlated delta transcript",
+                })
+            })?;
         provider_context_from_prompt_messages(prompt_messages)?
     } else {
         provider_context_from_prompt_messages(binding_prompt_messages_with_context_sources(
@@ -206,6 +199,11 @@ where
         required_capabilities.insert(protocol_context_capability);
     } else {
         required_capabilities.remove(&protocol_context_capability);
+    }
+    if previous_response_id.is_some() {
+        required_capabilities.insert(
+            plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+        );
     }
 
     let mut input = ProviderInvocationInput {

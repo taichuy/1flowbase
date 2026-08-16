@@ -25,6 +25,38 @@ struct Issue1743CapabilityResolver {
     capabilities: BTreeMap<String, BTreeSet<String>>,
 }
 
+struct Issue1743AffinityResolver;
+
+#[async_trait]
+impl ProviderInvoker for Issue1743AffinityResolver {
+    async fn resolve_llm_route(
+        &self,
+        runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
+        if runtime.provider_instance_id == "provider-wrong-affinity" {
+            return Err(plugin_framework::PluginFrameworkError::runtime(
+                plugin_framework::provider_contract::ProviderRuntimeError::new(
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+                    "typed affinity mismatch fixture",
+                ),
+            )
+            .into());
+        }
+        Ok(ResolvedProviderRoute::new(
+            BTreeSet::from(["native_continuation_supported".to_string()]),
+            runtime.provider_instance_id.clone(),
+        ))
+    }
+
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        unreachable!("issue_1743 route projection fixtures do not invoke a Provider")
+    }
+}
+
 #[async_trait]
 impl ProviderInvoker for Issue1743CapabilityResolver {
     async fn resolve_llm_route(
@@ -216,4 +248,76 @@ async fn issue_1743_two_candidate_failover_preflights_from_one_canonical_source(
         Some(ProviderProjectionFidelity::Exact)
     );
     assert_eq!(canonical, snapshot);
+}
+
+#[tokio::test]
+async fn issue_1743_typed_affinity_mismatch_is_ineligible_but_matching_backup_routes() {
+    let runtime = issue_1743_failover_runtime(vec![
+        issue_1743_target("provider-wrong-affinity"),
+        issue_1743_target("provider-affinity-owner"),
+    ]);
+    let mut canonical = issue_1743_canonical_probe(
+        "tool delta",
+        json!([{"type": "text", "text": "tool delta"}]),
+    );
+    canonical.required_capabilities.insert(
+        plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+    );
+
+    let selected = resolve_llm_request_runtime(
+        &runtime,
+        &ExecutionRuntimeContext::default(),
+        &Issue1743AffinityResolver,
+        &canonical.required_capabilities,
+        Some(&canonical),
+        0,
+    )
+    .await
+    .expect("typed affinity mismatch must be skipped in favor of the legal owner");
+
+    assert_eq!(
+        selected.runtime.provider_instance_id,
+        "provider-affinity-owner"
+    );
+}
+
+#[tokio::test]
+async fn issue_1743_native_continuation_capability_is_a_hard_route_requirement() {
+    let runtime = issue_1743_failover_runtime(vec![issue_1743_target("provider-no-native")]);
+    let resolver = Issue1743CapabilityResolver {
+        capabilities: BTreeMap::new(),
+    };
+    let mut canonical = issue_1743_canonical_probe(
+        "tool delta",
+        json!([{"type": "text", "text": "tool delta"}]),
+    );
+    canonical.required_capabilities.insert(
+        plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+    );
+
+    let error = match resolve_llm_request_runtime(
+        &runtime,
+        &ExecutionRuntimeContext::default(),
+        &resolver,
+        &canonical.required_capabilities,
+        Some(&canonical),
+        0,
+    )
+    .await
+    {
+        Ok(_) => panic!("a route without native continuation capability must be ineligible"),
+        Err(error) => error,
+    };
+
+    let runtime_error = error
+        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .and_then(|error| match error {
+            plugin_framework::PluginFrameworkError::RuntimeContract { error } => Some(error),
+            _ => None,
+        })
+        .expect("hard capability rejection must remain typed");
+    assert_eq!(
+        runtime_error.kind,
+        plugin_framework::provider_contract::ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
+    );
 }

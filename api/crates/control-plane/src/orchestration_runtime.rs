@@ -607,11 +607,10 @@ where
                 .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?;
             Some(
                 store
-                    .get_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
+                    .consume_continuation(crate::ports::ProviderContinuationSlotId::for_flow_run(
                         input.flow_run.id,
                     ))
-                    .await?
-                    .ok_or_else(|| anyhow!("ephemeral_continuation_missing"))?,
+                    .await?,
             )
         } else {
             None
