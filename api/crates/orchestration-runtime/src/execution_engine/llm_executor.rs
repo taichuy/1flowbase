@@ -369,6 +369,7 @@ where
                 );
             }
         };
+        let generate_projection_receipt = resolved_attempt.generate_projection_receipt.clone();
         let attempt_runtime = &resolved_attempt.runtime;
         let resolved_route = match resolved_attempt.route {
             Ok(route) => route,
@@ -387,6 +388,7 @@ where
                     status: "failed",
                     failed_after_first_token: false,
                     error_payload: Some(&error_payload),
+                    generate_projection_receipt: generate_projection_receipt.as_ref(),
                     usage: &ProviderUsage::default(),
                     event_count: 0,
                     started_at: attempt_started_at,
@@ -521,6 +523,7 @@ where
                 status: "failed",
                 failed_after_first_token: false,
                 error_payload: Some(&error_payload),
+                generate_projection_receipt: generate_projection_receipt.as_ref(),
                 usage: &ProviderUsage::default(),
                 event_count: 0,
                 started_at: attempt_finished_at,
@@ -580,6 +583,7 @@ where
                     status: "failed",
                     failed_after_first_token: false,
                     error_payload: Some(&error_payload),
+                    generate_projection_receipt: generate_projection_receipt.as_ref(),
                     usage: &ProviderUsage::default(),
                     event_count: 0,
                     started_at: attempt_started_at,
@@ -732,6 +736,7 @@ where
             status: attempt_status,
             failed_after_first_token,
             error_payload: error_payload.as_ref(),
+            generate_projection_receipt: generate_projection_receipt.as_ref(),
             usage: &usage,
             event_count: output.events.len(),
             started_at: attempt_started_at,

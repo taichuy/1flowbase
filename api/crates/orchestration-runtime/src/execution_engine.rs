@@ -55,7 +55,7 @@ mod http_request;
 mod llm_callbacks;
 mod llm_context;
 mod llm_error_payloads;
-mod llm_final_content;
+pub(crate) mod llm_final_content;
 mod llm_invocation;
 pub(crate) mod llm_metrics;
 mod llm_node_outputs;

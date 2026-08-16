@@ -15,6 +15,7 @@ use crate::{
     },
     execution_engine::{
         llm_metrics::{
+            attach_generate_projection_receipt, bounded_generate_projection_receipt,
             preflight_llm_route_candidate, resolve_llm_request_runtime, LlmRoutePreflightCause,
         },
         ExecutionRuntimeContext, ProviderInvocationOutput, ProviderInvoker, ResolvedProviderRoute,
@@ -154,6 +155,38 @@ fn issue_1743_lossy_candidate_is_accepted_without_mutating_canonical_probe() {
         accepted.receipt.fidelity,
         Some(ProviderProjectionFidelity::Lossy)
     );
+    let diagnostic = bounded_generate_projection_receipt(&accepted.receipt);
+    assert_eq!(diagnostic["fidelity"], json!("lossy"));
+    assert_eq!(diagnostic["provenance"]["omitted_count"], json!(1));
+    assert_eq!(
+        diagnostic["provenance"]["omitted_blocks"][0],
+        json!({"message_index": 0, "block_index": 0, "block_kind": "reasoning"})
+    );
+    let mut attempt = json!({"status": "succeeded"});
+    attach_generate_projection_receipt(&mut attempt, Some(&accepted.receipt));
+    assert_eq!(attempt["provider_generate_projection"], diagnostic);
+    let mut oversized = accepted.receipt.clone();
+    let omitted_locator = oversized
+        .provenance
+        .as_ref()
+        .expect("lossy receipt must carry provenance")
+        .omitted_blocks[0]
+        .clone();
+    oversized
+        .provenance
+        .as_mut()
+        .expect("lossy receipt must carry provenance")
+        .omitted_blocks = vec![omitted_locator; 20];
+    let bounded = bounded_generate_projection_receipt(&oversized);
+    assert_eq!(bounded["provenance"]["omitted_count"], json!(20));
+    assert_eq!(
+        bounded["provenance"]["omitted_blocks"]
+            .as_array()
+            .unwrap()
+            .len(),
+        16
+    );
+    assert_eq!(bounded["provenance"]["locators_capped"], json!(true));
     assert_eq!(canonical, snapshot);
 }
 
@@ -208,6 +241,12 @@ fn issue_1743_exact_synthetic_candidate_accepts_explicit_reasoning_block_capabil
         accepted.receipt.fidelity,
         Some(ProviderProjectionFidelity::Exact)
     );
+    let diagnostic = bounded_generate_projection_receipt(&accepted.receipt);
+    assert_eq!(diagnostic["fidelity"], json!("exact"));
+    assert_eq!(diagnostic["provenance"]["preserved_count"], json!(3));
+    let mut attempt = json!({"status": "succeeded"});
+    attach_generate_projection_receipt(&mut attempt, Some(&accepted.receipt));
+    assert_eq!(attempt["provider_generate_projection"], diagnostic);
 }
 
 #[tokio::test]
@@ -320,4 +359,128 @@ async fn issue_1743_native_continuation_capability_is_a_hard_route_requirement()
         runtime_error.kind,
         plugin_framework::provider_contract::ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
     );
+}
+
+#[tokio::test]
+async fn issue_1743_reasoning_only_route_error_exposes_only_bounded_typed_projection_cause() {
+    let runtime = issue_1743_failover_runtime(vec![issue_1743_target("provider-no-reasoning")]);
+    let resolver = Issue1743CapabilityResolver {
+        capabilities: BTreeMap::new(),
+    };
+    let mut canonical = issue_1743_canonical_probe(
+        "",
+        json!([
+            {
+                "type": "reasoning",
+                "text": "RAW_BODY_CANARY",
+                "signature": "SIGNATURE_CANARY"
+            },
+            {
+                "type": "reasoning_redacted",
+                "data": "REDACTED_DATA_CANARY"
+            }
+        ]),
+    );
+    canonical
+        .run_context
+        .insert("cursor".to_string(), json!("CURSOR_CANARY"));
+
+    let error = match resolve_llm_request_runtime(
+        &runtime,
+        &ExecutionRuntimeContext::default(),
+        &resolver,
+        &canonical.required_capabilities,
+        Some(&canonical),
+        0,
+    )
+    .await
+    {
+        Ok(_) => panic!("reasoning-only route must fail closed"),
+        Err(error) => error,
+    };
+    let runtime_error = error
+        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .and_then(|error| match error {
+            plugin_framework::PluginFrameworkError::RuntimeContract { error } => Some(error),
+            _ => None,
+        })
+        .expect("semantic rejection must remain typed");
+    let details = runtime_error
+        .provider_details
+        .as_ref()
+        .expect("semantic rejection must carry safe route diagnostics");
+
+    assert_eq!(details["route_id"], json!("llm_route"));
+    assert_eq!(
+        details["projection"]["causes"][0]["error_code"],
+        json!("reasoning_only_message_unsupported")
+    );
+    assert_eq!(
+        details["projection"]["causes"][0]["block"],
+        json!({"message_index": 0, "block_index": 0, "block_kind": "reasoning"})
+    );
+    let encoded = details.to_string();
+    for canary in [
+        "RAW_BODY_CANARY",
+        "SIGNATURE_CANARY",
+        "REDACTED_DATA_CANARY",
+        "CURSOR_CANARY",
+    ] {
+        assert!(!encoded.contains(canary));
+    }
+}
+
+#[tokio::test]
+async fn issue_1743_invalid_canonical_route_error_retains_typed_nonempty_cause() {
+    let runtime = issue_1743_failover_runtime(vec![issue_1743_target("provider-invalid")]);
+    let resolver = Issue1743CapabilityResolver {
+        capabilities: BTreeMap::new(),
+    };
+    let canonical = ProviderInvocationInput {
+        messages: vec![ProviderMessage {
+            role: ProviderMessageRole::Assistant,
+            content: String::new(),
+            name: None,
+            tool_call_id: None,
+            is_error: None,
+            tool_calls: None,
+            content_blocks: Some(
+                json!([{"type": "unknown_private_block", "data": "RAW_BODY_CANARY"}]),
+            ),
+        }],
+        ..ProviderInvocationInput::default()
+    };
+
+    let error = match resolve_llm_request_runtime(
+        &runtime,
+        &ExecutionRuntimeContext::default(),
+        &resolver,
+        &BTreeSet::new(),
+        Some(&canonical),
+        0,
+    )
+    .await
+    {
+        Ok(_) => panic!("invalid canonical contract must reject every route"),
+        Err(error) => error,
+    };
+    let details = error
+        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .and_then(|error| match error {
+            plugin_framework::PluginFrameworkError::RuntimeContract { error } => {
+                error.provider_details.as_ref()
+            }
+            _ => None,
+        })
+        .expect("invalid canonical rejection must retain typed details");
+
+    assert_eq!(
+        details["missing_capabilities"],
+        json!(["invalid_canonical_contract"])
+    );
+    assert_eq!(
+        details["projection"]["causes"][0]["cause"],
+        json!("invalid_canonical_contract")
+    );
+    assert!(!details.to_string().contains("RAW_BODY_CANARY"));
 }

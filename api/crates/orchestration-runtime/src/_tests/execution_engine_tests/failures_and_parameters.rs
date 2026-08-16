@@ -264,6 +264,59 @@ async fn provider_failure_preserves_the_runtime_error_message() {
     }
 }
 
+#[test]
+fn issue_1743_semantic_provider_details_copy_only_bounded_projection_allowlist() {
+    let runtime = base_plan().nodes["node-llm"]
+        .llm_runtime
+        .as_ref()
+        .expect("fixture LLM runtime must exist")
+        .clone();
+    let error = ProviderRuntimeError::new(
+        ProviderRuntimeErrorKind::SemanticCapabilityUnsupported,
+        "semantic route rejected",
+    )
+    .with_provider_details(json!({
+        "route_id": "llm_route",
+        "missing_capabilities": ["message_blocks.reasoning_history.v1"],
+        "projection": {
+            "cause_count": 1,
+            "causes_capped": false,
+            "causes": [{
+                "cause": "unsupported",
+                "error_code": "reasoning_only_message_unsupported",
+                "block": {"message_index": 2, "block_index": 3, "block_kind": "reasoning"},
+                "raw_body": "RAW_BODY_CANARY",
+                "signature": "SIGNATURE_CANARY",
+                "cursor": "CURSOR_CANARY"
+            }]
+        },
+        "provider_raw_body": "UPSTREAM_RAW_CANARY"
+    }));
+
+    let payload =
+        crate::execution_engine::llm_final_content::build_provider_error_payload(&runtime, &error);
+
+    assert_eq!(payload["route_id"], json!("llm_route"));
+    assert_eq!(
+        payload["projection"]["causes"][0]["error_code"],
+        json!("reasoning_only_message_unsupported")
+    );
+    assert_eq!(
+        payload["projection"]["causes"][0]["block"],
+        json!({"message_index": 2, "block_index": 3, "block_kind": "reasoning"})
+    );
+    assert!(payload.get("provider_details").is_none());
+    let encoded = payload.to_string();
+    for canary in [
+        "RAW_BODY_CANARY",
+        "SIGNATURE_CANARY",
+        "CURSOR_CANARY",
+        "UPSTREAM_RAW_CANARY",
+    ] {
+        assert!(!encoded.contains(canary));
+    }
+}
+
 #[tokio::test]
 async fn provider_upstream_error_body_is_the_durable_message_and_event_message() {
     let outcome = start_flow_debug_run(
