@@ -1,5 +1,7 @@
 use super::*;
-use plugin_framework::provider_contract::{ProviderMessageRole, ProviderOutputItemPhase};
+use plugin_framework::provider_contract::{
+    ProviderMessageRole, ProviderOutputItemPhase, ProviderRuntimeError, ProviderRuntimeErrorKind,
+};
 use plugin_framework::{
     provider_contract::ProviderCountTokensFallbackReason,
     provider_count_tokens_estimator::estimate_provider_count_tokens,
@@ -547,6 +549,7 @@ fn provider_stream_event_kind(event: &ProviderStreamEvent) -> &'static str {
         ProviderStreamEvent::UsageSnapshot { .. } => "usage_snapshot",
         ProviderStreamEvent::Finish { .. } => "finish",
         ProviderStreamEvent::Error { .. } => "error",
+        ProviderStreamEvent::OutputProtocolFailure { .. } => "output_protocol_failure",
     }
 }
 
@@ -640,6 +643,17 @@ impl RuntimeCanonicalStreamWriter {
                 let deltas = self.flush_pending_content()?;
                 self.state.apply(CanonicalStreamEvent::Fail {
                     error: error.clone(),
+                })?;
+                Ok(deltas)
+            }
+            ProviderStreamEvent::OutputProtocolFailure { failure } => {
+                let deltas = self.flush_pending_content()?;
+                self.state.apply(CanonicalStreamEvent::Fail {
+                    error: ProviderRuntimeError::new(
+                        ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                        failure.message.clone(),
+                    )
+                    .with_provider_details(failure.provider_details.clone()),
                 })?;
                 Ok(deltas)
             }

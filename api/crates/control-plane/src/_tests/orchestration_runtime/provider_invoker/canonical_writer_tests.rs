@@ -1,5 +1,8 @@
 use super::*;
-use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
+use crate::orchestration_runtime::canonical_stream::CanonicalTerminal;
+use plugin_framework::provider_contract::{
+    ProviderFinishReason, ProviderOutputProtocolFailure, ProviderUsage,
+};
 
 #[test]
 fn provider_timing_classifies_events_without_recording_their_content() {
@@ -8,6 +11,45 @@ fn provider_timing_classifies_events_without_recording_their_content() {
     };
 
     assert_eq!(provider_stream_event_kind(&event), "text_delta");
+}
+
+#[test]
+fn output_protocol_failure_is_a_terminal_canonical_failure_after_flushing_text() {
+    let mut writer = RuntimeCanonicalStreamWriter::new("item-1");
+    let text_deltas = writer
+        .write(&ProviderStreamEvent::TextDelta {
+            delta: "discarded attempt text".to_string(),
+        })
+        .unwrap();
+    let failure = ProviderOutputProtocolFailure {
+        protocol: "dsml".to_string(),
+        error_code: "incomplete_envelope".to_string(),
+        message: "malformed tool-call markup".to_string(),
+        retry_feedback: "emit a complete tool call".to_string(),
+        provider_details: json!({"candidate_truncated": false}),
+    };
+    let deltas = writer
+        .write(&ProviderStreamEvent::OutputProtocolFailure {
+            failure: failure.clone(),
+        })
+        .unwrap();
+
+    assert_eq!(
+        provider_stream_event_kind(&ProviderStreamEvent::OutputProtocolFailure { failure }),
+        "output_protocol_failure"
+    );
+    assert_eq!(text_deltas.len(), 1);
+    assert!(deltas.is_empty());
+    assert_eq!(
+        writer.state().accumulated().text().as_str(),
+        "discarded attempt text"
+    );
+    assert!(matches!(
+        writer.state().terminal(),
+        Some(CanonicalTerminal::Failed { error })
+            if error.kind == ProviderRuntimeErrorKind::ProviderInvalidResponse
+                && error.message == "malformed tool-call markup"
+    ));
 }
 
 #[test]

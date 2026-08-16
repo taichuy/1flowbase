@@ -332,6 +332,7 @@ where
     let mut attempt_metrics = Vec::new();
     let mut failed_attempts = Vec::new();
     let mut retry_reason: Option<String> = None;
+    let mut retry_feedback: Option<String> = None;
 
     for attempt_index in 0..request_count {
         let resolved_attempt = match resolve_llm_request_runtime(
@@ -438,7 +439,7 @@ where
             && attempt_runtime.provider_code == runtime.provider_code
             && attempt_runtime.protocol == runtime.protocol
             && attempt_runtime.model == runtime.model;
-        let invocation = if route_matches_probe {
+        let mut invocation = if route_matches_probe {
             routing_probe
                 .take()
                 .expect("the routing probe is consumed by at most one matching route")
@@ -481,6 +482,17 @@ where
                 }
             }
         };
+        if let Some(feedback) = retry_feedback.as_ref() {
+            invocation.input.messages.push(ProviderMessage {
+                role: ProviderMessageRole::User,
+                content: feedback.clone(),
+                name: None,
+                tool_call_id: None,
+                is_error: None,
+                tool_calls: None,
+                content_blocks: None,
+            });
+        }
         let reasoning_effort = invocation
             .input
             .model_parameters
@@ -637,12 +649,16 @@ where
             collect_dify_style_deltas(&output.events),
         );
         let stream_provider_error = first_provider_error(&output.events).cloned();
-        let invalid_tool_call_error = if stream_provider_error.is_none() {
-            invalid_tool_call_finish_error(finish_reason.as_ref(), &output.result)
-        } else {
-            None
-        };
+        let output_protocol_failure =
+            first_provider_output_protocol_failure(&output.events).cloned();
+        let invalid_tool_call_error =
+            if stream_provider_error.is_none() && output_protocol_failure.is_none() {
+                invalid_tool_call_finish_error(finish_reason.as_ref(), &output.result)
+            } else {
+                None
+            };
         let terminal_finish_error = (stream_provider_error.is_none()
+            && output_protocol_failure.is_none()
             && invalid_tool_call_error.is_none()
             && matches!(finish_reason, Some(ProviderFinishReason::Error)))
         .then(|| {
@@ -652,7 +668,9 @@ where
                 None,
             )
         });
-        let failure_projection = if invalid_tool_call_error.is_some() {
+        let failure_projection = if output_protocol_failure.is_some() {
+            LlmFailureProjection::NoNodeOutput
+        } else if invalid_tool_call_error.is_some() {
             LlmFailureProjection::LegacyTerminalFallback
         } else if terminal_finish_error.is_some()
             && content_delta_seen_before_terminal_failure(&output.events, finish_reason.as_ref())
@@ -664,14 +682,25 @@ where
         let provider_error = stream_provider_error
             .or(invalid_tool_call_error)
             .or(terminal_finish_error);
-        let failed_after_first_token = provider_error.is_some()
+        let failed_after_first_token = (provider_error.is_some()
+            || output_protocol_failure.is_some())
             && content_delta_seen_before_terminal_failure(&output.events, finish_reason.as_ref());
-        let recoverable_error_message = provider_error
+        let recoverable_error_message = output_protocol_failure
             .as_ref()
-            .map(recoverable_provider_error_message);
-        let mut error_payload = provider_error
+            .map(|failure| failure.message.clone())
+            .or_else(|| {
+                provider_error
+                    .as_ref()
+                    .map(recoverable_provider_error_message)
+            });
+        let mut error_payload = output_protocol_failure
             .as_ref()
-            .map(|error| build_provider_error_payload(attempt_runtime, error))
+            .map(|failure| build_output_protocol_failure_payload(attempt_runtime, failure))
+            .or_else(|| {
+                provider_error
+                    .as_ref()
+                    .map(|error| build_provider_error_payload(attempt_runtime, error))
+            })
             .or_else(|| {
                 (!has_valid_provider_output(
                     final_content.as_deref(),
@@ -722,7 +751,7 @@ where
         if let Some(error_payload) = &error_payload {
             failed_attempts.push(attempt);
             if retry_enabled
-                && !failed_after_first_token
+                && (output_protocol_failure.is_some() || !failed_after_first_token)
                 && provider_error
                     .as_ref()
                     .is_none_or(provider_error_allows_retry)
@@ -732,6 +761,9 @@ where
                     .get("error_code")
                     .and_then(Value::as_str)
                     .map(str::to_string);
+                if let Some(failure) = output_protocol_failure.as_ref() {
+                    retry_feedback = Some(failure.retry_feedback.clone());
+                }
                 if retry_interval_ms > 0 {
                     tokio::time::sleep(std::time::Duration::from_millis(retry_interval_ms)).await;
                 }

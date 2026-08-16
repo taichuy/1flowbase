@@ -1112,13 +1112,15 @@ async fn mcp_call_get_catalog_preserves_discovery_policy_fields_via_continuation
     let result_ref = payload["result"]["structuredContent"]["detail"]["result_ref"]
         .as_str()
         .expect("large catalog should provide a continuation reference");
-    let mut cursor = None;
+    let mut cursor = payload["result"]["structuredContent"]["detail"]["next_cursor"]
+        .as_str()
+        .map(str::to_owned);
     let mut found_list_return_field = false;
     for id in 21..53 {
-        let mut continuation_arguments = json!({"result_ref": result_ref});
-        if let Some(cursor) = cursor.as_deref() {
-            continuation_arguments["cursor"] = json!(cursor);
-        }
+        let Some(current_cursor) = cursor.as_deref() else {
+            break;
+        };
+        let continuation_arguments = json!({"result_ref": result_ref, "cursor": current_cursor});
         let continuation = call_mcp(
             &app,
             &token,
@@ -1397,6 +1399,26 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
     assert_eq!(compact["retry_original"], json!(false));
     assert!(compact.get("receipt_id").is_none());
     let result_ref = compact["detail"]["result_ref"].as_str().unwrap();
+    let initial_cursor = compact["detail"]["next_cursor"]
+        .as_str()
+        .expect("continuation receipt should expose the first opaque cursor");
+
+    let missing_cursor = call_mcp(
+        &app,
+        &token,
+        json!({
+            "jsonrpc":"2.0",
+            "id":301,
+            "method":"tools/call",
+            "params":{
+                "name":"mcp_result",
+                "arguments":{"result_ref":result_ref}
+            }
+        }),
+    )
+    .await;
+    assert_eq!(missing_cursor["error"]["code"], json!(-32602));
+    assert_eq!(missing_cursor["error"]["message"], json!("Invalid cursor"));
 
     let first_page = call_mcp(
         &app,
@@ -1409,6 +1431,7 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
                 "name":"mcp_result",
                 "arguments":{
                     "result_ref":result_ref,
+                    "cursor":initial_cursor,
                     "max_inline_chars":1000
                 }
             }
@@ -1468,7 +1491,7 @@ async fn root_1569_ac_006_ac_008_oversized_read_uses_read_only_paged_continuatio
             "method":"tools/call",
             "params":{
                 "name":"mcp_result",
-                "arguments":{"result_ref":result_ref}
+                "arguments":{"result_ref":result_ref,"cursor":initial_cursor}
             }
         }),
     )
@@ -1654,6 +1677,9 @@ async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without
     assert_eq!(compact["receipt_status"], json!("available"));
     assert_eq!(compact["retry_original"], json!(false));
     let receipt_id = compact["receipt_id"].as_str().unwrap();
+    let initial_cursor = compact["detail"]["next_cursor"]
+        .as_str()
+        .expect("continuation receipt should expose the first opaque cursor");
 
     let created_count: i64 = sqlx::query_scalar(
         "select count(*) from mcp_instances where workspace_id = $1 and instance_id = 'created_once'",
@@ -1689,7 +1715,7 @@ async fn root_1569_ac_007_ac_009_oversized_write_returns_durable_receipt_without
             "method":"tools/call",
             "params":{
                 "name":"mcp_result",
-                "arguments":{"result_ref":receipt_id}
+                "arguments":{"result_ref":receipt_id,"cursor":initial_cursor}
             }
         }),
     )

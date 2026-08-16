@@ -165,6 +165,15 @@ pub(super) fn first_provider_error(
     })
 }
 
+pub(super) fn first_provider_output_protocol_failure(
+    events: &[ProviderStreamEvent],
+) -> Option<&ProviderOutputProtocolFailure> {
+    events.iter().find_map(|event| match event {
+        ProviderStreamEvent::OutputProtocolFailure { failure } => Some(failure),
+        _ => None,
+    })
+}
+
 pub(super) fn content_delta_seen_before_terminal_failure(
     events: &[ProviderStreamEvent],
     finish_reason: Option<&ProviderFinishReason>,
@@ -176,6 +185,7 @@ pub(super) fn content_delta_seen_before_terminal_failure(
                 saw_content_delta = true
             }
             ProviderStreamEvent::Error { .. } => return saw_content_delta,
+            ProviderStreamEvent::OutputProtocolFailure { .. } => return saw_content_delta,
             ProviderStreamEvent::Finish {
                 reason: ProviderFinishReason::Error,
             } => return saw_content_delta,
@@ -201,6 +211,21 @@ pub(super) fn build_provider_error_payload(
         payload["status_code"] = json!(status_code);
     }
     payload
+}
+
+pub(super) fn build_output_protocol_failure_payload(
+    runtime: &CompiledLlmRuntime,
+    failure: &ProviderOutputProtocolFailure,
+) -> Value {
+    json!({
+        "provider_instance_id": runtime.provider_instance_id,
+        "provider_code": runtime.provider_code,
+        "protocol": failure.protocol,
+        "error_code": "provider_output_protocol_failure",
+        "protocol_error_code": failure.error_code,
+        "message": failure.message,
+        "provider_details": failure.provider_details,
+    })
 }
 
 pub(super) fn provider_error_allows_retry(error: &ProviderRuntimeError) -> bool {

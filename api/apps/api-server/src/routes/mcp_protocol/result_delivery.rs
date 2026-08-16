@@ -93,6 +93,7 @@ pub(crate) async fn deliver_oversized_result(
         DetailCacheStatus::Available => json!({
             "status": "continuation_available",
             "result_ref": result_ref,
+            "next_cursor": ContinuationCursor::default().encode(),
             "expires_in_seconds": DETAIL_TTL_SECONDS
         }),
         DetailCacheStatus::Unavailable(reason) => json!({

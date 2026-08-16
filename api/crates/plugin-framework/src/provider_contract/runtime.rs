@@ -40,6 +40,16 @@ pub struct ProviderRuntimeError {
     pub provider_details: Option<Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOutputProtocolFailure {
+    pub protocol: String,
+    pub error_code: String,
+    pub message: String,
+    pub retry_feedback: String,
+    #[serde(default)]
+    pub provider_details: Value,
+}
+
 impl ProviderRuntimeError {
     pub fn new(kind: ProviderRuntimeErrorKind, message: impl Into<String>) -> Self {
         Self {
@@ -224,6 +234,9 @@ pub enum ProviderStreamEvent {
     Error {
         error: ProviderRuntimeError,
     },
+    OutputProtocolFailure {
+        failure: ProviderOutputProtocolFailure,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -274,6 +287,9 @@ pub enum ProviderRuntimeLine {
     Error {
         error: ProviderRuntimeError,
     },
+    OutputProtocolFailure {
+        failure: ProviderOutputProtocolFailure,
+    },
     Result {
         result: ProviderInvocationResult,
     },
@@ -311,6 +327,9 @@ impl ProviderRuntimeLine {
             Self::UsageSnapshot { usage } => Some(ProviderStreamEvent::UsageSnapshot { usage }),
             Self::Finish { reason } => Some(ProviderStreamEvent::Finish { reason }),
             Self::Error { error } => Some(ProviderStreamEvent::Error { error }),
+            Self::OutputProtocolFailure { failure } => {
+                Some(ProviderStreamEvent::OutputProtocolFailure { failure })
+            }
             Self::Result { .. } => None,
         }
     }
